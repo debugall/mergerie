@@ -16,15 +16,15 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const db = require('./db');
-const localsession = require('./data/localsession');
-const copilot = require('./copilot');
-const agentpolicy = require('./agentpolicy');
-const agentsession = require('./agentsession');
-const agentpass = require('./agentpass');
-const pieces = require('./pieces');
-const { TASKS_DIR, ensureDir } = require('./core/paths');
-const { t } = require('../public/i18n-runtime.js');
+const db = require('../db');
+const localsession = require('../data/localsession');
+const copilot = require('../copilot');
+const agentpolicy = require('../agentpolicy');
+const agentsession = require('../agentsession');
+const agentpass = require('../agentpass');
+const pieces = require('../pieces');
+const { TASKS_DIR, ensureDir } = require('../core/paths');
+const { t } = require('../../public/i18n-runtime.js');
 
 const now = () => new Date().toISOString();
 

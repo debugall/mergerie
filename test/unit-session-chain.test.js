@@ -35,7 +35,7 @@ describe('Reprise de session : le handle suit les passes', () => {
     idB = (await app.api('POST', '/api/repos', { url: repoB.url, project: 'grp/b' })).body.id;
 
     // eslint-disable-next-line global-require
-    taskrunner = require('../src/taskrunner');
+    taskrunner = require('../src/session/taskrunner');
     // eslint-disable-next-line global-require
     agentsession = require('../src/agentsession');
     // eslint-disable-next-line global-require

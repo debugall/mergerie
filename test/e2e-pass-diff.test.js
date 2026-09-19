@@ -327,7 +327,7 @@ describe('Diff d’une itération de codage', () => {
        l'ancien suivi n'est plus atteignable par personne. Ce qui est encore référencé, lui,
        reste — une itération se relit des mois plus tard. */
     test('le ménage emporte les dépôts de suivi que plus rien ne référence, et garde les autres', async () => {
-      const snapshot = require('../src/localsnapshot');
+      const snapshot = require('../src/session/localsnapshot');
       const vivant = snapshot.dossierSuivi(localId, dirId);
       assert.equal(fs.existsSync(vivant), true);
 
@@ -351,7 +351,7 @@ describe('Diff d’une itération de codage', () => {
     /* UN DOSSIER DÉMESURÉ NE DOIT PAS RALENTIR LE CODAGE. Au-delà du plafond, la mesure est
        abandonnée — une fois pour toutes sur ce dossier — et la session, elle, aboutit. */
     test('au-delà du plafond, on renonce à mesurer sans faire échouer la session', async () => {
-      const snapshot = require('../src/localsnapshot');
+      const snapshot = require('../src/session/localsnapshot');
       const plafond = snapshot.LIMITES.fichiers;
       snapshot.LIMITES.fichiers = 0;
       try {

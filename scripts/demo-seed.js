@@ -756,7 +756,7 @@ const LOCAL_PASSES = {
    montré à l'écran reste fictif (`/home/moi/dev/backup-tool`) ; celui qu'on écrit vraiment
    vit sous `data-demo/`, effacé et refait à chaque semis. Semer un patch à la main aurait
    fabriqué une forme cousine de la vraie, qui aurait fini par en diverger. */
-const localsnapshot = require('../src/localsnapshot');
+const localsnapshot = require('../src/session/localsnapshot');
 const DOSSIERS_DEMO = path.join(DEMO_DIR, 'dossiers-demo');
 const aSemer = [];
 

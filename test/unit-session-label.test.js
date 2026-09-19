@@ -21,7 +21,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { lireSource } = require('./helpers/sources');
 
-const taskrunner = require('../src/taskrunner');
+const taskrunner = require('../src/session/taskrunner');
 
 const LIBELLE = 'ZZTITREDERANGEMENTZZ';
 

@@ -28,9 +28,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const git = require('./git/git');
-const { TASKS_DIR, ensureDir } = require('./core/paths');
-const { t } = require('../public/i18n-runtime.js');
+const git = require('../git/git');
+const { TASKS_DIR, ensureDir } = require('../core/paths');
+const { t } = require('../../public/i18n-runtime.js');
 
 /* Au-delà, on renonce : la mesure coûterait plus que ce qu'elle rend. Un objet plutôt que deux
    constantes, pour qu'un test puisse abaisser le plafond et vérifier le renoncement — atteindre
@@ -153,7 +153,7 @@ async function menage(onLog = () => {}) {
     try { return fs.readdirSync(p, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name); }
     catch { return []; }
   };
-  const db = require('./db'); // tardif : `db` n'a pas à être chargé pour mesurer une passe.
+  const db = require('../db'); // tardif : `db` n'a pas à être chargé pour mesurer une passe.
   const connu = db.prepare('SELECT 1 FROM local_task_dir WHERE id = ? AND task_id = ?');
   for (const taskId of sousDossiers(racine)) {
     for (const dirId of sousDossiers(path.join(racine, taskId))) {
