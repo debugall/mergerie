@@ -76,9 +76,6 @@ const IMPORTEURS = {
 
 /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */
 const EXCEPTIONS = [
-  /* Le cycle git ↔ skillscan : `git.js` invalide le cache des skills après un fetch, par un
-     require paresseux. Se casse à l'étape 5 de refacto.md (un événement `apresFetch`). */
-  { de: 'git/git.js', vers: 'agent/skillscan.js', motif: 'cycle connu, cassé à l’étape 5' },
 ];
 
 /* `gitlab.js` et `github.js` : la règle de CLAUDE.md, enfin vérifiée. */
@@ -88,7 +85,6 @@ const PORTE_FORGE = ['forge.js', 'forge/index.js'];
    se tiennent (une composante fortement connexe), par chemin sous src/. L'ordre importe peu,
    l'ensemble oui : un fichier de plus ou de moins dans la composante, et l'entrée ne vaut plus. */
 const CYCLES_CONNUS = [
-  ['git/git.js', 'agent/skillscan.js'],
   ['agent/profile.js', 'agent/schedule.js', 'agent/knowledge.js', 'session/taskrunner.js', 'review/reviewer.js', 'review/converge.js',
     'jobs/index.js', 'jobs/runners/task.js', 'jobs/runners/converge.js', 'jobs/runners/converge-session.js', 'jobs/runners/reconcile.js', 'jobs/runners/review.js'],
 ];

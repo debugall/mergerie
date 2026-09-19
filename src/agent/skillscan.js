@@ -142,6 +142,8 @@ function scan({ repos, cfg }) {
 // Appelé par la route de rescan et par `git.ensureRepo` après un fetch : un skill ajouté
 // dans le dépôt doit apparaître au prochain regard, pas cinq minutes plus tard.
 function invalidate() { cache = null; }
+// Un clone qui bouge peut apporter un skill : on s'abonne, git ne nous connaît pas.
+git.surClone(invalidate);
 
 /* La ligne de skills qui ouvre la demande (spec agents §8.6, point 1).
  *

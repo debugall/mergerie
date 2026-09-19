@@ -7,6 +7,11 @@ const forge = require('../forge');
 const proc = require('../core/proc');
 const { t } = require('../core/i18n');
 
+/* QUI VEUT SAVOIR QU'UN CLONE A BOUGÉ. `skillscan` s'y inscrit pour vider son cache : ce module
+   n'a pas à le connaître — un abonné, pas un import, et donc pas de cycle. */
+const abonnesClone = new Set();
+function surClone(fn) { abonnesClone.add(fn); }
+
 // Émet les lignes complètes d'un buffer vers onLog, renvoie le reste incomplet.
 function emitLines(buf, onLog) {
   const norm = buf.replace(/\r/g, '\n');
@@ -270,9 +275,9 @@ async function ensureRepo(cfg, repo, onLog = () => {}) {
   ensureInternalIgnore(dir); // ne jamais committer les dossiers de travail internes
   await updateSubmodules(dir, tls, secrets, onLog);
   /* Le clone vient de bouger : un skill ajouté dans `.claude/skills/` doit apparaître au
-     prochain regard, pas cinq minutes plus tard. Require paresseux — `skillscan` dépend de
-     ce module, et le charger en tête ferait un cycle. */
-  try { require('../agent/skillscan').invalidate(); } catch { /* module absent : rien à invalider */ }
+     prochain regard, pas cinq minutes plus tard. `skillscan` s'est abonné ici (`surClone`) :
+     ce module ne le connaît pas, et aucun cycle ne se referme. */
+  for (const fn of abonnesClone) { try { fn(dir); } catch { /* un abonné qui échoue ne casse pas le clone */ } }
   return dir;
 }
 
@@ -659,6 +664,7 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
 }
 
 module.exports = {
+  surClone,
   aheadOf, behindOf, isPushed, renommerDernierCommit, nonPousses,
   rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
   resetWorktree,
