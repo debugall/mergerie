@@ -13,7 +13,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const v = require('../src/verify');
+const v = require('../src/verify/verify');
 
 /* ------------------------------------------------------------------ TAP */
 

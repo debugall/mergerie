@@ -72,6 +72,13 @@ const IMPORTEURS = {
   ], motif: 'le mode démo se branche depuis app/ et cinq modules nommés' },
 };
 
+/* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */
+const EXCEPTIONS = [
+  /* config.js valide la commande de dictée avec `decouperCommande`, une fonction PURE qui vit
+     encore dans verify.js. Elle descend dans core/ au commit suivant ; l'exception part avec. */
+  { de: 'data/config.js', vers: 'verify/verify.js', motif: 'decouperCommande, à extraire dans core/' },
+];
+
 /* `gitlab.js` et `github.js` : la règle de CLAUDE.md, enfin vérifiée. */
 const PORTE_FORGE = ['forge.js', 'forge/index.js'];
 
@@ -149,6 +156,7 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
          l'importer ne dit rien de la direction. Une fois `server.js` et `cli.js` seuls à la
          racine, plus rien ne les importe, et la ligne ne sert plus. */
       if (dVers === 'racine') continue;
+      if (EXCEPTIONS.some((e) => e.de === de && e.vers === vers)) continue;
       if (dVers !== dDe && RANG[dVers] > RANG[dDe] && !IMPORTEURS[dVers]) {
         soucis.push(`${ou} — ${dDe}/ (rang ${RANG[dDe]}) importe ${dVers}/ (rang ${RANG[dVers]}) : la flèche remonte`);
         continue;

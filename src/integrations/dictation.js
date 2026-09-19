@@ -288,7 +288,7 @@ function commandeMoteur(cfg) {
   const brut = String((cfg || getConfig()).dictation_command || '').trim();
   if (!brut) return { ok: true, programme: 'whisper-server', args: [] };
   // eslint-disable-next-line global-require
-  const verify = require('../verify');
+  const verify = require('../verify/verify');
   return verify.decouperCommande(brut);
 }
 

@@ -16,15 +16,15 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const db = require('./db');
-const git = require('./git/git');
-const forge = require('./forge');
-const proc = require('./core/proc');
+const db = require('../db');
+const git = require('../git/git');
+const forge = require('../forge');
+const proc = require('../core/proc');
 const verify = require('./verify');
-const demoVerify = require('./demo/verify');
-const { DATA_DIR, ensureDir } = require('./core/paths');
-const { stripAnsi } = require('../public/ansi-runtime.js');
-const { t } = require('../public/i18n-runtime.js');
+const demoVerify = require('../demo/verify');
+const { DATA_DIR, ensureDir } = require('../core/paths');
+const { stripAnsi } = require('../../public/ansi-runtime.js');
+const { t } = require('../../public/i18n-runtime.js');
 
 const WORKTREES_DIR = path.join(DATA_DIR, 'worktrees');
 const GRACE_KILL_MS = 10_000;   // délai entre SIGTERM et SIGKILL
@@ -582,9 +582,9 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
          qu'il y a un problème. Une todo (qui survit à la notification) et une notification
          (qui arrive tout de suite) : les deux, parce que les deux moments comptent. */
       try {
-        require('./notes').todoAuto('restore_error', verificationId,
+        require('../notes').todoAuto('restore_error', verificationId,
           t('todo.restore-error.title'), texte);
-        require('./core/notify').push('restore_error', { verification_id: verificationId, message: texte.slice(0, 200) });
+        require('../core/notify').push('restore_error', { verification_id: verificationId, message: texte.slice(0, 200) });
       } catch { /* la restauration a déjà échoué : on ne double pas l'échec */ }
     }
   }
@@ -763,7 +763,7 @@ async function commenterSurForge(verificationId, cfg, onLog) {
    REFERME — cochée, jamais supprimée : « ce qui a été réparé aujourd'hui » se relit dans les
    faites, et une todo qui s'évapore donne l'impression de n'avoir rien fait. */
 function todosDuVerdict(verificationId, verdict) {
-  const notes = require('./notes');
+  const notes = require('../notes');
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) return 0;
   let cibles = [];
@@ -803,7 +803,7 @@ function todosDuVerdict(verificationId, verdict) {
    Best-effort de bout en bout : un Jira injoignable ne remet pas en cause un verdict acquis. */
 async function commenterSurJira(verificationId, cfg, onLog) {
   if (!cfg || String(cfg.verify_jira_comment || '') !== '1') return [];
-  const jira = require('./integrations/jira');
+  const jira = require('../integrations/jira');
   if (!jira.isConfigured(cfg)) return [];
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) return [];

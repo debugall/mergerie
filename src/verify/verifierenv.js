@@ -12,7 +12,7 @@
  * renseigner, et on garde les VALEURS ici — une ligne de `local_state` par variable, sur le poste
  * qui l'a saisie.
  */
-const { etat } = require('./data/localstate');
+const { etat } = require('../data/localstate');
 
 const KIND = 'verifier_env';
 

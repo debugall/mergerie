@@ -15,7 +15,7 @@
  */
 
 const db = require('./db');
-const verifyLib = require('./verify');
+const verifyLib = require('./verify/verify');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 

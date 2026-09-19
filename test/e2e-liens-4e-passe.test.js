@@ -89,7 +89,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   test('une vérification rouge laisse une todo, un vert la referme', async () => {
     const d = app.db;
     /* eslint-disable global-require */
-    const verifyrun = require('../src/verifyrun');
+    const verifyrun = require('../src/verify/verifyrun');
     /* eslint-enable global-require */
     const mrId = d.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, updated_at)
       VALUES (?, 400, 'Rouge', 'f/400', 'main', 'reviewed', datetime('now'))`).run(repoId).lastInsertRowid;
@@ -113,7 +113,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
      même sur un rouge : écrire chez la QA ne se décide pas à la place de l'utilisateur. */
   test('le commentaire Jira d’un verdict est opt-in', async () => {
     /* eslint-disable global-require */
-    const verifyrun = require('../src/verifyrun');
+    const verifyrun = require('../src/verify/verifyrun');
     /* eslint-enable global-require */
     const d = app.db;
     const mrId = d.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, ticket_jira_key, updated_at)
@@ -329,7 +329,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   test('un test rouge puis vert sur le même code est signalé instable', async () => {
     const d = app.db;
     /* eslint-disable global-require */
-    const verifyrun = require('../src/verifyrun');
+    const verifyrun = require('../src/verify/verifyrun');
     /* eslint-enable global-require */
     const vId = d.prepare("INSERT INTO verifier (name, command, kind, created_at) VALUES ('V instable','','commands',datetime('now'))").run().lastInsertRowid;
     const cibles = JSON.stringify([{ repo_id: repoId, branch: 'main', head_sha: 'sha-stable-1' }]);
@@ -358,7 +358,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   /* A25 — LA DURÉE D'UN TEST, quand la sortie la donne : elle était jetée avec le commentaire. */
   test('les tests les plus lents sortent du TAP et du JUnit', () => {
     /* eslint-disable global-require */
-    const verify = require('../src/verify');
+    const verify = require('../src/verify/verify');
     /* eslint-enable global-require */
     const tap = verify.parserTap('TAP version 13\nok 1 - rapide # time=3.20ms\nok 2 - lent # time=1200.50ms\nnot ok 3 - cassé\n1..3\n');
     assert.deepEqual(tap.slowest.map((x) => x.test), ['lent', 'rapide'], 'les plus lents d’abord');

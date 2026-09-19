@@ -119,7 +119,7 @@ else ok('Liens ancrés vers les guides : toutes les ancres existent');
    oubli, avec le fichier qui prouve que la fonctionnalité existe. */
 const ATTENDUES = [
   { fichier: 'public/dictation-mic.js', fr: 'Dictée vocale', en: 'Voice dictation' },
-  { fichier: 'src/verify.js', fr: 'Vérification objective', en: 'Objective verification' },
+  { fichier: 'src/verify/verify.js', fr: 'Vérification objective', en: 'Objective verification' },
 ];
 const manquantes = [];
 for (const sec of ATTENDUES) {

@@ -77,7 +77,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.12 — « total » doit compter la même chose des deux côtés : ce qui a TOURNÉ. TAP excluait
      déjà les skips, JUnit les comptait — le même projet annonçait deux totaux selon son format. */
   test('le total d’un rapport JUnit exclut les tests sautés, comme TAP', () => {
-    const verify = require('../src/verify');
+    const verify = require('../src/verify/verify');
     const junit = verify.parserJUnit(`<testsuite>
       <testcase name="a"/>
       <testcase name="b"><skipped/></testcase>
@@ -135,7 +135,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.13 — en mode « in place », le dépôt garde ses fichiers d'un run à l'autre : un rapport
      laissé par le run BASE ne doit pas être relu comme le résultat du run TÊTE. */
   test('un rapport JUnit plus ancien que le run est ignoré', () => {
-    const verifyrun = require('../src/verifyrun');
+    const verifyrun = require('../src/verify/verifyrun');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'frais-'));
     const rapport = path.join(dir, 'report.xml');
     fs.writeFileSync(rapport, '<testsuite><testcase name="a"/></testsuite>');
