@@ -2,7 +2,7 @@
 
 Mergerie is a **local** tool: it runs on your own machine, with your own credentials. By default the server
 listens **only on `localhost`** (`127.0.0.1`); exposing it (`HOST=0.0.0.0`) **requires an access token**.
-Requests from another site are refused (`Host` allowlist against DNS rebinding, `Sec-Fetch-Site`, CSP).
+Requests from another site are refused (`Host` allowlist against DNS rebinding, `Sec-Fetch-Site`, CSP — `src/app/middleware/origine.js` and `entetes.js`, mounted first by `src/server.js`).
 Anything that **runs code** and arrives through the shared data repository — verifier commands, agent
 permissions, automatic reviews — **waits for approval on each machine**. The AI agent runs **read-only**
 for reviews and explorations, loses network, `push` and `remote` when it codes, gets an allowlisted
