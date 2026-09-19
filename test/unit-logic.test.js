@@ -12,7 +12,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-unit
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { lireFront } = require('./helpers/front');
+const { lireFichierFront } = require('./helpers/front');
 
 const glob = require('../src/core/glob');
 const { extractNote } = require('../src/review/note');
@@ -547,15 +547,15 @@ describe('agentsession : réseau vs authentification dans les erreurs copilot', 
   });
 });
 
-/* La liste des commandes git jugées destructives vit dans le front (public/app.js) : elle n'y
+/* La liste des commandes git jugées destructives vit dans le front (ecrans/git/commandes.js) : elle n'y
    est pas exportable, mais se laisse évaluer isolément. Un test vaut mieux qu'une relecture :
    trop large, elle fait confirmer un `git fetch` et on apprend à cliquer sans lire ; trop
    étroite, un `reset --hard` part sur trente dépôts sans un mot. */
 describe('front : classement des commandes git destructives', () => {
-  const src = lireFront();
+  const src = lireFichierFront('ecrans/git/commandes');
   const from = src.indexOf('const GIT_DESTRUCTIVE');
   const to = src.indexOf('\n', src.indexOf('function gitCmdIsDestructive'));
-  assert.ok(from > 0 && to > from, 'GIT_DESTRUCTIVE et gitCmdIsDestructive doivent rester ensemble dans app.js');
+  assert.ok(from > 0 && to > from, 'GIT_DESTRUCTIVE et gitCmdIsDestructive doivent rester ensemble dans ecrans/git/commandes.js');
   // eslint-disable-next-line no-new-func
   const isDestructive = new Function(`${src.slice(from, to)}\nreturn gitCmdIsDestructive;`)();
 
@@ -579,10 +579,10 @@ describe('front : classement des commandes git destructives', () => {
    (ET entre champs, OU dans un champ, critère vide = inactif) est ce qui décide de ce que
    l'utilisateur voit : se tromper ici cache des tickets sans rien dire. */
 describe('front : filtre Jira par champ', () => {
-  const src = lireFront();
+  const src = lireFichierFront('ecrans/jira/filtres');
   const from = src.indexOf('const JIRA_CHAMPS');
   const to = src.indexOf('\n}', src.indexOf('function jiraPasseFiltres')) + 2;
-  assert.ok(from > 0 && to > from, 'JIRA_CHAMPS et jiraPasseFiltres doivent rester contigus dans app.js');
+  assert.ok(from > 0 && to > from, 'JIRA_CHAMPS et jiraPasseFiltres doivent rester contigus dans ecrans/jira/filtres.js');
   // eslint-disable-next-line no-new-func
   const { passe, champs } = new Function(`${src.slice(from, to)}
     return { passe: jiraPasseFiltres, champs: JIRA_CHAMPS };`)();
@@ -854,10 +854,10 @@ describe('jobs : objets marqués « en cours »', () => {
    entièrement à ce qu'il TAIT : sans rien qui ait changé, il ne doit rien afficher — une
    ligne « 0 nouvelle MR » chaque matin est exactement ce qui rend un tableau de bord mort. */
 describe('front : delta depuis la dernière visite', () => {
-  const src = lireFront();
+  const src = lireFichierFront('transverse/delta');
   const from = src.indexOf('const VISITE_GAP_MS');
   const to = src.indexOf('// La colonne de droite');
-  assert.ok(from > 0 && to > from, 'le bloc du delta doit rester d’un seul tenant dans app.js');
+  assert.ok(from > 0 && to > from, 'le bloc du delta doit rester d’un seul tenant dans transverse/delta.js');
 
   // `tr` est remplacé par un marqueur lisible : on teste la sélection des faits, pas la traduction.
   const build = (stock) => new Function('localStorage', 'tr', `${src.slice(from, to)}\nreturn { lignesDelta, memoriserVisite };`)(

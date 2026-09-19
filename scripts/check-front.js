@@ -324,9 +324,12 @@ sansFiltre.length
    avec un `onEl` déclaré au milieu du fichier et utilisé mille lignes plus haut. Le remède est
    une déclaration de fonction, qui est hissée — ou, entre deux fichiers, `core/` en tête. */
 const declLine = new Map();
+const fnLine = new Map();
 lignes.forEach((l, n) => {
   const m = l.texte.match(/^(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=/);
   if (m && !declLine.has(m[1])) declLine.set(m[1], n);
+  const f = l.texte.match(/^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/);
+  if (f && !fnLine.has(f[1])) fnLine.set(f[1], n);
 });
 const avantDecl = [];
 lignes.forEach((l, n) => {
@@ -337,7 +340,32 @@ lignes.forEach((l, n) => {
   if (decl != null && decl > n) {
     avantDecl.push(`${ou(l)}  ${m[1]}(…) appelé avant sa déclaration ${ou(lignes[decl])} — déclarer \`function ${m[1]}()\` (hissée)`);
   }
+  /* Une `function` n'est hissée que DANS SON SCRIPT : appelée au chargement depuis un fichier
+     évalué avant celui qui la déclare, c'est « X is not defined » — même panne, autre remède :
+     charger le fichier qui déclare avant celui qui appelle. */
+  const fn = fnLine.get(m[1]);
+  if (fn != null && lignes[fn].f !== l.f && fn > n) {
+    avantDecl.push(`${ou(l)}  ${m[1]}(…) appelé au chargement, déclaré ${ou(lignes[fn])} — un fichier chargé APRÈS : reculer l'appelant dans le manifeste`);
+  }
 });
+/* La même panne par un OBJET DE PREMIER NIVEAU qui cite des fonctions (`const ADMIN_SUBS =
+   { rules: loadRules, … }`) : le littéral s'évalue au chargement, et chaque nom cité doit déjà
+   exister. On ne lit que les objets et tableaux littéraux, hors lignes de fonction. */
+{
+  let dans = null;
+  lignes.forEach((l, n) => {
+    if (/^(?:const|let)\s+[A-Za-z_$][\w$]*\s*=\s*[[{]\s*$/.test(l.texte)) { dans = l; return; }
+    if (!dans) return;
+    if (/^[\]}]/.test(l.texte)) { dans = null; return; }
+    if (/=>|\bfunction\b|^\s*(\/\/|\/\*|\*)/.test(l.texte)) return;
+    for (const m of l.texte.matchAll(/(?<![.\w$'"])([A-Za-z_$][\w$]*)\b(?!\s*:)/g)) {
+      const fn = fnLine.get(m[1]);
+      if (fn != null && lignes[fn].f !== l.f && fn > n) {
+        avantDecl.push(`${ou(l)}  ${m[1]} cité dans un littéral évalué au chargement, déclaré ${ou(lignes[fn])} — un fichier chargé APRÈS`);
+      }
+    }
+  });
+}
 avantDecl.length
   ? fail('Helper appelé avant sa déclaration (l’évaluation du front s’arrête là)', avantDecl)
   : ok('Aucun helper de premier niveau appelé avant sa déclaration');
@@ -534,6 +562,17 @@ function tousLes(dir, ext, out = []) {
     for (const m of texte.matchAll(/^\/\/ @expose\s+(.+)$/gm)) m[1].split(',').map((x) => x.trim()).filter(Boolean).forEach((n) => ex.add(n));
     exposePar.set(f, ex);
   }
+  /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — la règle de `check-deps.js`. La liste
+     ne peut que rétrécir. */
+  const EXCEPTIONS = [
+    /* `explainError` traduit l'échec d'une action en un remède — et un remède est une porte vers
+       un écran (« ouvrir la session », « aller aux réglages Git ») : il connaît donc les écrans,
+       et vit en transverse/. Mais c'est aussi ce qu'affiche `toast` sur toute erreur, depuis le
+       socle. Tolérée le temps de séparer le message (socle) de ses portes (transverse). */
+    { nom: 'explainError', depuis: 'core', motif: 'le remède d’une erreur connaît les écrans ; le message, lui, est appelé du socle' },
+  ];
+  const toleree = (nom, genre) => EXCEPTIONS.some((e) => e.nom === nom && e.depuis === genre);
+  const exceptionsVues = new Set();
   const soucis = [];
   const portsUtilises = new Map();  // fichier → Set(noms utilisés d'ailleurs)
   for (const f of fichiersJs) {
@@ -545,6 +584,7 @@ function tousLes(dir, ext, out = []) {
       if (!d || d === f) continue;
       const vers = dossier(d);
       const meme = vers.cle === de.cle;
+      if (de.genre === 'core' && vers.genre !== 'core' && toleree(nom, 'core')) { exceptionsVues.add(nom); continue; }
       if (de.genre === 'core' && vers.genre !== 'core') { soucis.push(`${nomDe(f)}  utilise ${nom} (${d}) — core/ n'appelle que core/`); continue; }
       if (vers.genre === 'demarrage') { soucis.push(`${nomDe(f)}  utilise ${nom} (${d}) — personne n'appelle demarrage.js`); continue; }
       if (vers.genre === 'core' || vers.genre === 'transverse' || meme) continue;
@@ -568,6 +608,7 @@ function tousLes(dir, ext, out = []) {
       else if (!(portsUtilises.get(f) || new Set()).has(nom) && !motsTests.has(nom)) soucis.push(`${nomDe(f)}  @expose ${nom} — personne d'ailleurs ne l'appelle : une promesse, à retirer`);
     }
   }
+  for (const e of EXCEPTIONS) if (fichiersJs.length && !exceptionsVues.has(e.nom)) soucis.push(`scripts/check-front.js  exception « ${e.nom} » sans usage : à retirer de la liste`);
   const nPorts = [...exposePar.values()].reduce((n, s) => n + s.size, 0);
   soucis.length
     ? fail('Direction des dépendances et ports du front', soucis)

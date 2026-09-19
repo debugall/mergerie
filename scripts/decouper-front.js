@@ -272,8 +272,8 @@ if (mode === 'css') {
         const ev = (a.match(/addEventListener\('(\w+)'/) || [])[1];
         const ev2 = (b.match(/addEventListener\('(\w+)'/) || [])[1];
         if (ev && ev === ev2 && /^(document|window)\./.test(a) && /^(document|window)\./.test(b)) {
-          if (!parEvenement.has(ev)) parEvenement.set(ev, 0);
-          parEvenement.set(ev, parEvenement.get(ev) + 1);
+          if (!parEvenement.has(ev)) parEvenement.set(ev, []);
+          parEvenement.get(ev).push(`${a.slice(0, 70)}  ⇄  ${b.slice(0, 70)}`);
         }
       }
     }
@@ -281,7 +281,7 @@ if (mode === 'css') {
   console.log(`✓ ${cibles.length} fichiers écrits, ${avant.size} déclarations conservées, ${iAvant.length} instructions de premier niveau conservées`);
   if (inversions) {
     console.log(`  ${inversions} couple(s) d'instructions ont changé d'ordre relatif ; sur le même événement de document/window :`);
-    for (const [ev, n] of parEvenement) console.log(`    ${ev} : ${n} couple(s)`);
+    for (const [ev, l] of parEvenement) { console.log(`    ${ev} : ${l.length} couple(s)`); l.forEach((x) => console.log(`      ${x}`)); }
     if (!parEvenement.size) console.log('    aucun');
   } else console.log('  ordre des instructions de premier niveau inchangé');
 }
