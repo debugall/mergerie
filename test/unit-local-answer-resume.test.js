@@ -60,7 +60,7 @@ describe('Hors dépôt : la reprise après réponses', () => {
     /* Le handle a quitté la ligne : il ne vaut que dans le `~/.claude` de cette machine, donc
        il vit dans `local_session`. On le recolle, comme le fait `localcoder`. */
     // eslint-disable-next-line global-require
-    const localsession = require('../src/localsession');
+    const localsession = require('../src/data/localsession');
     const dir = () => localsession.resoudre('local_task_dir',
       app.db.prepare('SELECT * FROM local_task_dir WHERE task_id = ?').get(lt.id));
     assert.equal(dir().status, 'needs_input', 'l’agent s’est arrêté sur ses questions');

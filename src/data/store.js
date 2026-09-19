@@ -32,8 +32,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const db = require('./db');
-const { SHARED_DIR, DATA_DIR, ensureDir } = require('./core/paths');
+const db = require('../db');
+const { SHARED_DIR, DATA_DIR, ensureDir } = require('../core/paths');
 const registre = require('./store-registry');
 const crypto = require('node:crypto');
 const { etat } = require('./localstate');
@@ -659,7 +659,7 @@ const tablesFichier = () => registre.REGISTRE
 /** (Ré)écrit le marqueur de format. Le dépôt doit pouvoir se présenter avant d'être lu. */
 function marquer() {
   const version = (() => {
-    try { return require('../package.json').version; } catch { return '?'; }
+    try { return require('../../package.json').version; } catch { return '?'; }
   })();
   ecrireFichier(MARQUEUR, serialize({ created_by: `mergerie ${version}`, schema: SCHEMA }));
 }

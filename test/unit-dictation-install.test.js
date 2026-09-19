@@ -24,7 +24,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
 const dictation = require('../src/integrations/dictation');
-const { getConfig, updateConfig } = require('../src/config');
+const { getConfig, updateConfig } = require('../src/data/config');
 
 const ROOT = path.resolve(__dirname, '..');
 

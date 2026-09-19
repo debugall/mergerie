@@ -42,10 +42,10 @@ function dans(poste, corps, avant = '') {
     const MSGS = { titreVide: 'v', inconnue: 'i', tropProfond: 'p', soiMeme: 's',
       prioriteInvalide: 'p', dateInvalide: 'd', lienInvalide: 'l', statutInvalide: 'st' };
     const db = require(${JSON.stringify(path.join(ROOT, 'src/db'))});
-    const store = require(${JSON.stringify(path.join(ROOT, 'src/store'))});
-    const datasync = require(${JSON.stringify(path.join(ROOT, 'src/datasync'))});
+    const store = require(${JSON.stringify(path.join(ROOT, 'src/data/store'))});
+    const datasync = require(${JSON.stringify(path.join(ROOT, 'src/data/datasync'))});
     const notes = require(${JSON.stringify(path.join(ROOT, 'src/notes'))});
-    const config = require(${JSON.stringify(path.join(ROOT, 'src/config'))});
+    const config = require(${JSON.stringify(path.join(ROOT, 'src/data/config'))});
     (async () => {
       const sortie = await (${corps})({ db, store, datasync, notes, config, MSGS });
       process.stdout.write(${JSON.stringify(BALISE)} + JSON.stringify(sortie === undefined ? null : sortie));

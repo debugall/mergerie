@@ -24,7 +24,7 @@
  * pour un `jira_watch`). Jamais l'`id` entier : il ne survit pas au partage, et une ligne
  * d'ici survivrait alors au mauvais parent après une réhydratation.
  */
-const db = require('./db');
+const db = require('../db');
 
 function tableau(table) {
   const get = db.prepare(`SELECT value FROM ${table} WHERE kind = ? AND ref = ? AND key = ?`);

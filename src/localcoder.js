@@ -9,14 +9,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
-const localdirs = require('./localdirs');
-const localsession = require('./localsession');
+const localdirs = require('./data/localdirs');
+const localsession = require('./data/localsession');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
 const proc = require('./core/proc');
 const agentpass = require('./agentpass');
 const localsnapshot = require('./localsnapshot');
-const { getConfig } = require('./config');
+const { getConfig } = require('./data/config');
 const { avecConsignes } = require('./prompts');
 const questions = require('./questions');
 const pieces = require('./pieces');

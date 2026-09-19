@@ -34,8 +34,8 @@ describe('store — la base prévient, le store écrit', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    registre = require('../src/store-registry');
+    store = require('../src/data/store');
+    registre = require('../src/data/store-registry');
   });
 
   test('chaque table partagée sait aller ET revenir', () => {

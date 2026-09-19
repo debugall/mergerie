@@ -17,8 +17,8 @@
  * Un autre poste peut RATTACHER son propre dossier à la même empreinte (« c'est ce dossier chez
  * moi ») : il n'écrit alors que dans sa table à lui, et rien ne part nulle part.
  */
-const db = require('./db');
-const { normaliser, empreinte, libelle } = require('./core/dirhash');
+const db = require('../db');
+const { normaliser, empreinte, libelle } = require('../core/dirhash');
 
 const majCarte = db.prepare(`INSERT INTO local_dir_map (dir_hash, path, updated_at)
                              VALUES (?, ?, ?)

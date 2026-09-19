@@ -19,10 +19,10 @@
  * jour : purger à chaque écriture coûterait une requête de suppression par ligne de log.
  */
 
-const db = require('./db');
-const localsnapshot = require('./localsnapshot');
-const agentpass = require('./agentpass');
-const { t } = require('../public/i18n-runtime.js');
+const db = require('../db');
+const localsnapshot = require('../localsnapshot');
+const agentpass = require('../agentpass');
+const { t } = require('../../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 

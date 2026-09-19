@@ -15,7 +15,7 @@
  * reprendre une session dans un autre dossier — le cas exact que `taskrunner` vérifie avant
  * chaque reprise.
  */
-const db = require('./db');
+const db = require('../db');
 
 const VIDE = { session_key: null, session_backend: null, session_cwd: null };
 

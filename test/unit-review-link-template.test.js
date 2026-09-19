@@ -27,7 +27,7 @@ const path = require('node:path');
    posé AVANT le require, le test écrirait dans la base réelle de l'utilisateur. */
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'lien-gabarit-'));
 const { messageLien } = require('../src/reviewer');
-const { updateConfig, getConfig } = require('../src/config');
+const { updateConfig, getConfig } = require('../src/data/config');
 
 const MR = { iid: 217, project: 'grp/app', title: 'Paiement 3× : intégration du partenaire' };
 const rendre = (gabarit, note = '8,4') => messageLien({ review_link_template: gabarit },

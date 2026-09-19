@@ -19,7 +19,7 @@
  *   — L'approbation vit dans `local_state` : elle ne voyage pas, par construction. Approuver
  *     chez soi n'approuve rien chez les autres.
  */
-const db = require('./db');
+const db = require('../db');
 const { etat } = require('./localstate');
 
 const KIND = 'approbation';

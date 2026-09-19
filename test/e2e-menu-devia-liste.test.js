@@ -135,7 +135,7 @@ describe('Menu Dev IA — la liste', { skip: dispo ? false : MSG_NAVIGATEUR }, (
     ids.askJetable = (await app.api('POST', '/api/questions', { prompt: 'Question à supprimer' })).body.id;
     // Une session d'agent connue : la carte propose alors la commande de reprise.
     // eslint-disable-next-line global-require
-    require('../src/localsession').ecrire('question',
+    require('../src/data/localsession').ecrire('question',
       app.db.prepare('SELECT uid FROM question WHERE id = ?').get(ids.ask).uid,
       { session_key: 'sess-menu-devia', session_backend: 'claude', session_cwd: app.dataDir });
 
@@ -468,7 +468,7 @@ describe('Menu Dev IA — la liste', { skip: dispo ? false : MSG_NAVIGATEUR }, (
 
   test('codage : la commande de reprise se copie depuis la ligne du projet', async () => {
     // eslint-disable-next-line global-require
-    require('../src/localsession').ecrire('task_target',
+    require('../src/data/localsession').ecrire('task_target',
       app.db.prepare('SELECT uid FROM task_target WHERE task_id = ?').get(ids.panier).uid,
       { session_key: 'sess-menu-devia-code', session_backend: 'claude', session_cwd: app.dataDir });
     await aller('code');

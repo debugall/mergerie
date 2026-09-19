@@ -103,7 +103,7 @@ describe('Sauvegarde des données', () => {
 
 describe('Rétention de l’historique', () => {
   // eslint-disable-next-line global-require
-  const retention = require('../src/retention');
+  const retention = require('../src/data/retention');
 
   const vieux = (jours) => new Date(Date.now() - jours * 24 * 3600 * 1000).toISOString();
 

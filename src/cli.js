@@ -8,7 +8,7 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const db = require('./db');
-const { updateConfig } = require('./config');
+const { updateConfig } = require('./data/config');
 const { reviewMr } = require('./reviewer');
 const { DATA_DIR } = require('./core/paths');
 

@@ -72,7 +72,7 @@ describe('Ce que reçoit le processus de l’agent', () => {
   });
 
   test('au-delà du plafond de dépense du jour, aucun agent ne part', async () => {
-    const config = require('../src/config');
+    const config = require('../src/data/config');
     const db = require('../src/db');
     config.updateConfig({ agent_daily_budget_usd: '1.5' });
     db.prepare('INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, created_at, cost_usd) VALUES (?,?,?,?,?,?)')

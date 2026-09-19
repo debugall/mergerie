@@ -63,7 +63,7 @@ describe('Reprise de session : le handle suit les passes', () => {
      l'application — sans quoi ce test éprouverait le stockage plutôt que l'enchaînement. */
   const cible = (taskId, repoId) => {
     // eslint-disable-next-line global-require
-    const localsession = require('../src/localsession');
+    const localsession = require('../src/data/localsession');
     return localsession.resoudre('task_target', app.db
       .prepare('SELECT * FROM task_target WHERE task_id = ? AND repo_id = ?').get(taskId, repoId));
   };
@@ -119,7 +119,7 @@ describe('Reprise de session : le handle suit les passes', () => {
     const retourPrecedent = prompts.length;
 
     // eslint-disable-next-line global-require
-    const localsession = require('../src/localsession');
+    const localsession = require('../src/data/localsession');
     const tg = cible(t.id, idA);
     localsession.oublier('task_target', tg.uid);
     assert.equal(cible(t.id, idA).session_key, null, 'le décor doit être celui du collègue');
@@ -191,7 +191,7 @@ describe('Reprise de session : le handle suit les passes', () => {
     const tg = cible(t.id, idA);
 
     // eslint-disable-next-line global-require
-    const localstate = require('../src/localstate');
+    const localstate = require('../src/data/localstate');
     localstate.etat.ecrire('session', tg.uid, 'derniere_passe', null);   // session d'avant
     assert.equal(localstate.etat.lire('session', tg.uid, 'derniere_passe'), null);
 
@@ -219,7 +219,7 @@ describe('Reprise de session : le handle suit les passes', () => {
      TELLE QU'ELLE EST, pas à son état d'il y a trois suivis. */
   test('la commande de reprise pointe la dernière passe', async () => {
     // eslint-disable-next-line global-require
-    const tg = require('../src/localsession').resoudre('task_target',
+    const tg = require('../src/data/localsession').resoudre('task_target',
       app.db.prepare('SELECT * FROM task_target WHERE repo_id = ? ORDER BY id DESC LIMIT 1').get(idA));
     const { body } = await app.api('GET', `/api/tasks/${tg.task_id}`);
     const vue = body.task.targets.find((x) => x.id === tg.id);

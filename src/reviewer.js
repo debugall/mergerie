@@ -2,8 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
-const localsession = require('./localsession');
-const { getConfig } = require('./config');
+const localsession = require('./data/localsession');
+const { getConfig } = require('./data/config');
 const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('./core/paths');
 const git = require('./git/git');
 const copilot = require('./copilot');
@@ -24,8 +24,8 @@ const notify = require('./core/notify');
 const { t } = require('../public/i18n-runtime.js');
 /* Le dépôt de données : il sait s'il est configuré, où en est la synchro, et l'adresse web
    d'un de ses fichiers. `store` sait, lui, quel fichier porte une ligne. */
-const datasync = require('./datasync');
-const store = require('./store');
+const datasync = require('./data/datasync');
+const store = require('./data/store');
 const { SHARED_DIR } = require('./core/paths');
 
 /* Instruction de CONSTATS STRUCTURÉS, ajoutée au prompt de review UNIQUEMENT à

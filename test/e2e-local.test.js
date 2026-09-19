@@ -19,7 +19,7 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
   const poignees = (table, scope, ou, ...args) => app.db
     .prepare(`SELECT uid FROM ${table} WHERE ${ou}`).all(...args)
     // eslint-disable-next-line global-require
-    .map((r) => require('../src/localsession').lire(scope, r.uid));
+    .map((r) => require('../src/data/localsession').lire(scope, r.uid));
 
   const mkdir = () => fs.mkdtempSync(path.join(app.dataDir, 'ldir-'));
 

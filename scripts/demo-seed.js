@@ -1592,9 +1592,9 @@ const counts = {
    montée de version), PUIS un collègue ajoute une commande : elle attend. */
 {
   // eslint-disable-next-line global-require
-  const approbation = require('../src/approbation');
+  const approbation = require('../src/data/approbation');
   // eslint-disable-next-line global-require
-  const { getConfig } = require('../src/config');
+  const { getConfig } = require('../src/data/config');
   const e2eId = db.prepare(`INSERT INTO verifier
     (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
     VALUES (?, 'commands', '', ?,?,?,1,?)`).run('e2e navigateur (démo)', 900, 0, 0, at(9)).lastInsertRowid;

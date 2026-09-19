@@ -29,12 +29,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const db = require('./db');
+const db = require('../db');
 const store = require('./store');
 const registre = require('./store-registry');
-const identite = require('./core/identite');
+const identite = require('../core/identite');
 const { etat } = require('./localstate');
-const { SHARED_DIR } = require('./core/paths');
+const { SHARED_DIR } = require('../core/paths');
 const { getConfig } = require('./config');
 
 const execFileP = promisify(execFile);
@@ -145,7 +145,7 @@ const sansOptionAdresse = (v) => {
   return adresseAdmise(t) ? t : '';
 };
 
-const { adresseAdmise } = require('./core/garde');
+const { adresseAdmise } = require('../core/garde');
 /* Une adresse ENREGISTRÉE que la règle refuse (d'avant elle) suspend la synchro — et on le DIT,
    une fois : sans ça, le poste repassait en mono-poste sans un mot. L'URL n'est pas journalisée,
    elle peut porter des identifiants. */
@@ -260,7 +260,7 @@ const CLE_FORMAT = 'format_compris';
 function signatureFormat() {
   const champs = ((registre.pour('config') || {}).partagees || []).slice().sort().join(',');
   // eslint-disable-next-line global-require
-  const { version } = require('../package.json');
+  const { version } = require('../../package.json');
   return `${version}|${champs}`;
 }
 

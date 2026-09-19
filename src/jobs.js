@@ -16,7 +16,7 @@ const docker = require('./integrations/docker');
 const verifyrun = require('./verifyrun');
 const git = require('./git/git');            // `run` : spawn générique, journal ligne à ligne, Stop câblé
 const { DATA_DIR } = require('./core/paths');
-const { getConfig, updateConfig } = require('./config');
+const { getConfig, updateConfig } = require('./data/config');
 const { t } = require('../public/i18n-runtime.js');
 
 /* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est

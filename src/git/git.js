@@ -88,7 +88,7 @@ function envGit(supplement = {}) {
   env.GIT_LFS_SKIP_SMUDGE = '1';             // un pointeur LFS suffit à relire du code
   let cfg = null;
   // eslint-disable-next-line global-require
-  try { cfg = require('../config').getConfig(); } catch { /* base pas encore prête : sans jeton */ }
+  try { cfg = require('../data/config').getConfig(); } catch { /* base pas encore prête : sans jeton */ }
   const entetes = enTetesForge(cfg);
   env.GIT_CONFIG_COUNT = String(entetes.length);
   entetes.forEach((e, i) => {

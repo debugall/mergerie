@@ -15,9 +15,9 @@
  */
 
 const db = require('./db');
-const { etat } = require('./localstate');
+const { etat } = require('./data/localstate');
 const identite = require('./core/identite');
-const { getConfig } = require('./config');
+const { getConfig } = require('./data/config');
 const { t } = require('../public/i18n-runtime.js');
 
 const JOURS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -172,7 +172,7 @@ function tick(now = new Date(), onLog = () => {}) {
     /* PAS D'HORAIRE HONORÉ POUR UN AGENT DONT LES PERMISSIONS ONT CHANGÉ SANS ÊTRE VUES ICI.
        On marque le créneau : sinon il redeviendrait « dû » chaque minute jusqu'à minuit. */
     // eslint-disable-next-line global-require
-    if (!require('./approbation').agentApprouve(agent.id)) {
+    if (!require('./data/approbation').agentApprouve(agent.id)) {
       onLog(t('agents.log.schedule-not-approved', { name: agent.name }));
       marquer();
       continue;

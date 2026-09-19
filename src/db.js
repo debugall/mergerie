@@ -1682,7 +1682,7 @@ try { db.exec('ALTER TABLE agent ADD COLUMN runner TEXT'); } catch { /* déjà p
  * non vide — après le drain, ce ne peut plus être qu'un bug de ce fichier même.
  *
  * Placé APRÈS tous les `ALTER TABLE config` : le drain lit des colonnes qui doivent exister. */
-const REGISTRE_CONFIG = require('./store-registry').pour('config');
+const REGISTRE_CONFIG = require('./data/store-registry').pour('config');
 /* Les colonnes de poste, avec le défaut de `config` — repris à l'identique, sinon un réglage
    non renseigné changerait de sens en déménageant. `id` est la clé, pas un réglage. */
 const COLONNES_LOCALES = [
@@ -1826,7 +1826,7 @@ for (const [nom, decl] of COLONNES_LOCALES) {
  * lève, le `catch {}` l'avale, et la colonne n'existe alors que sur les bases où la table
  * préexistait. */
 {
-  const TABLES_UID = require('./store-registry').REGISTRE.filter((e) => e.uidPropre).map((e) => e.table);
+  const TABLES_UID = require('./data/store-registry').REGISTRE.filter((e) => e.uidPropre).map((e) => e.table);
   for (const table of TABLES_UID) {
     try { db.exec(`ALTER TABLE ${table} ADD COLUMN uid TEXT`); } catch { /* déjà présente */ }
 
@@ -2160,7 +2160,7 @@ db.exec('CREATE TABLE IF NOT EXISTS store_sale (tbl TEXT NOT NULL, rid INTEGER N
 db.exec('CREATE TABLE IF NOT EXISTS store_menage (tbl TEXT NOT NULL)');
 
 {
-  const registre = require('./store-registry');
+  const registre = require('./data/store-registry');
   const aFichier = registre.REGISTRE.filter((e) => e.chemin && e.toFile
     && (e.famille === 'P' || (e.partagees || []).length));
   const parents = new Map();          // table fille -> { parent, colonne }

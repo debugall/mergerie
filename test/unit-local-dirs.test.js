@@ -57,7 +57,7 @@ describe('local_dir_map — où ce dossier se trouve SUR CETTE MACHINE', () => {
 
   before(() => {
     db = require('../src/db');
-    localdirs = require('../src/localdirs');
+    localdirs = require('../src/data/localdirs');
   });
 
   test('déclarer range le chemin ici et rend ce qui, lui, voyage', () => {

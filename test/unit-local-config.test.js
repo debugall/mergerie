@@ -21,7 +21,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-loca
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const registre = require('../src/store-registry');
+const registre = require('../src/data/store-registry');
 
 const GELEES = registre.localesDe('config').filter((c) => c !== 'id');
 
@@ -30,7 +30,7 @@ describe('local_config — ce qui reste sur ce poste', () => {
 
   before(() => {
     db = require('../src/db');
-    config = require('../src/config');
+    config = require('../src/data/config');
   });
 
   test('la table existe, avec sa ligne unique et les colonnes du registre', () => {

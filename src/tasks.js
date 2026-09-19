@@ -12,7 +12,7 @@
  */
 
 const db = require('./db');
-const localsession = require('./localsession');
+const localsession = require('./data/localsession');
 const agentsession = require('./agentsession');
 const { t } = require('../public/i18n-runtime.js');
 

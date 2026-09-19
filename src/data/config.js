@@ -1,12 +1,12 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const db = require('./db');
-const { DEFAULT_CLONE_DIR } = require('./core/paths');
-const { promptsFor } = require('./prompts');
+const db = require('../db');
+const { DEFAULT_CLONE_DIR } = require('../core/paths');
+const { promptsFor } = require('../prompts');
 const registre = require('./store-registry');
-const { t } = require('../public/i18n-runtime.js');
-const { adresseAdmise } = require('./core/garde');
+const { t } = require('../../public/i18n-runtime.js');
+const { adresseAdmise } = require('../core/garde');
 const approbation = require('./approbation');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
@@ -175,7 +175,7 @@ function updateConfig(patch, opts = {}) {
   if (!opts.installation && 'dictation_command' in patch && String(next.dictation_command || '').trim()
     && String(next.dictation_command) !== String(current.dictation_command || '')) {
     // eslint-disable-next-line global-require
-    const d = require('./verify').decouperCommande(next.dictation_command);
+    const d = require('../verify').decouperCommande(next.dictation_command);
     let mots = d.ok ? [d.programme, ...d.args] : [];
     if (mots[0] === 'nice') mots = mots.slice(1).filter((m, i, l) => !(m.startsWith('-') || (i > 0 && l[i - 1] === '-n')));
     const prog = mots[0] || '';

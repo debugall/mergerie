@@ -30,7 +30,7 @@ const MSGS = {
 };
 
 describe('store — la sérialisation qui ne bouge pas', () => {
-  const { serialize } = require('../src/store');
+  const { serialize } = require('../src/data/store');
 
   test('l’ordre des clés à l’écriture ne change pas le fichier', () => {
     const a = serialize({ b: 1, a: 2, c: { z: 1, y: 2 } });
@@ -59,7 +59,7 @@ describe('store — écrire dans le dépôt de données', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     notes = require('../src/notes');
   });
 
@@ -210,7 +210,7 @@ describe('store — l’aller-retour par les fichiers', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     notes = require('../src/notes');
   });
 
@@ -355,7 +355,7 @@ describe('store — ce à quoi une todo est accrochée voyage, ou ne voyage pas'
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     notes = require('../src/notes');
     const now = new Date().toISOString();
     const repo = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)

@@ -1,11 +1,11 @@
 'use strict';
 const db = require('./db');
-const { getConfig } = require('./config');
+const { getConfig } = require('./data/config');
 const forge = require('./forge');
 const jira = require('./integrations/jira');
 const notify = require('./core/notify');
 const notes = require('./notes');
-const { etat } = require('./localstate');
+const { etat } = require('./data/localstate');
 const { t } = require('../public/i18n-runtime.js');
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.

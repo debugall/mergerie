@@ -51,7 +51,7 @@ const estDepot = () => fs.existsSync(path.join(SHARED_DIR, '.git'));
 function preparer(onLog = () => {}) {
   if (estDepot()) return null;
   // eslint-disable-next-line global-require
-  const store = require('../store');
+  const store = require('../data/store');
   store.exporterTout();
 
   fs.mkdirSync(SHARED_DIR, { recursive: true });

@@ -33,7 +33,7 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     agentprofile = require('../src/agentprofile');
     agentknowledge = require('../src/agentknowledge');
     const now = new Date().toISOString();
@@ -163,7 +163,7 @@ describe('store — une session ne part que si on la coche', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     repoId = db.prepare("SELECT id FROM repo WHERE project = 'acme/web'").get().id;
   });
 

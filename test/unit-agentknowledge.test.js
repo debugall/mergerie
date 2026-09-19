@@ -26,7 +26,7 @@ const agentknowledge = require('../src/agentknowledge');
 // eslint-disable-next-line import/order
 const agentprofile = require('../src/agentprofile');
 // eslint-disable-next-line import/order
-const { getConfig, updateConfig } = require('../src/config');
+const { getConfig, updateConfig } = require('../src/data/config');
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 

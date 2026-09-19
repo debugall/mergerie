@@ -28,7 +28,7 @@ const RT = require('../public/dictation-runtime.js');
 const dictation = require('../src/integrations/dictation');
 const demo = require('../src/demo/dictation');
 const db = require('../src/db');
-const { updateConfig } = require('../src/config');
+const { updateConfig } = require('../src/data/config');
 const i18n = require('../public/i18n-runtime.js');
 const { countTokens } = require('../src/copilot');
 

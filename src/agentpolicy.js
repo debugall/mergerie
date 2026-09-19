@@ -157,7 +157,7 @@ const sortieSurStdout = (kind, bin) => saveurDe(kind) === 'lecture' && backendDe
    plafond qu'on vient de baisser vaut pour le prochain agent. Requis ici : `config` ouvre la
    base, ce que ce module ne fait pas à son chargement. */
 function bornes() {
-  const { getConfig } = require('./config');
+  const { getConfig } = require('./data/config');
   const c = getConfig();
   const mt = Number(c.agent_max_turns);
   const budget = Number(c.agent_daily_budget_usd);

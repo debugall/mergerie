@@ -19,13 +19,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
-const store = require('./store');
+const store = require('./data/store');
 const copilot = require('./copilot');
 const git = require('./git/git');
 const notes = require('./notes');
 const protocol = require('./protocol');
 const glob = require('./core/glob');   // B7 : un chemin de carte peut porter une étoile
-const { getConfig } = require('./config');
+const { getConfig } = require('./data/config');
 const { agentsDir } = require('./core/paths');
 const i18n = require('../public/i18n-runtime.js');
 const { t } = i18n;

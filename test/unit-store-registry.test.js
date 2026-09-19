@@ -21,7 +21,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-regi
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const registre = require('../src/store-registry');
+const registre = require('../src/data/store-registry');
 
 describe('store-registry — la classification des tables', () => {
   let colonnes;   // table -> [colonnes], lu d'une base NEUVE
