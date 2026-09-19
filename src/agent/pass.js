@@ -16,8 +16,8 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const db = require('./db');
-const { TASKS_DIR, ensureDir } = require('./core/paths');
+const db = require('../db');
+const { TASKS_DIR, ensureDir } = require('../core/paths');
 
 // Dossier de travail d'une unité : <tasks>/<id>/<unit> ou <tasks>/local/<id>/<unit>.
 /* CHAQUE SCOPE A SON DOSSIER. Les identifiants sont propres à chaque table : la question n°3

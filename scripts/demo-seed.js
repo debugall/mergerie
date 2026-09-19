@@ -24,7 +24,7 @@ const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
    numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
 const { diffPour } = require('../src/demo/diff');
-const agentpassDemo = require('../src/agentpass');
+const agentpassDemo = require('../src/agent/pass');
 initDirs();
 
 /* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
@@ -1364,7 +1364,7 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
    avec un chemin non vérifié, un écart signalé par un run, une version en attente de
    validation, et un run déclenché par un HORAIRE — l'état qu'aucun clic ne produit. */
 {
-  const agentprofile = require('../src/agentprofile');
+  const agentprofile = require('../src/agent/profile');
   const { agentsDir } = require('../src/core/paths');
   agentprofile.seedBuiltins();
 

@@ -29,11 +29,11 @@ describe('Hors dépôt : la reprise après réponses', () => {
     app = await startApp();
     await app.configure();
     // eslint-disable-next-line global-require
-    agentsession = require('../src/agentsession');
+    agentsession = require('../src/agent/session');
     // eslint-disable-next-line global-require
-    copilot = require('../src/copilot');
+    copilot = require('../src/agent/copilot');
     // eslint-disable-next-line global-require
-    questions = require('../src/questions');
+    questions = require('../src/agent/questions');
 
     /* Passe 1 : l'agent POSE ses questions et s'arrête. Passe 2 et suivantes : il travaille.
        Comme le vrai `claude --resume`, chaque reprise rend un identifiant NEUF. */

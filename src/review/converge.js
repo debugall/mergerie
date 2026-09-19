@@ -15,18 +15,18 @@ const localsession = require('../data/localsession');
 const git = require('../git/git');
 const configagent = require('../data/configagent');
 const { extractNoteStricte } = require('./note');
-const copilot = require('../copilot');
+const copilot = require('../agent/copilot');
 const notify = require('../core/notify');
 const proc = require('../core/proc');
 const forge = require('../forge');
 const taskrunner = require('../session/taskrunner');
 const discover = require('../notes/discover');
-const agentsession = require('../agentsession');
-const questions = require('../questions');
+const agentsession = require('../agent/session');
+const questions = require('../agent/questions');
 const { getConfig } = require('../data/config');
 const { reviewMr, fillTemplate } = require('./reviewer');
 const { nonFiable } = require('../core/nonfiable');
-const prompts = require('../prompts');
+const prompts = require('../agent/prompts');
 const { t } = require('../../public/i18n-runtime.js');
 
 function latestVersion(mrId) {

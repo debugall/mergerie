@@ -14,11 +14,11 @@
  * Heure LOCALE du serveur — c'est la machine de l'utilisateur, et « 7:00 » veut dire 7:00.
  */
 
-const db = require('./db');
-const { etat } = require('./data/localstate');
-const identite = require('./core/identite');
-const { getConfig } = require('./data/config');
-const { t } = require('../public/i18n-runtime.js');
+const db = require('../db');
+const { etat } = require('../data/localstate');
+const identite = require('../core/identite');
+const { getConfig } = require('../data/config');
+const { t } = require('../../public/i18n-runtime.js');
 
 const JOURS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -156,7 +156,7 @@ function lancesAujourdhui(now = new Date()) {
    attendre soixante secondes dans un test, c'est parier sur l'horloge d'une machine chargée. */
 function tick(now = new Date(), onLog = () => {}) {
   // eslint-disable-next-line global-require
-  const agentprofile = require('./agentprofile');
+  const agentprofile = require('./profile');
   const cfg = getConfig();
   const plafond = Number(cfg.agent_auto_max);
   const lances = [];
@@ -172,7 +172,7 @@ function tick(now = new Date(), onLog = () => {}) {
     /* PAS D'HORAIRE HONORÉ POUR UN AGENT DONT LES PERMISSIONS ONT CHANGÉ SANS ÊTRE VUES ICI.
        On marque le créneau : sinon il redeviendrait « dû » chaque minute jusqu'à minuit. */
     // eslint-disable-next-line global-require
-    if (!require('./data/approbation').agentApprouve(agent.id)) {
+    if (!require('../data/approbation').agentApprouve(agent.id)) {
       onLog(t('agents.log.schedule-not-approved', { name: agent.name }));
       marquer();
       continue;
@@ -182,7 +182,7 @@ function tick(now = new Date(), onLog = () => {}) {
          sa connaissance, donc c'est une MISE À JOUR qu'on programme. */
       if (agent.knowledge_prompt) {
         // eslint-disable-next-line global-require
-        lances.push(require('./agentknowledge').refresh(agentprofile.lire(agent.id), 'schedule'));
+        lances.push(require('./knowledge').refresh(agentprofile.lire(agent.id), 'schedule'));
       } else {
         lances.push(agentprofile.lancer(agentprofile.lire(agent.id), {
           mode: 'ask', question: '', triggeredBy: 'schedule',

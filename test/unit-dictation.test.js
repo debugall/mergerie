@@ -30,7 +30,7 @@ const demo = require('../src/demo/dictation');
 const db = require('../src/db');
 const { updateConfig } = require('../src/data/config');
 const i18n = require('../public/i18n-runtime.js');
-const { countTokens } = require('../src/copilot');
+const { countTokens } = require('../src/agent/copilot');
 
 const NBSP = ' ';
 

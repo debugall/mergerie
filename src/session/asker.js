@@ -18,11 +18,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../db');
 const localsession = require('../data/localsession');
-const copilot = require('../copilot');
-const agentpolicy = require('../agentpolicy');
-const agentsession = require('../agentsession');
-const agentpass = require('../agentpass');
-const pieces = require('../pieces');
+const copilot = require('../agent/copilot');
+const agentpolicy = require('../agent/policy');
+const agentsession = require('../agent/session');
+const agentpass = require('../agent/pass');
+const pieces = require('../agent/pieces');
 const { TASKS_DIR, ensureDir } = require('../core/paths');
 const { t } = require('../../public/i18n-runtime.js');
 

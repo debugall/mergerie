@@ -21,7 +21,7 @@
 
 const db = require('../db');
 const localsnapshot = require('./localsnapshot');
-const agentpass = require('../agentpass');
+const agentpass = require('../agent/pass');
 const { t } = require('../../public/i18n-runtime.js');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;

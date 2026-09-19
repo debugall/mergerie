@@ -11,10 +11,10 @@
  * comportement de la route est inchangé.
  */
 
-const db = require('./db');
-const localsession = require('./data/localsession');
-const agentsession = require('./agentsession');
-const { t } = require('../public/i18n-runtime.js');
+const db = require('../db');
+const localsession = require('../data/localsession');
+const agentsession = require('./session');
+const { t } = require('../../public/i18n-runtime.js');
 
 const repoById = (id) => db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(id) || 0);
 

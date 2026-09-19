@@ -230,7 +230,7 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
      après coup. Les trois cas qui comptent : inchangée, remplacée, et surtout VIDÉE, qui
      ne doit rien effacer (un formulaire simplement soumis ne fait pas perdre un handle). */
   test('édition : la session fournie se change, un champ vide n’efface rien', async () => {
-    const { backendName } = require('../src/agentsession');
+    const { backendName } = require('../src/agent/session');
     const id1 = backendName() === 'claude' ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8' : '/home/moi/.copilot-sessions/a';
     const id2 = backendName() === 'claude' ? '11111111-2222-3333-4444-555555555555' : '/home/moi/.copilot-sessions/b';
     const d = mkdir();
@@ -290,7 +290,7 @@ describe('Codage hors dépôt (dossiers locaux)', () => {
 
   // Pendant hors dépôt de la reprise de session : l'identifiant se range sur chaque dossier.
   test('session existante fournie : rangée sur chaque dossier', async () => {
-    const { backendName } = require('../src/agentsession');
+    const { backendName } = require('../src/agent/session');
     const id = backendName() === 'claude'
       ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
       : '/home/moi/.mergerie/agent-sessions/deja-la';

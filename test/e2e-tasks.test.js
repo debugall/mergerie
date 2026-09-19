@@ -818,7 +818,7 @@ describe('Sessions de dev de bout en bout', () => {
      présent sur le projet. Tout tient donc à ce que la création range bien l'identifiant —
      c'est ce qui est vérifié ici, plus le refus de ce qui passerait pour un flag. */
   test('session existante fournie à la création : rangée sur chaque projet', async () => {
-    const { backendName } = require('../src/agentsession');
+    const { backendName } = require('../src/agent/session');
     const id = backendName() === 'claude'
       ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
       : '/home/moi/.mergerie/agent-sessions/deja-la';

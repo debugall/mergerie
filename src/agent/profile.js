@@ -14,22 +14,22 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const db = require('./db');
-const { slugLibre } = require('./core/ulid');
-const { etat } = require('./data/localstate');
-const store = require('./data/store');
-const agentargs = require('./agentargs');
-const approbation = require('./data/approbation');
-const agentdefaults = require('./agentdefaults');
-const agentinput = require('./agentinput');
+const db = require('../db');
+const { slugLibre } = require('../core/ulid');
+const { etat } = require('../data/localstate');
+const store = require('../data/store');
+const agentargs = require('./args');
+const approbation = require('../data/approbation');
+const agentdefaults = require('./defaults');
+const agentinput = require('./input');
 const protocol = require('./protocol');
 const skillscan = require('./skillscan');
 const questions = require('./questions');
-const notes = require('./notes/notes');
-const git = require('./git/git');
-const { getConfig } = require('./data/config');
+const notes = require('../notes/notes');
+const git = require('../git/git');
+const { getConfig } = require('../data/config');
 const { avecConsignes } = require('./prompts');
-const i18n = require('../public/i18n-runtime.js');
+const i18n = require('../../public/i18n-runtime.js');
 const { t } = i18n;
 
 const jsonOu = (txt, repli) => { try { const v = JSON.parse(txt); return v == null ? repli : v; } catch { return repli; } };
@@ -80,7 +80,7 @@ function decorer(a) {
        elle ne suivait pas la langue. `phrase()` existait et n'était appelée nulle part. */
     schedule_said: (() => {
       if (!a.schedule) return '';
-      try { return require('./agentschedule').phrase(a.schedule) || ''; } catch { return ''; }
+      try { return require('./schedule').phrase(a.schedule) || ''; } catch { return ''; }
     })(),
     /* QUAND IL REPASSE. Un agent planifié ne montrait rien entre deux runs : ni la date du
        dernier, ni celle du prochain. Calculé, jamais stocké — une date en base se
@@ -88,7 +88,7 @@ function decorer(a) {
     next_run: (() => {
       if (!a.schedule) return null;
       try {
-        const sch = require('./agentschedule');
+        const sch = require('./schedule');
         const c = sch.creneauSuivant(sch.parse(a.schedule));
         return c ? c.toISOString() : null;
       } catch { return null; }
@@ -107,7 +107,7 @@ function decorer(a) {
       gaps: jsonOu(k.gaps_json, []).length,
       // Ce que la carte coûte à lire, à chaque run : elle part dans le prompt à chaque fois.
       // eslint-disable-next-line global-require
-      tokens: require('./agentknowledge').tokensDe(k),
+      tokens: require('./knowledge').tokensDe(k),
       pending_version: enAttente ? enAttente.version : null,
     } : (enAttente ? { pending_version: enAttente.version } : null),
   };
@@ -156,7 +156,7 @@ function valider(body, id = null) {
   }
   if (String(body.schedule || '').trim()) {
     // eslint-disable-next-line global-require
-    const agentschedule = require('./agentschedule');
+    const agentschedule = require('./schedule');
     if (!agentschedule.parse(body.schedule)) errs.push('agents.err.schedule-syntax');
   }
   /* `subagents_json` arrive tantôt en OBJET (formulaire du front), tantôt en TEXTE (relecture
@@ -292,7 +292,7 @@ function supprimer(id) {
   store.supprimer('agent', a.id);
   // Pas de cascade sur le DISQUE : les versions de connaissance s'effacent explicitement.
   // eslint-disable-next-line global-require
-  const { AGENTS_DIR } = require('./core/paths');
+  const { AGENTS_DIR } = require('../core/paths');
   try { fs.rmSync(path.join(AGENTS_DIR, String(a.id)), { recursive: true, force: true }); } catch { /* best-effort */ }
   return true;
 }
@@ -410,7 +410,7 @@ function systemPromptFor(task, agent) {
   if (agent.system_prompt) lignes.push('', agent.system_prompt);
   if (agent.knowledge_prompt) {
     // eslint-disable-next-line global-require
-    const idx = require('./agentknowledge').indexFor(agent);
+    const idx = require('./knowledge').indexFor(agent);
     if (idx) lignes.push('', idx);
   }
   return lignes.join('\n');
@@ -533,7 +533,7 @@ function lancer(agent, { mode = 'ask', question = '', repoIds = null, triggeredB
   // eslint-disable-next-line global-require
   const tasks = require('./tasks');
   // eslint-disable-next-line global-require
-  const jobs = require('./jobs');
+  const jobs = require('../jobs');
   const m = materialize(agent, { mode, question, repoIds });
   if (!m.targets.length) throw new Error(t('agents.err.no-repo'));
   const porteur = agentIdSur ? lire(agentIdSur) : agent;
@@ -577,7 +577,7 @@ async function apresRun(task, onLog = () => {}) {
 
   if (a.output_kind === 'agent') {
     // eslint-disable-next-line global-require
-    return require('./agentknowledge').ingest(task, a, texte, onLog);
+    return require('./knowledge').ingest(task, a, texte, onLog);
   }
   /* UNE MISE À JOUR DE CONNAISSANCE porte l'agent de DOMAINE (c'est sur sa carte qu'elle doit
      apparaître), mais c'est le cartographe qui l'a exécutée — et lui seul émet `<<<AGENT>>>`.
@@ -586,7 +586,7 @@ async function apresRun(task, onLog = () => {}) {
   if (a.knowledge_prompt && protocol.extraire(texte, 'AGENT').block) {
     const carto = parCle('cartographer');
     // eslint-disable-next-line global-require
-    if (carto) return require('./agentknowledge').ingest(task, carto, texte, onLog);
+    if (carto) return require('./knowledge').ingest(task, carto, texte, onLog);
   }
   if (a.output_kind === 'note_page') return versPageDeNotes(a, task, texte, onLog);
 
@@ -598,7 +598,7 @@ async function apresRun(task, onLog = () => {}) {
     if (block) {
       // eslint-disable-next-line global-require
       const gaps = protocol.lignes(block).map((c) => ({ project: c[0] || '', path: c[1] || '', note: c[2] || '' }));
-      if (gaps.length) require('./agentknowledge').addGaps(a, task, gaps);
+      if (gaps.length) require('./knowledge').addGaps(a, task, gaps);
       onLog(t('agents.log.gaps', { n: gaps.length, count: gaps.length }));
     }
   }
@@ -691,7 +691,7 @@ function ecrireEntrees(task, root, cibles) {
   }
   if (a.knowledge_prompt) {
     // eslint-disable-next-line global-require
-    const ak = require('./agentknowledge');
+    const ak = require('./knowledge');
     /* UNE MISE À JOUR reçoit trois fichiers de plus : ce qu'on savait, ce qu'on a vu de faux,
        et les commits qui ont touché les chemins cités. « Regarde d'abord là » — c'est la
        différence entre vérifier une carte et la refaire. */

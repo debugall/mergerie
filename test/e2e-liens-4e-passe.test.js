@@ -308,7 +308,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
     assert.equal(r.body.agent_name, 'Profil d’essai', 'l’écran doit pouvoir dire ce qu’on essaie');
 
     /* eslint-disable global-require */
-    const agentprofile = require('../src/agentprofile');
+    const agentprofile = require('../src/agent/profile');
     /* eslint-enable global-require */
     const opts = agentprofile.optionsFor(d.prepare('SELECT * FROM task WHERE id = ?').get(r.body.id));
     assert.equal(opts.model, 'sonnet', 'le modèle du brouillon part avec la session');

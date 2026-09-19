@@ -34,8 +34,8 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
   before(() => {
     db = require('../src/db');
     store = require('../src/data/store');
-    agentprofile = require('../src/agentprofile');
-    agentknowledge = require('../src/agentknowledge');
+    agentprofile = require('../src/agent/profile');
+    agentknowledge = require('../src/agent/knowledge');
     const now = new Date().toISOString();
     repoId = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, ?)`).run(now).lastInsertRowid;

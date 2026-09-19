@@ -62,7 +62,7 @@ const INTERDITS_ECRITURE = ['WebFetch', 'WebSearch', 'Bash(curl:*)', 'Bash(wget:
    en tête : `paths` lit `MERGERIE_DATA_DIR` à son chargement. */
 function interditsDonnees() {
   const path = require('node:path');
-  const { DATA_DIR, ROOT } = require('./core/paths');
+  const { DATA_DIR, ROOT } = require('../core/paths');
   const fs = require('node:fs');
   /* Le CLI compare au chemin RÉEL (`/var` → `/private/var` sur macOS) : on pose les deux. */
   const reels = (p) => { const r = [path.resolve(p)]; try { r.push(fs.realpathSync(p)); } catch { /* absent */ } return r; };
@@ -157,7 +157,7 @@ const sortieSurStdout = (kind, bin) => saveurDe(kind) === 'lecture' && backendDe
    plafond qu'on vient de baisser vaut pour le prochain agent. Requis ici : `config` ouvre la
    base, ce que ce module ne fait pas à son chargement. */
 function bornes() {
-  const { getConfig } = require('./data/config');
+  const { getConfig } = require('../data/config');
   const c = getConfig();
   const mt = Number(c.agent_max_turns);
   const budget = Number(c.agent_daily_budget_usd);
@@ -169,7 +169,7 @@ function bornes() {
 
 /** Ce qui a été dépensé aujourd'hui (heure locale), d'après ce que les CLI ont rapporté. */
 function depenseDuJour() {
-  const db = require('./db');
+  const db = require('../db');
   const debut = new Date();
   debut.setHours(0, 0, 0, 0);
   const r = db.prepare('SELECT COALESCE(SUM(cost_usd), 0) AS s FROM usage WHERE created_at >= ?').get(debut.toISOString());
@@ -182,7 +182,7 @@ function exigerBudget() {
   if (!budget) return;
   const spent = depenseDuJour();
   if (spent >= budget) {
-    const { t } = require('../public/i18n-runtime.js');
+    const { t } = require('../../public/i18n-runtime.js');
     const e = new Error(t('err.budget.daily', { spent: spent.toFixed(2), cap: budget.toFixed(2) }));
     e.code = 'BUDGET';
     throw e;

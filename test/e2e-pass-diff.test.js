@@ -229,7 +229,7 @@ describe('Diff d’une itération de codage', () => {
      ménage quotidien les ramène à la règle — un seul patch par unité, le dernier — sans code de
      migration à part. On fabrique donc ici une unité « d'avant », à la main. */
   test('le ménage ramène les mesures d’avant à un seul diff par unité', async () => {
-    const agentpass = require('../src/agentpass');
+    const agentpass = require('../src/agent/pass');
     const dossier = path.join(app.dataDir, 'tasks', '424242', '7');
     fs.mkdirSync(dossier, { recursive: true });
     const patchs = [1, 2, 3].map((n) => {

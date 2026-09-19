@@ -18,16 +18,16 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const db = require('./db');
-const store = require('./data/store');
+const db = require('../db');
+const store = require('../data/store');
 const copilot = require('./copilot');
-const git = require('./git/git');
-const notes = require('./notes/notes');
+const git = require('../git/git');
+const notes = require('../notes/notes');
 const protocol = require('./protocol');
-const glob = require('./core/glob');   // B7 : un chemin de carte peut porter une étoile
-const { getConfig } = require('./data/config');
-const { agentsDir } = require('./core/paths');
-const i18n = require('../public/i18n-runtime.js');
+const glob = require('../core/glob');   // B7 : un chemin de carte peut porter une étoile
+const { getConfig } = require('../data/config');
+const { agentsDir } = require('../core/paths');
+const i18n = require('../../public/i18n-runtime.js');
 const { t } = i18n;
 
 const MAX_INDEX = 4000;
@@ -239,7 +239,7 @@ async function ingest(task, agentCarto, texte, onLog = () => {}) {
     return null;
   }
   // eslint-disable-next-line global-require
-  const agentprofile = require('./agentprofile');
+  const agentprofile = require('./profile');
   const majDe = task.agent_id && task.agent_id !== agentCarto.id ? agentprofile.lire(task.agent_id) : null;
 
   const connus = [];
@@ -470,7 +470,7 @@ function viderCacheAge(agentId) { if (agentId) cacheAge.delete(agentId); else ca
    d'abord là » — c'est la différence entre vérifier et recommencer. */
 async function refresh(agent, triggeredBy = 'manual') {
   // eslint-disable-next-line global-require
-  const agentprofile = require('./agentprofile');
+  const agentprofile = require('./profile');
   const carto = agentprofile.parCle('cartographer');
   if (!carto) throw new Error(t('agents.err.no-cartographer'));
   const v = versionActive(agent.id);

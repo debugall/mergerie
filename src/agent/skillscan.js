@@ -16,8 +16,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const git = require('./git/git');
-const { t } = require('../public/i18n-runtime.js');
+const git = require('../git/git');
+const { t } = require('../../public/i18n-runtime.js');
 
 const TTL_MS = 5 * 60 * 1000;
 let cache = null; // { cle, at, valeur }

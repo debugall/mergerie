@@ -26,9 +26,9 @@ delete process.env.COPILOT_DRY_RUN;
 
 // Après les variables d'environnement : copilot.js fige COPILOT_BIN et COPILOT_ARGS au chargement.
 // eslint-disable-next-line import/order
-const agentsession = require('../src/agentsession');
+const agentsession = require('../src/agent/session');
 // eslint-disable-next-line import/order
-const copilot = require('../src/copilot');
+const copilot = require('../src/agent/copilot');
 
 after(() => {
   for (const k of ['GITLAB_TOKEN', 'JIRA_API_TOKEN', 'MERGERIE_ACCESS_TOKEN', 'COPILOT_ARGS']) delete process.env[k];

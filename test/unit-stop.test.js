@@ -32,7 +32,7 @@ process.env.COPILOT_BIN = fauxAgent;
 // eslint-disable-next-line import/order
 const proc = require('../src/core/proc');
 // eslint-disable-next-line import/order
-const agentsession = require('../src/agentsession');
+const agentsession = require('../src/agent/session');
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 

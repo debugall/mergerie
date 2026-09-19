@@ -42,7 +42,7 @@ describe('La note globale d’une review', () => {
     mrId = (await app.api('GET', '/api/mrs')).body[0].id;
 
     // eslint-disable-next-line global-require
-    copilot = require('../src/copilot');
+    copilot = require('../src/agent/copilot');
     copilot.runPrompt = async (prompt) => { prompts.push(prompt); return reponse; };
   });
   after(async () => { await app.stop(); });

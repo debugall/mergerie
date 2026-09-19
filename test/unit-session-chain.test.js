@@ -37,9 +37,9 @@ describe('Reprise de session : le handle suit les passes', () => {
     // eslint-disable-next-line global-require
     taskrunner = require('../src/session/taskrunner');
     // eslint-disable-next-line global-require
-    agentsession = require('../src/agentsession');
+    agentsession = require('../src/agent/session');
     // eslint-disable-next-line global-require
-    copilot = require('../src/copilot');
+    copilot = require('../src/agent/copilot');
 
     /* LE DÉCOR. `claude --resume X` rend un identifiant NEUF : on le simule, sinon le test
        passerait aussi avec l'ancien comportement — c'est précisément ce qui distinguait les

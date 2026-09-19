@@ -2,9 +2,9 @@
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const proc = require('./core/proc');
-const db = require('./db');
-const { t } = require('../public/i18n-runtime.js');
+const proc = require('../core/proc');
+const db = require('../db');
+const { t } = require('../../public/i18n-runtime.js');
 
 // Comptage de tokens : utilise `gpt-tokenizer` (pur JS, hors-ligne) s'il est installé,
 // sinon repli sur l'estimation ≈ 4 caractères / token (approx usuelle GPT/Claude).
@@ -100,7 +100,7 @@ function emitLines(buf, onLog) {
    pas le `--dangerously-skip-permissions` de `COPILOT_ARGS`. Requis ici, pas en tête : agentpolicy
    ne dépend de rien, mais on garde ce module chargeable tel quel par les scripts. */
 function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
-  const agentpolicy = require('./agentpolicy');
+  const agentpolicy = require('./policy');
   const backend = agentpolicy.backendDe(COPILOT_BIN);
   const pol = agentpolicy.argvPermissions({
     backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs,
@@ -109,7 +109,7 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
   const flags = [...pol.extra, ...pol.args];
   flags.push(...agentpolicy.argsMaxTurns(backend, flags));
-  prompt = require('./core/nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
+  prompt = require('../core/nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
   return new Promise((resolve, reject) => {
     // flags additionnels (ex: --yolo) placés AVANT -p
     const args = [...flags, '-p', prompt];

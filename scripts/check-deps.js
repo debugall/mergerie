@@ -62,19 +62,24 @@ const IMPORTEURS = {
   app: { dossiers: [], fichiers: [], motif: 'rien n’importe la couche HTTP' },
   jobs: { dossiers: ['app', 'racine', 'jobs'], fichiers: [
     /* Lancer un agent depuis son profil ouvre un job : c'est le seul chemin qui remonte, et
-       il est nommé — refacto.md §4.5, `agent/profile/lancer.js`. Tant que agentprofile.js n'est
+       il est nommé — refacto.md §4.5, `agent/profile/lancer.js`. Tant que agent/profile.js n'est
        pas découpé, c'est lui. */
-    'agentprofile.js', 'agent/profile/lancer.js',
+    'agent/profile.js', 'agent/profile/lancer.js',
   ], motif: 'la file de jobs se lance depuis app/, pas depuis le métier' },
   demo: { dossiers: ['app', 'racine', 'jobs', 'demo'], fichiers: [
     /* Les modules qui savent déjà répondre en mode démo (`isDemo()`), et eux seuls. */
-    'reviewer.js', 'verifyrun.js', 'dictation.js', 'gitops.js', 'taskrunner.js',
+    'review/reviewer.js', 'verify/verifyrun.js', 'integrations/dictation.js', 'git/gitops.js', 'session/taskrunner.js',
   ], motif: 'le mode démo se branche depuis app/ et cinq modules nommés' },
 };
 
 /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */
 const EXCEPTIONS = [
-  // { de: 'data/config.js', vers: 'verify/verify.js', motif: '…' } — la forme d'une entrée.
+  /* Les prompts sont des constantes sans dépendance, lues par la config, le schéma et les
+     agents : ils descendent dans core/ au commit suivant, et l'exception part avec. */
+  { de: 'data/config.js', vers: 'agent/prompts.js', motif: 'prompts.js rejoint core/' },
+  /* Le cycle git ↔ skillscan : `git.js` invalide le cache des skills après un fetch, par un
+     require paresseux. Se casse à l'étape 5 de refacto.md (un événement `apresFetch`). */
+  { de: 'git/git.js', vers: 'agent/skillscan.js', motif: 'cycle connu, cassé à l’étape 5' },
 ];
 
 /* `gitlab.js` et `github.js` : la règle de CLAUDE.md, enfin vérifiée. */
@@ -85,7 +90,7 @@ const PORTE_FORGE = ['forge.js', 'forge/index.js'];
    L'ordre importe peu, l'ensemble oui. */
 const CYCLES_CONNUS = [
   ['git.js', 'skillscan.js'],
-  ['agentprofile.js', 'agentschedule.js', 'agentknowledge.js', 'jobs.js', 'taskrunner.js', 'reviewer.js', 'converge.js'],
+  ['profile.js', 'schedule.js', 'knowledge.js', 'jobs.js', 'taskrunner.js', 'reviewer.js', 'converge.js'],
 ];
 
 /* ---------- Le graphe ---------- */

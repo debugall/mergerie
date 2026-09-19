@@ -13,7 +13,7 @@ const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 // `interditsDonnees` lit `paths` : jamais sans dossier de données isolé (CLAUDE.md).
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'agentpolicy-'));
-const pol = require('../src/agentpolicy');
+const pol = require('../src/agent/policy');
 
 const faux = (aide) => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'faux-claude-'));
