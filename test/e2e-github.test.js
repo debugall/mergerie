@@ -267,7 +267,7 @@ describe('GitHub de bout en bout', () => {
   test('une PR mergée n’est pas confondue avec une PR fermée', async () => {
     // GitHub renvoie state:'closed' pour une PR mergée : sans normalisation, le merge
     // d'une session ne serait jamais confirmé.
-    const github = require('../src/github');
+    const github = require('../src/forge/github');
     const cfg = { github_url: app.githubUrl, github_token: app.ghState.token };
     const mr = await github.getMergeRequest(cfg, PROJECT, 42);
     assert.equal(mr.state, 'merged');

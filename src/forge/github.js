@@ -12,8 +12,8 @@
      issue comment → note de MR        | review comment → discussion inline
      `merged: true` → state 'merged'   (GitHub dit `closed` pour une PR mergée) */
 
-const { t } = require('../public/i18n-runtime.js');
-const httpreq = require('./core/httpreq');
+const { t } = require('../../public/i18n-runtime.js');
+const httpreq = require('../core/httpreq');
 
 // Agent TLS dédié (GitHub Enterprise à CA interne), scopé à ce client comme pour GitLab.
 const githubAgent = httpreq.makeAgentFactory('GITHUB_CA_CERT', 'GITHUB_INSECURE_TLS');
