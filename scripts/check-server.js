@@ -427,7 +427,7 @@ if (registre) {
 {
   const AVERTIR = 600;
   const ECHOUER = 1200;
-  const EXCEPTIONS = ['store-registry.js', 'links.js', 'store.js', 'jobs.js', 'taskrunner.js', 'datasync.js'];
+  const EXCEPTIONS = ['store-registry.js', 'links.js', 'store.js', 'taskrunner.js', 'datasync.js'];
   const compter = (code) => code.split('\n').filter((l) => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l)).length;
   const gros = [];
   const trop = [];

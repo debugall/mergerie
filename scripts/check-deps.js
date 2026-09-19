@@ -85,11 +85,12 @@ const EXCEPTIONS = [
 const PORTE_FORGE = ['forge.js', 'forge/index.js'];
 
 /* Les cycles qui existaient quand la règle est née — chacun comme l'ensemble des fichiers qui
-   se tiennent (une composante fortement connexe), par nom de fichier, où qu'ils soient rangés.
-   L'ordre importe peu, l'ensemble oui. */
+   se tiennent (une composante fortement connexe), par chemin sous src/. L'ordre importe peu,
+   l'ensemble oui : un fichier de plus ou de moins dans la composante, et l'entrée ne vaut plus. */
 const CYCLES_CONNUS = [
-  ['git.js', 'skillscan.js'],
-  ['profile.js', 'schedule.js', 'knowledge.js', 'jobs.js', 'taskrunner.js', 'reviewer.js', 'converge.js'],
+  ['git/git.js', 'agent/skillscan.js'],
+  ['agent/profile.js', 'agent/schedule.js', 'agent/knowledge.js', 'session/taskrunner.js', 'review/reviewer.js', 'review/converge.js',
+    'jobs/index.js', 'jobs/runners/task.js', 'jobs/runners/converge.js', 'jobs/runners/converge-session.js', 'jobs/runners/reconcile.js', 'jobs/runners/review.js'],
 ];
 
 /* ---------- Le graphe ---------- */
@@ -201,7 +202,7 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
   };
   for (const f of fichiers) if (!idx.has(f)) visiter(f);
 
-  const cle = (c) => c.map((f) => path.basename(f)).sort().join(' ');
+  const cle = (c) => [...c].sort().join(' ');
   const connus = new Set(CYCLES_CONNUS.map(cle));
   const trouves = new Set(composantes.map(cle));
   const nouveaux = composantes.filter((c) => !connus.has(cle(c)));

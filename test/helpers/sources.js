@@ -22,6 +22,11 @@ function tous(dir, out = []) {
 function cheminSource(nom) {
   const base = nom.replace(/\.js$/, '');
   const rels = tous(SRC).map((p) => path.relative(SRC, p).split(path.sep).join('/'));
+  // Un chemin sous src/ (`review/converge`) désigne le fichier sans chercher.
+  if (base.includes('/')) {
+    const exact = rels.find((rel) => rel === `${base}.js`) || rels.find((rel) => rel === `${base}/index.js`);
+    if (exact) return path.join(SRC, exact);
+  }
   /* À la racine d'abord (`jobs.js`, puis `jobs/index.js`) : un module qui porte le nom d'un
      dossier prime sur un homonyme rangé ailleurs (`app/routes/jobs.js` est la ROUTE de jobs). */
   const racine = rels.find((rel) => rel === `${base}.js`) || rels.find((rel) => rel === `${base}/index.js`);
@@ -34,4 +39,11 @@ function cheminSource(nom) {
 
 const lireSource = (nom) => fs.readFileSync(cheminSource(nom), 'utf8');
 
-module.exports = { cheminSource, lireSource };
+/* Tout un dossier de `src/` comme un seul texte, fichier après fichier, chacun précédé d'un
+   repère `//// <chemin>` : un garde qui portait sur `jobs.js` porte désormais sur `jobs/`. */
+function lireDossier(dossier) {
+  const dir = path.join(SRC, dossier);
+  return tous(dir).sort().map((p) => `//// ${path.relative(SRC, p)}\n${fs.readFileSync(p, 'utf8')}`).join('\n');
+}
+
+module.exports = { cheminSource, lireSource, lireDossier };
