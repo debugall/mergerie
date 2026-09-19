@@ -60,7 +60,7 @@ describe('store — écrire dans le dépôt de données', () => {
   before(() => {
     db = require('../src/db');
     store = require('../src/data/store');
-    notes = require('../src/notes');
+    notes = require('../src/notes/notes');
   });
 
   test('un chemin qui remonte hors du dépôt est refusé', () => {
@@ -211,7 +211,7 @@ describe('store — l’aller-retour par les fichiers', () => {
   before(() => {
     db = require('../src/db');
     store = require('../src/data/store');
-    notes = require('../src/notes');
+    notes = require('../src/notes/notes');
   });
 
   test('effacer la base et réhydrater rend les mêmes lignes', () => {
@@ -356,7 +356,7 @@ describe('store — ce à quoi une todo est accrochée voyage, ou ne voyage pas'
   before(() => {
     db = require('../src/db');
     store = require('../src/data/store');
-    notes = require('../src/notes');
+    notes = require('../src/notes/notes');
     const now = new Date().toISOString();
     const repo = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, ?)`).run(now).lastInsertRowid;

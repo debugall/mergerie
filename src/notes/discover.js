@@ -1,12 +1,12 @@
 'use strict';
-const db = require('./db');
-const { getConfig } = require('./data/config');
-const forge = require('./forge');
-const jira = require('./integrations/jira');
-const notify = require('./core/notify');
+const db = require('../db');
+const { getConfig } = require('../data/config');
+const forge = require('../forge');
+const jira = require('../integrations/jira');
+const notify = require('../core/notify');
 const notes = require('./notes');
-const { etat } = require('./data/localstate');
-const { t } = require('../public/i18n-runtime.js');
+const { etat } = require('../data/localstate');
+const { t } = require('../../public/i18n-runtime.js');
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
    Best-effort ABSOLU : toute erreur est capturée et stockée, jamais propagée —

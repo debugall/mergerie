@@ -14,8 +14,8 @@
  * fabrique pas d'URL : c'est le front qui sait où vivent les onglets.
  */
 
-const db = require('./db');
-const verifyLib = require('./verify/verify');
+const db = require('../db');
+const verifyLib = require('../verify/verify');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 

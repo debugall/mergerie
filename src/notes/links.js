@@ -21,7 +21,7 @@
  *    depuis un an. `uses / (1 + jours)` mélange les deux, et tient en une ligne.
  */
 
-const db = require('./db');
+const db = require('../db');
 
 const MAX_LABEL = 100;
 const MAX_TAG = 30;

@@ -190,7 +190,7 @@ describe('Veille de fond', () => {
     });
 
     test('sans relevé Docker, le brief n’affirme rien', async () => {
-      const brief = require('../src/brief');
+      const brief = require('../src/notes/brief');
       assert.equal(brief.construire({}).docker, null, 'pas de section plutôt qu’un « 0 conteneur tombé » qui n’a rien regardé');
       const avec = brief.construire({ dockerDown: { at: '2026-09-12T08:00:00Z', containers: [{ name: 'api', state: 'exited' }] } });
       assert.equal(avec.docker.containers.length, 1);

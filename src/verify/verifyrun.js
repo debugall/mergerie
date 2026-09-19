@@ -582,7 +582,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
          qu'il y a un problème. Une todo (qui survit à la notification) et une notification
          (qui arrive tout de suite) : les deux, parce que les deux moments comptent. */
       try {
-        require('../notes').todoAuto('restore_error', verificationId,
+        require('../notes/notes').todoAuto('restore_error', verificationId,
           t('todo.restore-error.title'), texte);
         require('../core/notify').push('restore_error', { verification_id: verificationId, message: texte.slice(0, 200) });
       } catch { /* la restauration a déjà échoué : on ne double pas l'échec */ }
@@ -763,7 +763,7 @@ async function commenterSurForge(verificationId, cfg, onLog) {
    REFERME — cochée, jamais supprimée : « ce qui a été réparé aujourd'hui » se relit dans les
    faites, et une todo qui s'évapore donne l'impression de n'avoir rien fait. */
 function todosDuVerdict(verificationId, verdict) {
-  const notes = require('../notes');
+  const notes = require('../notes/notes');
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) return 0;
   let cibles = [];
