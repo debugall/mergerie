@@ -227,7 +227,7 @@ function authHeader(cfg) {
 async function fetchIssue(cfg, key) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const base = String(cfg.jira_url).trim().replace(/\/+$/, '');
-  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description`;
+  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,attachment`;
   const res = await request(url, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
@@ -246,6 +246,9 @@ async function fetchIssue(cfg, key) {
        et sans un seul appel de plus — la découverte lit déjà l'issue en entier. */
     status: (fields.status && fields.status.name) || '',
     statusCategory: (fields.status && fields.status.statusCategory && fields.status.statusCategory.key) || '',
+    /* Les captures du ticket : « Faire coder l'IA » les propose en cases à cocher. Sans elles,
+       la route les lisait ici et n'y trouvait jamais rien hors démo. */
+    attachments: (fields.attachment || []).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType })),
   };
 }
 

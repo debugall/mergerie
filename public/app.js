@@ -2173,6 +2173,9 @@ async function loadDashboard() {
   let s;
   const q = `?days=${statsJours}${statsProjet ? `&project=${encodeURIComponent(statsProjet)}` : ''}`;
   try { s = await api(`/stats${q}`); } catch (e) { el.innerHTML = errorBox(e.message); return; }
+  /* Le combo des dépôts lit `repoOptions`, que d'autres écrans chargent : ouvert en premier,
+     Stats n'offrait que « Tous les dépôts ». */
+  if (!repoOptions.length) await loadRepoOptions();
 
   const tile = (label, value, cls = '') => `<div class="stat-tile ${cls}"><div class="stat-val">${value}</div><div class="stat-lbl">${esc(label)}</div></div>`;
   const noteBadge = (v) => (v == null ? '<span class="note none">—</span>' : `<span class="note ${v >= 7 ? 'good' : v >= 4 ? 'mid' : 'bad'}">${v}</span>`);
@@ -2286,7 +2289,7 @@ async function loadDashboard() {
           l'autre quand les tarifs bougent. */''}
     ${top.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${top.map((x) => `<tr>
         <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
-        <td><button type="button" class="stat-porte" data-go-session="${x.id}" data-go-kind="${esc(x.kind === 'local' ? 'local' : (x.kind === 'ask' ? 'ask' : 'code'))}"
+        <td><button type="button" class="stat-porte" data-go-session="${x.id}" data-go-kind="${esc(x.kind === 'local' ? 'local' : (x.kind === 'ask' ? 'ask' : (x.saveur === 'explore' ? 'explore' : 'code')))}"
           title="${esc(tr('stats.go.session'))}">${esc(x.label || x.prompt)}</button></td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(tr('stats.top-tasks.empty'))}</p>`}</div>`;
 
@@ -2417,9 +2420,8 @@ async function loadDashboard() {
   $$('#dashboard [data-go-agent]').forEach((b) => b.addEventListener('click', async () => {
     if (!agents.length) await chargerAgents();
     const a = agents.find((x) => x.name === b.dataset.goAgent);
-    navTab('task');
-    poserFiltreAgent(a ? a.id : 0);
-    loadTasks();
+    if (a) ouvrirSessionsAgent(a);
+    else { navTab('task'); poserFiltreAgent(0); loadTasks(); }
   }));
 
   $$('#dashboard [data-stats-jours]').forEach((b) => b.addEventListener('click', () => {
@@ -11087,7 +11089,9 @@ async function loadRules() {
   const boxRegle = $('#ruleRepoBox');
   if (boxRegle) {
     await loadRepoOptions();
-    boxRegle.innerHTML = repoComboHtml(null, { idClass: 'rule-repo' });
+    /* `defaultFirst: false` : vide, la règle vaut pour TOUS les dépôts — c'est ce que dit l'aide.
+       Pré-choisir le premier la bornait en silence à lui. */
+    boxRegle.innerHTML = repoComboHtml(null, { idClass: 'rule-repo', defaultFirst: false });
     wireRepoCombos(boxRegle);
   }
   const rows = await api('/rules');
@@ -13440,7 +13444,7 @@ $('#cmdPalette') && $('#cmdPalette').addEventListener('change', (e) => { if (e.t
 $('#cmdPreview') && $('#cmdPreview').addEventListener('click', cmdPreview);
 $('#cmdProjectBox') && $('#cmdProjectBox').addEventListener('change', (e) => {
   if (e.target.id === 'cmdSelAll') {
-    for (const cb of $('#cmdProjectBox .cmd-plist input[type="checkbox"]')) { cb.checked = e.target.checked; if (e.target.checked) CMD.selected.add(cb.value); else CMD.selected.delete(cb.value); }
+    for (const cb of $$('#cmdProjectBox .cmd-plist input[type="checkbox"]')) { cb.checked = e.target.checked; if (e.target.checked) CMD.selected.add(cb.value); else CMD.selected.delete(cb.value); }
     cmdUpdateCount(); cmdMemoriser({ projects: [...CMD.selected] }); return;
   }
   const cb = e.target.closest('.cmd-plist input[type="checkbox"]'); if (!cb) return;
@@ -14756,7 +14760,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {} };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {}, cible: null };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -15472,7 +15476,9 @@ async function loadJiraTickets() {
   renderJiraList();
   const vis = jiraVisibleIssues();
   chargerStatutsDuWorkflow();   // complète la liste des statuts, sans bloquer l'affichage
-  if (vis.length) selectJiraIssue(vis[0].key);
+  const cible = JIRA.cible; JIRA.cible = null;
+  if (cible) selectJiraIssue(cible, 'mine');
+  else if (vis.length) selectJiraIssue(vis[0].key);
   else $('#jiraDetail').innerHTML = `<div class="jira-empty muted">${esc(tr(JIRA.issues.length ? 'jira.no-match' : 'jira.empty'))}</div>`;
 }
 
@@ -15652,11 +15658,17 @@ $('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => bu
    On câble donc chaque gestionnaire SUR LES DEUX, une fois pour toutes : dupliquer les
    écouteurs par sous-onglet, c'est se garantir qu'une action marchera d'un côté seulement. */
 function surLeDetailJira(type, handler) {
-  $$('.js-jira-detail').forEach((el) => el.addEventListener(type, handler));
+  /* Le panneau est relevé AVANT le premier `await` : `e.currentTarget` n'est valable que pendant
+     la distribution de l'événement, et relu après une requête il valait toujours null — toute
+     action passait pour venir de « Mes tickets ». */
+  $$('.js-jira-detail').forEach((el) => el.addEventListener(type, (e) => {
+    e.panneauJira = el.id === 'jiraWatchDetail' ? 'watch' : 'mine';
+    return handler(e);
+  }));
 }
 // Dans quel panneau l'action a-t-elle eu lieu ? Ce qui est rechargé ensuite en dépend :
 // recharger « Mes tickets » depuis le panneau des surveillés viderait celui qu'on regarde.
-const ouDuDetail = (e) => (e.currentTarget && e.currentTarget.id === 'jiraWatchDetail' ? 'watch' : 'mine');
+const ouDuDetail = (e) => e.panneauJira || 'mine';
 
 surLeDetailJira('click', async (e) => {
   const b = e.target.closest('[data-jirawatch]'); if (!b) return;
@@ -15731,6 +15743,10 @@ $$('[data-jsfall="assignee"], [data-jsfnone="assignee"], [data-jsfall="status"],
 /* Un <details> ne se referme pas tout seul quand on clique ailleurs. Devenus des menus
    flottants au-dessus de la liste, ils masqueraient les tickets tant qu'on ne les rouvre pas. */
 document.addEventListener('click', (e) => {
+  /* Un bouton du menu qui se redessine (retirer un critère) n'est plus dans la page quand ce
+     gestionnaire passe : il n'est pas « ailleurs », il est parti. Sans ce test, le menu se
+     refermait sous le doigt. */
+  if (!e.target.isConnected) return;
   for (const d of $$('.jira-filters > details[open]')) {
     if (!d.contains(e.target)) d.open = false;
   }
@@ -17249,6 +17265,18 @@ onEl($('#agentTry'), 'click', async () => {
   $('#taskPrompt').focus();
 });
 
+/* LES SESSIONS D'UN AGENT : LA SAVEUR D'ABORD, LE FILTRE ENSUITE. Les runs d'un explorateur
+   vivent dans « Exploration » : filtrer « Codage » ne montrait rien. Et l'ordre compte —
+   changer de saveur remet le filtre à zéro. */
+function ouvrirSessionsAgent(a) {
+  navTab('task');
+  const saveur = a.kind === 'code' ? 'code' : 'explore';
+  const onglet = $(`#tab-task .subnav [data-kind="${saveur}"]`);
+  if (onglet && taskKind !== saveur) onglet.click();
+  poserFiltreAgent(a.id);
+  return loadTasks();
+}
+
 /* UN REFUS DU SERVEUR SE DIT, il ne remonte pas en « erreur inattendue ». « Dupliquer » et
    « Coder » sur un agent pas encore approuvé reçoivent un 409 légitime : sans ce filet, la
    promesse partait rejetée et le message n'arrivait que par le filet global, préfixé. */
@@ -17266,16 +17294,7 @@ async function actionAgent(b, a) {
   if (b.classList.contains('btn-agent-edit')) return ouvrirAgentModal(a);
   if (b.classList.contains('btn-agent-knowledge')) return ouvrirConnaissance(a);
   if (b.classList.contains('btn-agent-review')) return ouvrirConnaissance(a, { pending: true });
-  if (b.classList.contains('btn-agent-runs')) {
-    /* LA SAVEUR D'ABORD, LE FILTRE ENSUITE. Les runs d'un explorateur vivent dans
-       « Exploration » : filtrer « Codage » ne montrait rien. Et l'ordre compte — changer de
-       saveur remet le filtre à zéro. */
-    navTab('task');
-    const saveur = a.kind === 'code' ? 'code' : 'explore';
-    const onglet = $(`#tab-task .subnav [data-kind="${saveur}"]`);
-    if (onglet && taskKind !== saveur) onglet.click();
-    poserFiltreAgent(a.id); loadTasks(); return;
-  }
+  if (b.classList.contains('btn-agent-runs')) return ouvrirSessionsAgent(a);
   if (b.classList.contains('btn-agent-refresh')) {
     return busy(b, async () => {
       try { await api(`/agents/${a.id}/knowledge/refresh`, { method: 'POST' }); toast(tr('agents.refresh.started')); refreshStatus(); }
@@ -18341,7 +18360,12 @@ document.addEventListener('click', (e) => {
     if (s) { s.value = a.dataset.noteMrSearch; s.dispatchEvent(new Event('input')); }
     return;
   }
-  if (a.dataset.noteTicket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(a.dataset.noteTicket, 'mine'); }
+  if (a.dataset.noteTicket) {
+    /* Le ticket DEMANDÉ l'emporte sur « le premier de ma liste » : ouvrir l'onglet charge mes
+       tickets, et cette réponse, arrivée après, remplaçait le ticket cliqué par un autre. */
+    JIRA.cible = a.dataset.noteTicket;
+    navTab('jira'); showJiraSub('mine'); selectJiraIssue(a.dataset.noteTicket, 'mine');
+  }
 });
 
 /* ---------- Le brief « Aujourd'hui » ---------- */
@@ -18960,7 +18984,9 @@ async function loadTodos() {
      ferait douter de la liste avant de douter du bouton. */
   $$('#tab-notes .todo-filter button').forEach((x) => x.classList.toggle('active', x.dataset.tfilter === NOTES.filter));
   box.innerHTML = skeleton(4);
-  await notesIndex();
+  /* Le bouton « partager » dépend de l'état du partage : sans lui, une première visite
+     directe des todos ne le montrait pas. */
+  await Promise.all([notesIndex(), partageActif().catch(() => null)]);
   let d;
   try { d = await api(`/todos?status=${encodeURIComponent(NOTES.filter)}`); }
   catch (e) { box.innerHTML = `<p class="err">${esc(explainError(e.message))}</p>`; return; }
@@ -19133,8 +19159,18 @@ async function todoQuickAdd() {
   const input = $('#todoQuickAdd');
   const titre = (input.value || '').trim();
   if (!titre) return;
+  /* La barre affiche la syntaxe courte (`@demain`, `!!`, `!217`, `PROJ-12`) : elle la lit donc,
+     comme la capture. Elle envoyait la phrase brute — ni échéance, ni priorité, ni lien. */
+  const court = lireCaptureCourte(titre);
+  const body = { title: court.title || titre };
+  if (court.priority) body.priority = court.priority;
+  if (court.due_at) body.due_at = court.due_at;
+  if (court.link_kind) {
+    const ref = court.link_kind === 'mr' ? idMrDepuisIid(court.link_ref) : court.link_ref;
+    if (ref) { body.link_kind = court.link_kind; body.link_ref = ref; } else body.title = titre;
+  }
   try {
-    await api('/todos', { method: 'POST', body: { title: titre } });
+    await api('/todos', { method: 'POST', body });
     input.value = '';
     await refreshOpenTodos();
     loadTodos();

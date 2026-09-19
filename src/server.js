@@ -498,7 +498,8 @@ app.get('/api/stats', wrap((req, res) => {
 
   // Par projet
   const pending = {};
-  db.prepare("SELECT repo.project p, COUNT(*) c FROM mr JOIN repo ON repo.id=mr.repo_id WHERE mr.status='to_review' GROUP BY repo.project").all()
+  db.prepare(`SELECT repo.project p, COUNT(*) c FROM mr JOIN repo ON repo.id=mr.repo_id
+    WHERE mr.status='to_review' AND (? = '' OR repo.project = ?) GROUP BY repo.project`).all(projet, projet)
     .forEach((r) => { pending[r.p] = r.c; });
   const byProj = {};
   for (const r of rows) {
@@ -600,12 +601,15 @@ app.get('/api/stats', wrap((req, res) => {
   /* Coût en tokens (table usage). Le total est un MINORANT — le travail interne de
      l'agent reste invisible — mais la RÉPARTITION par type et l'évolution disent
      déjà où part le quota. Regroupement des kinds en libellés lisibles côté front. */
-  const byKind = db.prepare('SELECT kind, SUM(tokens_est) tokens, COUNT(*) calls FROM usage GROUP BY kind').all()
+  // La période vaut ici comme ailleurs : le total d'une semaine ne compte pas la session d'il y a cent jours.
+  const byKind = db.prepare(`SELECT kind, SUM(tokens_est) tokens, COUNT(*) calls FROM usage
+    WHERE (? IS NULL OR created_at >= ?) GROUP BY kind`).all(depuis, depuis)
     .filter((r) => r.tokens > 0)
     .map((r) => ({ kind: r.kind, tokens: r.tokens, calls: r.calls }));
   const tokTotal = byKind.reduce((s, r) => s + r.tokens, 0);
   const twc = {};
-  for (const r of db.prepare('SELECT tokens_est, created_at FROM usage WHERE tokens_est > 0').all()) {
+  for (const r of db.prepare(`SELECT tokens_est, created_at FROM usage WHERE tokens_est > 0
+    AND (? IS NULL OR created_at >= ?)`).all(depuis, depuis)) {
     if (!r.created_at) continue;
     const k = weekStart(r.created_at).toISOString().slice(0, 10);
     twc[k] = (twc[k] || 0) + r.tokens_est;
@@ -657,8 +661,11 @@ app.get('/api/stats', wrap((req, res) => {
     GROUP BY u.owner_kind, u.owner_id ORDER BY tokens DESC LIMIT 5`).all(depuis, depuis)
     .map((r) => {
       const table = r.kind === 'ask' ? 'question' : (r.kind === 'local' ? 'local_task' : 'task');
-      const row = db.prepare(`SELECT label, prompt FROM ${table} WHERE id = ?`).get(r.id) || {};
-      return { ...r, label: row.label || '', prompt: String(row.prompt || '').slice(0, 120) };
+      // Une exploration se compte comme une session `task` : sa saveur dit dans quelle liste l'ouvrir.
+      const row = db.prepare(`SELECT label, prompt${table === 'task' ? ', kind AS saveur' : ''} FROM ${table} WHERE id = ?`).get(r.id) || {};
+      return {
+        ...r, saveur: row.saveur || null, label: row.label || '', prompt: String(row.prompt || '').slice(0, 120),
+      };
     })
     .filter((r) => r.prompt || r.label);
 
@@ -694,7 +701,8 @@ app.get('/api/stats', wrap((req, res) => {
      voient à un ratio qui s'envole — la facture, elle, ne dit que « c'est cher ». */
   const ratio = db.prepare(`SELECT kind,
       SUM(prompt_chars) AS entree, SUM(output_chars) AS sortie, COUNT(*) AS n
-    FROM usage GROUP BY kind HAVING SUM(output_chars) > 0 ORDER BY entree DESC`).all()
+    FROM usage WHERE (? IS NULL OR created_at >= ?)
+    GROUP BY kind HAVING SUM(output_chars) > 0 ORDER BY entree DESC`).all(depuis, depuis)
     .map((r) => ({ ...r, ratio: r.sortie ? Math.round((r.entree / r.sortie) * 10) / 10 : null }));
 
   /* A/Stats 3 — LES VÉRIFICATIONS, PAR DÉPÔT. Un verdict rouge se lit une MR à la fois ; la
@@ -714,7 +722,7 @@ app.get('/api/stats', wrap((req, res) => {
       const depots = [...new Set(cibles.map((c) => c.repo_id).filter(Boolean))];
       for (const id of depots) {
         const nom = nomDe.get(id);
-        if (!nom) continue;
+        if (!nom || !duProjet(nom)) continue;
         const acc = parProjet.get(nom) || { project: nom, total: 0, verts: 0 };
         acc.total += 1;
         if (v.verdict === 'verified_pass') acc.verts += 1;
@@ -739,9 +747,9 @@ app.get('/api/stats', wrap((req, res) => {
       GROUP_CONCAT(DISTINCT f.file) AS fichiers,
       MAX(f.title) AS exemple
     FROM finding f JOIN mr ON mr.id = f.mr_id JOIN repo ON repo.id = mr.repo_id
-    WHERE f.title IS NOT NULL AND f.title != ''
+    WHERE f.title IS NOT NULL AND f.title != '' AND (? = '' OR repo.project = ?)
     GROUP BY repo.id, titre HAVING n >= 3
-    ORDER BY n DESC, project LIMIT 10`).all()
+    ORDER BY n DESC, project LIMIT 10`).all(projet, projet)
     .map((r) => ({
       project: r.project, title: r.exemple, count: r.n,
       files: String(r.fichiers || '').split(',').filter(Boolean).slice(0, 6),
@@ -1315,11 +1323,12 @@ app.get('/api/jira/statuses', wrap(async (req, res) => {
   const par = new Map();
   for (const cle of cles) {
     if (!statutsParProjet.has(cle)) {
-      // Un projet inaccessible ne doit pas priver le filtre des statuts des autres.
+      /* Un projet inaccessible ne doit pas priver le filtre des statuts des autres. L'échec
+         n'est PAS mémorisé : une panne passagère aurait vidé ce filtre jusqu'au redémarrage. */
       try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
-      catch { statutsParProjet.set(cle, []); }
+      catch { /* on retentera au prochain chargement */ }
     }
-    for (const st of statutsParProjet.get(cle)) if (!par.has(st.name)) par.set(st.name, st);
+    for (const st of statutsParProjet.get(cle) || []) if (!par.has(st.name)) par.set(st.name, st);
   }
   res.json({ configured: true, statuses: [...par.values()] });
 }));
@@ -1333,7 +1342,12 @@ async function sprintFieldId(cfg) {
   try {
     const trouve = jira.detectSprintField(await jira.allFields(cfg));
     champSprint = trouve ? trouve.id : '';
-  } catch { champSprint = ''; }   // droits manquants : on s'en passe, sans casser l'onglet
+  } catch {
+    /* Droits manquants ou panne : on s'en passe cette fois, sans casser l'onglet — mais sans le
+       mémoriser, sinon une coupure de quelques secondes cachait le filtre Sprints jusqu'au
+       prochain enregistrement des réglages. */
+    return '';
+  }
   return champSprint;
 }
 
@@ -1357,10 +1371,16 @@ app.get('/api/jira/tickets', wrap(async (req, res) => {
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.
 app.get('/api/jira/issue/:key', wrap(async (req, res) => {
   const key = String(req.params.key || '').trim();
-  if (demoDocker.isDemo()) return res.json({ issue: demoJira.issue(key) });
+  /* Les merge requests qui portent ce ticket : la zone de commentaire propose d'en insérer le
+     lien. L'écran les lisait ici sans que la route les ait jamais servies. */
+  const mergerie = {
+    mrs: engagementsSurTicket(key).mrs.filter((m) => !m.closed && m.web_url)
+      .map((m) => ({ iid: m.iid, url: m.web_url })),
+  };
+  if (demoDocker.isDemo()) return res.json({ issue: { ...demoJira.issue(key), mergerie } });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
-  res.json({ issue: await jira.issueDetail(cfg, key) });
+  res.json({ issue: { ...(await jira.issueDetail(cfg, key)), mergerie } });
 }));
 
 // Poster un commentaire sur un ticket Jira.
@@ -4483,6 +4503,11 @@ const verifierRepos = (id) => db.prepare(`SELECT vr.*, r.project
   WHERE vr.verifier_id = ? ORDER BY r.project`).all(id);
 const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
   .all(id).map((c) => c.command);
+// « CLE=valeur », une par ligne : les noms d'équipe, les valeurs de ce poste.
+const envTexte = (v) => {
+  const valeurs = verifierenv.valeurs(v);
+  return verifierenv.noms(v).map((n) => `${n}=${valeurs[n] || ''}`).join('\n');
+};
 const verifierAvecRepos = (id) => {
   const v = db.prepare('SELECT * FROM verifier WHERE id = ?').get(id);
   if (!v) return null;
@@ -4490,13 +4515,11 @@ const verifierAvecRepos = (id) => {
      « CLE=valeur », une par ligne — recomposé à partir des noms d'équipe et des valeurs locales.
      `env_missing` dit ce que ce poste n'a pas encore renseigné : un vérificateur reçu d'un
      collègue arrive avec ses noms et sans ses valeurs, et l'écran doit le dire. */
-  const valeurs = verifierenv.valeurs(v);
-  const noms = verifierenv.noms(v);
   return {
     ...v,
     repos: verifierRepos(id),
     commands: verifierCommandes(id),
-    env: noms.map((n) => `${n}=${valeurs[n] || ''}`).join('\n'),
+    env: envTexte(v),
     env_missing: verifierenv.manquantes(v),
   };
 };
@@ -4645,6 +4668,9 @@ app.get('/api/verifiers', wrap((req, res) => {
       ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id),
       last: dernieres[v.id] || null, pending_mrs: enAttente[v.id] || 0,
       used_by_tasks: parSession[v.id] || 0,
+      /* Le formulaire « Modifier » se remplit de cette liste : sans `env`, il s'ouvrait vide, et
+         ré-enregistrer effaçait les valeurs de ce poste. */
+      env: envTexte(v),
       /* CE QUI MANQUE SUR CE POSTE. Un vérificateur reçu d'un collègue arrive avec les NOMS de
          ses variables et sans leurs valeurs — les valeurs ne voyagent pas. Le dire sur la carte
          évite un échec au lancement dont la cause serait à chercher. */

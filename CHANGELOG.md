@@ -50,6 +50,25 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **Agents: “Duplicate” and “Code” on an agent awaiting approval say why they are refused**
   instead of reporting an unexpected error.
 
+- **Stats: the period and repository filters apply to every block.** Token cost and the
+  sent/received ratio now follow the period; “Per project”, recurring findings and the green rate
+  follow the chosen repository. The repository list is filled even when Stats is the first screen
+  opened, and an exploration among the most expensive sessions opens in the Exploration list.
+- **Settings: a review rule added without choosing a repository applies to all repositories**, as
+  its help says — it was silently limited to the first one.
+- **Settings: editing a verifier keeps its environment variables.** The form opened with the field
+  empty, and saving it again erased the values stored on this machine.
+- **Git: “Select all” in Git commands ticks the projects** instead of doing nothing, and the merge
+  work screen names the merge request it belongs to, like the running-merges list.
+- **Jira: a short outage no longer hides the Sprint filter or the workflow statuses** until the next
+  restart; removing a field-filter criterion keeps the filter menu open; “Make the AI code” offers
+  the ticket's screenshots; the comment box offers to insert the links of the ticket's merge
+  requests; and changing a status or un-watching from the Watched list refreshes that list.
+- **Notes: the todo add bar understands the short syntax it advertises** (`@tomorrow`, `!!`, `!217`,
+  `PROJ-12`), and the hint shows it as code rather than raw tags. A ticket linked from a note or a
+  todo opens that ticket, not the first of your list, and the share button is there from the first
+  visit to Todos.
+
 ### Security
 
 A security review of the whole tool, and what came out of it. Most of it is invisible when all goes
