@@ -33,7 +33,7 @@ const { DATA_DIR, ROOT } = require('./paths');
 const httpreq = require('./httpreq');
 const i18n = require('../public/i18n-runtime.js');
 const { countTokens } = require('./copilot');
-const demo = require('./demo-dictation');
+const demo = require('./demo/dictation');
 const rt = require('../public/dictation-runtime.js');
 const { t } = i18n;
 

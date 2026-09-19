@@ -425,7 +425,7 @@ describe('Le dépôt local du décor de démo', () => {
   });
 
   test('en démo, ce dépôt rend ses VRAIES refs, les autres gardent les leurs', () => {
-    const demoGit = require('../src/demo-git');
+    const demoGit = require('../src/demo/git');
     const vraies = demoGit.refs('groupe/tarification', 'branch', bareDemo);
     assert.deepEqual(vraies.refs.map((r) => r.name).sort(), ['feature/remise-fidelite', 'main']);
     assert.equal(vraies.default, 'main');

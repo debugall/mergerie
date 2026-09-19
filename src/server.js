@@ -100,18 +100,18 @@ const converge = require('./converge');
 const configagent = require('./configagent');
 const forge = require('./forge');
 const git = require('./git');
-const demoGit = require('./demo-git');
+const demoGit = require('./demo/git');
 const docker = require('./docker');
-const demoDocker = require('./demo-docker');
-const demoJenkins = require('./demo-jenkins');
+const demoDocker = require('./demo/docker');
+const demoJenkins = require('./demo/jenkins');
 const jenkins = require('./jenkins');
 const veille = require('./veille');
 const diffnum = require('./diffnum');   // A7 : sur quelles lignes un commentaire peut s'accrocher
-const demoDiff = require('./demo-diff');
+const demoDiff = require('./demo/diff');
 const verifyLib = require('./verify');
 const verifyrun = require('./verifyrun');
-const demoJira = require('./demo-jira');
-const demoComments = require('./demo-comments');
+const demoJira = require('./demo/jira');
+const demoComments = require('./demo/comments');
 const { StringDecoder } = require('node:string_decoder');
 const aisession = require('./aisession');
 const agentsession = require('./agentsession');
@@ -128,7 +128,7 @@ const agentprofile = require('./agentprofile');
 const agentknowledge = require('./agentknowledge');
 const agentschedule = require('./agentschedule');
 const protocol = require('./protocol');
-const demoAgents = require('./demo-agents');
+const demoAgents = require('./demo/agents');
 
 const app = express();
 
@@ -8452,7 +8452,7 @@ const server = app.listen(PORT, HOST, () => {
   if (process.env.MERGERIE_DEMO === '1') {
     try {
       // eslint-disable-next-line global-require
-      const origine = require('./demo-shared').preparer((m) => console.log(m));
+      const origine = require('./demo/shared').preparer((m) => console.log(m));
       if (origine) updateConfig({ data_repo_url: origine, data_repo_branch: 'main' });
     } catch (e) { console.log(`[demo] dépôt de données : ${e.message}`); }
   }

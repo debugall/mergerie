@@ -24,8 +24,8 @@
  */
 
 const path = require('path');
-const { DATA_DIR, ensureDir, slugify } = require('./paths');
-const { t } = require('../public/i18n-runtime.js');
+const { DATA_DIR, ensureDir, slugify } = require('../paths');
+const { t } = require('../../public/i18n-runtime.js');
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 

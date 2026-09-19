@@ -17,7 +17,7 @@ const agentpass = require('./agentpass');
 const protocol = require('./protocol');
 const { etat } = require('./localstate');
 const agentprofile = require('./agentprofile');
-const demoAgents = require('./demo-agents');
+const demoAgents = require('./demo/agents');
 const pieces = require('./pieces');
 const { t } = require('../public/i18n-runtime.js');
 

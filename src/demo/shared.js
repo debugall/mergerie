@@ -19,7 +19,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { SHARED_DIR, DATA_DIR } = require('./paths');
+const { SHARED_DIR, DATA_DIR } = require('../paths');
 
 /* LE FAUX DISTANT. Un dépôt NU à côté, qui tient le rôle de la forge. Sans lui, la démo
    montrerait un dépôt sans origine : le pied de page ne pourrait afficher ni « ↑ » ni « ↓ », et
@@ -51,7 +51,7 @@ const estDepot = () => fs.existsSync(path.join(SHARED_DIR, '.git'));
 function preparer(onLog = () => {}) {
   if (estDepot()) return null;
   // eslint-disable-next-line global-require
-  const store = require('./store');
+  const store = require('../store');
   store.exporterTout();
 
   fs.mkdirSync(SHARED_DIR, { recursive: true });

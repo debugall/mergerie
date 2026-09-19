@@ -193,7 +193,7 @@ const DIFFERENTS_EN_DEMO = new Set(['README.md', 'package.json', 'src/main.js'])
    mais l'écran affiche le genre, et une démo qui rendrait « branche » pour un tag mentirait. */
 function compare(projetA, coteA, projetB, coteB) {
   // eslint-disable-next-line global-require
-  const { arbreDeProjet } = require('./demo-diff');
+  const { arbreDeProjet } = require('./diff');
   const a = arbreDeProjet(projetA);
   const b = arbreDeProjet(projetB);
   const setB = new Set(b);
@@ -244,7 +244,7 @@ function diffUnifie(texteA, texteB) {
 // --- /api/git/compare/file : les deux versions d'un même chemin, en diff.
 function compareFile(projetA, coteA, projetB, coteB, chemin) {
   // eslint-disable-next-line global-require
-  const { arbreDeProjet, corpsDeProjet } = require('./demo-diff');
+  const { arbreDeProjet, corpsDeProjet } = require('./diff');
   const presentA = arbreDeProjet(projetA).includes(chemin);
   const presentB = arbreDeProjet(projetB).includes(chemin);
   if (!presentA && !presentB) throw new Error(`fichier absent des deux côtés : ${chemin}`);

@@ -19,8 +19,8 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-demo
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const demoReview = require('../src/demo-review');
-const demoDiff = require('../src/demo-diff');
+const demoReview = require('../src/demo/review');
+const demoDiff = require('../src/demo/diff');
 const resolution = require('../src/resolution');
 const { extractNote } = require('../src/note');
 

@@ -17,7 +17,7 @@
 const db = require('./db');
 const forge = require('./forge');
 const git = require('./git');
-const demoGit = require('./demo-git');
+const demoGit = require('./demo/git');
 const { getConfig } = require('./config');
 const { t } = require('../public/i18n-runtime.js');
 

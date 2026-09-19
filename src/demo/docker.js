@@ -1,6 +1,6 @@
 'use strict';
-const { healthSummary } = require('./docker');
-const { t } = require('../public/i18n-runtime.js');
+const { healthSummary } = require('../docker');
+const { t } = require('../../public/i18n-runtime.js');
 /* Données Docker STATIQUES pour le mode démo (MERGERIE_DEMO=1), sur le modèle de demo-git.js.
    L'onglet Docker interroge un vrai démon en direct ; hors-ligne il serait vide. Ici un jeu
    fictif cohérent : deux projets compose (dont un service en DRIFT config avec son diff de
@@ -165,7 +165,7 @@ function containers() {
    elle finit par montrer autre chose que ce que l'outil dit. Daté de maintenant : la veille de
    fond ne tourne pas en démo, et une date figée ferait croire à un relevé vieux d'un an. */
 function briefTombes() {
-  const { estTombe } = require('./docker');
+  const { estTombe } = require('../docker');
   return {
     at: new Date().toISOString(),
     containers: containers().filter(estTombe)

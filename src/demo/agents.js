@@ -10,7 +10,7 @@
  * Séquence fixe, aucun aléa : une démo qui change à chaque lancement ne se raconte pas.
  */
 
-const db = require('./db');
+const db = require('../db');
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 

@@ -11,7 +11,7 @@
  * toujours vert ne dirait rien de ce à quoi sert un vérificateur.
  */
 
-const db = require('./db');
+const db = require('../db');
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 

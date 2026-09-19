@@ -23,7 +23,7 @@ const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src
    plein écran d'un rapport relit le `diff.patch` écrit ici : deux diffs différents pour une
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
    numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
-const { diffPour } = require('../src/demo-diff');
+const { diffPour } = require('../src/demo/diff');
 const agentpassDemo = require('../src/agentpass');
 initDirs();
 
