@@ -18,7 +18,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../db');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 // Les pièces à joindre à CETTE passe : celles de la consigne, plus celles du suivi en cours.
 function pourLaPasse(scope, ownerId, ids = []) {

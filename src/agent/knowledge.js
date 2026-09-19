@@ -27,7 +27,7 @@ const protocol = require('./protocol');
 const glob = require('../core/glob');   // B7 : un chemin de carte peut porter une étoile
 const { getConfig } = require('../data/config');
 const { agentsDir } = require('../core/paths');
-const i18n = require('../../public/i18n-runtime.js');
+const i18n = require('../core/i18n');
 const { t } = i18n;
 
 const MAX_INDEX = 4000;

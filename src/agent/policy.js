@@ -182,7 +182,7 @@ function exigerBudget() {
   if (!budget) return;
   const spent = depenseDuJour();
   if (spent >= budget) {
-    const { t } = require('../../public/i18n-runtime.js');
+    const { t } = require('../core/i18n');
     const e = new Error(t('err.budget.daily', { spent: spent.toFixed(2), cap: budget.toFixed(2) }));
     e.code = 'BUDGET';
     throw e;

@@ -5,7 +5,7 @@ const db = require('../db');
 const { DEFAULT_CLONE_DIR } = require('../core/paths');
 const { promptsFor } = require('../core/prompts');
 const registre = require('./store-registry');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 const { adresseAdmise } = require('../core/garde');
 const approbation = require('./approbation');
 

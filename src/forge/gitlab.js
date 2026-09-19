@@ -3,7 +3,7 @@
 // La configuration TLS est SCOPÉE à ces requêtes via un agent dédié :
 // on ne touche jamais au TLS global du process.
 
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 const httpreq = require('../core/httpreq');
 
 // Agent TLS dédié aux requêtes GitLab (calculé une fois), scopé à ce client.

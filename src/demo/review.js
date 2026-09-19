@@ -25,7 +25,7 @@
 
 const path = require('path');
 const { DATA_DIR, ensureDir, slugify } = require('../core/paths');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const isDemo = () => process.env.MERGERIE_DEMO === '1';
 

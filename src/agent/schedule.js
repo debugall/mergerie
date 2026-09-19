@@ -18,7 +18,7 @@ const db = require('../db');
 const { etat } = require('../data/localstate');
 const identite = require('../core/identite');
 const { getConfig } = require('../data/config');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const JOURS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 

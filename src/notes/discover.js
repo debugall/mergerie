@@ -6,7 +6,7 @@ const jira = require('../integrations/jira');
 const notify = require('../core/notify');
 const notes = require('./notes');
 const { etat } = require('../data/localstate');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
    Best-effort ABSOLU : toute erreur est capturée et stockée, jamais propagée —

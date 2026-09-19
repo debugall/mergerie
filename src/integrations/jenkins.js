@@ -23,7 +23,7 @@
  * L'outil ne surveille rien de lui-même : aucune requête n'est émise sans un geste. */
 
 const { makeAgentFactory, request } = require('../core/httpreq');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 /* Même convention que les forges : `<SERVICE>_CA_CERT` pour épingler le CA interne,
    `<SERVICE>_INSECURE_TLS=1` pour dépanner. Un Jenkins d'entreprise est presque toujours

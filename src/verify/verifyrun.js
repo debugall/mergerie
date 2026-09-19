@@ -24,7 +24,7 @@ const verify = require('./verify');
 const demoVerify = require('../demo/verify');
 const { DATA_DIR, ensureDir } = require('../core/paths');
 const { stripAnsi } = require('../../public/ansi-runtime.js');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const WORKTREES_DIR = path.join(DATA_DIR, 'worktrees');
 const GRACE_KILL_MS = 10_000;   // délai entre SIGTERM et SIGKILL

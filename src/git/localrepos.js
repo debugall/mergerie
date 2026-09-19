@@ -19,7 +19,7 @@ const db = require('../db');
 const git = require('./git');
 const proc = require('../core/proc');
 const gitpalette = require('./gitpalette');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 // Mode démo : dépôts locaux FICTIFS (la machine réelle n'existe pas en démo) pour que
 // Navigation et « Commandes Git » restent consultables. Séquence figée.

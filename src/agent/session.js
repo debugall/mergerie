@@ -20,7 +20,7 @@ const agentargs = require('./args');
 const agentpolicy = require('./policy');
 const { avecPreambule } = require('../core/nonfiable');
 const { DATA_DIR, ensureDir } = require('../core/paths');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);
 const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé

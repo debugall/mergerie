@@ -21,7 +21,7 @@ const demoDiff = require('../demo/diff');
 const demoComments = require('../demo/comments');
 const forge = require('../forge');
 const notify = require('../core/notify');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 /* Le dépôt de données : il sait s'il est configuré, où en est la synchro, et l'adresse web
    d'un de ses fichiers. `store` sait, lui, quel fichier porte une ligne. */
 const datasync = require('../data/datasync');

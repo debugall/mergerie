@@ -24,7 +24,7 @@ const path = require('path');
 const db = require('../db');
 const git = require('./git');
 const { DATA_DIR, ensureDir } = require('../core/paths');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 const { decouper, recoller } = require('./conflits');
 
 /* Répertoire SÉPARÉ de celui des vérifications : `verifyrun.gcWorktrees` vide le sien à chaque

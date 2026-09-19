@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const proc = require('../core/proc');
 const db = require('../db');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 // Comptage de tokens : utilise `gpt-tokenizer` (pur JS, hors-ligne) s'il est installé,
 // sinon repli sur l'estimation ≈ 4 caractères / token (approx usuelle GPT/Claude).

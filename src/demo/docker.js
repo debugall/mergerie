@@ -1,6 +1,6 @@
 'use strict';
 const { healthSummary } = require('../integrations/docker');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 /* Données Docker STATIQUES pour le mode démo (MERGERIE_DEMO=1), sur le modèle de demo-git.js.
    L'onglet Docker interroge un vrai démon en direct ; hors-ligne il serait vide. Ici un jeu
    fictif cohérent : deux projets compose (dont un service en DRIFT config avec son diff de

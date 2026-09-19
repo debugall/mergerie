@@ -19,7 +19,7 @@ const forge = require('../forge');
 const git = require('./git');
 const demoGit = require('../demo/git');
 const { getConfig } = require('../data/config');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const ACTIONS = ['new_branch', 'delete_branch', 'create_tag', 'delete_tag'];
 const isDestructive = (a) => a === 'delete_branch' || a === 'delete_tag';

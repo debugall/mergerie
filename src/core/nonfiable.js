@@ -16,7 +16,7 @@
  * faire (`agentpolicy`) et ce qu'il a sous la main (le jeton hors du clone, l'env filtré).
  */
 const crypto = require('node:crypto');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('./i18n');
 
 const MARQUE = '<<<DONNEE';
 // Toute imitation d'une balise — d'ouverture comme de fermeture, quel que soit son nonce.

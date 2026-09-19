@@ -7,7 +7,7 @@
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('./i18n');
 
 // Plafond de patience sur une requête de forge : au-delà, on préfère une erreur claire
 // à un job de fond bloqué indéfiniment (un serveur qui accepte la connexion sans jamais

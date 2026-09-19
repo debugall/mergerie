@@ -19,7 +19,7 @@ const { etat } = require('../data/localstate');
 const agentprofile = require('../agent/profile');
 const demoAgents = require('../demo/agents');
 const pieces = require('../agent/pieces');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const WORK_REL = 'ai-dev-tools-internal';
 

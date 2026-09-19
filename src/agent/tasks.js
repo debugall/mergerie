@@ -14,7 +14,7 @@
 const db = require('../db');
 const localsession = require('../data/localsession');
 const agentsession = require('./session');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const repoById = (id) => db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(id) || 0);
 

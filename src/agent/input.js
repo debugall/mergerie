@@ -16,7 +16,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../db');
 const { ensureDir } = require('../core/paths');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const WORK_REL = 'ai-dev-tools-internal';
 const MAX_RECENT = 30000;

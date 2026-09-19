@@ -13,7 +13,7 @@
  * les abréviations), tout chemin absolu ou qui remonte (`..` comme segment — `main..feature`,
  * une plage, reste permis), et un `remote add|set-url` vers autre chose que https ou ssh.
  */
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const SOUS_COMMANDES = new Set(['status', 'fetch', 'pull', 'push', 'log', 'show', 'diff', 'branch',
   'checkout', 'switch', 'stash', 'tag', 'merge', 'rebase', 'reset', 'restore', 'cherry-pick', 'remote',

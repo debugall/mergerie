@@ -30,7 +30,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const git = require('../git/git');
 const { TASKS_DIR, ensureDir } = require('../core/paths');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 /* Au-delà, on renonce : la mesure coûterait plus que ce qu'elle rend. Un objet plutôt que deux
    constantes, pour qu'un test puisse abaisser le plafond et vérifier le renoncement — atteindre

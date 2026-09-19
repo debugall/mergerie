@@ -29,7 +29,7 @@ const notes = require('../notes/notes');
 const git = require('../git/git');
 const { getConfig } = require('../data/config');
 const { avecConsignes } = require('../core/prompts');
-const i18n = require('../../public/i18n-runtime.js');
+const i18n = require('../core/i18n');
 const { t } = i18n;
 
 const jsonOu = (txt, repli) => { try { const v = JSON.parse(txt); return v == null ? repli : v; } catch { return repli; } };

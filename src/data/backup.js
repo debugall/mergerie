@@ -24,7 +24,7 @@ const os = require('os');
 const path = require('path');
 const { zipper } = require('../core/zip');
 const { DATA_DIR, DB_PATH, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR } = require('../core/paths');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 // 256 Mo : bien au-delà d'un usage normal (une base de quelques Mo, des rapports en Markdown),
 // assez bas pour qu'un dossier qui aurait dérapé soit signalé au lieu de faire tomber le serveur.

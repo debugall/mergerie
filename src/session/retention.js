@@ -22,7 +22,7 @@
 const db = require('../db');
 const localsnapshot = require('./localsnapshot');
 const agentpass = require('../agent/pass');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 

@@ -27,7 +27,7 @@ const { getConfig } = require('../data/config');
 const { reviewMr, fillTemplate } = require('./reviewer');
 const { nonFiable } = require('../core/nonfiable');
 const prompts = require('../core/prompts');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 function latestVersion(mrId) {
   return db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mrId);

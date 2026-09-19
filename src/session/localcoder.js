@@ -20,7 +20,7 @@ const { getConfig } = require('../data/config');
 const { avecConsignes } = require('../core/prompts');
 const questions = require('../agent/questions');
 const pieces = require('../agent/pieces');
-const { t } = require('../../public/i18n-runtime.js');
+const { t } = require('../core/i18n');
 
 const now = () => new Date().toISOString();
 
