@@ -69,6 +69,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   todo opens that ticket, not the first of your list, and the share button is there from the first
   visit to Todos.
 
+- **A window opened from another window now opens on top of it.** “Add to todos” and
+  “Investigate” from a Jenkins job's window opened behind it, out of reach of the mouse.
+- **Jenkins: “My branches” and the `!iid` tags work when Mergerie opens straight on Jenkins**,
+  without visiting Reviews first — a remembered “My branches” used to empty the list.
+- **Docker: “Put in the grid” appears for a local project again** — the server call behind it
+  always failed.
+- **Links: the copy button of a grid cell can be clicked** — it sat under the edit pencil.
+
 ### Security
 
 A security review of the whole tool, and what came out of it. Most of it is invisible when all goes

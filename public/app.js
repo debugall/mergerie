@@ -226,8 +226,19 @@ function toast(msg, isErr = false) {
 function viderToastsErreur() { $$('.toast.err').forEach((t) => t.remove()); }
 (() => {
   const obs = new MutationObserver((muts) => {
+    for (const m of muts) { if (!m.target.hidden) auPremierPlan(m.target); }
     for (const m of muts) { if (m.target.hidden) { viderToastsErreur(); return; } }
   });
+  /* LA DERNIÈRE MODALE OUVERTE PASSE DEVANT. À z-index égal, c'est l'ordre du HTML qui
+     tranchait : « Ajouter aux todos » ou « Enquêter » depuis la fiche d'un job Jenkins ouvraient
+     leur fenêtre DERRIÈRE la fiche, déclarée plus bas dans la page, et son bouton n'était plus
+     cliquable. Sous la confirmation (150), qui reste au-dessus de tout. */
+  function auPremierPlan(modale) {
+    if (modale.id === 'confirmModal') return;
+    const autres = $$('.modal:not([hidden])').filter((x) => x !== modale && x.id !== 'confirmModal');
+    const haut = Math.max(110, ...autres.map((x) => Number(x.style.zIndex) || 110));
+    modale.style.zIndex = autres.length ? String(Math.min(149, haut + 1)) : '';
+  }
   /* Le script est en fin de <body> : le DOM est déjà là, et `DOMContentLoaded` peut être
      passé. On branche tout de suite, en gardant le repli pour un chargement plus tôt. */
   const brancher = () => $$('.modal').forEach((m) => obs.observe(m, { attributes: true, attributeFilter: ['hidden'] }));
@@ -23918,7 +23929,7 @@ async function loadJenkins({ silencieux = false } = {}) {
   // clignoterait toutes les trente secondes sous les yeux de quelqu'un qui lit.
   if (!silencieux) box.innerHTML = skeleton(4);
   try {
-    const d = await api('/jenkins/jobs');
+    const [d] = await Promise.all([api('/jenkins/jobs'), assurerMrsJenkins()]);
     JENKINS.jobs = d.jobs || [];
     JENKINS.configured = d.configured !== false;
   } catch (e) {
@@ -24160,8 +24171,21 @@ function jkRow(j, colonnes = []) {
 /* Les branches de MES merge requests ouvertes — celles dont je suis l'auteur si les forges
    ont pu dire qui je suis, sinon toutes les ouvertes : mieux vaut un filtre un peu large
    qu'un filtre vide sur un jeton qui ne lit pas son propre compte. */
+/* LES MERGE REQUESTS QUE JENKINS CROISE. Elles venaient de l'onglet Reviews, chargé ou non :
+   ouvert directement sur Jenkins, « Mes branches » (restauré coché) vidait la liste et les
+   pastilles `!iid` n'apparaissaient pas. On les lit donc ici si Reviews ne l'a pas fait, sans
+   toucher à son état. */
+let jkMrsConnues = [];
+const mrsPourJenkins = () => (toReviewRows.length || reportRows.length ? toReviewRows.concat(reportRows) : jkMrsConnues);
+async function assurerMrsJenkins() {
+  if (toReviewRows.length || reportRows.length || jkMrsConnues.length) return;
+  try {
+    const [a, b] = await Promise.all([api('/mrs?status=to_review'), api('/mrs?status=reviewed')]);
+    jkMrsConnues = (a || []).concat(b || []);
+  } catch { /* file indisponible : ni filtre ni pastille, comme avant */ }
+}
 function mesBranchesOuvertes() {
-  const rows = toReviewRows.concat(reportRows).filter((m) => !m.closed_seen);
+  const rows = mrsPourJenkins().filter((m) => !m.closed_seen);
   const miennes = moiSurLesForges ? rows.filter(estDeMoi) : rows;
   return new Set(miennes.map((m) => String(m.source_branch || '').trim()).filter(Boolean));
 }
@@ -24197,7 +24221,7 @@ async function remplirDepotsJenkins() {
     if (!l || !zone.isConnected) continue;
     const j = (JENKINS.jobs || []).find((x) => x.path === chemin);
     const ref = String((j && j.ref) || '').trim();
-    const mr = ref ? toReviewRows.concat(reportRows).find((m) => !m.closed_seen && m.source_branch === ref) : null;
+    const mr = ref ? mrsPourJenkins().find((m) => !m.closed_seen && m.source_branch === ref) : null;
     zone.innerHTML = `<span class="tag jk-depot-tag" title="${esc(tr('jenkins.linked-repo.title', { project: l.project }))}">${svgIco('merge')} ${esc(l.project)}</span>`
       + (mr ? `<button type="button" class="tag jk-depot-mr" data-jk-mr="${mr.id}" title="${esc(tr('jenkins.linked-mr.title', { iid: mr.iid, branch: ref }))}">!${esc(String(mr.iid))}</button>` : '');
   }
@@ -24711,14 +24735,20 @@ function jkParamChamp(p) {
 /* `siParams` : n'afficher la fiche QUE si le job a des paramètres. Sert au bouton « Lancer » de
    la liste, qui doit consulter la fiche pour savoir s'il y a quelque chose à lire — sans la faire
    clignoter quand il n'y a rien. Rend vrai si la fenêtre a été montrée. */
+let jkOuvertures = 0;
 async function openJenkinsJob(chemin, { siParams = false } = {}) {
   const modal = $('#jenkinsModal');
   $('#jenkinsModalTitle').textContent = chemin;
   $('#jenkinsModalDesc').textContent = '';
   $('#jenkinsModalBody').innerHTML = skeleton(2);
   if (!siParams) modal.hidden = false;
+  const jeton = ++jkOuvertures;
   try {
     const d = await api(`/jenkins/job?path=${encodeURIComponent(chemin)}`);
+    /* FERMÉE PENDANT LE CHARGEMENT, ELLE LE RESTE. La fiche s'ouvre avant la réponse ; si l'on
+       fait Échap entre-temps, la réponse la rouvrait d'office, par-dessus l'écran suivant. Même
+       chose si une autre fiche a été demandée depuis : la plus récente gagne. */
+    if (jeton !== jkOuvertures || (!siParams && modal.hidden)) return false;
     JENKINS.job = d;
     if (siParams && !d.parameters.length) return false;
     modal.hidden = false;
@@ -24868,7 +24898,7 @@ $('#jenkinsMineBranches') && $('#jenkinsMineBranches').addEventListener('change'
   JENKINS.mesBranches = e.target.checked;
   jkMemoriserFiltres();
   // La file n'est peut-être pas chargée : sans elle le filtre ne connaîtrait aucune branche.
-  if (JENKINS.mesBranches && !toReviewRows.length && !reportRows.length) { try { await loadSegment('to_review'); } catch { /* file indisponible */ } }
+  if (JENKINS.mesBranches) await assurerMrsJenkins();
   renderJenkins();
 });
 document.addEventListener('click', (e) => {

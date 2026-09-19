@@ -242,8 +242,9 @@ describe('Menu Reviews — le rapport ouvert', { skip: dispo ? false : MSG_NAVIG
     assert.equal((await detail(21)).stale, false, 'le rapport porte de nouveau sur la tête de branche');
 
     await ouvrir(21, () => !document.querySelector('#aStaleRe') && !!document.querySelector('#masquerResolus'));
+    // Les constats se dessinent après l'en-tête du rapport : on attend le résolu, on ne le lit pas au vol.
     const resolu = page.locator('#findingsList .finding[data-status="resolved"]');
-    assert.equal(await resolu.first().isVisible(), true);
+    await resolu.first().waitFor({ state: 'visible' });
     await page.locator('#masquerResolus').click();
     await resolu.first().waitFor({ state: 'hidden' });
     await page.locator('#masquerResolus').click();

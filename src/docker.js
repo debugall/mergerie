@@ -807,7 +807,7 @@ module.exports = {
   restoreArgs, restoreContainer,
   status, explainDockerError,
   composeProjects, composeFileList, composeOne, orphans, previewDown, runCompose, runDown, stopContainer, removeContainer, composeArgs,
-  inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary,
+  inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary, gitDuRepertoire,
   // pur (tests) :
   isSecretName, isSecretValue, exitCodeOf, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, oomKilled, oomDepuisInspect, defaultProjectName, COMPOSE_FILES,
 };

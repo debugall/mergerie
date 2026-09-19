@@ -3594,7 +3594,9 @@ button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offs
    une case chargée ; le reste vit dans le panneau. Le bouton qui l'ouvre n'est plus un « +48 »
    de 11 px qu'on ne remarquait pas : il dit ce qu'il ouvre. */
 .link-cell .link-line + .link-line { margin-top: 3px; }
-.link-cell .link-line { display: flex; }
+/* La ligne s'arrête AVANT le crayon : pleine largeur, elle poussait le bouton « copier » tout
+   à droite, exactement sous le crayon posé en absolu — le clic de copie tombait sur l'édition. */
+.link-cell .link-line { display: flex; padding-right: 34px; }
 .link-more-addr {
   display: block; margin: 4px 0 0; padding: 2px 9px; font-size: 12px; cursor: pointer;
   background: transparent; border: 1px solid var(--line); border-radius: var(--r-full); color: var(--muted);
