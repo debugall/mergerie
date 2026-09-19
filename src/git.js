@@ -2,9 +2,9 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { DEFAULT_CLONE_DIR, DATA_DIR, ensureDir, slugify } = require('./paths');
+const { DEFAULT_CLONE_DIR, DATA_DIR, ensureDir, slugify } = require('./core/paths');
 const forge = require('./forge');
-const proc = require('./proc');
+const proc = require('./core/proc');
 const { t } = require('../public/i18n-runtime.js');
 
 // Émet les lignes complètes d'un buffer vers onLog, renvoie le reste incomplet.

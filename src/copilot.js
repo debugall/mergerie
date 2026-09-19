@@ -2,7 +2,7 @@
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const proc = require('./proc');
+const proc = require('./core/proc');
 const db = require('./db');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -109,7 +109,7 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
   const flags = [...pol.extra, ...pol.args];
   flags.push(...agentpolicy.argsMaxTurns(backend, flags));
-  prompt = require('./nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
+  prompt = require('./core/nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
   return new Promise((resolve, reject) => {
     // flags additionnels (ex: --yolo) placés AVANT -p
     const args = [...flags, '-p', prompt];

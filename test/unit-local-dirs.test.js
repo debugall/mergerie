@@ -24,7 +24,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-loca
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { empreinte, libelle, normaliser } = require('../src/dirhash');
+const { empreinte, libelle, normaliser } = require('../src/core/dirhash');
 
 describe('dirhash — l’empreinte d’un chemin, sans base', () => {
   test('40 caractères hexadécimaux, et rien du chemin ne s’y lit', () => {

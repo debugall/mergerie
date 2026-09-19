@@ -30,7 +30,7 @@ process.env.COPILOT_BIN = fauxAgent;
 
 // Après les variables d'environnement : copilot.js fige COPILOT_BIN au chargement.
 // eslint-disable-next-line import/order
-const proc = require('../src/proc');
+const proc = require('../src/core/proc');
 // eslint-disable-next-line import/order
 const agentsession = require('../src/agentsession');
 

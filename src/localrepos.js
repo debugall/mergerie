@@ -17,7 +17,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const db = require('./db');
 const git = require('./git');
-const proc = require('./proc');
+const proc = require('./core/proc');
 const gitpalette = require('./gitpalette');
 const { t } = require('../public/i18n-runtime.js');
 

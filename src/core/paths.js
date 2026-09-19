@@ -2,7 +2,8 @@
 const path = require('path');
 const fs = require('fs');
 
-const ROOT = path.resolve(__dirname, '..');
+// La racine du projet : ce fichier vit dans `src/core/`, deux niveaux sous elle.
+const ROOT = path.resolve(__dirname, '..', '..');
 
 // Rétrocompatibilité des variables d'environnement renommées (anciennement `LIN_*`). Si la
 // nouvelle est absente mais l'ancienne présente, on adopte l'ancienne et on prévient UNE SEULE

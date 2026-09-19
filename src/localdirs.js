@@ -18,7 +18,7 @@
  * moi ») : il n'écrit alors que dans sa table à lui, et rien ne part nulle part.
  */
 const db = require('./db');
-const { normaliser, empreinte, libelle } = require('./dirhash');
+const { normaliser, empreinte, libelle } = require('./core/dirhash');
 
 const majCarte = db.prepare(`INSERT INTO local_dir_map (dir_hash, path, updated_at)
                              VALUES (?, ?, ?)

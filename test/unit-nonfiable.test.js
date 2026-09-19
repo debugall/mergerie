@@ -8,7 +8,7 @@
  */
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { nonFiable, avecPreambule } = require('../src/nonfiable');
+const { nonFiable, avecPreambule } = require('../src/core/nonfiable');
 
 describe('nonFiable : le balisage à nonce', () => {
   test('une description qui imite la balise de fin ne ferme pas le bloc', () => {

@@ -62,7 +62,7 @@ const INTERDITS_ECRITURE = ['WebFetch', 'WebSearch', 'Bash(curl:*)', 'Bash(wget:
    en tête : `paths` lit `MERGERIE_DATA_DIR` à son chargement. */
 function interditsDonnees() {
   const path = require('node:path');
-  const { DATA_DIR, ROOT } = require('./paths');
+  const { DATA_DIR, ROOT } = require('./core/paths');
   const fs = require('node:fs');
   /* Le CLI compare au chemin RÉEL (`/var` → `/private/var` sur macOS) : on pose les deux. */
   const reels = (p) => { const r = [path.resolve(p)]; try { r.push(fs.realpathSync(p)); } catch { /* absent */ } return r; };

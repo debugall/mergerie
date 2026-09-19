@@ -48,7 +48,7 @@ describe('local_config — ce qui reste sur ce poste', () => {
   test('le chemin de clone par défaut a bien DÉMÉNAGÉ, il n’a pas été perdu', () => {
     // La ligne initiale de `config` naît avec DEFAULT_CLONE_DIR : si le drain se contentait de
     // vider, l'application cloner‍ait dans un chemin vide au premier démarrage.
-    const { DEFAULT_CLONE_DIR } = require('../src/paths');
+    const { DEFAULT_CLONE_DIR } = require('../src/core/paths');
     assert.equal(db.prepare('SELECT clone_path AS p FROM local_config WHERE id = 1').get().p, DEFAULT_CLONE_DIR);
     assert.equal(config.getConfig().clone_path, DEFAULT_CLONE_DIR);
   });

@@ -4,15 +4,15 @@ const path = require('path');
 const db = require('./db');
 const localsession = require('./localsession');
 const { getConfig } = require('./config');
-const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('./paths');
+const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('./core/paths');
 const git = require('./git');
 const copilot = require('./copilot');
 const agentpolicy = require('./agentpolicy');
-const { nonFiable } = require('./nonfiable');
+const { nonFiable } = require('./core/nonfiable');
 const agentsession = require('./agentsession');
 const { extractNote } = require('./note');
 const resolution = require('./resolution');
-const glob = require('./glob');
+const glob = require('./core/glob');
 const diffnum = require('./diffnum');
 const demoReview = require('./demo/review');
 const agentpass = require('./agentpass');
@@ -20,13 +20,13 @@ const agentknowledge = require('./agentknowledge');   // B7 : la carte du domain
 const demoDiff = require('./demo/diff');
 const demoComments = require('./demo/comments');
 const forge = require('./forge');
-const notify = require('./notify');
+const notify = require('./core/notify');
 const { t } = require('../public/i18n-runtime.js');
 /* Le dépôt de données : il sait s'il est configuré, où en est la synchro, et l'adresse web
    d'un de ses fichiers. `store` sait, lui, quel fichier porte une ligne. */
 const datasync = require('./datasync');
 const store = require('./store');
-const { SHARED_DIR } = require('./paths');
+const { SHARED_DIR } = require('./core/paths');
 
 /* Instruction de CONSTATS STRUCTURÉS, ajoutée au prompt de review UNIQUEMENT à
    l'exécution — jamais écrite dans le template de l'utilisateur. Elle demande à

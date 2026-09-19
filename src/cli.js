@@ -10,7 +10,7 @@ const { execFileSync } = require('child_process');
 const db = require('./db');
 const { updateConfig } = require('./config');
 const { reviewMr } = require('./reviewer');
-const { DATA_DIR } = require('./paths');
+const { DATA_DIR } = require('./core/paths');
 
 process.env.COPILOT_DRY_RUN = '1';
 

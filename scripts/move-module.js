@@ -85,7 +85,8 @@ function ecrire(depuisDir, cible, avecExtension) {
   return rel;
 }
 
-const RE = /require\((['"])(\.{1,2}\/[^'"]+)\1\)/g;
+/* `require('…')` et `require.resolve('…')` — un test qui vide le cache d'un module le nomme ainsi. */
+const RE = /(require(?:\.resolve)?)\((['"])(\.{1,2}\/[^'"]+)\2\)/g;
 const fichiers = DOSSIERS.flatMap((d) => tousLesJs(path.join(ROOT, d)));
 const reecrits = [];
 const ambigus = [];
@@ -95,7 +96,7 @@ for (const f of fichiers) {
   const nouveauDir = path.dirname(deplacements.get(f) || f);
   const texte = fs.readFileSync(f, 'utf8');
   let n = 0;
-  const apres = texte.replace(RE, (tout, q, rel) => {
+  const apres = texte.replace(RE, (tout, fn, q, rel) => {
     const r = resoudre(ancienDir, rel);
     if (!r) return tout;                              // pas un module du dépôt (ou déjà cassé) : on ne touche pas
     const cible = deplacements.get(r.fichier) || r.fichier;
@@ -103,7 +104,7 @@ for (const f of fichiers) {
     const neuf = ecrire(nouveauDir, cible, /\.js$/.test(rel) && path.basename(cible) !== 'index.js');
     if (neuf === rel) return tout;
     n++;
-    return `require(${q}${neuf}${q})`;
+    return `${fn}(${q}${neuf}${q})`;
   });
   /* Un `require` non littéral (`require(variable)`, gabarit) échapperait au calcul : on le
      signale plutôt que de laisser un chemin périmé se découvrir à l'exécution. */

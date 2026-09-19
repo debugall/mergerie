@@ -13,7 +13,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-unit
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const glob = require('../src/glob');
+const glob = require('../src/core/glob');
 const { extractNote } = require('../src/note');
 const resolution = require('../src/resolution');
 const jira = require('../src/jira');

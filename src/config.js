@@ -2,11 +2,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
-const { DEFAULT_CLONE_DIR } = require('./paths');
+const { DEFAULT_CLONE_DIR } = require('./core/paths');
 const { promptsFor } = require('./prompts');
 const registre = require('./store-registry');
 const { t } = require('../public/i18n-runtime.js');
-const { adresseAdmise } = require('./garde');
+const { adresseAdmise } = require('./core/garde');
 const approbation = require('./approbation');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a

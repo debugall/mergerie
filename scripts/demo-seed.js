@@ -18,7 +18,7 @@ process.env.MERGERIE_DATA_DIR = DEMO_DIR;
 fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base propre
 
 const db = require('../src/db');
-const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/paths');
+const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/core/paths');
 /* LE MÊME DIFF DES DEUX CÔTÉS. L'aperçu d'une carte lit `demo-diff.js` en direct, mais la vue
    plein écran d'un rapport relit le `diff.patch` écrit ici : deux diffs différents pour une
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
@@ -1365,7 +1365,7 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
    validation, et un run déclenché par un HORAIRE — l'état qu'aucun clic ne produit. */
 {
   const agentprofile = require('../src/agentprofile');
-  const { agentsDir } = require('../src/paths');
+  const { agentsDir } = require('../src/core/paths');
   agentprofile.seedBuiltins();
 
   const doc = db.prepare("SELECT * FROM agent WHERE builtin_key = 'librarian'").get();

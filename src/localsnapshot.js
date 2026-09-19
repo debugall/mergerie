@@ -29,7 +29,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const git = require('./git');
-const { TASKS_DIR, ensureDir } = require('./paths');
+const { TASKS_DIR, ensureDir } = require('./core/paths');
 const { t } = require('../public/i18n-runtime.js');
 
 /* Au-delà, on renonce : la mesure coûterait plus que ce qu'elle rend. Un objet plutôt que deux

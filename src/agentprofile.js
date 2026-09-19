@@ -15,7 +15,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
-const { slugLibre } = require('./ulid');
+const { slugLibre } = require('./core/ulid');
 const { etat } = require('./localstate');
 const store = require('./store');
 const agentargs = require('./agentargs');
@@ -292,7 +292,7 @@ function supprimer(id) {
   store.supprimer('agent', a.id);
   // Pas de cascade sur le DISQUE : les versions de connaissance s'effacent explicitement.
   // eslint-disable-next-line global-require
-  const { AGENTS_DIR } = require('./paths');
+  const { AGENTS_DIR } = require('./core/paths');
   try { fs.rmSync(path.join(AGENTS_DIR, String(a.id)), { recursive: true, force: true }); } catch { /* best-effort */ }
   return true;
 }

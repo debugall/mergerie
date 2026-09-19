@@ -19,10 +19,10 @@ const path = require('path');
 const db = require('./db');
 const git = require('./git');
 const forge = require('./forge');
-const proc = require('./proc');
+const proc = require('./core/proc');
 const verify = require('./verify');
 const demoVerify = require('./demo/verify');
-const { DATA_DIR, ensureDir } = require('./paths');
+const { DATA_DIR, ensureDir } = require('./core/paths');
 const { stripAnsi } = require('../public/ansi-runtime.js');
 const { t } = require('../public/i18n-runtime.js');
 
@@ -584,7 +584,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       try {
         require('./notes').todoAuto('restore_error', verificationId,
           t('todo.restore-error.title'), texte);
-        require('./notify').push('restore_error', { verification_id: verificationId, message: texte.slice(0, 200) });
+        require('./core/notify').push('restore_error', { verification_id: verificationId, message: texte.slice(0, 200) });
       } catch { /* la restauration a déjà échoué : on ne double pas l'échec */ }
     }
   }

@@ -27,7 +27,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-uid-
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { ulid, estUlid, instantDe, slugifier, slugLibre } = require('../src/ulid');
+const { ulid, estUlid, instantDe, slugifier, slugLibre } = require('../src/core/ulid');
 const registre = require('../src/store-registry');
 
 describe('ulid — l’identité sans coordination', () => {

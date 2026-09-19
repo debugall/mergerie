@@ -10,7 +10,7 @@
  */
 
 const { spawn } = require('child_process');
-const proc = require('./proc');
+const proc = require('./core/proc');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
@@ -18,8 +18,8 @@ const path = require('path');
 const copilot = require('./copilot');
 const agentargs = require('./agentargs');
 const agentpolicy = require('./agentpolicy');
-const { avecPreambule } = require('./nonfiable');
-const { DATA_DIR, ensureDir } = require('./paths');
+const { avecPreambule } = require('./core/nonfiable');
+const { DATA_DIR, ensureDir } = require('./core/paths');
 const { t } = require('../public/i18n-runtime.js');
 
 const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);

@@ -19,7 +19,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { SHARED_DIR, DATA_DIR } = require('../paths');
+const { SHARED_DIR, DATA_DIR } = require('../core/paths');
 
 /* LE FAUX DISTANT. Un dépôt NU à côté, qui tient le rôle de la forge. Sans lui, la démo
    montrerait un dépôt sans origine : le pied de page ne pourrait afficher ni « ↑ » ni « ↓ », et

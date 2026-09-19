@@ -16,7 +16,7 @@
 
 const db = require('./db');
 const { etat } = require('./localstate');
-const identite = require('./identite');
+const identite = require('./core/identite');
 const { getConfig } = require('./config');
 const { t } = require('../public/i18n-runtime.js');
 

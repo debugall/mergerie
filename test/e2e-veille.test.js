@@ -56,7 +56,7 @@ describe('Veille de fond', () => {
     veille = require('../src/veille');
     docker = require('../src/docker');
     jenkins = require('../src/jenkins');
-    notify = require('../src/notify');
+    notify = require('../src/core/notify');
     /* eslint-enable global-require */
     vraiStatus = docker.status; vraiListe = docker.listContainers;
     vraiDetail = jenkins.detail; vraiConfigure = jenkins.isConfigured;

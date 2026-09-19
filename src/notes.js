@@ -22,7 +22,7 @@
  */
 
 const db = require('./db');
-const { slugLibre } = require('./ulid');
+const { slugLibre } = require('./core/ulid');
 const store = require('./store');
 // La MÊME définition de « citer » que le rendu des notes (cf. `citations`).
 const NOTESRT = require('../public/notes-runtime.js');

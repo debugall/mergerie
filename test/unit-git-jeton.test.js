@@ -109,7 +109,7 @@ describe('Le jeton ne s’écrit plus dans le clone, et git ne lance plus ce qu�
    démarre un petit-fils puis attend, on annule, et on attend l'EFFET — le petit-fils mort. */
 describe('Arrêter tue le groupe entier', { skip: process.platform === 'win32' ? 'groupes POSIX' : false }, () => {
   test('le petit-fils meurt avec la commande', async () => {
-    const proc = require('../src/proc');
+    const proc = require('../src/core/proc');
     const pidFichier = path.join(os.tmpdir(), `petit-fils-${process.pid}`);
     fs.rmSync(pidFichier, { force: true });
     const fixture = `const c = require('child_process').spawn('sleep', ['60'], { stdio: 'ignore' });

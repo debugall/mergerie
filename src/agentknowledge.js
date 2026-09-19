@@ -24,9 +24,9 @@ const copilot = require('./copilot');
 const git = require('./git');
 const notes = require('./notes');
 const protocol = require('./protocol');
-const glob = require('./glob');   // B7 : un chemin de carte peut porter une étoile
+const glob = require('./core/glob');   // B7 : un chemin de carte peut porter une étoile
 const { getConfig } = require('./config');
-const { agentsDir } = require('./paths');
+const { agentsDir } = require('./core/paths');
 const i18n = require('../public/i18n-runtime.js');
 const { t } = i18n;
 

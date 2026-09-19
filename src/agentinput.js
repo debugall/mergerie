@@ -15,7 +15,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('./db');
-const { ensureDir } = require('./paths');
+const { ensureDir } = require('./core/paths');
 const { t } = require('../public/i18n-runtime.js');
 
 const WORK_REL = 'ai-dev-tools-internal';

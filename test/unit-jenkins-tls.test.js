@@ -60,7 +60,7 @@ describe('Jenkins derrière un certificat auto-signé', { skip: dispo ? false : 
     for (const k of ['JENKINS_CA_CERT', 'JENKINS_INSECURE_TLS']) delete process.env[k];
     Object.assign(process.env, env);
     delete require.cache[require.resolve('../src/jenkins')];
-    delete require.cache[require.resolve('../src/httpreq')];
+    delete require.cache[require.resolve('../src/core/httpreq')];
     // eslint-disable-next-line global-require
     return require('../src/jenkins');
   };
@@ -103,6 +103,6 @@ describe('Jenkins derrière un certificat auto-signé', { skip: dispo ? false : 
   after(() => {
     for (const k of ['JENKINS_CA_CERT', 'JENKINS_INSECURE_TLS']) delete process.env[k];
     delete require.cache[require.resolve('../src/jenkins')];
-    delete require.cache[require.resolve('../src/httpreq')];
+    delete require.cache[require.resolve('../src/core/httpreq')];
   });
 });

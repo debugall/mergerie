@@ -1,10 +1,10 @@
 'use strict';
 const Database = require('better-sqlite3');
-const { DB_PATH, DEFAULT_CLONE_DIR, initDirs } = require('./paths');
+const { DB_PATH, DEFAULT_CLONE_DIR, initDirs } = require('./core/paths');
 
 initDirs();
 
-const { ulid, slugLibre } = require('./ulid');
+const { ulid, slugLibre } = require('./core/ulid');
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -1980,8 +1980,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS local_pref (
       "SELECT id, path FROM local_task_dir WHERE path IS NOT NULL AND path <> ''",
     ).all();
     if (aFaire.length) {
-      const { empreinte, libelle } = require('./dirhash');
-      const moi = require('./identite').nom() || null;
+      const { empreinte, libelle } = require('./core/dirhash');
+      const moi = require('./core/identite').nom() || null;
       /* `path` est `NOT NULL` depuis l'origine : on le gèle à la chaîne vide plutôt qu'à NULL,
          qui serait refusé. Vide veut dire « ce n'est plus ici qu'on lit le chemin ». */
       const poser = db.prepare("UPDATE local_task_dir SET dir_hash = ?, dir_label = ?, owner = COALESCE(owner, ?), path = '' WHERE id = ?");

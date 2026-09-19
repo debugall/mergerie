@@ -12,7 +12,7 @@ const crypto = require('crypto');
 const path = require('path');
 const copilot = require('./copilot');
 const agentsession = require('./agentsession');
-const { DATA_DIR, ensureDir } = require('./paths');
+const { DATA_DIR, ensureDir } = require('./core/paths');
 const { t } = require('../public/i18n-runtime.js');
 
 let running = false; // une exécution du banc d'essai à la fois

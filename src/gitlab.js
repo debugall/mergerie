@@ -4,7 +4,7 @@
 // on ne touche jamais au TLS global du process.
 
 const { t } = require('../public/i18n-runtime.js');
-const httpreq = require('./httpreq');
+const httpreq = require('./core/httpreq');
 
 // Agent TLS dédié aux requêtes GitLab (calculé une fois), scopé à ce client.
 const gitlabAgent = httpreq.makeAgentFactory('GITLAB_CA_CERT', 'GITLAB_INSECURE_TLS');

@@ -23,7 +23,7 @@ const agentpolicy = require('./agentpolicy');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
 const pieces = require('./pieces');
-const { TASKS_DIR, ensureDir } = require('./paths');
+const { TASKS_DIR, ensureDir } = require('./core/paths');
 const { t } = require('../public/i18n-runtime.js');
 
 const now = () => new Date().toISOString();
