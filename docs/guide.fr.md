@@ -2924,6 +2924,23 @@ Partager une **sous-page** emporte sa page mère, et cesser de partager une mèr
 sous-pages : une sous-page est nommée par sa mère, seule elle n'arriverait nulle part. L'écran le
 dit plutôt que de le faire en silence.
 
+**Ce qu'on partage dit par qui.** Une session, une question, une page ou une todo partagée porte
+la mention **« partagé par Claire »** — ou **« partagé par moi »** —, dans la liste comme dans
+l'éditeur. C'est celui qui l'a partagée, pas le dernier à l'avoir corrigée : une page que l'équipe
+annote reste celle de son auteur. Et c'est lui seul qui peut la **retirer** du partage ou la
+supprimer — l'effacer du dépôt l'effacerait chez tout le monde. La corriger reste ouvert à tous.
+
+**L'écran suit ce que l'équipe fait.** Quand une synchronisation apporte le travail d'un collègue
+— une merge request qu'il a reviewée, une todo qu'il a cochée, une page qu'il a complétée, un agent
+à approuver —, l'écran ouvert se met à jour de lui-même, compteurs et badges compris, sans
+recharger la page. Deux garde-fous empêchent qu'une mise à jour écrase ce qu'on est en train
+d'écrire :
+- **une page de notes ouverte** que le collègue a modifiée pendant qu'on écrivait ne s'enregistre
+  plus par-dessus sa version : un bandeau nomme l'auteur et propose **« Prendre sa version »** ou
+  **« Garder la mienne »** ; rien ne part tant qu'on n'a pas choisi ;
+- **le formulaire des réglages** n'envoie que les champs qu'on a réellement changés : resté ouvert,
+  il ne réécrit plus l'ancienne valeur d'un réglage d'équipe qu'un collègue vient de modifier.
+
 **Mettre une équipe en route.**
 
 1. **Créer un dépôt** sur la forge, privé, par exemple `equipe/mergerie-data`. Vide ou avec un

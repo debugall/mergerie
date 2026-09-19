@@ -3243,6 +3243,13 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
 .notes-editor { display: flex; flex-direction: column; gap: 10px; }
 .note-none { padding: 40px 0; text-align: center; }
 .note-editor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Conflit d'une page : au-dessus de l'éditeur, dans la couleur des avertissements (les deux thèmes
+   la redéfinissent). */
+.note-conflict { border: 1px solid var(--warn); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.note-conflict p { margin: 0 0 8px; }
+.note-conflict-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+/* « partagé par Claire » : discret, à côté du pictogramme de partage. */
+.auteur-partage { font-size: 12px; font-weight: normal; }
 /* « PARTAGER CETTE PAGE » : une case, dans la barre, à la hauteur des boutons. Elle ne crie
    pas — c'est un réglage de la page, pas une action — mais elle se voit quand elle est cochée :
    savoir d'un coup d'œil qu'on écrit sous les yeux de l'équipe change ce qu'on écrit. */

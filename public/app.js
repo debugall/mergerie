@@ -2790,9 +2790,70 @@ function marquerVerifEnCours(ids) {
 document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
 
 let copilotBinCourant = '';
+/* ---------- Ce qu'un collègue a changé, à l'écran ----------
+   La synchro met la base à jour ; la page, elle, n'en savait rien. Une merge request reviewée par
+   un collègue restait « à traiter » ici jusqu'au rechargement, ses compteurs avec. Le serveur
+   donne un numéro (`dataVersion`) qui avance quand une synchro pose ou retire des lignes : à
+   chaque changement, on recharge les compteurs et l'écran AFFICHÉ — les autres se chargent de
+   toute façon à l'ouverture. Rien de ce qu'on est en train d'écrire n'est touché : le formulaire
+   des réglages garde ses champs modifiés, la page de notes en cours de frappe passe par son
+   propre contrôle de conflit. */
+let versionDonneesVue = null;
+function suivreVersionDonnees(v) {
+  if (v === undefined || v === null) return;
+  if (versionDonneesVue === null) { versionDonneesVue = v; return; }
+  if (v === versionDonneesVue) return;
+  versionDonneesVue = v;
+  rafraichirApresSynchro().catch(() => { /* un écran qui ne se recharge pas n'est pas une panne */ });
+}
+async function rafraichirApresSynchro() {
+  const actif = (id) => { const t = $(`#tab-${id}`); return !!(t && t.classList.contains('active')); };
+  refreshCounts();
+  refreshOpenTodos();           // les pastilles de Notes
+  loadTasks();                  // compteurs des saveurs et badge de Dev IA, même onglet fermé
+  if (actif('review')) {
+    loadToReview();
+    if (currentSeg !== 'to_review') {
+      await loadReports(currentSeg);
+      if (selectedMr && !reportRows.some((m) => m.id === selectedMr)) {
+        // Le rapport ouvert a quitté ce stade (supprimé, rouvert, classé) : on ne le montre plus.
+        selectedMr = null; renderReportPlaceholder();
+      } else if (selectedMr) openReport(selectedMr, { keep: true });
+    }
+  }
+  if (actif('notes')) {
+    if (NOTES.sub === 'today') loadBrief();
+    if (NOTES.sub === 'todos') loadTodos();
+    if (NOTES.sub === 'pages') await rafraichirPagesApresSynchro();
+  }
+  if (actif('agents')) loadAgentList();
+  if (actif('dashboard')) loadDashboard();
+  if (actif('admin')) {
+    let sub = 'gitcfg';
+    try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { /* défaut */ }
+    try { (ADMIN_SUBS[sub] || loadConfig)(); } catch { /* best-effort */ }
+  }
+}
+/* La page ouverte : relue si personne n'y écrit. Si une frappe attend son enregistrement, c'est
+   lui qui découvrira le changement — et le dira (conflit), au lieu d'écraser l'un ou l'autre. */
+async function rafraichirPagesApresSynchro() {
+  await loadPages();
+  const p = NOTES.page;
+  if (!p) return;
+  if (pageSave && pageSave.id === p.id) return;
+  if (NOTES.conflit && NOTES.conflit.id === p.id) return;
+  let frais;
+  try { frais = await api(`/notes/${p.id}`); }
+  catch { NOTES.page = null; NOTES.pageId = null; renderPageEditor(); return; }   // supprimée ailleurs
+  if (!NOTES.page || NOTES.page.id !== p.id || String(frais.updated_at) === String(NOTES.page.updated_at)) return;
+  NOTES.page = frais;
+  renderPageEditor();
+}
+
 async function refreshStatus() {
   try {
     const s = await api('/status');
+    suivreVersionDonnees(s.dataVersion);
     // Le binaire configuré : c'est lui qui décide si un profil d'agent s'applique en entier
     // (claude) ou seulement par son modèle (copilot). L'éditeur le dit avant la sauvegarde.
     copilotBinCourant = s.copilotBin || '';
@@ -3052,6 +3113,8 @@ function appendLogLines(pane, lines) {
     const span = document.createElement('span');
     const cls = logLineClass(l.text);
     if (cls) span.className = cls;
+    // Le double-clic mène à la MR de la ligne : le serveur donne `mr_id`, encore fallait-il le poser.
+    if (l.mr_id) span.dataset.logMr = String(l.mr_id);
     span.textContent = l.text + '\n';
     frag.appendChild(span);
   }
@@ -3168,7 +3231,10 @@ async function pumpLog() {
   const wait = d.queued ? ` · ${tr('job.waiting', { n: d.queued })}` : '';
   /* Le bandeau décrit UN job — celui qui a son onglet actif. Avec plusieurs jobs en cours il
      mentirait par omission : on annonce donc combien tournent, l'onglet disant lequel on lit. */
-  const plusieurs = ids.length > 1 ? ` · ${tr('job.running-n', { n: ids.length, count: ids.length })}` : '';
+  /* Les onglets gardent aussi les jobs FINIS ou ARRÊTÉS : on ne compte que ceux qui tournent
+     encore, sinon « 2 jobs en cours » avec un seul job vivant. */
+  const vivants = ids.filter((id) => id === d.job_id ? running : !TERMINAL.has(LOGP.state.get(id))).length;
+  const plusieurs = vivants > 1 ? ` · ${tr('job.running-n', { n: vivants, count: vivants })}` : '';
   const label = running
     ? `${tr('job.in-progress', { done: d.done_count || 0, total: d.total || 0, message: d.message || '' })}${plusieurs}${wait}`
     : (d.status === 'done' ? (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare'))
@@ -3180,7 +3246,7 @@ async function pumpLog() {
   stopBtn.hidden = !running;
   /* Ce bouton arrête TOUT et vide la file. Tant qu'un seul job tournait, « le job en cours »
      était exact ; à plusieurs il faut le dire, sinon on croit n'arrêter que ce qu'on lit. */
-  stopBtn.title = ids.length > 1 ? tr('job.stop.all-title', { n: ids.length }) : tr('job.stop.one-title');
+  stopBtn.title = vivants > 1 ? tr('job.stop.all-title', { n: vivants }) : tr('job.stop.one-title');
   /* « Relancer » ne s'affiche que sur un job qui n'est pas allé au bout ET dont le serveur
      sait rejouer l'intention. Le bandeau disait « arrêté » et laissait deviner où cliquer. */
   const retry = $('#logRetry');
@@ -6650,6 +6716,7 @@ if (btnDataNow) btnDataNow.addEventListener('click', async () => {
     await api('/data-sync/now', { method: 'POST' });
     $('#dataSyncInfo').textContent = '';
     await chargerDataSync();
+    refreshStatus();   // ce que la synchro a apporté arrive à l'écran tout de suite
   } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
   finally { btn.disabled = false; }
 });
@@ -6709,6 +6776,7 @@ function bulleSync() {
       b.disabled = true;
       try { await api('/data-sync/now', { method: 'POST' }); } catch { /* hors ligne : l'état le dira */ }
       await rafraichirFooterSync();
+      refreshStatus();   // ce que la synchro a apporté arrive à l'écran tout de suite
       b.disabled = false;
     });
     /* Le compte à rebours ne bat que sous la souris (ou sous le focus clavier) : ouvrir la bulle
@@ -6839,14 +6907,15 @@ async function loadConfig() {
   syncReviewAutoMax();
   syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
+  configReference = corpsConfig(f);
   /* Ce qui vient du serveur n'est pas une modification : le rechargement qui suit un
      enregistrement effacerait sinon la mention qu'il vient tout juste de justifier. */
   marquerConfig(false);
   renderNotifSettings();
 }
-$('#configForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const f = e.target;
+/* CE QUE LE FORMULAIRE ENVERRAIT, champ par champ. Lu deux fois : au chargement (la référence)
+   et à l'enregistrement (ce qui a changé depuis). */
+function corpsConfig(f) {
   const body = {};
   /* UNE CASE À COCHER N'A PAS DE `.value` UTILE. `input[type=checkbox].value` vaut « on »
      qu'elle soit cochée ou non — c'est le nom HTML de la valeur ENVOYÉE par un formulaire
@@ -6874,6 +6943,21 @@ $('#configForm').addEventListener('submit', async (e) => {
   if (body.github_token === '***') delete body.github_token;
   if (body.jenkins_token === '***') delete body.jenkins_token;
   if (body.dictation_api_key === '***') delete body.dictation_api_key;
+  return body;
+}
+/* N'ENVOYER QUE CE QUI A CHANGÉ. Le formulaire renvoyait TOUS ses champs : resté ouvert pendant
+   qu'un collègue changeait un réglage d'équipe (reçu par la synchro), enregistrer un autre champ
+   réécrivait l'ancienne valeur par-dessus la sienne, sans un mot. La référence est ce que le
+   formulaire montrait en se chargeant. */
+let configReference = null;
+$('#configForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const complet = corpsConfig(f);
+  const body = {};
+  for (const [k, v] of Object.entries(complet)) {
+    if (!configReference || configReference[k] !== v) body[k] = v;
+  }
   try {
     await api('/config', { method: 'PUT', body });
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
@@ -6886,6 +6970,9 @@ $('#configForm').addEventListener('submit', async (e) => {
       : $('#sub-aisession').classList.contains('active') ? $('#configInfoAi')
       : $('#sub-dictation').classList.contains('active') ? $('#configInfoDictation')
       : $('#configInfo');
+    /* Ce qui vient de partir est la nouvelle référence : le rechargement qui suit peut s'abstenir
+       (frappe en cours), et remettre ensuite un champ à sa valeur d'avant ne partirait pas. */
+    configReference = complet;
     marquerConfig(false);   // avant la mention : elle porterait sinon la classe « non enregistré »
     f.dispatchEvent(new Event('mergerie:config-saved'));   // « Enregistrer et tester » enchaîne
     info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
@@ -9671,6 +9758,18 @@ function shareBtn(scope, t) {
     + ` title="${esc(tr(on ? 'session.unshare' : 'session.share'))}">`
     + `<svg class="ico"><use href="#i-users"/></svg></button>`;
 }
+/* QUI A PARTAGÉ. Tout objet qu'on a choisi de partager (session, question, page, todo) dit par
+   qui : l'auteur est celui qui a commité son fichier, donc connu dès la première synchro. Avant
+   elle, l'objet n'est parti de nulle part ailleurs que d'ici : c'est « moi ». */
+function texteAuteurPartage(o) {
+  if (!o || !(o.shared || o.author)) return '';
+  const moi = partageEtMoi && partageEtMoi.name;
+  return o.author && o.author !== moi ? tr('shared.by', { who: o.author }) : tr('shared.by-me');
+}
+const auteurPartage = (o) => {
+  const txt = texteAuteurPartage(o);
+  return txt ? ` <span class="auteur-partage muted">${esc(txt)}</span>` : '';
+};
 /* …et le pictogramme qui dit, sans cliquer, que cette session est chez tout le monde. */
 const shareMark = (t) => (t.shared
   ? ` <span class="note-partagee" title="${esc(tr('session.shared-mark'))}">${svgIco('users')}</span>` : '');
@@ -9920,7 +10019,7 @@ function coutCarte(t) {
   /* « par Claire » quand l'équipe partage un dépôt de données : le nom vient de git, celui qui
      a commité le fichier de la session. Rien à saisir, aucune colonne à tenir — et rien du tout
      en mono-poste, où « par moi » sur chaque carte n'apprendrait à personne. */
-  if (t && t.author) bouts.push(esc(tr('share.by', { name: t.author })));
+  if (t && (t.shared || t.author)) bouts.push(esc(texteAuteurPartage(t)));
   if (t && t.duration_ms) bouts.push(esc(dureeCourte(t.duration_ms)));
   if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
   /* LE COÛT EN DOLLARS, quand le backend l'annonce. Il était servi avec chaque session et
@@ -15376,6 +15475,13 @@ document.addEventListener('click', (e) => {
 /* `ou` : 'mine' (Mes tickets) ou 'watch' (Surveillés). Les deux sous-onglets ont leur propre
    liste et leur propre sélection — passer de l'un à l'autre ne doit pas déplacer le curseur
    de celui qu'on vient de quitter. */
+/* OUVRIR UN TICKET DEPUIS AILLEURS (note, todo, palette). Le ticket DEMANDÉ l'emporte sur « le
+   premier de ma liste » : ouvrir l'onglet charge mes tickets, et cette réponse, arrivée après,
+   remplaçait le ticket demandé par un autre. */
+function ouvrirTicketJira(key) {
+  JIRA.cible = key;
+  navTab('jira'); showJiraSub('mine'); selectJiraIssue(key, 'mine');
+}
 async function selectJiraIssue(key, ou = 'mine') {
   const surveille = ou === 'watch';
   const box = $(surveille ? '#jiraWatchDetail' : '#jiraDetail');
@@ -17615,7 +17721,7 @@ function ouvrirResultatPalette(r) {
     return;
   }
   if (n.mr_id) { navMrReport(n.mr_id); return; }
-  if (n.ticket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(n.ticket, 'mine'); return; }
+  if (n.ticket) { ouvrirTicketJira(n.ticket); return; }
   if (n.page_id) { navTab('notes'); showNotesSub('pages'); openNotePage(n.page_id); return; }
   if (n.todo_id) { navTab('notes'); showNotesSub('todos'); return; }
   /* Une session : on ouvre Dev IA sur la SAVEUR de cette session, sans quoi on atterrit sur
@@ -18098,7 +18204,37 @@ function listeCourante() {
   }
   return null;
 }
-const carteFocus = () => $('.card.focused');
+/* LA CARTE VISÉE SURVIT AU REDESSIN. Les listes se redessinent d'elles-mêmes (sondage, fin de
+   job, synchro, case cochée) et l'anneau partait avec l'ancien DOM : `x` cochait, puis un second
+   `x` ne trouvait plus rien à décocher. On retient donc l'identité de la carte visée, et on la
+   retrouve dans la liste redessinée. */
+let carteVisee = null;   // { liste: id du conteneur, id: data-id }
+/* …et l'anneau se REVOIT aussitôt la liste redessinée, pas seulement à la touche suivante :
+   sinon il disparaissait de l'écran à chaque rafraîchissement, alors que la carte restait visée. */
+(() => {
+  if (typeof MutationObserver !== 'function') return;
+  const obs = new MutationObserver((muts) => {
+    if (!carteVisee) return;
+    for (const m of muts) {
+      const liste = m.target.closest ? m.target.closest(`#${carteVisee.liste}`) : null;
+      if (liste && !liste.querySelector('.card.focused')) { carteFocus(); return; }
+    }
+  });
+  for (const id of ['toReviewList', 'reportList', 'taskList', 'localList', 'askList', 'lotList']) {
+    const el = document.getElementById(id);
+    if (el) obs.observe(el, { childList: true, subtree: true });
+  }
+})();
+function carteFocus() {
+  const c = $('.card.focused');
+  if (c) return c;
+  if (!carteVisee) return null;
+  const liste = document.getElementById(carteVisee.liste);
+  const retrouvee = liste && [...liste.querySelectorAll('.card[data-id]')].find((x) => x.dataset.id === carteVisee.id);
+  if (!retrouvee || retrouvee.offsetParent === null) return null;
+  retrouvee.classList.add('focused');
+  return retrouvee;
+}
 /* Le bouton d'une action SUR LA CARTE AU FOCUS — y compris quand il vit dans le menu « ⋯ »,
    présent dans le DOM même replié. On clique le BOUTON RENDU, jamais une route en double : ce
    qui est désactivé le reste (« Vérifier » sans vérificateur couvrant), et ce qui n'existe pas
@@ -18124,6 +18260,7 @@ function bougerFocusCarte(pas) {
   const next = cur === -1 ? (pas > 0 ? 0 : cartes.length - 1) : Math.min(cartes.length - 1, Math.max(0, cur + pas));
   cartes.forEach((c) => c.classList.remove('focused'));
   cartes[next].classList.add('focused');
+  carteVisee = cartes[next].dataset.id && liste.id ? { liste: liste.id, id: cartes[next].dataset.id } : null;
   cartes[next].scrollIntoView({ block: 'nearest' });
 }
 
@@ -18372,10 +18509,7 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (a.dataset.noteTicket) {
-    /* Le ticket DEMANDÉ l'emporte sur « le premier de ma liste » : ouvrir l'onglet charge mes
-       tickets, et cette réponse, arrivée après, remplaçait le ticket cliqué par un autre. */
-    JIRA.cible = a.dataset.noteTicket;
-    navTab('jira'); showJiraSub('mine'); selectJiraIssue(a.dataset.noteTicket, 'mine');
+    ouvrirTicketJira(a.dataset.noteTicket);
   }
 });
 
@@ -19033,7 +19167,7 @@ function renderTodos(rows) {
       ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
-        <div class="brief-item-title">${esc(t.title)}${t.shared ? ` <span class="note-partagee" title="${esc(tr('todo.shared-mark'))}">${svgIco('users')}</span>` : ''}</div>
+        <div class="brief-item-title">${esc(t.title)}${t.shared ? ` <span class="note-partagee" title="${esc(tr('todo.shared-mark'))}">${svgIco('users')}</span>${auteurPartage(t)}` : ''}</div>
         <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}${todoEtatTicket(t)}
           ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
@@ -19263,7 +19397,8 @@ let notePanesMode = (() => {
 async function loadPages() {
   const box = $('#pageList');
   if (!box) return;
-  await notesIndex();
+  // « partagé par moi » ou par un autre : il faut savoir qui l'on est.
+  await Promise.all([notesIndex(), partageActif().catch(() => null)]);
   const q = ($('#pageSearch') && $('#pageSearch').value) || '';
   try { NOTES.pages = (await api(`/notes?q=${encodeURIComponent(q)}`)).pages || []; }
   catch (e) { box.innerHTML = `<p class="err">${esc(explainError(e.message))}</p>`; return; }
@@ -19321,7 +19456,7 @@ function renderPageList(q) {
       : '<span class="note-fold-vide"></span>';
     return `<div class="note-row${sous ? ' note-sub' : ''}${sous && dernier ? ' note-sub-last' : ''}">${sous ? '' : pli}
       <button type="button" class="note-item${sous ? ' note-sub' : ''}${p.id === NOTES.pageId ? ' active' : ''}${p.contexte ? ' note-contexte' : ''}" data-page="${p.id}">
-        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}${p.shared ? ` <span class="note-partagee" title="${esc(tr('notes.page.shared-mark'))}">${svgIco('users')}</span>` : ''}</span>
+        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}${p.shared ? ` <span class="note-partagee" title="${esc(tr('notes.page.shared-mark'))}">${svgIco('users')}</span>${auteurPartage(p)}` : ''}</span>
         ${enfants.length && !deplie ? `<span class="note-item-count">${esc(String(enfants.length))}</span>` : ''}
         <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
       </button></div>`;
@@ -19391,8 +19526,11 @@ async function viderPageSave() {
   pageSave = null;
   const surCettePage = () => NOTES.page && NOTES.page.id === att.id;
   const dire = (cle, params) => { const el = $('#pageSaved'); if (el && surCettePage()) el.textContent = tr(cle, params); };
+  /* LA VERSION QU'ON A SOUS LES YEUX part avec la frappe : si la synchro en a apporté une autre
+     entre-temps, le serveur refuse au lieu d'écraser (voir le bandeau de conflit). */
+  const base = surCettePage() ? NOTES.page.updated_at : att.base;
   try {
-    const maj = await api(`/notes/${att.id}`, { method: 'PUT', body: { title: att.title, content: att.content } });
+    const maj = await api(`/notes/${att.id}`, { method: 'PUT', body: { title: att.title, content: att.content, base_updated_at: base } });
     const ligne = NOTES.pages.find((x) => x.id === att.id);
     if (ligne) { ligne.title = maj.title; ligne.updated_at = maj.updated_at; }
     /* On ne remet à jour l'état affiché que si c'est TOUJOURS cette page : sinon on
@@ -19400,8 +19538,53 @@ async function viderPageSave() {
     if (surCettePage()) NOTES.page = maj;
     dire('notes.page.saved');
     renderPageList(($('#pageSearch') && $('#pageSearch').value) || '');
-  } catch (e) { dire('notes.page.save-failed', { error: e.message }); }
+  } catch (e) {
+    if (e.code === 'PAGE_MODIFIEE' && e.data && e.data.page) {
+      NOTES.conflit = { id: att.id, mine: { title: att.title, content: att.content }, theirs: e.data.page, author: e.data.author || null };
+      dire('notes.page.save-failed', { error: e.message });
+      if (surCettePage()) afficherConflitPage();
+      return;
+    }
+    dire('notes.page.save-failed', { error: e.message });
+  }
 }
+
+/* LE CONFLIT D'UNE PAGE, À L'ÉCRAN. Deux gestes, et rien ne part tant qu'on n'a pas choisi :
+   prendre la version arrivée (la sienne est jetée), ou garder la sienne (elle remplace l'autre,
+   en connaissance de cause). */
+function afficherConflitPage() {
+  const c = NOTES.conflit;
+  const box = $('#pageEditor');
+  if (!box) return;
+  let el = $('#pageConflict');
+  if (!c || !NOTES.page || NOTES.page.id !== c.id) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'pageConflict'; el.className = 'note-conflict'; box.prepend(el); }
+  el.innerHTML = `<p><strong>${esc(c.author ? tr('notes.page.conflict', { who: c.author }) : tr('notes.page.conflict.anon'))}</strong>
+      <span class="muted">${esc(tr('notes.page.conflict.hint'))}</span></p>
+    <div class="note-conflict-acts">
+      <button type="button" class="btn btn-sm" data-conflit="theirs">${esc(tr('notes.page.conflict.theirs'))}</button>
+      <button type="button" class="btn btn-sm btn-primary" data-conflit="mine">${esc(tr('notes.page.conflict.mine'))}</button>
+    </div>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-conflit]');
+  if (!b || !NOTES.conflit) return;
+  const c = NOTES.conflit;
+  if (pageSave && pageSave.id === c.id) { clearTimeout(pageSave.timer); pageSave = null; }
+  try {
+    if (b.dataset.conflit === 'theirs') {
+      NOTES.page = await api(`/notes/${c.id}`);
+    } else {
+      // La dernière frappe l'emporte sur ce que le conflit avait figé.
+      const mine = ($('#pageContent') && NOTES.page && NOTES.page.id === c.id)
+        ? { title: $('#pageTitle').value, content: $('#pageContent').value } : c.mine;
+      NOTES.page = await api(`/notes/${c.id}`, { method: 'PUT', body: { ...mine, base_updated_at: c.theirs.updated_at } });
+    }
+    NOTES.conflit = null;
+    renderPageEditor();
+    loadPages();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 // Une page supprimée n'a plus rien à recevoir : on jette sa sauvegarde au lieu de la vider.
 function oublierPageSave(id) {
@@ -19433,7 +19616,7 @@ function renderPageEditor() {
             personne à qui partager. */''}
       <label id="pageShare" class="note-share" title="${esc(tr('notes.page.share-title'))}" hidden>
         <input type="checkbox" id="pageShareBox"${p.shared ? ' checked' : ''} />
-        <span>${esc(tr('notes.page.share'))}</span>
+        <span>${esc(tr('notes.page.share'))}</span>${auteurPartage(p)}
       </label>
       ${/* B6 — UNE NOTE DEVIENT UNE SESSION. La page « Bug du tunnel de paiement » est écrite
             en réunion, avec sa capture collée. Pour la faire corriger : copier le texte,
@@ -19574,7 +19757,7 @@ function renderPageEditor() {
   const planifier = () => {
     marquer('notes.page.saving');
     if (pageSave) clearTimeout(pageSave.timer);
-    pageSave = { id: p.id, title: $('#pageTitle').value, content: $('#pageContent').value, timer: null };
+    pageSave = { id: p.id, title: $('#pageTitle').value, content: $('#pageContent').value, timer: null, base: p.updated_at };
     pageSave.timer = setTimeout(viderPageSave, 1000);
   };
   $('#pageContent').addEventListener('input', () => {
@@ -19642,6 +19825,7 @@ function renderPageEditor() {
       annuler: async () => { await loadPages(); await openNotePage(idPage); },
     });
   });
+  afficherConflitPage();   // un conflit en cours survit au redessin de l'éditeur
 }
 
 $('#pageNew') && $('#pageNew').addEventListener('click', async () => {
@@ -22093,6 +22277,10 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+  /* Une touche déjà traitée ailleurs (Entrée sur un chip de branche copie son nom) ne repart pas
+     en raccourci global : `stopPropagation` n'arrête pas un autre écouteur du même `document`,
+     et Entrée lançait en prime l'action de la carte visée — la review d'une autre MR. */
+  if (e.defaultPrevented) return;
   // pas de raccourci global quand une vue plein écran ou une modale est ouverte
   if (!$('#splitView').hidden) return;
   if ($$('.modal').some((m) => !m.hidden)) return;
@@ -22170,7 +22358,9 @@ document.addEventListener('keydown', (e) => {
     }
     case 'j': e.preventDefault(); bougerFocusCarte(1); break;
     case 'k': e.preventDefault(); bougerFocusCarte(-1); break;
-    case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); } break; }
+    /* L'action principale de la carte visée — et, pour un rapport, qui n'a pas de bouton
+       principal, l'ouvrir : c'est ce que fait un clic sur la carte. */
+    case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); else if (c.closest('#reportList')) c.click(); } break; }
     case 'd': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('[data-diff]'); if (b) b.click(); } break; }
     /* LE RESTE DU RAIL AU CLAVIER. `j/k/Entrée/d` existaient ; traiter vingt merge requests
        demandait quand même la souris pour vérifier, ouvrir le contexte, classer ou cocher.
@@ -22180,7 +22370,7 @@ document.addEventListener('keydown', (e) => {
     case 'c': { const b = boutonDeCarte('[data-ticket]'); if (b) { e.preventDefault(); b.click(); } break; }
     case 'm': { const b = boutonDeCarte('[data-done]'); if (b) { e.preventDefault(); b.click(); } break; }
     case 'x': { const b = boutonDeCarte('.mr-pick'); if (b) { e.preventDefault(); b.click(); } break; }
-    case 'Escape': { const c = carteFocus(); if (c) c.classList.remove('focused'); break; }
+    case 'Escape': { const c = carteFocus(); if (c) c.classList.remove('focused'); carteVisee = null; break; }
     default: break;
   }
 });
@@ -23768,9 +23958,16 @@ function renderLots() {
    brief celui qui était en train de lire un rapport. Le réglage vit en base (il vaut pour
    l'outil), la date du dernier affichage en localStorage (elle vaut pour ce navigateur). */
 (function restoreTab() {
+  /* UNE ADRESSE D'OBJET L'EMPORTE : `ouvrirDepuisAdresse()` y mène. Restaurer le dernier onglet —
+     ou poser le brief du matin — par-dessus ouvrait le rapport dans un onglet caché, et le
+     clic de restauration effaçait même l'adresse. On décide tout comme d'habitude (le brief est
+     compté vu), on ne clique simplement pas. Une adresse mal formée, elle, ne mène nulle part :
+     l'écran habituel s'ouvre. */
+  const lienObjet = /^#\/(reviews\/\d+|notes\/\d+|sessions\/(\d+|[a-z]+\/\d+))$/.test(String(window.location.hash || ''));
   let tab = 'review';
   try { tab = localStorage.getItem('aidevtools_tab') || 'review'; } catch { /* ignore */ }
   const atterrir = () => {
+    if (lienObjet) return;
     const btn = $(`nav button[data-tab="${tab}"]`);
     // Masqué depuis la dernière visite : on n'ouvre pas un écran dont le menu a disparu.
     if (btn && btn.hidden) { const premier = boutonsNav().find((x) => !x.hidden); if (premier) { premier.click(); return; } }
@@ -23792,6 +23989,7 @@ function renderLots() {
        brief est le bon écran d'accueil À PARTIR DU DEUXIÈME JOUR, pas à la première seconde. */
     if (!(c.gitlab_url && c.access_token)) { atterrir(); return; }
     marquerBriefVu();
+    if (lienObjet) return;
     tab = 'notes';
     atterrir();
     /* APRÈS le clic, et pas avant : ouvrir l'onglet appelle `loadNotes()`, qui restaure le

@@ -353,6 +353,11 @@ const REGISTRE = [
     table: 'review', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['mr_id'],
     chemin: 'reviews/{forge}/{project}/{iid}/review.json',
     fusion: 'last-writer', locales: ['md_path', 'explanation_path', 'diff_path'],
+    // Le fichier est nommé par sa merge request : c'est par elle qu'on retrouve la review retirée.
+    ligneDuChemin: (db, v) => db.prepare(`SELECT review.rowid AS r, review.* FROM review
+      JOIN mr ON mr.id = review.mr_id JOIN repo ON repo.id = mr.repo_id
+      WHERE COALESCE(repo.forge, 'gitlab') = ? AND repo.project = ? AND mr.iid = ?`)
+      .get(v.forge, v.project, Number(v.iid)),
     note: 'la review courante d’une MR : les chemins pointent les fichiers de la version, recalculés ici',
     commitMessage: (r, ctx) => `review ${ctx ? ctx.mrRef(r.mr_id) || '' : ''}`.trim(),
     toFile: (r, ctx) => {

@@ -2717,7 +2717,9 @@
          rendent la densité tenable — et rien à l'écran ne les annonçait : personne ne les
          trouvait. Le bandeau du bas est le seul endroit présent sur les dix onglets. -->
     <button id="footerHelp" class="footer-mode" type="button" title="Raccourcis clavier (?)" data-i18n-title="context.title.raccourcis-clavier">?</button>
-    <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau" data-i18n-title="context.title.mode-d-affichage-du-bandeau" data-i18n="context.btn.live">live</button>
+    <!-- Libellé et bulle posés par `setMode` (app.js) : un `data-i18n` ici les réécrivait en
+         « live » après coup, même en mode stats. -->
+    <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau">live</button>
     <button id="footerHide" class="footer-hide" type="button" title="Masquer le bandeau" data-i18n-title="context.title.masquer-le-bandeau">✕</button>
 </footer>
 <button id="footerShow" class="footer-show" type="button" title="Afficher le bandeau de télémétrie" data-i18n-title="context.title.afficher-le-bandeau-de-telemetrie" hidden><svg class="ico ico-sm"><use href="#i-zap"/></svg></button>

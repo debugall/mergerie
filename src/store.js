@@ -991,6 +991,10 @@ function upsert(table, row) {
  * Hydrate une liste de fichiers (chemins relatifs). Un fichier absent du disque est traité
  * comme supprimé. Rend un compte-rendu : ce qui est entré, ce qui est parti, ce qui manque.
  */
+/* LE NUMÉRO DES DONNÉES REÇUES. Il avance quand une hydratation a posé ou retiré des lignes :
+   `/api/status` le sert, et la page, qui l'interroge toutes les quelques secondes, sait ainsi
+   qu'un collègue a changé quelque chose — sans lui, rien à l'écran ne suivait une synchro. */
+let versionDonnees = 0;
 function hydraterFichiers(relatifs) {
   const ctx = contexte();
   const bilan = { ecrits: 0, supprimes: 0, orphelins: [] };
@@ -1173,6 +1177,8 @@ function hydraterFichiers(relatifs) {
      nettoyer. */
   db.exec('DELETE FROM store_sale');
   db.exec('DELETE FROM store_menage');
+  // Les écrans ouverts se rafraîchissent sur ce numéro (voir `versionDonnees`).
+  if (bilan.ecrits || bilan.supprimes) versionDonnees += 1;
   /* …et on remet ce qui attendait avant nous. Une ligne écrite entre-temps par l'hydratation
      elle-même porte le même (tbl, rid) que sa version d'avant : la remettre ne coûte qu'une
      réécriture d'octets identiques, là où l'oublier perdrait le fichier. */
@@ -1196,16 +1202,25 @@ function supprimerLigne(e, table, relatif) {
   const m = motifDe(e).exec(canonique(e, relatif));
   if (!m) return false;
   const champs = (e.chemin.match(/\{(\w+)\}/g) || []).map((x) => x.slice(1, -1));
-  const colonnes = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
-  const conditions = [];
-  const valeurs = [];
-  champs.forEach((c, i) => {
-    if (!colonnes.has(c) || m[i + 1] === undefined) return;
-    conditions.push(`${c} = ?`);
-    valeurs.push(m[i + 1]);
-  });
-  if (!conditions.length) return false;
-  const cible = db.prepare(`SELECT rowid AS r, * FROM ${table} WHERE ${conditions.join(' AND ')}`).get(...valeurs);
+  let cible;
+  if (e.ligneDuChemin) {
+    /* Un fichier nommé par SON PARENT (`review.json`, par sa merge request) : l'entrée du
+       registre dit comment retrouver la ligne. Sans elle, un rapport supprimé chez un collègue
+       survivait ici, ouvrable, à côté d'une merge request repassée « à traiter ». */
+    const valeursChemin = Object.fromEntries(champs.map((c, i) => [c, m[i + 1]]));
+    cible = e.ligneDuChemin(db, valeursChemin);
+  } else {
+    const colonnes = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    const conditions = [];
+    const valeurs = [];
+    champs.forEach((c, i) => {
+      if (!colonnes.has(c) || m[i + 1] === undefined) return;
+      conditions.push(`${c} = ?`);
+      valeurs.push(m[i + 1]);
+    });
+    if (!conditions.length) return false;
+    cible = db.prepare(`SELECT rowid AS r, * FROM ${table} WHERE ${conditions.join(' AND ')}`).get(...valeurs);
+  }
   if (!cible) return false;
   /* UN FICHIER ABSENT PARCE QU'ON L'A VOULU N'EST PAS UNE SUPPRESSION. Décocher « partager »
      retire la page du dépôt ; le commit qui la retire revient ensuite par l'hydratation, et
@@ -1255,3 +1270,4 @@ module.exports.validerDocument = validerDocument;
 module.exports.upsert = upsert;
 module.exports.hydraterFichiers = hydraterFichiers;
 module.exports.hydraterTout = hydraterTout;
+module.exports.versionDonnees = () => versionDonnees;

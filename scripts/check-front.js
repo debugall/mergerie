@@ -159,7 +159,9 @@ orphanFields.length
    première et oublier la seconde donne exactement le défaut que le contrôle n°8 existe pour
    attraper — la case se coche, l'écran dit « enregistré », et rien n'est parti. On vérifie
    donc que chaque nom exempté est bien cité des DEUX côtés. */
-const submitBloc = (app.match(/#configForm'\)\.addEventListener\('submit'[\s\S]*?\n\}\);/) || [''])[0];
+// Le submit lit ses champs dans `corpsConfig` (il n'envoie que ce qui a changé) : les deux comptent.
+const submitBloc = (app.match(/#configForm'\)\.addEventListener\('submit'[\s\S]*?\n\}\);/) || [''])[0]
+  + (app.match(/function corpsConfig\(f\)[\s\S]*?\n\}\n/) || [''])[0];
 const loadBloc = (app.match(/async function loadConfig\(\)[\s\S]*?\n\}\n/) || [''])[0];
 const demiCables = [];
 for (const name of HANDLED_APART) {

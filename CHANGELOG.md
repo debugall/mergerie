@@ -20,6 +20,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   author whether there is anything urgent without opening the report. And the variables are now
   **listed under the field**, where you look while typing, instead of hiding in a tooltip.
 
+- **The screen follows your team's work after a sync.** A merge request a teammate reviewed
+  moves from “To review” to “Reviewed” on your open screen, with its counters and menu badge; the
+  same goes for an open report, todos, notes pages, questions, agents, verifiers, review rules,
+  team settings and stats — with the manual sync buttons and with automatic sync alike, without
+  reloading the page.
+- **Shared items say who shared them**: “shared by Claire” or “shared by me” on sessions,
+  questions, notes pages and todos.
+- **An open notes page no longer overwrites a teammate's edit.** If a sync brought their version
+  while you were typing, a banner names them and lets you take their version or keep yours;
+  nothing is saved until you choose.
+
 ### Changed
 
 - **Code contributions are closed.** Mergerie is written by one maintainer, who stays its only
@@ -76,6 +87,25 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **Docker: “Put in the grid” appears for a local project again** — the server call behind it
   always failed.
 - **Links: the copy button of a grid cell can be clicked** — it sat under the edit pencil.
+
+- **Activity: “Retry” is offered on a failed or stopped job**, as in the log banner, and
+  double-clicking a log line opens the merge request it is about. The banner counts only the jobs
+  still running (“2 jobs running” with one stopped and one running).
+- **A pasted link wins over the last tab and over the morning brief**: the object opens in front,
+  instead of in a hidden Reviews tab.
+- **Keyboard: Enter opens the selected report**, and Enter on a branch chip only copies its name —
+  it also started the review of another merge request. The palette opens a watched ticket
+  instead of the first of your list. The footer's “stats” mode is shown correctly after a reload.
+- **Sync: a push refused at every attempt (protected branch, read-only access) is reported**
+  instead of showing “up to date” forever, and a new sync cadence applies without a restart.
+- **Sharing: only its author can unshare or delete a shared note page or todo** — from a
+  colleague's machine it removed the file from the shared repository, for everyone. Editing
+  stays open to the team, as before.
+
+- **Settings: saving no longer writes back a team setting a teammate changed meanwhile** — the
+  form now sends only the fields you changed.
+- **Sync: a review report deleted by a teammate is deleted here too**; it survived, still
+  openable, next to a merge request back in “To review”.
 
 ### Security
 

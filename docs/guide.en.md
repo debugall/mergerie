@@ -2832,6 +2832,22 @@ setup, and the list marks with a glyph the pages that are on everyone's machine.
 sub-page is named by its parent, and on its own it would arrive nowhere. The screen says so
 rather than doing it quietly.
 
+**What you share says by whom.** A shared session, question, page or todo carries **“shared by
+Claire”** — or **“shared by me”** — in the list and in the editor. That is whoever shared it, not the
+last person to edit it: a page the team annotates stays its author's. Only they can **unshare** or
+delete it — removing it from the repository would remove it for everyone. Editing stays open to
+all.
+
+**The screen follows what the team does.** When a sync brings in a teammate's work — a merge
+request they reviewed, a todo they ticked, a page they completed, an agent to approve —, the open
+screen updates by itself, counters and badges included, without reloading the page. Two
+safeguards keep an update from overwriting what you are writing:
+- **an open notes page** the teammate changed while you were typing is no longer saved over their
+  version: a banner names the author and offers **“Take their version”** or **“Keep mine”**;
+  nothing leaves until you choose;
+- **the settings form** only sends the fields you actually changed: left open, it no longer writes
+  back the old value of a team setting a teammate just changed.
+
 **Getting a team started.**
 
 1. **Create a repository** on the forge, private, say `team/mergerie-data`. Empty or with a

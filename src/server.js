@@ -298,6 +298,8 @@ const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).ca
     error: e.message, ...(e.code ? { code: e.code } : {}),
     // CONFIG_AGENT : ce qu'il faut montrer, et ce qu'il faut renvoyer pour dire « j'ai vu ».
     ...(e.code === 'CONFIG_AGENT' ? { files: e.fichiers || [], empreinte: e.empreinte || null } : {}),
+    // Ce que l'écran doit montrer pour décider (la version actuelle d'une page, son auteur…).
+    ...(e.extra && typeof e.extra === 'object' ? e.extra : {}),
   });
 });
 
@@ -386,6 +388,9 @@ app.get('/api/status', wrap((req, res) => {
        attente est exactement ce qu'on doit voir sans ouvrir l'onglet : l'agent continue de
        travailler sur l'ANCIENNE carte tant que personne ne relit la nouvelle. */
     agentsPending: (db.prepare("SELECT COUNT(*) c FROM agent_knowledge WHERE status = 'pending'").get() || {}).c || 0,
+    /* LE NUMÉRO DES DONNÉES REÇUES D'UNE SYNCHRO : quand il change, la page recharge l'écran
+       affiché — un collègue a reviewé, coché, écrit. Voir `store.versionDonnees`. */
+    dataVersion: store.versionDonnees(),
   });
 }));
 
@@ -1816,8 +1821,12 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.github_token === '***') delete patch.github_token;
   if (patch.jenkins_token === '***') delete patch.jenkins_token;
   if (patch.dictation_api_key === '***') delete patch.dictation_api_key;
+  const avant = getConfig();
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
+  /* La cadence de synchro s'applique tout de suite, comme celle du rafraîchissement : la boucle
+     gardait l'ancienne jusqu'au redémarrage, pendant que l'écran annonçait la nouvelle. */
+  if (String(avant.data_sync_seconds) !== String(c.data_sync_seconds)) datasync.demarrer();
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
@@ -2612,7 +2621,10 @@ function auteurs(table, rows) {
     const c = store.cheminSur(table, r);
     if (c) chemins.set(r.id, c);
   }
-  const parFichier = datasync.auteursDe([...new Set(chemins.values())]);
+  /* Une page ou une todo partagée se corrige à plusieurs : son auteur est celui qui l'a PARTAGÉE
+     (le premier à avoir écrit son fichier), pas le dernier à l'avoir touchée. Sinon une
+     correction de Claire faisait d'elle l'autrice de ma page — et m'interdisait de la retirer. */
+  const parFichier = datasync.auteursDe([...new Set(chemins.values())], { createur: table === 'note_page' || table === 'todo' });
   return new Map([...chemins].map(([id, c]) => [id, parFichier.get(c) || null]));
 }
 
@@ -5890,7 +5902,7 @@ app.get('/api/jobs/history', wrap((req, res) => {
      plusieurs jobs tournent de front, le cas est courant. Un job non terminé est classé sur son
      démarrage — c'est bien l'activité en cours, donc en tête. */
   const rows = db.prepare(`SELECT id, kind, status, total, done_count, message, started_at, finished_at,
-    target_kind, target_id, current_mr_id FROM job
+    target_kind, target_id, current_mr_id, retry FROM job
     ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?`).all(limit);
 
   /* Le libellé de l'objet est résolu ICI : le front n'a en mémoire que les listes qu'il affiche,
@@ -5929,7 +5941,9 @@ app.get('/api/jobs/history', wrap((req, res) => {
     /* A40 — LA RAISON D'UN ÉCHEC, et s'il se rejoue. `message` était renvoyé et jamais rendu :
        l'historique disait « erreur » sans dire laquelle, et il fallait ouvrir le journal
        ligne à ligne. `can_retry` évite d'afficher un bouton qui répondrait 400. */
-    return { ...j, label, href, can_retry: jobs.canRetry(j) };
+    // `retry` sert à `canRetry` (sans lui, jamais de bouton « Relancer ») ; la spec n'a pas à sortir.
+    const { retry, ...ligne } = j;
+    return { ...ligne, label, href, can_retry: jobs.canRetry(j) };
   });
   // `latest` = plus grand id vu, pas le premier de la liste : l'ordre d'affichage n'est plus
   // celui des ids, et un curseur pris sur la tête raterait un job plus récent classé plus bas.
@@ -6090,8 +6104,19 @@ const msgNotes = () => ({
   soiMeme: t('err.notes.parent-self'),
 });
 
+/* QUI A PARTAGÉ. L'auteur d'un objet partagé est celui qui a commité son fichier (git le sait,
+   voir `auteurs`) : on le sert pour les pages et les todos comme pour les sessions, sur la ligne
+   COMPLÈTE — la liste des pages ne porte pas le slug qui nomme le fichier. */
+function auteursPartages(table, lignes, relire) {
+  const partagees = lignes.filter((x) => x.shared);
+  if (!partagees.length) return new Map();
+  return auteurs(table, partagees.map((x) => relire(x.id)).filter(Boolean));
+}
+
 app.get('/api/notes', wrap((req, res) => {
-  res.json({ pages: notes.listerPages(req.query.q) });
+  const pages = notes.listerPages(req.query.q);
+  const parQui = auteursPartages('note_page', pages, notes.lirePage);
+  res.json({ pages: pages.map((p) => ({ ...p, author: parQui.get(p.id) || null })) });
 }));
 
 app.post('/api/notes', wrap((req, res) => {
@@ -6135,14 +6160,39 @@ app.get('/api/notes/:id', wrap((req, res) => {
   /* Ses sous-pages, et le titre de son parent si c'en est une : l'écran a besoin des deux
      pour se situer, et un second aller-retour par page ouverte se verrait à la frappe. */
   const parent = page.parent_id ? notes.lirePage(page.parent_id) : null;
-  res.json({ ...page, children: notes.sousPages(page.id), parent_title: parent ? parent.title : null });
+  res.json({
+    ...page, children: notes.sousPages(page.id), parent_title: parent ? parent.title : null,
+    author: page.shared ? auteurDeLigne('note_page', page) : null,
+  });
 }));
 
+/* NE PLUS PARTAGER OU SUPPRIMER UNE PAGE, UNE TODO PARTAGÉES : l'auteur seul, comme pour les
+   sessions. Ces deux gestes retirent le fichier du dépôt, donc de chez tout le monde — depuis le
+   poste d'un collègue, c'était effacer son travail. Le modifier reste permis : c'est un wiki. */
+function exigerAuteurSiRetrait(table, row, body) {
+  if (!row || !row.shared) return;
+  if (body === null || ('shared' in body && !body.shared)) exigerProprietaire(table, row);
+}
+
 app.put('/api/notes/:id', wrap((req, res) => {
-  res.json(notes.majPage(req.params.id, req.body || {}, msgNotes()));
+  const { base_updated_at: base, ...corps } = req.body || {};
+  const avant = notes.lirePage(req.params.id);
+  exigerAuteurSiRetrait('note_page', avant, corps);
+  /* LA PAGE A-T-ELLE CHANGÉ DEPUIS QUE L'ÉDITEUR L'A CHARGÉE ? Une synchro a pu apporter la
+     version d'un collègue pendant qu'on écrivait : l'autosauvegarde l'écrasait alors en
+     silence. L'éditeur envoie la date de ce qu'il a sous les yeux ; différente, on refuse et on
+     rend la version actuelle — c'est à la personne de choisir, pas à l'ordre des requêtes. */
+  if (base && avant && String(avant.updated_at) !== String(base)) {
+    throw Object.assign(new Error(t('err.notes.changed')), {
+      status: 409, code: 'PAGE_MODIFIEE',
+      extra: { page: avant, author: auteurDeLigne('note_page', avant) },
+    });
+  }
+  res.json(notes.majPage(req.params.id, corps, msgNotes()));
 }));
 
 app.delete('/api/notes/:id', wrap((req, res) => {
+  exigerAuteurSiRetrait('note_page', notes.lirePage(req.params.id), null);
   // Les lignes partent en cascade ; les FICHIERS, eux, resteraient sur le disque.
   const dossier = path.join(NOTES_DIR, String(Number(req.params.id) || 0));
   const out = notes.supprimerPage(req.params.id, msgNotes());
@@ -6256,9 +6306,11 @@ app.get('/api/todos', wrap((req, res) => {
   const todos = notes.listerTodos(req.query.status);
   const etats = etatMrDesTodos(todos);
   const tickets = etatTicketDesTodos(todos);
+  const parQui = auteursPartages('todo', todos, (id) => todos.find((x) => x.id === id));
   res.json({
     todos: todos.map((x) => ({
       ...x,
+      author: parQui.get(x.id) || null,
       mr: x.link_kind === 'mr' ? (etats[Number(x.link_ref)] || null) : null,
       ticket: x.link_kind === 'ticket' ? (tickets[String(x.link_ref || '').toUpperCase()] || null) : null,
     })),
@@ -6287,10 +6339,12 @@ app.put('/api/todos/:id', wrap((req, res) => {
     body.due_at = quand;
     delete body.snooze;
   }
+  exigerAuteurSiRetrait('todo', db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(req.params.id) || 0), body);
   res.json(notes.majTodo(req.params.id, body, msgNotes()));
 }));
 
 app.delete('/api/todos/:id', wrap((req, res) => {
+  exigerAuteurSiRetrait('todo', db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(req.params.id) || 0), null);
   res.json(notes.supprimerTodo(req.params.id, msgNotes()));
 }));
 

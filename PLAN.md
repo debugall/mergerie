@@ -369,6 +369,14 @@ partout.
   inversés** par rapport à un merge — c'est `--ours` qui désigne la version d'en face. Les
   conflits sont regroupés **par objet**, pas par fichier : l'utilisateur a modifié une page, pas
   deux fichiers.
+- **L'écran suit la synchro** : `store.versionDonnees()` avance à chaque hydratation qui pose ou
+  retire des lignes, `/api/status` le sert (`dataVersion`), et la page recharge compteurs et écran
+  affiché quand il change. Une page de notes s'enregistre avec la date de ce qu'elle affiche
+  (`base_updated_at`) : différente, 409 `PAGE_MODIFIEE` et le choix à l'écran. Le formulaire des
+  réglages n'envoie que ses champs modifiés.
+- **Auteur d'un partage** = premier à avoir écrit le fichier (`local_state` `author/first`, relu
+  par `git log --diff-filter=A`), pas le dernier : une page corrigée par l'équipe reste à qui l'a
+  partagée, et lui seul peut la retirer ou la supprimer.
 - **Identité = identité git** (`src/identite.js`). Sans `user.name`, rien n'est commité, et
   l'écran le dit : un historique dont l'auteur est « unknown » ne répond pas à la seule question
   qu'on lui pose.
