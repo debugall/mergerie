@@ -20,7 +20,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const RACINE = path.resolve(__dirname, '..');
-const { PROMPTS, ANCIENS_PROMPTS } = require('../src/prompts');
+const { PROMPTS, ANCIENS_PROMPTS } = require('../src/core/prompts');
 
 // La table `config` telle qu'elle était, avec le champ et les gabarits à trous.
 const ANCIEN = `

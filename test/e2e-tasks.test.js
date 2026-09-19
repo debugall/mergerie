@@ -20,7 +20,7 @@ describe('Sessions de dev de bout en bout', () => {
   const poignees = (table, scope, ou, ...args) => app.db
     .prepare(`SELECT uid FROM ${table} WHERE ${ou}`).all(...args)
     // eslint-disable-next-line global-require
-    .map((r) => require('../src/localsession').lire(scope, r.uid));
+    .map((r) => require('../src/data/localsession').lire(scope, r.uid));
 
 
   before(async () => {
@@ -81,7 +81,7 @@ describe('Sessions de dev de bout en bout', () => {
      travail. Confondre les deux renvoyait la session en erreur sans diff ni bouton « Créer la
      MR », alors que le code était là. C'est `aheadOf` qui les sépare. */
   test('une branche qui porte déjà le travail est reconnue comme telle', async () => {
-    const gitmod = require('../src/git');
+    const gitmod = require('../src/git/git');
     const dir = fs.mkdtempSync(path.join(app.dataDir, 'ahead-'));
     const r = makeRemoteRepo(dir, { branch: 'feature/deja-fait' });
     const work = path.join(dir, 'work');
@@ -818,7 +818,7 @@ describe('Sessions de dev de bout en bout', () => {
      présent sur le projet. Tout tient donc à ce que la création range bien l'identifiant —
      c'est ce qui est vérifié ici, plus le refus de ce qui passerait pour un flag. */
   test('session existante fournie à la création : rangée sur chaque projet', async () => {
-    const { backendName } = require('../src/agentsession');
+    const { backendName } = require('../src/agent/session');
     const id = backendName() === 'claude'
       ? '6ba7b810-9dad-11d1-80b4-00c04fd430c8'
       : '/home/moi/.mergerie/agent-sessions/deja-la';

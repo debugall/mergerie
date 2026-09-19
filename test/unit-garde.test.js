@@ -5,7 +5,7 @@
    GitHub, `github_url` vide vaut l'hôte WEB `https://github.com`, pas l'API. */
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { jetonFraisRequis } = require('../src/garde');
+const { jetonFraisRequis } = require('../src/core/garde');
 
 describe('jetonFraisRequis', () => {
   test('GitHub vide puis « https://github.com » tapé : même hôte, pas de jeton à retaper', () => {

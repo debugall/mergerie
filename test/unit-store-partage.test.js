@@ -33,9 +33,9 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    agentprofile = require('../src/agentprofile');
-    agentknowledge = require('../src/agentknowledge');
+    store = require('../src/data/store');
+    agentprofile = require('../src/agent/profile');
+    agentknowledge = require('../src/agent/knowledge');
     const now = new Date().toISOString();
     repoId = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, ?)`).run(now).lastInsertRowid;
@@ -163,7 +163,7 @@ describe('store — une session ne part que si on la coche', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     repoId = db.prepare("SELECT id FROM repo WHERE project = 'acme/web'").get().id;
   });
 

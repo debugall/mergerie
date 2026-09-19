@@ -88,7 +88,7 @@ describe('Rattraper la branche de départ', () => {
   const nbJobsTask = () => app.db.prepare("SELECT COUNT(*) n FROM job WHERE kind = 'task'").get().n;
   const clone = () => {
     const repo = app.db.prepare('SELECT * FROM repo WHERE id = ?').get(repoId);
-    return require('../src/git').cloneDirFor(app.db.prepare('SELECT * FROM config WHERE id = 1').get(), repo);
+    return require('../src/git/git').cloneDirFor(app.db.prepare('SELECT * FROM config WHERE id = 1').get(), repo);
   };
 
   test('les commits de la session repassent AU-DESSUS de la branche de départ', async () => {

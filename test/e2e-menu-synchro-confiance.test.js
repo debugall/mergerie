@@ -150,7 +150,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
     })).body;
     const cible = app.db.prepare('SELECT uid FROM task_target WHERE task_id = ?').get(tache.id);
     // eslint-disable-next-line global-require
-    const localsession = require('../src/localsession');
+    const localsession = require('../src/data/localsession');
     localsession.ecrire('task_target', cible.uid, {
       session_key: SECRETS.session_key, session_backend: 'claude', session_cwd: path.join(app.dataDir, 'CWD-DE-CE-POSTE'),
     });

@@ -10,7 +10,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-dock
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const docker = require('../src/docker');
+const docker = require('../src/integrations/docker');
 
 describe('Docker — drift .env (effectif vs attendu)', () => {
   test('diff nominatif : ajoutée / modifiée, valeur visible', () => {
@@ -320,7 +320,7 @@ describe('front : filtre d’état des services Docker', () => {
 /* UN SECRET SE RECONNAÎT AUSSI À SA VALEUR. `DATABASE_URL` n'a rien de sensible dans son nom et
    porte `postgres://app:motdepasse@…` : le drift et la commande reconstituée le montraient. */
 describe('secrets reconnus à leur valeur', () => {
-  const d = require('../src/docker');
+  const d = require('../src/integrations/docker');
   test('identifiants d’URL, préfixes de jetons, chaîne aléatoire : masqués', () => {
     for (const v of ['postgres://app:motdepasse@db/x', 'ghp_abcdefghijklmnop', 'glpat-xyz', 'sk-proj-abc', 'Zx8vK2mQp9LrT4wY7nB3cJ6hF1sD5gA0']) {
       assert.equal(d.isSecretValue(v), true, v);

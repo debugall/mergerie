@@ -31,9 +31,9 @@ describe('Import du dépôt partagé : ce qui vient d’ailleurs', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    approbation = require('../src/approbation');
-    ({ SHARED_DIR } = require('../src/paths'));
+    store = require('../src/data/store');
+    approbation = require('../src/data/approbation');
+    ({ SHARED_DIR } = require('../src/core/paths'));
     fs.mkdirSync(SHARED_DIR, { recursive: true });
     repoId = db.prepare("INSERT INTO repo (forge, project, url) VALUES ('gitlab', 'eq/api', 'https://gitlab.test/eq/api.git')").run().lastInsertRowid;
     store.rafraichir('repo', repoId);

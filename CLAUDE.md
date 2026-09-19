@@ -8,19 +8,35 @@
   `wireCombo`; multiple choice (checkbox list, table) → a filter that *hides* rows without
   unticking anything. `npm run check` fails when one disappears.
 
-- **GitLab and GitHub, repository by repository** (`repo.forge`). Never call `src/gitlab.js` or
-  `src/github.js` from another module: go through `src/forge.js` (`clientFor(repo)`). Same
-  interface, same normalized shapes on both.
+- **GitLab and GitHub, repository by repository** (`repo.forge`). Never call `src/forge/gitlab.js`
+  or `src/forge/github.js` from another module: go through `src/forge/index.js` (`clientFor(repo)`).
+  Same interface, same normalized shapes on both. `npm run check` fails on a direct import.
+
+- **`src/` is layered, and the direction is checked** (`scripts/check-deps.js`, part of
+  `npm run check`): `app → jobs → session · review · verify · agent · notes · integrations →
+  forge · git · data · db → core`. A folder imports its own layer or a lower one; `core/` imports
+  nothing else; nothing imports `app/` but `server.js`; `jobs/` is imported by `app/` and by
+  `agent/profile/lancer.js` only; a dependency cycle fails the check. An exception is declared in
+  that script with its reason, never tolerated silently. **Move a file with
+  `node scripts/move-module.js <old> <new>`** (it `git mv`s and rewrites every `require`,
+  including `require.resolve`); a `__dirname`-based path is the one thing it cannot fix. A test
+  that reads a module as text finds it through `test/helpers/sources.js`, never by a hard-coded
+  path. A file over 600 code lines warns, over 1 200 fails, exceptions named in
+  `scripts/check-server.js` and only ever removed. A route file holds HTTP and nothing else:
+  a helper shared by two route files goes to `src/app/lib/`, a piece of business logic to the
+  module that owns it.
 
 - **A new settings field lives in three places**; `npm run check` fails on each omission:
   `#configForm` (`public/index.html`); `CONFIG_FIELDS` (`public/app.js`), the whitelist load and
   save both iterate — missing there, the field displays, accepts input and is silently never
-  saved; and **twice** in `src/config.js`, `ALLOWED` (what the server accepts) *and* the
+  saved; and **twice** in `src/data/config.js`, `ALLOWED` (what the server accepts) *and* the
   `UPDATE config SET` statement (what it writes) — missing the second, the route answers 200,
   the screen says "saved", the value is nowhere.
 
-- **A migration in `src/db.js` (`try { db.exec('ALTER TABLE x …') } catch {}`) sits AFTER the
-  `CREATE TABLE x` it patches.** Before it, it throws on a table that does not exist yet and the
+- **A migration in `src/db/schema/` (`try { db.exec('ALTER TABLE x …') } catch {}`) sits AFTER
+  the `CREATE TABLE x` it patches** — in the slice that created the table, or in a later slice,
+  never an earlier one (`src/db/index.js` lists the slices in the order they run; `npm run check`
+  reads them as one text). Before it, it throws on a table that does not exist yet and the
   empty `catch` swallows it: the column then exists only where the table predated the migration —
   works on your database, breaks on a fresh one. The same `catch {}` hides an SQL typo, so check
   the column on a **brand new** database, never on `data-demo/`:
@@ -85,9 +101,9 @@
   already-stopped instance and waits forever for `listening`, so the file times out instead of
   failing — it reads like a hang. Several `describe` blocks share one app and one browser.
 
-- **Nothing from `src/` loads before `MERGERIE_DATA_DIR` is set.** `src/paths.js` reads it **at
+- **Nothing from `src/` loads before `MERGERIE_DATA_DIR` is set.** `src/core/paths.js` reads it **at
   load time**, once; unset, `DATA_DIR` falls back to the project's `data/` — **the live database
-  of the instance on port 4319** — and `db.js`, the in-process test server and every write a test
+  of the instance on port 4319** — and `db/`, the in-process test server and every write a test
   makes follow it there.
   - **In a test file**, a top-level `require('../src/…')` runs BEFORE `startApp()` sets the
     variable: require inside `before()`, after `startApp()`, keeping the top of the file to

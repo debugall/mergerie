@@ -8,7 +8,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const agentargs = require('../src/agentargs');
+const agentargs = require('../src/agent/args');
 
 describe('agentargs : options → argv', () => {
   test('sans options, aucun argument — l’argv d’une session ordinaire ne bouge pas', () => {

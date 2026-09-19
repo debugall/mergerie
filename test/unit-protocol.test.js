@@ -9,7 +9,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const protocol = require('../src/protocol');
+const protocol = require('../src/agent/protocol');
 
 describe('protocol : extraire', () => {
   test('un bloc en fin de réponse est extrait, et retiré du Markdown affiché', () => {

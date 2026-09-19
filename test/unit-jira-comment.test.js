@@ -11,7 +11,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 
-const jira = require('../src/jira.js');
+const jira = require('../src/integrations/jira.js');
 
 function serveur(collecte) {
   return new Promise((resolve) => {

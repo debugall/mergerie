@@ -14,7 +14,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-demo
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const demoDiff = require('../src/demo-diff');
+const demoDiff = require('../src/demo/diff');
 
 const MR = {
   iid: 207, project: 'groupe/api-core',

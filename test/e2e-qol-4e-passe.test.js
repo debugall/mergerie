@@ -90,7 +90,7 @@ describe('Qualité de vie · 4ᵉ passe', () => {
   /* C25 — les noms de conteneurs se dictent tous les jours ; ils s'écrivaient de travers.
      On ne sonde pas Docker pour autant : on lit ce que le badge de santé a déjà vu. */
   test('le vocabulaire de dictée sait lire les noms de conteneurs déjà vus', () => {
-    const docker = require('../src/docker');
+    const docker = require('../src/integrations/docker');
     assert.deepEqual(docker.nomsConnus(), [], 'rien tant que Docker n’a pas été regardé');
     assert.doesNotThrow(() => docker.nomsConnus());
   });

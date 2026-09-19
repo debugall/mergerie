@@ -16,7 +16,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'links-uni
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const links = require('../src/links');
+const links = require('../src/notes/links');
 const db = require('../src/db');
 
 /* Une case porte une LISTE d'adresses ({id, label, url}). Quand seul le contenu importe, on

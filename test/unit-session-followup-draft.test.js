@@ -17,12 +17,12 @@ const path = require('node:path');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const lire = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
+const { lireSource: lire, lireDossier } = require('./helpers/sources');
 
 describe('le suivi en attente ne part pas tout seul', () => {
   test('aucun module parlant à l’agent ne connaît la colonne', () => {
     const fautifs = [];
-    for (const f of ['taskrunner.js', 'localcoder.js', 'converge.js', 'copilot.js']) {
+    for (const f of ['session/taskrunner', 'session/localcoder', 'review/converge', 'agent/copilot']) {
       lire(f).split('\n').forEach((ligne, i) => {
         if (/followup_(draft|auto)/.test(ligne)) fautifs.push(`src/${f}:${i + 1}  ${ligne.trim()}`);
       });
@@ -31,12 +31,12 @@ describe('le suivi en attente ne part pas tout seul', () => {
       'ces modules construisent ce qui part à l’agent : un suivi en attente n’a rien à y faire');
   });
 
-  /* `jobs.js` est le seul module de la chaîne autorisé à lire la colonne, parce que c'est lui
+  /* `jobs/` est le seul module de la chaîne autorisé à lire la colonne, parce que c'est lui
      qui enchaîne la fin d'une session. Encore faut-il qu'il ne la lise QUE là : une lecture
-     ailleurs dans le fichier serait un second chemin d'envoi, qui n'aurait pas la garde de la
+     ailleurs dans le dossier serait un second chemin d'envoi, qui n'aurait pas la garde de la
      case ni le retrait du texte avant lancement. */
-  test('dans jobs.js, elle n’est lue que par la fonction qui décide de l’envoi', () => {
-    const src = lire('jobs.js');
+  test('dans jobs/, elle n’est lue que par la fonction qui décide de l’envoi', () => {
+    const src = lireDossier('jobs');
     const debut = src.indexOf('function suiviAutomatique(');
     assert.ok(debut > 0, 'la fonction d’envoi automatique doit exister sous ce nom');
     const fin = src.indexOf('\n}', debut);
@@ -45,7 +45,7 @@ describe('le suivi en attente ne part pas tout seul', () => {
     const dehors = [];
     src.split('\n').forEach((ligne, i) => {
       if (!/followup_(draft|auto)/.test(ligne)) return;
-      if (!dedans.includes(ligne)) dehors.push(`src/jobs.js:${i + 1}  ${ligne.trim()}`);
+      if (!dedans.includes(ligne)) dehors.push(`src/jobs/ (ligne ${i + 1} du dossier concaténé)  ${ligne.trim()}`);
     });
     assert.deepEqual(dehors, [],
       'un second chemin d’envoi n’aurait ni la garde de la case ni le retrait du texte : il bouclerait');

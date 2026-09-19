@@ -13,7 +13,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const mock = require('./helpers/mock-jenkins');
-const jenkins = require('../src/jenkins');
+const jenkins = require('../src/integrations/jenkins');
 
 describe('Client Jenkins', () => {
   let srv;

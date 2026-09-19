@@ -18,13 +18,13 @@ process.env.MERGERIE_DATA_DIR = DEMO_DIR;
 fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base propre
 
 const db = require('../src/db');
-const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/paths');
+const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/core/paths');
 /* LE MÊME DIFF DES DEUX CÔTÉS. L'aperçu d'une carte lit `demo-diff.js` en direct, mais la vue
    plein écran d'un rapport relit le `diff.patch` écrit ici : deux diffs différents pour une
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
    numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
-const { diffPour } = require('../src/demo-diff');
-const agentpassDemo = require('../src/agentpass');
+const { diffPour } = require('../src/demo/diff');
+const agentpassDemo = require('../src/agent/pass');
 initDirs();
 
 /* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
@@ -756,7 +756,7 @@ const LOCAL_PASSES = {
    montré à l'écran reste fictif (`/home/moi/dev/backup-tool`) ; celui qu'on écrit vraiment
    vit sous `data-demo/`, effacé et refait à chaque semis. Semer un patch à la main aurait
    fabriqué une forme cousine de la vraie, qui aurait fini par en diverger. */
-const localsnapshot = require('../src/localsnapshot');
+const localsnapshot = require('../src/session/localsnapshot');
 const DOSSIERS_DEMO = path.join(DEMO_DIR, 'dossiers-demo');
 const aSemer = [];
 
@@ -1364,8 +1364,8 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
    avec un chemin non vérifié, un écart signalé par un run, une version en attente de
    validation, et un run déclenché par un HORAIRE — l'état qu'aucun clic ne produit. */
 {
-  const agentprofile = require('../src/agentprofile');
-  const { agentsDir } = require('../src/paths');
+  const agentprofile = require('../src/agent/profile');
+  const { agentsDir } = require('../src/core/paths');
   agentprofile.seedBuiltins();
 
   const doc = db.prepare("SELECT * FROM agent WHERE builtin_key = 'librarian'").get();
@@ -1592,9 +1592,9 @@ const counts = {
    montée de version), PUIS un collègue ajoute une commande : elle attend. */
 {
   // eslint-disable-next-line global-require
-  const approbation = require('../src/approbation');
+  const approbation = require('../src/data/approbation');
   // eslint-disable-next-line global-require
-  const { getConfig } = require('../src/config');
+  const { getConfig } = require('../src/data/config');
   const e2eId = db.prepare(`INSERT INTO verifier
     (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
     VALUES (?, 'commands', '', ?,?,?,1,?)`).run('e2e navigateur (démo)', 900, 0, 0, at(9)).lastInsertRowid;

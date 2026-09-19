@@ -24,7 +24,7 @@ const { startApp } = require('./helpers/app');
 /* LES MODULES DE `src/` SE CHARGENT APRÈS `startApp()`, JAMAIS EN TÊTE DE FICHIER.
  *
  * `paths.js` lit `MERGERIE_DATA_DIR` AU CHARGEMENT, et c'est `startApp()` qui le pose. Un
- * `require('../src/veille')` en tête de fichier charge donc toute la chaîne — jusqu'à `db.js` —
+ * `require('../src/integrations/veille')` en tête de fichier charge donc toute la chaîne — jusqu'à `db.js` —
  * sur le dossier `data/` du projet, c'est-à-dire sur la base de PRODUCTION : le serveur de test
  * s'y connecte ensuite, la configuration du faux GitLab y est écrite, et les lignes fabriquées
  * par les tests s'y accumulent. Ce fichier l'a fait, et il a fallu réparer la base à la main.
@@ -53,10 +53,10 @@ describe('Veille de fond', () => {
     app = await startApp();
     await app.configure();
     /* eslint-disable global-require */
-    veille = require('../src/veille');
-    docker = require('../src/docker');
-    jenkins = require('../src/jenkins');
-    notify = require('../src/notify');
+    veille = require('../src/integrations/veille');
+    docker = require('../src/integrations/docker');
+    jenkins = require('../src/integrations/jenkins');
+    notify = require('../src/core/notify');
     /* eslint-enable global-require */
     vraiStatus = docker.status; vraiListe = docker.listContainers;
     vraiDetail = jenkins.detail; vraiConfigure = jenkins.isConfigured;
@@ -190,7 +190,7 @@ describe('Veille de fond', () => {
     });
 
     test('sans relevé Docker, le brief n’affirme rien', async () => {
-      const brief = require('../src/brief');
+      const brief = require('../src/notes/brief');
       assert.equal(brief.construire({}).docker, null, 'pas de section plutôt qu’un « 0 conteneur tombé » qui n’a rien regardé');
       const avec = brief.construire({ dockerDown: { at: '2026-09-12T08:00:00Z', containers: [{ name: 'api', state: 'exited' }] } });
       assert.equal(avec.docker.containers.length, 1);

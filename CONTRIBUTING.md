@@ -129,10 +129,17 @@ For the curious, and for anyone maintaining a fork — the rules the maintainer 
 - User-visible changes go in **[CHANGELOG.md](./CHANGELOG.md)**, under `## [Unreleased]`, in the
   `Added` / `Changed` / `Fixed` section that fits, written for the person who uses the tool — what
   changed and why it matters — not as a copy of the commit message.
-- Mergerie talks to **two forges** (GitLab and GitHub). `src/gitlab.js` and `src/github.js` are never
-  called directly from another module: everything goes through `src/forge.js` (`clientFor(repo)`).
-  Both clients expose the same interface and return the same normalized shapes, and a feature that
-  touches a forge is covered on both (`test/e2e-*.test.js` and `test/e2e-github.test.js`).
+- Mergerie talks to **two forges** (GitLab and GitHub). `src/forge/gitlab.js` and
+  `src/forge/github.js` are never called directly from another module: everything goes through
+  `src/forge/index.js` (`clientFor(repo)`). Both clients expose the same interface and return the
+  same normalized shapes, and a feature that touches a forge is covered on both
+  (`test/e2e-*.test.js` and `test/e2e-github.test.js`).
+- `src/` is **layered by folder** — `app/` (HTTP only), `jobs/`, then `session/`, `review/`,
+  `verify/`, `agent/`, `notes/`, `integrations/`, then `forge/`, `git/`, `data/`, `db/`, and
+  `core/` at the bottom — and `npm run check` refuses an import that goes up, a dependency cycle,
+  or a file that outgrows 1 200 lines of code. The map of every module is in
+  [PLAN.md](./PLAN.md); a file moves with `node scripts/move-module.js`, which rewrites the
+  `require`s for you.
 - Every commit is **signed off** under the [Developer Certificate of Origin](./DCO) (`git commit -s`),
   certifying that its author wrote the change and has the right to submit it under the project's
   licence.

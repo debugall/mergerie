@@ -80,7 +80,7 @@ describe('Commentaires inline en attente', () => {
        celles de l'autre. Ce qui est le produit, c'est le commentaire POSTÉ. */
     for (const d of await liste()) await app.api('DELETE', `/api/mrs/${mrId}/comment-drafts/${d.id}`);
     await creer('remarque pas encore envoyée', 1);
-    const store = require('../src/store');
+    const store = require('../src/data/store');
     store.ecouler();
     const mr = app.db.prepare('SELECT mr.iid, repo.forge, repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?').get(mrId);
     const fichier = store.lireFichier(`mrs/${mr.forge}/${mr.project}/${mr.iid}.json`);

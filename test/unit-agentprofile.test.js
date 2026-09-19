@@ -21,9 +21,9 @@ process.env.MERGERIE_CLAUDE_HOME = path.join(tmp, 'home');
 // eslint-disable-next-line import/order
 const db = require('../src/db');
 // eslint-disable-next-line import/order
-const agentprofile = require('../src/agentprofile');
+const agentprofile = require('../src/agent/profile');
 // eslint-disable-next-line import/order
-const agentdefaults = require('../src/agentdefaults');
+const agentdefaults = require('../src/agent/defaults');
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 

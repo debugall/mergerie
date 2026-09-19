@@ -8,7 +8,7 @@
  */
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { verifierArgs } = require('../src/gitpalette');
+const { verifierArgs } = require('../src/git/gitpalette');
 
 const args = (s) => s.split(/\s+/).filter(Boolean);
 
