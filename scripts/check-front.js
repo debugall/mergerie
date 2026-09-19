@@ -16,7 +16,7 @@
    en lisant les fichiers dans l'ordre du manifeste. */
 const fs = require('fs');
 const path = require('path');
-const { PUBLIC, lireHtml, manifeste, scriptsApp, lirePublic } = require('../test/helpers/front');
+const { PUBLIC, lireHtml, morceauxHtml, manifeste, scriptsApp, lirePublic } = require('../test/helpers/front');
 
 const ROOT = path.join(__dirname, '..');
 const html = lireHtml();
@@ -410,7 +410,8 @@ function tousLes(dir, ext, out = []) {
 }
 
 /* (a) LE MANIFESTE ET LE DISQUE COÏNCIDENT. Un fichier de `js/`, `css/`, `i18n/` ou `runtime/`
-   qui n'est pas cité est un écran mort en silence — le pendant du « nouveau fichier non
+   qui n'est pas cité est un écran mort en silence — et un morceau de `html/` que la coquille
+   n'inclut pas (`<!--@include html/…-->`), un onglet ou une modale absents de la page servie — le pendant du « nouveau fichier non
    `git add`-é » de la relecture CI ; une balise qui vise un fichier absent est un 404 que seul
    le navigateur voit. Cité UNE fois : deux fois, un script s'évalue deux fois et un `const`
    en double arrête tout. Les exceptions sont nommées, avec ce qui les charge à la place. */
@@ -423,21 +424,23 @@ function tousLes(dir, ext, out = []) {
     ...tousLes(path.join(PUBLIC, 'js'), '.js'), ...tousLes(path.join(PUBLIC, 'i18n'), '.js'),
     ...tousLes(path.join(PUBLIC, 'runtime'), '.js'), ...tousLes(path.join(PUBLIC, 'css'), '.css'),
   ];
-  const cites = [...man.scripts, ...man.styles];
+  const morceaux = morceauxHtml();
+  surDisque.push(...tousLes(path.join(PUBLIC, 'html'), '.html'));
+  const cites = [...man.scripts, ...man.styles, ...morceaux];
   const compte = new Map();
   for (const c of cites) compte.set(c, (compte.get(c) || 0) + 1);
   const soucis = [];
   for (const f of surDisque) {
     const n = compte.get(f) || 0;
     if (n === 0 && !HORS_MANIFESTE[f]) soucis.push(`${nomDe(f)}  sur le disque, absent du manifeste — jamais chargé`);
-    if (n > 1) soucis.push(`${nomDe(f)}  cité ${n} fois dans index.html — évalué ${n} fois`);
+    if (n > 1) soucis.push(`${nomDe(f)}  cité ${n} fois dans index.html — ${f.startsWith('html/') ? 'inclus' : 'évalué'} ${n} fois`);
     if (n && HORS_MANIFESTE[f]) soucis.push(`${nomDe(f)}  cité dans le manifeste alors qu'il est ${HORS_MANIFESTE[f]}`);
   }
-  for (const c of cites) if (!existe(c)) soucis.push(`public/index.html  <${c.endsWith('.css') ? 'link' : 'script'}> vise /${c}, qui n'existe pas`);
+  for (const c of cites) if (!existe(c)) soucis.push(`public/index.html  <${c.endsWith('.css') ? 'link' : c.endsWith('.html') ? '!--@include' : 'script'}> vise /${c}, qui n'existe pas`);
   for (const [f, pourquoi] of Object.entries(HORS_MANIFESTE)) if (!existe(f) && existe(path.dirname(f))) soucis.push(`${nomDe(f)}  nommé hors manifeste (${pourquoi}) mais absent du disque — retirer l'exception`);
   soucis.length
     ? fail('Le manifeste et le disque ne coïncident pas', soucis)
-    : ok(`Le manifeste et le disque coïncident (${man.scripts.length} scripts, ${man.styles.length} feuilles, ${Object.keys(HORS_MANIFESTE).filter(existe).length} hors manifeste nommés)`);
+    : ok(`Le manifeste et le disque coïncident (${man.scripts.length} scripts, ${man.styles.length} feuilles, ${morceaux.length} morceaux de page, ${Object.keys(HORS_MANIFESTE).filter(existe).length} hors manifeste nommés)`);
 }
 
 /* (e) `'use strict';` EN TÊTE DE CHAQUE FICHIER. La directive en tête d'`app.js` couvrait

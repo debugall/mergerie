@@ -1,0 +1,679 @@
+    <section id="tab-admin" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <!-- L'ORDRE SUIT LE PARCOURS, et non l'ordre dans lequel les fonctionnalités ont été
+                 écrites : connecter (Git) → choisir le code (Dépôts) → régler la review (Merge
+                 Request, Règles, Vérificateurs) → régler l'outil (Notifications, Général) → les
+                 intégrations optionnelles (Jira, Jenkins) → le banc d'essai. « Règles de review »
+                 ouvrait la barre alors que son contenu ne s'applique à rien tant qu'aucun dépôt
+                 n'est suivi, et l'onboarding envoie lui-même son étape 1 sur Git. -->
+            <button data-sub="gitcfg" class="active" role="tab" title="Connexion GitLab et GitHub, dossier de clonage et palette de commandes git" data-i18n-title="settings.title.git" data-i18n="settings.sub.git">Git</button>
+            <button data-sub="repos" role="tab" title="Les dépôts dont tu suis les merge requests, et tes répertoires locaux" data-i18n-title="settings.title.depots" data-i18n="settings.btn.depots">Dépôts</button>
+            <button data-sub="mr" role="tab" title="Review, rafraîchissement des MR, convergence et templates de prompt" data-i18n-title="settings.title.merge-request" data-i18n="settings.sub.mr">Merge Request</button>
+            <button data-sub="rules" role="tab" title="Critères ajoutés au prompt de review selon le nom de branche" data-i18n-title="settings.title.criteres-ajoutes-au-prompt-de" data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</button>
+            <button data-sub="verifiers" role="tab" title="Scripts qui rendent un verdict objectif sur une merge request : tests, intégration" data-i18n-title="settings.verifier.tab-title" data-i18n="settings.sub.verifiers">Vérificateurs</button>
+            <button data-sub="notif" role="tab" title="Notifications bureau : quels événements déclenchent une notification système" data-i18n-title="settings.title.notifications-bureau" data-i18n="settings.sub.notif">Notifications</button>
+            <button data-sub="config" role="tab" title="Apparence, langue, brief du matin, conservation des données et zone dangereuse" data-i18n-title="settings.title.general" data-i18n="settings.btn.general">Général</button>
+            <button data-sub="datasync" role="tab" title="Le dépôt git où l'équipe partage son travail accumulé" data-i18n-title="datasync.sub-title" data-i18n="datasync.head">Données partagées</button>
+            <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
+            <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
+            <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
+            <button data-sub="dictation" role="tab" title="Dicter dans n'importe quel champ de texte, avec le vocabulaire de tes dépôts" data-i18n-title="settings.title.dictation" data-i18n="settings.sub.dictation">Dictée vocale</button>
+        </div>
+
+        <!-- Sous-onglet : Vérificateurs (vérification objective) -->
+        <div id="sub-verifiers" class="subtab">
+            <h2 data-i18n="settings.sub.verifiers">Vérificateurs</h2>
+            <p class="muted" style="max-width:760px" data-i18n-html="settings.verifier.intro">Un vérificateur donne à une merge request un verdict qui n'est pas un avis. Deux familles : une <strong>liste de commandes</strong> (<code>npm ci</code>, <code>npm test</code>), rejouée dans chaque dépôt qu'elle couvre — rien à écrire, le verdict vient des codes de sortie —, ou <strong>ton script</strong>, qui reçoit tous les dépôts d'un coup et rend un verdict JSON, forme d'un vrai test d'intégration. Dans les deux cas Mergerie fait tout le git, lance <strong>sans shell</strong> avec un environnement minimal, et n'exécute jamais rien depuis le dépôt cloné.</p>
+
+
+            <!-- LE PLAFOND ET SON INTERRUPTEUR DANS LE MÊME ÉCRAN. « Vérifications
+                 automatiques — plafond par découverte » vivait dans Réglages → Merge Request,
+                 pendant que la case qui les déclenche (« Lancer sur toute nouvelle merge
+                 request des dépôts couverts ») vit ici, dans chaque vérificateur. On réglait
+                 une limite sans voir ce qu'elle limitait. Le champ appartient toujours à
+                 #configForm : un seul /config, un seul enregistrement. -->
+            <div class="form form-plafond" style="max-width:520px">
+                <h3 data-i18n="settings.verifier.group.auto">Vérifications automatiques</h3>
+                <label><span data-i18n="settings.lbl.verif-auto-max">Au plus N vérifications automatiques par recherche de MR</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verif-auto-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="verif_auto_max" type="number" min="0" max="50" step="1" placeholder="5" />
+                </label>
+                <label><span data-i18n="settings.lbl.verif-auto-authors">Lancer automatiquement sur les merge requests de</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verif-auto-authors" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="verif_auto_authors">
+                        <option value="mine" data-i18n="settings.opt.verif-auto-authors.mine">Moi seulement</option>
+                        <option value="all" data-i18n="settings.opt.verif-auto-authors.all">Tous les auteurs du projet</option>
+                    </select>
+                </label>
+                <div class="form-actions">
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <span id="configInfoVerif" class="muted"></span>
+                </div>
+            </div>
+
+            <div class="toolbar">
+                <button id="btnNewVerifier" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="verify.verifier.btn.add">Ajouter un vérificateur</span></button>
+            </div>
+            <form id="verifierForm" class="form" style="max-width:860px" hidden>
+                <input type="hidden" name="id" />
+                <label><span data-i18n="settings.verifier.lbl.name">Nom</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="name" required placeholder="ex. intégration" data-i18n-placeholder="settings.verifier.ph.name" />
+                </label>
+                <!-- « SUR QUOI ? » EST LA DEUXIÈME QUESTION, pas la onzième. Ce bloc était le
+                     dernier du formulaire, après le chemin d'un rapport JUnit : on décidait des
+                     commandes avant de savoir sur quels dépôts elles tourneraient, et un
+                     vérificateur sans dépôt s'enregistrait en silence — il n'apparaissait
+                     ensuite dans aucune modale de lancement. -->
+                <h3 data-i18n="settings.verifier.repos" class="req">Dépôts couverts</h3>
+                <p class="muted" data-i18n="settings.verifier.repos.help">Déclarer un dépôt dit que ce vérificateur sait le tester. Seuls les dépôts effectivement visés par une vérification lui sont mis à disposition.</p>
+                <p class="muted" id="verifierRepoHint"></p>
+                <div id="verifierRepoBox"></div>
+                <div id="verifierCommandsBlock">
+                    <label><span data-i18n="settings.verifier.lbl.commands">Commandes, dans l'ordre</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.commands" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                    <div id="verifierCommandList"></div>
+                    <p><button type="button" class="btn" id="btnAddCommand"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.verifier.btn.add-command">Ajouter une commande</span></button></p>
+                    <!-- CE QUE LES DÉPÔTS SAVENT DÉJÀ LANCER. Les scripts de `package.json`,
+                         de `composer.json` et les cibles du Makefile sont lus sur le clone,
+                         sans réseau et sans rien exécuter. On clique, on ne recopie pas. -->
+                    <div id="verifierSuggestions" class="vc-sugg" hidden></div>
+
+                </div>
+
+                <label><span data-i18n="settings.verifier.lbl.timeout">Délai maximum (secondes)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.timeout" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="timeout_s" type="number" min="10" step="10" placeholder="900" />
+                </label>
+                <h3 data-i18n="settings.verifier.when">Quand lancer</h3>
+                <label class="inline-check"><input name="auto_on_mr" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto">Lancer sur toute nouvelle merge request des dépôts couverts</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.auto" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input name="auto_on_stale" type="checkbox" /> <span data-i18n="settings.verifier.lbl.auto-stale">Relancer quand une merge request vérifiée reçoit de nouveaux commits</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.auto-stale" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input name="comment_on_forge" type="checkbox" /> <span data-i18n="settings.verifier.lbl.comment">Publier le verdict en commentaire sur la merge request</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <!-- Le gabarit n'a de sens que si l'on publie : il apparaît avec la case. -->
+                <div id="verifierCommentBlock" hidden>
+                    <label><span data-i18n="settings.verifier.lbl.mentions">Personnes à prévenir quand ça casse</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.mentions" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input name="mentions" autocomplete="off" placeholder="@amady @bruno ou @mon-groupe" data-i18n-placeholder="settings.verifier.ph.mentions" />
+                    </label>
+                    <label><span data-i18n="settings.verifier.lbl.comment-template">Gabarit du commentaire</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.comment-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <textarea name="comment_template" rows="6" spellcheck="false"></textarea>
+                    </label>
+                    <p class="field-note" data-i18n="settings.verifier.comment-template.fields">Ce que contient chaque champ, tel qu'il sera remplacé à l'envoi :</p>
+                    <dl id="verifierCommentFields" class="champs-gabarit"></dl>
+                    <p class="field-note" data-i18n="settings.verifier.comment-template.empty">Laissé vide, c'est le gabarit par défaut qui sert.</p>
+                    <!-- REPLIÉ : l'aperçu répond à « ça donne quoi ? », une question qu'on ne se
+                         pose qu'une fois. Ouvert par défaut, il pousserait le formulaire vers le bas
+                         à chaque visite. Il est composé par le moteur, avec des données d'exemple. -->
+                    <details id="verifierCommentPreview" class="apercu-gabarit">
+                        <summary data-i18n="settings.verifier.comment-template.preview">Voir un exemple de commentaire</summary>
+                        <p class="field-note" data-i18n="settings.verifier.comment-template.preview-note">Composé avec des données d'exemple (deux dépôts, deux tests cassés), par le même moteur que le vrai commentaire.</p>
+                        <pre id="verifierCommentPreviewBody" class="verify-log"></pre>
+                    </details>
+                    <p><button type="button" class="btn btn-sm" id="btnCommentTemplateDefaut" data-i18n="settings.verifier.comment-template.reset">Repartir du gabarit par défaut</button></p>
+                </div>
+                <!-- QUATRE CHAMPS POUR UNE MINORITÉ DE DÉPÔTS. Dépliés, ils occupaient la moitié
+                     de l'écran avant la décision principale. -->
+                <details class="verifier-avance">
+                    <summary data-i18n="settings.verifier.advanced">Avancé</summary>
+                    <label><span data-i18n="settings.verifier.lbl.report">Rapport JUnit produit par les commandes (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.report" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input name="report_path" placeholder="ex. reports/junit.xml" data-i18n-placeholder="settings.verifier.ph.report" />
+                    </label>
+                    <label><span data-i18n="settings.verifier.lbl.env">Variables d'environnement (optionnel, une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.env" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <textarea name="env" rows="3" placeholder="PATH=/home/moi/.nvm/versions/node/v20/bin:/usr/bin:/bin" data-i18n-placeholder="settings.verifier.ph.env"></textarea>
+                    </label>
+                    <label class="inline-check"><input name="parse_tap" type="checkbox" checked /> <span data-i18n="settings.verifier.lbl.parse-tap">Interpréter le TAP trouvé dans la sortie (noms des tests cassés)</span>
+                        <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.parse-tap" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input name="run_base" type="checkbox" checked /> <span data-i18n="settings.verifier.lbl.run-base">Lancer aussi la base, pour savoir si c'était déjà rouge</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.run-base" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                </details>
+                <div class="form-actions">
+                    <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <button class="btn" type="button" id="btnVerifierCancel" data-i18n="ui.cancel">Annuler</button>
+                    <span id="verifierInfo" class="muted"></span>
+                </div>
+            </form>
+            <div id="verifierList" class="list"></div>
+        </div>
+
+        <!-- Sous-onglet : Dépôts -->
+        <div id="sub-repos" class="subtab">
+            <h2 data-i18n="settings.btn.depots">Dépôts</h2>
+            <p><button id="btnBrowseProjects" type="button" class="btn btn-primary" title="Parcourir les projets GitLab et en importer plusieurs d'un coup" data-i18n-title="settings.repo.title.parcourir-les-projets-gitlab-et"><svg class="ico"><use href="#i-gitlab"/></svg><span data-i18n="settings.btn.browse-gitlab">Ajout en masse depuis GitLab</span></button>
+            <button id="btnBrowseGithub" type="button" class="btn" title="Parcourir les dépôts GitHub et en importer plusieurs d'un coup" data-i18n-title="settings.btn.browse-github"><svg class="ico"><use href="#i-github"/></svg><span data-i18n="settings.btn.browse-github">Ajout en masse depuis GitHub</span></button></p>
+            <!-- DES LIBELLÉS, PAS SEULEMENT DES INVITES. Un placeholder disparaît à la première
+                 frappe : trois champs côte à côte devenaient trois cases anonymes, dont une
+                 « pattern » sans objet — pattern de quoi ? Les mêmes libellés servent ici et
+                 dans la ligne d'édition d'un dépôt. -->
+            <form id="repoForm" class="form repo-add">
+                <label class="repo-add-url"><span class="req" data-i18n="settings.repo.lbl.url">URL du dépôt</span>
+                    <span class="repo-add-field">
+                        <input name="url" placeholder="https://gitlab.exemple.fr/groupe/projet.git" required /><button type="button" class="hint" tabindex="-1" aria-label="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-tip="URL de clone complète du dépôt, sous-groupes inclus. Le chemin projet en est déduit automatiquement." data-i18n-tip="settings.repo.tip.url-de-clone-complete-du"><svg class="ico"><use href="#i-info"/></svg></button>
+                    </span>
+                </label>
+                <label><span data-i18n="settings.repo.lbl.project">Chemin (déduit de l'URL)</span>
+                    <span class="repo-add-field">
+                        <input name="project" placeholder="groupe/sous-groupe/projet" data-i18n-placeholder="settings.repo.ph.project" /><button type="button" class="hint" tabindex="-1" aria-label="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-tip="Chemin GitLab du projet, ex. groupe/sous-groupe/projet. À ne remplir que si la déduction depuis l'URL échoue." data-i18n-tip="settings.repo.tip.chemin-gitlab-du-projet-ex"><svg class="ico"><use href="#i-info"/></svg></button>
+                    </span>
+                </label>
+                <label><span data-i18n="settings.repo.lbl.branch-pattern">Branches source suivies</span>
+                    <span class="repo-add-field">
+                        <input name="branch_pattern" placeholder="PROJ-  (vide = toutes)" data-i18n-placeholder="settings.repo.ph.branch-pattern" /><button type="button" class="hint" tabindex="-1" aria-label="Fragment que le nom de la branche source doit contenir pour que la MR soit récupérée. Ex. PROJ- . Vide = toutes les MR." data-tip="Fragment que le nom de la branche source doit contenir pour que la MR soit récupérée. Ex. PROJ- . Vide = toutes les MR." data-i18n-tip="settings.repo.tip.fragment-que-le-nom-de"><svg class="ico"><use href="#i-info"/></svg></button>
+                    </span>
+                </label>
+                <button class="btn btn-primary" type="submit" title="Ajouter ce dépôt à la liste" data-i18n-title="settings.repo.title.ajouter-ce-depot-a-la"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.repo.btn.ajouter">Ajouter</span></button>
+            </form>
+            <p class="muted" style="padding:0 0 8px" data-i18n-html="settings.repo.p.colle-simplement-l-url-complete">Colle simplement l'URL complète du dépôt — le chemin projet est déduit automatiquement (sous-groupes inclus). Laisse le <strong>pattern vide</strong> pour récupérer <strong>toutes</strong> les merge requests.</p>
+            <!-- Une recherche, comme dans toutes les listes de dépôts de l'application : un
+                 groupe GitLab actif en compte cinquante. -->
+            <input id="repoSearch" type="search" class="search" placeholder="Rechercher un dépôt suivi…" data-i18n-placeholder="settings.repo.search" />
+            <div id="repoList" class="list"></div>
+            <p class="muted" id="repoSearchNone" hidden data-i18n="settings.repo.search.none">Aucun dépôt suivi ne correspond.</p>
+
+            <!-- Répertoires LOCAUX : un dossier de la machine, un sous-dossier par projet git.
+                 Sert à l'onglet Git → Navigation et au choix du dossier du codage hors dépôt. -->
+            <h2 data-i18n="settings.localroot.title">Répertoires locaux</h2>
+            <p class="muted" style="max-width:760px" data-i18n="settings.localroot.intro">Un répertoire local contient un dossier par projet git déjà cloné sur ta machine. Il alimente l'onglet Git → Navigation et le codage hors dépôt.</p>
+            <form id="localRootForm" class="form inline">
+                <input name="path" placeholder="/chemin/vers/mes-projets" data-i18n-placeholder="settings.localroot.ph.path" required style="flex:2" /><button type="button" class="hint" tabindex="0" data-i18n-tip="settings.localroot.tip.path" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input name="label" placeholder="nom affiché (optionnel)" data-i18n-placeholder="settings.localroot.ph.label" /><button type="button" class="hint" tabindex="0" data-i18n-tip="settings.localroot.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <button class="btn btn-primary" type="submit" data-i18n-title="settings.localroot.add-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.localroot.add">Ajouter</span></button>
+            </form>
+            <div id="localRootList" class="list"></div>
+        </div>
+
+        <!-- Sous-onglet : Règles de review spécifiques (premier) -->
+        <div id="sub-rules" class="subtab">
+            <h2 data-i18n="settings.btn.regles-de-review-specifiques">Règles de review spécifiques</h2>
+            <p class="muted" style="max-width:720px" data-i18n-html="settings.rule.p.ajoute-des-criteres-supplementaires-au">Ajoute des critères supplémentaires au prompt de review quand le nom de la branche source contient un fragment donné (ex. <code>PROJ-12344</code>).</p>
+            <form id="ruleForm" class="form" style="max-width:720px">
+                <label><span data-i18n="settings.rule.lbl.le-nom-de-la-branche">Le nom de la branche contient</span> <button type="button" class="hint" tabindex="-1" aria-label="Fragment recherché dans le nom de la branche source. Si la branche le contient, les critères ci-dessous sont ajoutés au prompt de review." data-tip="Fragment recherché dans le nom de la branche source. Si la branche le contient, les critères ci-dessous sont ajoutés au prompt de review." data-i18n-tip="settings.rule.tip.fragment-recherche-dans-le-nom"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="branch_match" placeholder="ex. PROJ-12344" data-i18n-placeholder="settings.rule.ph.ex-proj-12344" />
+                </label>
+                <label><span data-i18n="settings.rule.lbl.path-match">…ou le diff touche un chemin</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.path-match" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="path_match" placeholder="ex. **/migrations/**, *.sql" data-i18n-placeholder="settings.rule.ph.path-match" />
+                </label>
+                <!-- A/Réglages 2 : limiter la portée d'une règle à UN dépôt. Sans ça, il fallait
+                     deviner un `path_match` que seul ce dépôt satisferait — pas toujours
+                     possible, jamais lisible. Vide = tous les dépôts, comme avant. -->
+                <label><span data-i18n="settings.rule.lbl.repo">Limiter à un dépôt (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.repo" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="ruleRepoBox"></div>
+                </label>
+                <label><span data-i18n="settings.rule.lbl.label">Badge « risque » (court, optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="label" placeholder="ex. migrations" data-i18n-placeholder="settings.rule.ph.label" />
+                </label>
+                <label><span data-i18n="settings.rule.lbl.criteres-additionnels-a-verifier-ajoutes">Critères additionnels à vérifier (ajoutés au prompt de review)</span> <button type="button" class="hint" tabindex="-1" aria-label="Texte libre ajouté au prompt de review pour les branches concernées. Ex. contraintes métier, points de vigilance récurrents." data-tip="Texte libre ajouté au prompt de review pour les branches concernées. Ex. contraintes métier, points de vigilance récurrents." data-i18n-tip="settings.rule.tip.texte-libre-ajoute-au-prompt"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea name="content" rows="3" placeholder="ex. Vérifier que la migration SQL est réversible et que les index sont créés." data-i18n-placeholder="settings.rule.ph.ex-verifier-que-la-migration" required></textarea>
+                </label>
+                <button class="btn btn-primary" type="submit" title="Ajouter cette règle de review spécifique" data-i18n-title="settings.rule.title.ajouter-cette-regle-de-review"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.rule.btn.ajouter-la-regle">Ajouter la règle</span></button>
+            </form>
+            <!-- A39 — une liste de règles se cherche, comme celle des vérificateurs juste à
+                 côté : au-delà de dix, on faisait défiler pour retrouver « celle sur les
+                 migrations ». Il MASQUE, il ne retire pas. -->
+            <input id="ruleSearch" class="search" type="search" placeholder="Filtrer les règles (branche, chemin, libellé, contenu)…" data-i18n-placeholder="settings.rule.search-ph" />
+            <div id="ruleList" class="list"></div>
+            <p id="ruleNoMatch" class="muted" hidden data-i18n="settings.rule.no-match">Aucune règle ne correspond.</p>
+        </div>
+
+        <!-- Sous-onglet : Notifications bureau -->
+        <div id="sub-notif" class="subtab">
+            <h2 data-i18n="settings.notif.title">Notifications bureau</h2>
+            <div class="form" style="max-width:560px">
+                <div id="notifPermRow" class="notif-perm">
+                    <span id="notifPermStatus" class="muted"></span>
+                    <button type="button" id="notifRequest" class="btn btn-sm" hidden data-i18n="settings.notif.request">Autoriser</button>
+                    <button type="button" id="notifTest" class="btn btn-sm" data-i18n-title="settings.notif.test-title"><svg class="ico ico-sm"><use href="#i-zap"/></svg><span data-i18n="settings.notif.test">Tester</span></button>
+                </div>
+                <p class="muted" style="margin:2px 0 8px; font-size:12px" data-i18n="settings.notif.help">Une notif appelle une action ou clôt une attente. Le reste vit dans le bandeau.</p>
+                <label class="inline-check"><input type="checkbox" data-notif="queue_done" /> <span data-i18n="settings.notif.queue-done">Fin de la file de reviews</span></label>
+                <label class="inline-check inline-check-mid"><input type="checkbox" data-notif="low_note" /> <span data-i18n="settings.notif.low-note">Review sous un seuil de note</span>
+                    <input type="number" id="notifThreshold" min="0" max="10" step="0.5" class="notif-threshold" /> <span class="muted">/10</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="job_failed" /> <span data-i18n="settings.notif.job-failed">Échec d'un job (timeout, CLI, réseau)</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="session_done" /> <span data-i18n="settings.notif.session-done">Session de codage terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="needs_input" /> <span data-i18n="settings.notif.needs-input">L'IA a posé une question</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="converge_done" /> <span data-i18n="settings.notif.converge-done">Convergence terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="jira_status" /> <span data-i18n="settings.notif.jira-status">Un ticket Jira surveillé change d'état</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="reminder" /> <span data-i18n="settings.notif.reminder">Rappels de todos</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.notif.reminder-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label class="inline-check"><input type="checkbox" data-notif="verify_done" /> <span data-i18n="settings.notif.verify-done">Une vérification objective a rendu son verdict</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="jenkins_done" /> <span data-i18n="settings.notif.jenkins-done">Un job Jenkins que j'ai lancé s'est terminé</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="mr_new" /> <span data-i18n="settings.notif.mr-new">Nouvelle MR découverte</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="mr_merged" /> <span data-i18n="settings.notif.mr-merged">MR mergée par quelqu'un</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="git_done" /> <span data-i18n="settings.notif.git-done">Une opération Git (branche, tag) s'est terminée</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="docker_down" /> <span data-i18n="settings.notif.docker-down">Un conteneur Docker est tombé</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="restore_error" /> <span data-i18n="settings.notif.restore-error">Un dossier de travail n'a pas été rendu dans son état</span></label>
+                <label class="inline-check"><input type="checkbox" data-notif="cap_reached" /> <span data-i18n="settings.notif.cap-reached">Un plafond automatique a laissé du travail de côté</span></label>
+            </div>
+        </div>
+
+        <!-- Sous-onglet : Réglages -->
+        <div id="sub-config" class="subtab">
+        <h2 data-i18n="settings.btn.general">Général</h2>
+        <div class="form" style="max-width:520px">
+            <label><span data-i18n="settings.lbl.apparence">Apparence</span> <button type="button" class="hint" tabindex="-1" aria-label="Auto suit le thème de ton système d'exploitation. Le choix est mémorisé dans ce navigateur, pas dans la base." data-tip="Auto suit le thème de ton système d'exploitation. Le choix est mémorisé dans ce navigateur, pas dans la base." data-i18n-tip="settings.tip.auto-suit-le-theme-de"><svg class="ico"><use href="#i-info"/></svg></button>
+                <select id="themeSelect" title="Thème de l'interface — appliqué immédiatement" data-i18n-title="settings.title.theme-de-l-interface-applique">
+                    <option value="auto" data-i18n="settings.opt.auto-suit-le-systeme">Auto (suit le système)</option>
+                    <option value="dark" data-i18n="settings.opt.sombre">Sombre</option>
+                    <option value="light" data-i18n="settings.opt.clair">Clair</option>
+                </select>
+            </label>
+            <!-- LA BARRE DE MENUS : son ordre et ce qu'on y montre. Préférence de ce navigateur,
+                 comme le thème juste au-dessus — c'est un arrangement d'écran, pas un réglage de
+                 l'outil, et deux postes n'ont pas les mêmes habitudes. -->
+            <div class="nav-prefs-wrap">
+                <span class="nav-prefs-lbl" data-i18n="settings.nav.title">Menus</span>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="settings.nav.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <button type="button" id="navPrefsReset" class="btn btn-sm" data-i18n="settings.nav.reset">Rétablir les menus d'origine</button>
+                <div id="navPrefs" class="nav-prefs"></div>
+            </div>
+            <!-- A/Réglages 1 : les quatre cases de la modale de session repartaient décochées
+                 à chaque ouverture. Ce sont des habitudes de TRAVAIL (les habitudes de dépôt,
+                 elles, sont déjà mémorisées par dépôt) : elles se règlent une fois. -->
+            <p class="form-group-title" data-i18n="settings.task-defaults.title">Nouvelle session — cases cochées d'office</p>
+            <label class="inline-check"><input form="configForm" name="task_default_auto_push" type="checkbox" /> <span data-i18n="settings.lbl.default-auto-push">Auto-push</span></label>
+            <label class="inline-check"><input form="configForm" name="task_default_ask_questions" type="checkbox" /> <span data-i18n="settings.lbl.default-ask">L'IA peut poser des questions</span></label>
+            <label class="inline-check"><input form="configForm" name="task_default_notify_jira" type="checkbox" /> <span data-i18n="settings.lbl.default-notify-jira">Prévenir Jira à la création de la MR</span></label>
+            <label class="inline-check"><input form="configForm" name="task_default_converge" type="checkbox" /> <span data-i18n="settings.lbl.default-converge">Converger après</span></label>
+            <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
+                 parce que ça ne concerne ni les MR ni une forge en particulier. -->
+            <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="retention_days" type="number" min="0" step="1" placeholder="90" />
+            </label>
+            <!-- Brief du matin : l'atterrissage est un réglage de l'OUTIL (comme la langue),
+                 pas du navigateur — d'où la base et non le localStorage. -->
+            <label class="inline-check"><input form="configForm" name="brief_on_open" type="checkbox" /> <span data-i18n="settings.lbl.brief-on-open">Brief du matin à la première ouverture</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.brief-on-open" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- B1 : une todo « suivre !201 » n'a plus de raison d'être une fois !201 mergée.
+                 Cochée, jamais supprimée — et débrayable pour qui préfère cocher lui-même. -->
+            <label class="inline-check"><input form="configForm" name="todo_close_on_merge" type="checkbox" /> <span data-i18n="settings.lbl.todo-close-on-merge">Cocher les todos liées quand leur merge request est mergée</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.todo-close-on-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
+            </label>
+            <!-- Sauvegarde : la seule chose que Mergerie ne sait pas reconstruire. -->
+            <div class="backup-row">
+                <button type="button" id="btnBackup" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.backup.btn">Sauvegarder les données</span></button>
+                <span id="backupInfo" class="muted"></span>
+            </div>
+
+            <label><span data-i18n="settings.language">Langue</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.language.hint" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <select id="langSelect">
+                    <option value="fr" data-i18n="settings.language.fr">Français</option>
+                    <option value="en" data-i18n="settings.language.en">English</option>
+                </select>
+            </label>
+            <label><span data-i18n="settings.lbl.densite">Densité</span> <button type="button" class="hint" tabindex="-1" aria-label="Compact resserre les listes (Reviews, Dev IA) pour en voir plus à l'écran. Mémorisé dans ce navigateur." data-tip="Compact resserre les listes (Reviews, Dev IA) pour en voir plus à l'écran. Mémorisé dans ce navigateur." data-i18n-tip="settings.tip.densite"><svg class="ico"><use href="#i-info"/></svg></button>
+                <select id="densitySelect" title="Densité de l'affichage — appliquée immédiatement" data-i18n-title="settings.title.densite">
+                    <option value="cozy" data-i18n="settings.opt.confortable">Confortable</option>
+                    <option value="compact" data-i18n="settings.opt.compact">Compact</option>
+                </select>
+            </label>
+            <p class="muted" style="margin:0" data-i18n="settings.p.applique-immediatement-et-memorise-dans">Appliqué immédiatement et mémorisé dans ce navigateur (pas besoin d'enregistrer).</p>
+        </div>
+
+        <!-- ENREGISTRER, DEPUIS GÉNÉRAL AUSSI. Ce sous-onglet porte huit réglages de base (brief
+             du matin, rétention, MR dormante, les quatre cases d'une nouvelle session…) et
+             n'avait AUCUN bouton d'enregistrement : les champs appartiennent au formulaire
+             ancre, dont le seul bouton vit dans les autres sous-onglets. On cochait une case,
+             on restait là, et rien ne partait — l'écran ne mentait pas, il ne proposait
+             simplement pas le geste. -->
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            <span id="configInfoGeneral" class="muted"></span>
+        </div>
+
+
+        <!-- Formulaire ANCRE : tous les champs de config vivent dans les sous-onglets (Git, Jira,
+             Merge Request) et s'y rattachent via l'attribut form= ; c'est ce <form> qui les soumet. -->
+        <form id="configForm" class="form"><span id="configInfo" class="muted"></span></form>
+
+        <h2 data-i18n="settings.head.zone-dangereuse">Zone dangereuse</h2>
+        <details class="danger-zone">
+            <summary data-i18n="settings.head.actions-irreversibles">Actions irréversibles</summary>
+            <p class="muted" data-i18n-html="settings.p.supprime-tous-les-rapports-de">Supprime <strong>tous</strong> les rapports de review et le journal des jobs, et remet toutes les MR en « à traiter ». Les dépôts et les réglages sont conservés.</p>
+            <button id="btnResetReports" class="btn btn-danger" title="Supprimer tous les rapports (irréversible)" data-i18n-title="settings.title.supprimer-tous-les-rapports-irreversible"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="settings.btn.supprimer-tous-les-rapports">Supprimer tous les rapports</span></button>
+        </details>
+        </div><!-- /sub-config -->
+
+        <!-- Sous-onglet : Données partagées — le dépôt git d'équipe. UN ONGLET À LUI, et non
+             trois champs au milieu de « Général » : ce n'est pas une préférence d'affichage mais
+             la décision d'ouvrir son travail à d'autres, avec son état, ses conflits à trancher
+             et son historique. On y revient — pour voir où en est la synchro —, ce qu'on ne fait
+             jamais pour une couleur de thème. -->
+        <div id="sub-datasync" class="subtab">
+        <!-- DONNÉES PARTAGÉES. Un dépôt git d'équipe devient la source de vérité du travail
+             accumulé : reviews, règles, vérificateurs, agents, notes, todos. Chacun garde son
+             instance, ses jetons et son abonnement IA — rien de secret n'entre dans le dépôt.
+             Vide = mode mono-poste, et rien ne change. -->
+        <h2 data-i18n="datasync.head">Données partagées</h2>
+        <p class="muted" style="max-width:620px" data-i18n="datasync.intro">Un dépôt git où l'équipe range son travail accumulé. Chacun garde son instance et ses jetons : rien de secret n'y entre jamais.</p>
+        <div class="form" style="max-width:560px">
+            <label><span data-i18n="datasync.lbl.url">Dépôt de données</span> <button type="button" class="hint" tabindex="-1" aria-label="L'URL du dépôt git où l'équipe partage son travail. Vide = mode mono-poste, rien n'est partagé." data-tip="L'URL du dépôt git où l'équipe partage son travail. Vide = mode mono-poste, rien n'est partagé." data-i18n-tip="datasync.tip.url"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="data_repo_url" placeholder="https://gitlab.com/equipe/mergerie-data.git" /></label>
+            <label><span data-i18n="datasync.lbl.branch">Branche</span> <input form="configForm" name="data_repo_branch" placeholder="main" /></label>
+            <label><span data-i18n="datasync.lbl.seconds">Cadence (secondes)</span> <button type="button" class="hint" tabindex="-1" aria-label="Toutes les combien de secondes on envoie et on récupère. Entre 10 et 600." data-tip="Toutes les combien de secondes on envoie et on récupère. Entre 10 et 600." data-i18n-tip="datasync.tip.seconds"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="data_sync_seconds" type="number" min="10" max="600" /></label>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="button" id="btnDataAttach" title="Cloner le dépôt, ou l'initialiser avec ce que porte déjà ce poste" data-i18n-title="datasync.title.attach"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="datasync.btn.attach">Cloner / rattacher</span></button>
+                <button class="btn" type="button" id="btnDataReexport" title="Tout ré-envoyer dans le dépôt" data-i18n-title="datasync.title.reexport"><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="datasync.btn.reexport">Tout ré-envoyer</span></button>
+                <button class="btn" type="button" id="btnDataNow" title="Envoyer et récupérer maintenant" data-i18n-title="datasync.title.now"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="datasync.btn.now">Synchroniser maintenant</span></button>
+                <button class="btn" type="submit" form="configForm" title="Enregistrer sans rattacher" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
+                <span id="dataSyncInfo" class="muted"></span>
+            </div>
+            <label class="inline-check"><input form="configForm" name="usage_share" type="checkbox" /> <span data-i18n="datasync.lbl.usage">Partager ma dépense IA (un total par jour)</span> <button type="button" class="hint" tabindex="-1" aria-label="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-tip="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-i18n-tip="datasync.tip.usage"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <div id="dataSyncState" class="muted"></div>
+            <div id="dataSyncConflicts"></div>
+        </div>
+        </div><!-- /sub-datasync -->
+
+        <!-- Sous-onglet : Git — connexion GitLab + dossier de clonage (déplacés depuis Général),
+             et la palette de commandes git de l'onglet « Commandes Git ». Champs rattachés à
+             #configForm via form= (même logique d'enregistrement que le Général). -->
+        <div id="sub-gitcfg" class="subtab active">
+        <h2 data-i18n="settings.sub.git">Git</h2>
+        <div class="form" style="max-width:520px">
+            <label><span class="req" data-i18n="settings.lbl.url-gitlab">URL GitLab</span> <button type="button" class="hint" tabindex="-1" aria-label="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-tip="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-i18n-tip="settings.tip.l-adresse-racine-de-ton"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="gitlab_url" placeholder="https://gitlab.com" /></label>
+            <label><span class="req" data-i18n="settings.lbl.access-token-pat">Access token (PAT)</span> <button type="button" class="hint" tabindex="-1" aria-label="Jeton d'accès personnel GitLab, avec les scopes api et read_repository. Il sert à lire les MR et à cloner les dépôts. Stocké en local uniquement." data-tip="Jeton d'accès personnel GitLab, avec les scopes api et read_repository. Il sert à lire les MR et à cloner les dépôts. Stocké en local uniquement." data-i18n-tip="settings.tip.jeton-d-acces-personnel-gitlab"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="access_token" type="password" autocomplete="off" placeholder="glpat-…" data-i18n-placeholder="settings.ph.glpat" /></label>
+            <label><span data-i18n="settings.lbl.dossier-de-clonage">Dossier de clonage</span> <button type="button" class="hint" tabindex="-1" aria-label="Répertoire où l'outil clone les dépôts et où l'agent IA travaille. Un sous-dossier par projet y est créé." data-tip="Répertoire où l'outil clone les dépôts et où l'agent IA travaille. Un sous-dossier par projet y est créé." data-i18n-tip="settings.tip.repertoire-ou-l-outil-clone"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="clone_path" /></label>
+            <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="button" id="btnTestGitlab" title="Vérifier que l'URL et le token permettent bien d'accéder à GitLab" data-i18n-title="settings.title.verifier-que-l-url-et"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.save-test">Enregistrer et tester</span></button>
+                <button class="btn" type="submit" form="configForm" title="Enregistrer sans vérifier la connexion" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
+                <span id="configInfoGit" class="muted"></span>
+            </div>
+        </div>
+
+        <h2><svg class="ico"><use href="#i-github"/></svg> <span data-i18n="settings.sub.github">GitHub</span></h2>
+        <div class="form" style="max-width:520px">
+            <label><span class="req" data-i18n="settings.github.url">URL GitHub</span> <button type="button" class="hint" tabindex="-1" aria-label="Vide = github.com. Pour GitHub Enterprise, l'URL de ton instance." data-tip="Vide = github.com. Pour GitHub Enterprise, l'URL de ton instance." data-i18n-tip="settings.github.url.help"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="github_url" placeholder="https://github.com" /></label>
+            <label><span class="req" data-i18n="settings.github.token">Token GitHub</span> <button type="button" class="hint" tabindex="-1" aria-label="Token classic avec le scope repo, ou fine-grained avec Contents + Pull requests + Metadata." data-tip="Token classic avec le scope repo, ou fine-grained avec Contents + Pull requests + Metadata." data-i18n-tip="settings.github.token.help"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="github_token" type="password" autocomplete="off" placeholder="ghp_…" /></label>
+            <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="button" id="btnTestGithub" title="Vérifier que le token permet bien d'accéder à GitHub" data-i18n-title="settings.title.tester-github"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.save-test">Enregistrer et tester</span></button>
+                <button class="btn" type="submit" form="configForm" title="Enregistrer sans vérifier la connexion" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
+                <span id="configInfoGithub" class="muted"></span>
+            </div>
+        </div>
+
+        <h2 data-i18n="settings.gitcmd.title">Palette de commandes git</h2>
+        <p class="muted" style="max-width:560px" data-i18n="settings.gitcmd.intro">Commandes proposées dans l'onglet Git → Commandes Git. Chaque entrée = un nom + une commande git figée (sans le mot « git »).</p>
+        <div id="gitCmdList" class="gitcmd-list"></div>
+        <form id="gitCmdForm" class="form" style="max-width:520px" autocomplete="off">
+            <label><span data-i18n="settings.gitcmd.label">Nom</span> <input id="gitCmdLabel" placeholder="Récupérer tout" data-i18n-placeholder="settings.gitcmd.label-ph" /></label>
+            <label><span data-i18n="settings.gitcmd.command">Commande git</span> <input id="gitCmdCommand" placeholder="fetch --all --prune" data-i18n-placeholder="settings.gitcmd.command-ph" /></label>
+            <div class="form-actions">
+                <button class="btn" type="button" id="gitCmdCancel" hidden data-i18n="settings.gitcmd.cancel">Annuler</button>
+                <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span id="gitCmdSubmitLabel" data-i18n="settings.gitcmd.add">Ajouter</span></button>
+                <span id="gitCmdInfo" class="muted"></span>
+            </div>
+        </form>
+        </div><!-- /sub-gitcfg -->
+
+        <!-- Sous-onglet : Jira — connexion (déplacée depuis Général). Champs rattachés à
+             #configForm via form= (même logique d'enregistrement). -->
+        <div id="sub-jiracfg" class="subtab">
+        <h2 data-i18n="settings.sub.jira">Jira</h2>
+        <p class="muted" style="max-width:560px" data-i18n="settings.jira.intro">Sert à l'onglet Jira (tes tickets affectés) et à enrichir une session de dev depuis un ticket. Jira Cloud : email + jeton d'API.</p>
+        <div class="form" style="max-width:520px">
+            <label><span class="req" data-i18n="settings.lbl.url-jira">URL Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="L'adresse racine de ton Jira. Ex. https://mon-entreprise.atlassian.net" data-tip="L'adresse racine de ton Jira. Ex. https://mon-entreprise.atlassian.net" data-i18n-tip="settings.tip.optionnel-sert-a-transformer-les"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_url" placeholder="https://mon-entreprise.atlassian.net" /></label>
+            <label><span class="req" data-i18n="settings.lbl.jira-email">Email Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)." data-tip="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_email" placeholder="prenom.nom@entreprise.fr" data-i18n-placeholder="settings.ph.jira-email" /></label>
+            <label><span class="req" data-i18n="settings.lbl.jira-token">Jeton d'API Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué." data-tip="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_token" type="password" autocomplete="off" placeholder="ATATT…" data-i18n-placeholder="settings.ph.jira-token" /></label>
+            <label><span data-i18n="settings.lbl.jira-watch-minutes">Vérifier les tickets surveillés toutes les</span> <button type="button" class="hint" tabindex="-1" aria-label="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-tip="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-i18n-tip="settings.tip.jira-watch-minutes"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_watch_minutes" type="number" min="0" step="1" placeholder="5" /></label>
+            <!-- B10 : le verdict d'une vérification remonte vers le ticket. Décoché par
+                 défaut, comme « Prévenir Jira » : le ticket est lu par la QA et le support,
+                 écrire chez eux ne se décide pas à la place de l'utilisateur. -->
+            <label class="inline-check"><input form="configForm" name="verify_jira_comment" type="checkbox" /> <span data-i18n="settings.lbl.verify-jira-comment">Commenter le ticket quand une vérification casse</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verify-jira-comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <!-- LA CLÉ DE TÉMOIN EST UN CHAMP, plus une boîte de dialogue du navigateur.
+                     Tester Jira demande un ticket réel à aller chercher ; le demander par
+                     `prompt()` rendait le bouton muet dès qu'on annulait — et un dialogue
+                     natif ne ressemble à rien du reste de l'application. -->
+                <label class="test-key"><span data-i18n="settings.jira.test-key">Ticket témoin</span>
+                    <input form="configForm" id="jiraTestKey" name="jira_test_key" placeholder="PROJ-1234" data-i18n-placeholder="settings.jira.test-key-ph" />
+                </label>
+                <button class="btn" type="button" id="btnTestJira" title="Vérifier l'accès Jira en récupérant un ticket témoin" data-i18n-title="settings.title.tester-jira"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.tester-jira">Tester Jira</span></button>
+                <span id="configInfoJira" class="muted"></span>
+            </div>
+        </div>
+        </div><!-- /sub-jiracfg -->
+
+        <!-- Sous-onglet : Jenkins — connexion au serveur d'intégration continue. -->
+        <div id="sub-jenkinscfg" class="subtab">
+        <h2 data-i18n="settings.sub.jenkins">Jenkins</h2>
+        <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.intro">Sert à l'onglet Jenkins : voir l'état des jobs et les lancer. Jenkins authentifie le couple utilisateur + jeton d'API — le jeton seul ne suffit pas.</p>
+        <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.tls">Certificat d'entreprise : si la connexion échoue sur « unable to get local issuer certificate », lance le serveur avec JENKINS_CA_CERT=/chemin/ca.pem (recommandé) ou JENKINS_INSECURE_TLS=1 en dépannage.</p>
+        <div class="form" style="max-width:520px">
+            <label><span class="req" data-i18n="settings.lbl.jenkins-url">URL Jenkins</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-url" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_url" placeholder="https://jenkins.mon-entreprise.fr" /></label>
+            <label><span class="req" data-i18n="settings.lbl.jenkins-user">Utilisateur Jenkins</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-user" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_user" placeholder="prenom.nom" data-i18n-placeholder="settings.ph.jenkins-user" /></label>
+            <label><span class="req" data-i18n="settings.lbl.jenkins-token">Jeton d'API Jenkins</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-token" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_token" type="password" autocomplete="off" placeholder="11a2b3…" data-i18n-placeholder="settings.ph.jenkins-token" /></label>
+            <label><span data-i18n="settings.lbl.jenkins-refresh">Rafraîchir la liste des jobs toutes les (minutes, 0 = jamais)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-refresh" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="jenkins_refresh_minutes" type="number" min="0" max="60" step="1" placeholder="1" />
+            </label>
+            <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
+            <div class="form-actions">
+                <button class="btn btn-primary" type="button" id="btnTestJenkins" data-i18n-title="settings.title.tester-jenkins" title="Vérifier l'accès Jenkins"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.save-test">Enregistrer et tester</span></button>
+                <button class="btn" type="submit" form="configForm" title="Enregistrer sans vérifier la connexion" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
+                <span id="configInfoJenkins" class="muted"></span>
+            </div>
+        </div>
+
+        <!-- B8 : quel job déploie quel dépôt. Déclaré une fois ici, proposé sur les merge
+             requests vérifiées vertes du dépôt — comme service ↔ dépôt dans Liens. -->
+        <h2 data-i18n="settings.jenkins.links.title">Jobs liés aux dépôts</h2>
+        <p class="muted" style="max-width:760px" data-i18n="settings.jenkins.links.intro">Un job déclaré ici est proposé sur les merge requests vérifiées vertes du dépôt, avec la branche pré-remplie.</p>
+        <form id="jenkinsLinkForm" class="form repo-add" autocomplete="off">
+            <label class="repo-add-url"><span data-i18n="settings.jenkins.links.repo">Dépôt</span>
+                <div id="jenkinsLinkRepo" class="repo-add-field"></div>
+            </label>
+            <!-- C10 : la liste des jobs et leurs paramètres sont DÉJÀ chargés par l'onglet
+                 Jenkins. On tapait pourtant `boutique/api-deploy-recette` et `BRANCH` à
+                 l'aveugle, à la lettre près, sans rien pour dire qu'on s'était trompé. Le
+                 champ reste libre à la saisie (recherche), mais il PROPOSE ce qui existe. -->
+            <label class="repo-add-wide"><span data-i18n="settings.jenkins.links.job">Job Jenkins</span>
+                <div class="repo-add-field" id="jenkinsLinkJobBox"></div>
+            </label>
+            <label><span data-i18n="settings.jenkins.links.param">Paramètre qui reçoit la branche (optionnel)</span>
+                <div class="repo-add-field" id="jenkinsLinkParamBox"></div>
+            </label>
+            <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.jenkins.links.add">Lier</span></button>
+        </form>
+        <div id="jenkinsLinkList" class="list"></div>
+        </div><!-- /sub-jenkinscfg -->
+
+        <!-- Sous-onglet : Merge Request (review, convergence, templates) -->
+        <!-- Les champs restent rattachés à #configForm via l'attribut form= : ils sont
+             chargés/enregistrés par la même logique que le Général (un seul /config). -->
+        <div id="sub-mr" class="subtab">
+        <h2 data-i18n="settings.sub.mr">Merge Request</h2>
+        <!-- LES RÉGLAGES D'AUTOMATISME CHANGÉS PAR LA SYNCHRO attendent un geste ici : ils font
+             tourner des reviews toutes seules, sur ce poste, avec son abonnement. Rempli par
+             `poserApprobationAuto` à chaque chargement de la configuration. -->
+        <div id="autoApprovalBanner" hidden></div>
+        <!-- NEUF RÉGLAGES À LA SUITE, SANS TITRE, dont un interrupteur séparé de son propre
+             plafond par un autre réglage. Trois groupes titrés : ce que produit une review,
+             ce qui part tout seul, et la boucle de convergence. Le plafond des vérifications
+             automatiques, lui, a déménagé auprès de SON interrupteur, dans Vérificateurs. -->
+        <div class="form" style="max-width:520px">
+            <h3 data-i18n="settings.mr.group.review">Review</h3>
+            <label class="inline-check"><input form="configForm" name="review_explain" type="checkbox" /> <span data-i18n="settings.lbl.review-explain">Générer l'explication pédagogique lors d'une review</span>
+                <button type="button" class="hint" tabindex="-1" aria-label="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-tip="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-i18n-tip="settings.tip.review-explain"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- ÉCRIRE CHEZ LES AUTRES SE DÉCIDE : décoché par défaut, contrairement à
+                 l'explication ci-dessus. Le rapport reste publiable au coup par coup depuis
+                 le bouton du rapport, ce que dit l'info-bulle. -->
+            <label class="inline-check"><input form="configForm" name="auto_post_review" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-review">Publier automatiquement le rapport de review sur la MR</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-review" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LE FILTRE DE CETTE PUBLICATION, et rien d'autre : il DISPARAÎT quand la case
+                 ci-dessus est décochée, au lieu de rester grisé comme le plafond des reviews
+                 automatiques. Un réglage qui ne peut rien faire n'a pas à occuper une ligne
+                 dans un écran qui en compte déjà neuf. -->
+            <label class="inline-check sous-reglage" id="autoPostBlockingRow" hidden><input form="configForm" name="auto_post_blocking_only" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-blocking-only">Envoyer uniquement s'il y a des points bloquants</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-blocking-only" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- CE QUI PART : le rapport, ou son LIEN. La ligne suit la case du dessus ET
+                 l'existence d'un dépôt de données : sans dépôt, il n'y a pas d'adresse où
+                 pointer, et un réglage qui ne peut rien faire n'a pas à occuper une ligne. -->
+            <label class="inline-check sous-reglage" id="autoPostLinkRow" hidden><input form="configForm" name="auto_post_review_link" type="checkbox" /> <span data-i18n="settings.lbl.auto-post-review-link">Publier le lien vers le rapport, pas le rapport</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-post-review-link" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LE TEXTE QUE L'ÉQUIPE POSTE. Laissé vide, c'est le message livré — et il suit la
+                 langue de l'interface. Le `placeholder` montre EXACTEMENT ce message : un champ
+                 vide ne doit pas laisser deviner ce qui partira. -->
+            <label class="sous-reglage" id="reviewLinkTemplateRow" hidden><span data-i18n="settings.lbl.review-link-template">Gabarit du commentaire</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.review-link-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea form="configForm" name="review_link_template" rows="4"></textarea>
+                <!-- LES VARIABLES, SOUS LE CHAMP ET PAS DANS UNE BULLE : on les consulte en tapant. -->
+                <span class="muted template-vars" id="reviewLinkVars" data-i18n-html="settings.review-link-vars">Variables : <code>{url}</code> le lien du rapport (obligatoire) · <code>{note}</code> la note, vide si la passe n’en a pas · <code>{v}</code> le numéro de passe · <code>{iid}</code> le numéro de la MR · <code>{project}</code> le projet · <code>{title}</code> le titre de la MR · <code>{blockers}</code>, <code>{majors}</code>, <code>{minors}</code> le nombre de constats bloquants, majeurs et mineurs de la passe.</span></label>
+
+            <h3 data-i18n="settings.mr.group.auto">Automatisation</h3>
+            <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="-1" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="auto_refresh_minutes" type="number" min="0" step="1" placeholder="0" />
+            </label>
+            <!-- LA REVIEW QUI PART TOUTE SEULE, et son plafond JUSTE DESSOUS, indenté et
+                 désactivé tant que la case est décochée : chaque review est un appel IA
+                 facturé, et la première découverte d'une installation neuve ramène tout le
+                 parc d'un coup. Les deux étaient séparés par « Relancer si périmé ». -->
+            <label class="inline-check"><input form="configForm" name="auto_review_new" type="checkbox" /> <span data-i18n="settings.lbl.auto-review-new">Lancer automatiquement la review à l'arrivée d'une MR</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-review-new" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="sous-reglage" id="reviewAutoMaxRow"><span data-i18n="settings.lbl.review-auto-max">Au plus N reviews automatiques par recherche de MR</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.review-auto-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="review_auto_max" type="number" min="0" max="50" step="1" placeholder="5" />
+            </label>
+            <label class="inline-check"><input form="configForm" name="auto_rereview_stale" type="checkbox" /> <span data-i18n="settings.lbl.auto-rereview-stale">Relancer automatiquement la review quand le rapport est périmé</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-rereview-stale" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+
+            <!-- QUI EXÉCUTE CES POLITIQUES. Elles sont d'équipe et voyagent ; chaque poste a sa
+                 propre file de jobs. Sans exécutant désigné, deux postes allumés reviewaient
+                 deux fois la même merge request — deux appels d'IA facturés, et deux
+                 commentaires sur la forge. Le champ n'apparaît qu'en mode partagé : en
+                 mono-poste la question ne se pose pas. -->
+            <label id="autoRunnerRow" hidden><span data-i18n="settings.lbl.auto-runner">Exécutant des automatismes</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.auto-runner" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <select form="configForm" name="auto_runner" id="autoRunnerSelect"></select>
+            </label>
+            <p id="autoRunnerNone" class="field-note" hidden data-i18n="settings.auto-runner.none">Aucun exécutant : les automatismes cochés ne tourneront sur aucun poste.</p>
+
+            <h3 data-i18n="settings.mr.group.converge">Convergence</h3>
+            <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="-1" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="converge_threshold" type="number" min="1" max="10" step="0.5" placeholder="8" />
+            </label>
+            <label><span data-i18n="settings.lbl.converge-passes">Convergence — plafond de passes</span> <button type="button" class="hint" tabindex="-1" aria-label="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-tip="Nombre maximal de corrections IA par défaut avant d'arrêter la boucle « Converger ». Garde-fou anti-emballement. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-passes"><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="converge_max_passes" type="number" min="1" max="10" step="1" placeholder="3" />
+            </label>
+        </div>
+        <!-- Templates : hors du formulaire plafonné à 520px pour laisser les textarea
+             s'élargir (prompts multi-lignes) — leur propre .form plus large les habille. -->
+        <details class="prompt-templates">
+            <summary data-i18n="settings.head.templates-de-prompt-avance">Templates de prompt (avancé)</summary>
+            <div class="form">
+                <label><span data-i18n="settings.lbl.prompt-review">Prompt review</span> <button type="button" class="hint" tabindex="-1" aria-label="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-tip="Instruction envoyée à l'IA pour produire le rapport de review. Placeholders disponibles ci-dessous." data-i18n-tip="settings.tip.instruction-envoyee-a-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_review" rows="7"></textarea></label>
+                <label><span data-i18n="settings.lbl.prompt-explication">Prompt explication</span> <button type="button" class="hint" tabindex="-1" aria-label="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-tip="Instruction pour l'onglet Explication du rapport : ce que fait la MR, en langage clair." data-i18n-tip="settings.tip.instruction-pour-l-onglet-explication"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_explain" rows="7"></textarea></label>
+                <label><span data-i18n="settings.lbl.prompt-modification">Prompt modification</span> <button type="button" class="hint" tabindex="-1" aria-label="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-tip="Instruction utilisée quand l'IA doit modifier du code (sessions de codage et corrections demandées depuis un rapport)." data-i18n-tip="settings.tip.instruction-utilisee-quand-l-ia"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_modify" rows="7"></textarea></label>
+                <label><span data-i18n="settings.lbl.prompt-fix">Prompt correction depuis un rapport</span> <button type="button" class="hint" tabindex="-1" aria-label="Consigne donnée à l'IA quand elle applique un rapport de revue au code : « Faire corriger par l'IA » et chaque passe de Converger." data-tip="Consigne donnée à l'IA quand elle applique un rapport de revue au code : « Faire corriger par l'IA » et chaque passe de Converger. Variables : {source}, {target}, {report}." data-i18n-tip="settings.tip.prompt-fix"><svg class="ico"><use href="#i-info"/></svg></button> <textarea form="configForm" name="prompt_fix" rows="7"></textarea></label>
+                <p class="muted"><span data-i18n="settings.p.placeholders">Placeholders :</span> <code>{source} {target} {diff_file} {previous} {instruction}</code></p>
+            </div>
+        </details>
+        <div class="form-actions">
+            <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+            <span id="configInfoMr" class="muted"></span>
+        </div>
+        </div><!-- /sub-mr -->
+
+        <div id="sub-aisession" class="subtab">
+            <!-- CE QU'ON REDIT À CHAQUE SESSION SANS VOULOIR LE RETAPER. Le champ vit ici parce
+                 qu'il s'applique aux sessions de codage — dépôt ET hors dépôt —, au même endroit
+                 que ce qui concerne les sessions d'agent. -->
+            <h2 data-i18n="settings.extra.title">Consignes permanentes</h2>
+            <p class="muted" data-i18n="settings.extra.intro">Ajoutées à la fin du prompt de TOUTES les sessions de codage et de codage hors dépôt — au premier lancement comme à chaque suivi. Ce qu'on redit à chaque fois : la langue des commentaires, une commande à lancer avant de committer, une interdiction. Laissé vide, rien n'est ajouté.</p>
+            <div class="form">
+                <label><span data-i18n="settings.extra.lbl">Consignes ajoutées à chaque session</span>
+                    <textarea form="configForm" name="ai_extra_instructions" rows="5" placeholder="Ex. : commente en français ; lance `npm run check` avant de committer." data-i18n-placeholder="settings.extra.ph"></textarea></label>
+                <!-- LE PLAFOND DES AGENTS AUTOMATIQUES, à côté de ce qui règle les sessions IA.
+                     Un horaire fait partir un agent sans qu'on soit là : ce chiffre est la
+                     limite qu'on met à ce qui peut se déclencher tout seul dans la journée. -->
+                <label><span data-i18n="ui.config.agent-auto-max">Runs d'agent automatiques par jour (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-auto-max-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="agent_auto_max" id="cfgAgentAutoMax" type="number" min="0" max="1000" step="1" placeholder="10" /></label>
+                <label><span data-i18n="ui.config.agent-max-turns">Tours au plus par session d’agent (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-max-turns-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="agent_max_turns" type="number" min="0" max="10000" step="1" placeholder="200" /></label>
+                <label><span data-i18n="ui.config.agent-budget">Dépense d’IA au plus par jour, en dollars (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-budget-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="agent_daily_budget_usd" type="number" min="0" step="0.01" placeholder="0" /></label>
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <span id="configInfoAi" class="muted"></span>
+                </p>
+            </div>
+
+            <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>
+            <p class="muted" data-i18n="settings.aisession.intro">Test technique : l'agent mémorise un marqueur secret lors d'une première passe, puis on reprend la <strong>même</strong> session et on lui redemande ce marqueur. S'il le restitue, on sait qu'on peut reprendre une session — socle de la future fonctionnalité « l'IA pose une question ».</p>
+            <p>
+                <button id="aiSessionTest" class="btn btn-primary" title="Lance deux passes dans la même session d'agent" data-i18n-title="settings.aisession.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.aisession.test">Tester la reprise de session</span></button>
+                <span id="aiSessionInfo" class="muted"></span>
+            </p>
+            <div id="aiSessionResult"></div>
+        </div><!-- /sub-aisession -->
+
+        <!-- DICTÉE VOCALE (whisper.md §6.3, §6.5). Treize réglages et un panneau qui DÉROULE la
+             chaîne au lieu de la « pinguer » : binaire, modèle, VAD, démarrage, transcription
+             d'un échantillon, vocabulaire, fournisseur distant, puis les deux étapes que le
+             serveur ne peut pas connaître (origine sûre, micro). -->
+        <div id="sub-dictation" class="subtab">
+            <h2 data-i18n="settings.dictation.title">Dictée vocale</h2>
+            <p class="muted" style="max-width:760px" data-i18n="settings.dictation.intro">Un micro apparaît sur le champ où tu écris : tu parles, le texte s'écrit au curseur.</p>
+            <p class="muted" style="max-width:760px" data-i18n="settings.dictation.privacy">Avec le moteur local, l'audio ne quitte pas la machine.</p>
+
+            <div class="form" style="max-width:620px">
+                <label><span data-i18n="settings.dictation.lbl.provider">Fournisseur</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.provider" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="dictation_provider" id="dictationProvider">
+                        <option value="off" data-i18n="ui.off">Éteinte</option>
+                        <option value="local">whisper.cpp (local)</option>
+                        <option value="openai">API compatible OpenAI</option>
+                        <option value="browser" data-i18n="settings.dictation.provider.browser">Navigateur</option>
+                    </select>
+                </label>
+                <p id="dictationBrowserWarn" class="field-note warn" hidden data-i18n="settings.dictation.warn-browser">Le fournisseur « navigateur » envoie l'audio aux serveurs de Google ou d'Apple.</p>
+
+                <label><span data-i18n="settings.dictation.lbl.language">Langue dictée</span>
+                    <select form="configForm" name="dictation_language">
+                        <option value="auto" data-i18n="settings.dictation.lang.auto">Celle de l'interface</option>
+                        <option value="fr">Français</option>
+                        <option value="en">English</option>
+                    </select>
+                </label>
+
+                <div class="dictation-local">
+                    <label><span data-i18n="settings.dictation.lbl.model">Modèle local (chemin du fichier .bin)</span>
+                        <input form="configForm" name="dictation_model" placeholder="data/models/ggml-large-v3-turbo.bin" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.vad">Modèle de détection de voix (Silero, facultatif)</span>
+                        <input form="configForm" name="dictation_vad_model" placeholder="data/models/ggml-silero-v5.1.2.bin" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.command">Commande du moteur (vide = whisper-server du PATH)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input form="configForm" name="dictation_command" placeholder="whisper-server" /></label>
+                </div>
+
+                <div class="dictation-remote">
+                    <label><span data-i18n="settings.dictation.lbl.url">URL du fournisseur compatible OpenAI</span>
+                        <input form="configForm" name="dictation_url" placeholder="https://api.openai.com" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.key">Clé d'API</span>
+                        <input form="configForm" name="dictation_api_key" type="password" autocomplete="off" placeholder="sk-…" /></label>
+                    <label><span data-i18n="settings.dictation.lbl.remote-model">Modèle distant</span>
+                        <input form="configForm" name="dictation_remote_model" placeholder="gpt-4o-mini-transcribe" /></label>
+                </div>
+
+                <label><span data-i18n="settings.dictation.lbl.vocabulary">Glossaire (un terme par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.vocabulary" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="dictation_vocabulary" rows="4" spellcheck="false" data-i18n-placeholder="settings.dictation.ph.vocabulary" placeholder="webapp-front"></textarea></label>
+                <label><span data-i18n="settings.dictation.lbl.replacements">Corrections (entendu =&gt; écrit, une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.replacements" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="dictation_replacements" rows="3" spellcheck="false" data-i18n-placeholder="settings.dictation.ph.replacements" placeholder="Jean-Kim => Jenkins"></textarea></label>
+                <label><span data-i18n="settings.dictation.lbl.silence">Fin de phrase après (ms de silence)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.silence" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="dictation_silence_ms" type="number" min="400" max="1500" step="50" placeholder="700" /></label>
+                <label><span data-i18n="settings.dictation.lbl.idle">Arrêter le moteur après (minutes sans dictée, 0 = jamais)</span>
+                    <input form="configForm" name="dictation_idle_minutes" type="number" min="0" max="240" step="1" placeholder="15" /></label>
+                <label class="check"><input form="configForm" type="checkbox" name="dictation_final_pass" />
+                    <span data-i18n="settings.dictation.lbl.final-pass">Relire l'audio complet à l'arrêt (plus précis)</span></label>
+
+                <div class="form-actions">
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <span id="configInfoDictation" class="muted"></span>
+                </div>
+            </div>
+
+            <div id="dictationPanel" class="dictation-panel">
+                <p>
+                    <button id="dictationTest" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.dictation.test">Tester</span></button>
+                    <button id="dictationInstall" class="btn" type="button"><svg class="ico"><use href="#i-download"/></svg><span id="dictationInstallLabel" data-i18n="settings.dictation.install">Installer</span></button>
+                    <span id="dictationInfo" class="muted"></span>
+                </p>
+                <div id="dictationVerdict" class="dictation-verdict" hidden></div>
+                <div id="dictationSteps"></div>
+                <p id="dictationDropped" class="muted" hidden></p>
+                <pre id="dictationLog" class="dictation-log" hidden></pre>
+            </div>
+        </div><!-- /sub-dictation -->
+    </section>

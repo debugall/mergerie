@@ -1,0 +1,58 @@
+    <!-- Liens : la grille services × environnements, puis les liens libres. Deux formes
+         parce qu'il y a deux réalités — un service existe en quatre environnements, une
+         page Confluence n'existe qu'une fois. -->
+    <section id="tab-links" class="tab">
+        <!-- CE QU'ON FAIT TOUS LES JOURS EN PREMIER. La barre portait quatre boutons de
+             configuration — un environnement se crée trois fois dans la vie de l'outil, un
+             import se fait une fois — pendant que retrouver un lien, le geste quotidien,
+             n'avait aucune place. La recherche passe donc devant, et couvre la grille ET les
+             liens libres : deux champs pour deux moitiés du même écran obligeaient à choisir
+             où chercher avant de savoir où était la réponse. -->
+        <div class="toolbar">
+            <input id="linkSearch" type="search" class="jira-search" placeholder="Rechercher un service, un lien, une URL…" data-i18n-placeholder="links.search" />
+            <!-- UNE SEULE PORTE POUR AJOUTER, ET ELLE PART DE L'URL. Le menu demandait de
+                 CLASSER avant de coller — un lien simple, un service, un environnement — alors
+                 que ce qu'on a en main, neuf fois sur dix, c'est une adresse dans le
+                 presse-papiers. Créer une colonne ou une ligne reste dans « Autres actions » :
+                 ce sont des gestes d'installation, pas des gestes quotidiens. -->
+            <button id="linkPaste" class="btn btn-primary" data-i18n-title="links.paste.title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="links.paste">Coller une adresse</span></button>
+            <div class="split-menu-wrap">
+                <button id="linkTagBtn" class="btn" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.filter.tag-title" hidden><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="links.filter.tag">Tag</span></button>
+                <div id="linkTagMenu" class="split-menu" hidden></div>
+            </div>
+            <span id="linkFilterChips" class="link-filter-chips"></span>
+            <button id="linkClearFilters" class="btn btn-sm btn-ghost" hidden><span data-i18n="links.filter.clear">Tout afficher</span></button>
+            <span class="spacer"></span>
+            <div class="split-menu-wrap">
+                <button id="linkMore" class="btn" aria-haspopup="true" aria-expanded="false" data-i18n-title="links.more" aria-label="Autres actions"><svg class="ico"><use href="#i-more"/></svg></button>
+                <div id="linkMoreMenu" class="split-menu" hidden>
+                    <button type="button" data-more="newservice"><span data-i18n="links.add.service">Un service</span></button>
+                    <button type="button" data-more="newenv"><span data-i18n="links.add.env">Un environnement</span></button>
+                    <button type="button" data-more="select" hidden><span data-i18n="links.select">Sélectionner</span></button>
+                    <button type="button" data-more="import"><span data-i18n="links.import.btn">Importer depuis Chrome</span></button>
+                    <!-- La sortie de secours d'un import raté. Rouge, en dernier, et masqué
+                         quand il n'y a rien à supprimer : un bouton destructeur ne se propose
+                         pas quand il ne peut rien faire. -->
+                    <button type="button" data-more="wipe" class="danger" hidden><span data-i18n="links.free.delete-all">Supprimer tous les liens libres</span></button>
+                </div>
+            </div>
+        </div>
+        <!-- LES COLONNES, ET RIEN D'AUTRE TANT QU'AUCUN FILTRE N'EST POSÉ. Trois rangées de
+             pastilles précédaient la grille : les services y répétaient les lignes visibles
+             cinq centimètres plus bas, « tout allumé » se peignait comme une sélection, et le
+             contenu commençait au tiers de l'écran. Un interrupteur d'environnement masque une
+             COLONNE, jamais une ligne — voir les trous de prod redevient possible. -->
+        <div id="linkCols" class="link-cols"></div>
+        <div id="linkGrid" class="link-grid-wrap"></div>
+
+        <div class="toolbar toolbar-tight link-free-bar" hidden>
+            <h3 class="link-free-head" data-i18n="links.free.title">Liens libres</h3>
+            <span id="linkFreeCount" class="muted"></span>
+            <span class="spacer"></span>
+            <button id="linkFreeExpand" class="btn btn-sm" hidden><svg class="ico"><use href="#i-unfold"/></svg><span data-i18n="links.free.expand-all">Tout déplier</span></button>
+            <button id="linkFreeFold" class="btn btn-sm" hidden><svg class="ico"><use href="#i-fold"/></svg><span data-i18n="links.free.collapse-all">Tout replier</span></button>
+            <button id="linkFreeAll" class="btn btn-sm" hidden><span data-i18n="links.select.all">Tout sélectionner</span></button>
+            <button id="linkToService" class="btn btn-sm" data-i18n-title="links.free.to-service-title" hidden><svg class="ico"><use href="#i-grid"/></svg><span data-i18n="links.free.file">Ranger dans un service</span></button>
+        </div>
+        <div id="linkFreeList" class="link-free-list"></div>
+    </section>

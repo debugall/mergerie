@@ -1,0 +1,64 @@
+<!-- Capture rapide : touche « n » depuis n'importe quel onglet. Un champ, Entrée, c'est fait.
+     Le tri (priorité, échéance, lien) se fait plus tard dans l'onglet — la capture doit coûter
+     deux secondes, sinon on la remplace par un post-it. -->
+<div id="captureModal" class="modal" hidden>
+    <div class="modal-box modal-capture">
+        <h3 data-i18n="notes.capture.title">Nouvelle todo</h3>
+        <input id="captureTitle" type="text" maxlength="200" autocomplete="off" placeholder="Que faut-il faire ?" data-i18n-placeholder="notes.capture.ph" />
+        <!-- LA SYNTAXE COURTE SE DIT, sinon personne ne la découvre. Une ligne sous le champ,
+             pas une aide à ouvrir : ce qu'on peut écrire est ce qu'on lit en écrivant. -->
+        <p class="field-note" data-i18n-html="notes.capture.syntax">Raccourcis : <code>!217</code> ou <code>PROJ-1408</code> pour lier · <code>@demain</code>, <code>@lundi</code>, <code>@12/09</code> pour l'échéance · <code>!!</code> priorité haute, <code>!</code> basse</p>
+        <button type="button" id="captureMore" class="btn btn-sm btn-ghost" data-i18n="notes.capture.more">+ détails</button>
+        <div id="captureDetails" hidden>
+            <label><span data-i18n="notes.todo.prio-label">Priorité</span>
+                <select id="capturePriority">
+                    <option value="high" data-i18n="notes.prio.high">Haute</option>
+                    <option value="normal" selected data-i18n="notes.prio.normal">Normale</option>
+                    <option value="low" data-i18n="notes.prio.low">Basse</option>
+                </select>
+            </label>
+            <label><span data-i18n="notes.todo.due-label">Échéance (et rappel)</span>
+                <input id="captureDue" type="datetime-local" />
+            </label>
+            <!-- C14 : les trois échéances qu'on pose neuf fois sur dix. La syntaxe courte les
+                 connaît déjà (`@demain`, `@lundi`, `+1h`) ; le formulaire, lui, obligeait à
+                 remplir un sélecteur de date pour dire « demain matin ». -->
+            <div class="capture-quick">
+                <button type="button" class="btn btn-sm" data-due-quick="demain">demain 9 h</button>
+                <button type="button" class="btn btn-sm" data-due-quick="lundi">lundi 9 h</button>
+                <button type="button" class="btn btn-sm" data-due-quick="1h">+1 h</button>
+                <button type="button" class="btn btn-sm btn-ghost" data-due-quick="">effacer</button>
+            </div>
+            <label><span data-i18n="notes.todo.note-label">Note</span>
+                <textarea id="captureNote" rows="2" maxlength="2000" placeholder="précision, contexte…" data-i18n-placeholder="notes.todo.note-ph"></textarea>
+            </label>
+        </div>
+        <p class="muted" data-i18n="notes.capture.hint">Entrée pour créer, Échap pour annuler.</p>
+        <div class="modal-actions">
+            <button id="captureCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="captureOk" type="button" class="btn btn-primary" data-i18n="notes.capture.create">Créer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modale de confirmation générique : remplace les confirm() natifs -->
+<div id="confirmModal" class="modal" hidden>
+    <div class="modal-box modal-confirm">
+        <h3 id="confirmTitle"></h3>
+        <p id="confirmText" class="confirm-text"></p>
+        <!-- Corps STRUCTURÉ, optionnel : un récapitulatif qui compte des fichiers et deux
+             colonnes « ce qui part / ce qui reste » se lit en tableau, pas en paragraphe.
+             Absent par défaut — les confirmations en une phrase ne changent pas d'aspect. -->
+        <div id="confirmBody" class="confirm-body" hidden></div>
+        <pre id="confirmDetail" class="confirm-detail" hidden></pre>
+        <!-- Case OPTIONNELLE : une confirmation qui porte une décision de plus. Le premier
+             usage est le push forcé, qu'on ne veut ni imposer ni cacher dans un bouton à part.
+             Absente par défaut : les confirmations existantes ne changent pas d'aspect. -->
+        <label id="confirmCheckRow" class="inline-check inline-check-mid" hidden>
+            <input id="confirmCheck" type="checkbox" /> <span></span></label>
+        <div class="modal-actions">
+            <button id="confirmCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="confirmOk" type="button" class="btn"></button>
+        </div>
+    </div>
+</div>

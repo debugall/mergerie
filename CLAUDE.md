@@ -26,6 +26,31 @@
   a helper shared by two route files goes to `src/app/lib/`, a piece of business logic to the
   module that owns it.
 
+- **`public/` is split by screen and by layer too, with no build** (`scripts/check-front.js`):
+  `js/core → js/transverse → js/ecrans/<screen> → js/demarrage.js`. A function used by one
+  screen lives in its folder; used by two, in `core/` if it knows no screen, `transverse/`
+  otherwise. A name called from another screen's folder is a **port**: `// @expose name` at the
+  top of the file that defines it, or the check fails (a port nobody calls fails too). A label
+  goes to `i18n/<family>.js` by its prefix, fr and en side by side; a style to
+  `css/ecrans/<screen>.css` with a screen-prefixed class; a modal's HTML to `html/modales/`.
+  Every file starts with `'use strict';`; over 600 code lines warns, over 1 200 fails.
+
+- **The manifest is the list of `<link>` and `<script>` in `public/index.html`**, and it is the
+  only one: tag order is evaluation order, one shared global scope, no `index` in `js/`. Every
+  file of `js/`, `css/`, `i18n/`, `runtime/` and `html/` is cited exactly once; a file added
+  without its line is a silent dead screen and `npm run check` fails. A new line goes at the end
+  of its folder's block. **Move a file with `node scripts/move-front.js <old> <new>`** (it
+  `git mv`s and rewrites the manifest line or the `<!--@include>` marker, and Node's `require`s
+  for a `runtime/` file). A test that reads the front as text goes through
+  `test/helpers/front.js`, never a hard-coded path.
+
+- **`index.html` is a shell assembled by `src/core/page.js`**: the tabs, modals, sprite and
+  footer are `html/` pieces pulled in by `<!--@include html/…-->` markers (one level, relative to
+  `public/`), served for `/` and `/index.html` by a route placed before `express.static`. That
+  module imports nothing from `src/`, so checks and tests read the served page without
+  `MERGERIE_DATA_DIR`. Pieces keep the old file's text order — for modals it is the stacking
+  order — so a screen can have several modal files.
+
 - **A new settings field lives in three places**; `npm run check` fails on each omission:
   `#configForm` (`public/index.html`); `CONFIG_FIELDS` (`public/app.js`), the whitelist load and
   save both iterate — missing there, the field displays, accepts input and is silently never

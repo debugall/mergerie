@@ -28,6 +28,14 @@ function lireHtml() {
 /* Le manifeste : les scripts et les feuilles de style, dans l'ordre du document, en chemins
    relatifs à `public/` (`js/core/dom.js`, `css/socle.css`). Seules les adresses absolues locales
    comptent (`/x.js`) : le sprite et les images n'en sont pas. */
+/* Les morceaux que la coquille inclut (`<!--@include html/…-->`), dans l'ordre, en chemins
+   relatifs à `public/` — ce que `check-front` compare au disque, comme le manifeste. */
+function morceauxHtml() {
+  const page = path.join(ROOT, 'src', 'core', 'page.js');
+  if (!fs.existsSync(page)) return [];
+  return require(page).morceaux(INDEX).map((m) => m.rel);
+}
+
 function manifeste(html = lireHtml()) {
   const scripts = [...html.matchAll(/<script\s+[^>]*?src="\/([^"]+)"/g)].map((m) => m[1]);
   const styles = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="\/([^"]+)"/g)].map((m) => m[1]);
@@ -80,4 +88,4 @@ function cheminFront(nom) {
 
 const lireFichierFront = (nom) => fs.readFileSync(cheminFront(nom), 'utf8');
 
-module.exports = { ROOT, PUBLIC, INDEX, lireHtml, manifeste, scriptsApp, lireFront, cheminFront, lireFichierFront, lirePublic };
+module.exports = { ROOT, PUBLIC, INDEX, lireHtml, morceauxHtml, manifeste, scriptsApp, lireFront, cheminFront, lireFichierFront, lirePublic };

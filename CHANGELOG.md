@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The screen's code is now organised by screen and by layer** (`public/js/core/`,
+  `public/js/ecrans/<screen>/`, `public/css/`, `public/i18n/`, `public/html/` — see PLAN.md).
+  Nothing changes on screen: same tabs, same shortcuts, same labels, same behaviour. What changes
+  is where a thing is found: one short file per screen section instead of a twenty-five-thousand-line
+  `app.js`, one dictionary file per family with French and English side by side, one stylesheet
+  per screen, one HTML piece per tab and per modal, and a check that refuses a file missing from
+  the page or a call crossing a screen's boundary undeclared. A browser's error names the file.
 - **The session form keeps “The AI may ask me questions” in plain sight, and starts with
   “Advanced” folded.** The box has left the Advanced accordion: whether the AI may stop and ask
   is a decision you take for each session, not a setting to go looking for — it now sits above
