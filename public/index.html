@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="/style.css" />
     <!-- Le thème avant le premier rendu. Un FICHIER et non un script en ligne : la politique
          de contenu n'admet que les scripts servis par l'application. -->
-    <script src="/theme-early.js"></script>
+    <script src="/js/theme-early.js"></script>
 </head>
 <body>
 <div id="demoBanner" hidden><span data-i18n="demo.banner">Mode démo — données fictives, aucune connexion GitLab. Explore librement.</span></div>
@@ -2735,12 +2735,12 @@
 <button id="footerShow" class="footer-show" type="button" title="Afficher le bandeau de télémétrie" data-i18n-title="context.title.afficher-le-bandeau-de-telemetrie" hidden><svg class="ico ico-sm"><use href="#i-zap"/></svg></button>
 
 <script src="/i18n.js"></script>
-<script src="/i18n-runtime.js"></script>
-<script src="/ansi-runtime.js"></script>
-<script src="/notes-runtime.js"></script>
-<script src="/dictation-runtime.js"></script>
+<script src="/runtime/i18n-runtime.js"></script>
+<script src="/runtime/ansi-runtime.js"></script>
+<script src="/runtime/notes-runtime.js"></script>
+<script src="/runtime/dictation-runtime.js"></script>
 <script src="/app.js"></script>
 <!-- Après app.js : le micro s'appuie sur `toast` et `copyText`, qui y vivent. -->
-<script src="/dictation-mic.js"></script>
+<script src="/js/transverse/dictee.js"></script>
 </body>
 </html>

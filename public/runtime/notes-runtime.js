@@ -1,3 +1,4 @@
+'use strict';
 /* Autolink des notes — le MÊME code tourne dans le navigateur et dans Node (même montage
    que i18n-runtime.js et ansi-runtime.js).
  *

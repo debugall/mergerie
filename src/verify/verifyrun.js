@@ -23,7 +23,7 @@ const proc = require('../core/proc');
 const verify = require('./verify');
 const demoVerify = require('../demo/verify');
 const { DATA_DIR, ensureDir } = require('../core/paths');
-const { stripAnsi } = require('../../public/ansi-runtime.js');
+const { stripAnsi } = require('../../public/runtime/ansi-runtime.js');
 const { t } = require('../core/i18n');
 
 const WORKTREES_DIR = path.join(DATA_DIR, 'worktrees');

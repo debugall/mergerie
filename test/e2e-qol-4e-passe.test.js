@@ -33,7 +33,7 @@ describe('Qualité de vie · 4ᵉ passe', () => {
   /* C16 — cinq saveurs de job et deux familles d'appel s'affichaient sous leur nom technique
      au milieu de libellés en clair. Un libellé manquant se voit ici, pas à l'écran. */
   test('toutes les saveurs de job et d’appel ont un libellé, dans les deux langues', () => {
-    const rt = require('../public/i18n-runtime.js');
+    const rt = require('../public/runtime/i18n-runtime.js');
     const jobs = ['review', 'rereview', 'modify', 'explain', 'task', 'local', 'gitops', 'docker',
       'converge', 'verify', 'install', 'ask', 'ask-review', 'reconcile'];
     const appels = ['review', 'explain', 'modify', 'task', 'explore', 'ask', 'question'];

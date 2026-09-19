@@ -34,7 +34,7 @@ const httpreq = require('../core/httpreq');
 const i18n = require('../core/i18n');
 const { countTokens } = require('../agent/copilot');
 const demo = require('../demo/dictation');
-const rt = require('../../public/dictation-runtime.js');
+const rt = require('../../public/runtime/dictation-runtime.js');
 const { t } = i18n;
 
 /* Le plafond du corps audio (10 Mo, soit un peu plus de cinq minutes de PCM 16 kHz mono) et
@@ -73,7 +73,7 @@ function langueDe(cfg, demandee) {
   return i18n.getLang() === 'en' ? 'en' : 'fr';
 }
 
-/* L'en-tête WAV est validé par le module PARTAGÉ (public/dictation-runtime.js) : le
+/* L'en-tête WAV est validé par le module PARTAGÉ (public/runtime/dictation-runtime.js) : le
    navigateur fabrique le fichier, le serveur le relaie, et une seule implémentation dit ce
    qui est acceptable. Il rend une CLÉ de traduction ; c'est ici qu'on la traduit. */
 function validerWav(buf) {

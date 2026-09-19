@@ -22,7 +22,7 @@ const gitlab = require('../src/forge/gitlab');
 const gitops = require('../src/git/gitops');
 const { fillTemplate } = require('../src/review/reviewer');
 const { promptsFor, isDefault, PROMPTS } = require('../src/core/prompts');
-const i18n = require('../public/i18n-runtime.js');
+const i18n = require('../public/runtime/i18n-runtime.js');
 
 describe('glob : règles de review par chemin', () => {
   test('l’étoile simple ne franchit pas les dossiers, un motif sans slash matche partout', () => {
@@ -693,7 +693,7 @@ describe('jira : repérage du champ sprint et lecture de ses valeurs', () => {
    container colore sa sortie, `docker logs` la relaie telle quelle, et le panneau affichait
    « ␛[34mdebug␛[39m » — chaque ligne noyée sous ses propres octets d'échappement. */
 describe('ansi : nettoyage des séquences d’échappement des logs', () => {
-  const { stripAnsi, parseAnsi } = require('../public/ansi-runtime.js');
+  const { stripAnsi, parseAnsi } = require('../public/runtime/ansi-runtime.js');
   const E = '\u001b';
 
   test('les couleurs SGR disparaissent, le texte reste intact', () => {

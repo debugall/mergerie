@@ -93,7 +93,7 @@ describe('Défauts de la 4ᵉ passe', () => {
   /* §5.5 — le bandeau de convergence affichait la clé brute `converge.status.needs_input` à
      l'endroit exact où l'on attend une consigne. */
   test('« en attente de réponses » a un libellé dans les deux langues', () => {
-    const rt = require('../public/i18n-runtime.js');
+    const rt = require('../public/runtime/i18n-runtime.js');
     for (const lang of ['fr', 'en']) {
       rt.setLang(lang);
       const s = rt.t('converge.status.needs_input');

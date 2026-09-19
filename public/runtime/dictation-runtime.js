@@ -1,3 +1,4 @@
+'use strict';
 /* Dictée vocale — la logique PURE, le MÊME code dans le navigateur et dans Node (même
    montage UMD que i18n-runtime.js, notes-runtime.js et ansi-runtime.js).
  *

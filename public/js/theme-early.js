@@ -1,3 +1,4 @@
+'use strict';
 /* LE THÈME AVANT LE PREMIER RENDU — sans quoi l'écran clignote en sombre avant de passer au clair.
    Un fichier et non un <script> dans la page : la politique de contenu n'admet que les scripts
    servis par l'application (`script-src 'self'`), et un script en ligne serait la seule

@@ -1,3 +1,4 @@
+'use strict';
 /* Moteur de traduction — le MÊME code tourne dans le navigateur et dans Node.
    Côté navigateur il lit le dictionnaire global `I18N` ; côté serveur, un require().
 
@@ -5,7 +6,7 @@
    donc jamais deux langues actives en même temps. Le navigateur la pose depuis
    localStorage, le serveur depuis `config.language`. */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./i18n.js'));
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('../i18n.js'));
   else root.I18Nrt = factory(root.I18N);
 }(typeof self !== 'undefined' ? self : this, function (I18N) {
   const FALLBACK = 'fr';

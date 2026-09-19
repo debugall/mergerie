@@ -406,7 +406,7 @@ function tousLes(dir, ext, out = []) {
     if (n && HORS_MANIFESTE[f]) soucis.push(`${nomDe(f)}  cité dans le manifeste alors qu'il est ${HORS_MANIFESTE[f]}`);
   }
   for (const c of cites) if (!existe(c)) soucis.push(`public/index.html  <${c.endsWith('.css') ? 'link' : 'script'}> vise /${c}, qui n'existe pas`);
-  for (const [f, pourquoi] of Object.entries(HORS_MANIFESTE)) if (!existe(f) && surDisque.length) soucis.push(`${nomDe(f)}  nommé hors manifeste (${pourquoi}) mais absent du disque — retirer l'exception`);
+  for (const [f, pourquoi] of Object.entries(HORS_MANIFESTE)) if (!existe(f) && existe(path.dirname(f))) soucis.push(`${nomDe(f)}  nommé hors manifeste (${pourquoi}) mais absent du disque — retirer l'exception`);
   soucis.length
     ? fail('Le manifeste et le disque ne coïncident pas', soucis)
     : ok(`Le manifeste et le disque coïncident (${man.scripts.length} scripts, ${man.styles.length} feuilles, ${Object.keys(HORS_MANIFESTE).filter(existe).length} hors manifeste nommés)`);

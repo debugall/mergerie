@@ -435,7 +435,7 @@
     try {
       ctxAudio = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: RT.SAMPLE_RATE });
       if (!ctxAudio.audioWorklet) throw new Error('AudioWorklet');
-      await ctxAudio.audioWorklet.addModule('/dictation-worklet.js');
+      await ctxAudio.audioWorklet.addModule('/js/transverse/dictee-worklet.js');
       noeud = new AudioWorkletNode(ctxAudio, 'collecteur-dictee');
       noeud.port.onmessage = (ev) => trame(ev.data);
       ctxAudio.createMediaStreamSource(flux).connect(noeud);
