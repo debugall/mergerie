@@ -1,6 +1,6 @@
 'use strict';
 /* L’exécutant de la réconciliation d’une session avec l’état réel de ses branches.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const db = require('../../db');
 const taskrunner = require('../../session/taskrunner');
 const { t } = require('../../core/i18n');

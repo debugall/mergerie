@@ -1,6 +1,6 @@
 'use strict';
 /* L’ordonnanceur : lancer, promouvoir, arrêter, rejouer — et les `start…Job` que le reste de l’application appelle.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const path = require('node:path');
 const db = require('../db');
 const proc = require('../core/proc');

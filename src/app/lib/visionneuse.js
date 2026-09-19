@@ -1,6 +1,6 @@
 'use strict';
 /* La visionneuse de diff : le contexte d’un clone, un fichier, son diff, et la charge utile que l’écran affiche.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const garde = require('../../core/garde');
 const configModule = require('../../data/config');

@@ -1,6 +1,6 @@
 'use strict';
 /* D’où vient cette requête ? Host, Sec-Fetch-Site, le jeton d’accès quand le poste est exposé, et l’origine des requêtes qui écrivent.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const express = require('express');
 const garde = require('../../core/garde');

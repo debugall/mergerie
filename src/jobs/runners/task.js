@@ -1,6 +1,6 @@
 'use strict';
 /* L’exécutant d’une session de codage.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const db = require('../../db');
 const taskrunner = require('../../session/taskrunner');
 const { apresRun } = require('../../agent/profile/apres');

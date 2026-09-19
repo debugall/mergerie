@@ -1,6 +1,6 @@
 'use strict';
 /* Les réglages : les lire sans leurs secrets (/api/footer, GET /api/config), les écrire (PUT), et le souvenir des tests de connexion.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const db = require('../../db');
 const datasync = require('../../data/datasync');

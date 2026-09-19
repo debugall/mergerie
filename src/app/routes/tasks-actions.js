@@ -1,6 +1,6 @@
 'use strict';
 /* Ce qu’on fait d’une session finie : un suivi, une réponse, pousser, ouvrir la MR, la merger.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const db = require('../../db');
 const localsession = require('../../data/localsession');

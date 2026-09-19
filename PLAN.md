@@ -19,7 +19,7 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 
 ## Modules (`src/`)
 
-Rangés par **couche** depuis la réorganisation de septembre 2026 (`refacto.md`) : une couche n’importe que ce qui est en dessous d’elle, et `npm run check` (`scripts/check-deps.js`) refuse un import qui remonte, un cycle, ou `gitlab.js` importé hors de `forge/`.
+Rangés par **couche** depuis la réorganisation de septembre 2026 : une couche n’importe que ce qui est en dessous d’elle, et `npm run check` (`scripts/check-deps.js`) refuse un import qui remonte, un cycle, ou `gitlab.js` importé hors de `forge/`.
 
 ```
 app  →  jobs  →  session · review · verify · agent · notes · integrations

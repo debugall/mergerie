@@ -1,6 +1,6 @@
 'use strict';
 /* Une vérification vue par la couche HTTP : ses cibles, la créer, la détailler, la résumer, et la dernière connue de chaque MR (mémorisée le temps d’une requête).
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const approbation = require('../../data/approbation');
 const i18n = require('../../core/i18n');

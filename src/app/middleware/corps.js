@@ -1,6 +1,6 @@
 'use strict';
 /* Lire le corps des requêtes (JSON, audio brut) et servir les fichiers statiques.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const express = require('express');
 const path = require('path');

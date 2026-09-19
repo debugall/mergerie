@@ -1,6 +1,6 @@
 'use strict';
 /* Servir un fichier qui ne vient pas de nous — le SEUL `res.sendFile` du serveur : nosniff, sandbox, pièce jointe sauf pour une image.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const path = require('path');
 
 /* SERVIR UN FICHIER QUE QUELQU'UN D'AUTRE A FOURNI — pièce jointe Jira ou de session, capture

@@ -1,6 +1,6 @@
 'use strict';
 /* Ce qu’on fait de la SORTIE d’un run réussi : la carte d’un agent de domaine, la page de notes, les sous-pages, les entrées d’un agent de fichier.
-   Extrait de agent/profile.js (refacto.md, étape 5) : les corps sont ceux d'origine, au mot près. */
+   Extrait de agent/profile.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../../db');

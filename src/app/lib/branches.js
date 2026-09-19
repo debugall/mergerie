@@ -1,6 +1,6 @@
 'use strict';
 /* Une branche n’est pas anonyme : ce que la base sait dire d’elle (ticket, verdict, session, job Jenkins), et l’adresse d’une ref sur la forge.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const notes = require('../../notes/notes');
 const jobs = require('../../jobs');

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-/* LA DIRECTION DES DÉPENDANCES EST UN CONTRÔLE, PAS UNE INTENTION (refacto.md, §2 et §3.3).
+/* LA DIRECTION DES DÉPENDANCES EST UN CONTRÔLE, PAS UNE INTENTION (voir PLAN.md, « Modules »).
 
    `src/` est rangé par couche, et une couche n'importe que ce qui est en dessous d'elle :
 
@@ -21,7 +21,7 @@
    Et AUCUN CYCLE — sauf ceux qui existaient quand la règle est née, listés nommément dans
    `CYCLES_CONNUS`. Un cycle cassé se RETIRE de la liste dans le même commit (le contrôle
    l'exige : une entrée qui ne correspond plus à rien est une erreur), un cycle nouveau échoue.
-   La liste vide marque la fin de l'étape 5 de refacto.md. */
+   La liste est vide depuis la réorganisation de src/ par couches. */
 const fs = require('fs');
 const path = require('path');
 
@@ -64,7 +64,7 @@ const IMPORTEURS = {
   app: { dossiers: ['racine'], fichiers: [], motif: 'rien n’importe la couche HTTP, sauf server.js qui la monte' },
   jobs: { dossiers: ['app', 'racine', 'jobs'], fichiers: [
     /* Lancer un agent depuis son profil ouvre un job : c'est le seul chemin qui remonte, et
-       il est nommé — refacto.md §4.5. Rien d'autre sous agent/ n'importe jobs/. */
+       il est nommé (voir PLAN.md, « Modules »). Rien d'autre sous agent/ n'importe jobs/. */
     'agent/profile/lancer.js',
   ], motif: 'la file de jobs se lance depuis app/, pas depuis le métier' },
   demo: { dossiers: ['app', 'racine', 'jobs', 'demo'], fichiers: [
@@ -84,7 +84,7 @@ const PORTE_FORGE = ['forge.js', 'forge/index.js'];
    se tiennent (une composante fortement connexe), par chemin sous src/. L'ordre importe peu,
    l'ensemble oui : un fichier de plus ou de moins dans la composante, et l'entrée ne vaut plus. */
 const CYCLES_CONNUS = [
-  // vide depuis l'étape 5 de refacto.md : un cycle est une erreur, pas une exception.
+  // vide depuis la réorganisation de src/ par couches : un cycle est une erreur, pas une exception.
 ];
 
 /* ---------- Le graphe ---------- */
@@ -147,8 +147,8 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
     for (const { vers, ligne } of aretes) {
       const dVers = dossierDe(vers);
       const ou = `${nomDe(de)}:${ligne}  → ${nomDe(vers)}`;
-      if (RANG[dDe] === undefined) { soucis.push(`${ou} — dossier « ${dDe} » inconnu du schéma (refacto.md §2)`); continue; }
-      if (RANG[dVers] === undefined) { soucis.push(`${ou} — dossier « ${dVers} » inconnu du schéma (refacto.md §2)`); continue; }
+      if (RANG[dDe] === undefined) { soucis.push(`${ou} — dossier « ${dDe} » inconnu du schéma des couches (PLAN.md, « Modules »)`); continue; }
+      if (RANG[dVers] === undefined) { soucis.push(`${ou} — dossier « ${dVers} » inconnu du schéma des couches (PLAN.md, « Modules »)`); continue; }
       /* Un fichier encore à la racine de `src/` n'est pas classé : le temps du déménagement,
          l'importer ne dit rien de la direction. Une fois `server.js` et `cli.js` seuls à la
          racine, plus rien ne les importe, et la ligne ne sert plus. */
@@ -171,7 +171,7 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
     }
   }
   soucis.length
-    ? fail('Dépendances qui violent le schéma des couches (refacto.md §2)', soucis)
+    ? fail('Dépendances qui violent le schéma des couches (PLAN.md, « Modules »)', soucis)
     : ok(`Chaque import respecte la direction des couches (${[...new Set(fichiers.map(dossierDe))].length} dossiers)`);
 }
 
@@ -208,7 +208,7 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
   soucis.length
     ? fail('Cycles de dépendances hors de la liste connue', soucis)
     : ok(composantes.length
-      ? `Aucun cycle nouveau (${composantes.length} connu${composantes.length > 1 ? 's' : ''}, à casser — refacto.md étape 5)`
+      ? `Aucun cycle nouveau (${composantes.length} connu${composantes.length > 1 ? 's' : ''}, à casser)`
       : 'Aucun cycle de dépendances');
 }
 

@@ -1,6 +1,6 @@
 'use strict';
 /* Une passe d’agent se renomme et se met en favori — la seule chose qu’on écrit sur une itération après coup.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const i18n = require('../../core/i18n');
 const { t } = i18n;

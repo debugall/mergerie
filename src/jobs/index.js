@@ -1,7 +1,7 @@
 'use strict';
 /* LA FILE DE JOBS, vue de l'extérieur : `require('../jobs')` rend la même interface que l'ancien
    jobs.js d'une seule pièce. Dedans, trois modules et un exécutant par sorte de job
-   (refacto.md, étape 4) :
+   (réorganisation de src/ par couches) :
    — `file.js` : l'état de la file, le journal, les clés de conflit, le registre des exécutants ;
    — `ordonnanceur.js` : lancer, promouvoir, arrêter, rejouer, et les `start…Job` ;
    — `apres-session.js` : ce qui s'enchaîne quand une session finit ;

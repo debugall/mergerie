@@ -1,6 +1,6 @@
 'use strict';
 /* L’exécutant des opérations git multi-dépôts (onglet Git).
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const proc = require('../../core/proc');
 const gitops = require('../../git/gitops');
 const notify = require('../../core/notify');

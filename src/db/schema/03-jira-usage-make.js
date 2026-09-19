@@ -1,6 +1,6 @@
 'use strict';
 /* Les tickets Jira surveillés, la consommation de jetons, la dernière exécution d’une cible Makefile.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 

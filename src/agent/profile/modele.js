@@ -1,6 +1,6 @@
 'use strict';
 /* Le PROFIL d’un agent : le lire, le lister, le valider, le créer, le modifier, le dupliquer, le supprimer, le restaurer — et la fiche que l’écran affiche (`decorer`). Aucun lancement ici : ce module est ce que tous les autres peuvent importer sans cycle.
-   Extrait de agent/profile.js (refacto.md, étape 5) : les corps sont ceux d'origine, au mot près. */
+   Extrait de agent/profile.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../../db');

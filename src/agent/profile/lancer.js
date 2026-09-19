@@ -1,6 +1,6 @@
 'use strict';
 /* Lancer un agent : une `task` ordinaire, dans la file de jobs — et la mise à jour de la connaissance d’un agent de domaine, qui passe par le cartographe. Seul module du profil qui touche à `jobs/`.
-   Extrait de agent/profile.js (refacto.md, étape 5) : les corps sont ceux d'origine, au mot près. */
+   Extrait de agent/profile.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const db = require('../../db');
 const i18n = require('../../core/i18n');
 const { t } = i18n;

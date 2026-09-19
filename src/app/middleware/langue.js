@@ -1,6 +1,6 @@
 'use strict';
 /* La langue de l’écran, pour la durée de la requête.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;

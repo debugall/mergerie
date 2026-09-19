@@ -50,7 +50,7 @@ parity.length ? fail('Parité des dictionnaires', parity) : ok(`Parité des dict
    (`public/dictation-*.js`) et appelle `t()` comme les autres. Restreint à `app.js`, ce
    contrôle ne voyait pas une clé manquante appelée depuis un de ces fichiers — c'est-à-dire
    un libellé qui s'afficherait sous forme de clé à l'écran. */
-/* `src/` se parcourt RÉCURSIVEMENT : un module déplacé dans un sous-dossier (refacto.md)
+/* `src/` se parcourt RÉCURSIVEMENT : un module déplacé dans un sous-dossier (réorganisation de src/ par couches)
    appelle `t()` comme avant, et une clé qu'il serait seul à utiliser ne doit pas passer
    pour orpheline — ni une clé qu'il appelle sans qu'elle existe passer inaperçue. */
 function tousLesJs(dir, out = []) {

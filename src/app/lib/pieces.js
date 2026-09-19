@@ -1,6 +1,6 @@
 'use strict';
 /* Enregistrer les pièces jointes d’une session — images collées et fichiers —, avec leurs bornes.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const { REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, ensureDir } = require('../../core/paths');
 const i18n = require('../../core/i18n');

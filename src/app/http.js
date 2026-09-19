@@ -1,6 +1,6 @@
 'use strict';
 /* Ce que toutes les routes partagent : `wrap`, qui transforme une exception en réponse, et les lectures d’un dépôt ou d’une MR par identifiant.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../db');
 const configModule = require('../data/config');
 const { getConfig, updateConfig } = configModule;

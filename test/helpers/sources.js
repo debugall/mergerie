@@ -2,7 +2,7 @@
 /* LIRE LE TEXTE D'UN MODULE DE `src/` PAR SON NOM, où qu'il soit rangé. Quelques tests sont des
    gardes de SOURCE : ils relisent `taskrunner.js` ou `jobs.js` comme du texte pour prouver qu'une
    colonne n'y est pas lue. Écrire `src/taskrunner.js` en dur les casserait à chaque déplacement
-   (refacto.md) ; ici, `lireSource('taskrunner')` trouve `src/session/taskrunner.js`, et
+   (réorganisation de src/ par couches) ; ici, `lireSource('taskrunner')` trouve `src/session/taskrunner.js`, et
    `lireSource('jobs')` trouve `src/jobs.js` comme `src/jobs/index.js`. Deux fichiers du même nom
    dans deux dossiers seraient une ambiguïté : elle se signale, elle ne se devine pas. */
 const fs = require('node:fs');

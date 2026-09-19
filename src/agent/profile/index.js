@@ -1,6 +1,6 @@
 'use strict';
 /* LE PROFIL D'UN AGENT, vu de l'extérieur : `require('../agent/profile')` rend la même interface
-   que l'ancien profile.js d'une seule pièce (refacto.md, étape 5). Dedans, quatre modules qui ne
+   que l'ancien profile.js d'une seule pièce (réorganisation de src/ par couches). Dedans, quatre modules qui ne
    se referment pas en cycle :
    — `modele.js` : lire, valider, écrire un profil, et sa fiche — importable par tous ;
    — `prompt.js` : d'un profil aux options et à la demande d'un run (lit la connaissance) ;

@@ -1,6 +1,6 @@
 'use strict';
 /* Les agents : profils de session, connaissance d’un agent de domaine, skills et sous-agents de fichier.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const approbation = require('../../data/approbation');
 const configModule = require('../../data/config');

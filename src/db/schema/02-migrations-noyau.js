@@ -1,6 +1,6 @@
 'use strict';
 /* Ce que les versions suivantes ont ajouté aux tables du noyau : la forge, les dates de la MR, le ticket, les colonnes de session, les liens de MR et de dépôt, Jira et Jenkins dans la config.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 

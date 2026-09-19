@@ -1,6 +1,6 @@
 'use strict';
 /* La liste des sessions de codage et d’exploration, une fiche, et les sessions d’agent — ce que l’onglet AI Dev affiche avant qu’on ouvre quoi que ce soit.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const db = require('../../db');
 const i18n = require('../../core/i18n');

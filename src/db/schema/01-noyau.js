@@ -1,6 +1,6 @@
 'use strict';
 /* Les tables du noyau — config, dépôts, merge requests, reviews, jobs, sessions, règles, brouillons de commentaires — telles que la première version les a créées.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 

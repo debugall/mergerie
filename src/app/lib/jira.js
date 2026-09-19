@@ -1,6 +1,6 @@
 'use strict';
 /* Ce que plusieurs écrans demandent à Jira : le champ sprint, les statuts par projet, les tickets surveillés et leur timer, le badge du menu, ce qui est engagé sur un ticket, et prévenir Jira d’une MR.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const { etat: etatLocal, pref: prefLocale } = require('../../data/localstate');
 const configModule = require('../../data/config');

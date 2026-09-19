@@ -1,6 +1,6 @@
 'use strict';
 /* La file de jobs et son état : ce qui attend, ce qui tourne, le journal, les clés de conflit — et le registre des exécutants, où chaque sorte de job vient s’inscrire.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const path = require('node:path');
 const db = require('../db');
 const { stripAnsi } = require('../../public/ansi-runtime.js');

@@ -1,6 +1,6 @@
 'use strict';
 /* Qui je suis sur chaque forge — mémorisé, parce que l’écran le demande souvent.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
 const forge = require('../../forge');

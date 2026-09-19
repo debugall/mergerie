@@ -1,6 +1,6 @@
 'use strict';
 /* Ce qui n’appartient qu’à cette machine : `local_state`, `local_pref`, `local_dir_map`, `local_session`.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 

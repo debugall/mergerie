@@ -1,6 +1,6 @@
 'use strict';
 /* L’onglet Git : la palette de commandes, l’exécution multi-dépôts, l’explorateur de branches, les branches de MR mergées, les opérations restaurables, et ce qu’une branche sait dire de son auteur.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const db = require('../../db');
 const configModule = require('../../data/config');

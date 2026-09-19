@@ -1,6 +1,6 @@
 'use strict';
 /* OUVRIR LA BASE — et rien d'autre. Les tranches de `schema/` s'y accrochent en l'important ;
-   `index.js` les joue dans l'ordre et exporte la base prête (refacto.md, étape 3). */
+   `index.js` les joue dans l'ordre et exporte la base prête (réorganisation de src/ par couches). */
 const Database = require('better-sqlite3');
 const { DB_PATH, DEFAULT_CLONE_DIR, initDirs } = require('../core/paths');
 

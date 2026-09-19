@@ -1,6 +1,6 @@
 'use strict';
 /* Les jobs Jenkins liés à un dépôt, le souvenir des tests de connexion, la ligne de configuration et ses valeurs par défaut, la palette git.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 const { PROMPTS, ANCIENS_PROMPTS } = require('../../core/prompts');

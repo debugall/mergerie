@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-/* DÉPLACER UN MODULE SANS RIEN CASSER — le seul outil autorisé pour bouger un fichier de `src/`
-   (refacto.md, §3.1).
+/* DÉPLACER UN MODULE SANS RIEN CASSER — le seul outil autorisé pour bouger un fichier de `src/`.
 
      node scripts/move-module.js src/gitlab.js src/forge/gitlab.js [src/a.js src/x/a.js …]
 

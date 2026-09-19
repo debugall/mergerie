@@ -1,6 +1,6 @@
 'use strict';
 /* Une session de codage : la créer, la modifier, la partager, la ranger, la lancer, la faire converger, voir le diff de chaque cible.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const db = require('../../db');
 const { REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, ensureDir } = require('../../core/paths');

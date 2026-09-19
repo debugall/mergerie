@@ -80,7 +80,7 @@ const dictation = require('./integrations/dictation');
 const agentprofile = require('./agent/profile');
 const agentschedule = require('./agent/schedule');
 
-/* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (refacto.md, étape 2). Chaque fichier de
+/* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (réorganisation de src/ par couches). Chaque fichier de
    `app/middleware/` s'accroche à l'application quand on le charge : la ligne où il est chargé
    est la place qu'il prend dans la chaîne. Les en-têtes d'abord, pour que même un refus les
    porte ; la garde d'origine avant tout ce qui lit une requête ; le mémo de requête, la langue et

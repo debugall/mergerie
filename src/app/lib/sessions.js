@@ -1,6 +1,6 @@
 'use strict';
 /* Ce qu’une session est pour la couche HTTP : la retrouver, ses cibles, ses dossiers, son libellé, son suivi, ses identifiants de session d’agent.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const localdirs = require('../../data/localdirs');
 const localsession = require('../../data/localsession');

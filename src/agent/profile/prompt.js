@@ -1,6 +1,6 @@
 'use strict';
 /* D’un profil à un lancement : les options du CLI (`optionsFor`), le prompt système, la demande composée avec la connaissance de l’agent, les cibles, et la matérialisation d’un run.
-   Extrait de agent/profile.js (refacto.md, étape 5) : les corps sont ceux d'origine, au mot près. */
+   Extrait de agent/profile.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../../db');

@@ -1,6 +1,6 @@
 'use strict';
 /* Ce qui se passe quand une session finit : le suivi automatique, la question devenue todo, la vérification qui s’enchaîne.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const path = require('node:path');
 const db = require('../db');
 const notes = require('../notes/notes');

@@ -1,6 +1,6 @@
 'use strict';
 /* Le nom de fichier d’un objet qu’on nomme : le `slug`, repris sur l’existant.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 const { slugLibre } = require('../../core/ulid');

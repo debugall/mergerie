@@ -1,6 +1,6 @@
 'use strict';
 /* Écrire les fichiers du dépôt de données après chaque requête qui a écrit.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const store = require('../../data/store');
 

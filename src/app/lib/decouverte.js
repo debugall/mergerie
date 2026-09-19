@@ -1,6 +1,6 @@
 'use strict';
 /* Découvrir les MR sur les forges, et ce qui se déclenche tout seul ensuite : vérifications et reviews automatiques, avec leurs plafonds.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const datasync = require('../../data/datasync');
 const approbation = require('../../data/approbation');

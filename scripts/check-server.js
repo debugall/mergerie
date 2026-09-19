@@ -15,7 +15,7 @@
 
    TOUS LES CONTRÔLES PARCOURENT `src/` RÉCURSIVEMENT et retrouvent les fichiers qu'ils
    inspectent par leur CONTENU, pas par un chemin écrit en dur : un module déplacé dans un
-   sous-dossier (refacto.md) reste sous contrôle. Un contrôle qui lirait `src/config.js` en
+   sous-dossier (réorganisation de src/ par couches) reste sous contrôle. Un contrôle qui lirait `src/config.js` en
    dur cesserait de voir le fichier le jour où il devient `src/data/config.js`, sans le dire. */
 const fs = require('fs');
 const path = require('path');
@@ -415,7 +415,7 @@ if (registre) {
     : ok('GET sans effet, env des processus filtré, fichiers servis par la porte prudente, import validé');
 }
 
-/* LA TAILLE D'UN FICHIER SE SURVEILLE (refacto.md, §3.4). Un fichier de huit mille lignes ne
+/* LA TAILLE D'UN FICHIER SE SURVEILLE. Un fichier de huit mille lignes ne
    naît pas en un jour : il grossit de cinquante lignes par fonctionnalité, et personne ne
    décide jamais de le couper. Ce contrôle décide à sa place — avertissement passé 600 lignes,
    échec passé 1 200 —, les lignes de commentaire non comptées : la documentation en tête de

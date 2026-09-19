@@ -1,6 +1,6 @@
 'use strict';
 /* L’exécutant de l’installation du moteur de dictée.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const proc = require('../../core/proc');
 const git = require('../../git/git');            // `run` : spawn générique, journal ligne à ligne, Stop câblé
 const { DATA_DIR } = require('../../core/paths');

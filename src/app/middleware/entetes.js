@@ -1,6 +1,6 @@
 'use strict';
 /* Les en-têtes de toute réponse : politique de contenu, nosniff, no-referrer — posés en premier, pour que même un refus les porte.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 
 /* LES EN-TÊTES DE TOUTE RÉPONSE — posés EN PREMIER, pour que même un refus et la page d'accès

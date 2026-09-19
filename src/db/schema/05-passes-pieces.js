@@ -1,6 +1,6 @@
 'use strict';
 /* L’historique des passes d’agent, les pièces jointes d’une session, et le partage d’une session entre collègues.
-   Tranche de l'ancien db.js (refacto.md, étape 3), jouée à sa place dans l'ordre de `index.js` :
+   Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 

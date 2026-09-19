@@ -1,6 +1,6 @@
 'use strict';
 /* L’exécutant des jobs de review : review, rereview, modify, ask-review, explain — une liste de merge requests, l’une après l’autre.
-   Extrait de jobs.js (refacto.md, étape 4) : les corps sont ceux d'origine, au mot près. */
+   Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const db = require('../../db');
 const { reviewMr, modifyReview, askReview, explainMr } = require('../../review/reviewer');
 const proc = require('../../core/proc');

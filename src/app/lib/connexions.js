@@ -1,6 +1,6 @@
 'use strict';
 /* Les tests de connexion aux services : le souvenir du dernier résultat, et le jeton qui ne part pas vers une autre adresse.
-   Extrait de server.js (refacto.md, étape 2) : les corps sont ceux du serveur, au mot près. */
+   Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const garde = require('../../core/garde');
 const configModule = require('../../data/config');
