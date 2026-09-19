@@ -1,0 +1,87 @@
+/* Dashboard */
+.stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--s-3); margin: var(--s-4) 0; }
+.stat-tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s-4); }
+.stat-tile .stat-val { font-size: var(--fs-3xl); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; }
+.stat-tile .stat-lbl { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.stat-tile.amber .stat-val { color: var(--amber); }
+.stat-tile.accent .stat-val { color: var(--accent); }
+.stat-tile.green .stat-val { color: var(--green); }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+@media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
+.dash-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
+/* La taille vient du niveau unique déclaré plus haut ; ici on ne garde que la marge. */
+.dash-card h3 { margin: 0 0 12px; }
+.hbars { display: flex; flex-direction: column; gap: 8px; }
+.hbar { display: flex; align-items: center; gap: 8px; }
+.hbar-lbl { flex: 0 0 64px; font-size: 12px; color: var(--muted); }
+.hbar-track { flex: 1; height: 14px; background: var(--panel2); border-radius: 999px; overflow: hidden; }
+.hbar-fill { height: 100%; border-radius: 999px; transition: width .3s; min-width: 2px; }
+.hbar-val { flex: 0 0 28px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.vbars { display: flex; align-items: flex-end; gap: 6px; height: 120px; }
+.vbar { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
+.vbar-fill { width: 70%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; transition: height .3s; }
+.vbar-val { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.vbars-x { display: flex; gap: 6px; margin-top: 4px; }
+.vbars-x span { flex: 1; text-align: center; font-size: 10px; color: var(--muted); }
+/* Une barre à ZÉRO ne dessine rien. `min-width`/`min-height` servent à garder visible une
+   valeur très petite mais non nulle ; à 0 ils inventaient une quantité. */
+.hbar-fill.is-zero { min-width: 0; }
+.vbar-fill.is-zero { min-height: 0; }
+.vbars-x span.no-data { opacity: .4; }
+
+/* Activité par projet sur six mois — une LIGNE par dépôt, barres horizontales.
+   En colonnes, vingt dépôts se partageaient la largeur : 65 px chacun, donc des noms
+   tronqués et des barres réduites à des traits. En lignes, le nom tient en entier à gauche
+   et la longueur de barre reste lisible quel qu'en soit le nombre. La hauteur du graphe est
+   BORNÉE et défile : la liste peut s'allonger sans repousser le reste de la page. */
+.pab-chart { display: flex; flex-direction: column; gap: 4px; max-height: 320px;
+  padding: 6px 2px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+/* La ligne entière est un bouton : cible large, focusable au clavier. On neutralise donc
+   l'habillage natif — sinon chaque projet arriverait avec un fond et une bordure de bouton. */
+button.pab { display: grid; grid-template-columns: minmax(90px, 170px) 1fr 46px; align-items: center;
+  gap: 10px; width: 100%; padding: 3px 4px; border-radius: var(--r-sm);
+  background: none; border: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+button.pab:hover { background: var(--hover); }
+button.pab:hover .pab-name { color: var(--accent); }
+/* Le nom, à gauche de sa barre : il tient sur une ligne entière ; le chemin complet reste au
+   survol quand un nom très long doit malgré tout être coupé. */
+.pab-name { font-size: 12px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Les segments se posent de gauche à droite, du plus ancien au plus récent — le temps se lit
+   dans le sens de lecture. Le fond de la piste rend visible ce qui n'est pas rempli. */
+.pab-stack { display: flex; flex-direction: row; align-items: stretch; height: 16px;
+  border-radius: 3px; overflow: hidden; background: var(--line-soft, var(--line)); }
+/* Une couleur par mois : identifier « avril » d'un coup d'œil demandait sinon de compter les
+   segments depuis la gauche. La teinte vient d'une variable posée à l'affichage. */
+.pab-seg { display: block; height: 100%; background: var(--c, var(--accent)); min-width: 1px; }
+.pab-val { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+/* Un projet endormi doit se distinguer au premier regard, sans perdre pour autant la lecture
+   de SES mois : c'est souvent là qu'on veut savoir QUAND il s'est arrêté. On désature au lieu
+   d'écraser en gris uni. */
+.pab.dort .pab-stack { filter: grayscale(.8); opacity: .75; }
+.pab.dort .pab-name, .pab.dort .pab-val { color: var(--muted); font-style: italic; }
+/* Légende : un mois, une pastille, dans l'ordre du graphe. */
+.pab-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 10px; font-size: var(--fs-xs); }
+.pab-mois, .pab-legend-sleep { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); }
+.pab-key { display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--c, var(--accent)); }
+.pab-key.dort { background: var(--muted); filter: grayscale(.8); opacity: .75; }
+
+/* Détail d'un projet sur 12 mois (modale) : même lecture que le graphe d'ensemble, en plus
+   large — une colonne par mois, hauteur = jours d'activité. */
+.activity-box { width: 720px; }
+.ad-chart { display: flex; align-items: flex-end; gap: 6px; height: 170px; margin: 14px 0 6px; }
+.ad-col { flex: 1 1 0; height: 100%; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; gap: 3px; min-width: 0; }
+.ad-val { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ad-bar { width: 68%; max-width: 30px; background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; }
+.ad-bar.vide { background: var(--line); height: 2px !important; }
+/* Le dernier mois n'est pas fini : hachuré, comme dans la vue d'ensemble. */
+.ad-bar.encours { background: repeating-linear-gradient(135deg, var(--accent) 0 3px, transparent 3px 6px), var(--panel2); }
+.ad-x { font-size: 10px; color: var(--muted); white-space: nowrap; }
+.ad-facts { margin: 6px 0 0; }
+@media (max-width: 900px) {
+  .pa-head, .pa-row { grid-template-columns: minmax(90px, 1fr) minmax(90px, 1.4fr) 46px; }
+  .pa-who, .pa-tag, .pa-err { display: none; }
+}
+
+.search { width: 100%; background: var(--panel2) var(--icon-search) no-repeat 11px center; background-size: 15px; border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 9px 12px 9px 34px; font: inherit; margin: 4px 0 8px; }

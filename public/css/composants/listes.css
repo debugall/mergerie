@@ -1,0 +1,12 @@
+/* ---------- Listes unifiées ----------
+   Avant : chaque carte était une boîte bordée sur 4 côtés → sur 30 MR, un empilement
+   de rectangles à égale importance visuelle. Un seul conteneur + séparateurs. */
+.list { gap: 0; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: var(--panel); }
+.list:empty { display: none; }
+.list .card { border: none; border-bottom: 1px solid var(--line-soft); border-radius: 0; padding: 14px 16px; background: transparent; }
+.list .card:last-child { border-bottom: none; }
+.list .card.selectable { cursor: pointer; transition: background var(--t-fast); }
+.list .card.selectable:hover { background: var(--hover); }
+/* barre latérale accent : bien plus lisible qu'une bordure de 1px */
+.list .card.active { background: var(--panel2); box-shadow: inset 3px 0 0 var(--accent); }
+

@@ -1,0 +1,89 @@
+/* Le panneau de logs reste FIGÉ sous l'en-tête (lui aussi sticky) quand on scrolle : on suit
+   la progression / on garde le bouton Stop même en parcourant le contenu. `--header-h` est
+   mesuré en JS (hauteur réelle de l'en-tête, qui varie si la nav passe à la ligne). */
+/* LE BANDEAU DE JOB NE POUSSE PLUS LA PAGE. En `sticky`, il occupait sa place dans le flux :
+   son ouverture faisait descendre tout le contenu de ~78 px et sa fermeture le faisait remonter
+   — deux sauts de mise en page par job, y compris pendant qu'on lit ou qu'on vise un bouton.
+   En `fixed`, il flotte au-dessus du contenu, qui défile dessous : rien ne bouge. Il part du
+   bord de la colonne latérale pour ne pas la recouvrir, et suit son repli par la variable. */
+/* HORS DU FLUX, ET EN BAS. Dans le flux, l'ouverture d'un job faisait descendre toute la page
+   de 78 px et sa fermeture la faisait remonter — deux sauts par job, pendant qu'on lit ou qu'on
+   vise un bouton. En haut, flottant, il ne bougeait plus rien mais recouvrait la barre de
+   sous-onglets, ce qui est pire : on ne peut plus cliquer ce qu'on voit. En bas, il ne cache
+   que la fin de la page, l'endroit conventionnel d'un indicateur de tâche de fond. */
+.logpanel { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden;
+  /* AU-DESSUS DU BANDEAU DU BAS, pas dessous. Celui-ci est fixe, haut de 30 px et en
+     `z-index: 40` : un panneau posé à 12 px du bord perdait ses 18 px inférieurs, dont la
+     moitié du bouton « Voir le rapport » — le seul lien vers ce que le job vient de produire.
+     La hauteur du bandeau est une variable, pas un nombre recopié. */
+  position: fixed; bottom: calc(var(--footer-h, 30px) + 12px);
+  left: calc(var(--sidebar-w, 194px) + 18px); right: 18px; margin: 0;
+  max-height: calc(100vh - var(--header-h, 56px) - var(--footer-h, 30px) - 24px);
+  display: flex; flex-direction: column;
+  z-index: 30; box-shadow: var(--sh-2); }
+/* Déplié, c'est le JOURNAL qui défile — pas le panneau, dont la tête doit rester atteignable. */
+.logpanel #logBox { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* A41 — le filtre du journal vit dans sa barre d'outils : étroit (il ne doit pas pousser les
+   boutons hors de la ligne) et discret tant qu'il est vide. */
+.logpanel .log-filter { max-width: 180px; padding: 2px 8px; font-size: 12px; }
+.logpanel .loghead { flex: 0 0 auto; }
+.logpanel .loghead { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.logpanel .loghead .spacer { flex: 1; }
+.logstatus { font-weight: 600; }
+.logstatus.running { color: var(--amber); }
+.logstatus.done { color: var(--green); }
+.logstatus.error { color: var(--red); }
+.logstatus .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: currentColor; }
+.logstatus.running .dot { animation: pulse 1s infinite; }
+/* Temps écoulé du job. Chiffres à chasse fixe : sans ça la ligne tressaute à chaque seconde,
+   la largeur des chiffres variant dans la police de l'interface. */
+.logelapsed {
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';
+  color: var(--muted); font-size: 12.5px;
+  padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+.logpanel .loghead .log-toggle { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 6px; width: 24px; height: 24px; padding: 0; cursor: pointer; font-size: 12px; }
+/* #logBox est un CONTENEUR de volets (un par job en cours) : c'est le volet qui défile,
+   pas le conteneur, sinon changer d'onglet ferait sauter la position de défilement. */
+#logBox { margin: 0; background: var(--code-bg); }
+/* Ligne d'en-tête d'un journal élagué : discrète mais présente — un journal tronqué en
+   silence ferait douter de ce qu'on lit. */
+.log-trunc { color: var(--muted); font-style: italic; }
+.logpane { margin: 0; padding: 10px 12px; max-height: 340px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; color: var(--code-text); background: var(--code-bg); white-space: pre-wrap; word-break: break-word; user-select: text; }
+/* Onglets de job : même grammaire que les onglets du visualiseur (.split-tabs). */
+.log-tabs { display: flex; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+/* L'onglet est une enveloppe : elle porte la bordure et l'état, les deux boutons qu'elle
+   contient (choisir / arrêter) restent transparents. Un bouton dans un bouton n'existe pas. */
+.log-tabs .jobtab { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.log-tabs .jobtab:hover:not(.active) { border-color: var(--accent); }
+.log-tabs .jobtab.active { background: var(--panel2); }
+.log-tabs button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: none; color: var(--muted); padding: 3px 10px; cursor: pointer; font-size: 12.5px; }
+.log-tabs .jobtab:hover .jobtab-pick, .log-tabs .jobtab.active .jobtab-pick { color: var(--text); }
+/* Le stop reste discret : c'est l'onglet qu'on vient chercher, pas lui. Il ne rougit qu'au
+   survol — un ✕ rouge en permanence sur chaque onglet ferait un bandeau d'alarmes. */
+.log-tabs .jobtab-stop { padding: 3px 7px 3px 4px; border-left: 1px solid var(--line); }
+.log-tabs .jobtab-stop:hover { color: var(--red-text); background: color-mix(in srgb, var(--red) 10%, transparent); }
+/* Pastille d'état, même vocabulaire que le bandeau : ambre en cours (elle bat), vert
+   terminé, rouge en erreur, gris arrêté. C'est ce qui dit qu'un onglet a fini SANS le
+   faire disparaître — un journal supprimé à la seconde où l'on veut le lire, c'est raté. */
+.log-tabs .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+.log-tabs .running .dot { background: var(--amber); animation: pulse 1s infinite; }
+.log-tabs .done .dot { background: var(--green); }
+.log-tabs .error .dot { background: var(--red); }
+.log-tabs .stopped .dot { background: var(--muted); }
+/* File d'attente : une ligne par job, l'action à droite comme dans les cartes. */
+/* File d'attente et journal d'activité partagent cette enveloppe. Elle est PLAFONNÉE et défile
+   d'elle-même : sans ça, quarante lignes d'historique repoussaient le journal du job hors de
+   l'écran — on ouvrait « Activité » pour se repérer, et on perdait de vue ce qu'on lisait. */
+.log-queue { padding: 4px 10px 8px; border-bottom: 1px solid var(--line); background: var(--panel2);
+  max-height: 30vh; overflow-y: auto; overscroll-behavior: contain; }
+.log-queue-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px; }
+.log-queue-row .spacer { flex: 1; }
+.log-queue-what { color: var(--muted); }
+.log-queue-why { max-width: 46ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#logQueueCount { position: static; margin-left: 6px; }
+.logpane .cmd { color: var(--log-cmd); }
+.logpane .err { color: var(--diff-del-text); }
+.logpane .hdr { color: var(--hunk); font-weight: 600; }
+

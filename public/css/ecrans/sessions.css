@@ -1,0 +1,121 @@
+/* Le formulaire est plafonné à 720px par défaut (.form) : on lève ce plafond dans ces
+   modales pour que le contenu remplisse toute la largeur (sinon grand blanc à droite). */
+/* Le formulaire remplit la modale large. Sans cela, `.form { max-width: 720px }` laissait
+   une colonne de 720 px au milieu d'une boîte de 1180 — la modale s'élargissait, pas son
+   contenu, et l'écran était plus vide qu'avant. */
+#taskModal .modal-box .form, #ticketModal .modal-box .form,
+#agentModal .modal-box .form, #domainModal .modal-box .form { max-width: none; }
+#taskModal .modal-box textarea[name="prompt"] { min-height: 200px; }
+/* Les combos projet/branche remplissent la largeur disponible ; base réduite pour
+   que les 3 combos + icônes d'aide + bouton « retirer » tiennent sur UNE ligne. */
+#taskModal :is(.target-row, .target-head-row) .repo-combo { flex: 3 1 200px; }
+#taskModal :is(.target-row, .target-head-row) .combo { flex: 2 1 150px; }
+/* Champ « ticket Jira » : occupe la largeur restante avant le bouton Récupérer. */
+#taskModal .task-jira .jira-fetch { flex-wrap: nowrap; }
+#taskModal .task-jira .jira-fetch input { flex: 1 1 auto; min-width: 160px; }
+
+/* Tasks */
+.form select { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+.combo { position: relative; }
+.combo input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+/* valeur longue : ellipsis quand le champ n'a pas le focus (le title montre le nom complet au survol) */
+.combo input { text-overflow: ellipsis; }
+/* `position` et coordonnées sont posées en JS à l'ouverture (`placerMenu`) : le menu se pose en
+   `fixed`, sinon le défilement d'un conteneur le rogne. L'absolu ci-dessous n'est que le repli
+   si le menu s'affichait avant d'être placé. */
+.combo-options { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 2px; max-height: 240px; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--sh-2); }
+.combo-opt { padding: 7px 10px; cursor: pointer; font-size: 13px; }
+/* Mention accolée à une option de liste : « non exécutable en démo », le suffixe par défaut
+   d'une branche. Discrète — elle qualifie l'option, elle ne la remplace pas. */
+.combo-hint { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.combo-opt:hover { background: var(--panel2); }
+/* L'option désignée AU CLAVIER. Même fond que le survol — c'est le même état, atteint par un
+   autre moyen —, plus une barre d'accent : sans elle, dans une liste de trois cents branches,
+   on ne saurait pas ce qu'Entrée va choisir. */
+.combo-opt.active { background: var(--panel2); box-shadow: inset 2px 0 0 var(--accent); }
+.combo-opt.muted { color: var(--muted); cursor: default; }
+/* Alignement vertical par défaut des cases (contextes inline : bascules « Activé »
+   des dépôts/règles, auto-défilement du log…). Sans effet en contexte flex, donc
+   n'interfère pas avec `.inline-check` ci-dessous. */
+input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
+
+/* Case à cocher + libellé : la case s'aligne sur la PREMIÈRE ligne du texte (et non
+   au centre vertical d'un libellé qui passe sur deux lignes — cause du désalignement).
+   Tout reste sur une seule rangée logique ; c'est le texte qui wrappe, pas les éléments. */
+.inline-check { flex-direction: row !important; align-items: flex-start !important; flex-wrap: nowrap !important; gap: 8px; }
+.inline-check > input[type="checkbox"], .inline-check > input[type="radio"] { flex: 0 0 auto; width: auto; margin: 2px 0 0; }
+.inline-check > span { flex: 0 1 auto; min-width: 0; line-height: 1.4; }
+.inline-check > .hint { flex: 0 0 auto; margin-top: 1px; }
+/* Ligne courte contenant un champ (ex. seuil de note) : tout se centre verticalement
+   plutôt que de s'aligner en haut — la case, le libellé et le champ sont sur une même ligne. */
+/* Bandeau au-dessus d'une liste : options d'affichage + décompte de ce qui est filtré.
+   Le décompte n'est pas décoratif — sans lui, une session rangée disparaît sans laisser
+   de trace et on la croit supprimée. */
+.list-head { display: flex; align-items: center; gap: 12px; padding: 2px 2px 0; }
+.list-head .inline-check { align-items: center !important; margin: 0; cursor: pointer; }
+.list-head .inline-check > input[type="checkbox"] { margin-top: 0; }
+.list-head .muted { font-size: 12.5px; }
+/* Session rangée, visible parce que la case est cochée : reconnaissable au premier coup
+   d'œil, sinon on ne sait plus laquelle on vient de ranger. */
+.card.is-hidden { opacity: .62; border-style: dashed; }
+
+.inline-check-mid { align-items: center !important; }
+.inline-check-mid > input[type="checkbox"] { margin-top: 0; }
+.task-previews { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 6px; }
+.task-prev { position: relative; display: inline-block; }
+.task-prev img { max-height: 90px; border: 1px solid var(--line); border-radius: 6px; display: block; }
+.task-prev button { position: absolute; top: -6px; right: -6px; background: var(--red); color: var(--on-accent); border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; line-height: 1; }
+.task-row { align-items: flex-start; }
+.task-prompt { color: var(--muted); font-size: 13px; margin-top: 4px; white-space: pre-wrap; word-break: break-word; }
+/* Prompt replié sur trois lignes plutôt que coupé à N caractères : la coupure suit ce qui est
+   VISIBLE, donc la largeur réelle de la carte, et « Voir plus » restitue le texte intégral —
+   qui est déjà dans le DOM, donc trouvable par la recherche du navigateur. */
+.task-prompt.clamped {
+  overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3; line-clamp: 3;   /* la propriété standard, pour quand le préfixe partira */
+}
+.prompt-more {
+  background: none; border: none; padding: 0; margin-top: 2px;
+  color: var(--accent); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.prompt-more:hover { text-decoration: underline; }
+.task-pushcmd { margin-top: 6px; font-size: 12.5px; }
+.task-pushcmd code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
+.mr-create { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.mr-create .mr-title { flex: 1; min-width: 220px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font: inherit; }
+.followup { flex-wrap: wrap; }
+.followup-text { flex: 1 1 100%; min-height: 60px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+/* Suivi en attente : un encadré qui se remarque sans crier. Le liseré à gauche suffit à le
+   distinguer du prompt juste au-dessus, et les couleurs sortent des variables de thème —
+   il se lit pareil en clair et en sombre. */
+.followup-draft { margin-top: 8px; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--panel2); border-radius: var(--radius); }
+.followup-draft-head { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: .85rem; margin-bottom: 4px; }
+.followup-draft-head .muted { font-weight: 400; }
+.followup-draft-text { white-space: pre-wrap; font-size: .9rem; margin-bottom: 6px; }
+.followup-draft-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Armé : le liseré passe au vert, comme partout ailleurs pour « ça va se faire tout seul ». */
+.followup-draft.is-auto { border-left-color: var(--green); }
+.followup-auto-line { flex: 1 1 100%; }
+/* La date d'un suivi, sur sa ligne ; le champ garde sa largeur naturelle. */
+.followup-at-line { flex: 1 1 100%; }
+.followup-at-line > input { flex: 0 0 auto; width: auto; }
+/* « Programmée pour le … » et sa croix, dans la ligne de titre de la carte. */
+.tag-programme { color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+.tag-x { background: none; border: 0; padding: 0 2px; color: var(--muted); cursor: pointer; line-height: 1; display: inline-flex; align-items: center; }
+.tag-x:hover { color: var(--text); }
+.task-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; flex: 0 0 auto; }
+/* Cartes Dev IA : la colonne d'actions garde la même largeur d'une carte à l'autre, sinon
+   elle se cale sur le libellé le plus long de CHAQUE carte et les icônes ✏/✕ se déplacent
+   à chaque ligne. min-width plutôt qu'une largeur figée : une traduction plus longue que
+   prévu élargit la colonne au lieu de déborder du bouton (les libellés sont en nowrap).
+   Sélecteur volontairement long : `.list .card > div:not(.spacer)` plus haut impose
+   min-width: 0 aux enfants de carte, il faut le battre en spécificité. */
+.list .card.task-row > .task-actions { min-width: 210px; }
+.ta-work { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+/* Actions sur la fiche (éditer, supprimer) séparées de celles sur le travail, et alignées à
+   droite : ✕ occupe alors le même point sur les trois sous-onglets, y compris hors dépôt
+   où ✏ n'existe pas. */
+.ta-meta { display: flex; justify-content: flex-end; gap: 6px; }
+.ta-work + .ta-meta { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
+

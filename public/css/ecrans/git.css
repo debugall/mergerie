@@ -1,0 +1,147 @@
+/* ---------- Onglet Git ---------- */
+.git-row { align-items: flex-start; }
+.git-row > .git-repo { flex: 0 0 240px; }
+/* Création : dépôt · ref source · nom à créer. Les deux derniers se partagent la
+   place restante et se replient sous le dépôt quand la fenêtre est étroite. */
+/* La ref source est un combo (recherche), pas un <select> : la largeur se pose donc sur
+   son enveloppe et non sur l'input caché qui porte la classe `git-ref`.
+
+   ELLE PREND LA PLUS GROSSE PART, et devant le dépôt. Un nom de branche est plus long
+   qu'un nom de projet — `hotfix/COMPTA-2210-correction-arrondi-echeances` en fait deux
+   fois. Le champ tenait 180 px de base et gagnait autant que le dépôt : au-delà d'une
+   quarantaine de caractères, la fin du nom sortait du champ, sans coupure visible ni
+   info-bulle qui s'impose — on ne voyait pas qu'il manquait quelque chose. */
+.git-row > .repo-combo { flex: 1 1 240px; }
+.git-row > .git-ref-combo { flex: 2 1 300px; min-width: 240px; }
+/* Le nom à CRÉER passe à la ligne, avec le bouton de suppression : sur la même ligne que
+   les deux combos, il reprenait à la branche les 150 px qu'on vient de lui donner. Ce n'est
+   pas un sélecteur mais une saisie libre — sa place est en dessous, pas en concurrence.
+   `calc(100% - 40px)` laisse exactement le bouton (32 px + gouttière) à côté de lui. */
+.git-row > .git-name { flex: 1 1 calc(100% - 40px); min-width: 160px; width: auto; }
+/* Fenêtre étroite : dépôt et branche ne tiennent plus côte à côte sans recouper les noms
+   longs — la branche prend la ligne entière plutôt que de rétrécir sous les 400 px. */
+@media (max-width: 1000px) { .git-row > .git-ref-combo { flex: 1 1 100%; } }
+
+/* Sélection multiple des refs à supprimer : une liste qui défile plutôt qu'un
+   champ de saisie — on ne tape jamais le nom de ce qu'on s'apprête à détruire.
+   Le filtre reste COLLÉ EN HAUT quand la liste défile : chercher dans une liste de
+   deux cents branches sans voir son propre champ de recherche n'a pas de sens. */
+.git-refs {
+  flex: 1; min-width: 0; max-height: 190px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--panel2); padding: 4px;
+}
+.git-ref-filter {
+  position: sticky; top: -4px; z-index: 1;
+  margin: -4px -4px 4px; width: calc(100% + 8px);
+  padding: 6px 10px 6px 30px; background-position: 9px center; font-size: var(--fs-sm);
+  border-width: 0 0 1px; border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.git-ref-nomatch, .git-ex-nomatch { padding: 6px 8px; font-size: 12px; }
+.git-ex-filter { max-width: 340px; margin-bottom: 8px; }
+.git-ref-item {
+  display: flex; align-items: center; gap: 8px; padding: 4px 8px;
+  border-radius: 5px; cursor: pointer; font-size: var(--fs-sm);
+}
+.git-ref-item:hover { background: var(--panel); }
+.git-ref-item code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-ref-date { flex: 0 0 auto; font-size: 12px; }
+.git-ref-hidden { padding: 6px 8px; font-size: 12px; border-top: 1px solid var(--line); margin-top: 4px; }
+
+/* ---------- Navigation : positionner des projets locaux sur une branche ----------
+   Le combo du répertoire occupe toute la largeur sous son libellé, comme les <input>
+   des formulaires (`.form label > input` a la même règle : il n'est pas un enfant
+   direct ici, d'où cette ligne). */
+.nav-root-box { flex: 0 0 100%; max-width: 520px; }
+.nav-row .combo { flex: 1 1 30%; min-width: 160px; }
+/* La branche courante se lit d'un coup d'œil à côté du sélecteur : sans elle, on ne
+   sait pas si l'opération va changer quoi que ce soit. */
+.nav-current { flex: 0 1 auto; align-self: center; font-size: var(--fs-xs);
+  /* Soft-wrap : le nom de branche s'affiche EN ENTIER, sur plusieurs lignes au besoin,
+     plutôt que tronqué par une ellipse (un nom coupé ne dit pas quelle branche est active). */
+  white-space: normal; overflow-wrap: anywhere; max-width: 240px; }
+.nav-files { margin-top: 4px; font-size: var(--fs-xs); }
+.nav-files > summary { cursor: pointer; color: var(--muted); }
+.nav-files ul { margin: 4px 0 0; padding-left: 18px; }
+.nav-files code { margin-right: 4px; }
+
+/* ---------- Explorateur : multi-sélection de dépôts + résultats repliables ---------- */
+.repo-multi { max-width: 520px; }
+.repo-multi-search { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; margin-bottom: 6px; }
+.repo-multi-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); padding: 4px; }
+.repo-multi-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; }
+.repo-multi-item:hover { background: var(--panel); }
+.repo-multi-item input { flex: 0 0 auto; }
+/* « Vérifier une branche » réemploie cette liste : un dépôt à cocher, puis SA branche en
+   dessous, indentée sous son libellé. Décochée, la ligne s'éteint — on veut continuer à lire
+   ce qu'on ne vérifie pas, sans le confondre avec ce qui va partir. */
+/* Deux lignes par dépôt ici (le libellé, puis sa branche) : les 220 px de la liste partagée
+   n'en montreraient que deux et demi, et on ferait défiler pour trouver quoi décocher. */
+.vb-list { max-height: 340px; }
+.vb-list .verif-branche-row { padding: 4px 2px 8px; border-bottom: 1px solid var(--line); }
+.vb-list .verif-branche-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+.vb-list .verif-branche-row.is-off { opacity: .55; }
+.vb-list .verif-branche-row .combo { margin-left: 26px; }
+.vb-list .verif-branche-row .combo input { padding: 6px 10px; font-size: 13px; }
+
+/* Un bloc de résultat par dépôt, replié par défaut. */
+.git-ex-project { border: 1px solid var(--line); border-radius: var(--r-md); margin: 8px 0; background: var(--panel); }
+.git-ex-project > summary { padding: 10px 12px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 10px; list-style: none; }
+/* Chevron EXPLICITE. `display: flex` sur un `summary` supprime le marqueur natif du
+   navigateur : le bloc ne disait alors plus s'il était replié ou déplié, alors que c'est
+   justement sa raison d'être. Même triangle que l'arborescence de fichiers — dessiné par
+   des bordures, sans dépendance de police (les emojis rendent mal hors macOS). */
+.git-ex-project > summary::-webkit-details-marker { display: none; }
+.git-ex-project > summary::before {
+  content: ''; flex: none; width: 0; height: 0;
+  border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transition: transform var(--t-fast);
+}
+.git-ex-project[open] > summary::before { transform: rotate(90deg); }
+.git-ex-project > summary .git-ex-proj-info { font-weight: 400; }
+.git-ex-project .git-ex-proj-body { padding: 0 12px 12px; }
+
+/* Aperçu : la couleur porte le sens, l'icône le redit — jamais la couleur seule. */
+.git-preview { margin-top: 16px; }
+.git-pv-counts { margin: 10px 0 0; font-weight: 600; }
+/* Ref source → ref créée : c'est la ref CRÉÉE qui compte, elle ressort. */
+.git-pv-target { font-weight: 600; }
+.git-pv-safe { margin: 6px 0 0; font-size: 12px; opacity: .85; }
+.git-pv-ok td:last-child { color: var(--green); }
+.git-pv-warn td:last-child { color: var(--amber); }
+.git-pv-err td:last-child { color: var(--red); }
+.git-pv-skip td:last-child { color: var(--muted); }
+.git-sha { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+/* Explorateur : le retard est l'information qu'on vient chercher, il est mis en avant. */
+.git-explorer th:first-child, .git-explorer td:first-child { width: 28px; }
+.git-ab { white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+.git-behind { color: var(--amber); }
+.git-ex-default { opacity: .7; }
+/* Une origine inférée ne doit jamais avoir l'apparence d'un fait établi. */
+.git-inferred { font-style: italic; opacity: .85; }
+.git-op { align-items: center; }
+
+/* Commandes affichées sous chaque ligne d'aperçu.
+   Trois natures distinctes, visuellement séparées : ce qui s'exécute vraiment,
+   l'équivalent git donné pour comprendre, et l'appel API sous-jacent. */
+.git-cmd-row td { padding-top: 0; border-top: none; }
+.git-cmd { display: flex; align-items: baseline; gap: 8px; margin: 2px 0; font-size: 12px; }
+.git-cmd code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+  background: var(--code-bg); padding: 2px 7px; border-radius: 4px;
+  overflow-wrap: anywhere; min-width: 0;
+}
+.git-cmd-tag {
+  flex: 0 0 96px; text-align: right; text-transform: uppercase;
+  font-size: 10px; letter-spacing: .04em; color: var(--muted);
+}
+/* Seule la commande réellement exécutée est mise en avant. */
+.git-cmd-real code { border-left: 2px solid var(--amber); }
+.git-cmd-api { opacity: .6; }
+.git-pv-legend { margin: 10px 0 0; font-size: 12px; }
+
+/* Combo dépôt de l'explorateur Git : dans une .form.inline, on lui donne une
+   largeur confortable pour la recherche (sinon il s'écrase à la taille du texte). */
+.form.inline .repo-combo { flex: 0 1 380px; min-width: 240px; }
+

@@ -1,0 +1,13 @@
+/* ---------- Réglages ---------- */
+.form-actions { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.danger-zone { border: 1px solid var(--red); border-radius: var(--r-lg); padding: var(--s-3) var(--s-4); margin-bottom: var(--s-6); }
+.danger-zone summary { cursor: pointer; color: var(--red); font-weight: var(--fw-sem); }
+.danger-zone p { margin: var(--s-3) 0; }
+.errhint { padding: 8px 10px; color: var(--text); font-size: var(--fs-sm); line-height: 1.5; border-bottom: 1px solid rgba(224,90,90,.3); background: var(--hover); }
+
+/* ---------- Sous-onglets des Réglages ---------- */
+.subnav { margin: var(--s-4) 0 var(--s-5); flex-wrap: wrap; }
+.subtab { display: none; }
+.subtab.active { display: block; }
+.subtab > h2:first-child { margin-top: 0; }
+

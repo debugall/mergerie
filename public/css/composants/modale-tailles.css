@@ -1,0 +1,13 @@
+/* Action irréversible dans une MODALE de confirmation : là, elle est l'action attendue,
+   pas un bouton parmi d'autres — d'où le fond plein, plus fort que le `.btn-danger` des
+   rangées où il ne doit qu'être reconnaissable. */
+.btn-danger.btn-solid { background: var(--red); border-color: var(--red); color: var(--on-red, #fff); }
+.btn-danger.btn-solid:hover { filter: brightness(1.08); color: var(--on-red, #fff); }
+
+/* Modale de création/édition de session : plus large et plus haute — c'est le formulaire
+   le plus riche (projets multiples, prompt long, contexte Jira, captures). */
+/* Modales larges : session de codage ET contexte, même gabarit. */
+#taskModal .modal-box, #ticketModal .modal-box { width: min(1180px, 95vw); }
+/* Jenkins : l'historique À CÔTÉ du détail d'une exécution, et des lignes de console de trois
+   cents caractères — 900 px repliaient tout en accordéon. */
+.modal-box.modal-lg { width: min(1180px, 95vw); }

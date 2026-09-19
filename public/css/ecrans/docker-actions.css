@@ -1,0 +1,33 @@
+/* ===== Docker · Actions groupées ===== */
+.dact-head { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 8px; }
+.dact-action { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+/* Listes déroulantes de l'onglet Actions : même habillage que les autres selects de l'app,
+   avec une flèche personnalisée (le natif était laid) — grise, lisible en clair comme en sombre. */
+.dact-action select, .dact-search {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 8px 10px; font: inherit; height: 36px;
+}
+.dact-action select {
+  min-width: 170px; cursor: pointer; -webkit-appearance: none; appearance: none; padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239aa0aa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 11px;
+}
+.dact-action select:hover, .dact-search:hover { border-color: var(--muted); }
+.dact-search { min-width: 220px; }
+/* Les pastilles d'état tiennent la hauteur du champ voisin : sinon le libellé « N'afficher
+   que » remonte de 12 px par rapport à « Rechercher un service » dans la même rangée. */
+.dact-action .chips { min-height: 36px; }
+.dact-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+.dact-list { display: flex; flex-direction: column; gap: 12px; }
+.dact-proj { border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 8px 12px; }
+.dact-proj-name { font-weight: 600; margin-bottom: 6px; }
+.dact-item { display: flex; align-items: center; gap: 8px; padding: 4px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.dact-item:hover { background: color-mix(in srgb, var(--accent, #7c5cff) 8%, transparent); }
+.dact-item input { flex-shrink: 0; }
+.dact-svc { font-weight: 600; }
+.dact-state { color: var(--muted); font-size: 12px; text-transform: capitalize; }
+.dact-tag { font-size: 11px; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.dact-tag.drift { background: color-mix(in srgb, var(--accent, #7c5cff) 18%, transparent); color: var(--accent, #7c5cff); }
+.dact-tag.warn { background: color-mix(in srgb, #d97706 20%, transparent); color: #d97706; }
+.dact-tag.err { background: color-mix(in srgb, var(--danger, #c62828) 18%, transparent); color: var(--danger, #c62828); }
+

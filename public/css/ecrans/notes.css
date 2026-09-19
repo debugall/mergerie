@@ -1,0 +1,183 @@
+/* ============ Notes : brief, todos et pages ============
+   Sobre et dans le système existant : aucune couleur nouvelle, aucun composant nouveau —
+   les cartes, les puces et les boutons sont ceux du reste de l'application. Tout passe par
+   les variables de thème, donc le clair et le sombre suivent sans règle dédiée. */
+
+/* ---- brief ---- */
+.brief { max-width: 900px; }
+.brief-head { margin: 4px 0 18px; }
+.brief-hello { font-size: 13px; color: var(--muted); }
+.brief-date { font-size: 22px; font-weight: 650; }
+/* Une majuscule à la PREMIÈRE lettre seulement : `capitalize` en mettrait une à chaque mot,
+   ce qui donnerait « Vendredi 7 Août 2026 » là où le français écrit le jour et le mois en
+   minuscules. L'anglais, lui, les capitalise déjà à la source. */
+.brief-date::first-letter { text-transform: uppercase; }
+.brief-sec { margin-bottom: 22px; }
+.brief-sec h3 { display: flex; align-items: center; gap: 8px; }
+.brief-sec h3 .ico { width: 15px; height: 15px; }
+.brief-hint { margin: -4px 0 8px; font-size: 12px; }
+.brief-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; }
+.brief-item-main { flex: 1; min-width: 0; }
+/* La croix « écarter » : présente mais effacée, elle se révèle au survol de sa ligne. Elle
+   reste visible au clavier (focus) — un bouton qui n'existe qu'à la souris n'existe pas. */
+.brief-hide { opacity: 0; color: var(--muted); transition: opacity .12s ease; }
+.brief-item:hover .brief-hide, .brief-hide:focus-visible { opacity: .8; }
+.brief-hide:hover { opacity: 1; color: var(--text); }
+@media (hover: none) { .brief-hide { opacity: .6; } }
+.brief-hidden-foot { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; }
+.brief-item-title { font-weight: 550; overflow-wrap: anywhere; }
+.brief-item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap;
+  align-items: center; gap: 6px; margin-top: 2px; }
+.brief-clickable { cursor: pointer; }
+.brief-clickable:hover { background: var(--panel2); }
+.brief-activity { margin: 0; color: var(--muted); }
+
+/* ---- todos ---- */
+.todo-quick { flex: 1 1 320px; min-width: 200px; height: 38px; padding: 8px 12px; font: inherit;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+.todo-quick:focus { border-color: var(--accent); outline: none; }
+.todo-list { display: flex; flex-direction: column; gap: 6px; max-width: 900px; }
+.todo-row { display: flex; align-items: flex-start; gap: 10px; }
+.todo-check { margin-top: 3px; width: 16px; height: 16px; flex: none; cursor: pointer; }
+/* Une todo faite reste LISIBLE, seulement barrée : elle attend sept jours avant de partir,
+   et on veut voir ce qu'on a fait cette semaine — pas deviner sous un gris illisible. */
+.todo-row.done .brief-item-title { text-decoration: line-through; color: var(--muted); }
+.todo-note { font-size: 13px; margin-top: 4px; color: var(--muted); }
+.todo-note p { margin: 2px 0; }
+.todo-snooze { display: flex; gap: 4px; flex: none; }
+.todo-due { display: inline-flex; align-items: center; gap: 4px; }
+.todo-due .ico { width: 12px; height: 12px; }
+/* Le rouge est réservé au DÉPASSÉ : une échéance à venir n'est pas une alarme. */
+.todo-due.late { color: var(--red-text); font-weight: 600; }
+.prio { padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 650; }
+.prio-high { background: var(--badge-err); color: var(--on-red); }
+.prio-low { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.todo-filter button { font-size: 12px; }
+
+/* ---- pages ---- */
+.notes-layout { display: flex; gap: 18px; align-items: flex-start; }
+/* Même construction que la colonne des tickets : `min-width: 0` lève le minimum implicite
+   d'un élément flex, sans quoi un titre long élargirait la colonne au gré du contenu. */
+.notes-list-col { flex: 0 0 300px; width: 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.notes-editor-col { flex: 1; min-width: 0; }
+.toolbar-tight { margin: 0; }
+.notes-list { display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow: auto; }
+/* L'arbre d'un seul étage : la sous-page est décalée et porte un filet, pour qu'on voie d'un
+   coup d'œil ce qui dépend de quoi sans lire les titres. */
+/* Une LIGNE = le dépliant (ou son vide, pour garder les titres alignés) et la page. Le
+   décalage des sous-pages vit sur la ligne : posé sur `.note-item`, qui porte `width: 100%`,
+   la marge s'AJOUTAIT à la largeur — quel que soit le `box-sizing` — et chaque sous-page
+   dépassait la colonne de 14 pixels, y ouvrant un défilement horizontal qui rognait les
+   titres voisins. */
+.note-row { display: flex; align-items: stretch; gap: 4px; min-width: 0; }
+.note-row > .note-item { width: auto; flex: 1 1 auto; min-width: 0; }
+/* L'ARBORESCENCE SE VOIT. Une sous-page n'a pas de dépliant : sans décalage explicite, son
+   titre retombait À GAUCHE de celui de son parent — l'indentation était nulle, et rien ne
+   disait le rattachement. Le trait vertical part sous le dépliant du parent, l'équerre va
+   chercher la page, et le trait s'arrête au dernier enfant (`note-sub-last`) : le laisser
+   courir ferait croire que la page suivante appartient au groupe. */
+.note-row.note-sub { margin-left: 22px; padding-left: 18px; position: relative;
+  /* Le trait de l'arborescence, assez marqué pour se voir sur les deux fonds : `--line` sert
+     aux CADRES, qui touchent une grande surface ; un filet d'un pixel dans un blanc en a
+     besoin de plus. */
+  --note-tree: color-mix(in srgb, var(--muted) 55%, transparent); }
+.note-row.note-sub::before {
+  content: ''; position: absolute; left: 0; top: -4px; bottom: 0; width: 1px; background: var(--note-tree);
+}
+.note-row.note-sub.note-sub-last::before { bottom: 50%; }
+.note-row.note-sub::after {
+  content: ''; position: absolute; left: 0; top: 50%; width: 12px; height: 1px; background: var(--note-tree);
+}
+/* Le dépliant : une gouttière étroite, sans cadre — un bouton de plus par ligne alourdirait
+   une colonne qui en compte déjà vingt. */
+.note-fold, .note-fold-vide { flex: 0 0 18px; width: 18px; }
+.note-fold { background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.note-fold:hover { color: var(--text); background: var(--panel2); }
+.note-fold .ico { width: 14px; height: 14px; }
+/* Combien de sous-pages sont pliées là-dessous : sans ce chiffre, une page générale repliée
+   ne se distingue pas d'une page qui n'a rien. */
+.note-item-count { flex: none; font-size: 11px; color: var(--muted); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; }
+.note-item.note-sub .note-item-title { font-size: 12px; }
+/* Une page ramenée seulement parce que sa sous-page correspond à la recherche. */
+.note-item.note-contexte .note-item-title { opacity: .6; }
+/* Où l'on est dans l'arbre, au-dessus des colonnes. */
+.note-parent, .note-children { margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.lien-page { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer;
+  border-bottom: 1px dotted currentColor; }
+.lien-page:hover { color: var(--accent-hi); }
+.note-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+  padding: 8px 10px; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font: inherit; }
+.note-item:hover { background: var(--panel2); }
+.note-item.active { border-color: var(--accent); background: var(--panel2); }
+.note-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.note-item-title .ico { width: 12px; height: 12px; }
+.note-item-date { color: var(--muted); font-size: 11px; flex: none; }
+.notes-editor { display: flex; flex-direction: column; gap: 10px; }
+.note-none { padding: 40px 0; text-align: center; }
+.note-editor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* Conflit d'une page : au-dessus de l'éditeur, dans la couleur des avertissements (les deux thèmes
+   la redéfinissent). */
+.note-conflict { border: 1px solid var(--warn); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; }
+.note-conflict p { margin: 0 0 8px; }
+.note-conflict-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+/* « partagé par Claire » : discret, à côté du pictogramme de partage. */
+.auteur-partage { font-size: 12px; font-weight: normal; }
+/* « PARTAGER CETTE PAGE » : une case, dans la barre, à la hauteur des boutons. Elle ne crie
+   pas — c'est un réglage de la page, pas une action — mais elle se voit quand elle est cochée :
+   savoir d'un coup d'œil qu'on écrit sous les yeux de l'équipe change ce qu'on écrit. */
+.note-share { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
+  font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; }
+.note-share:hover { border-color: var(--accent); }
+.note-share > input { margin: 0; }
+.note-share:has(> input:checked) { color: var(--text); border-color: var(--accent); }
+/* Dans la liste, la même information en un glyphe : lesquelles de mes pages sont chez tout
+   le monde. Sans elle, la case ne se vérifie qu'en ouvrant les pages une par une. */
+.note-partagee { color: var(--accent); }
+.note-title { flex: 1 1 240px; min-width: 160px; height: 38px; padding: 8px 12px;
+  font: inherit; font-weight: 600; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; }
+.note-title:focus { border-color: var(--accent); outline: none; }
+/* L'indicateur d'enregistrement est DISCRET par construction : il rassure quand on le
+   cherche, il ne réclame pas l'attention à chaque frappe. */
+.note-saved { font-size: 12px; color: var(--muted); min-width: 90px; }
+/* Le choix des colonnes, au-dessus d'elles : un segment de trois positions. */
+.note-panes-pick { margin: 0 0 8px; }
+.note-panes { display: flex; gap: 12px; align-items: stretch; }
+/* Ce qui reste prend toute la largeur : `flex: 1 1 50%` sur un seul enfant remplit la ligne. */
+.note-panes.panes-preview > .note-content { display: none; }
+.note-panes.panes-editor > .note-preview { display: none; }
+.note-content, .note-preview { flex: 1 1 50%; min-width: 0; min-height: 60vh; }
+.note-content { padding: 12px; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 10px; resize: vertical; }
+.note-content:focus { border-color: var(--accent); outline: none; }
+.note-preview { padding: 12px 16px; overflow: auto; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 10px; }
+/* Les références autolinkées se voient comme des liens, sans souligner tout le texte. */
+.note-link, .note-url { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
+.note-link:hover, .note-url:hover { color: var(--accent-hi); }
+.note-link-multi { border-bottom-style: dashed; }
+/* Une URL collée n'a pas d'espace où se couper : sans ça, elle déborde de la carte d'une
+   todo comme du panneau d'aperçu d'une page. */
+.note-url { overflow-wrap: anywhere; }
+
+/* ---- capture rapide ---- */
+.modal-capture { width: min(520px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+.modal-capture input[type="text"] { height: 40px; padding: 8px 12px; font: inherit;
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+.modal-capture input[type="text"]:focus { border-color: var(--accent); outline: none; }
+.modal-capture #captureMore { align-self: flex-start; }
+.modal-capture #captureDetails { display: flex; flex-direction: column; gap: 8px; }
+
+/* Sous 900 px les deux colonnes s'empilent — comme les tickets et les rapports. */
+@media (max-width: 900px) {
+  .notes-layout, .note-panes { flex-direction: column; }
+  .notes-list-col { flex: none; width: 100%; }
+  .note-content, .note-preview { min-height: 34vh; }
+}
+
