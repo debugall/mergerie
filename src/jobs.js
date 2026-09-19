@@ -2,14 +2,14 @@
 const path = require('node:path');
 const db = require('./db');
 const { stripAnsi } = require('../public/ansi-runtime.js');
-const { reviewMr, modifyReview, askReview, explainMr } = require('./reviewer');
+const { reviewMr, modifyReview, askReview, explainMr } = require('./review/reviewer');
 const taskrunner = require('./taskrunner');
 const agentprofile = require('./agentprofile');
 const proc = require('./core/proc');
 const gitops = require('./git/gitops');
 const notify = require('./core/notify');
 const notes = require('./notes');
-const converge = require('./converge');
+const converge = require('./review/converge');
 const localcoder = require('./localcoder');
 const asker = require('./asker');
 const docker = require('./integrations/docker');

@@ -10,24 +10,24 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const db = require('./db');
-const localsession = require('./data/localsession');
-const git = require('./git/git');
-const configagent = require('./data/configagent');
+const db = require('../db');
+const localsession = require('../data/localsession');
+const git = require('../git/git');
+const configagent = require('../data/configagent');
 const { extractNoteStricte } = require('./note');
-const copilot = require('./copilot');
-const notify = require('./core/notify');
-const proc = require('./core/proc');
-const forge = require('./forge');
-const taskrunner = require('./taskrunner');
-const discover = require('./discover');
-const agentsession = require('./agentsession');
-const questions = require('./questions');
-const { getConfig } = require('./data/config');
+const copilot = require('../copilot');
+const notify = require('../core/notify');
+const proc = require('../core/proc');
+const forge = require('../forge');
+const taskrunner = require('../taskrunner');
+const discover = require('../discover');
+const agentsession = require('../agentsession');
+const questions = require('../questions');
+const { getConfig } = require('../data/config');
 const { reviewMr, fillTemplate } = require('./reviewer');
-const { nonFiable } = require('./core/nonfiable');
-const prompts = require('./prompts');
-const { t } = require('../public/i18n-runtime.js');
+const { nonFiable } = require('../core/nonfiable');
+const prompts = require('../prompts');
+const { t } = require('../../public/i18n-runtime.js');
 
 function latestVersion(mrId) {
   return db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mrId);

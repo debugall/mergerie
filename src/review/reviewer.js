@@ -1,32 +1,32 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
-const localsession = require('./data/localsession');
-const { getConfig } = require('./data/config');
-const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('./core/paths');
-const git = require('./git/git');
-const copilot = require('./copilot');
-const agentpolicy = require('./agentpolicy');
-const { nonFiable } = require('./core/nonfiable');
-const agentsession = require('./agentsession');
+const db = require('../db');
+const localsession = require('../data/localsession');
+const { getConfig } = require('../data/config');
+const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('../core/paths');
+const git = require('../git/git');
+const copilot = require('../copilot');
+const agentpolicy = require('../agentpolicy');
+const { nonFiable } = require('../core/nonfiable');
+const agentsession = require('../agentsession');
 const { extractNote } = require('./note');
-const resolution = require('./git/resolution');
-const glob = require('./core/glob');
-const diffnum = require('./git/diffnum');
-const demoReview = require('./demo/review');
-const agentpass = require('./agentpass');
-const agentknowledge = require('./agentknowledge');   // B7 : la carte du domaine touché
-const demoDiff = require('./demo/diff');
-const demoComments = require('./demo/comments');
-const forge = require('./forge');
-const notify = require('./core/notify');
-const { t } = require('../public/i18n-runtime.js');
+const resolution = require('../git/resolution');
+const glob = require('../core/glob');
+const diffnum = require('../git/diffnum');
+const demoReview = require('../demo/review');
+const agentpass = require('../agentpass');
+const agentknowledge = require('../agentknowledge');   // B7 : la carte du domaine touché
+const demoDiff = require('../demo/diff');
+const demoComments = require('../demo/comments');
+const forge = require('../forge');
+const notify = require('../core/notify');
+const { t } = require('../../public/i18n-runtime.js');
 /* Le dépôt de données : il sait s'il est configuré, où en est la synchro, et l'adresse web
    d'un de ses fichiers. `store` sait, lui, quel fichier porte une ligne. */
-const datasync = require('./data/datasync');
-const store = require('./data/store');
-const { SHARED_DIR } = require('./core/paths');
+const datasync = require('../data/datasync');
+const store = require('../data/store');
+const { SHARED_DIR } = require('../core/paths');
 
 /* Instruction de CONSTATS STRUCTURÉS, ajoutée au prompt de review UNIQUEMENT à
    l'exécution — jamais écrite dans le template de l'utilisateur. Elle demande à

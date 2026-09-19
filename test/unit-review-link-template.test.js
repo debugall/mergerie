@@ -26,7 +26,7 @@ const path = require('node:path');
 /* `src/reviewer` tire `src/db` avec lui, qui OUVRE une base dès le chargement : sans ce dossier
    posé AVANT le require, le test écrirait dans la base réelle de l'utilisateur. */
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'lien-gabarit-'));
-const { messageLien } = require('../src/reviewer');
+const { messageLien } = require('../src/review/reviewer');
 const { updateConfig, getConfig } = require('../src/data/config');
 
 const MR = { iid: 217, project: 'grp/app', title: 'Paiement 3× : intégration du partenaire' };

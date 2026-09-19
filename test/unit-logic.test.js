@@ -14,12 +14,12 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
 const glob = require('../src/core/glob');
-const { extractNote } = require('../src/note');
+const { extractNote } = require('../src/review/note');
 const resolution = require('../src/git/resolution');
 const jira = require('../src/integrations/jira');
 const gitlab = require('../src/forge/gitlab');
 const gitops = require('../src/git/gitops');
-const { fillTemplate } = require('../src/reviewer');
+const { fillTemplate } = require('../src/review/reviewer');
 const { promptsFor, isDefault, PROMPTS } = require('../src/prompts');
 const i18n = require('../public/i18n-runtime.js');
 

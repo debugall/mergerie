@@ -17,7 +17,7 @@ const path = require('node:path');
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const lire = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
+const { lireSource: lire } = require('./helpers/sources');
 
 describe('le suivi en attente ne part pas tout seul', () => {
   test('aucun module parlant à l’agent ne connaît la colonne', () => {

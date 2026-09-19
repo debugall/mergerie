@@ -22,7 +22,7 @@ const assert = require('node:assert/strict');
 const demoReview = require('../src/demo/review');
 const demoDiff = require('../src/demo/diff');
 const resolution = require('../src/git/resolution');
-const { extractNote } = require('../src/note');
+const { extractNote } = require('../src/review/note');
 
 const MR = {
   iid: 218, project: 'groupe/orders-service', title: 'Paiement 3× : éligibilité > 100 €',
