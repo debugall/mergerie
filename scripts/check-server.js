@@ -188,10 +188,10 @@ if (F_CONFIG && registre) {
    d'une installation neuve, après avoir payé une passe d'agent. La règle était écrite dans
    CLAUDE.md ; elle est maintenant vérifiée.
 
-   ET, DANS `db/schema/`, UN ALTER VIT DANS LE FICHIER DU CREATE DE SA TABLE : c'est ce qui
-   fait qu'on lit l'histoire d'une table à un seul endroit, et que « avant son CREATE » devient
-   impossible par construction. Les fichiers de `db/migrations/` (déclencheurs, reprises) ont
-   le droit de retoucher n'importe quelle table déjà créée. */
+   Dans `db/`, les tranches de `schema/` se jouent dans l'ordre de leur nom, et c'est cet ordre
+   que le contrôle lit : un ALTER peut vivre dans la tranche qui a créé sa table ou dans une
+   tranche ULTÉRIEURE (une colonne ajoutée par une version suivante), jamais dans une tranche
+   antérieure — même règle qu'entre deux lignes d'un seul fichier. */
 {
   const cree = new Map();
   lignesDb.forEach((l, n) => {
@@ -207,9 +207,6 @@ if (F_CONFIG && registre) {
     const c = cree.get(m[1]);
     if (c == null) avant.push(`${nomDe(l.f)}:${l.i}  ${m[1]} — ALTER sur une table jamais créée ici`);
     else if (c.n > n) avant.push(`${nomDe(l.f)}:${l.i}  ${m[1]} — ALTER avant son CREATE (${nomDe(c.f)}:${c.i})`);
-    else if (l.f.startsWith('db/schema/') && c.f !== l.f) {
-      avant.push(`${nomDe(l.f)}:${l.i}  ${m[1]} — ALTER hors du fichier de son CREATE (${nomDe(c.f)})`);
-    }
   });
   avant.length
     ? fail('Migrations jouées AVANT le CREATE TABLE qu’elles retouchent (invisibles sur une base neuve)', avant)
@@ -430,7 +427,7 @@ if (registre) {
 {
   const AVERTIR = 600;
   const ECHOUER = 1200;
-  const EXCEPTIONS = ['db.js', 'store-registry.js', 'links.js', 'store.js', 'jobs.js', 'taskrunner.js', 'datasync.js'];
+  const EXCEPTIONS = ['store-registry.js', 'links.js', 'store.js', 'jobs.js', 'taskrunner.js', 'datasync.js'];
   const compter = (code) => code.split('\n').filter((l) => l.trim() && !/^\s*(\/\/|\/\*|\*)/.test(l)).length;
   const gros = [];
   const trop = [];
