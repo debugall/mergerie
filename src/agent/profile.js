@@ -24,6 +24,8 @@ const agentdefaults = require('./defaults');
 const agentinput = require('./input');
 const protocol = require('./protocol');
 const skillscan = require('./skillscan');
+const horaire = require('./horaire');
+const { tokensDe } = require('./knowledge-texte');
 const questions = require('./questions');
 const notes = require('../notes/notes');
 const git = require('../git/git');
@@ -80,7 +82,7 @@ function decorer(a) {
        elle ne suivait pas la langue. `phrase()` existait et n'était appelée nulle part. */
     schedule_said: (() => {
       if (!a.schedule) return '';
-      try { return require('./schedule').phrase(a.schedule) || ''; } catch { return ''; }
+      try { return horaire.phrase(a.schedule) || ''; } catch { return ''; }
     })(),
     /* QUAND IL REPASSE. Un agent planifié ne montrait rien entre deux runs : ni la date du
        dernier, ni celle du prochain. Calculé, jamais stocké — une date en base se
@@ -88,8 +90,7 @@ function decorer(a) {
     next_run: (() => {
       if (!a.schedule) return null;
       try {
-        const sch = require('./schedule');
-        const c = sch.creneauSuivant(sch.parse(a.schedule));
+        const c = horaire.creneauSuivant(horaire.parse(a.schedule));
         return c ? c.toISOString() : null;
       } catch { return null; }
     })(),
@@ -106,8 +107,7 @@ function decorer(a) {
       unverified: jsonOu(k.repos_json, []).reduce((n, r) => n + ((r.unverified || []).length), 0),
       gaps: jsonOu(k.gaps_json, []).length,
       // Ce que la carte coûte à lire, à chaque run : elle part dans le prompt à chaque fois.
-      // eslint-disable-next-line global-require
-      tokens: require('./knowledge').tokensDe(k),
+      tokens: tokensDe(k),
       pending_version: enAttente ? enAttente.version : null,
     } : (enAttente ? { pending_version: enAttente.version } : null),
   };
@@ -155,9 +155,7 @@ function valider(body, id = null) {
     errs.push('agents.err.schedule-needs-max-turns');
   }
   if (String(body.schedule || '').trim()) {
-    // eslint-disable-next-line global-require
-    const agentschedule = require('./schedule');
-    if (!agentschedule.parse(body.schedule)) errs.push('agents.err.schedule-syntax');
+    if (!horaire.parse(body.schedule)) errs.push('agents.err.schedule-syntax');
   }
   /* `subagents_json` arrive tantôt en OBJET (formulaire du front), tantôt en TEXTE (relecture
      d'une ligne de base). Ne traiter que le second laissait passer sans un mot un sous-agent

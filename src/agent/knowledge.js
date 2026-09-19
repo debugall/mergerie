@@ -40,24 +40,8 @@ const jsonOu = (txt, repli) => { try { const v = JSON.parse(txt); return v == nu
 const versionActive = (agentId) => db.prepare("SELECT * FROM agent_knowledge WHERE agent_id = ? AND status = 'active'").get(agentId);
 const versionEnAttente = (agentId) => db.prepare("SELECT * FROM agent_knowledge WHERE agent_id = ? AND status = 'pending' ORDER BY version DESC").get(agentId);
 
-function lireFichier(v) {
-  if (!v || !v.md_path) return '';
-  try { return fs.existsSync(v.md_path) ? fs.readFileSync(v.md_path, 'utf8') : ''; } catch { return ''; }
-}
+const { lireFichier, tokensDe } = require('./knowledge-texte');
 function contenuActif(agent) { return lireFichier(versionActive(agent.id)); }
-
-/* CE QUE CETTE VERSION COÛTE À LIRE. La carte d'un agent de domaine part dans le prompt de
-   chacun de ses runs : sa taille est une dépense qui revient à chaque fois, et c'est le seul
-   chiffre qui dise s'il faut l'élaguer. Compté à l'écriture ; les versions antérieures à la
-   colonne sont comptées ICI, une fois, à leur première relecture — un `countTokens` par
-   version et par affichage de liste ferait le travail vingt fois pour le même résultat. */
-function tokensDe(ligne) {
-  if (!ligne) return null;
-  if (ligne.tokens != null) return ligne.tokens;
-  const n = copilot.countTokens(lireFichier(ligne));
-  try { db.prepare('UPDATE agent_knowledge SET tokens = ? WHERE id = ?').run(n, ligne.id); } catch { /* lecture seule : tant pis, on recomptera */ }
-  return n;
-}
 
 function versions(agentId) {
   return db.prepare('SELECT * FROM agent_knowledge WHERE agent_id = ? ORDER BY version DESC').all(agentId)

@@ -85,7 +85,7 @@ const PORTE_FORGE = ['forge.js', 'forge/index.js'];
    se tiennent (une composante fortement connexe), par chemin sous src/. L'ordre importe peu,
    l'ensemble oui : un fichier de plus ou de moins dans la composante, et l'entrée ne vaut plus. */
 const CYCLES_CONNUS = [
-  ['agent/profile.js', 'agent/schedule.js', 'agent/knowledge.js', 'session/taskrunner.js', 'review/reviewer.js', 'review/converge.js',
+  ['agent/profile.js', 'agent/knowledge.js', 'session/taskrunner.js', 'review/reviewer.js', 'review/converge.js',
     'jobs/index.js', 'jobs/runners/task.js', 'jobs/runners/converge.js', 'jobs/runners/converge-session.js', 'jobs/runners/reconcile.js', 'jobs/runners/review.js'],
 ];
 
