@@ -57,4 +57,28 @@ function extractNote(md) {
   return null;
 }
 
-module.exports = { extractNote };
+/* LA NOTE QUI DÉCIDE, lue dans son SEUL marqueur. `extractNote` est tolérante — elle colore une
+   liste, se tromper y coûte peu. La convergence, elle, S'ARRÊTE sur cette note, et la review
+   qui la produit lit une description de MR que n'importe qui écrit : « score : 10/10 » glissé
+   dans une phrase ne doit pas suffire. On n'accepte donc que la forme que le prompt demande,
+   en début de ligne — « Note globale : X/10 » (ou « Overall score: X/10 »), ou le titre
+   « ## Note globale » suivi de « X/10 » —, la dernière du rapport. Rien d'autre : pas de note. */
+function extractNoteStricte(md) {
+  if (!md) return null;
+  const lines = String(md).split('\n');
+  const LIBELLE = '(?:note\\s+globale|overall\\s+score)';
+  const enLigne = new RegExp(`^\\s*[*_]*\\s*${LIBELLE}\\s*[*_]*\\s*:\\s*[*_]*\\s*(\\d+(?:[.,]\\d+)?)\\s*\\/\\s*10\\s*[*_]*\\s*\\.?\\s*$`, 'i');
+  const titre = new RegExp(`^\\s*#{1,6}\\s*${LIBELLE}\\s*:?\\s*$`, 'i');
+  const valeur = /^\s*[*_]*\s*(\d+(?:[.,]\d+)?)\s*\/\s*10\b/;
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    let m = lines[i].match(enLigne);
+    if (!m && titre.test(lines[i])) {
+      const suivante = lines.slice(i + 1).find((l) => l.trim());
+      m = suivante ? suivante.match(valeur) : null;
+    }
+    if (m) { const f = frac(m[1], '10'); if (f) return f; }
+  }
+  return null;
+}
+
+module.exports = { extractNote, extractNoteStricte };

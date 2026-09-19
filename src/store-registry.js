@@ -353,6 +353,11 @@ const REGISTRE = [
     table: 'review', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['mr_id'],
     chemin: 'reviews/{forge}/{project}/{iid}/review.json',
     fusion: 'last-writer', locales: ['md_path', 'explanation_path', 'diff_path'],
+    // Le fichier est nommé par sa merge request : c'est par elle qu'on retrouve la review retirée.
+    ligneDuChemin: (db, v) => db.prepare(`SELECT review.rowid AS r, review.* FROM review
+      JOIN mr ON mr.id = review.mr_id JOIN repo ON repo.id = mr.repo_id
+      WHERE COALESCE(repo.forge, 'gitlab') = ? AND repo.project = ? AND mr.iid = ?`)
+      .get(v.forge, v.project, Number(v.iid)),
     note: 'la review courante d’une MR : les chemins pointent les fichiers de la version, recalculés ici',
     commitMessage: (r, ctx) => `review ${ctx ? ctx.mrRef(r.mr_id) || '' : ''}`.trim(),
     toFile: (r, ctx) => {
@@ -601,11 +606,13 @@ const REGISTRE = [
       /* La couverture : quels dépôts ce script sait tester, par clé naturelle. Un dépôt inconnu
          ici est SIGNALÉ et sa ligne sautée — déclarer une couverture sur un dépôt qu'on n'a pas
          ferait échouer la vérification au lancement, bien plus tard. */
+      /* `workdir` et `checkout_allowed` NE VOYAGENT PLUS. Le premier est un dossier de CE poste ;
+         le second est un CONSENTEMENT — « tu peux travailler dans mon dossier » — et un
+         consentement donné chez un collègue ne vaut rien ici. Le laisser voyager, c'était
+         permettre à un fichier poussé d'autoriser à sa place l'exécution dans son dossier. */
       repos: ctx.enfants('verifier_repo', 'verifier_id', r.id).map((vr) => ({
         repo: ctx.repoRef(vr.repo_id),
         mode: vr.mode,
-        workdir: vr.workdir || null,
-        checkout_allowed: vr.checkout_allowed ? 1 : 0,
       })).filter((vr) => vr.repo),
     }),
     fromFile: (doc) => ({
@@ -643,6 +650,12 @@ const REGISTRE = [
         liste: 'repos',
         colonneParent: 'verifier_id',
         remplace: (db2, parent, items, ctx, signaler) => {
+          /* CE QUI EST DE CE POSTE SURVIT AU REMPLACEMENT : le dossier de travail et le
+             consentement sont relus AVANT d'effacer la liste, et reposés sur les mêmes dépôts.
+             Un dépôt nouveau pour ce vérificateur arrive sans consentement — c'est ici qu'on
+             le donnera, pas dans le fichier. */
+          const locaux = new Map(db2.prepare('SELECT repo_id, workdir, checkout_allowed FROM verifier_repo WHERE verifier_id = ?')
+            .all(parent.id).map((l) => [l.repo_id, l]));
           db2.prepare('DELETE FROM verifier_repo WHERE verifier_id = ?').run(parent.id);
           const ins = db2.prepare(`INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed)
                                    VALUES (?,?,?,?,?)`);
@@ -651,7 +664,8 @@ const REGISTRE = [
             /* Dépôt inconnu ici : on SIGNALE et on saute. Déclarer la couverture sans le dépôt
                ferait échouer la vérification au lancement, beaucoup plus tard et loin d'ici. */
             if (!id) { signaler(`couverture sur « ${vr.repo} », dépôt inconnu sur ce poste`); continue; }
-            ins.run(parent.id, id, vr.mode || 'worktree', vr.workdir || null, vr.checkout_allowed ? 1 : 0);
+            const local = locaux.get(id) || {};
+            ins.run(parent.id, id, vr.mode || 'worktree', local.workdir || null, local.checkout_allowed ? 1 : 0);
           }
         },
       },
@@ -1438,7 +1452,10 @@ const REGISTRE = [
          c'est rendre l'outil désagréable pour cinq personnes afin d'en arranger une. */
       'brief_on_open', 'auto_refresh_minutes', 'jira_watch_minutes', 'todo_close_on_merge',
       'task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira',
-      'task_default_converge'],
+      'task_default_converge',
+      // Les bornes d'un agent : le budget se dépense sur CE poste, et une borne d'équipe se
+      // relâcherait chez tout le monde d'un seul push.
+      'agent_max_turns', 'agent_daily_budget_usd'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',
@@ -1456,7 +1473,7 @@ const REGISTRE = [
       /* L'EXÉCUTANT EST D'ÉQUIPE : c'est une décision collective (« c'est Claire qui fait
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',
-      'review_auto_max', 'verif_auto_max', 'agent_auto_max',
+      'review_auto_max', 'verif_auto_max', 'verif_auto_authors', 'agent_auto_max',
       /* `retention_days` RESTE D'ÉQUIPE, et c'est délibéré : une purge passe par le store, donc
          elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
          réglé à sept jours efface l'historique des autres. */

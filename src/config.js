@@ -1,9 +1,13 @@
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
 const db = require('./db');
 const { DEFAULT_CLONE_DIR } = require('./paths');
 const { promptsFor } = require('./prompts');
 const registre = require('./store-registry');
 const { t } = require('../public/i18n-runtime.js');
+const { adresseAdmise } = require('./garde');
+const approbation = require('./approbation');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
    décidé : gabarits de prompt, seuils, politiques, URL de la forge) et dans `local_config` (ce
@@ -38,7 +42,8 @@ const ALLOWED = [
   'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'auto_runner',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
-  'verif_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'agent_max_turns', 'agent_daily_budget_usd',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -48,7 +53,9 @@ const ALLOWED = [
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
 
-function updateConfig(patch) {
+/* `opts.installation` : ce qu'écrit l'installation de whisper elle-même (chemin qu'elle vient de
+   poser) — la garde de `dictation_command` ne s'applique qu'à ce qu'on SAISIT. */
+function updateConfig(patch, opts = {}) {
   const current = getConfig();
   const next = { ...current };
   for (const key of ALLOWED) {
@@ -127,6 +134,9 @@ function updateConfig(patch) {
     const rm = parseInt(patch.review_auto_max, 10);
     next.review_auto_max = Number.isFinite(rm) && rm >= 0 ? Math.min(50, rm) : 5;
   }
+  /* QUI PEUT FAIRE EXÉCUTER SON CODE ICI SANS UN CLIC : moi seul (défaut), ou tout le monde —
+     un choix explicite, plus un défaut. Toute autre valeur retombe sur le prudent. */
+  next.verif_auto_authors = next.verif_auto_authors === 'all' ? 'all' : 'mine';
   if ('verif_auto_max' in patch) {
     const vm = parseInt(patch.verif_auto_max, 10);
     next.verif_auto_max = Number.isFinite(vm) && vm >= 0 ? Math.min(50, vm) : 5;
@@ -138,6 +148,17 @@ function updateConfig(patch) {
     const am = parseInt(patch.agent_auto_max, 10);
     next.agent_auto_max = Number.isFinite(am) && am >= 0 ? Math.min(1000, am) : 10;
   }
+  /* BORNES D'UN AGENT. Le nombre de tours d'une session sans borne de profil (0 = aucune), et la
+     dépense du jour au-delà de laquelle plus aucun agent ne part (0 = aucune). Une consigne
+     détournée qui fait tourner un agent en boucle se heurte à l'une ou à l'autre. */
+  if ('agent_max_turns' in patch) {
+    const mt = parseInt(patch.agent_max_turns, 10);
+    next.agent_max_turns = Number.isFinite(mt) && mt >= 0 ? Math.min(10000, mt) : 200;
+  }
+  if ('agent_daily_budget_usd' in patch) {
+    const b = parseFloat(String(patch.agent_daily_budget_usd).replace(',', '.'));
+    next.agent_daily_budget_usd = Number.isFinite(b) && b >= 0 ? Math.min(100000, Math.round(b * 100) / 100) : 0;
+  }
   /* ---------- Dictée vocale ----------
      Le fournisseur est une ÉNUMÉRATION : une valeur inconnue retombe sur « éteint » plutôt
      que d'être écrite telle quelle — un réglage illisible ne doit pas laisser croire qu'un
@@ -145,6 +166,29 @@ function updateConfig(patch) {
   if (!['off', 'local', 'openai', 'browser'].includes(next.dictation_provider)) next.dictation_provider = 'off';
   if (!['auto', 'fr', 'en'].includes(next.dictation_language)) next.dictation_language = 'auto';
   if (next.dictation_url) next.dictation_url = next.dictation_url.trim().replace(/\/+$/, '');
+  /* LA COMMANDE DE DICTÉE LANCE UN PROGRAMME. Elle n'accepte que `whisper-server` — cherché dans
+     le PATH, ou par le chemin ABSOLU d'un fichier de ce nom qui existe —, éventuellement derrière
+     `nice`. Tout autre programme (`sh`, `/bin/sh`, `curl`…) ou un chemin relatif est refusé :
+     c'est ici qu'on le voit, pas au premier clic sur le micro. */
+  // Seulement quand elle CHANGE : un binaire désinstallé depuis ne doit pas bloquer l'enregistrement
+  // de tous les autres réglages — le diagnostic de dictée, lui, le signale.
+  if (!opts.installation && 'dictation_command' in patch && String(next.dictation_command || '').trim()
+    && String(next.dictation_command) !== String(current.dictation_command || '')) {
+    // eslint-disable-next-line global-require
+    const d = require('./verify').decouperCommande(next.dictation_command);
+    let mots = d.ok ? [d.programme, ...d.args] : [];
+    if (mots[0] === 'nice') mots = mots.slice(1).filter((m, i, l) => !(m.startsWith('-') || (i > 0 && l[i - 1] === '-n')));
+    const prog = mots[0] || '';
+    const fichier = (p) => { try { return path.isAbsolute(p) && fs.statSync(p).isFile(); } catch { return false; } };
+    /* Un chemin absolu ne suffit pas — `/bin/sh -c …` en est un. C'est le SERVEUR whisper, par
+       son nom, où qu'il soit installé. */
+    const estWhisper = (p) => p === 'whisper-server' || (fichier(p) && /^whisper-server(\.exe)?$/i.test(path.basename(p)));
+    if (!d.ok || !estWhisper(prog)) {
+      const e = new Error(t('err.dictation.command-refused', { cmd: String(next.dictation_command).slice(0, 120) }));
+      e.status = 400;
+      throw e;
+    }
+  }
   /* Fin de phrase : bornée [400, 1500] ms. En dessous, on coupe au milieu d'une respiration
      et le moteur décode des bouts de mots ; au-dessus, le texte n'arrive plus « pendant
      qu'on parle », ce qui est toute la promesse. */
@@ -173,6 +217,14 @@ function updateConfig(patch) {
     const ds = parseInt(patch.data_sync_seconds, 10);
     next.data_sync_seconds = Number.isFinite(ds) ? Math.min(600, Math.max(10, ds)) : 30;
   }
+  /* UNE ADRESSE DE DÉPÔT QUE GIT NE DOIT PAS JOINDRE est refusée À L'ENREGISTREMENT : `ext::`
+     y lancerait une commande, `http://` y enverrait les identifiants en clair. Refuser ici, où
+     l'écran peut le dire, plutôt qu'au premier tour de synchro, qui échouerait en silence. */
+  /* Seulement quand elle CHANGE, comme la commande de dictée : une adresse enregistrée avant cette
+     règle (un GitLab interne en `http://`) ne doit pas bloquer l'enregistrement de TOUS les autres
+     réglages avec un message sans rapport avec le champ modifié. La synchro, elle, la refuse et le dit. */
+  if (String(next.data_repo_url || '') !== String(current.data_repo_url || '')
+    && !adresseAdmise(next.data_repo_url)) throw new Error(t('err.datasync.url-scheme'));
   /* UN GABARIT DE LIEN SANS `{url}` NE PORTE PAS DE LIEN. Le commentaire partirait sur les
      merge requests de toute l'équipe en annonçant un rapport qu'il ne désigne pas — et personne
      ne s'en apercevrait avant d'aller le lire. On refuse ici, où l'écran peut encore le dire,
@@ -215,6 +267,7 @@ function updateConfig(patch) {
       retention_days = @retention_days,
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
+      verif_auto_authors = @verif_auto_authors,
       agent_auto_max = @agent_auto_max,
       dictation_vocabulary = @dictation_vocabulary,
       dictation_replacements = @dictation_replacements
@@ -255,8 +308,16 @@ function updateConfig(patch) {
       task_default_auto_push = @task_default_auto_push,
       task_default_ask_questions = @task_default_ask_questions,
       task_default_notify_jira = @task_default_notify_jira,
-      task_default_converge = @task_default_converge
+      task_default_converge = @task_default_converge,
+      agent_max_turns = @agent_max_turns,
+      agent_daily_budget_usd = @agent_daily_budget_usd
     WHERE id = 1`).run(next);
+  /* LES RÉGLAGES D'AUTOMATISME SUIVENT L'APPROBATION, SANS LA CONTOURNER. Ce que l'utilisateur
+     règle ICI sur une base déjà approuvée est approuvé avec — il vient de le décider. Mais si
+     l'équipe a changé ces réglages et qu'ils attendent, enregistrer n'importe quel AUTRE réglage
+     ne doit pas les approuver en douce : le formulaire renvoie tous ses champs d'un coup, et
+     cocher la langue n'est pas avoir lu « review automatique : activée ». */
+  if (approbation.configApprouvee(current)) approbation.approuverConfig(getConfig());
   return getConfig();
 }
 

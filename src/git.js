@@ -2,7 +2,7 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { DEFAULT_CLONE_DIR, ensureDir, slugify } = require('./paths');
+const { DEFAULT_CLONE_DIR, DATA_DIR, ensureDir, slugify } = require('./paths');
 const forge = require('./forge');
 const proc = require('./proc');
 const { t } = require('../public/i18n-runtime.js');
@@ -26,13 +26,108 @@ function redact(args, secrets = []) {
   });
 }
 
+/* ---------------------------------------------------------------- git durci
+ *
+ * LES CLONES NE SONT PAS À NOUS. Ils contiennent le code d'une merge request, et un agent y a
+ * travaillé avec les droits de l'utilisateur. Or git exécute ce qu'on lui a configuré : un hook
+ * posé dans `.git/hooks`, un `core.fsmonitor` écrit dans `.git/config`, un pilote de diff externe,
+ * un transport `ext::`. Et ce sont les `checkout`, `commit`, `diff` DE MERGERIE — pas ceux de
+ * l'agent — qui les déclenchaient ensuite, avec l'environnement complet du serveur.
+ *
+ * Chaque appel de git passe donc désormais :
+ *   — ses crochets dans un dossier VIDE (et non `/dev/null`, qui n'existe pas sous Windows) ;
+ *   — sans fsmonitor, sans transport `ext::` ;
+ *   — ses diffs sans pilote externe ni conversion de texte ;
+ *   — un environnement en LISTE BLANCHE : ce dont git a besoin pour trouver ses outils, sa
+ *     configuration, sa clé SSH et son proxy — et rien d'autre du `.env` ;
+ *   — le jeton de la forge par l'ENVIRONNEMENT, jamais écrit dans le clone (voir plus bas).
+ *
+ * Ce qui reste ouvert, et le guide le dit : une clé de configuration écrite par un agent dans
+ * `.git/config` qu'on ne neutralise pas nommément (un alias, un filtre). La vraie réponse est de
+ * ne pas laisser un agent de lecture écrire dans `.git/` — c'est le rôle des permissions par
+ * saveur. */
+const DOSSIER_SANS_HOOKS = path.join(DATA_DIR, 'git-sans-hooks');
+function durcissement() {
+  try { fs.mkdirSync(DOSSIER_SANS_HOOKS, { recursive: true }); } catch { /* le -c suffit même absent */ }
+  return ['-c', `core.hooksPath=${DOSSIER_SANS_HOOKS}`, '-c', 'core.fsmonitor=false', '-c', 'protocol.ext.allow=never'];
+}
+
+const ENV_GIT_NOMS = new Set(['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'TERM', 'TMPDIR', 'TMP', 'TEMP',
+  'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'GNUPGHOME', 'GPG_TTY', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+  'http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'no_proxy', 'NO_PROXY', 'all_proxy', 'ALL_PROXY',
+  // Windows : sans eux, git ne trouve ni son profil ni ses outils.
+  'SystemRoot', 'SYSTEMROOT', 'ComSpec', 'COMSPEC', 'PATHEXT', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'ProgramData', 'ProgramFiles', 'WINDIR']);
+const ENV_GIT_PREFIXES = ['LC_', 'XDG_', 'GIT_'];
+
+/* LE JETON DE LA FORGE, PAR L'ENVIRONNEMENT ET SEULEMENT VERS SA FORGE.
+ * Il était écrit dans l'URL d'`origin` — donc dans `.git/config` de chaque clone, lisible par
+ * l'agent qui y travaille (`git remote get-url origin`) et par les worktrees des vérificateurs.
+ * Il part maintenant en en-tête HTTP (`http.<forge>/.extraheader`), posé dans l'environnement du
+ * seul processus git qu'on lance : pas sur la ligne de commande (visible dans `ps`), pas sur le
+ * disque, et limité par préfixe d'URL à l'hôte de la forge — un autre hôte ne le reçoit pas. */
+function enTetesForge(cfg) {
+  const c = cfg || {};
+  const out = [];
+  const origine = (u) => { try { const x = new URL(String(u || '').trim()); return x.protocol === 'https:' || x.protocol === 'http:' ? `${x.origin}/` : null; } catch { return null; } };
+  const basic = (user, token) => `Authorization: Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
+  const gl = origine(c.gitlab_url);
+  if (gl && c.access_token) out.push({ prefixe: gl, entete: basic('oauth2', c.access_token) });
+  const gh = origine(c.github_url || 'https://github.com');
+  if (gh && c.github_token) out.push({ prefixe: gh, entete: basic('x-access-token', c.github_token) });
+  return out;
+}
+
+function envGit(supplement = {}) {
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) {
+    if (ENV_GIT_NOMS.has(k) || ENV_GIT_PREFIXES.some((p) => k.startsWith(p))) env[k] = v;
+  }
+  // Rien de ce qu'on configure plus bas ne doit venir d'ailleurs.
+  for (const k of Object.keys(env)) if (/^GIT_CONFIG_(COUNT|KEY_|VALUE_)/.test(k)) delete env[k];
+  env.GIT_TERMINAL_PROMPT = '0';             // jamais de demande de mot de passe : on ne la verrait pas
+  env.GIT_LFS_SKIP_SMUDGE = '1';             // un pointeur LFS suffit à relire du code
+  let cfg = null;
+  // eslint-disable-next-line global-require
+  try { cfg = require('./config').getConfig(); } catch { /* base pas encore prête : sans jeton */ }
+  const entetes = enTetesForge(cfg);
+  env.GIT_CONFIG_COUNT = String(entetes.length);
+  entetes.forEach((e, i) => {
+    env[`GIT_CONFIG_KEY_${i}`] = `http.${e.prefixe}.extraheader`;
+    env[`GIT_CONFIG_VALUE_${i}`] = e.entete;
+  });
+  return { ...env, ...supplement };
+}
+
+/* Les sous-commandes qui produisent un diff : un pilote externe ou une conversion de texte
+   (`diff.<pilote>.command`, `.textconv`) s'y exécuteraient. On les coupe à la source. */
+const AVEC_DIFF = new Set(['diff', 'show', 'log', 'format-patch']);
+function indexSousCommande(args) {
+  for (let i = 0; i < args.length; i++) {
+    const a = String(args[i]);
+    if (a === '-c' || a === '-C' || a === '--git-dir' || a === '--work-tree') { i += 1; continue; }
+    if (a.startsWith('-')) continue;
+    return i;
+  }
+  return -1;
+}
+function argsDurcis(args) {
+  const out = [...durcissement(), ...args];
+  const i = indexSousCommande(out);
+  if (i !== -1 && AVEC_DIFF.has(String(out[i]))) out.splice(i + 1, 0, '--no-ext-diff', '--no-textconv');
+  return out;
+}
+
 function run(cmd, args, opts = {}) {
   const onLog = opts.onLog;
   const secrets = opts.redactSecrets || [];
   return new Promise((resolve, reject) => {
     if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
     if (onLog) onLog(`$ ${cmd} ${redact(args, secrets).join(' ')}`);
-    const child = spawn(cmd, args, { ...opts });
+    /* Git passe par la porte durcie ; une autre commande (rare ici) part telle quelle. */
+    const estGit = cmd === 'git';
+    const argv = estGit ? argsDurcis(args) : args;
+    const options = estGit ? { ...opts, env: envGit(opts.env) } : { ...opts };
+    const child = spawn(cmd, argv, proc.options(options));
     proc.setActive(child);
     let stdout = '';
     let stderr = '';
@@ -89,7 +184,8 @@ function gitTlsArgs() {
 }
 
 // URL de clone : SSH tel quel ; sinon conversion https->ssh si GIT_CLONE_SSH=1
-// (utilise ta clé, aucun certificat) ; sinon https avec token injecté.
+// (utilise ta clé, aucun certificat) ; sinon https NUE — le jeton passe par l'environnement
+// (`envGit`), jamais par l'URL : écrite dans `origin`, elle finissait dans `.git/config`.
 function cloneUrl(cfg, repo) {
   const raw = String(repo.url || '').trim();
   if (/^(ssh:\/\/|git@)/.test(raw)) return raw;             // déjà en SSH
@@ -99,8 +195,43 @@ function cloneUrl(cfg, repo) {
       return `git@${u.hostname}:${u.pathname.replace(/^\/+/, '')}`;
     } catch { /* pas une URL : on continue */ }
   }
-  const user = repo && repo.forge === 'github' ? 'x-access-token' : 'oauth2';
-  return authUrl(raw, tokenFor(cfg, repo), user);           // https + token de la forge
+  return sansIdentifiants(raw);
+}
+
+/* Une URL sans utilisateur ni mot de passe. Sert aussi à nettoyer les clones d'avant, dont
+   `origin` portait le jeton en clair. */
+function sansIdentifiants(url) {
+  try {
+    const u = new URL(String(url || '').trim());
+    if (u.username || u.password) { u.username = ''; u.password = ''; }
+    return u.toString();
+  } catch { return String(url || '').trim(); }
+}
+
+/* LES CLONES D'AVANT portaient le jeton dans `origin`. Le `remote set-url` du prochain fetch les
+   nettoie ; celui-ci nettoie AUSSI les clones dormants, que personne ne refetchera avant
+   longtemps — le jeton y resterait lisible d'ici là. Appelé au démarrage. */
+async function nettoyerOrigines(cfg) {
+  const base = String((cfg && cfg.clone_path) || DEFAULT_CLONE_DIR).trim();
+  let dossiers = [];
+  try { dossiers = fs.readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory()); } catch { return 0; }
+  let n = 0;
+  for (const d of dossiers) {
+    const dir = path.join(base, d.name);
+    if (!fs.existsSync(path.join(dir, '.git'))) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const { stdout } = await run('git', ['remote', 'get-url', 'origin'], { cwd: dir });
+      const actuelle = stdout.trim();
+      const propre = sansIdentifiants(actuelle);
+      if (propre !== actuelle) {
+        // eslint-disable-next-line no-await-in-loop
+        await run('git', ['remote', 'set-url', 'origin', propre], { cwd: dir });
+        n += 1;
+      }
+    } catch { /* pas d'origin, dépôt cassé : rien à nettoyer */ }
+  }
+  return n;
 }
 
 // Clone si absent, sinon fetch. Renvoie le chemin du clone.
@@ -108,8 +239,11 @@ function cloneUrl(cfg, repo) {
 async function updateSubmodules(dir, tls, secrets, onLog) {
   onLog(t('log.git.submodules'));
   try {
-    await run('git', [...tls, 'submodule', 'sync', '--recursive'], { cwd: dir, onLog, redactSecrets: secrets });
-    await run('git', [...tls, 'submodule', 'update', '--init', '--recursive'], { cwd: dir, onLog, redactSecrets: secrets });
+    /* PREMIER NIVEAU SEULEMENT. Le `.gitmodules` vient de la branche relue — donc de son auteur —
+       et chaque niveau récursif est une liste d'adresses de plus qu'on irait chercher sans les
+       avoir vues. Les transports dangereux sont de toute façon refusés par le durcissement. */
+    await run('git', [...tls, 'submodule', 'sync'], { cwd: dir, onLog, redactSecrets: secrets });
+    await run('git', [...tls, 'submodule', 'update', '--init'], { cwd: dir, onLog, redactSecrets: secrets });
   } catch (e) {
     onLog(`⚠ submodules : ${String(e.message).split('\n')[0]} (on continue sans)`);
   }
@@ -529,6 +663,7 @@ module.exports = {
   rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
   resetWorktree,
   ensureRepo, targetedDiff, diffTroisPoints, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
+  envGit, enTetesForge, sansIdentifiants, nettoyerOrigines, argsDurcis,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
   lsTree, showFile, fileDiffFull, fileDiffRange,
 };

@@ -32,9 +32,27 @@ async function api(path, opts = {}) {
     /* Le CODE du refus, quand le serveur en donne un. Reconnaître un cas particulier au mot
        près dans le message ne marcherait pas : il est traduit. */
     if (data.code) e.code = data.code;
+    e.data = data;
     throw e;
   }
   return data;
+}
+
+/* UNE BRANCHE QUI RÉÉCRIT LES RÈGLES DE L'AGENT (409 CONFIG_AGENT) : le serveur nomme les
+   fichiers, on les montre, et un accord renvoie l'empreinte vue — un nouveau push qui les change
+   encore redemandera. `envoyer(extra)` refait la même requête, le corps complété de l'accord. */
+async function avecConfigAgent(envoyer) {
+  try {
+    return await envoyer({});
+  } catch (e) {
+    if (e.code !== 'CONFIG_AGENT' || !e.data || !e.data.empreinte) throw e;
+    const ok = await confirmDialog({
+      title: tr('confirm.agent-config.title'), text: e.message,
+      detail: (e.data.files || []).join('\n'), confirmLabel: tr('confirm.agent-config.ok'),
+    });
+    if (!ok) { const annule = new Error(''); annule.annule = true; throw annule; }
+    return envoyer({ accept_agent_config: e.data.empreinte });
+  }
 }
 
 async function copyText(text, btn) {
@@ -208,8 +226,19 @@ function toast(msg, isErr = false) {
 function viderToastsErreur() { $$('.toast.err').forEach((t) => t.remove()); }
 (() => {
   const obs = new MutationObserver((muts) => {
+    for (const m of muts) { if (!m.target.hidden) auPremierPlan(m.target); }
     for (const m of muts) { if (m.target.hidden) { viderToastsErreur(); return; } }
   });
+  /* LA DERNIÈRE MODALE OUVERTE PASSE DEVANT. À z-index égal, c'est l'ordre du HTML qui
+     tranchait : « Ajouter aux todos » ou « Enquêter » depuis la fiche d'un job Jenkins ouvraient
+     leur fenêtre DERRIÈRE la fiche, déclarée plus bas dans la page, et son bouton n'était plus
+     cliquable. Sous la confirmation (150), qui reste au-dessus de tout. */
+  function auPremierPlan(modale) {
+    if (modale.id === 'confirmModal') return;
+    const autres = $$('.modal:not([hidden])').filter((x) => x !== modale && x.id !== 'confirmModal');
+    const haut = Math.max(110, ...autres.map((x) => Number(x.style.zIndex) || 110));
+    modale.style.zIndex = autres.length ? String(Math.min(149, haut + 1)) : '';
+  }
   /* Le script est en fin de <body> : le DOM est déjà là, et `DOMContentLoaded` peut être
      passé. On branche tout de suite, en gardant le repli pour un chargement plus tôt. */
   const brancher = () => $$('.modal').forEach((m) => obs.observe(m, { attributes: true, attributeFilter: ['hidden'] }));
@@ -604,6 +633,22 @@ document.addEventListener('click', async (e) => {
   box.remove();
 });
 
+/* UNE ADRESSE QU'ON REND CLIQUABLE doit mener quelque part d'inoffensif. `esc()` protège
+   l'attribut, pas le SCHÉMA : une `web_url` en `javascript:…` venue du dépôt partagé devenait un
+   lien qui exécutait du code au clic. On garde http(s), les chemins de l'application, une ancre
+   et mailto ; tout le reste devient `#`. `npm run check` exige ce passage pour tout `href`. */
+function safeUrl(u) {
+  const t = String(u == null ? '' : u).trim();
+  if (/^https?:\/\//i.test(t) || /^\/(?!\/)/.test(t) || /^#/.test(t) || /^mailto:/i.test(t)) return t;
+  return '#';
+}
+/* Une IMAGE : en plus, les `data:image/…` (une capture collée) et les `blob:` (un aperçu local). */
+function safeImg(u) {
+  const t = String(u == null ? '' : u).trim();
+  if (/^data:image\/(png|jpe?g|gif|webp|bmp);/i.test(t) || /^blob:/i.test(t)) return t;
+  return safeUrl(t);
+}
+
 function esc(s) {
   // échappe pour contexte contenu ET attribut (guillemets inclus)
   return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -614,7 +659,7 @@ function esc(s) {
 // Lien vers le ticket Jira (si une URL Jira est configurée et une clé détectée).
 function ticketLink(url, key) {
   if (!url || !key) return '';
-  return ` · <a href="${esc(url)}" target="_blank" title="${esc(tr('mr.link.ticket-title'))}">${svgIco('tag')} ${esc(key)} ↗</a>`;
+  return ` · <a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('mr.link.ticket-title'))}">${svgIco('tag')} ${esc(key)} ↗</a>`;
 }
 
 /* Les liens sortants (ticket, forge) ont leur PROPRE ligne. Dans la ligne d'identité, ils
@@ -626,11 +671,11 @@ function ticketLink(url, key) {
 function mrLinks(m) {
   const liens = [];
   if (m.ticket_url && m.ticket_key) {
-    liens.push(`<a href="${esc(m.ticket_url)}" target="_blank" title="${esc(tr('mr.link.ticket-title'))}">`
+    liens.push(`<a href="${esc(safeUrl(m.ticket_url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('mr.link.ticket-title'))}">`
       + `${svgIco('tag')} ${esc(m.ticket_key)} ↗</a>`);
   }
   if (m.web_url) {
-    liens.push(`<a href="${esc(m.web_url)}" target="_blank" title="${esc(tr('mr.link.forge-title', { forge: forgeLabel(m.forge) }))}">`
+    liens.push(`<a href="${esc(safeUrl(m.web_url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('mr.link.forge-title', { forge: forgeLabel(m.forge) }))}">`
       + `${svgIco('merge')} ${forgeLabel(m.forge)} ↗</a>`);
   }
   return liens.length ? `<div class="meta links">${liens.join('')}</div>` : '';
@@ -1724,12 +1769,12 @@ $('#convStart') && $('#convStart').addEventListener('click', async () => {
   const b = $('#convStart'); b.disabled = true;
   try {
     const url = tgt.type === 'mr' ? `/mrs/${tgt.id}/converge` : `/tasks/${tgt.id}/converge`;
-    await api(url, { method: 'POST', body });
+    await avecConfigAgent((accord) => api(url, { method: 'POST', body: { ...body, ...accord } }));
     closeConvergeModal();
     toast(tr('toast.converge-lancee'));
     refreshStatus();
     if (tgt.type === 'task') { navTab('task'); loadTasks(); }
-  } catch (e) { b.disabled = false; toast(explainError(e.message), true); }
+  } catch (e) { b.disabled = false; if (!e.annule) toast(explainError(e.message), true); }
 });
 
 /* ---------- Delta depuis la dernière visite ----------
@@ -2139,6 +2184,9 @@ async function loadDashboard() {
   let s;
   const q = `?days=${statsJours}${statsProjet ? `&project=${encodeURIComponent(statsProjet)}` : ''}`;
   try { s = await api(`/stats${q}`); } catch (e) { el.innerHTML = errorBox(e.message); return; }
+  /* Le combo des dépôts lit `repoOptions`, que d'autres écrans chargent : ouvert en premier,
+     Stats n'offrait que « Tous les dépôts ». */
+  if (!repoOptions.length) await loadRepoOptions();
 
   const tile = (label, value, cls = '') => `<div class="stat-tile ${cls}"><div class="stat-val">${value}</div><div class="stat-lbl">${esc(label)}</div></div>`;
   const noteBadge = (v) => (v == null ? '<span class="note none">—</span>' : `<span class="note ${v >= 7 ? 'good' : v >= 4 ? 'mid' : 'bad'}">${v}</span>`);
@@ -2252,7 +2300,7 @@ async function loadDashboard() {
           l'autre quand les tarifs bougent. */''}
     ${top.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${top.map((x) => `<tr>
         <td class="stats-top-tok">${esc(fmtNum(x.tokens))}</td>
-        <td><button type="button" class="stat-porte" data-go-session="${x.id}" data-go-kind="${esc(x.kind === 'local' ? 'local' : (x.kind === 'ask' ? 'ask' : 'code'))}"
+        <td><button type="button" class="stat-porte" data-go-session="${x.id}" data-go-kind="${esc(x.kind === 'local' ? 'local' : (x.kind === 'ask' ? 'ask' : (x.saveur === 'explore' ? 'explore' : 'code')))}"
           title="${esc(tr('stats.go.session'))}">${esc(x.label || x.prompt)}</button></td></tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(tr('stats.top-tasks.empty'))}</p>`}</div>`;
 
@@ -2383,9 +2431,8 @@ async function loadDashboard() {
   $$('#dashboard [data-go-agent]').forEach((b) => b.addEventListener('click', async () => {
     if (!agents.length) await chargerAgents();
     const a = agents.find((x) => x.name === b.dataset.goAgent);
-    navTab('task');
-    poserFiltreAgent(a ? a.id : 0);
-    loadTasks();
+    if (a) ouvrirSessionsAgent(a);
+    else { navTab('task'); poserFiltreAgent(0); loadTasks(); }
   }));
 
   $$('#dashboard [data-stats-jours]').forEach((b) => b.addEventListener('click', () => {
@@ -2573,7 +2620,8 @@ $('#btnBackup') && $('#btnBackup').addEventListener('click', (e) => busy(e.curre
   const info = $('#backupInfo');
   if (info) { info.className = 'muted'; info.textContent = tr('settings.backup.running'); }
   try {
-    const res = await fetch('/api/backup');
+    // POST : l'archive porte la base entière, jetons compris — elle ne part que sur un geste de l'application.
+    const res = await fetch('/api/backup', { method: 'POST' });
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || res.statusText);
     const blob = await res.blob();
     // Le nom vient du serveur (daté) : deux sauvegardes ne doivent pas s'écraser.
@@ -2605,7 +2653,7 @@ fermerAuFond('#activityModal', fermerActivite, { salissable: false });
 // Cellule « dernier commit » : date (lien vers le commit GitLab) + auteur.
 function lastCommitCell(c) {
   const when = c.date ? fmtDate(c.date) : '—';
-  const link = c.url ? `<a href="${esc(c.url)}" target="_blank" title="${esc(`${c.title || ''}${c.sha ? ` · ${c.sha}` : ''}`)}">${when}</a>` : when;
+  const link = c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" title="${esc(`${c.title || ''}${c.sha ? ` · ${c.sha}` : ''}`)}">${when}</a>` : when;
   return `${link}${c.author ? ` · <span class="muted">${esc(c.author)}</span>` : ''}`;
 }
 
@@ -2633,7 +2681,7 @@ async function fillDashboardCommits() {
   t5.innerHTML = `<h3>${tr('stats.top5.title')}</h3><p class="dash-help">${tr('stats.top5.help')}</p>`
     + (top.length
       ? `<div class="md-tablewrap"><table class="md-table"><thead><tr><th>${tr('stats.col.project')}</th><th>${tr('stats.col.last-commit')}</th><th>${tr('stats.col.author')}</th></tr></thead>
-          <tbody>${top.map((c) => `<tr><td>${esc(c.project)}</td><td>${c.url ? `<a href="${esc(c.url)}" target="_blank" title="${esc(c.title)}"><code>${esc(c.sha)}</code></a>` : `<code>${esc(c.sha)}</code>`} · ${c.date ? `${fmtDate(c.date)} ${fmtHour(c.date)}` : '—'}</td><td class="muted">${esc(c.author)}</td></tr>`).join('')}</tbody></table></div>`
+          <tbody>${top.map((c) => `<tr><td>${esc(c.project)}</td><td>${c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" title="${esc(c.title)}"><code>${esc(c.sha)}</code></a>` : `<code>${esc(c.sha)}</code>`} · ${c.date ? `${fmtDate(c.date)} ${fmtHour(c.date)}` : '—'}</td><td class="muted">${esc(c.author)}</td></tr>`).join('')}</tbody></table></div>`
       : `<p class="muted">${d.configured ? tr('stats.top5.empty') : tr('stats.top5.not-configured')}</p>`);
 }
 $('#dashRefresh').addEventListener('click', loadDashboard);
@@ -2742,9 +2790,70 @@ function marquerVerifEnCours(ids) {
 document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
 
 let copilotBinCourant = '';
+/* ---------- Ce qu'un collègue a changé, à l'écran ----------
+   La synchro met la base à jour ; la page, elle, n'en savait rien. Une merge request reviewée par
+   un collègue restait « à traiter » ici jusqu'au rechargement, ses compteurs avec. Le serveur
+   donne un numéro (`dataVersion`) qui avance quand une synchro pose ou retire des lignes : à
+   chaque changement, on recharge les compteurs et l'écran AFFICHÉ — les autres se chargent de
+   toute façon à l'ouverture. Rien de ce qu'on est en train d'écrire n'est touché : le formulaire
+   des réglages garde ses champs modifiés, la page de notes en cours de frappe passe par son
+   propre contrôle de conflit. */
+let versionDonneesVue = null;
+function suivreVersionDonnees(v) {
+  if (v === undefined || v === null) return;
+  if (versionDonneesVue === null) { versionDonneesVue = v; return; }
+  if (v === versionDonneesVue) return;
+  versionDonneesVue = v;
+  rafraichirApresSynchro().catch(() => { /* un écran qui ne se recharge pas n'est pas une panne */ });
+}
+async function rafraichirApresSynchro() {
+  const actif = (id) => { const t = $(`#tab-${id}`); return !!(t && t.classList.contains('active')); };
+  refreshCounts();
+  refreshOpenTodos();           // les pastilles de Notes
+  loadTasks();                  // compteurs des saveurs et badge de Dev IA, même onglet fermé
+  if (actif('review')) {
+    loadToReview();
+    if (currentSeg !== 'to_review') {
+      await loadReports(currentSeg);
+      if (selectedMr && !reportRows.some((m) => m.id === selectedMr)) {
+        // Le rapport ouvert a quitté ce stade (supprimé, rouvert, classé) : on ne le montre plus.
+        selectedMr = null; renderReportPlaceholder();
+      } else if (selectedMr) openReport(selectedMr, { keep: true });
+    }
+  }
+  if (actif('notes')) {
+    if (NOTES.sub === 'today') loadBrief();
+    if (NOTES.sub === 'todos') loadTodos();
+    if (NOTES.sub === 'pages') await rafraichirPagesApresSynchro();
+  }
+  if (actif('agents')) loadAgentList();
+  if (actif('dashboard')) loadDashboard();
+  if (actif('admin')) {
+    let sub = 'gitcfg';
+    try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { /* défaut */ }
+    try { (ADMIN_SUBS[sub] || loadConfig)(); } catch { /* best-effort */ }
+  }
+}
+/* La page ouverte : relue si personne n'y écrit. Si une frappe attend son enregistrement, c'est
+   lui qui découvrira le changement — et le dira (conflit), au lieu d'écraser l'un ou l'autre. */
+async function rafraichirPagesApresSynchro() {
+  await loadPages();
+  const p = NOTES.page;
+  if (!p) return;
+  if (pageSave && pageSave.id === p.id) return;
+  if (NOTES.conflit && NOTES.conflit.id === p.id) return;
+  let frais;
+  try { frais = await api(`/notes/${p.id}`); }
+  catch { NOTES.page = null; NOTES.pageId = null; renderPageEditor(); return; }   // supprimée ailleurs
+  if (!NOTES.page || NOTES.page.id !== p.id || String(frais.updated_at) === String(NOTES.page.updated_at)) return;
+  NOTES.page = frais;
+  renderPageEditor();
+}
+
 async function refreshStatus() {
   try {
     const s = await api('/status');
+    suivreVersionDonnees(s.dataVersion);
     // Le binaire configuré : c'est lui qui décide si un profil d'agent s'applique en entier
     // (claude) ou seulement par son modèle (copilot). L'éditeur le dit avant la sauvegarde.
     copilotBinCourant = s.copilotBin || '';
@@ -3004,6 +3113,8 @@ function appendLogLines(pane, lines) {
     const span = document.createElement('span');
     const cls = logLineClass(l.text);
     if (cls) span.className = cls;
+    // Le double-clic mène à la MR de la ligne : le serveur donne `mr_id`, encore fallait-il le poser.
+    if (l.mr_id) span.dataset.logMr = String(l.mr_id);
     span.textContent = l.text + '\n';
     frag.appendChild(span);
   }
@@ -3120,7 +3231,10 @@ async function pumpLog() {
   const wait = d.queued ? ` · ${tr('job.waiting', { n: d.queued })}` : '';
   /* Le bandeau décrit UN job — celui qui a son onglet actif. Avec plusieurs jobs en cours il
      mentirait par omission : on annonce donc combien tournent, l'onglet disant lequel on lit. */
-  const plusieurs = ids.length > 1 ? ` · ${tr('job.running-n', { n: ids.length, count: ids.length })}` : '';
+  /* Les onglets gardent aussi les jobs FINIS ou ARRÊTÉS : on ne compte que ceux qui tournent
+     encore, sinon « 2 jobs en cours » avec un seul job vivant. */
+  const vivants = ids.filter((id) => id === d.job_id ? running : !TERMINAL.has(LOGP.state.get(id))).length;
+  const plusieurs = vivants > 1 ? ` · ${tr('job.running-n', { n: vivants, count: vivants })}` : '';
   const label = running
     ? `${tr('job.in-progress', { done: d.done_count || 0, total: d.total || 0, message: d.message || '' })}${plusieurs}${wait}`
     : (d.status === 'done' ? (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare'))
@@ -3132,7 +3246,7 @@ async function pumpLog() {
   stopBtn.hidden = !running;
   /* Ce bouton arrête TOUT et vide la file. Tant qu'un seul job tournait, « le job en cours »
      était exact ; à plusieurs il faut le dire, sinon on croit n'arrêter que ce qu'on lit. */
-  stopBtn.title = ids.length > 1 ? tr('job.stop.all-title', { n: ids.length }) : tr('job.stop.one-title');
+  stopBtn.title = vivants > 1 ? tr('job.stop.all-title', { n: vivants }) : tr('job.stop.one-title');
   /* « Relancer » ne s'affiche que sur un job qui n'est pas allé au bout ET dont le serveur
      sait rejouer l'intention. Le bandeau disait « arrêté » et laissait deviner où cliquer. */
   const retry = $('#logRetry');
@@ -3515,6 +3629,7 @@ async function loadToReview() {
   toReviewRows = await api('/mrs?status=to_review');
   fileJamaisChargee = false;
   listeChargee = true;
+  renderFiltreAuteur();
   renderToReview();
 }
 /* ---------- « Mes merge requests » / « Les autres » ----------
@@ -3547,7 +3662,10 @@ function renderFiltreAuteur() {
      demande de review. La pastille ne s'affiche que s'il y en a, sinon elle proposerait un
      filtre toujours vide. */
   const opts = [['tous', 'review.auteur.tous'], ['moi', 'review.auteur.moi'], ['autres', 'review.auteur.autres']];
-  if (reportRows.some(demandeeAMoi)) opts.push(['demandee', 'mr.filter.to-review-by-me']);
+  /* Sur les lignes DU STADE AFFICHÉ : la file « À traiter » en était exclue, et la pastille
+     n'y apparaissait jamais — là même où la demande de relecture attend. */
+  const lignes = currentSeg === 'to_review' ? toReviewRows : reportRows;
+  if (filtreAuteur === 'demandee' || (lignes || []).some(demandeeAMoi)) opts.push(['demandee', 'mr.filter.to-review-by-me']);
   box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${filtreAuteur === v ? ' active' : ''}" data-mr-auteur="${v}"`
     + `${v === 'demandee' ? ` title="${esc(tr('mr.filter.to-review-by-me-title'))}"` : ''}>${esc(tr(k))}</button>`).join('');
 }
@@ -3588,13 +3706,16 @@ const TRIS = {
   // « Petites d'abord » : les lignes changées, à défaut les fichiers. Sans mesure, on passe après.
   petites: (a, b) => tailleNum(a) - tailleNum(b),
   anciennes: (a, b) => String(a.updated_at || a.gitlab_created_at || '').localeCompare(String(b.updated_at || b.gitlab_created_at || '')),
-  note: (a, b) => (a.note == null ? 99 : Number(a.note)) - (b.note == null ? 99 : Number(b.note)),
+  note: (a, b) => note10(a) - note10(b),
   /* « Bloquants d'abord » : le nombre de bloquants, puis de majeurs, puis la note. Une merge
      request sans rapport n'a pas de constat — elle passe après, comme pour le tri par note. */
   bloquants: (a, b) => (nbSeverite(b, 'blocker') - nbSeverite(a, 'blocker'))
     || (nbSeverite(b, 'major') - nbSeverite(a, 'major'))
-    || ((a.note == null ? 99 : Number(a.note)) - (b.note == null ? 99 : Number(b.note))),
+    || (note10(a) - note10(b)),
 };
+/* LA NOTE SUR 10, OU 99 SANS NOTE (elle passe après). `m.note` est un objet `{ raw, value }`,
+   `value` sur 1 : `Number(m.note)` donnait NaN, et un tri sur NaN ne trie rien. */
+const note10 = (m) => (m && m.note && m.note.value != null ? m.note.value * 10 : 99);
 const nbSeverite = (m, cle) => ((m && m.severites && m.severites[cle]) || 0);
 
 /* LES CONSTATS QUI RESTENT, PAR GRAVITÉ. Le détail d'une carte disait « 1 résolu · 1
@@ -3874,11 +3995,11 @@ function mrCard(m) {
     </div>
     <div class="btn-group">
     <span class="btn-split">
-      <button class="btn btn-primary" data-review="${m.id}" data-iid="${m.iid}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
+      <button class="btn btn-primary" data-review="${m.id}" data-iid="${esc(m.iid)}" title="${tr('mr.btn.review-title')}"><svg class=\"ico\"><use href=\"#i-play\"/></svg>${tr('mr.btn.review')}</button>
       <button class="btn btn-primary btn-split-caret" data-review-menu="${m.id}" title="${tr('mr.btn.review-opts-title')}" aria-haspopup="true" aria-expanded="false">▾</button>
       <div class="split-menu" hidden role="menu">
-        <button role="menuitem" data-review-run="${m.id}" data-iid="${m.iid}" data-explain="1">${tr('mr.btn.review-with-explain')}</button>
-        <button role="menuitem" data-review-run="${m.id}" data-iid="${m.iid}" data-explain="0">${tr('mr.btn.review-no-explain')}</button>
+        <button role="menuitem" data-review-run="${m.id}" data-iid="${esc(m.iid)}" data-explain="1">${tr('mr.btn.review-with-explain')}</button>
+        <button role="menuitem" data-review-run="${m.id}" data-iid="${esc(m.iid)}" data-explain="0">${tr('mr.btn.review-no-explain')}</button>
       </div>
     </span>
     </div>
@@ -3910,7 +4031,7 @@ function mrCard(m) {
         ${jiraConfigured && (m.ticket_key || jiraCleDe(m))
     ? `<button role="menuitem" data-jira-watch="${esc(m.ticket_key || jiraCleDe(m))}">${tr('mr.btn.watch-ticket', { key: m.ticket_key || jiraCleDe(m) })}</button>`
     : ''}
-        <button role="menuitem" data-done="${m.id}" data-iid="${m.iid}">${tr('mr.btn.dismiss')}</button>
+        <button role="menuitem" data-done="${m.id}" data-iid="${esc(m.iid)}">${tr('mr.btn.dismiss')}</button>
         ${m.closed_seen ? '' : `<button role="menuitem" class="danger" data-merge="${m.id}">${tr('task.btn.merge')}</button>`}
       </div>
     </span>
@@ -3923,7 +4044,7 @@ function mrCard(m) {
    verdict sont dans la charge utile de la carte, l'adresse aussi. */
 function refMr(m) {
   const bouts = [];
-  if (m.note != null) bouts.push(`${String(m.note).replace('.', ',')}/10`);
+  if (m.note && m.note.value != null) bouts.push(fmtNote(m.note));
   const v = m.verification && m.verification.verdict;
   if (v) bouts.push(tr(`mr.ref.verdict.${v}`));
   const qualif = bouts.length ? ` (${bouts.join(' · ')})` : '';
@@ -3979,7 +4100,10 @@ $('#btnDiscover').addEventListener('click', async () => {
     $('#reviewErrors').innerHTML = r.errors.length
       ? r.errors.map((er) => errorBox(`${er.repo} : ${er.error}`)).join('')
       : '';
-    loadToReview();
+    /* Les compteurs et « Reviewer » suivent la file : sans eux, une file vide qui se remplit
+       gardait « 0 » et un bouton grisé au-dessus des cartes qu'on venait de découvrir. */
+    await loadToReview();
+    refreshCounts();
   } catch (e) { $('#discoverInfo').textContent = ''; $('#reviewErrors').innerHTML = errorBox(e.message); }
   finally { delete db_.dataset.busy; db_.disabled = false; }
 });
@@ -4057,7 +4181,7 @@ const passeFiltreNote = (m) => !filtreNoteActif() || noteFilter.has(noteClass(m.
 let seuilPret = 8;
 function estPreteAMerger(m) {
   if (!m || m.closed_seen) return false;
-  if (m.note == null || Number(m.note) < seuilPret) return false;
+  if (note10(m) === 99 || note10(m) < seuilPret) return false;
   if (m.has_conflicts) return false;
   const cat = m.ticket_category;
   if (cat && cat !== 'indeterminate') return false;
@@ -4076,6 +4200,7 @@ async function loadReports(status = 'reviewed') {
   reportRows = await api(`/mrs?status=${status}`);
   stadeDejaCharge.add(status);
   listeChargee = true;
+  renderFiltreAuteur();
   renderReports();
 }
 function renderReports() {
@@ -4889,7 +5014,7 @@ async function openReport(id, opts = {}) {
       </div>
       <div class="spacer"></div>
       ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
-      ${m.web_url ? `<a href="${esc(m.web_url)}" target="_blank">${forgeLabel(m.forge)} ↗</a>` : ''}
+      ${m.web_url ? `<a href="${esc(safeUrl(m.web_url))}" target="_blank" rel="noopener noreferrer">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 
     ${/* TROIS ACTIONS VISIBLES, le reste dans le menu « ⋯ ». Onze boutons sur trois rangées
@@ -4940,7 +5065,7 @@ async function openReport(id, opts = {}) {
             ${addTodoBtn('mr', m.id, tr('notes.add-todo.mr', { iid: m.iid, title: String(m.title || '').slice(0, 60) }))}
             ${resumeCmdBtn(d.resume_cmd)}
             <div class="menu-sep"></div>
-            <button id="aDelReport" role="menuitem" class="danger" data-iid="${m.iid}" title="${tr('mr.btn.delete-report-title')}">${tr('report.btn.delete')}</button>
+            <button id="aDelReport" role="menuitem" class="danger" data-iid="${esc(m.iid)}" title="${tr('mr.btn.delete-report-title')}">${tr('report.btn.delete')}</button>
           </div>
         </div>
       </div>
@@ -6274,7 +6399,8 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
-  'verif_auto_max', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'agent_max_turns', 'agent_daily_budget_usd',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
@@ -6520,7 +6646,7 @@ if (btnDataAttach) btnDataAttach.addEventListener('click', async () => {
      tourne, et la ligne d'état dit ce qu'on attend. */
   let apercu = null;
   $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
-  try { apercu = await busy(btn, () => api(`/data-sync/preview?url=${encodeURIComponent(url)}`)); }
+  try { apercu = await busy(btn, () => api('/data-sync/preview', { method: 'POST', body: { url } })); }
   catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
   $('#dataSyncInfo').textContent = '';
   if (!await confirmDialog({
@@ -6562,7 +6688,7 @@ const btnDataReexport = $('#btnDataReexport');
 if (btnDataReexport) btnDataReexport.addEventListener('click', async () => {
   let apercu = null;
   $('#dataSyncInfo').textContent = tr('datasync.apercu.calcul');
-  try { apercu = await busy(btnDataReexport, () => api('/data-sync/preview')); }
+  try { apercu = await busy(btnDataReexport, () => api('/data-sync/preview', { method: 'POST', body: {} })); }
   catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); return; }
   $('#dataSyncInfo').textContent = '';
   if (!await confirmDialog({
@@ -6590,6 +6716,7 @@ if (btnDataNow) btnDataNow.addEventListener('click', async () => {
     await api('/data-sync/now', { method: 'POST' });
     $('#dataSyncInfo').textContent = '';
     await chargerDataSync();
+    refreshStatus();   // ce que la synchro a apporté arrive à l'écran tout de suite
   } catch (e) { $('#dataSyncInfo').textContent = ''; toast(explainError(e.message), true); }
   finally { btn.disabled = false; }
 });
@@ -6649,6 +6776,7 @@ function bulleSync() {
       b.disabled = true;
       try { await api('/data-sync/now', { method: 'POST' }); } catch { /* hors ligne : l'état le dira */ }
       await rafraichirFooterSync();
+      refreshStatus();   // ce que la synchro a apporté arrive à l'écran tout de suite
       b.disabled = false;
     });
     /* Le compte à rebours ne bat que sous la souris (ou sous le focus clavier) : ouvrir la bulle
@@ -6747,6 +6875,7 @@ async function loadConfig() {
   /* L'exécutant des automatismes : une LISTE, remplie des exécutants connus, et cachée en
      mono-poste. Posé après les cases, car l'avertissement dépend d'elles. */
   poserExecutantAuto(c.auto_runner || '');
+  poserApprobationAuto(c);
   // 0 = « sans limite » : il doit s'ÉCRIRE, une case vide se lirait comme « valeur par défaut ».
   if (f.review_auto_max) f.review_auto_max.value = Number(c.review_auto_max) || 0;
   // Atterrissage sur le brief : coché par défaut, comme côté serveur.
@@ -6778,14 +6907,15 @@ async function loadConfig() {
   syncReviewAutoMax();
   syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };
+  configReference = corpsConfig(f);
   /* Ce qui vient du serveur n'est pas une modification : le rechargement qui suit un
      enregistrement effacerait sinon la mention qu'il vient tout juste de justifier. */
   marquerConfig(false);
   renderNotifSettings();
 }
-$('#configForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const f = e.target;
+/* CE QUE LE FORMULAIRE ENVERRAIT, champ par champ. Lu deux fois : au chargement (la référence)
+   et à l'enregistrement (ce qui a changé depuis). */
+function corpsConfig(f) {
   const body = {};
   /* UNE CASE À COCHER N'A PAS DE `.value` UTILE. `input[type=checkbox].value` vaut « on »
      qu'elle soit cochée ou non — c'est le nom HTML de la valeur ENVOYÉE par un formulaire
@@ -6813,6 +6943,21 @@ $('#configForm').addEventListener('submit', async (e) => {
   if (body.github_token === '***') delete body.github_token;
   if (body.jenkins_token === '***') delete body.jenkins_token;
   if (body.dictation_api_key === '***') delete body.dictation_api_key;
+  return body;
+}
+/* N'ENVOYER QUE CE QUI A CHANGÉ. Le formulaire renvoyait TOUS ses champs : resté ouvert pendant
+   qu'un collègue changeait un réglage d'équipe (reçu par la synchro), enregistrer un autre champ
+   réécrivait l'ancienne valeur par-dessus la sienne, sans un mot. La référence est ce que le
+   formulaire montrait en se chargeant. */
+let configReference = null;
+$('#configForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const complet = corpsConfig(f);
+  const body = {};
+  for (const [k, v] of Object.entries(complet)) {
+    if (!configReference || configReference[k] !== v) body[k] = v;
+  }
   try {
     await api('/config', { method: 'PUT', body });
     // Le formulaire est éclaté sur deux sous-onglets (Général / Merge Request) : on affiche
@@ -6825,6 +6970,9 @@ $('#configForm').addEventListener('submit', async (e) => {
       : $('#sub-aisession').classList.contains('active') ? $('#configInfoAi')
       : $('#sub-dictation').classList.contains('active') ? $('#configInfoDictation')
       : $('#configInfo');
+    /* Ce qui vient de partir est la nouvelle référence : le rechargement qui suit peut s'abstenir
+       (frappe en cours), et remettre ensuite un champ à sa valeur d'avant ne partirait pas. */
+    configReference = complet;
     marquerConfig(false);   // avant la mention : elle porterait sinon la classe « non enregistré »
     f.dispatchEvent(new Event('mergerie:config-saved'));   // « Enregistrer et tester » enchaîne
     info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
@@ -7589,6 +7737,9 @@ function renderTargetRows(list) {
     if (cur.length <= 1) { toast(tr('toast.au-moins-un-projet-est'), true); return; }
     cur.splice(Number(b.dataset.rmrow), 1);
     renderTargetRows(cur);
+    /* Retirer un dépôt change ce que les vérificateurs couvrent : sans ce rappel, la liste
+       disait encore « aucun ne couvre » après qu'on avait ôté le seul dépôt qui manquait. */
+    majVerificateursSession(); majSkillsSession();
   }));
   /* Une saisie manuelle gèle le champ : la proposition ne doit jamais écraser ce que
      l'utilisateur a écrit, ni revenir après qu'il l'a effacé. */
@@ -7601,7 +7752,10 @@ function renderTargetRows(list) {
     ? tr('task.hint.code')
     : tr('task.hint.explore');
 }
-$('#addTarget').addEventListener('click', () => renderTargetRows([...readTargetRows(), {}]));
+$('#addTarget').addEventListener('click', () => {
+  renderTargetRows([...readTargetRows(), {}]);
+  majVerificateursSession(); majSkillsSession();
+});
 
 
 /* ---- Sélecteur de branche existante (liste déroulante avec recherche) ----
@@ -7718,7 +7872,7 @@ function wireBranchPickers() {
 const estImage = (p) => /^data:image\//i.test(p.data || '');
 function renderTaskPreviews() {
   $('#taskPreviews').innerHTML = taskNewImages.map((p, i) => (estImage(p)
-    ? `<span class="task-prev"><img src="${p.data}" title="${esc(p.name)}" /><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
+    ? `<span class="task-prev"><img src="${esc(safeImg(p.data))}" title="${esc(p.name)}" /><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
     : `<span class="task-prev task-prev-doc" title="${esc(p.name)}">${svgIco('doc')}<span class="task-prev-nom">${esc(p.name)}</span><button type="button" data-rmimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`)).join('');
   $$('#taskPreviews [data-rmimg]').forEach((b) => b.addEventListener('click', () => {
     taskNewImages.splice(Number(b.dataset.rmimg), 1); renderTaskPreviews();
@@ -7744,10 +7898,10 @@ function renderTaskPieces() {
        le prompt. */
     const titre = esc(pj.name + (pj.followup ? ` — ${tr('task.piece.from-followup')}` : ''));
     const dedans = pieceEstImage(pj)
-      ? `<img src="${url}" alt="${titre}" />`
+      ? `<img src="${esc(safeImg(url))}" alt="${titre}" />`
       : `${svgIco('doc')}<span class="task-prev-nom">${esc(pj.name)}</span>`;
     return `<span class="task-prev${pieceEstImage(pj) ? '' : ' task-prev-doc'}${pj.followup ? ' task-prev-suivi' : ''}" title="${titre}">`
-      + `<a href="${url}" target="_blank" rel="noopener noreferrer">${dedans}</a>`
+      + `<a href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer">${dedans}</a>`
       + `<button type="button" data-rmpj="${pj.id}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`;
   }).join('');
   $$('#taskPieces [data-rmpj]').forEach((b) => b.addEventListener('click', async () => {
@@ -8287,7 +8441,7 @@ async function proposerPiecesNote(pageId) {
   const defaut = images.length <= 3;
   box.innerHTML = `<p class="field-note">${esc(tr('task.note.pieces.intro'))}</p>`
     + piecesNoteProposees.map((a, i) => `<label class="jira-piece"><input type="checkbox" data-note-piece="${i}"${defaut ? ' checked' : ''} />
-        <img src="${esc(a.url)}" alt="${esc(a.name)}" loading="lazy" />
+        <img src="${esc(safeImg(a.url))}" alt="${esc(a.name)}" loading="lazy" />
         <span class="muted">${esc(a.name)}</span></label>`).join('');
 }
 
@@ -8920,7 +9074,7 @@ function renderSuiviPreviews(form) {
   if (!box) return;
   const imgs = suiviImages.get(cleFormSuivi(form)) || [];
   box.innerHTML = imgs.map((p, i) => (estImage(p)
-    ? `<span class="task-prev"><img src="${p.data}" title="${esc(p.name)}" />`
+    ? `<span class="task-prev"><img src="${esc(safeImg(p.data))}" title="${esc(p.name)}" />`
       + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`
     : `<span class="task-prev task-prev-doc" title="${esc(p.name)}">${svgIco('doc')}<span class="task-prev-nom">${esc(p.name)}</span>`
       + `<button type="button" data-rmfollowimg="${i}" title="${esc(tr('task.piece.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button></span>`)).join('');
@@ -9604,6 +9758,18 @@ function shareBtn(scope, t) {
     + ` title="${esc(tr(on ? 'session.unshare' : 'session.share'))}">`
     + `<svg class="ico"><use href="#i-users"/></svg></button>`;
 }
+/* QUI A PARTAGÉ. Tout objet qu'on a choisi de partager (session, question, page, todo) dit par
+   qui : l'auteur est celui qui a commité son fichier, donc connu dès la première synchro. Avant
+   elle, l'objet n'est parti de nulle part ailleurs que d'ici : c'est « moi ». */
+function texteAuteurPartage(o) {
+  if (!o || !(o.shared || o.author)) return '';
+  const moi = partageEtMoi && partageEtMoi.name;
+  return o.author && o.author !== moi ? tr('shared.by', { who: o.author }) : tr('shared.by-me');
+}
+const auteurPartage = (o) => {
+  const txt = texteAuteurPartage(o);
+  return txt ? ` <span class="auteur-partage muted">${esc(txt)}</span>` : '';
+};
 /* …et le pictogramme qui dit, sans cliquer, que cette session est chez tout le monde. */
 const shareMark = (t) => (t.shared
   ? ` <span class="note-partagee" title="${esc(tr('session.shared-mark'))}">${svgIco('users')}</span>` : '');
@@ -9853,7 +10019,7 @@ function coutCarte(t) {
   /* « par Claire » quand l'équipe partage un dépôt de données : le nom vient de git, celui qui
      a commité le fichier de la session. Rien à saisir, aucune colonne à tenir — et rien du tout
      en mono-poste, où « par moi » sur chaque carte n'apprendrait à personne. */
-  if (t && t.author) bouts.push(esc(tr('share.by', { name: t.author })));
+  if (t && (t.shared || t.author)) bouts.push(esc(texteAuteurPartage(t)));
   if (t && t.duration_ms) bouts.push(esc(dureeCourte(t.duration_ms)));
   if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
   /* LE COÛT EN DOLLARS, quand le backend l'annonce. Il était servi avec chaque session et
@@ -9953,7 +10119,7 @@ function targetLine(t, tg) {
     ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un
           journal qui défile — sinon l'écran affiche un identifiant que personne n'a saisi. */''}
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
-    ${mrIid ? (mrUrl ? ` <a href="${esc(mrUrl)}" target="_blank">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
+    ${mrIid ? (mrUrl ? ` <a href="${esc(safeUrl(mrUrl))}" target="_blank" rel="noopener noreferrer">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
     ${etatMrDeLaLigne(tg)}
     ${/* B5 — L'ÉTAT DU TICKET sur la ligne de projet. La ligne disait la note, le verdict et
           les brouillons ; le ticket, jamais — alors qu'« il est repassé en cours » change ce
@@ -10153,9 +10319,9 @@ function wireTaskActions() {
   on('[data-trun]', async (b) => {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.trun));
     if (!await confirmerRelance(t2 && t2.status !== 'new')) return;
-    busy(b, () => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST' }))
+    busy(b, () => avecConfigAgent((accord) => api(`/tasks/${b.dataset.trun}/run`, { method: 'POST', body: accord })))
       .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
-      .catch((e) => toast(explainError(e.message), true));
+      .catch((e) => { if (!e.annule) toast(explainError(e.message), true); });
   });
 
   on('[data-tfold]', (b) => basculerProjets(b.dataset.tfold));
@@ -10191,18 +10357,18 @@ function wireTaskActions() {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.task));
     const tg = ((t2 && t2.targets) || []).find((x) => x.id === Number(b.dataset.tgrun));
     if (!await confirmerRelance(tg && tg.status !== 'new', 'confirm.rerun-target')) return;
-    busy(b, () => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)] } }))
+    busy(b, () => avecConfigAgent((accord) => api(`/tasks/${b.dataset.task}/run`, { method: 'POST', body: { targets: [Number(b.dataset.tgrun)], ...accord } })))
       .then(() => { toast(tr('toast.projet-lance')); loadTasks(); refreshStatus(); })
-      .catch((e) => toast(explainError(e.message), true));
+      .catch((e) => { if (!e.annule) toast(explainError(e.message), true); });
   });
 
   on('[data-trunfailed]', (b) => {
     const t2 = allTasks.find((x) => x.id === Number(b.dataset.trunfailed));
     const echecs = ((t2 && t2.targets) || []).filter((tg) => tg.status === 'error').map((tg) => tg.id);
     if (!echecs.length) return;
-    busy(b, () => api(`/tasks/${b.dataset.trunfailed}/run`, { method: 'POST', body: { targets: echecs } }))
+    busy(b, () => avecConfigAgent((accord) => api(`/tasks/${b.dataset.trunfailed}/run`, { method: 'POST', body: { targets: echecs, ...accord } })))
       .then(() => { toast(tr('toast.session-lancee')); loadTasks(); refreshStatus(); })
-      .catch((e) => toast(explainError(e.message), true));
+      .catch((e) => { if (!e.annule) toast(explainError(e.message), true); });
   });
 
   on('[data-treconcile]', (b) => busy(b, () => api(`/tasks/${b.dataset.treconcile}/reconcile`, { method: 'POST' }))
@@ -10886,6 +11052,23 @@ if (showHiddenEl) {
 
 try { taskKind = localStorage.getItem('aidevtools_task_kind') || 'code'; } catch { /* ignore */ }
 
+/* ---------- Approuver sur ce poste ----------
+   CE QUI EXÉCUTE DU CODE, arrivé changé par la synchro, attend un geste ici. Le bloc montre CE
+   qui a changé — les commandes d'avant et celles d'aujourd'hui —, pas seulement QUE quelque chose
+   a changé : approuver sans voir serait un clic sans valeur. */
+function blocApprobation({ texte, avant, apres, bouton }) {
+  const ligne = (c, cls) => `<div class="approval-line ${cls}"><code>${esc(c)}</code></div>`;
+  const diff = avant
+    ? [...avant.filter((c) => !apres.includes(c)).map((c) => ligne(`− ${c}`, 'gone')),
+      ...apres.map((c) => ligne(`${avant.includes(c) ? '  ' : '+ '}${c}`, avant.includes(c) ? 'same' : 'added'))].join('')
+    : apres.map((c) => ligne(c, 'added')).join('');
+  return `<div class="approval-box" role="note">
+    <p class="approval-text">${svgIco('alert')} ${esc(texte)}</p>
+    ${diff ? `<div class="approval-diff">${diff}</div>` : ''}
+    <div class="approval-actions">${bouton}</div>
+  </div>`;
+}
+
 /* ---------- Ajout en masse de dépôts (GitLab ou GitHub) ----------
    Une seule modale, paramétrée par la forge : même recherche, même « tout cocher »,
    seules la source et l'étiquette changent. */
@@ -11016,7 +11199,9 @@ async function loadRules() {
   const boxRegle = $('#ruleRepoBox');
   if (boxRegle) {
     await loadRepoOptions();
-    boxRegle.innerHTML = repoComboHtml(null, { idClass: 'rule-repo' });
+    /* `defaultFirst: false` : vide, la règle vaut pour TOUS les dépôts — c'est ce que dit l'aide.
+       Pré-choisir le premier la bornait en silence à lui. */
+    boxRegle.innerHTML = repoComboHtml(null, { idClass: 'rule-repo', defaultFirst: false });
     wireRepoCombos(boxRegle);
   }
   const rows = await api('/rules');
@@ -11040,6 +11225,7 @@ async function loadRules() {
             matche plus rien reste dans la liste sans qu'on le sache. Calculé localement,
             sans IA : les chemins modifiés et le nom de branche sont en base. */''}
       ${r.repo_id ? `<p class="field-note">${esc(tr('settings.rule.scoped', { project: (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}` }))}</p>` : ''}
+      ${r.author ? `<p class="field-note">${esc(tr('settings.rule.author', { who: r.author }))}</p>` : ''}
       <p class="field-note${r.open_mrs ? '' : ' rule-vide'}">${esc(r.open_mrs
     ? tr('settings.rule.reach', { n: r.open_mrs, count: r.open_mrs })
     : tr('settings.rule.reach-none'))}</p>
@@ -11868,7 +12054,7 @@ function gitRenderPreview(pv) {
     const surete = r.state !== 'ok' || !gitIsDelete() ? ''
       : (r.open_mr
         ? '<span class="git-sur git-sur-mr" title="' + esc(r.open_mr.title || '') + '">'
-          + (r.open_mr.url ? '<a href="' + esc(r.open_mr.url) + '" target="_blank">' : '')
+          + (r.open_mr.url ? '<a href="' + esc(safeUrl(r.open_mr.url)) + '" target="_blank" rel="noopener noreferrer">' : '')
           + esc(tr('git.safe.open-mr', { iid: r.open_mr.iid })) + (r.open_mr.url ? ' ↗</a>' : '')
           + (r.open_mr.title ? ' <span class="muted">' + esc(String(r.open_mr.title).slice(0, 50)) + '</span>' : '')
           + (r.open_mr.note != null ? ' ' + noteBadge(Math.round(r.open_mr.note * 1000) / 100) : '')
@@ -12019,7 +12205,7 @@ function gitRenderExplorer(d, box) {
       const ab = b.default ? '<span class="muted">—</span>'
         : '<span class="git-ab">' + (b.ahead ? '↑' + b.ahead : '') + (b.behind ? ' <strong class="git-behind">↓' + b.behind + '</strong>' : (b.ahead ? '' : '=')) + '</span>';
       const merged = b.merged_into
-        ? '<code>' + esc(b.merged_into) + '</code>' + (b.merged_mr ? ' <a href="' + esc(b.merged_mr.url) + '" target="_blank">!' + b.merged_mr.iid + '</a>' : '')
+        ? '<code>' + esc(b.merged_into) + '</code>' + (b.merged_mr ? ' <a href="' + esc(safeUrl(b.merged_mr.url)) + '" target="_blank" rel="noopener noreferrer">!' + b.merged_mr.iid + '</a>' : '')
         : '<span class="muted">—</span>';
       // « Créer la MR » entre la branche et sa SOURCE : cible = l'origine déduite,
       // sinon la branche par défaut. Proposé seulement si la branche a des commits
@@ -12050,7 +12236,7 @@ function gitRenderExplorer(d, box) {
           + esc(tr('git.br.jenkins-title', { job: j.path, branch: b.name })) + '">' + svgIco('pipeline') + '</button>').join(''))
         + addTodoBtn('branch', d.repo_id + ':' + b.name, tr('notes.add-todo.branch', { branch: b.name }));
       const mrBtn = b.open_mr
-        ? '<a class="btn btn-sm" href="' + esc(b.open_mr.url) + '" target="_blank" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
+        ? '<a class="btn btn-sm" href="' + esc(safeUrl(b.open_mr.url)) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
         : (canMr
           ? '<button class="btn btn-sm" data-gitmr="' + esc(b.name) + '" data-target="' + esc(mrTarget) + '" title="' + esc(tr('git.mr.title', { target: mrTarget })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>' + esc(tr('git.btn.create-mr')) + '</button>'
           : '');
@@ -12113,7 +12299,7 @@ function gitRenderExplorer(d, box) {
       onDone: (r) => {
         // Remplace le bouton par le lien vers la MR : l'écran reflète la réalité
         // sans re-analyser tout le dépôt (coûteux).
-        b.outerHTML = '<a class="btn btn-sm" href="' + esc(r.url) + '" target="_blank" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
+        b.outerHTML = '<a class="btn btn-sm" href="' + esc(safeUrl(r.url)) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + r.iid + ' ↗</a>';
       },
     });
   }));
@@ -12252,7 +12438,7 @@ async function findRefSearch(e) {
       + `<th>${esc(tr('stats.col.project'))}</th><th>${esc(tr('git.findref.col.type'))}</th><th>${esc(tr('git.findref.col.commit'))}</th><th>${esc(tr('git.findref.col.tagdate'))}</th><th>${esc(tr('git.findref.col.branchdate'))}</th><th>${esc(tr('git.tags.col.author'))}</th><th>${esc(tr('git.tags.fetch-author'))}</th></tr></thead><tbody>`
       + found.map((r) => r.matches.map((m) => `<tr><td>${esc(r.project)}</td>`
         + `<td>${typeBadge(m.kind)}</td>`
-        + `<td>${m.url ? `<a href="${esc(m.url)}" target="_blank"><code>${esc(m.sha || d.name)}</code> ↗</a>` : ''}`
+        + `<td>${m.url ? `<a href="${esc(safeUrl(m.url))}" target="_blank" rel="noopener noreferrer"><code>${esc(m.sha || d.name)}</code> ↗</a>` : ''}`
         + `${m.sha ? ` <button type="button" class="muted git-sha git-sha-copy" data-copy-txt="${esc(m.sha)}" title="${esc(tr('git.copy-sha'))}">${esc(m.url ? tr('ui.copy') : m.sha)}</button>` : ''}</td>`
         + `<td class="muted">${m.date ? fmtDate(m.date) : '—'}</td>`
         + `<td>${m.kind === 'tag' ? findRefBranchesHtml(m.branches) : '<span class="muted">—</span>'}</td>`
@@ -13027,7 +13213,7 @@ function mergeRenderWork() {
         <strong>${esc(e.project)}</strong> — <code>${esc(e.source_branch)}</code> → <code>${esc(e.target_branch)}</code>
         ${/* A31 — CE QU'ON RATTRAPE. On arrive ici depuis un badge « en conflit » : sans ce
               rappel, on résout des conflits sans plus savoir sur quelle merge request. */''}
-        ${e.mr ? `${e.mr.url ? `<a href="${esc(e.mr.url)}" target="_blank" class="tag">!${e.mr.iid} ↗</a>` : `<span class="tag">!${e.mr.iid}</span>`}
+        ${e.mr ? `${e.mr.url ? `<a href="${esc(safeUrl(e.mr.url))}" target="_blank" rel="noopener noreferrer" class="tag">!${e.mr.iid} ↗</a>` : `<span class="tag">!${e.mr.iid}</span>`}
           ${e.mr.note != null ? noteBadge(Math.round(e.mr.note * 1000) / 100) : ''}
           ${e.mr.ticket ? `<span class="tag">${esc(e.mr.ticket)}</span>` : ''}
           <span class="muted">${esc(String(e.mr.title || '').slice(0, 60))}</span>` : ''}
@@ -13368,7 +13554,7 @@ $('#cmdPalette') && $('#cmdPalette').addEventListener('change', (e) => { if (e.t
 $('#cmdPreview') && $('#cmdPreview').addEventListener('click', cmdPreview);
 $('#cmdProjectBox') && $('#cmdProjectBox').addEventListener('change', (e) => {
   if (e.target.id === 'cmdSelAll') {
-    for (const cb of $('#cmdProjectBox .cmd-plist input[type="checkbox"]')) { cb.checked = e.target.checked; if (e.target.checked) CMD.selected.add(cb.value); else CMD.selected.delete(cb.value); }
+    for (const cb of $$('#cmdProjectBox .cmd-plist input[type="checkbox"]')) { cb.checked = e.target.checked; if (e.target.checked) CMD.selected.add(cb.value); else CMD.selected.delete(cb.value); }
     cmdUpdateCount(); cmdMemoriser({ projects: [...CMD.selected] }); return;
   }
   const cb = e.target.closest('.cmd-plist input[type="checkbox"]'); if (!cb) return;
@@ -14684,7 +14870,7 @@ const notifPermission = () => (notifSupported() ? Notification.permission : 'uns
 
 // Navigation au clic : ramène au bon endroit via le routage d'onglets existant.
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {} };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {}, cible: null };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {
@@ -15071,12 +15257,12 @@ function jiraRelatedBlock(it) {
     groupes.get(cle).push(r);
   }
   const ligne = (r) => `<li class="jira-rel-row${r.statusCategory === 'done' ? ' jira-rel-done' : ''}">
-      ${r.typeIcon ? `<img class="jira-rel-icon" src="${esc(r.typeIcon)}" alt="${esc(r.type)}" title="${esc(r.type)}" loading="lazy" />` : ''}
+      ${r.typeIcon ? `<img class="jira-rel-icon" src="${esc(safeImg(r.typeIcon))}" alt="${esc(r.type)}" title="${esc(r.type)}" loading="lazy" />` : ''}
       <button type="button" class="jira-rel-key" data-jira-open="${esc(r.key)}" title="${esc(tr('jira.related.open', { key: r.key, summary: r.summary }))}">${esc(r.key)}</button>
       <span class="jira-rel-sum">${esc(r.summary)}</span>
       <span class="spacer"></span>
       ${jiraStatusChip(r)}
-      <a class="jira-rel-ext" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.related.jira', { key: r.key }))}" aria-label="${esc(tr('jira.related.jira', { key: r.key }))}">↗</a>
+      <a class="jira-rel-ext" href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jira.related.jira', { key: r.key }))}" aria-label="${esc(tr('jira.related.jira', { key: r.key }))}">↗</a>
     </li>`;
   const corps = [...groupes.entries()].map(([rel, rows]) => `<div class="jira-rel-group">
       <div class="jira-rel-rel muted">${esc(rel)}</div>
@@ -15091,12 +15277,12 @@ function jiraAttachmentsBlock(it) {
   const src = (a) => `/api/jira/attachment/${encodeURIComponent(a.id)}`;
   const isImg = (a) => /^image\//i.test(a.mimeType || '') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(a.filename || '');
   // Les IMAGES s'affichent directement (aperçu chargé via le proxy) ; clic = plein écran.
-  const images = list.filter(isImg).map((a) => `<a class="jira-img" href="${src(a)}" data-jimg="${src(a)}" data-jname="${esc(a.filename)}" title="${esc(a.filename)}">
-      <img src="${src(a)}" alt="${esc(a.filename)}" loading="lazy" />
+  const images = list.filter(isImg).map((a) => `<a class="jira-img" href="${esc(safeUrl(src(a)))}" data-jimg="${esc(safeUrl(src(a)))}" data-jname="${esc(a.filename)}" title="${esc(a.filename)}">
+      <img src="${esc(safeImg(src(a)))}" alt="${esc(a.filename)}" loading="lazy" />
       <span class="jira-img-name muted">${esc(a.filename)}</span>
     </a>`).join('');
   // Les autres fichiers restent en « chip » téléchargeable.
-  const files = list.filter((a) => !isImg(a)).map((a) => `<a class="jira-attach" href="${src(a)}" download="${esc(a.filename)}" title="${esc(tr('jira.download'))}">
+  const files = list.filter((a) => !isImg(a)).map((a) => `<a class="jira-attach" href="${esc(safeUrl(src(a)))}" download="${esc(a.filename)}" title="${esc(tr('jira.download'))}">
       <svg class="ico"><use href="#i-clip"/></svg>
       <span class="jira-attach-name">${esc(a.filename)}</span>
       <span class="jira-attach-size muted">${esc(jiraSize(a.size))}</span>
@@ -15126,7 +15312,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
     jiraMetaRow(tr('jira.meta.reporter'), person(it.reporter)),
     jiraMetaRow(tr('jira.meta.project'), esc(it.project)),
     it.epic ? jiraMetaRow(tr('jira.meta.epic'), it.epic.url
-      ? `<a href="${esc(it.epic.url)}" target="_blank" rel="noopener" class="jira-epic-link" title="${esc(tr('jira.epic-open', { key: it.epic.key, summary: it.epic.summary }))}"><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)} ↗</a>`
+      ? `<a href="${esc(safeUrl(it.epic.url))}" target="_blank" rel="noopener noreferrer" class="jira-epic-link" title="${esc(tr('jira.epic-open', { key: it.epic.key, summary: it.epic.summary }))}"><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)} ↗</a>`
       : `<code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)}`) : '',
     jiraMetaRow(tr('jira.meta.created'), esc(fmtDate(it.created))),
     jiraMetaRow(tr('jira.meta.updated'), esc(fmtDate(it.updated))),
@@ -15181,7 +15367,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
                 sinon c'est un bouton qui ne sert à rien sur les neuf tickets sur dix. */''}
           ${detecterTrace(`${it.summary || ''}\n${it.descriptionMd || ''}`) ? `<button type="button" class="btn btn-sm btn-jira-investigate" data-jirakey="${esc(it.key)}" title="${esc(tr('jira.investigate-title'))}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('jira.investigate'))}</button>` : ''}
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
-          <a href="${esc(it.url)}" target="_blank" rel="noopener" class="jira-open">${esc(tr('jira.open'))} ↗</a>
+          <a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
         <h2 class="jira-title">${esc(it.summary)}</h2>
         <div class="jira-chips">${chips}</div>
@@ -15289,6 +15475,13 @@ document.addEventListener('click', (e) => {
 /* `ou` : 'mine' (Mes tickets) ou 'watch' (Surveillés). Les deux sous-onglets ont leur propre
    liste et leur propre sélection — passer de l'un à l'autre ne doit pas déplacer le curseur
    de celui qu'on vient de quitter. */
+/* OUVRIR UN TICKET DEPUIS AILLEURS (note, todo, palette). Le ticket DEMANDÉ l'emporte sur « le
+   premier de ma liste » : ouvrir l'onglet charge mes tickets, et cette réponse, arrivée après,
+   remplaçait le ticket demandé par un autre. */
+function ouvrirTicketJira(key) {
+  JIRA.cible = key;
+  navTab('jira'); showJiraSub('mine'); selectJiraIssue(key, 'mine');
+}
 async function selectJiraIssue(key, ou = 'mine') {
   const surveille = ou === 'watch';
   const box = $(surveille ? '#jiraWatchDetail' : '#jiraDetail');
@@ -15400,7 +15593,9 @@ async function loadJiraTickets() {
   renderJiraList();
   const vis = jiraVisibleIssues();
   chargerStatutsDuWorkflow();   // complète la liste des statuts, sans bloquer l'affichage
-  if (vis.length) selectJiraIssue(vis[0].key);
+  const cible = JIRA.cible; JIRA.cible = null;
+  if (cible) selectJiraIssue(cible, 'mine');
+  else if (vis.length) selectJiraIssue(vis[0].key);
   else $('#jiraDetail').innerHTML = `<div class="jira-empty muted">${esc(tr(JIRA.issues.length ? 'jira.no-match' : 'jira.empty'))}</div>`;
 }
 
@@ -15424,7 +15619,7 @@ function renderJiraWatch() {
   box.innerHTML = rows.map((r) => `<div class="jira-item jira-watch-item jira-cat-${JIRA_CAT[r.status_category] || 'todo'}${r.key === JIRA_WATCH.selectedKey ? ' active' : ''}" data-jirawatchopen="${esc(r.key)}">
       <div class="jira-item-row1">
         ${r.url
-          ? `<a class="jira-key jira-key-link" href="${esc(r.url)}" target="_blank" rel="noopener" title="${esc(tr('jira.watch.open', { key: r.key }))}">${esc(r.key)} ↗</a>`
+          ? `<a class="jira-key jira-key-link" href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jira.watch.open', { key: r.key }))}">${esc(r.key)} ↗</a>`
           : `<code class="jira-key">${esc(r.key)}</code>`}
         <span class="jira-status jira-status-${JIRA_CAT[r.status_category] || 'todo'}">${esc(r.status || '—')}</span>
         <span class="spacer"></span>
@@ -15580,11 +15775,17 @@ $('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => bu
    On câble donc chaque gestionnaire SUR LES DEUX, une fois pour toutes : dupliquer les
    écouteurs par sous-onglet, c'est se garantir qu'une action marchera d'un côté seulement. */
 function surLeDetailJira(type, handler) {
-  $$('.js-jira-detail').forEach((el) => el.addEventListener(type, handler));
+  /* Le panneau est relevé AVANT le premier `await` : `e.currentTarget` n'est valable que pendant
+     la distribution de l'événement, et relu après une requête il valait toujours null — toute
+     action passait pour venir de « Mes tickets ». */
+  $$('.js-jira-detail').forEach((el) => el.addEventListener(type, (e) => {
+    e.panneauJira = el.id === 'jiraWatchDetail' ? 'watch' : 'mine';
+    return handler(e);
+  }));
 }
 // Dans quel panneau l'action a-t-elle eu lieu ? Ce qui est rechargé ensuite en dépend :
 // recharger « Mes tickets » depuis le panneau des surveillés viderait celui qu'on regarde.
-const ouDuDetail = (e) => (e.currentTarget && e.currentTarget.id === 'jiraWatchDetail' ? 'watch' : 'mine');
+const ouDuDetail = (e) => e.panneauJira || 'mine';
 
 surLeDetailJira('click', async (e) => {
   const b = e.target.closest('[data-jirawatch]'); if (!b) return;
@@ -15659,6 +15860,10 @@ $$('[data-jsfall="assignee"], [data-jsfnone="assignee"], [data-jsfall="status"],
 /* Un <details> ne se referme pas tout seul quand on clique ailleurs. Devenus des menus
    flottants au-dessus de la liste, ils masqueraient les tickets tant qu'on ne les rouvre pas. */
 document.addEventListener('click', (e) => {
+  /* Un bouton du menu qui se redessine (retirer un critère) n'est plus dans la page quand ce
+     gestionnaire passe : il n'est pas « ailleurs », il est parti. Sans ce test, le menu se
+     refermait sous le doigt. */
+  if (!e.target.isConnected) return;
   for (const d of $$('.jira-filters > details[open]')) {
     if (!d.contains(e.target)) d.open = false;
   }
@@ -15690,7 +15895,7 @@ surLeDetailJira('click', (e) => {
   $('#jiraLightboxImg').src = img.dataset.jimg;
   $('#jiraLightboxImg').alt = img.dataset.jname || '';
   $('#jiraLightboxName').textContent = img.dataset.jname || '';
-  $('#jiraLightboxOpen').href = img.dataset.jimg;
+  $('#jiraLightboxOpen').href = safeUrl(img.dataset.jimg);
   $('#jiraLightbox').hidden = false;
 });
 $('#jiraLightbox') && $('#jiraLightbox').addEventListener('click', (e) => {
@@ -16404,6 +16609,17 @@ function agentCardHtml(a) {
       ${agentStatutHtml(a)}
     </div>
     ${a.description ? `<div class="muted agent-desc">${esc(a.description)}</div>` : ''}
+    ${a.approval_pending ? blocApprobation({
+    texte: tr(a.approved_before ? 'approval.agent.changed' : 'approval.agent.new'),
+    avant: a.approved_before ? resumeApprobationAgent(a.approved_before) : null,
+    apres: resumeApprobationAgent({
+      kind: a.kind, model: a.model, permission_mode: a.permission_mode,
+      allowed_tools: a.allowed_tools_json, disallowed_tools: a.disallowed_tools_json,
+      max_turns: a.max_turns, schedule: a.schedule, runner: a.runner,
+      skills: a.skills_json, subagents: a.subagents_json,
+    }),
+    bouton: `<button type="button" class="btn btn-primary btn-sm btn-agent-approve" data-id="${a.id}">${esc(tr('approval.btn'))}</button>`,
+  }) : ''}
     ${agentKnowledgeHtml(a)}
     ${/* CHAQUE BOUTON DIT CE QU'IL FAIT. « Demander », « Coder », « Mettre à jour » se
           ressemblent assez pour qu'on hésite, et deux d'entre eux lancent une session qui
@@ -16422,6 +16638,37 @@ function agentCardHtml(a) {
       <button class="btn btn-sm btn-danger btn-agent-del" data-id="${a.id}" aria-label="${esc(tr('ui.delete'))}" data-tip="${esc(tr('agents.tip.delete'))}"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button>
     </div>
   </div>`;
+}
+
+/* Ce qui compte pour approuver un agent, en lignes lisibles : c'est CE QUI CHANGE qu'on doit
+   voir d'un coup d'œil — une permission élargie, un outil ajouté, un horaire posé. */
+function resumeApprobationAgent(x) {
+  const o = x || {};
+  const outils = (brut) => { try { const l = JSON.parse(brut || '[]'); return Array.isArray(l) ? l.join(', ') : ''; } catch { return String(brut || ''); } };
+  /* Les sous-agents portent leurs PROPRES outils et modèle : un sous-agent élargi est un agent
+     élargi. Nom, puis ce qu'il peut faire. */
+  const sousAgents = (brut) => {
+    try {
+      const o2 = JSON.parse(brut || '{}');
+      if (!o2 || typeof o2 !== 'object') return '';
+      return Object.entries(o2).map(([nom, d]) => {
+        const t2 = d && d.tools ? (Array.isArray(d.tools) ? d.tools.join(', ') : String(d.tools)) : '';
+        return `${nom}${t2 ? ` (${t2})` : ''}${d && d.model ? ` [${d.model}]` : ''}`;
+      }).join(' ; ');
+    } catch { return String(brut || ''); }
+  };
+  return [
+    `${tr('approval.agent.kind')} : ${o.kind || '—'}`,
+    `${tr('approval.agent.permission')} : ${o.permission_mode || '—'}`,
+    `${tr('approval.agent.allowed')} : ${outils(o.allowed_tools) || '—'}`,
+    `${tr('approval.agent.disallowed')} : ${outils(o.disallowed_tools) || '—'}`,
+    `${tr('approval.agent.model')} : ${o.model || '—'}`,
+    `${tr('approval.agent.max-turns')} : ${o.max_turns == null ? '—' : o.max_turns}`,
+    `${tr('approval.agent.schedule')} : ${o.schedule || '—'}`,
+    `${tr('approval.agent.runner')} : ${o.runner || '—'}`,
+    `${tr('approval.agent.skills')} : ${outils(o.skills) || '—'}`,
+    `${tr('approval.agent.subagents')} : ${sousAgents(o.subagents) || '—'}`,
+  ];
 }
 
 async function loadAgentList() {
@@ -16665,6 +16912,50 @@ async function partageActif() {
 /* La même sentinelle que le serveur (`AUTEUR_AUTO` dans `src/server.js`) : un poste ne peut pas
    porter ce nom, `git config user.name` ne commence pas par une arobase. */
 const AUTEUR_AUTO = '@auteur';
+/* LE BANDEAU DES RÉGLAGES D'AUTOMATISME EN ATTENTE. Ce qui a changé, valeur par valeur, et le
+   bouton qui l'approuve pour CE poste — tant qu'il n'est pas cliqué, aucune review ni
+   vérification automatique ne part d'ici. */
+function poserApprobationAuto(c) {
+  const box = $('#autoApprovalBanner');
+  if (!box) return;
+  const a = (c && c.auto_approval) || {};
+  box.hidden = !a.pending;
+  if (!a.pending) { box.innerHTML = ''; return; }
+  const avant = a.before || {};
+  const libelle = (k, v) => {
+    if (k === 'auto_runner') return v === AUTEUR_AUTO ? tr('agents.runner.author') : (v || tr('agents.runner.nobody'));
+    if (k === 'verif_auto_authors') return tr(`settings.opt.verif-auto-authors.${v === 'all' ? 'all' : 'mine'}`);
+    return v === '1' ? tr('approval.config.on') : tr('approval.config.off');
+  };
+  /* TOUT ce qui est dans l'empreinte est MONTRÉ : un changement qui la fait basculer sans
+     apparaître ici ferait approuver sans voir — « tous les auteurs » en premier. */
+  const noms = {
+    auto_review_new: tr('approval.config.review-new'), auto_rereview_stale: tr('approval.config.rereview-stale'),
+    auto_runner: tr('settings.lbl.auto-runner'), verif_auto_authors: tr('settings.lbl.verif-auto-authors'),
+  };
+  const lignes = Object.keys(noms).map((k) => {
+    const apres = String(c[k] == null ? '' : c[k]);
+    const change = a.before && String(avant[k] == null ? '' : avant[k]) !== apres;
+    return `${noms[k]} : ${change ? `${libelle(k, String(avant[k] || ''))} → ` : ''}${libelle(k, apres)}`;
+  });
+  box.innerHTML = blocApprobation({
+    texte: tr('approval.config.text'),
+    avant: null,
+    apres: lignes,
+    bouton: `<button type="button" class="btn btn-primary btn-sm" id="btnApproveAuto">${esc(tr('approval.btn'))}</button>`,
+  });
+  $('#btnApproveAuto').addEventListener('click', async (e) => {
+    try {
+      await busy(e.currentTarget, () => api('/config/approve-auto', { method: 'POST', body: { signature: a.signature } }));
+      toast(tr('approval.done'));
+      loadConfig();
+    } catch (err) {
+      toast(explainError(err.message), true);
+      if (err.code === 'APPROBATION_PERIMEE') loadConfig();     // montrer ce qui a changé entre-temps
+    }
+  });
+}
+
 async function poserExecutantAuto(choisi) {
   const ligne = $('#autoRunnerRow');
   if (!ligne) return;
@@ -17091,22 +17382,51 @@ onEl($('#agentTry'), 'click', async () => {
   $('#taskPrompt').focus();
 });
 
+/* LES SESSIONS D'UN AGENT : LA SAVEUR D'ABORD, LE FILTRE ENSUITE. Les runs d'un explorateur
+   vivent dans « Exploration » : filtrer « Codage » ne montrait rien. Et l'ordre compte —
+   changer de saveur remet le filtre à zéro. */
+function ouvrirSessionsAgent(a) {
+  navTab('task');
+  const saveur = a.kind === 'code' ? 'code' : 'explore';
+  const onglet = $(`#tab-task .subnav [data-kind="${saveur}"]`);
+  if (onglet && taskKind !== saveur) onglet.click();
+  poserFiltreAgent(a.id);
+  return loadTasks();
+}
+
+/* UN REFUS DU SERVEUR SE DIT, il ne remonte pas en « erreur inattendue ». « Dupliquer » et
+   « Coder » sur un agent pas encore approuvé reçoivent un 409 légitime : sans ce filet, la
+   promesse partait rejetée et le message n'arrivait que par le filet global, préfixé. */
 document.addEventListener('click', async (e) => {
   const b = e.target.closest && e.target.closest('[class*="btn-agent-"]');
   if (!b) return;
   const a = agentDe(b.dataset.id);
   if (!a) return;
+  try { await actionAgent(b, a); } catch (err) { toast(explainError(err.message), true); }
+});
+
+async function actionAgent(b, a) {
   if (b.classList.contains('btn-agent-ask')) return agentDemander(a);
   if (b.classList.contains('btn-agent-code')) return agentCoder(a);
   if (b.classList.contains('btn-agent-edit')) return ouvrirAgentModal(a);
   if (b.classList.contains('btn-agent-knowledge')) return ouvrirConnaissance(a);
   if (b.classList.contains('btn-agent-review')) return ouvrirConnaissance(a, { pending: true });
-  if (b.classList.contains('btn-agent-runs')) { navTab('task'); poserFiltreAgent(a.id); loadTasks(); return; }
+  if (b.classList.contains('btn-agent-runs')) return ouvrirSessionsAgent(a);
   if (b.classList.contains('btn-agent-refresh')) {
     return busy(b, async () => {
       try { await api(`/agents/${a.id}/knowledge/refresh`, { method: 'POST' }); toast(tr('agents.refresh.started')); refreshStatus(); }
       catch (err) { toast(explainError(err.message), true); }
     });
+  }
+  if (b.classList.contains('btn-agent-approve')) {
+    try {
+      await busy(b, () => api(`/agents/${a.id}/approve`, { method: 'POST', body: { signature: a.approval_signature } }));
+      toast(tr('approval.done'));
+      return loadAgentList();
+    } catch (err) {
+      toast(explainError(err.message), true);
+      return err.code === 'APPROBATION_PERIMEE' ? loadAgentList() : undefined;
+    }
   }
   if (b.classList.contains('btn-agent-dup')) {
     await api(`/agents/${a.id}/duplicate`, { method: 'POST' });
@@ -17131,7 +17451,7 @@ document.addEventListener('click', async (e) => {
     toast(tr('agents.deleted')); return loadAgentList();
   }
   return undefined;
-});
+}
 
 // L'état vide propose le geste principal.
 document.addEventListener('click', (e) => {
@@ -17376,7 +17696,7 @@ async function ouvrirSession(id, kind = 'code', { vivant = () => true } = {}) {
    aujourd'hui. */
 function ouvrirResultatPalette(r) {
   api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
-  if (r.url) { window.open(r.url, '_blank', 'noopener,noreferrer'); return; }
+  if (r.url) { window.open(safeUrl(r.url), '_blank', 'noopener,noreferrer'); return; }
   if (r.action) {
     const i = Number(String(r.action).split(':')[1]);
     const a = PALETTE_ACTIONS[i];
@@ -17401,7 +17721,7 @@ function ouvrirResultatPalette(r) {
     return;
   }
   if (n.mr_id) { navMrReport(n.mr_id); return; }
-  if (n.ticket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(n.ticket, 'mine'); return; }
+  if (n.ticket) { ouvrirTicketJira(n.ticket); return; }
   if (n.page_id) { navTab('notes'); showNotesSub('pages'); openNotePage(n.page_id); return; }
   if (n.todo_id) { navTab('notes'); showNotesSub('todos'); return; }
   /* Une session : on ouvre Dev IA sur la SAVEUR de cette session, sans quoi on atterrit sur
@@ -17884,7 +18204,37 @@ function listeCourante() {
   }
   return null;
 }
-const carteFocus = () => $('.card.focused');
+/* LA CARTE VISÉE SURVIT AU REDESSIN. Les listes se redessinent d'elles-mêmes (sondage, fin de
+   job, synchro, case cochée) et l'anneau partait avec l'ancien DOM : `x` cochait, puis un second
+   `x` ne trouvait plus rien à décocher. On retient donc l'identité de la carte visée, et on la
+   retrouve dans la liste redessinée. */
+let carteVisee = null;   // { liste: id du conteneur, id: data-id }
+/* …et l'anneau se REVOIT aussitôt la liste redessinée, pas seulement à la touche suivante :
+   sinon il disparaissait de l'écran à chaque rafraîchissement, alors que la carte restait visée. */
+(() => {
+  if (typeof MutationObserver !== 'function') return;
+  const obs = new MutationObserver((muts) => {
+    if (!carteVisee) return;
+    for (const m of muts) {
+      const liste = m.target.closest ? m.target.closest(`#${carteVisee.liste}`) : null;
+      if (liste && !liste.querySelector('.card.focused')) { carteFocus(); return; }
+    }
+  });
+  for (const id of ['toReviewList', 'reportList', 'taskList', 'localList', 'askList', 'lotList']) {
+    const el = document.getElementById(id);
+    if (el) obs.observe(el, { childList: true, subtree: true });
+  }
+})();
+function carteFocus() {
+  const c = $('.card.focused');
+  if (c) return c;
+  if (!carteVisee) return null;
+  const liste = document.getElementById(carteVisee.liste);
+  const retrouvee = liste && [...liste.querySelectorAll('.card[data-id]')].find((x) => x.dataset.id === carteVisee.id);
+  if (!retrouvee || retrouvee.offsetParent === null) return null;
+  retrouvee.classList.add('focused');
+  return retrouvee;
+}
 /* Le bouton d'une action SUR LA CARTE AU FOCUS — y compris quand il vit dans le menu « ⋯ »,
    présent dans le DOM même replié. On clique le BOUTON RENDU, jamais une route en double : ce
    qui est désactivé le reste (« Vérifier » sans vérificateur couvrant), et ce qui n'existe pas
@@ -17910,6 +18260,7 @@ function bougerFocusCarte(pas) {
   const next = cur === -1 ? (pas > 0 ? 0 : cartes.length - 1) : Math.min(cartes.length - 1, Math.max(0, cur + pas));
   cartes.forEach((c) => c.classList.remove('focused'));
   cartes[next].classList.add('focused');
+  carteVisee = cartes[next].dataset.id && liste.id ? { liste: liste.id, id: cartes[next].dataset.id } : null;
   cartes[next].scrollIntoView({ block: 'nearest' });
 }
 
@@ -18157,7 +18508,9 @@ document.addEventListener('click', (e) => {
     if (s) { s.value = a.dataset.noteMrSearch; s.dispatchEvent(new Event('input')); }
     return;
   }
-  if (a.dataset.noteTicket) { navTab('jira'); showJiraSub('mine'); selectJiraIssue(a.dataset.noteTicket, 'mine'); }
+  if (a.dataset.noteTicket) {
+    ouvrirTicketJira(a.dataset.noteTicket);
+  }
 });
 
 /* ---------- Le brief « Aujourd'hui » ---------- */
@@ -18252,7 +18605,7 @@ function renderBrief(d) {
               n'affichait que « N tests cassés », sans dire OÙ. */''}
         <div class="meta">${esc(tr('notes.brief.verif.failed', { n: v.failed, count: v.failed }))}
           ${v.targets.map((c) => (c.iid
-    ? ` · !${c.iid}`
+    ? ` · !${esc(c.iid)}`
     : ` · ${esc(c.project || '')}${c.branch ? ` · ${esc(c.branch)}` : ''}`)).join('')}</div>
       </div>
       ${/* LE BRIEF PORTE L'ACTION, PAS SEULEMENT LE LIEN. Chaque ligne se fermait en trois
@@ -18268,7 +18621,7 @@ function renderBrief(d) {
         <div class="brief-item-title">!${m.iid} — ${esc(m.title || '')}</div>
         <div class="meta">${esc(m.project)}${m.author ? ` · ${esc(m.author)}` : ''}</div>
       </div>
-      <button type="button" class="btn btn-primary" data-brief-review="${m.id}" data-iid="${m.iid}">${esc(tr('mr.btn.review'))}</button>
+      <button type="button" class="btn btn-primary" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
       ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
@@ -18343,7 +18696,7 @@ function renderBrief(d) {
         <div class="brief-item-meta muted">${esc(tr('notes.brief.ci.on', { branch: m.source_branch, iid: m.iid }))}</div>
       </div>
       <button type="button" class="btn btn-primary" data-ci-job="${esc(ci.path)}">${esc(tr('notes.brief.ci.details'))}</button>
-      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${m.iid}">${esc(tr('mr.btn.review'))}</button>
+      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
     </div>`).join('');
 
   /* B11 — CE QUE JE PEUX MERGER MAINTENANT. Une ligne, un nombre, une porte : le brief ne
@@ -18776,7 +19129,9 @@ async function loadTodos() {
      ferait douter de la liste avant de douter du bouton. */
   $$('#tab-notes .todo-filter button').forEach((x) => x.classList.toggle('active', x.dataset.tfilter === NOTES.filter));
   box.innerHTML = skeleton(4);
-  await notesIndex();
+  /* Le bouton « partager » dépend de l'état du partage : sans lui, une première visite
+     directe des todos ne le montrait pas. */
+  await Promise.all([notesIndex(), partageActif().catch(() => null)]);
   let d;
   try { d = await api(`/todos?status=${encodeURIComponent(NOTES.filter)}`); }
   catch (e) { box.innerHTML = `<p class="err">${esc(explainError(e.message))}</p>`; return; }
@@ -18812,7 +19167,7 @@ function renderTodos(rows) {
       ${ordonnable ? `<span class="todo-grip" aria-hidden="true" title="${esc(tr('notes.todo.reorder-title'))}">${svgIco('grip')}</span>` : ''}
       <input type="checkbox" class="todo-check" data-todo-check="${t.id}"${t.status === 'done' ? ' checked' : ''} aria-label="${esc(tr('notes.todo.done'))}" />
       <div class="brief-item-main">
-        <div class="brief-item-title">${esc(t.title)}${t.shared ? ` <span class="note-partagee" title="${esc(tr('todo.shared-mark'))}">${svgIco('users')}</span>` : ''}</div>
+        <div class="brief-item-title">${esc(t.title)}${t.shared ? ` <span class="note-partagee" title="${esc(tr('todo.shared-mark'))}">${svgIco('users')}</span>${auteurPartage(t)}` : ''}</div>
         <div class="meta">${todoPrioBadge(t.priority)}${todoDueHtml(t)}${todoLinkHtml(t)}${todoEtatMr(t)}${todoEtatTicket(t)}
           ${t.archived_at ? `<span class="muted">${esc(tr('notes.todo.archived-at', { date: fmtDate(t.archived_at) }))}</span>` : ''}</div>
         ${t.note ? `<div class="todo-note md-body">${renderNoteMd(t.note)}</div>` : ''}
@@ -18949,8 +19304,18 @@ async function todoQuickAdd() {
   const input = $('#todoQuickAdd');
   const titre = (input.value || '').trim();
   if (!titre) return;
+  /* La barre affiche la syntaxe courte (`@demain`, `!!`, `!217`, `PROJ-12`) : elle la lit donc,
+     comme la capture. Elle envoyait la phrase brute — ni échéance, ni priorité, ni lien. */
+  const court = lireCaptureCourte(titre);
+  const body = { title: court.title || titre };
+  if (court.priority) body.priority = court.priority;
+  if (court.due_at) body.due_at = court.due_at;
+  if (court.link_kind) {
+    const ref = court.link_kind === 'mr' ? idMrDepuisIid(court.link_ref) : court.link_ref;
+    if (ref) { body.link_kind = court.link_kind; body.link_ref = ref; } else body.title = titre;
+  }
   try {
-    await api('/todos', { method: 'POST', body: { title: titre } });
+    await api('/todos', { method: 'POST', body });
     input.value = '';
     await refreshOpenTodos();
     loadTodos();
@@ -19032,7 +19397,8 @@ let notePanesMode = (() => {
 async function loadPages() {
   const box = $('#pageList');
   if (!box) return;
-  await notesIndex();
+  // « partagé par moi » ou par un autre : il faut savoir qui l'on est.
+  await Promise.all([notesIndex(), partageActif().catch(() => null)]);
   const q = ($('#pageSearch') && $('#pageSearch').value) || '';
   try { NOTES.pages = (await api(`/notes?q=${encodeURIComponent(q)}`)).pages || []; }
   catch (e) { box.innerHTML = `<p class="err">${esc(explainError(e.message))}</p>`; return; }
@@ -19090,7 +19456,7 @@ function renderPageList(q) {
       : '<span class="note-fold-vide"></span>';
     return `<div class="note-row${sous ? ' note-sub' : ''}${sous && dernier ? ' note-sub-last' : ''}">${sous ? '' : pli}
       <button type="button" class="note-item${sous ? ' note-sub' : ''}${p.id === NOTES.pageId ? ' active' : ''}${p.contexte ? ' note-contexte' : ''}" data-page="${p.id}">
-        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}${p.shared ? ` <span class="note-partagee" title="${esc(tr('notes.page.shared-mark'))}">${svgIco('users')}</span>` : ''}</span>
+        <span class="note-item-title">${p.pinned ? `${svgIco('tag')} ` : ''}${esc(p.title || tr('notes.page.untitled'))}${p.shared ? ` <span class="note-partagee" title="${esc(tr('notes.page.shared-mark'))}">${svgIco('users')}</span>${auteurPartage(p)}` : ''}</span>
         ${enfants.length && !deplie ? `<span class="note-item-count">${esc(String(enfants.length))}</span>` : ''}
         <span class="note-item-date">${esc(fmtDate(p.updated_at))}</span>
       </button></div>`;
@@ -19160,8 +19526,11 @@ async function viderPageSave() {
   pageSave = null;
   const surCettePage = () => NOTES.page && NOTES.page.id === att.id;
   const dire = (cle, params) => { const el = $('#pageSaved'); if (el && surCettePage()) el.textContent = tr(cle, params); };
+  /* LA VERSION QU'ON A SOUS LES YEUX part avec la frappe : si la synchro en a apporté une autre
+     entre-temps, le serveur refuse au lieu d'écraser (voir le bandeau de conflit). */
+  const base = surCettePage() ? NOTES.page.updated_at : att.base;
   try {
-    const maj = await api(`/notes/${att.id}`, { method: 'PUT', body: { title: att.title, content: att.content } });
+    const maj = await api(`/notes/${att.id}`, { method: 'PUT', body: { title: att.title, content: att.content, base_updated_at: base } });
     const ligne = NOTES.pages.find((x) => x.id === att.id);
     if (ligne) { ligne.title = maj.title; ligne.updated_at = maj.updated_at; }
     /* On ne remet à jour l'état affiché que si c'est TOUJOURS cette page : sinon on
@@ -19169,8 +19538,53 @@ async function viderPageSave() {
     if (surCettePage()) NOTES.page = maj;
     dire('notes.page.saved');
     renderPageList(($('#pageSearch') && $('#pageSearch').value) || '');
-  } catch (e) { dire('notes.page.save-failed', { error: e.message }); }
+  } catch (e) {
+    if (e.code === 'PAGE_MODIFIEE' && e.data && e.data.page) {
+      NOTES.conflit = { id: att.id, mine: { title: att.title, content: att.content }, theirs: e.data.page, author: e.data.author || null };
+      dire('notes.page.save-failed', { error: e.message });
+      if (surCettePage()) afficherConflitPage();
+      return;
+    }
+    dire('notes.page.save-failed', { error: e.message });
+  }
 }
+
+/* LE CONFLIT D'UNE PAGE, À L'ÉCRAN. Deux gestes, et rien ne part tant qu'on n'a pas choisi :
+   prendre la version arrivée (la sienne est jetée), ou garder la sienne (elle remplace l'autre,
+   en connaissance de cause). */
+function afficherConflitPage() {
+  const c = NOTES.conflit;
+  const box = $('#pageEditor');
+  if (!box) return;
+  let el = $('#pageConflict');
+  if (!c || !NOTES.page || NOTES.page.id !== c.id) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'pageConflict'; el.className = 'note-conflict'; box.prepend(el); }
+  el.innerHTML = `<p><strong>${esc(c.author ? tr('notes.page.conflict', { who: c.author }) : tr('notes.page.conflict.anon'))}</strong>
+      <span class="muted">${esc(tr('notes.page.conflict.hint'))}</span></p>
+    <div class="note-conflict-acts">
+      <button type="button" class="btn btn-sm" data-conflit="theirs">${esc(tr('notes.page.conflict.theirs'))}</button>
+      <button type="button" class="btn btn-sm btn-primary" data-conflit="mine">${esc(tr('notes.page.conflict.mine'))}</button>
+    </div>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-conflit]');
+  if (!b || !NOTES.conflit) return;
+  const c = NOTES.conflit;
+  if (pageSave && pageSave.id === c.id) { clearTimeout(pageSave.timer); pageSave = null; }
+  try {
+    if (b.dataset.conflit === 'theirs') {
+      NOTES.page = await api(`/notes/${c.id}`);
+    } else {
+      // La dernière frappe l'emporte sur ce que le conflit avait figé.
+      const mine = ($('#pageContent') && NOTES.page && NOTES.page.id === c.id)
+        ? { title: $('#pageTitle').value, content: $('#pageContent').value } : c.mine;
+      NOTES.page = await api(`/notes/${c.id}`, { method: 'PUT', body: { ...mine, base_updated_at: c.theirs.updated_at } });
+    }
+    NOTES.conflit = null;
+    renderPageEditor();
+    loadPages();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 // Une page supprimée n'a plus rien à recevoir : on jette sa sauvegarde au lieu de la vider.
 function oublierPageSave(id) {
@@ -19202,7 +19616,7 @@ function renderPageEditor() {
             personne à qui partager. */''}
       <label id="pageShare" class="note-share" title="${esc(tr('notes.page.share-title'))}" hidden>
         <input type="checkbox" id="pageShareBox"${p.shared ? ' checked' : ''} />
-        <span>${esc(tr('notes.page.share'))}</span>
+        <span>${esc(tr('notes.page.share'))}</span>${auteurPartage(p)}
       </label>
       ${/* B6 — UNE NOTE DEVIENT UNE SESSION. La page « Bug du tunnel de paiement » est écrite
             en réunion, avec sa capture collée. Pour la faire corriger : copier le texte,
@@ -19343,7 +19757,7 @@ function renderPageEditor() {
   const planifier = () => {
     marquer('notes.page.saving');
     if (pageSave) clearTimeout(pageSave.timer);
-    pageSave = { id: p.id, title: $('#pageTitle').value, content: $('#pageContent').value, timer: null };
+    pageSave = { id: p.id, title: $('#pageTitle').value, content: $('#pageContent').value, timer: null, base: p.updated_at };
     pageSave.timer = setTimeout(viderPageSave, 1000);
   };
   $('#pageContent').addEventListener('input', () => {
@@ -19411,6 +19825,7 @@ function renderPageEditor() {
       annuler: async () => { await loadPages(); await openNotePage(idPage); },
     });
   });
+  afficherConflitPage();   // un conflit en cours survit au redessin de l'éditeur
 }
 
 $('#pageNew') && $('#pageNew').addEventListener('click', async () => {
@@ -19990,7 +20405,7 @@ function caseHtml(s, e) {
   const montrees = troisPlusOuvertes(retenues);
   const bulle = (u) => [u.label || '', u.url, u.last_used_at ? tr('links.last-open', { when: depuis(u.last_used_at) }) : '']
     .filter(Boolean).join('\n');
-  const ligne = (u) => `<span class="link-line"><a class="link-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
+  const ligne = (u) => `<span class="link-line"><a class="link-open" href="${esc(safeUrl(u.url))}" target="_blank" rel="noopener noreferrer"
       data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}" data-tip="${esc(bulle(u))}">
       <span>${esc(nomAdresse(u))}</span></a><button type="button" class="link-copy" data-copy-txt="${esc(u.url)}"
       title="${esc(tr('links.copy-url', { url: u.url }))}" aria-label="${esc(tr('links.copy-url', { url: u.url }))}">${svgIco('copy')}</button></span>`;
@@ -20088,7 +20503,7 @@ function lignePanneau(s, e, u, marquee) {
     <span class="lcp-when muted">${u.last_used_at ? esc(depuis(u.last_used_at)) : ''}</span>
     <button type="button" class="link-icon lcp-copy" data-copy-txt="${esc(u.url)}"
       title="${esc(tr('links.copy-url', { url: u.url }))}" aria-label="${esc(tr('links.copy-url', { url: u.url }))}">${svgIco('copy')}</button>
-    <a class="link-icon lcp-open" href="${esc(u.url)}" target="_blank" rel="noopener noreferrer"
+    <a class="link-icon lcp-open" href="${esc(safeUrl(u.url))}" target="_blank" rel="noopener noreferrer"
       data-usekind="service_url" data-useref="${s.id}:${e.id}:${u.id}"
       title="${esc(tr('links.url.open'))}" aria-label="${esc(tr('links.url.open'))}">${svgIco('external')}</a>
   </div>`;
@@ -20211,7 +20626,7 @@ async function enregistrerCase(box) {
 const ligneFreeLink = (l) => `<div class="link-free-row" data-free="${l.id}">
       <input type="checkbox" class="lfr-pick" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />
       <span class="link-ava la-c${jkTeinte(l.label || l.url)}" aria-hidden="true">${esc(initiale(l.label))}</span>
-      <a class="link-free-label" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer"
+      <a class="link-free-label" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer"
          data-usekind="free_link" data-useref="${l.id}" title="${esc(l.url)}">${esc(l.label)}</a>
       <span class="link-free-url muted">${esc(urlCourte(l.url))}</span>
       <span class="link-free-tags">${(l.tags || []).map((t) => `<span class="link-svc-tag">${esc(t)}</span>`).join('')}</span>
@@ -20478,7 +20893,7 @@ document.addEventListener('click', async (e) => {
   })) return;
   for (const { s, u } of adresses) {
     api('/launcher/used', { method: 'POST', body: { kind: 'service_url', ref: `${s.id}:${envId}:${u.id}` } }).catch(() => {});
-    window.open(u.url, '_blank', 'noopener,noreferrer');
+    window.open(safeUrl(u.url), '_blank', 'noopener,noreferrer');
   }
 });
 
@@ -21721,7 +22136,7 @@ function renderBoutonsLiens(d, box) {
     /* LA RÉFÉRENCE A TROIS SEGMENTS, comme partout ailleurs : la frécence se compte PAR
        ADRESSE (`service:environnement:adresse`). À deux, chaque ouverture depuis une merge
        request se perdait — ni la palette ni « dernière ouverture » ne la voyaient passer. */
-    ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer"
+    ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(safeUrl(e.url))}" target="_blank" rel="noopener noreferrer"
         data-usekind="service_url" data-useref="${d.service.id}:${e.environment_id}:${e.id}" title="${esc(e.url)}">
         <span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.label
           ? tr('links.mr.open-named', { env: e.env, name: e.label })
@@ -21729,11 +22144,11 @@ function renderBoutonsLiens(d, box) {
     ...d.context.flatMap((c) => {
       if (c.per_env.length) {
         return c.per_env.map((k) => (k.url
-          ? `<a class="btn btn-sm" href="${esc(k.url)}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</a>`
+          ? `<a class="btn btn-sm" href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</a>`
           : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${k.manquante}}` }))}">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</button>`));
       }
       return [c.url
-        ? `<a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)}</a>`
+        ? `<a class="btn btn-sm" href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)}</a>`
         : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${c.manquante}}` }))}">${svgIco('zap')}${esc(c.label)}</button>`];
     }),
   ];
@@ -21862,6 +22277,10 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+  /* Une touche déjà traitée ailleurs (Entrée sur un chip de branche copie son nom) ne repart pas
+     en raccourci global : `stopPropagation` n'arrête pas un autre écouteur du même `document`,
+     et Entrée lançait en prime l'action de la carte visée — la review d'une autre MR. */
+  if (e.defaultPrevented) return;
   // pas de raccourci global quand une vue plein écran ou une modale est ouverte
   if (!$('#splitView').hidden) return;
   if ($$('.modal').some((m) => !m.hidden)) return;
@@ -21939,7 +22358,9 @@ document.addEventListener('keydown', (e) => {
     }
     case 'j': e.preventDefault(); bougerFocusCarte(1); break;
     case 'k': e.preventDefault(); bougerFocusCarte(-1); break;
-    case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); } break; }
+    /* L'action principale de la carte visée — et, pour un rapport, qui n'a pas de bouton
+       principal, l'ouvrir : c'est ce que fait un clic sur la carte. */
+    case 'Enter': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('.btn-primary'); if (b) b.click(); else if (c.closest('#reportList')) c.click(); } break; }
     case 'd': { const c = carteFocus(); if (c) { e.preventDefault(); const b = c.querySelector('[data-diff]'); if (b) b.click(); } break; }
     /* LE RESTE DU RAIL AU CLAVIER. `j/k/Entrée/d` existaient ; traiter vingt merge requests
        demandait quand même la souris pour vérifier, ouvrir le contexte, classer ou cocher.
@@ -21949,7 +22370,7 @@ document.addEventListener('keydown', (e) => {
     case 'c': { const b = boutonDeCarte('[data-ticket]'); if (b) { e.preventDefault(); b.click(); } break; }
     case 'm': { const b = boutonDeCarte('[data-done]'); if (b) { e.preventDefault(); b.click(); } break; }
     case 'x': { const b = boutonDeCarte('.mr-pick'); if (b) { e.preventDefault(); b.click(); } break; }
-    case 'Escape': { const c = carteFocus(); if (c) c.classList.remove('focused'); break; }
+    case 'Escape': { const c = carteFocus(); if (c) c.classList.remove('focused'); carteVisee = null; break; }
     default: break;
   }
 });
@@ -22421,7 +22842,13 @@ function renderVerifierList() {
     const herite = v.kind !== 'commands';
     return `<div class="card${herite ? ' is-hidden' : ''}" data-id="${v.id}">
     <div class="card-main">
-      <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}</div>
+      <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}${v.approval_pending ? ` <span class="tag warn">${esc(tr('approval.tag'))}</span>` : ''}</div>
+      ${v.approval_pending ? blocApprobation({
+    texte: tr(v.approved_before ? 'approval.verifier.changed' : 'approval.verifier.new'),
+    avant: v.approved_before ? (v.approved_before.commands || []) : null,
+    apres: v.commands || [],
+    bouton: `<button type="button" class="btn btn-primary btn-sm" data-vapprove="${v.id}">${esc(tr('approval.btn'))}</button>`,
+  }) : ''}
       <div class="meta">${herite
     ? `<code>${esc(v.command || '')}</code>`
     : (v.commands || []).map((c) => `<button type="button" class="code-copy" data-copy-txt="${esc(c)}" title="${esc(tr('verify.copy-command'))}"><code>${esc(c)}</code></button>`).join(' <span class="muted">→</span> ')}</div>
@@ -22472,6 +22899,18 @@ function renderVerifierList() {
   </div>`;
   }).join('');
   $$('#verifierList [data-vedit]').forEach((b) => b.addEventListener('click', () => editerVerifier(Number(b.dataset.vedit))));
+  /* APPROUVER, c'est dire « j'ai vu ces commandes, elles peuvent tourner sur MA machine ». */
+  $$('#verifierList [data-vapprove]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const vu = (verifiers || []).find((x) => x.id === Number(b.dataset.vapprove));
+      await busy(b, () => api(`/verifiers/${b.dataset.vapprove}/approve`, { method: 'POST', body: { signature: vu && vu.approval_signature } }));
+      toast(tr('approval.done'));
+      loadVerifiers();
+    } catch (e) {
+      toast(explainError(e.message), true);
+      if (e.code === 'APPROBATION_PERIMEE') loadVerifiers();
+    }
+  }));
   $$('#verifierList [data-vcopy]').forEach((b) => b.addEventListener('click', () => dupliquerVerifier(Number(b.dataset.vcopy))));
   $$('#verifierList [data-vdel]').forEach((b) => b.addEventListener('click', async () => {
     const v = verifiers.find((x) => x.id === Number(b.dataset.vdel));
@@ -23519,9 +23958,16 @@ function renderLots() {
    brief celui qui était en train de lire un rapport. Le réglage vit en base (il vaut pour
    l'outil), la date du dernier affichage en localStorage (elle vaut pour ce navigateur). */
 (function restoreTab() {
+  /* UNE ADRESSE D'OBJET L'EMPORTE : `ouvrirDepuisAdresse()` y mène. Restaurer le dernier onglet —
+     ou poser le brief du matin — par-dessus ouvrait le rapport dans un onglet caché, et le
+     clic de restauration effaçait même l'adresse. On décide tout comme d'habitude (le brief est
+     compté vu), on ne clique simplement pas. Une adresse mal formée, elle, ne mène nulle part :
+     l'écran habituel s'ouvre. */
+  const lienObjet = /^#\/(reviews\/\d+|notes\/\d+|sessions\/(\d+|[a-z]+\/\d+))$/.test(String(window.location.hash || ''));
   let tab = 'review';
   try { tab = localStorage.getItem('aidevtools_tab') || 'review'; } catch { /* ignore */ }
   const atterrir = () => {
+    if (lienObjet) return;
     const btn = $(`nav button[data-tab="${tab}"]`);
     // Masqué depuis la dernière visite : on n'ouvre pas un écran dont le menu a disparu.
     if (btn && btn.hidden) { const premier = boutonsNav().find((x) => !x.hidden); if (premier) { premier.click(); return; } }
@@ -23543,6 +23989,7 @@ function renderLots() {
        brief est le bon écran d'accueil À PARTIR DU DEUXIÈME JOUR, pas à la première seconde. */
     if (!(c.gitlab_url && c.access_token)) { atterrir(); return; }
     marquerBriefVu();
+    if (lienObjet) return;
     tab = 'notes';
     atterrir();
     /* APRÈS le clic, et pas avant : ouvrir l'onglet appelle `loadNotes()`, qui restaure le
@@ -23680,7 +24127,7 @@ async function loadJenkins({ silencieux = false } = {}) {
   // clignoterait toutes les trente secondes sous les yeux de quelqu'un qui lit.
   if (!silencieux) box.innerHTML = skeleton(4);
   try {
-    const d = await api('/jenkins/jobs');
+    const [d] = await Promise.all([api('/jenkins/jobs'), assurerMrsJenkins()]);
     JENKINS.jobs = d.jobs || [];
     JENKINS.configured = d.configured !== false;
   } catch (e) {
@@ -23861,7 +24308,7 @@ function jkParamPastilles(liste, frequents) {
    `noopener` : la page ouverte ne doit pas pouvoir reprendre la main sur la nôtre. */
 function jkLienExterne(url) {
   if (!/^https?:\/\//i.test(String(url || ''))) return '';
-  return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(url)}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
+  return `<a class="btn btn-icon btn-sm jk-open-ext" href="${esc(safeUrl(url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.open-ext'))}" aria-label="${esc(tr('jenkins.open-ext'))}"><svg class="ico ico-sm"><use href="#i-external"/></svg></a>`;
 }
 
 function jkRow(j, colonnes = []) {
@@ -23922,8 +24369,21 @@ function jkRow(j, colonnes = []) {
 /* Les branches de MES merge requests ouvertes — celles dont je suis l'auteur si les forges
    ont pu dire qui je suis, sinon toutes les ouvertes : mieux vaut un filtre un peu large
    qu'un filtre vide sur un jeton qui ne lit pas son propre compte. */
+/* LES MERGE REQUESTS QUE JENKINS CROISE. Elles venaient de l'onglet Reviews, chargé ou non :
+   ouvert directement sur Jenkins, « Mes branches » (restauré coché) vidait la liste et les
+   pastilles `!iid` n'apparaissaient pas. On les lit donc ici si Reviews ne l'a pas fait, sans
+   toucher à son état. */
+let jkMrsConnues = [];
+const mrsPourJenkins = () => (toReviewRows.length || reportRows.length ? toReviewRows.concat(reportRows) : jkMrsConnues);
+async function assurerMrsJenkins() {
+  if (toReviewRows.length || reportRows.length || jkMrsConnues.length) return;
+  try {
+    const [a, b] = await Promise.all([api('/mrs?status=to_review'), api('/mrs?status=reviewed')]);
+    jkMrsConnues = (a || []).concat(b || []);
+  } catch { /* file indisponible : ni filtre ni pastille, comme avant */ }
+}
 function mesBranchesOuvertes() {
-  const rows = toReviewRows.concat(reportRows).filter((m) => !m.closed_seen);
+  const rows = mrsPourJenkins().filter((m) => !m.closed_seen);
   const miennes = moiSurLesForges ? rows.filter(estDeMoi) : rows;
   return new Set(miennes.map((m) => String(m.source_branch || '').trim()).filter(Boolean));
 }
@@ -23959,7 +24419,7 @@ async function remplirDepotsJenkins() {
     if (!l || !zone.isConnected) continue;
     const j = (JENKINS.jobs || []).find((x) => x.path === chemin);
     const ref = String((j && j.ref) || '').trim();
-    const mr = ref ? toReviewRows.concat(reportRows).find((m) => !m.closed_seen && m.source_branch === ref) : null;
+    const mr = ref ? mrsPourJenkins().find((m) => !m.closed_seen && m.source_branch === ref) : null;
     zone.innerHTML = `<span class="tag jk-depot-tag" title="${esc(tr('jenkins.linked-repo.title', { project: l.project }))}">${svgIco('merge')} ${esc(l.project)}</span>`
       + (mr ? `<button type="button" class="tag jk-depot-mr" data-jk-mr="${mr.id}" title="${esc(tr('jenkins.linked-mr.title', { iid: mr.iid, branch: ref }))}">!${esc(String(mr.iid))}</button>` : '');
   }
@@ -23987,7 +24447,7 @@ async function remplirLiensJenkins() {
     const d = await cacheLiensJob.get(chemin);
     const cases = (d.envs || []).filter((c) => valeurs.has(String(c.env || '').trim().toLowerCase()));
     if (!cases.length || !zone.isConnected) continue;
-    zone.innerHTML = cases.slice(0, 3).map((c) => `<a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer"
+    zone.innerHTML = cases.slice(0, 3).map((c) => `<a class="btn btn-sm" href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer"
         style="border-color:${esc(c.color || 'var(--line)')}"
         title="${esc(tr('jenkins.open-env.title', { env: c.env, url: c.url }))}">${svgIco('external')}${esc(c.env)}</a>`).join('');
   }
@@ -24278,7 +24738,7 @@ function jkBuildDetail(d, b) {
               puis on la resélectionnait à la souris pour la coller à un collègue, et on
               retournait dans Jenkins à la main pour la suite. */''}
         <button type="button" class="btn btn-sm btn-ghost" data-jk-tail-copy="${b.number}" title="${esc(tr('jenkins.tail.copy'))}">${svgIco('copy')}</button>
-        ${b.url ? `<a class="btn btn-sm btn-ghost" href="${esc(b.url)}" target="_blank" rel="noopener" title="${esc(tr('jenkins.build.open'))}">${svgIco('external')}</a>` : ''}
+        ${b.url ? `<a class="btn btn-sm btn-ghost" href="${esc(safeUrl(b.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.build.open'))}">${svgIco('external')}</a>` : ''}
       </h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('ui.combo.loading'))}</pre>` : ''}
   </div>`;
 }
@@ -24473,14 +24933,20 @@ function jkParamChamp(p) {
 /* `siParams` : n'afficher la fiche QUE si le job a des paramètres. Sert au bouton « Lancer » de
    la liste, qui doit consulter la fiche pour savoir s'il y a quelque chose à lire — sans la faire
    clignoter quand il n'y a rien. Rend vrai si la fenêtre a été montrée. */
+let jkOuvertures = 0;
 async function openJenkinsJob(chemin, { siParams = false } = {}) {
   const modal = $('#jenkinsModal');
   $('#jenkinsModalTitle').textContent = chemin;
   $('#jenkinsModalDesc').textContent = '';
   $('#jenkinsModalBody').innerHTML = skeleton(2);
   if (!siParams) modal.hidden = false;
+  const jeton = ++jkOuvertures;
   try {
     const d = await api(`/jenkins/job?path=${encodeURIComponent(chemin)}`);
+    /* FERMÉE PENDANT LE CHARGEMENT, ELLE LE RESTE. La fiche s'ouvre avant la réponse ; si l'on
+       fait Échap entre-temps, la réponse la rouvrait d'office, par-dessus l'écran suivant. Même
+       chose si une autre fiche a été demandée depuis : la plus récente gagne. */
+    if (jeton !== jkOuvertures || (!siParams && modal.hidden)) return false;
     JENKINS.job = d;
     if (siParams && !d.parameters.length) return false;
     modal.hidden = false;
@@ -24630,7 +25096,7 @@ $('#jenkinsMineBranches') && $('#jenkinsMineBranches').addEventListener('change'
   JENKINS.mesBranches = e.target.checked;
   jkMemoriserFiltres();
   // La file n'est peut-être pas chargée : sans elle le filtre ne connaîtrait aucune branche.
-  if (JENKINS.mesBranches && !toReviewRows.length && !reportRows.length) { try { await loadSegment('to_review'); } catch { /* file indisponible */ } }
+  if (JENKINS.mesBranches) await assurerMrsJenkins();
   renderJenkins();
 });
 document.addEventListener('click', (e) => {

@@ -15,7 +15,15 @@
  * qu'une session lancée dans un clone a de plus que Mergerie.
  */
 
-const MODES = ['acceptEdits', 'plan', 'dontAsk', 'bypassPermissions', 'default'];
+/* `bypassPermissions` n'en est plus : un profil venu du dépôt partagé n'a pas à pouvoir rendre à
+   l'agent le mode large que la politique par saveur (`agentpolicy`) lui retire. Un profil qui le
+   portait encore est refusé à la sauvegarde ; au lancement, l'option est retirée. */
+const MODES = ['acceptEdits', 'plan', 'dontAsk', 'default'];
+/* Un modèle, un nom d'outil : des lettres, des chiffres, et la ponctuation d'un motif d'outil
+   (`Bash(git log:*)`, `mcp__serveur__outil`). Jamais un `-` en tête : `--model "--dangerously-…"`
+   serait une OPTION pour le CLI, pas un modèle. */
+const SUR = /^[\w.:\-[\]()* /]+$/;
+const sur = (v) => SUR.test(v) && !v.startsWith('-');
 const SUBAGENT_MODELS = ['inherit', 'sonnet', 'opus', 'haiku'];
 
 const liste = (v) => (Array.isArray(v) ? v.map((x) => String(x || '').trim()).filter(Boolean) : []);
@@ -43,14 +51,14 @@ function argsFor(backend, options) {
   const args = [];
   const ignored = [];
 
-  const model = texte(o.model);
+  const model = sur(texte(o.model)) ? texte(o.model) : '';
   const sys = texte(o.appendSystemPrompt);
   const mode = texte(o.permissionMode);
-  const allowed = liste(o.allowedTools);
-  const disallowed = liste(o.disallowedTools);
+  const allowed = liste(o.allowedTools).filter(sur);
+  const disallowed = liste(o.disallowedTools).filter(sur);
   const maxTurns = Number(o.maxTurns);
   const agents = subagentsPropres(o.agents);
-  const dirs = liste(o.addDirs);
+  const dirs = liste(o.addDirs).filter((d) => !d.startsWith('-'));
 
   if (backend === 'copilot') {
     if (model) args.push('--model', model);
@@ -67,7 +75,7 @@ function argsFor(backend, options) {
   // claude : ordre stable, une option n'apparaît que si elle est renseignée.
   if (model) args.push('--model', model);
   if (sys) args.push('--append-system-prompt', sys);
-  if (mode) args.push('--permission-mode', mode);
+  if (mode && MODES.includes(mode)) args.push('--permission-mode', mode);
   if (allowed.length) args.push('--allowedTools', allowed.join(','));
   if (disallowed.length) args.push('--disallowedTools', disallowed.join(','));
   if (Number.isInteger(maxTurns) && maxTurns > 0) args.push('--max-turns', String(maxTurns));
@@ -92,6 +100,9 @@ function validate(options) {
   const mode = texte(o.permissionMode);
   if (mode === 'default') errs.push('agents.err.permission-default');
   else if (mode && !MODES.includes(mode)) errs.push('agents.err.permission-unknown');
+  const model = texte(o.model);
+  if (model && !sur(model)) errs.push('agents.err.model-invalid');
+  if ([...liste(o.allowedTools), ...liste(o.disallowedTools)].some((x) => !sur(x))) errs.push('agents.err.tool-invalid');
 
   if (o.maxTurns != null && texte(o.maxTurns) !== '') {
     const n = Number(o.maxTurns);

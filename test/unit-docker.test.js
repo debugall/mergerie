@@ -316,3 +316,23 @@ describe('front : filtre d’état des services Docker', () => {
     assert.ok(match('all', svc(null)), 'le filtre « tous » ne filtre rien');
   });
 });
+
+/* UN SECRET SE RECONNAÎT AUSSI À SA VALEUR. `DATABASE_URL` n'a rien de sensible dans son nom et
+   porte `postgres://app:motdepasse@…` : le drift et la commande reconstituée le montraient. */
+describe('secrets reconnus à leur valeur', () => {
+  const d = require('../src/docker');
+  test('identifiants d’URL, préfixes de jetons, chaîne aléatoire : masqués', () => {
+    for (const v of ['postgres://app:motdepasse@db/x', 'ghp_abcdefghijklmnop', 'glpat-xyz', 'sk-proj-abc', 'Zx8vK2mQp9LrT4wY7nB3cJ6hF1sD5gA0']) {
+      assert.equal(d.isSecretValue(v), true, v);
+    }
+    for (const v of ['production', '/usr/local/bin/outil/tres/long/chemin', 'http://exemple.com/un/long/chemin/ici', '8080']) {
+      assert.equal(d.isSecretValue(v), false, v);
+    }
+  });
+  test('le drift masque une valeur secrète sous un nom anodin', () => {
+    const [diff] = d.diffEnv({ DATABASE_URL: 'postgres://app:neuf@db/x' }, { DATABASE_URL: 'postgres://app:vieux@db/x' });
+    assert.equal(diff.masked, true);
+    assert.equal(diff.from, undefined);
+    assert.equal(diff.to, undefined);
+  });
+});

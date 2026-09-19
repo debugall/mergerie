@@ -81,9 +81,13 @@ describe('agentargs : ce que la sauvegarde refuse', () => {
 
   test('un mode inconnu est refusé, les modes admis passent', () => {
     assert.deepEqual(agentargs.validate({ permissionMode: 'yolo' }), ['agents.err.permission-unknown']);
-    for (const m of ['acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']) {
+    for (const m of ['acceptEdits', 'plan', 'dontAsk']) {
       assert.deepEqual(agentargs.validate({ permissionMode: m }), [], m);
     }
+    assert.deepEqual(agentargs.validate({ permissionMode: 'bypassPermissions' }), ['agents.err.permission-unknown'],
+      'un profil ne rend plus à l’agent le mode large que la saveur lui retire');
+    assert.deepEqual(agentargs.argsFor('claude', { permissionMode: 'bypassPermissions' }).args, [],
+      'un profil ancien qui le portait encore : l’option ne part pas');
     assert.deepEqual(agentargs.validate({ permissionMode: '' }), [], 'vide = acceptEdits, décidé ailleurs');
   });
 

@@ -169,6 +169,14 @@ function tick(now = new Date(), onLog = () => {}) {
       marquer();
       continue;
     }
+    /* PAS D'HORAIRE HONORÉ POUR UN AGENT DONT LES PERMISSIONS ONT CHANGÉ SANS ÊTRE VUES ICI.
+       On marque le créneau : sinon il redeviendrait « dû » chaque minute jusqu'à minuit. */
+    // eslint-disable-next-line global-require
+    if (!require('./approbation').agentApprouve(agent.id)) {
+      onLog(t('agents.log.schedule-not-approved', { name: agent.name }));
+      marquer();
+      continue;
+    }
     try {
       /* Un agent de DOMAINE planifié ne relance pas sa propre exploration : il fait vieillir
          sa connaissance, donc c'est une MISE À JOUR qu'on programme. */

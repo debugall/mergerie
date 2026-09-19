@@ -19,6 +19,7 @@ const path = require('node:path');
 const db = require('./db');
 const localsession = require('./localsession');
 const copilot = require('./copilot');
+const agentpolicy = require('./agentpolicy');
 const agentsession = require('./agentsession');
 const agentpass = require('./agentpass');
 const pieces = require('./pieces');
@@ -77,8 +78,11 @@ function construirePrompt(question, { suivi, precedente, reprise, piecesBloc = '
       : `Tu réponds à une question posée hors de tout dépôt de code : il n'y a aucun projet à `
         + `explorer, aucun fichier à lire, et rien à modifier. Réponds à partir de ce que tu sais, `
         + `et dis-le franchement si tu ne sais pas.\n\n`)
-    + `Rédige ta réponse en Markdown (français) et écris-la UNIQUEMENT dans le fichier `
-    + `\`${REPONSE_REL}\` du répertoire courant. Ne duplique pas ce contenu sur la sortie standard.`;
+    + (agentpolicy.sortieSurStdout('ask', copilot.COPILOT_BIN)
+      ? `Rédige ta réponse en Markdown (français) et rends-la comme ta réponse finale, complète — `
+        + `tu ne peux écrire aucun fichier.`
+      : `Rédige ta réponse en Markdown (français) et écris-la UNIQUEMENT dans le fichier `
+        + `\`${REPONSE_REL}\` du répertoire courant. Ne duplique pas ce contenu sur la sortie standard.`);
 }
 
 /* Exécute une question (première passe ou suivi). `opts.instruction` = question de suivi :
@@ -120,14 +124,14 @@ async function runQuestion(id, onLog = () => {}, opts = {}) {
       let creee = !reprise;
       let r;
       try {
-        r = await agentsession.runInSession({ key, handle: reprise ? q.session_key : null, prompt, cwd, resume: reprise, onLog });
+        r = await agentsession.runInSession({ key, handle: reprise ? q.session_key : null, prompt, cwd, resume: reprise, onLog, saveur: 'ask' });
       } catch (e) {
         if (!reprise) throw e;
         // Même repli qu'ailleurs : la session est perdue, pas la question. On repart d'une
         // session neuve en réinjectant la réponse précédente, seul fil qui lui reste.
         onLog(t('log.task.resume-failed', { raison: String(e.message).split('\n')[0] }));
         r = await agentsession.runInSession({
-          key, prompt: construirePrompt(question, { suivi: !!suivi, precedente, reprise: false, piecesBloc }), cwd, resume: false, onLog,
+          key, prompt: construirePrompt(question, { suivi: !!suivi, precedente, reprise: false, piecesBloc }), cwd, resume: false, onLog, saveur: 'ask',
         });
         creee = true;
       }

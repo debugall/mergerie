@@ -41,6 +41,23 @@ function loadEnv(file) {
   console.log(`.env chargé (fallback, ${n} variables) depuis ${file}`);
 }
 loadEnv(path.join(__dirname, '..', '.env'));
+/* LE `.env` DU DOSSIER COURANT CHOISIT LE BINAIRE DE L'AGENT. Lancé depuis un dépôt cloné (le
+   `.env` d'un autre), `COPILOT_BIN` ou `COPILOT_ARGS` y désignent ce qui sera EXÉCUTÉ à chaque
+   review. On ne le refuse pas — c'est aussi là que l'utilisateur de `npx` met le sien —, on le
+   dit au démarrage, avec la valeur, pour qu'il se voie. */
+{
+  const ici = path.resolve('.env');
+  if (ici !== path.join(__dirname, '..', '.env') && fs.existsSync(ici)) {
+    try {
+      const lignes = fs.readFileSync(ici, 'utf8').split('\n').map((l) => l.trim())
+        .filter((l) => /^(COPILOT_BIN|COPILOT_ARGS)\s*=/.test(l));
+      if (lignes.length) {
+        console.warn(`⚠ le .env du dossier courant (${ici}) choisit l'agent lancé par Mergerie : ${lignes.join(' ; ')}`);
+        console.warn('  Vérifiez que ce .env est bien le vôtre et non celui d’un dépôt cloné.');
+      }
+    } catch { /* illisible : rien à dire de plus que ce que le chargement dira */ }
+  }
+}
 
 const express = require('express');
 const db = require('./db');
@@ -51,6 +68,10 @@ const localdirs = require('./localdirs');
 const localsession = require('./localsession');
 const store = require('./store');
 const datasync = require('./datasync');
+const garde = require('./garde');
+const { nonFiable } = require('./nonfiable');
+const proc = require('./proc');
+const approbation = require('./approbation');
 const identite = require('./identite');
 const verifierenv = require('./verifierenv');
 const registre = require('./store-registry');
@@ -76,6 +97,7 @@ const reviewer = require('./reviewer');
 const prompts = require('./prompts');
 const gitmerge = require('./gitmerge');
 const converge = require('./converge');
+const configagent = require('./configagent');
 const forge = require('./forge');
 const git = require('./git');
 const demoGit = require('./demo-git');
@@ -129,6 +151,70 @@ const app = express();
 
    Les lectures passent : elles ne changent rien, et la réponse n'est de toute façon pas
    lisible par la page tierce (pas de CORS ici). */
+/* LA PORTE, AVANT TOUT LE RESTE (voir `src/garde.js`).
+ *
+ * 1. `Host` : sans elle, une page qui re-résout son nom vers 127.0.0.1 devient « même origine »
+ *    et lit toute l'API. 421 et non 403 : c'est le code de « tu t'adresses au mauvais serveur »,
+ *    et le message nomme la variable qui corrige un reverse-proxy légitime.
+ * 2. `Sec-Fetch-Site` sur `/api/` : une page d'un autre site n'a rien à y lire.
+ * 3. Le jeton d'accès, quand le poste est ouvert au réseau. */
+const EXPOSE = !garde.estBoucle(process.env.HOST || '127.0.0.1');
+const JETON_ACCES = String(process.env.MERGERIE_ACCESS_TOKEN || '');
+app.disable('x-powered-by');
+
+/* LES EN-TÊTES DE TOUTE RÉPONSE — posés EN PREMIER, pour que même un refus et la page d'accès
+   les portent.
+ *
+ * Une POLITIQUE DE CONTENU d'abord : seuls les scripts servis par l'application s'exécutent. Un
+ * rendu qui laisserait passer une balise — un titre de merge request, un rapport venu du dépôt
+ * partagé — ne pourrait plus rien lancer : il n'y a pas de script en ligne à autoriser, et il n'y
+ * en a aucun dans la page (le thème est un fichier). Les styles en ligne restent admis : l'écran
+ * en porte partout, et un style ne lance rien. `frame-ancestors 'none'` : personne ne met
+ * Mergerie dans un cadre pour faire cliquer à travers.
+ * `nosniff` : un fichier servi n'est lu que selon son type déclaré. `no-referrer` : l'adresse
+ * d'un écran de Mergerie ne part pas vers les liens qu'on y suit. */
+const POLITIQUE = [
+  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+  /* `https:` pour les images SEULEMENT : l'icône d'un type de ticket vient du serveur Jira, et une
+     image ne s'exécute pas. Les scripts, eux, ne viennent que d'ici. */
+  "img-src 'self' data: blob: https:", "object-src 'none'", "base-uri 'none'",
+  "frame-ancestors 'none'", "form-action 'self'",
+].join('; ');
+app.use((req, res, next) => {
+  res.setHeader('Content-Security-Policy', POLITIQUE);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+app.use((req, res, next) => {
+  if (garde.hoteAutorise(req.headers.host)) return next();
+  res.status(421).json({ error: i18n.t('err.hote-inconnu', { host: garde.nomHote(req.headers.host) }) });
+});
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/') || !garde.siteEtranger(req)) return next();
+  res.status(403).json({ error: i18n.t('err.origine-etrangere') });
+});
+if (EXPOSE) {
+  /* La page d'accès et son envoi sont les SEULES choses servies sans jeton. Le formulaire arrive
+     en urlencoded : on le lit à la main plutôt que d'ouvrir un analyseur de plus à tout le
+     serveur. */
+  app.get('/acces', (req, res) => res.type('html').send(garde.pageAcces()));
+  app.post('/acces', express.urlencoded({ extended: false, limit: '2kb' }), (req, res) => {
+    if (!garde.memeJeton((req.body || {}).jeton, JETON_ACCES)) {
+      return res.status(401).type('html').send(garde.pageAcces({ erreur: 'Jeton incorrect.' }));
+    }
+    /* HttpOnly : aucun script ne le lit. SameSite=Strict : aucun autre site ne le fait voyager. */
+    res.setHeader('Set-Cookie', `${garde.COOKIE}=${encodeURIComponent(JETON_ACCES)}; HttpOnly; SameSite=Strict; Path=/`);
+    return res.redirect(303, '/');
+  });
+  app.use((req, res, next) => {
+    if (garde.memeJeton(garde.jetonPresente(req), JETON_ACCES)) return next();
+    if (req.path.startsWith('/api/')) return res.status(401).json({ error: i18n.t('err.acces-requis') });
+    return res.redirect(303, '/acces');
+  });
+}
+
 const MUTANTES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 function memeOrigine(req) {
   const brut = req.headers.origin;
@@ -208,8 +294,36 @@ const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).ca
   const status = e.code === 'BUSY' ? 409 : (Number.isInteger(e.status) && e.status >= 400 && e.status < 600 ? e.status : 400);
   /* `code` : un refus que l'écran doit pouvoir RECONNAÎTRE pour proposer autre chose qu'un
      toast rouge. Chercher un mot dans le message ne marcherait pas — il est traduit. */
-  res.status(status).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
+  res.status(status).json({
+    error: e.message, ...(e.code ? { code: e.code } : {}),
+    // CONFIG_AGENT : ce qu'il faut montrer, et ce qu'il faut renvoyer pour dire « j'ai vu ».
+    ...(e.code === 'CONFIG_AGENT' ? { files: e.fichiers || [], empreinte: e.empreinte || null } : {}),
+    // Ce que l'écran doit montrer pour décider (la version actuelle d'une page, son auteur…).
+    ...(e.extra && typeof e.extra === 'object' ? e.extra : {}),
+  });
 });
+
+/* LA BRANCHE D'AUTRUI RÉÉCRIT-ELLE LES RÈGLES DE L'AGENT ? (configagent.js) Vérifié AVANT de
+   lancer, sur les références déjà là — sans réseau, pour que l'écran puisse demander tout de
+   suite. Le job refait la vérification après son fetch : ce qui a été poussé entre-temps n'y
+   échappe pas. `accept_agent_config` = l'empreinte que l'utilisateur a vue et acceptée. */
+async function gardeConfigAgent(repo, branche, base, body) {
+  if (!repo || !branche) return;
+  const cwd = git.cloneDirFor(getConfig(), repo);
+  if (!fs.existsSync(path.join(cwd, '.git'))) return;
+  if (!(await git.refExists(cwd, `origin/${branche}`))) return;
+  const b = base || await git.defaultBranch(cwd).catch(() => null);
+  if (!b) return;
+  const examen = await configagent.examiner(cwd, `origin/${b}`, `origin/${branche}`);
+  if (!examen.fichiers.length || configagent.accepte(repo, branche, examen.empreinte)) return;
+  if (body && body.accept_agent_config && body.accept_agent_config === examen.empreinte) {
+    configagent.accepter(repo, branche, examen.empreinte);
+    return;
+  }
+  const e = configagent.erreur(t('err.agent-config.touched', { branch: branche, files: examen.fichiers.join(', ') }), examen);
+  e.status = 409;
+  throw e;
+}
 
 // Options de convergence depuis un body : réglages globaux par défaut, surcharge
 // ponctuelle (seuil /10 et plafond de passes), bornés à [1,10]. Partagé MR + session.
@@ -274,6 +388,9 @@ app.get('/api/status', wrap((req, res) => {
        attente est exactement ce qu'on doit voir sans ouvrir l'onglet : l'agent continue de
        travailler sur l'ANCIENNE carte tant que personne ne relit la nouvelle. */
     agentsPending: (db.prepare("SELECT COUNT(*) c FROM agent_knowledge WHERE status = 'pending'").get() || {}).c || 0,
+    /* LE NUMÉRO DES DONNÉES REÇUES D'UNE SYNCHRO : quand il change, la page recharge l'écran
+       affiché — un collègue a reviewé, coché, écrit. Voir `store.versionDonnees`. */
+    dataVersion: store.versionDonnees(),
   });
 }));
 
@@ -386,7 +503,8 @@ app.get('/api/stats', wrap((req, res) => {
 
   // Par projet
   const pending = {};
-  db.prepare("SELECT repo.project p, COUNT(*) c FROM mr JOIN repo ON repo.id=mr.repo_id WHERE mr.status='to_review' GROUP BY repo.project").all()
+  db.prepare(`SELECT repo.project p, COUNT(*) c FROM mr JOIN repo ON repo.id=mr.repo_id
+    WHERE mr.status='to_review' AND (? = '' OR repo.project = ?) GROUP BY repo.project`).all(projet, projet)
     .forEach((r) => { pending[r.p] = r.c; });
   const byProj = {};
   for (const r of rows) {
@@ -488,12 +606,15 @@ app.get('/api/stats', wrap((req, res) => {
   /* Coût en tokens (table usage). Le total est un MINORANT — le travail interne de
      l'agent reste invisible — mais la RÉPARTITION par type et l'évolution disent
      déjà où part le quota. Regroupement des kinds en libellés lisibles côté front. */
-  const byKind = db.prepare('SELECT kind, SUM(tokens_est) tokens, COUNT(*) calls FROM usage GROUP BY kind').all()
+  // La période vaut ici comme ailleurs : le total d'une semaine ne compte pas la session d'il y a cent jours.
+  const byKind = db.prepare(`SELECT kind, SUM(tokens_est) tokens, COUNT(*) calls FROM usage
+    WHERE (? IS NULL OR created_at >= ?) GROUP BY kind`).all(depuis, depuis)
     .filter((r) => r.tokens > 0)
     .map((r) => ({ kind: r.kind, tokens: r.tokens, calls: r.calls }));
   const tokTotal = byKind.reduce((s, r) => s + r.tokens, 0);
   const twc = {};
-  for (const r of db.prepare('SELECT tokens_est, created_at FROM usage WHERE tokens_est > 0').all()) {
+  for (const r of db.prepare(`SELECT tokens_est, created_at FROM usage WHERE tokens_est > 0
+    AND (? IS NULL OR created_at >= ?)`).all(depuis, depuis)) {
     if (!r.created_at) continue;
     const k = weekStart(r.created_at).toISOString().slice(0, 10);
     twc[k] = (twc[k] || 0) + r.tokens_est;
@@ -545,8 +666,11 @@ app.get('/api/stats', wrap((req, res) => {
     GROUP BY u.owner_kind, u.owner_id ORDER BY tokens DESC LIMIT 5`).all(depuis, depuis)
     .map((r) => {
       const table = r.kind === 'ask' ? 'question' : (r.kind === 'local' ? 'local_task' : 'task');
-      const row = db.prepare(`SELECT label, prompt FROM ${table} WHERE id = ?`).get(r.id) || {};
-      return { ...r, label: row.label || '', prompt: String(row.prompt || '').slice(0, 120) };
+      // Une exploration se compte comme une session `task` : sa saveur dit dans quelle liste l'ouvrir.
+      const row = db.prepare(`SELECT label, prompt${table === 'task' ? ', kind AS saveur' : ''} FROM ${table} WHERE id = ?`).get(r.id) || {};
+      return {
+        ...r, saveur: row.saveur || null, label: row.label || '', prompt: String(row.prompt || '').slice(0, 120),
+      };
     })
     .filter((r) => r.prompt || r.label);
 
@@ -582,7 +706,8 @@ app.get('/api/stats', wrap((req, res) => {
      voient à un ratio qui s'envole — la facture, elle, ne dit que « c'est cher ». */
   const ratio = db.prepare(`SELECT kind,
       SUM(prompt_chars) AS entree, SUM(output_chars) AS sortie, COUNT(*) AS n
-    FROM usage GROUP BY kind HAVING SUM(output_chars) > 0 ORDER BY entree DESC`).all()
+    FROM usage WHERE (? IS NULL OR created_at >= ?)
+    GROUP BY kind HAVING SUM(output_chars) > 0 ORDER BY entree DESC`).all(depuis, depuis)
     .map((r) => ({ ...r, ratio: r.sortie ? Math.round((r.entree / r.sortie) * 10) / 10 : null }));
 
   /* A/Stats 3 — LES VÉRIFICATIONS, PAR DÉPÔT. Un verdict rouge se lit une MR à la fois ; la
@@ -602,7 +727,7 @@ app.get('/api/stats', wrap((req, res) => {
       const depots = [...new Set(cibles.map((c) => c.repo_id).filter(Boolean))];
       for (const id of depots) {
         const nom = nomDe.get(id);
-        if (!nom) continue;
+        if (!nom || !duProjet(nom)) continue;
         const acc = parProjet.get(nom) || { project: nom, total: 0, verts: 0 };
         acc.total += 1;
         if (v.verdict === 'verified_pass') acc.verts += 1;
@@ -627,9 +752,9 @@ app.get('/api/stats', wrap((req, res) => {
       GROUP_CONCAT(DISTINCT f.file) AS fichiers,
       MAX(f.title) AS exemple
     FROM finding f JOIN mr ON mr.id = f.mr_id JOIN repo ON repo.id = mr.repo_id
-    WHERE f.title IS NOT NULL AND f.title != ''
+    WHERE f.title IS NOT NULL AND f.title != '' AND (? = '' OR repo.project = ?)
     GROUP BY repo.id, titre HAVING n >= 3
-    ORDER BY n DESC, project LIMIT 10`).all()
+    ORDER BY n DESC, project LIMIT 10`).all(projet, projet)
     .map((r) => ({
       project: r.project, title: r.exemple, count: r.n,
       files: String(r.fichiers || '').split(',').filter(Boolean).slice(0, 6),
@@ -1051,7 +1176,13 @@ app.get('/api/config', wrap((req, res) => {
      pire que pas de badge du tout. */
   const scopes = {};
   for (const champ of Object.keys(c)) scopes[champ] = configModule.destinationDe(champ);
-  res.json({ ...sansSecrets(c), scopes });
+  /* LES RÉGLAGES D'AUTOMATISME QUI ATTENDENT : changés par la synchro, pas encore vus ici. */
+  const autoApproval = {
+    pending: !approbation.configApprouvee(c),
+    before: approbation.configApprouveeAvant(),
+    signature: approbation.signature(approbation.empreinteConfig(c)),
+  };
+  res.json({ ...sansSecrets(c), scopes, auto_approval: autoApproval });
 }));
 
 /* ---------- Jenkins : voir et lancer des jobs -------------------------------
@@ -1128,10 +1259,22 @@ app.get('/api/conn-tests', wrap((req, res) => {
   res.json(out);
 }));
 
+/* LE JETON ENREGISTRÉ NE PART PAS VERS UNE AUTRE ADRESSE. « Tester » accepte l'URL du
+   formulaire et le masque `***` (« jeton non modifié ») : une requête qui changeait l'URL en
+   gardant le masque faisait envoyer le jeton en base à l'hôte de son choix. Adresse changée
+   (autre origine) ⇒ le jeton doit être retapé dans la même requête. */
+function exigerJetonFrais(urlCorps, urlBase, jetonCorps, jetonBase, defaut = '') {
+  if (!garde.jetonFraisRequis(urlCorps, urlBase, jetonCorps, jetonBase, defaut)) return;
+  const e = new Error(t('err.test.fresh-token'));
+  e.status = 400;
+  throw e;
+}
+
 app.post('/api/jenkins/test', wrap(async (req, res) => {
   if (demoJenkins.isDemo()) return res.json(demoJenkins.tester());
   const test = { ...jenkinsCfg() };
   const b = req.body || {};
+  if (b.jenkins_url) exigerJetonFrais(b.jenkins_url, test.jenkins_url, b.jenkins_token, test.jenkins_token);
   if (b.jenkins_url) test.jenkins_url = b.jenkins_url;
   if (b.jenkins_user) test.jenkins_user = b.jenkins_user;
   if (b.jenkins_token && b.jenkins_token !== '***') test.jenkins_token = b.jenkins_token;
@@ -1148,6 +1291,7 @@ app.post('/api/jira/test', wrap(async (req, res) => {
   const cfg = getConfig();
   // Le front peut renvoyer le masque : on teste alors avec le token déjà en base.
   const test = { ...cfg };
+  if (req.body && req.body.jira_url) exigerJetonFrais(req.body.jira_url, cfg.jira_url, req.body.jira_token, cfg.jira_token);
   if (req.body && req.body.jira_url) test.jira_url = req.body.jira_url;
   if (req.body && req.body.jira_email) test.jira_email = req.body.jira_email;
   if (req.body && req.body.jira_token && req.body.jira_token !== '***') test.jira_token = req.body.jira_token;
@@ -1184,11 +1328,12 @@ app.get('/api/jira/statuses', wrap(async (req, res) => {
   const par = new Map();
   for (const cle of cles) {
     if (!statutsParProjet.has(cle)) {
-      // Un projet inaccessible ne doit pas priver le filtre des statuts des autres.
+      /* Un projet inaccessible ne doit pas priver le filtre des statuts des autres. L'échec
+         n'est PAS mémorisé : une panne passagère aurait vidé ce filtre jusqu'au redémarrage. */
       try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
-      catch { statutsParProjet.set(cle, []); }
+      catch { /* on retentera au prochain chargement */ }
     }
-    for (const st of statutsParProjet.get(cle)) if (!par.has(st.name)) par.set(st.name, st);
+    for (const st of statutsParProjet.get(cle) || []) if (!par.has(st.name)) par.set(st.name, st);
   }
   res.json({ configured: true, statuses: [...par.values()] });
 }));
@@ -1202,7 +1347,12 @@ async function sprintFieldId(cfg) {
   try {
     const trouve = jira.detectSprintField(await jira.allFields(cfg));
     champSprint = trouve ? trouve.id : '';
-  } catch { champSprint = ''; }   // droits manquants : on s'en passe, sans casser l'onglet
+  } catch {
+    /* Droits manquants ou panne : on s'en passe cette fois, sans casser l'onglet — mais sans le
+       mémoriser, sinon une coupure de quelques secondes cachait le filtre Sprints jusqu'au
+       prochain enregistrement des réglages. */
+    return '';
+  }
   return champSprint;
 }
 
@@ -1226,10 +1376,16 @@ app.get('/api/jira/tickets', wrap(async (req, res) => {
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.
 app.get('/api/jira/issue/:key', wrap(async (req, res) => {
   const key = String(req.params.key || '').trim();
-  if (demoDocker.isDemo()) return res.json({ issue: demoJira.issue(key) });
+  /* Les merge requests qui portent ce ticket : la zone de commentaire propose d'en insérer le
+     lien. L'écran les lisait ici sans que la route les ait jamais servies. */
+  const mergerie = {
+    mrs: engagementsSurTicket(key).mrs.filter((m) => !m.closed && m.web_url)
+      .map((m) => ({ iid: m.iid, url: m.web_url })),
+  };
+  if (demoDocker.isDemo()) return res.json({ issue: { ...demoJira.issue(key), mergerie } });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
-  res.json({ issue: await jira.issueDetail(cfg, key) });
+  res.json({ issue: { ...(await jira.issueDetail(cfg, key)), mergerie } });
 }));
 
 // Poster un commentaire sur un ticket Jira.
@@ -1260,6 +1416,36 @@ app.post('/api/jira/issue/:key/transition', wrap(async (req, res) => {
   res.json(r);
 }));
 
+/* SERVIR UN FICHIER QUE QUELQU'UN D'AUTRE A FOURNI — pièce jointe Jira ou de session, capture
+   d'une note, image de ticket. Une seule porte, parce que les quatre avaient divergé : la pièce
+   jointe Jira était déjà prudente, les trois autres servaient `inline` ce qu'on leur donnait. Un
+   `.html` ou un `.svg` ouvert en navigation directe sur NOTRE origine exécutait son script avec
+   accès à l'API locale.
+     — `inline` pour les images matricielles (non scriptables) et le PDF (lu par le lecteur du
+       navigateur, hors de notre origine), `attachment` pour tout le reste ;
+     — `nosniff` partout, et une CSP `sandbox` qui retire l'origine à ce qui serait rendu malgré
+       tout (le PDF en est dispensé : le lecteur de Chrome refuse de s'ouvrir sous `sandbox`).
+   Ni `html` ni `xml` ne sont refusés à l'envoi — l'agent sait les lire —, ils ne s'exécutent plus. */
+const TYPES_PAR_EXTENSION = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+  bmp: 'image/bmp', avif: 'image/avif', svg: 'image/svg+xml', pdf: 'application/pdf',
+};
+const INLINE_SUR = /^image\/(png|jpe?g|gif|webp|bmp|avif)$/i;
+function servirFichierNonFiable(res, { chemin = null, buffer = null, nom = '', mime = '' }) {
+  const ext = path.extname(String(nom || chemin || '')).slice(1).toLowerCase();
+  const type = String(mime || TYPES_PAR_EXTENSION[ext] || 'application/octet-stream');
+  const pdf = /^application\/pdf$/i.test(type);
+  const inline = INLINE_SUR.test(type) || pdf;
+  const nomAffiche = String(nom || (chemin ? path.basename(chemin) : 'fichier'));
+  const ascii = nomAffiche.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (!pdf) res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+  res.setHeader('Content-Type', type);
+  res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(nomAffiche)}`);
+  if (buffer) return res.send(buffer);
+  return res.sendFile(path.resolve(chemin));
+}
+
 // Téléchargement PROXY d'une pièce jointe Jira (le lien direct exigerait l'auth Basic dans le
 // navigateur) : le serveur récupère le fichier avec le token et le renvoie tel quel.
 app.get('/api/jira/attachment/:id', wrap(async (req, res) => {
@@ -1270,19 +1456,8 @@ app.get('/api/jira/attachment/:id', wrap(async (req, res) => {
     if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
     file = await jira.downloadAttachment(cfg, req.params.id);
   }
-  // Content-Disposition robuste unicode : ASCII de repli + filename*=UTF-8''… pour le vrai nom.
-  // SÉCURITÉ : on ne sert `inline` QUE les images matricielles NON scriptables (png/jpeg/gif/…).
-  // Une image `image/svg+xml` — qui peut contenir du <script> — ouverte en navigation top-level
-  // sur NOTRE origine exécuterait ce script (XSS avec accès à l'API locale). Elle est donc forcée
-  // en `attachment` (l'aperçu <img> l'affiche quand même, sans exécuter de script). `nosniff` + CSP
-  // sandbox en défense en profondeur pour toute réponse pièce jointe.
-  const ascii = String(file.filename).replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '');
-  const inlineOk = /^image\/(png|jpe?g|gif|webp|bmp|avif)$/i.test(file.mimeType || '');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
-  res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-  res.setHeader('Content-Disposition', `${inlineOk ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.filename)}`);
-  res.send(file.buffer);
+  // Une image `image/svg+xml` peut porter du <script> : elle part en `attachment` (servirFichierNonFiable).
+  servirFichierNonFiable(res, { buffer: file.buffer, nom: file.filename, mime: file.mimeType });
 }));
 
 // Récupère un ticket Jira par son numéro et renvoie son contexte prêt à injecter
@@ -1646,8 +1821,12 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.github_token === '***') delete patch.github_token;
   if (patch.jenkins_token === '***') delete patch.jenkins_token;
   if (patch.dictation_api_key === '***') delete patch.dictation_api_key;
+  const avant = getConfig();
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue
+  /* La cadence de synchro s'applique tout de suite, comme celle du rafraîchissement : la boucle
+     gardait l'ancienne jusqu'au redémarrage, pendant que l'écran annonçait la nouvelle. */
+  if (String(avant.data_sync_seconds) !== String(c.data_sync_seconds)) datasync.demarrer();
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   champSprint = null; // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
@@ -1889,6 +2068,8 @@ app.post('/api/git-commands', wrap((req, res) => {
   const label = String((req.body && req.body.label) || '').trim();
   const command = String((req.body && req.body.command) || '').trim();
   if (!label || !command) throw new Error(t('err.gitcmd.label-command-required'));
+  // Le même filtre qu'à l'exécution : une entrée de palette refusée ne s'enregistre pas.
+  localrepos.assertSafeGitArgs(localrepos.parseGitArgs(command));
   const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM git_command').get().m;
   const info = db.prepare('INSERT INTO git_command (label, command, sort_order, created_at) VALUES (?, ?, ?, ?)')
     .run(label, command, max + 1, new Date().toISOString());
@@ -1901,6 +2082,7 @@ app.put('/api/git-commands/:id', wrap((req, res) => {
   const label = String((req.body && req.body.label) != null ? req.body.label : cur.label).trim();
   const command = String((req.body && req.body.command) != null ? req.body.command : cur.command).trim();
   if (!label || !command) throw new Error(t('err.gitcmd.label-command-required'));
+  localrepos.assertSafeGitArgs(localrepos.parseGitArgs(command));
   db.prepare('UPDATE git_command SET label = ?, command = ? WHERE id = ?').run(label, command, cur.id);
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command WHERE id = ?').get(cur.id));
 }));
@@ -1961,6 +2143,7 @@ app.post('/api/docker/compose/preview-down', wrap(async (req, res) => {
   const dir = String(req.body && req.body.dir || '');
   if (demoDocker.isDemo()) return res.json(demoDocker.previewDown(req.body && req.body.project));
   if (!dir) throw new Error(t('err.docker.dir-required'));
+  jobs.exigerDossierCompose(dir);         // même garde que les actions : pas un dossier quelconque
   res.json(await docker.previewDown(dir));
 }));
 
@@ -2174,10 +2357,22 @@ app.get('/api/docker/containers', wrap(async (req, res) => {
 // Tail LIVE (SSE) des logs de plusieurs containers. Le filtrage inclure/exclure est fait
 // CÔTÉ CLIENT (dynamique, sans relancer le flux). On spawn un `docker logs -f` par container
 // et on les TUE dès que le client se déconnecte (fermeture d'onglet, Stop, changement de vue).
+/* UN PLAFOND GLOBAL DE FLUX. Chaque flux lance jusqu'à douze `docker logs -f` ; sans plafond,
+   des onglets oubliés — ou une page qui les ouvrirait en boucle — empilaient des processus
+   jusqu'à épuiser la machine. Quatre flux, c'est deux fois l'usage réel. */
+const FLUX_DOCKER_MAX = 4;
+let fluxDockerOuverts = 0;
 app.get('/api/docker/logs/stream', (req, res) => {
   const ids = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean).slice(0, 12);
   const tail = req.query.tail;
   if (!ids.length) { res.status(400).end('no containers'); return; }
+  if (fluxDockerOuverts >= FLUX_DOCKER_MAX) {
+    res.status(429).json({ error: t('err.docker.too-many-streams', { n: FLUX_DOCKER_MAX }) });
+    return;
+  }
+  fluxDockerOuverts += 1;
+  let compte = true;
+  req.on('close', () => { if (compte) { compte = false; fluxDockerOuverts -= 1; } });
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -2247,6 +2442,7 @@ app.get('/api/gitlab/projects', wrap(async (req, res) => {
 app.post('/api/gitlab/test', wrap(async (req, res) => {
   const cfg = getConfig();
   const test = { ...cfg };
+  if (req.body && req.body.gitlab_url != null) exigerJetonFrais(req.body.gitlab_url, cfg.gitlab_url, req.body.access_token, cfg.access_token);
   if (req.body && req.body.gitlab_url != null) test.gitlab_url = req.body.gitlab_url;
   if (req.body && req.body.access_token && req.body.access_token !== '***') test.access_token = req.body.access_token;
   if (!forge.isConfigured(test, 'gitlab')) throw new Error(t('err.gitlab-test-incomplet'));
@@ -2278,6 +2474,7 @@ app.get('/api/github/projects', wrap(async (req, res) => {
 app.post('/api/github/test', wrap(async (req, res) => {
   const cfg = getConfig();
   const test = { ...cfg };
+  if (req.body && req.body.github_url != null) exigerJetonFrais(req.body.github_url, cfg.github_url, req.body.github_token, cfg.github_token, 'https://github.com');   // l'hôte WEB, défaut de `github.webBase`
   if (req.body && req.body.github_url != null) test.github_url = req.body.github_url;
   if (req.body && req.body.github_token && req.body.github_token !== '***') test.github_token = req.body.github_token;
   if (!forge.github.isConfigured(test)) throw new Error(t('err.token-github-non-configure'));
@@ -2424,7 +2621,10 @@ function auteurs(table, rows) {
     const c = store.cheminSur(table, r);
     if (c) chemins.set(r.id, c);
   }
-  const parFichier = datasync.auteursDe([...new Set(chemins.values())]);
+  /* Une page ou une todo partagée se corrige à plusieurs : son auteur est celui qui l'a PARTAGÉE
+     (le premier à avoir écrit son fichier), pas le dernier à l'avoir touchée. Sinon une
+     correction de Claire faisait d'elle l'autrice de ma page — et m'interdisait de la retirer. */
+  const parFichier = datasync.auteursDe([...new Set(chemins.values())], { createur: table === 'note_page' || table === 'todo' });
   return new Map([...chemins].map(([id, c]) => [id, parFichier.get(c) || null]));
 }
 
@@ -2734,8 +2934,7 @@ app.get('/api/pieces/:scope/:id', (req, res) => {
   const pj = pieceDemandee(req);
   if (!pj || !fs.existsSync(pj.path)) return res.status(404).end();
   // Le nom d'origine suit le fichier : `pj_2.pdf` ne dit rien à qui l'enregistre.
-  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(pj.name || 'piece')}`);
-  return res.sendFile(path.resolve(pj.path));
+  return servirFichierNonFiable(res, { chemin: pj.path, nom: pj.name || path.basename(pj.path), mime: pj.mime });
 });
 
 /* Le fichier part avec la ligne : une pièce détachée resterait sur le disque pour toujours,
@@ -2947,8 +3146,28 @@ app.delete('/api/agents/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+/* L'état APPROUVÉ est celui que l'écran a montré : sa signature revient avec le clic, et un objet
+   changé entre-temps par la synchro est refusé (409) — l'écran recharge et le montre. */
+function exigerMemeEtat(vue, courante) {
+  if (vue !== courante) throw Object.assign(new Error(t('err.approval.stale')), { status: 409, code: 'APPROBATION_PERIMEE' });
+}
+
+app.post('/api/agents/:id/approve', wrap((req, res) => {
+  const a = agentOu404(req.params.id);
+  exigerMemeEtat((req.body || {}).signature, approbation.signature(approbation.empreinteAgent(a.id)));
+  approbation.approuverAgent(a.id);
+  res.json(agentprofile.lire(a.id));
+}));
+
 app.post('/api/agents/:id/duplicate', wrap((req, res) => {
-  agentOu404(req.params.id);
+  const source = agentOu404(req.params.id);
+  /* LA COPIE D'UN AGENT EN ATTENTE SERAIT APPROUVÉE à sa création — une copie est un agent créé
+     ici. Ce serait approuver les permissions de l'original sans les avoir regardées. */
+  if (!approbation.agentApprouve(source.id)) {
+    const e = new Error(t('agents.err.not-approved', { name: source.name }));
+    e.code = 'APPROBATION'; e.status = 409;
+    throw e;
+  }
   res.status(201).json(agentprofile.dupliquer(Number(req.params.id)));
 }));
 
@@ -2968,6 +3187,13 @@ app.post('/api/agents/:id/run', wrap((req, res) => {
   const question = String((req.body && req.body.question) || '');
   const repoIds = (req.body && req.body.repo_ids) || null;
   if (mode === 'code') {
+    /* Le mode « code » ne lance rien ici, il préremplit une session — qui tournera avec les
+       permissions de l'agent. Même porte que le lancement direct. */
+    if (!approbation.agentApprouve(a.id)) {
+      const e = new Error(t('agents.err.not-approved', { name: a.name }));
+      e.code = 'APPROBATION'; e.status = 409;
+      throw e;
+    }
     const m = agentprofile.materialize(a, { mode, question, repoIds });
     return res.json({ prefill: { kind: m.kind, targets: m.targets, prompt: m.prompt, agent_id: a.id, label: m.label } });
   }
@@ -3535,10 +3761,16 @@ app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
 /* `targets` (facultatif) restreint la passe à certains projets de la session. Sans lui, toute
    la session part — comportement d'origine. Sert au bouton « Lancer » de chaque projet et à
    « relancer les projets en échec ». */
-app.post('/api/tasks/:id/run', wrap((req, res) => {
+app.post('/api/tasks/:id/run', wrap(async (req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
   const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  if (tache.kind === 'code') {
+    for (const tg of db.prepare('SELECT * FROM task_target WHERE task_id = ?').all(tache.id)) {
+      if (targetIds && !targetIds.includes(tg.id)) continue;
+      await gardeConfigAgent(db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id), tg.branch, tg.base_branch, req.body);
+    }
+  }
   res.json(jobs.startTaskJob(tache.id, 'run', targetIds ? { targetIds } : {}));
 }));
 
@@ -3563,10 +3795,12 @@ function localDirsFor(taskId) {
   const poignees = localsession.carte('local_task_dir');
   const avecRetour = unitesAvecRetour('local', taskId);
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
+    .map((brute) => localsession.resoudre('local_task_dir', brute, poignees))
     .map((d) => ({
-      ...localsession.resoudre('local_task_dir', d, poignees),
+      ...d,
       has_output: (avecRetour.has(d.id) || !!d.output_path) ? 1 : 0,
       path: carteDirs.get(d.dir_hash) || null,
+      // Sur la ligne RECOLLÉE à `local_session` : la ligne brute n'a plus la poignée.
       resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
       // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
       questions: d.questions_json ? (() => { try { return JSON.parse(d.questions_json); } catch { return null; } })() : null,
@@ -3865,15 +4099,21 @@ app.get('/api/questions', wrap((req, res) => {
   const range = rangement('question');
   const poignees = localsession.carte('question');
   const parQui = auteurs('question', rows);
-  res.json(rows.map((q) => ({
-    author: parQui.get(q.id) || null,
-    ...localsession.resoudre('question', avecRangement('question', q, range), poignees),
-    answer_head: chapeauReponse(q.md_path),
-    tokens_est: (couts[q.id] || {}).tokens || null,
-    cost_usd: (couts[q.id] || {}).cost_usd ?? null,
-    duration_ms: durees[q.id] != null ? durees[q.id] : null,
-    resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
-  })));
+  res.json(rows.map((brute) => {
+    /* La poignée de session vit dans `local_session` : la commande de reprise se calcule sur
+       la ligne RECOLLÉE, jamais sur la ligne brute — où elle n'est plus, et où elle rendait
+       toujours null. */
+    const q = localsession.resoudre('question', avecRangement('question', brute, range), poignees);
+    return {
+      author: parQui.get(q.id) || null,
+      ...q,
+      answer_head: chapeauReponse(q.md_path),
+      tokens_est: (couts[q.id] || {}).tokens || null,
+      cost_usd: (couts[q.id] || {}).cost_usd ?? null,
+      duration_ms: durees[q.id] != null ? durees[q.id] : null,
+      resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
+    };
+  }));
 }));
 
 app.post('/api/questions', wrap((req, res) => {
@@ -4257,7 +4497,11 @@ app.get('/api/rules', wrap((req, res) => {
     }
     return { ...r, open_mrs: n };
   });
-  res.json(regles);
+  /* QUI A ÉCRIT CETTE RÈGLE, lu dans git. Une règle alimente chaque review : elle peut changer
+     légitimement, et on ne la soumet à aucune porte — mais on DIT qui l'a posée, pour qu'une
+     consigne inattendue ait un nom à côté d'elle. De l'information, pas une barrière. */
+  const parQui = auteurs('review_rule', regles);
+  res.json(regles.map((r) => ({ ...r, author: parQui.get(r.id) || null })));
 }));
 
 /* ---------- Vérificateurs (plan_add_verify.md §3) --------------------------
@@ -4271,6 +4515,11 @@ const verifierRepos = (id) => db.prepare(`SELECT vr.*, r.project
   WHERE vr.verifier_id = ? ORDER BY r.project`).all(id);
 const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
   .all(id).map((c) => c.command);
+// « CLE=valeur », une par ligne : les noms d'équipe, les valeurs de ce poste.
+const envTexte = (v) => {
+  const valeurs = verifierenv.valeurs(v);
+  return verifierenv.noms(v).map((n) => `${n}=${valeurs[n] || ''}`).join('\n');
+};
 const verifierAvecRepos = (id) => {
   const v = db.prepare('SELECT * FROM verifier WHERE id = ?').get(id);
   if (!v) return null;
@@ -4278,13 +4527,11 @@ const verifierAvecRepos = (id) => {
      « CLE=valeur », une par ligne — recomposé à partir des noms d'équipe et des valeurs locales.
      `env_missing` dit ce que ce poste n'a pas encore renseigné : un vérificateur reçu d'un
      collègue arrive avec ses noms et sans ses valeurs, et l'écran doit le dire. */
-  const valeurs = verifierenv.valeurs(v);
-  const noms = verifierenv.noms(v);
   return {
     ...v,
     repos: verifierRepos(id),
     commands: verifierCommandes(id),
-    env: noms.map((n) => `${n}=${valeurs[n] || ''}`).join('\n'),
+    env: envTexte(v),
     env_missing: verifierenv.manquantes(v),
   };
 };
@@ -4433,11 +4680,34 @@ app.get('/api/verifiers', wrap((req, res) => {
       ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id),
       last: dernieres[v.id] || null, pending_mrs: enAttente[v.id] || 0,
       used_by_tasks: parSession[v.id] || 0,
+      /* Le formulaire « Modifier » se remplit de cette liste : sans `env`, il s'ouvrait vide, et
+         ré-enregistrer effaçait les valeurs de ce poste. */
+      env: envTexte(v),
       /* CE QUI MANQUE SUR CE POSTE. Un vérificateur reçu d'un collègue arrive avec les NOMS de
          ses variables et sans leurs valeurs — les valeurs ne voyagent pas. Le dire sur la carte
          évite un échec au lancement dont la cause serait à chercher. */
       env_missing: verifierenv.manquantes(v),
+      /* À APPROUVER SUR CE POSTE : les commandes ont changé depuis la dernière fois qu'on les a
+         vues ici — arrivées par la synchro. `approved_before` permet de montrer CE qui a changé,
+         pas seulement QUE quelque chose a changé. */
+      approval_pending: !approbation.verificateurApprouve(v.id),
+      approved_before: approbation.verificateurApprouveAvant(v.id),
+      approval_signature: approbation.signature(approbation.empreinteVerificateur(v.id)),
     })));
+}));
+
+app.post('/api/config/approve-auto', wrap((req, res) => {
+  exigerMemeEtat((req.body || {}).signature, approbation.signature(approbation.empreinteConfig(getConfig())));
+  approbation.approuverConfig(getConfig());
+  res.json({ ok: true });
+}));
+
+app.post('/api/verifiers/:id/approve', wrap((req, res) => {
+  const v = db.prepare('SELECT id FROM verifier WHERE id = ?').get(Number(req.params.id));
+  if (!v) throw new Error(t('err.verifier.not-found'));
+  exigerMemeEtat((req.body || {}).signature, approbation.signature(approbation.empreinteVerificateur(v.id)));
+  approbation.approuverVerificateur(v.id);
+  res.json({ ok: true });
 }));
 
 app.post('/api/verifiers', wrap((req, res) => {
@@ -4465,6 +4735,7 @@ app.post('/api/verifiers', wrap((req, res) => {
     ecrireCommandes(id, v.commands || []);
     return id;
   });
+  approbation.approuverVerificateur(cree.id);      // l'utilisateur vient de l'écrire
   res.json(verifierAvecRepos(cree.id));
 }));
 
@@ -4485,6 +4756,8 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
     ecrireCommandes(cur.id, v.commands);
     return cur.id;
   });
+  /* Modifié ICI, dans le formulaire qui montre les commandes : c'est une approbation. */
+  approbation.approuverVerificateur(cur.id);
   res.json(verifierAvecRepos(cur.id));
 }));
 
@@ -4598,13 +4871,22 @@ function appliquerModes(verifier, cibles) {
    Les mettre en file est SÛR : la file de jobs sérialise déjà par dépôt (`keysClash` sur
    `repo:<id>`), donc deux vérifications d'un même dépôt ne tourneront jamais ensemble — le
    refus ci-dessous n'est qu'un garde-fou d'ergonomie, pas la protection du clone. */
-function creerVerification({ verifier, cibles, lotId = null, enFile = false }) {
+function creerVerification({ verifier, cibles, lotId = null, enFile = false, automatique = false }) {
   /* UN VÉRIFICATEUR HÉRITÉ DE LA FAMILLE « SCRIPT » NE TOURNE PLUS. Sa ligne est conservée
      — on ne supprime pas la configuration de quelqu'un sans le lui demander — mais le lancer
      n'aurait aucun sens : plus rien ne sait exécuter son contrat. On refuse ici, une fois pour
      toutes les portes d'entrée (MR, lot, branche, session, déclenchement automatique), avec le
      geste à faire. Le laisser partir pour échouer dix minutes plus tard serait pire. */
   if (verifier && verifier.kind !== 'commands') throw new Error(t('err.verify.script-removed', { name: verifier.name }));
+  /* DES COMMANDES VENUES D'AILLEURS NE S'EXÉCUTENT PAS AVANT D'AVOIR ÉTÉ VUES ICI. Une porte
+     pour toutes les entrées — MR, lot, branche, session, déclenchement automatique. Le code
+     `APPROBATION` permet à l'écran d'offrir l'approbation plutôt qu'un toast rouge. */
+  if (verifier && !approbation.verificateurApprouve(verifier.id)) {
+    const e = new Error(t('err.verify.not-approved', { name: verifier.name }));
+    e.code = 'APPROBATION';
+    e.status = 409;
+    throw e;
+  }
   /* §10 : une vérification MULTI-DÉPÔTS monte un environnement complet et ne se partage pas ;
      une MONO-DÉPÔT n'a qu'à ne pas viser le même dépôt qu'une autre. Le message dit laquelle
      des deux raisons s'applique — elles ne se corrigent pas de la même façon. */
@@ -4616,9 +4898,9 @@ function creerVerification({ verifier, cibles, lotId = null, enFile = false }) {
   /* On recopie les noms : le rapport doit rester lisible après suppression du vérificateur
      ou du lot, et sa suppression ne doit jamais être bloquée par un vieux verdict. */
   const info = db.prepare(`INSERT INTO verification
-    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at)
-    VALUES (?, ?, ?, ?, 'queued', ?, ?)`).run(verifier.id, verifier.name, lotId,
-    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString());
+    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at, automatic)
+    VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)`).run(verifier.id, verifier.name, lotId,
+    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString(), automatique ? 1 : 0);
   const id = info.lastInsertRowid;
   const job = jobs.startVerifyJob(id);
   return { verification: db.prepare('SELECT * FROM verification WHERE id = ?').get(id), job };
@@ -5166,8 +5448,14 @@ const GROUPES_APERCU = {
   note_page: 'notes', todo: 'todos', lot: 'lots', config: 'settings',
 };
 
-app.get('/api/data-sync/preview', wrap(async (req, res) => {
-  const url = String(req.query.url || '').trim() || getConfig().data_repo_url;
+/* UN POST, ET NON UN GET : l'aperçu lance `git ls-remote` et `git fetch` vers une adresse
+   REÇUE. En GET, n'importe quelle page ouverte dans le navigateur pouvait faire joindre à ce
+   poste l'adresse de son choix ; en POST, la requête doit venir de l'application. Et l'adresse
+   est de toute façon filtrée par schéma (`datasync.adresseAdmise`). */
+app.post('/api/data-sync/preview', wrap(async (req, res) => {
+  const recue = String((req.body || {}).url || '').trim();
+  if (recue && !datasync.adresseAdmise(recue)) throw new Error(t('err.datasync.url-scheme'));
+  const url = recue || getConfig().data_repo_url;
   const partants = {};
   const retenus = {};
   for (const table of store.tablesFichier()) {
@@ -5311,7 +5599,27 @@ async function servicesPretsPour(verifier, onLog = () => {}) {
 async function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
   const bilan = { lancees: 0, ignorees: 0, plafonnees: 0, services_arretes: 0 };
   if (!Array.isArray(mrIds) || !mrIds.length) return bilan;
-  const miennes = await mrsAMoi('vérification automatique', mrIds);
+  const candidates = await mrsAMoi('vérification automatique', mrIds);
+  if (!candidates.length) return bilan;
+  /* CE QUI N'EST PAS EXÉCUTÉ SANS UN CLIC. Une vérification lance les commandes du projet sur le
+     code de la branche : c'est le code de son auteur qui tourne ici.
+       — un BROUILLON n'est pas prêt (même règle que la review automatique) ;
+       — un FORK porte le code de quelqu'un qui n'a pas accès au projet ;
+       — et, sauf choix explicite (`verif_auto_authors = 'all'`), seules MES merge requests —
+         reconnues par l'identifiant de forge, pas par le nom affiché.
+     Tout ce qui est écarté garde son bouton « Vérifier » : exécuter reste possible, en le voulant. */
+  const tousAuteurs = getConfig().verif_auto_authors === 'all';
+  const miennes = [];
+  for (const id of candidates) {
+    const m = db.prepare(`SELECT mr.author, mr.author_username, mr.is_draft, mr.is_fork, repo.forge
+      FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(Number(id));
+    if (!m) continue;
+    if (m.is_draft) { bilan.ignorees += 1; continue; }
+    if (m.is_fork) { bilan.ignorees += 1; console.log(`[verif-auto] MR ${id} : vient d'un fork, pas de vérification automatique`); continue; }
+    // eslint-disable-next-line no-await-in-loop
+    if (!tousAuteurs && await mrDeMoi(m) !== true) { bilan.ignorees += 1; continue; }
+    miennes.push(id);
+  }
   if (!miennes.length) return bilan;
   const plafond = plafondVerifAuto();
   /* Un vérificateur hérité de la famille « script » ne part pas tout seul : `creerVerification`
@@ -5339,7 +5647,7 @@ async function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
       }
       try {
         const cibles = appliquerModes(verifier, ciblesDepuisMrs([mr.id]));
-        creerVerification({ verifier, cibles, enFile: true });
+        creerVerification({ verifier, cibles, enFile: true, automatique: true });
         bilan.lancees += 1;
       } catch (e) {
         // La raison est dans le journal du serveur : une découverte ne doit pas échouer ici.
@@ -5443,8 +5751,13 @@ function direRefusAuto(message) {
    ne dépende d'aucune convention de nommage. */
 async function mrDeMoi(mr) {
   const auteur = String(mr.author || '').trim().toLowerCase();
-  if (!auteur) return false;
+  const pseudo = String(mr.author_username || '').trim().toLowerCase();
+  if (!auteur && !pseudo) return false;
   const moi = await forgeIdentite(forge.forgeOf(mr));
+  /* L'IDENTIFIANT D'ABORD : le nom affiché se change en deux clics, et « Alice Martin » chez un
+     inconnu suffisait à passer pour Alice. Le nom ne sert que de repli, pour une MR découverte
+     avant que l'identifiant ne soit relevé. */
+  if (pseudo && moi.username) return pseudo === String(moi.username).trim().toLowerCase();
   const noms = [moi.username, moi.name].filter(Boolean).map((v) => String(v).trim().toLowerCase());
   if (!noms.length) return null;      // compte inconnu : on ne peut pas trancher (≠ « pas de moi »)
   return noms.includes(auteur);
@@ -5454,6 +5767,12 @@ async function mrDeMoi(mr) {
    « l'auteur », la question n'a de réponse que merge request par merge request. */
 async function mrsAMoi(quoi, mrIds) {
   const liste = (Array.isArray(mrIds) ? mrIds : []).filter((id) => id != null);
+  /* LES RÉGLAGES QUI FONT TOURNER LES AUTOMATISMES ONT CHANGÉ PAR LA SYNCHRO, SANS ÊTRE VUS ICI :
+     rien ne part tant qu'ils ne sont pas approuvés sur ce poste (Réglages → Merge Request). */
+  if (liste.length && !approbation.configApprouvee(getConfig())) {
+    direRefusAuto(`${quoi} : les réglages d'automatisme ont changé par la synchro — à approuver dans Réglages → Merge Request`);
+    return [];
+  }
   const e = executantAuto();
   if (e.mode === 'tous') return liste;
   if (e.mode === 'personne') {
@@ -5465,7 +5784,7 @@ async function mrsAMoi(quoi, mrIds) {
   const gardees = [];
   let inconnu = false;
   for (const id of liste) {
-    const mr = db.prepare(`SELECT mr.author AS author, repo.forge AS forge
+    const mr = db.prepare(`SELECT mr.author AS author, mr.author_username AS author_username, repo.forge AS forge
       FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?`).get(Number(id));
     if (!mr) continue;
     const mien = await mrDeMoi(mr);
@@ -5583,7 +5902,7 @@ app.get('/api/jobs/history', wrap((req, res) => {
      plusieurs jobs tournent de front, le cas est courant. Un job non terminé est classé sur son
      démarrage — c'est bien l'activité en cours, donc en tête. */
   const rows = db.prepare(`SELECT id, kind, status, total, done_count, message, started_at, finished_at,
-    target_kind, target_id, current_mr_id FROM job
+    target_kind, target_id, current_mr_id, retry FROM job
     ORDER BY COALESCE(finished_at, started_at) DESC, id DESC LIMIT ?`).all(limit);
 
   /* Le libellé de l'objet est résolu ICI : le front n'a en mémoire que les listes qu'il affiche,
@@ -5622,7 +5941,9 @@ app.get('/api/jobs/history', wrap((req, res) => {
     /* A40 — LA RAISON D'UN ÉCHEC, et s'il se rejoue. `message` était renvoyé et jamais rendu :
        l'historique disait « erreur » sans dire laquelle, et il fallait ouvrir le journal
        ligne à ligne. `can_retry` évite d'afficher un bouton qui répondrait 400. */
-    return { ...j, label, href, can_retry: jobs.canRetry(j) };
+    // `retry` sert à `canRetry` (sans lui, jamais de bouton « Relancer ») ; la spec n'a pas à sortir.
+    const { retry, ...ligne } = j;
+    return { ...ligne, label, href, can_retry: jobs.canRetry(j) };
   });
   // `latest` = plus grand id vu, pas le premier de la liste : l'ordre d'affichage n'est plus
   // celui des ids, et un curseur pris sur la tête raterait un job plus récent classé plus bas.
@@ -5752,9 +6073,11 @@ app.post('/api/export/docx', wrap((req, res) => {
 /* ---------- Sauvegarde des données ----------
    Tout le travail accumulé — rapports, verdicts, sessions, suivi de résolution — vit dans un
    seul dossier qu'aucune commande n'exportait. Une suppression accidentelle ou un disque qui
-   lâche effaçait des mois de contexte sans recours. C'est un TÉLÉCHARGEMENT (donc `GET`) :
-   l'opération ne change rien côté serveur. */
-app.get('/api/backup', wrap(async (req, res) => {
+   lâche effaçait des mois de contexte sans recours.
+   UN POST, ET NON UN GET, bien que rien ne change côté serveur : l'archive porte la base
+   ENTIÈRE, jetons compris. Un GET échappe au filtre d'origine — une page tierce pouvait donc
+   déclencher le téléchargement ; un POST doit venir de l'application. */
+app.post('/api/backup', wrap(async (req, res) => {
   const { buffer, contenu } = await backup.construire(db);
   const nom = backup.nomArchive();
   res.setHeader('Content-Type', 'application/zip');
@@ -5781,8 +6104,19 @@ const msgNotes = () => ({
   soiMeme: t('err.notes.parent-self'),
 });
 
+/* QUI A PARTAGÉ. L'auteur d'un objet partagé est celui qui a commité son fichier (git le sait,
+   voir `auteurs`) : on le sert pour les pages et les todos comme pour les sessions, sur la ligne
+   COMPLÈTE — la liste des pages ne porte pas le slug qui nomme le fichier. */
+function auteursPartages(table, lignes, relire) {
+  const partagees = lignes.filter((x) => x.shared);
+  if (!partagees.length) return new Map();
+  return auteurs(table, partagees.map((x) => relire(x.id)).filter(Boolean));
+}
+
 app.get('/api/notes', wrap((req, res) => {
-  res.json({ pages: notes.listerPages(req.query.q) });
+  const pages = notes.listerPages(req.query.q);
+  const parQui = auteursPartages('note_page', pages, notes.lirePage);
+  res.json({ pages: pages.map((p) => ({ ...p, author: parQui.get(p.id) || null })) });
 }));
 
 app.post('/api/notes', wrap((req, res) => {
@@ -5826,14 +6160,39 @@ app.get('/api/notes/:id', wrap((req, res) => {
   /* Ses sous-pages, et le titre de son parent si c'en est une : l'écran a besoin des deux
      pour se situer, et un second aller-retour par page ouverte se verrait à la frappe. */
   const parent = page.parent_id ? notes.lirePage(page.parent_id) : null;
-  res.json({ ...page, children: notes.sousPages(page.id), parent_title: parent ? parent.title : null });
+  res.json({
+    ...page, children: notes.sousPages(page.id), parent_title: parent ? parent.title : null,
+    author: page.shared ? auteurDeLigne('note_page', page) : null,
+  });
 }));
 
+/* NE PLUS PARTAGER OU SUPPRIMER UNE PAGE, UNE TODO PARTAGÉES : l'auteur seul, comme pour les
+   sessions. Ces deux gestes retirent le fichier du dépôt, donc de chez tout le monde — depuis le
+   poste d'un collègue, c'était effacer son travail. Le modifier reste permis : c'est un wiki. */
+function exigerAuteurSiRetrait(table, row, body) {
+  if (!row || !row.shared) return;
+  if (body === null || ('shared' in body && !body.shared)) exigerProprietaire(table, row);
+}
+
 app.put('/api/notes/:id', wrap((req, res) => {
-  res.json(notes.majPage(req.params.id, req.body || {}, msgNotes()));
+  const { base_updated_at: base, ...corps } = req.body || {};
+  const avant = notes.lirePage(req.params.id);
+  exigerAuteurSiRetrait('note_page', avant, corps);
+  /* LA PAGE A-T-ELLE CHANGÉ DEPUIS QUE L'ÉDITEUR L'A CHARGÉE ? Une synchro a pu apporter la
+     version d'un collègue pendant qu'on écrivait : l'autosauvegarde l'écrasait alors en
+     silence. L'éditeur envoie la date de ce qu'il a sous les yeux ; différente, on refuse et on
+     rend la version actuelle — c'est à la personne de choisir, pas à l'ordre des requêtes. */
+  if (base && avant && String(avant.updated_at) !== String(base)) {
+    throw Object.assign(new Error(t('err.notes.changed')), {
+      status: 409, code: 'PAGE_MODIFIEE',
+      extra: { page: avant, author: auteurDeLigne('note_page', avant) },
+    });
+  }
+  res.json(notes.majPage(req.params.id, corps, msgNotes()));
 }));
 
 app.delete('/api/notes/:id', wrap((req, res) => {
+  exigerAuteurSiRetrait('note_page', notes.lirePage(req.params.id), null);
   // Les lignes partent en cascade ; les FICHIERS, eux, resteraient sur le disque.
   const dossier = path.join(NOTES_DIR, String(Number(req.params.id) || 0));
   const out = notes.supprimerPage(req.params.id, msgNotes());
@@ -5878,9 +6237,8 @@ app.get('/api/notes/:id/images/:imgId', wrap((req, res) => {
   const im = db.prepare('SELECT * FROM note_image WHERE id = ? AND page_id = ?')
     .get(Number(req.params.imgId), Number(req.params.id));
   if (!im || !fs.existsSync(im.path)) throw Object.assign(new Error(t('err.notes.image-unknown')), { status: 404 });
-  res.setHeader('Content-Type', TYPE_IMAGE[path.extname(im.path).slice(1).toLowerCase()] || 'application/octet-stream');
   res.setHeader('Cache-Control', 'private, max-age=86400');   // le contenu d'une capture ne change pas
-  res.sendFile(im.path);
+  servirFichierNonFiable(res, { chemin: im.path, mime: TYPE_IMAGE[path.extname(im.path).slice(1).toLowerCase()] });
 }));
 
 /* Export d'une page en Markdown. Le nom du fichier est SLUGIFIÉ depuis le titre : un titre
@@ -5948,9 +6306,11 @@ app.get('/api/todos', wrap((req, res) => {
   const todos = notes.listerTodos(req.query.status);
   const etats = etatMrDesTodos(todos);
   const tickets = etatTicketDesTodos(todos);
+  const parQui = auteursPartages('todo', todos, (id) => todos.find((x) => x.id === id));
   res.json({
     todos: todos.map((x) => ({
       ...x,
+      author: parQui.get(x.id) || null,
       mr: x.link_kind === 'mr' ? (etats[Number(x.link_ref)] || null) : null,
       ticket: x.link_kind === 'ticket' ? (tickets[String(x.link_ref || '').toUpperCase()] || null) : null,
     })),
@@ -5979,10 +6339,12 @@ app.put('/api/todos/:id', wrap((req, res) => {
     body.due_at = quand;
     delete body.snooze;
   }
+  exigerAuteurSiRetrait('todo', db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(req.params.id) || 0), body);
   res.json(notes.majTodo(req.params.id, body, msgNotes()));
 }));
 
 app.delete('/api/todos/:id', wrap((req, res) => {
+  exigerAuteurSiRetrait('todo', db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(req.params.id) || 0), null);
   res.json(notes.supprimerTodo(req.params.id, msgNotes()));
 }));
 
@@ -6544,7 +6906,7 @@ app.post('/api/mrs/:id/ticket', wrap((req, res) => {
 app.get('/api/mrs/:id/ticket-image', (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr || !mr.ticket_image || !fs.existsSync(mr.ticket_image)) return res.status(404).end();
-  return res.sendFile(path.resolve(mr.ticket_image));
+  return servirFichierNonFiable(res, { chemin: mr.ticket_image });
 });
 
 app.post('/api/mrs/:id/review', wrap((req, res) => {
@@ -6763,10 +7125,11 @@ app.post('/api/mrs/:id/rereview', wrap((req, res) => {
 // « Converger » : boucle autonome review → correction IA (commit + push) → re-review
 // incrémentale, jusqu'au seuil / à la régression / au plafond. JAMAIS de merge.
 // seuil et plafond : réglage global par défaut, surchargeables au lancement.
-app.post('/api/mrs/:id/converge', wrap((req, res) => {
+app.post('/api/mrs/:id/converge', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (mr.status === 'done') throw new Error(t('err.mr-marquee-done-re-review'));
+  await gardeConfigAgent(db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id), mr.source_branch, mr.target_branch, req.body);
   const job = jobs.startConvergeJob(mr.id, parseConvergeOpts(req.body));
   res.json(job);
 }));
@@ -6778,13 +7141,14 @@ app.post('/api/mrs/:id/converge', wrap((req, res) => {
    autres gabarits. Vide → le défaut de la langue courante. */
 function promptCorrection(mr, reviewMd) {
   return reviewer.fillTemplate(prompts.gabarit('prompt_fix', getConfig()), {
-    source: mr.source_branch, target: mr.target_branch || '', report: reviewMd,
+    source: mr.source_branch, target: mr.target_branch || '', report: nonFiable('rapport de revue', reviewMd),
   });
 }
 
-app.post('/api/mrs/:id/fix-review', wrap((req, res) => {
+app.post('/api/mrs/:id/fix-review', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
+  await gardeConfigAgent(db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id), mr.source_branch, mr.target_branch, req.body);
   const rev = db.prepare('SELECT md_path FROM review WHERE mr_id = ?').get(mr.id);
   const reviewMd = rev ? readFileSafe(rev.md_path) : null;
   if (!reviewMd) throw new Error(t('err.aucune-review-a-corriger-pour'));
@@ -8024,6 +8388,21 @@ i18n.setLang(getConfig().language);
   }
 }
 
+/* LA DERNIÈRE ÉTAPE : TOUTE ERREUR QUI N'A PAS ÉTÉ RATTRAPÉE RÉPOND EN JSON. Sans elle, Express
+   rendait sa page d'erreur — pile d'appels et chemins absolus de la machine compris — pour un
+   JSON malformé ou une route hors `wrap`. Le détail va au journal du serveur, pas à la réponse. */
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (res.headersSent) { try { res.end(); } catch { /* socket fermé */ } return; }
+  const brut = Number(err && (err.status || err.statusCode));
+  const status = brut >= 400 && brut < 600 ? brut : 500;
+  if (status >= 500) console.log(`[http] ${req.method} ${req.path} : ${(err && err.message) || err}`);
+  res.status(status).json({
+    error: err && err.type === 'entity.parse.failed' ? t('err.http.json-illisible')
+      : (status >= 500 ? t('err.http.interne') : t('err.http.requete-invalide')),
+  });
+});
+
 // Bind sûr par défaut : localhost SEULEMENT. HOST=0.0.0.0 est un opt-in explicite pour exposer
 // sur le réseau (voir la section Sécurité du README).
 const HOST = process.env.HOST || '127.0.0.1';
@@ -8036,9 +8415,27 @@ const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 const HOST_EXPOSED = !LOOPBACK.includes(HOST);
 // IPv6 : l'hôte doit être crocheté dans l'URL (http://[::1]:4319).
 const HOST_SHOWN = HOST === '0.0.0.0' ? 'localhost' : (HOST.includes(':') ? `[${HOST}]` : HOST);
+/* ARRÊTER LE SERVEUR ARRÊTE CE QU'IL A LANCÉ. Les agents, les commandes de vérificateur et git
+   tournent chacun dans leur propre groupe de processus (`proc.options`) : un Ctrl-C ne les
+   atteint plus directement. Sans ce relais, arrêter Mergerie laissait un agent continuer
+   d'écrire dans un clone, un `npm test` de tourner, sans plus personne pour les regarder. */
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    proc.tuerTout('SIGTERM');
+    setTimeout(() => { proc.tuerTout('SIGKILL'); process.exit(0); }, 500);
+  });
+}
+
+/* EXPOSÉ SANS JETON, ON NE DÉMARRE PAS. Un avertissement dans la console ne protégeait
+   personne : l'outil n'a pas de comptes, et quiconque joignait le port pilotait les agents du
+   poste avec ses jetons. Le refus dit quoi faire. */
+if (HOST_EXPOSED && !JETON_ACCES) {
+  console.error(`✗ HOST=${HOST} ouvre Mergerie au réseau, et il n'a pas de comptes : définis MERGERIE_ACCESS_TOKEN (une longue chaîne aléatoire) pour exiger un jeton, ou retire HOST pour rester sur localhost.`);
+  process.exit(1);
+}
 const server = app.listen(PORT, HOST, () => {
   console.log(`Mergerie sur http://${HOST_SHOWN}:${server.address().port}`);
-  if (HOST_EXPOSED) console.log(`  ⚠ exposé hors de localhost (HOST=${HOST}) — aucune authentification, voir README § Sécurité`);
+  if (HOST_EXPOSED) console.log(`  ⚠ exposé hors de localhost (HOST=${HOST}) — accès par jeton (MERGERIE_ACCESS_TOKEN), page /acces`);
   console.log(`  copilot : ${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`);
   console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
   restartAutoRefresh();
@@ -8067,6 +8464,17 @@ const server = app.listen(PORT, HOST, () => {
       console.log(`  données partagées : ${retard.ecrits} fichier(s) réécrit(s), ${retard.supprimes} retiré(s) après l’arrêt`);
     }
   } catch (e) { console.log(`[store] ${e.message}`); }
+  /* LES CLONES D'AVANT portaient le jeton de la forge dans `origin` : on le retire de ceux qui
+     dorment, sans attendre leur prochain fetch. */
+  git.nettoyerOrigines(getConfig())
+    .then((n) => { if (n) console.log(`  clones : jeton retiré de ${n} adresse(s) d'origin`); })
+    .catch((e) => console.log(`[git] nettoyage des origines : ${e.message}`));
+  /* L'EXISTANT EST APPROUVÉ UNE FOIS, avant que la synchro n'apporte quoi que ce soit : sans ça,
+     la montée de version bloquerait d'un coup tous les vérificateurs et agents de l'utilisateur. */
+  try {
+    const repris = approbation.reprendreLExistant(getConfig);
+    if (repris) console.log(`  approbations : ${repris} objet(s) existant(s) repris tels quels`);
+  } catch (e) { console.log(`[approbation] ${e.message}`); }
   /* CE CODE EN SAIT-IL PLUS QU'HIER ? L'hydratation est incrémentale : un réglage d'équipe ajouté
      par une nouvelle version n'est jamais lu si le fichier qui le porte a déjà été hydraté par
      l'ancienne. On relit donc tout une fois quand la signature du format change — après avoir

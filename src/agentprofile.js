@@ -19,6 +19,7 @@ const { slugLibre } = require('./ulid');
 const { etat } = require('./localstate');
 const store = require('./store');
 const agentargs = require('./agentargs');
+const approbation = require('./approbation');
 const agentdefaults = require('./agentdefaults');
 const agentinput = require('./agentinput');
 const protocol = require('./protocol');
@@ -63,7 +64,13 @@ function decorer(a) {
      et disent la seule chose actionnable — combien de texte cet agent brasse à chaque passage. */
   const cout = dernier ? db.prepare(`SELECT SUM(tokens_est) tok FROM usage
     WHERE owner_kind = 'task' AND owner_id = ?`).get(dernier.task_id) : null;
+  /* À APPROUVER SUR CE POSTE : permissions, outils ou horaire arrivés changés par la synchro.
+     `approved_before` montre ce qui a changé, pas seulement que quelque chose a changé. */
+  const approval = { pending: !approbation.agentApprouve(a.id), before: approbation.agentApprouveAvant(a.id) };
   return {
+    approval_pending: approval.pending,
+    approved_before: approval.before,
+    approval_signature: approbation.signature(approbation.empreinteAgent(a.id)),
     ...a,
     repos: repos(a.id),
     is_domain: a.knowledge_prompt != null,
@@ -250,6 +257,9 @@ function creer(body) {
     ecrireRepos(id, body.repos);
     return id;
   });
+  /* Créé ICI — par l'écran, par une copie, par le semis des agents livrés : approuvé au passage.
+     Ce qui arrive par la synchro ne passe pas par cette fonction, et attendra. */
+  approbation.approuverAgent(cree.id);
   return lire(cree.id);
 }
 
@@ -263,6 +273,8 @@ function modifier(id, patch) {
     if (patch.repos !== undefined) ecrireRepos(a.id, patch.repos);
     return a.id;
   });
+  /* Modifié dans le formulaire qui montre les permissions : c'est une approbation. */
+  approbation.approuverAgent(a.id);
   return lire(a.id);
 }
 
@@ -308,6 +320,14 @@ function dupliquer(id) {
     repos: repos(a.id),
   });
   return copie;
+}
+
+function exigerApprobation(agent) {
+  if (!agent || !agent.id || approbation.agentApprouve(agent.id)) return;
+  const e = new Error(t('agents.err.not-approved', { name: agent.name }));
+  e.code = 'APPROBATION';
+  e.status = 409;
+  throw e;
 }
 
 /* ---------- Agents livrés ---------- */
@@ -506,6 +526,10 @@ function materialize(agent, { mode = 'ask', question = '', repoIds = null } = {}
 }
 
 function lancer(agent, { mode = 'ask', question = '', repoIds = null, triggeredBy = 'manual', agentIdSur = null } = {}) {
+  /* DES PERMISSIONS OU UN HORAIRE VENUS D'AILLEURS NE TOURNENT PAS AVANT D'AVOIR ÉTÉ VUS ICI.
+     Une porte pour le lancement manuel, la planification et la mise à jour d'un agent de
+     domaine — tous passent par ici. */
+  exigerApprobation(agent);
   // eslint-disable-next-line global-require
   const tasks = require('./tasks');
   // eslint-disable-next-line global-require

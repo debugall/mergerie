@@ -17,6 +17,8 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const db = require('./db');
 const git = require('./git');
+const proc = require('./proc');
+const gitpalette = require('./gitpalette');
 const { t } = require('../public/i18n-runtime.js');
 
 // Mode démo : dépôts locaux FICTIFS (la machine réelle n'existe pas en démo) pour que
@@ -292,6 +294,9 @@ const DANGEROUS_GIT_ARG = /^(-c|--config(-env)?|-C|--exec-path|--git-dir|--work-
 // URL de transport « helper » (ext::/fd:: = exécution de commande) passée comme argument.
 const DANGEROUS_TRANSPORT = /^(ext|fd)::/i;
 
+/* La liste noire ci-dessus reste une première ligne, et la LISTE BLANCHE (`gitpalette.js`)
+   décide : sous-commandes admises, options qui exécutent refusées par préfixe, pas de chemin
+   hors du dépôt. Une liste noire se contourne par ce qu'elle n'a pas prévu. */
 function assertSafeGitArgs(args) {
   if (!args.length) throw new Error(t('err.gitcmd.empty'));
   // Le 1er token DOIT être une sous-commande (fetch, status…), pas une option globale : sinon
@@ -300,20 +305,45 @@ function assertSafeGitArgs(args) {
   for (const a of args) {
     if (DANGEROUS_GIT_ARG.test(a) || DANGEROUS_TRANSPORT.test(a)) throw new Error(t('err.gitcmd.forbidden-arg', { arg: a }));
   }
+  gitpalette.verifierArgs(args);
 }
 
 // `git <args>` à la racine d'un projet. Capture stdout+stderr et le code de sortie ; NE LÈVE PAS
 // sur code ≠ 0 : un échec fait partie du bilan (on l'affiche), il n'interrompt pas les autres.
 // Préfixes défensifs : protocole ext:: interdit, pas d'invite bloquante (defense-in-depth).
+/* LA MÊME PORTE QUE LES COMMANDES GIT DE MERGERIE (`git.argsDurcis`) : ni hook, ni fsmonitor,
+   ni diff externe. L'environnement est en liste blanche, SANS le jeton de la forge : ce dossier
+   est celui de l'utilisateur, ses remotes s'authentifient par ses propres moyens (agent ssh,
+   trousseau). Un DÉLAI, et une sortie plafonnée PENDANT la lecture : un `log` sans borne sur un
+   dépôt de dix ans ne remplit plus la mémoire avant d'être tronqué. */
+const DELAI_GIT_MS = 60000;
+const SORTIE_MAX = 20000;
+function envPalette() {
+  const env = git.envGit();
+  for (const k of Object.keys(env)) if (/^GIT_CONFIG_(KEY|VALUE)_/.test(k)) delete env[k];
+  env.GIT_CONFIG_COUNT = '0';
+  return env;
+}
 function runGitAt(dir, args) {
-  const full = ['-c', 'protocol.ext.allow=never', ...args];
+  const full = git.argsDurcis(args);
   return new Promise((resolve) => {
-    const child = spawn('git', full, { cwd: dir, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    const child = spawn('git', full, proc.options({ cwd: dir, env: envPalette() }));
     let out = '';
-    child.stdout.on('data', (d) => { out += d; });
-    child.stderr.on('data', (d) => { out += d; });
-    child.on('error', (e) => resolve({ code: -1, output: String(e.message) }));
-    child.on('close', (code) => resolve({ code, output: out }));
+    let tronque = false;
+    const lire = (d) => {
+      if (out.length >= SORTIE_MAX) { tronque = true; return; }
+      out += d;
+      if (out.length > SORTIE_MAX) { out = out.slice(0, SORTIE_MAX); tronque = true; }
+    };
+    const minuteur = setTimeout(() => {
+      tronque = true;
+      out += `\n${t('err.gitcmd.timeout', { s: DELAI_GIT_MS / 1000 })}`;
+      proc.tuerGroupe(child);
+    }, DELAI_GIT_MS);
+    child.stdout.on('data', lire);
+    child.stderr.on('data', lire);
+    child.on('error', (e) => { clearTimeout(minuteur); resolve({ code: -1, output: String(e.message) }); });
+    child.on('close', (code) => { clearTimeout(minuteur); resolve({ code, output: out, truncated: tronque }); });
   });
 }
 
@@ -344,9 +374,8 @@ async function runCommand(targets, command) {
       if (!isGitRepo(dir)) throw new Error(t('err.local-project.not-git', { name }));
       const r = await runGitAt(dir, args);
       out.code = r.code; out.ok = r.code === 0;
-      const text = r.output || '';
-      out.output = text.slice(0, 20000);
-      out.truncated = text.length > 20000;
+      out.output = r.output || '';
+      out.truncated = !!r.truncated;
     } catch (e) {
       out.output = String(e.message); out.ok = false; out.code = -1;
     }

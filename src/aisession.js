@@ -46,10 +46,10 @@ async function runSessionTest(onLog = () => {}) {
 
     onLog(t('log.aisession.backend', { backend, key }));
     onLog(t('log.aisession.pass1'));
-    const r1 = await agentsession.runInSession({ key, prompt: P1, cwd, resume: false, onLog });
+    const r1 = await agentsession.runInSession({ key, prompt: P1, cwd, resume: false, onLog, saveur: 'test' });
 
     onLog(t('log.aisession.pass2'));
-    const r2 = await agentsession.runInSession({ key, handle: r1.handle, prompt: P2, cwd, resume: true, onLog });
+    const r2 = await agentsession.runInSession({ key, handle: r1.handle, prompt: P2, cwd, resume: true, onLog, saveur: 'test' });
 
     const recalled = String(r2.text || '').toUpperCase().includes(marker);
     const sameSession = (r1.sessionId && r2.sessionId) ? (r1.sessionId === r2.sessionId) : null;

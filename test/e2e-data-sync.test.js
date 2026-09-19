@@ -415,7 +415,7 @@ describe('Données partagées · l’écran et le dépôt', { skip: dispo ? fals
        simple commit suivi d'un push serait refusé. */
     /* CE QUI VA SE PASSER SE LIT AVANT : ajoutés, modifiés, inchangés — et zéro supprimé, qui
        n'est pas une estimation mais une propriété de l'export. */
-    const ap = (await app.api('GET', '/api/data-sync/preview')).body;
+    const ap = (await app.api('POST', '/api/data-sync/preview', {})).body;
     assert.equal(ap.ecriture.supprimes, 0, 'l’envoi n’efface rien, jamais');
     assert.ok(ap.ecriture.nouveaux > 0, 'le dépôt est vide : tout est à (re)poser');
 

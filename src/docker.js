@@ -109,6 +109,26 @@ function isSecretName(name) {
   return /(pass(word|wd)?|secret|token|api[_-]?key|_key$|^key$|credential|private)/i.test(String(name || ''));
 }
 
+/* …ET UNE VALEUR QUI A L'AIR D'UN SECRET, quel que soit son nom. `DATABASE_URL` n'a rien de
+   sensible dans son nom et porte `postgres://app:motdepasse@…` ; `GH=ghp_…` non plus. On masque
+   donc aussi sur la valeur : identifiants dans une URL, préfixes de jetons connus, et chaîne
+   longue à forte entropie (un jeton aléatoire, pas un chemin ni une phrase). */
+const PREFIXES_JETON = /^(ghp_|gho_|ghu_|ghs_|github_pat_|glpat-|gldt-|sk-|sk_live_|rk_live_|xox[abprs]-|AKIA|ASIA|AIza|eyJ)/;
+function entropie(s) {
+  const n = s.length;
+  const f = {};
+  for (const c of s) f[c] = (f[c] || 0) + 1;
+  return Object.values(f).reduce((h, k) => h - (k / n) * Math.log2(k / n), 0);
+}
+function isSecretValue(value) {
+  const v = String(value == null ? '' : value).trim();
+  if (!v) return false;
+  if (/:\/\/[^\s:@/]+:[^\s@/]+@/.test(v)) return true;                 // user:pass@ dans une URL
+  if (PREFIXES_JETON.test(v)) return true;
+  return v.length >= 24 && !/\s/.test(v) && !/^[./~]/.test(v) && /^[A-Za-z0-9+/=_\-.]+$/.test(v) && entropie(v) >= 4;
+}
+const estSecret = (name, value) => isSecretName(name) || isSecretValue(value);
+
 // ["K=V", "A=b=c"] → { K:'V', A:'b=c' }.
 function envArrayToMap(arr) {
   const out = {};
@@ -140,7 +160,8 @@ function diffEnv(expected, effective) {
   const diffs = [];
   for (const [name, want] of Object.entries(expected)) {
     const has = Object.prototype.hasOwnProperty.call(effective, name);
-    const masked = isSecretName(name);
+    // Masqué si le NOM ou l'une des deux VALEURS a l'air d'un secret.
+    const masked = estSecret(name, want) || (has && isSecretValue(effective[name]));
     if (!has) {
       diffs.push({ name, kind: 'added', masked, ...(masked ? {} : { to: String(want) }) });
     } else if (String(effective[name]) !== String(want)) {
@@ -204,7 +225,7 @@ function reconstructRunCommand(inspect) {
     const k = i === -1 ? line : line.slice(0, i);
     const v = i === -1 ? '' : line.slice(i + 1);
     if (Object.prototype.hasOwnProperty.call(imgEnv, k) && imgEnv[k] === v) continue; // hérité de l'image
-    parts.push(isSecretName(k) ? `-e ${k}=***` : `-e ${k}=${/\s/.test(v) ? `"${v}"` : v}`);
+    parts.push(estSecret(k, v) ? `-e ${k}=***` : `-e ${k}=${/\s/.test(v) ? `"${v}"` : v}`);
   }
   parts.push(cfg.Image || (inspect.Image || 'image'));
   // Commande explicite (si différente de l'entrypoint par défaut de l'image).
@@ -786,7 +807,7 @@ module.exports = {
   restoreArgs, restoreContainer,
   status, explainDockerError,
   composeProjects, composeFileList, composeOne, orphans, previewDown, runCompose, runDown, stopContainer, removeContainer, composeArgs,
-  inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary,
+  inspect, imageEnv, reconstructRunCommand, makefileFor, runMake, listContainers, spawnLogs, summary, gitDuRepertoire,
   // pur (tests) :
-  isSecretName, exitCodeOf, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, oomKilled, oomDepuisInspect, defaultProjectName, COMPOSE_FILES,
+  isSecretName, isSecretValue, exitCodeOf, envArrayToMap, serviceExpectedEnv, diffEnv, imageDrift, serviceBadge, parseLabels, composeFilesUnder, parseMakefileTargets, validRef, healthSummary, oomKilled, oomDepuisInspect, defaultProjectName, COMPOSE_FILES,
 };

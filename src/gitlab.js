@@ -125,6 +125,12 @@ async function listOpenMRs(cfg, project, pattern) {
         || (typeof m.title === 'string' && /^\s*(draft|wip)\s*:/i.test(m.title)),
       reviewers: Array.isArray(m.reviewers)
         ? m.reviewers.map((r) => (r && (r.username || r.name)) || '').filter(Boolean) : [],
+      /* QUI, par son identifiant — le nom affiché se change en deux clics —, et D'OÙ : une
+         merge request venue d'un fork porte le code de quelqu'un qui n'a pas accès au projet.
+         La vérification automatique s'en sert pour ne pas l'exécuter. */
+      author_username: (m.author && m.author.username) || '',
+      is_fork: m.source_project_id != null && m.target_project_id != null
+        && m.source_project_id !== m.target_project_id,
     }));
 }
 

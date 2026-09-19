@@ -60,9 +60,9 @@ async function discoverAll() {
   const selectMr = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?');
   const insertMr = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at,
-     has_conflicts, is_draft, reviewers, description)
+     has_conflicts, is_draft, reviewers, description, author_username, is_fork)
     VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @gitlab_created_at, @author, 'to_review', @updated_at,
-     @has_conflicts, @is_draft, @reviewers, @description)`);
+     @has_conflicts, @is_draft, @reviewers, @description, @author_username, @is_fork)`);
   /* `has_conflicts` n'est écrasé QUE si la liste a une réponse : `COALESCE` garde ce qu'une
      tentative de merge (ou le détail d'une MR de session) a appris, plutôt que de le remplacer
      par « on ne sait pas » au prochain tour de découverte. */
@@ -70,7 +70,7 @@ async function discoverAll() {
     title = @title, source_branch = @source_branch, target_branch = @target_branch,
     web_url = @web_url, current_sha = @current_sha, gitlab_created_at = @gitlab_created_at, author = @author, updated_at = @updated_at,
     has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft, reviewers = @reviewers,
-    description = @description,
+    description = @description, author_username = @author_username, is_fork = @is_fork,
     closed_seen = 0
     WHERE id = @id`);
   const insertFeed = db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)');
@@ -101,6 +101,8 @@ async function discoverAll() {
           has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
           is_draft: m.draft ? 1 : 0,
           reviewers: Array.isArray(m.reviewers) ? m.reviewers.join(',') : '',
+          author_username: String(m.author_username || ''),
+          is_fork: m.is_fork === true ? 1 : (m.is_fork === false ? 0 : null),
         };
         if (existing) {
           // Le SHA a bougé → tout verdict déjà rendu sur cette MR est périmé.

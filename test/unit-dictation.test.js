@@ -349,12 +349,14 @@ describe('Dictée · le moteur local et son diagnostic', () => {
   before(() => {
     fs.writeFileSync(modele, Buffer.concat([Buffer.from('lmgg'), Buffer.alloc(64)]));
     delete process.env.DICTATION_DRY_RUN;
+    // Un faux moteur lancé par node : la garde de saisie ne l'admettrait pas (ce n'est pas
+    // `whisper-server`), on l'écrit donc comme l'installation écrit le sien.
     updateConfig({
       dictation_provider: 'local',
       dictation_command: `${process.execPath} ${faux}`,
       dictation_model: modele,
       dictation_vad_model: '',
-    });
+    }, { installation: true });
   });
   after(() => { dictation.arreterMoteur(); updateConfig({ dictation_provider: 'off', dictation_command: '' }); });
 

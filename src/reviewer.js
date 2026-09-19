@@ -7,6 +7,8 @@ const { getConfig } = require('./config');
 const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('./paths');
 const git = require('./git');
 const copilot = require('./copilot');
+const agentpolicy = require('./agentpolicy');
+const { nonFiable } = require('./nonfiable');
 const agentsession = require('./agentsession');
 const { extractNote } = require('./note');
 const resolution = require('./resolution');
@@ -108,8 +110,8 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
        (`{title}`, `{description}`) ; et qu'il le fasse ou non, le bloc ci-dessous l'ajoute au
        prompt — un gabarit personnalisé, écrit avant que ces variables n'existent, doit en
        profiter aussi. C'est la même règle que les constats et les numéros de ligne. */
-    title: mr.title || '',
-    description: mr.description || '',
+    title: nonFiable('titre de la MR', mr.title),
+    description: nonFiable('description de la MR', mr.description),
   };
 
   // Contexte du ticket. DEUX sources distinctes réunies ici :
@@ -122,18 +124,18 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
      déjà beaucoup ; la description, quand elle existe, vaut le reste. */
   let intentionBlock = '';
   if (mr.title && String(mr.title).trim()) {
-    intentionBlock += `\n\n${t('review.intent.title', { title: String(mr.title).trim() })}`;
+    intentionBlock += `\n\n${t('review.intent.title', { title: nonFiable('titre de la MR', mr.title) })}`;
   }
   if (mr.description && String(mr.description).trim()) {
-    intentionBlock += `\n\n${t('review.intent.description', { description: String(mr.description).trim() })}`;
+    intentionBlock += `\n\n${t('review.intent.description', { description: nonFiable('description de la MR', mr.description) })}`;
   }
 
   let ticketBlock = '';
   if (mr.ticket_jira_text && mr.ticket_jira_text.trim()) {
-    ticketBlock += `\n\nContexte du ticket ${mr.ticket_jira_key || ''} (récupéré depuis Jira), à prendre en compte dans l'analyse :\n"""\n${mr.ticket_jira_text.trim()}\n"""`;
+    ticketBlock += `\n\nContexte du ticket ${mr.ticket_jira_key || ''} (récupéré depuis Jira), à prendre en compte dans l'analyse :\n${nonFiable('ticket Jira', mr.ticket_jira_text)}`;
   }
   if (mr.ticket_text && mr.ticket_text.trim()) {
-    ticketBlock += `\n\nContexte complémentaire fourni par le relecteur (spécification, règle métier, échange…), à prendre en compte dans l'analyse :\n"""\n${mr.ticket_text.trim()}\n"""`;
+    ticketBlock += `\n\nContexte complémentaire fourni par le relecteur (spécification, règle métier, échange…), à prendre en compte dans l'analyse :\n${nonFiable('contexte du relecteur', mr.ticket_text)}`;
   }
   if (mr.ticket_image && fs.existsSync(mr.ticket_image)) {
     const ext = path.extname(mr.ticket_image) || '.png';
@@ -193,7 +195,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       const ag = db.prepare('SELECT * FROM agent WHERE id = ?').get(c.agent_id);
       const idx = ag ? agentknowledge.indexFor(ag) : '';
       if (!idx) continue;
-      carteBlock += `\n\n${t('review.card-context', { name: c.name })}\n"""\n${idx}\n"""`;
+      carteBlock += `\n\n${t('review.card-context', { name: c.name })}\n${nonFiable(`carte ${c.name}`, idx)}`;
     }
     if (carteBlock) onLog(t('log.review.cards', { n: cartes.length, count: cartes.length }));
   } catch { /* best-effort : une carte illisible ne fait pas échouer une review */ }
@@ -264,10 +266,15 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     }
     const outAbs = path.join(cwd, outRel);
     try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
-    const instruction =
-      `\n\nIMPORTANT : écris le résultat final en Markdown UNIQUEMENT dans le fichier ` +
-      `\`${outRel}\` (chemin relatif au dépôt courant). Écris uniquement le contenu du ` +
-      `document dans ce fichier, sans le dupliquer dans la sortie standard.`;
+    /* En lecture seule (`agentpolicy`), l'agent n'a pas le droit d'écrire : il rend le document
+       comme réponse finale, et on le lit là. Le repli sur la sortie standard existait déjà. */
+    const instruction = agentpolicy.sortieSurStdout(kind, copilot.COPILOT_BIN)
+      ? `\n\nIMPORTANT : tu travailles en LECTURE SEULE et ne peux écrire aucun fichier. Rends le ` +
+        `document final en Markdown comme ta réponse finale, complet, et rien d'autre ; si une consigne ` +
+        `ci-dessus parle du fichier \`${outRel}\`, c'est ta réponse finale qui en tient lieu.`
+      : `\n\nIMPORTANT : écris le résultat final en Markdown UNIQUEMENT dans le fichier ` +
+        `\`${outRel}\` (chemin relatif au dépôt courant). Écris uniquement le contenu du ` +
+        `document dans ce fichier, sans le dupliquer dans la sortie standard.`;
     const rb = (kind === 'review') ? rulesBlock : ''; // règles = prompt de review uniquement
     const fi = (kind === 'review') ? FINDINGS_INSTRUCTION : ''; // constats = review uniquement
     /* Ajoutée à l'EXÉCUTION, comme les constats : le gabarit de l'utilisateur n'a pas à
@@ -304,17 +311,17 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       if (doResume && s.session_cwd && path.resolve(s.session_cwd) !== path.resolve(cwd)) doResume = false;
       let r; let created = !doResume;
       try {
-        r = await agentsession.runInSession({ key, handle: doResume ? s.session_key : null, prompt, cwd, resume: doResume, onLog });
+        r = await agentsession.runInSession({ key, handle: doResume ? s.session_key : null, prompt, cwd, resume: doResume, onLog, saveur: kind, addDirs: linkedDirs.map((d) => d.cwd) });
       } catch (e) {
         if (!doResume) throw e;
         onLog(`⚠ reprise de la session de review impossible (${String(e.message).split('\n')[0]}) → session neuve`);
-        r = await agentsession.runInSession({ key, prompt, cwd, resume: false, onLog });
+        r = await agentsession.runInSession({ key, prompt, cwd, resume: false, onLog, saveur: kind, addDirs: linkedDirs.map((d) => d.cwd) });
         created = true;
       }
       stdout = r.text || '';
       if (created) localsession.ecrire('mr', uidMr, { session_key: r.handle, session_backend: r.backend, session_cwd: cwd });
     } else {
-      stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff, owner: { kind: 'mr', id: mr.id } }, onLog);
+      stdout = await copilot.runPrompt(prompt, cwd, { ...baseVars, out_file: outRel, kind, extraInput: diff, owner: { kind: 'mr', id: mr.id }, addDirs: linkedDirs.map((d) => d.cwd) }, onLog);
     }
     let content = '';
     if (fs.existsSync(outAbs)) content = fs.readFileSync(outAbs, 'utf8').trim();
@@ -553,7 +560,7 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     if (incremental) {
       const prev = db.prepare('SELECT md_path FROM review WHERE mr_id = ?').get(mr.id);
       const previous = (prev && prev.md_path && fs.existsSync(prev.md_path)) ? fs.readFileSync(prev.md_path, 'utf8') : '';
-      extra = `\n\nRE-REVIEW INCRÉMENTALE. Un rapport de revue existe déjà pour cette MR :\n"""\n${previous || '(aucun)'}\n"""\n`
+      extra = `\n\nRE-REVIEW INCRÉMENTALE. Un rapport de revue existe déjà pour cette MR :\n${nonFiable('rapport précédent', previous) || '(aucun)'}\n`
         + `Le diff fourni ne contient QUE les changements APPARUS DEPUIS cette review (le reste de la MR est inchangé). `
         + `Produis un rapport de revue COMPLET et À JOUR de la MR : pars du rapport précédent, tiens compte de l'effet des nouveaux changements `
         + `(problèmes désormais corrigés → à retirer, nouveaux problèmes introduits → à ajouter), et rends-le dans le MÊME format et avec les MÊMES exigences qu'une revue complète (note incluse).`;
@@ -602,7 +609,15 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        journal du job dit quand une publication a été retenue, et combien de constats la
        passe comptait : « 0 constat » signale un bloc de constats absent du rapport, ce qui
        est un tout autre problème que « rien de bloquant ». */
-    if (cfg.auto_post_review === '1') {
+    /* LE BLOC DE CONSTATS, COMPLET, AVANT DE PUBLIER TOUT SEUL. Un rapport sans bloc — ou au bloc
+       jamais refermé — n'a pas suivi le format demandé : le motif le plus probable est une
+       réponse détournée (une consigne glissée dans la MR). Il reste enregistré et publiable à
+       la main ; il ne part pas chez les autres sans que quelqu'un l'ait lu. */
+    const debutBloc = rawReview.indexOf(resolution.START);
+    const blocComplet = debutBloc !== -1 && rawReview.indexOf(resolution.END, debutBloc) !== -1;
+    if (cfg.auto_post_review === '1' && !blocComplet) {
+      onLog(t('log.review.post-no-findings'));
+    } else if (cfg.auto_post_review === '1') {
       if (publicationAutoRequise(cfg, findings)) {
         /* LE RAPPORT, OU SON LIEN. Quand l'équipe partage un dépôt de données, elle peut
            demander que ce soit l'ADRESSE du rapport qui parte : trois lignes au lieu de six
@@ -680,7 +695,7 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
 
   try {
     const extra =
-      `\n\nUn rapport de revue existe déjà pour cette MR :\n"""\n${previous || '(aucun)'}\n"""\n` +
+      `\n\nUn rapport de revue existe déjà pour cette MR :\n${nonFiable('rapport précédent', previous) || '(aucun)'}\n` +
       `Demande de modification du relecteur, à appliquer : ${instruction}\n` +
       `Produis le rapport de revue MIS À JOUR (même style et exigences qu'une revue complète).`;
 

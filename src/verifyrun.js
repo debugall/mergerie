@@ -31,8 +31,10 @@ const GRACE_KILL_MS = 10_000;   // délai entre SIGTERM et SIGKILL
 
 /* ---------------------------------------------------------------- appel du script */
 
-/* Environnement MINIMAL : le script exécute du code du dépôt, on ne lui confie donc aucun
-   jeton ni aucune variable de Mergerie. `MERGERIE_VERIFY=1` lui permet de savoir d'où il est
+/* Environnement MINIMAL : le script exécute du code du dépôt, on ne lui confie donc aucune
+   variable de Mergerie — et le jeton de forge n'est plus dans le clone (git.js).
+   Reste `HOME` : le vrai pour un run lancé à la main (caches npm/maven, clés), un dossier
+   jetable pour un run parti tout seul (`homeIsole`). `MERGERIE_VERIFY=1` lui permet de savoir d'où il est
    appelé — c'est la seule chose qu'on lui apprend. */
 function envMinimal() {
   return {
@@ -53,8 +55,9 @@ function envMinimal() {
    vérificateur s'y ajoutent. Sans cette porte, un `npm` installé par nvm reste introuvable
    dès que Mergerie tourne comme service et non depuis un terminal — et l'échec dirait
    « commande introuvable » sans rien laisser faire. */
-function envVerifier(verifier) {
+function envVerifier(verifier, { home } = {}) {
   const base = envMinimal();
+  if (home) base.HOME = home;
   /* LES VALEURS VIENNENT DU POSTE, pas de la ligne partagée : un `DATABASE_URL` ou un
      `NPM_TOKEN` n'a jamais eu à voyager. Le vérificateur porte les NOMS, chacun renseigne les
      siens. Absentes, on ne met rien : la commande échouera en le disant, ce qui vaut mieux que
@@ -69,7 +72,8 @@ function lancerUne(programme, args, { cwd, env, resteMs, onLog }) {
   return new Promise((resolve) => {
     const debut = Date.now();
     let child;
-    try { child = spawn(programme, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    // Chef de son groupe : au délai comme à « Stop », on tue aussi ce que la commande a lancé.
+    try { child = spawn(programme, args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })); }
     catch (e) { return resolve({ erreurLancement: e.message }); }
     proc.setActive(child);
 
@@ -90,8 +94,8 @@ function lancerUne(programme, args, { cwd, env, resteMs, onLog }) {
       resolve({ ...r, output: sortie, duration_ms: Date.now() - debut });
     };
     const minuteur = setTimeout(() => {
-      try { child.kill('SIGTERM'); } catch { /* déjà mort */ }
-      tueur = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* déjà mort */ } }, GRACE_KILL_MS);
+      proc.tuerGroupe(child, 'SIGTERM');
+      tueur = setTimeout(() => proc.tuerGroupe(child, 'SIGKILL'), GRACE_KILL_MS);
       terminer({ code: null, timedOut: true });
     }, Math.max(1, resteMs));
 
@@ -171,11 +175,11 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis 
  *     cassent plutôt qu'un seul vaut mieux que de s'arrêter au premier.
  * Le verdict est le ET : tout doit passer.
  */
-async function lancerCommandes(verifier, commandes, repos, onLog = () => {}) {
+async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home } = {}) {
   if (!repos.length) return { erreur: 'aucun dépôt préparé' };
   if (!commandes.length) return { erreur: 'aucune commande déclarée' };
 
-  const env = envVerifier(verifier);
+  const env = envVerifier(verifier, { home });
   const fin = Date.now() + Math.max(1, verifier.timeout_s) * 1000;   // budget GLOBAL
   const multi = repos.length > 1;
   const tous = [];
@@ -401,6 +405,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
 
   const aNettoyer = [];   // [{ clone, dir }]
   const aRestaurer = [];  // [{ workdir, refOrigine }] — mode in place
+  let homeIsole = null;   // HOME jetable d'un run automatique, effacé en fin de run
   let logs = '';
   const noter = (l) => { logs = `${logs}${l}\n`.slice(-verify.MAX_LOG); onLog(l); };
 
@@ -502,7 +507,13 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
 
     /* Une seule famille depuis la 2.0 : la liste de commandes. Le `role` ('base' | 'head') ne
        sert plus qu'à préparer les dépôts — il ne change rien à la façon de lancer. */
-    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter);
+    /* UN RUN PARTI TOUT SEUL NE VOIT PAS LE VRAI `HOME`. Personne ne l'a lancé en connaissance de
+       cause : le code de la branche ne doit trouver ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`. */
+    if (v.automatic) {
+      homeIsole = fs.mkdtempSync(path.join(ensureDir(path.join(DATA_DIR, 'tmp')), 'verif-home-'));
+      noter(t('log.verify.home-isolated'));
+    }
+    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole });
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
        quelqu'un d'autre serait imputé à cette branche.
@@ -553,6 +564,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
     return finir({ status: 'error', verdict: 'verify_error' });
   } finally {
     for (const { clone, dir } of aNettoyer) await retirerWorktree(clone, dir, () => {});
+    if (homeIsole) { try { fs.rmSync(homeIsole, { recursive: true, force: true }); } catch { /* best-effort */ } }
     /* Restauration garantie : c'est la promesse du mode in place. Elle passe AVANT tout le
        reste dans l'ordre des priorités — un échec ici est signalé de façon persistante. */
     const echecs = [];

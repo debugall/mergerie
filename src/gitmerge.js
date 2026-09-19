@@ -92,10 +92,13 @@ async function etat(id) {
   /* A31 — LA MERGE REQUEST QU'ON EST EN TRAIN DE RATTRAPER. On arrive souvent ici depuis un
      badge « en conflit » d'une merge request : le worktree ne retient que dépôt/source/cible,
      et l'écran ne disait donc plus ni `!iid`, ni sa note, ni son ticket — on résolvait des
-     conflits sans plus savoir sur quoi. La jointure est celle de partout : (dépôt, branche). */
-  const mr = db.prepare(`SELECT id, iid, title, web_url, ticket_jira_key FROM mr
+     conflits sans plus savoir sur quoi. La jointure est celle de `enCours()` : le merge rattrape
+     la base DANS la branche de la MR, qui est donc sa CIBLE — la liste disait « !77 » et cet
+     écran rien. À défaut, la source (on merge la branche d'une MR ailleurs). */
+  const mrDe = db.prepare(`SELECT id, iid, title, web_url, ticket_jira_key FROM mr
     WHERE repo_id = ? AND source_branch = ? AND (closed_seen IS NULL OR closed_seen = 0)
-    ORDER BY id DESC LIMIT 1`).get(m.repo_id, m.source_branch);
+    ORDER BY id DESC LIMIT 1`);
+  const mr = mrDe.get(m.repo_id, m.target_branch) || mrDe.get(m.repo_id, m.source_branch);
   const note = mr ? db.prepare('SELECT note_value FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id) : null;
   return {
     ...m,

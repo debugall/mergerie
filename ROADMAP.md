@@ -1,7 +1,8 @@
 # Roadmap
 
 Where Mergerie is heading. This list is about **direction, not dates** — items are roughly ordered by
-priority, and priorities shift with feedback. Contributions toward any of these are welcome; see
+priority, and priorities shift with feedback. Ideas and feedback on any of these are welcome in the
+[issues](https://github.com/debugall/mergerie/issues); the code itself is written by the maintainer — see
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Forge support

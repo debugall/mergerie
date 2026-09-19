@@ -227,6 +227,20 @@ describe('Répertoires locaux et navigation (checkout multi-projets)', () => {
     assert.equal(r2.status, 400, '--upload-pack → refusé');
   });
 
+  /* LA PALETTE ENREGISTRÉE A LE MÊME FILTRE QUE L'EXÉCUTION : sinon on rangeait une commande
+     piégée, qu'un clic suffisait ensuite à lancer. */
+  test('sécurité : une entrée de palette hors liste blanche ne s’enregistre pas', async () => {
+    for (const command of ['config alias.z !ls', 'bisect run sh', 'log --output=/tmp/x', 'rebase -x sh']) {
+      const r = await app.api('POST', '/api/git-commands', { label: 'piège', command });
+      assert.equal(r.status, 400, `« ${command} » refusée à l’enregistrement`);
+    }
+    const ok = await app.api('POST', '/api/git-commands', { label: 'Statut', command: 'status --short' });
+    assert.equal(ok.status, 200, ok.text);
+    const modif = await app.api('PUT', `/api/git-commands/${ok.body.id}`, { command: 'credential fill' });
+    assert.equal(modif.status, 400, 'la modification passe par le même filtre');
+    await app.api('DELETE', `/api/git-commands/${ok.body.id}`);
+  });
+
   test('retrait d’un répertoire : rien n’est supprimé sur le disque', async () => {
     assert.equal((await app.api('DELETE', `/api/local-roots/${rootId}`)).body.ok, true);
     assert.ok(!(await app.api('GET', '/api/local-roots')).body.some((r) => r.id === rootId));

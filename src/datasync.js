@@ -100,6 +100,9 @@ async function git(args, opts = {}) {
       ...process.env,
       GIT_TERMINAL_PROMPT: '0',          // jamais de demande de mot de passe : on ne la verrait pas
       GIT_ASKPASS: 'echo',
+      /* Les seuls transports d'un dépôt d'équipe. `ext::` (une commande), `fd::`, `http://` en
+         clair : refusés par git lui-même, quoi qu'on lui passe. */
+      GIT_ALLOW_PROTOCOL: 'https:ssh:file',
       ...(opts.env || {}),
     },
   });
@@ -135,7 +138,28 @@ const sansOption = (v) => {
   const t = String(v || '').trim();
   return t.startsWith('-') ? '' : t;
 };
-const urlDepot = () => sansOption(config().data_repo_url);
+/* Une ADRESSE, pas seulement une valeur sans tiret : la branche passe par `sansOption`, l'URL
+   par ceci — une branche nommée « equipe » n'a pas de schéma et ne doit pas en exiger un. */
+const sansOptionAdresse = (v) => {
+  const t = sansOption(v);
+  return adresseAdmise(t) ? t : '';
+};
+
+const { adresseAdmise } = require('./garde');
+/* Une adresse ENREGISTRÉE que la règle refuse (d'avant elle) suspend la synchro — et on le DIT,
+   une fois : sans ça, le poste repassait en mono-poste sans un mot. L'URL n'est pas journalisée,
+   elle peut porter des identifiants. */
+let refusDit = false;
+const urlDepot = () => {
+  const brut = sansOption(config().data_repo_url);
+  const admise = sansOptionAdresse(brut);
+  if (brut && !admise && !refusDit) {
+    refusDit = true;
+    console.log('[datasync] adresse du dépôt de données refusée (schéma non admis : https, ssh, git@, chemin absolu ou file://) — synchro suspendue ; corrigez-la dans Réglages → Données partagées');
+  }
+  if (admise) refusDit = false;
+  return admise;
+};
 const branche = () => sansOption(config().data_repo_branch) || 'main';
 const cadenceMs = () => Math.max(10, Number(config().data_sync_seconds) || 30) * 1000;
 
@@ -368,6 +392,7 @@ async function tourMaintenant() {
       etatSync.erreur = null; etatSync.dernierPull = new Date().toISOString(); return bilan;
     }
 
+    let refusPush = null;
     for (let essai = 0; essai < TENTATIVES_PUSH; essai++) {
       const avant = await gitOu(['rev-parse', 'HEAD'], '');
       if (etatSync.enRetard) {
@@ -397,8 +422,10 @@ async function tourMaintenant() {
            qu'on vient de faire, on cesse vite de le regarder ; et ce qui le lit pour décider —
            « le rapport est-il vraiment sur la forge ? » — se trompait avec lui. */
         await majCompteurs();
+        refusPush = null;
         break;
-      } catch {
+      } catch (e) {
+        refusPush = String((e && e.message) || e).slice(0, 300);
         /* Quelqu'un a poussé entre-temps. On refait un tour. Après trois essais on ABANDONNE
            POUR CETTE FOIS — les commits restent locaux, donc rien n'est perdu, et le tour
            suivant réessaiera. Boucler indéfiniment sur un dépôt très actif bloquerait le
@@ -410,6 +437,10 @@ async function tourMaintenant() {
     etatSync.dernierPull = new Date().toISOString();
     // …sauf si l'hydratation vient de refuser quelque chose : cette raison-là doit rester.
     if (!(bilan.hydrate && bilan.hydrate.refuses)) etatSync.erreur = null;
+    /* UN PUSH QUI ÉCHOUE À CHAQUE ESSAI SE DIT. Branche protégée, accès en lecture seule : le
+       tour s'achevait sans erreur, et l'écran restait « à jour » avec un ↑1 éternel. Encore en
+       avance après les essais, c'est un refus — on garde sa raison. */
+    if (refusPush && etatSync.enAvance) etatSync.erreur = refusPush;
   } catch (e) {
     /* HORS LIGNE EST LE CAS NORMAL, pas une panne : on note la raison, le pied de page passe à
        l'orange, et le prochain tour réessaie. Rien n'est perdu — tout est commité localement. */
@@ -608,9 +639,14 @@ const AUTEUR = 'author';
 const auteurDe = (relatif) => etat.lire(AUTEUR, relatif, 'name');
 
 /** Les auteurs de plusieurs fichiers d'un coup — pour une liste, une seule requete. */
-function auteursDe(relatifs) {
-  const tout = etat.carte(AUTEUR, 'name');
-  return new Map(relatifs.map((r) => [r, tout.get(r) || null]));
+/* `createur` : celui qui a PARTAGÉ — le premier à avoir écrit le fichier —, et non le dernier.
+   Les deux se confondent pour une session (seul son auteur y écrit) ; pas pour une page de
+   notes, que l'équipe corrige : « partagé par » et « qui peut la retirer » parlent du premier.
+   Faute de premier connu (fichier relu avant que ce poste ne le retienne), le dernier. */
+function auteursDe(relatifs, { createur = false } = {}) {
+  const dernier = etat.carte(AUTEUR, 'name');
+  const premier = createur ? etat.carte(AUTEUR, 'first') : null;
+  return new Map(relatifs.map((r) => [r, (premier && premier.get(r)) || dernier.get(r) || null]));
 }
 
 /**
@@ -624,15 +660,33 @@ async function majAuteurs(plage) {
   const brut = await gitOu(['log', '--format=%x00%an', '--name-only', ...(plage ? [plage] : ['-2000'])], '');
   if (!brut) return 0;
   const vus = new Map();
+  const plusAnciens = new Map();   // les fichiers de la plage, dont on cherchera le premier auteur
   let courant = null;
   for (const ligne of brut.split('\n')) {
     if (ligne.startsWith(SEPARATEUR_AUTEUR)) { courant = ligne.slice(1).trim(); continue; }
     const f = ligne.trim();
-    if (!f || !courant || vus.has(f)) continue;
+    if (!f || !courant) continue;
+    plusAnciens.set(f, courant);
+    if (vus.has(f)) continue;
     vus.set(f, courant);
+  }
+  /* LE PREMIER AUTEUR, celui qui a partagé. La plage relue ne contient que les commits REÇUS :
+     le plus ancien d'entre eux n'est pas forcément celui qui a créé le fichier (ma page, que
+     Claire vient de corriger). On le demande donc à git, une fois par fichier — l'ajout le plus
+     récent, pour qu'un objet retiré puis repartagé nomme qui l'a repartagé. */
+  const premiersConnus = etat.carte(AUTEUR, 'first');
+  const premiers = new Map();
+  for (const [f, plusAncien] of plusAnciens) {
+    if (premiersConnus.has(f)) continue;
+    // Relecture de tout l'historique : le plus ancien vu EST le premier, sans appel de plus.
+    if (!plage) { premiers.set(f, plusAncien); continue; }
+    const ajout = await gitOu(['log', '--diff-filter=A', '--format=%an', '-1', '--', f], '');
+    const nom = String(ajout || '').split('\n')[0].trim();
+    if (nom) premiers.set(f, nom);
   }
   db.transaction(() => {
     for (const [f, nom] of vus) etat.ecrire(AUTEUR, f, 'name', nom);
+    for (const [f, nom] of premiers) etat.ecrire(AUTEUR, f, 'first', nom);
   })();
   return vus.size;
 }
@@ -671,7 +725,7 @@ async function contenuA(relatif, sha) {
    « est-ce que je vais initialiser, ou rejoindre ? ». Sans réseau, on ne sait pas, et on le dit
    plutôt que d'affirmer l'un ou l'autre. */
 async function distantPourvu(url) {
-  const adresse = sansOption(url) || urlDepot();
+  const adresse = sansOptionAdresse(url) || urlDepot();
   if (!adresse) return null;
   try {
     const sortie = await git(['ls-remote', '--heads', adresse, branche()], { timeout: 20000 });
@@ -684,7 +738,7 @@ async function distantPourvu(url) {
    dépôt, un `fetch` puis un `ls-tree` suffisent ; sinon on ne sait pas, et on le dit. */
 async function compterDistant(url) {
   if (!estDepot()) return null;
-  const adresse = sansOption(url) || urlDepot();
+  const adresse = sansOptionAdresse(url) || urlDepot();
   try {
     await git(['fetch', adresse || 'origin', branche()], { timeout: 60000 });
     const sortie = await git(['ls-tree', '-r', '--name-only', 'FETCH_HEAD']);
@@ -702,7 +756,7 @@ async function compterDistant(url) {
  *   — c'est déjà un dépôt → on remet l'origine à jour, et on fait un tour.
  */
 async function rattacherMaintenant({ url, onLog = () => {} } = {}) {
-  const adresse = sansOption(url) || urlDepot();
+  const adresse = sansOptionAdresse(url) || urlDepot();
   if (!adresse) throw new Error('datasync: aucune URL de dépôt de données');
   const qui = identite.identite();
   if (!qui.ok) throw new Error('datasync: git n’a pas de `user.name` — configurez-le avant de partager');
@@ -798,6 +852,7 @@ function arreter() {
 module.exports = {
   REGROUPEMENT_MS,
   estConfigure,
+  adresseAdmise,
   rattraperFormat,
   baseWeb,
   lienFichier,

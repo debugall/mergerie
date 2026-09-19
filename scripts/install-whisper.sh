@@ -63,9 +63,33 @@ MODELS_DIR="$DATA_DIR/models"
 WHISPER_HOME="$DATA_DIR/whisper"
 MODEL_FILE="$MODELS_DIR/ggml-$MODEL.bin"
 VAD_FILE="$MODELS_DIR/ggml-silero-v5.1.2.bin"
-MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$MODEL.bin"
-VAD_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin"
+# ÉPINGLÉ : une version de whisper.cpp, une révision des dépôts de modèles, et l'empreinte de
+# chaque fichier téléchargé. « latest » et « main » voulaient dire : ce que le dépôt distant
+# sert AUJOURD'HUI, exécuté ici sans que personne l'ait relu. Changer de version = changer ces
+# lignes (les empreintes viennent de l'API GitHub, champ `digest`, et du pointeur LFS de
+# Hugging Face, champ `oid`).
+TAG="v1.9.2"
+HF_REV="5359861c739e955e79d9a303bcbc70fb988958b1"
+VAD_REV="9ffd54a1e1ee413ddf265af9913beaf518d1639b"
+MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/$HF_REV/ggml-$MODEL.bin"
+VAD_URL="https://huggingface.co/ggml-org/whisper-vad/resolve/$VAD_REV/ggml-silero-v5.1.2.bin"
+VAD_SHA="29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
 REPO="ggml-org/whisper.cpp"
+sha_attendu() {
+  case "$1" in
+    ggml-large-v3-turbo.bin)      echo 1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69 ;;
+    ggml-large-v3-turbo-q8_0.bin) echo 317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1 ;;
+    ggml-large-v3-turbo-q5_0.bin) echo 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2 ;;
+    ggml-large-v3.bin)            echo 64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2 ;;
+    ggml-large-v3-q5_0.bin)       echo d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1 ;;
+    ggml-medium.bin)              echo 6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208 ;;
+    ggml-small.bin)               echo 1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b ;;
+    ggml-base.bin)                echo 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe ;;
+    whisper-bin-ubuntu-x64.tar.gz)   echo 46811a3ecf584307480a220b9ef5ff81b7b22dc41577cbc274ce3afc61f753b1 ;;
+    whisper-bin-ubuntu-arm64.tar.gz) echo 7e26fa6a36d9174d5c0bf033ccbc026c3b5e569e2ee787058241346ef5392719 ;;
+    *) echo "" ;;
+  esac
+}
 
 # Sans terminal (job Mergerie, redirection) : pas de gras ANSI, pas de barre de progression (une
 # ligne toutes les 5 secondes à la place), et une ligne MERGERIE_RESULT à la fin.
@@ -75,6 +99,16 @@ ok()   { printf '  ✓ %s\n' "$*"; }
 warn() { printf '  ⚠ %s\n' "$*" >&2; }
 die()  { printf '\n  ✗ %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
+sha256_de() { if have sha256sum; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+# Refuse (et efface) un fichier dont l'empreinte n'est pas celle attendue. Sans empreinte connue
+# (modèle hors liste), on le DIT : c'est un fichier que rien n'a vérifié.
+verifier_sha() {
+  attendu="$2"
+  if [ -z "$attendu" ]; then warn "$(basename "$1") : aucune empreinte connue, fichier NON vérifié"; return 0; fi
+  recu=$(sha256_de "$1")
+  [ "$recu" = "$attendu" ] || { rm -f "$1"; die "$(basename "$1") : empreinte inattendue ($recu) — fichier effacé, rien n'est installé"; }
+  ok "$(basename "$1") : empreinte sha256 vérifiée"
+}
 
 case "$MODEL" in
   large-v3-turbo|large-v3-turbo-q8_0|large-v3-turbo-q5_0|large-v3|large-v3-q5_0|medium|small|base) ;;
@@ -142,13 +176,11 @@ elif [ "$FORCE_BUILD" = 0 ] && [ "$OS" = Linux ] && { [ "$(uname -m)" = x86_64 ]
   have curl || die "curl manque (nécessaire pour télécharger l'archive ; ou bien --build)"
   have tar  || die "tar manque"
   ARCH=x64; [ "$(uname -m)" = aarch64 ] && ARCH=arm64
-  TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-        | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
-  [ -n "$TAG" ] || die "dernière release introuvable via l'API GitHub (ou bien --build)"
   ASSET="whisper-bin-ubuntu-$ARCH.tar.gz"
   mkdir -p "$WHISPER_HOME"
   echo "  téléchargement de $ASSET ($TAG) …"
   fetch "https://github.com/$REPO/releases/download/$TAG/$ASSET" "$WHISPER_HOME/$ASSET"
+  verifier_sha "$WHISPER_HOME/$ASSET" "$(sha_attendu "$ASSET")"
   rm -rf "$WHISPER_HOME/lib" "$WHISPER_HOME/_extract"; mkdir -p "$WHISPER_HOME/_extract"
   tar xzf "$WHISPER_HOME/$ASSET" -C "$WHISPER_HOME/_extract"
   REAL=$(find "$WHISPER_HOME/_extract" -type f -name whisper-server | head -n 1)
@@ -171,13 +203,7 @@ else
   have c++ || have g++ || have clang++ || die "aucun compilateur C++ (Xcode CLT, build-essential, gcc-c++…)"
   if [ "$CUDA" = 1 ] && ! have nvcc; then die "--cuda demandé mais nvcc introuvable (CUDA Toolkit)"; fi
 
-  TAG=""
-  if have curl; then
-    TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
-          | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
-  fi
-  [ -n "$TAG" ] || { warn "dernière release introuvable (API GitHub), on prend la branche par défaut"; }
-
+  # La compilation part du MÊME tag épinglé que l'archive : les sources d'une version relue.
   SRC="$WHISPER_HOME/src"
   mkdir -p "$WHISPER_HOME"
   if [ -d "$SRC/.git" ]; then
@@ -222,6 +248,7 @@ if [ -f "$MODEL_FILE" ] && is_ggml "$MODEL_FILE" && [ "$(filesize "$MODEL_FILE")
 else
   echo "  téléchargement de ggml-$MODEL.bin (large-v3-turbo ≈ 1,6 Go ; large-v3 ≈ 3,1 Go) …"
   fetch "$MODEL_URL" "$MODEL_FILE"
+  verifier_sha "$MODEL_FILE" "$(sha_attendu "ggml-$MODEL.bin")"
   is_ggml "$MODEL_FILE" || { rm -f "$MODEL_FILE"; die "le fichier reçu n'est pas un modèle ggml (nom de modèle inconnu sur Hugging Face ?)"; }
   ok "ggml-$MODEL.bin ($(( $(filesize "$MODEL_FILE") / 1048576 )) Mo)"
 fi
@@ -232,6 +259,7 @@ if [ "$WITH_VAD" = 1 ]; then
   else
     echo "  téléchargement du modèle de détection de voix Silero …"
     fetch "$VAD_URL" "$VAD_FILE"
+    verifier_sha "$VAD_FILE" "$VAD_SHA"
     [ "$(head -c 1 "$VAD_FILE")" != "<" ] || { rm -f "$VAD_FILE"; die "le fichier VAD reçu est une page HTML, pas un modèle"; }
     ok "ggml-silero-v5.1.2.bin"
   fi

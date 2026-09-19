@@ -285,5 +285,51 @@ coupables.length
 }
 
 
+/* LES VERROUS DE SÉCURITÉ DU SERVEUR (guard.md). Chacun fige un garde-fou qui, retiré sans bruit,
+   rouvrirait une porte — et aucun test du chemin nominal ne le verrait partir.
+   — un `app.get(` ne lance rien (spawn, git, clone, job) : une page tierce peut déclencher un GET ;
+   — un `spawn(` hors proc.js/git.js ne passe pas `process.env` tel quel (le `.env` et ses jetons) ;
+   — `res.sendFile(` ne sert que par `servirFichierNonFiable` (nosniff, sandbox, attachment) ;
+   — l'import du dépôt partagé valide chaque document, et fixe les listes de ce qui exécute. */
+{
+  const soucis = [];
+  const serveur = fs.readFileSync(path.join(SRC, 'server.js'), 'utf8');
+  for (const bloc of serveur.split(/\n(?=app\.(?:get|post|put|patch|delete|use)\()/)) {
+    if (!bloc.startsWith('app.get(')) continue;
+    const corps = bloc.split(/\n\}\)\)?;?\n/)[0];
+    /* Lire git (fetch d'un dépôt DÉCLARÉ, diff, liste des branches) est admis en GET pour ces
+       routes-là, nommément : ce sont des lectures, derrière la garde Host + Sec-Fetch-Site. Une
+       nouvelle route qui lit git en GET s'ajoute ici en connaissance de cause. */
+    const LECTURES_GIT = ['/api/mrs/:id/diffview', '/api/git/compare/file', '/api/git/branches', '/api/git/tag-author', '/api/git/find-ref'];
+    const route = (corps.match(/^app\.get\('([^']+)'/) || [])[1];
+    const motif = LECTURES_GIT.includes(route) ? /\b(spawn\(|startJob\(|start\w+Job\()/ : /\b(spawn\(|git\.run\(|ensureRepo\(|startJob\(|start\w+Job\()/;
+    const m = corps.match(motif);
+    if (m) soucis.push(`src/server.js  ${corps.split('\n')[0].slice(0, 70)} — un GET qui lance « ${m[1]} »`);
+  }
+  for (const f of fs.readdirSync(SRC).filter((n) => n.endsWith('.js') && !['proc.js', 'git.js'].includes(n))) {
+    const texte = fs.readFileSync(path.join(SRC, f), 'utf8');
+    for (const m of texte.matchAll(/\bspawn\(([^;]{0,400})/g)) {
+      if (/\benv\s*:\s*process\.env\b|\{\s*\.\.\.process\.env\b/.test(m[1])) soucis.push(`src/${f}  spawn(…) avec process.env tel quel`);
+    }
+  }
+  const envoi = [...serveur.matchAll(/res\.sendFile\(/g)].length;
+  const fonction = (serveur.match(/function servirFichierNonFiable[\s\S]*?\n\}\n/) || [''])[0];
+  const dedans = [...fonction.matchAll(/res\.sendFile\(/g)].length;
+  if (envoi !== dedans) soucis.push(`src/server.js  ${envoi - dedans} res.sendFile( hors de servirFichierNonFiable`);
+  const store = fs.readFileSync(path.join(SRC, 'store.js'), 'utf8');
+  if (!/validerDocument\(/.test(store.replace(/function validerDocument[\s\S]*?\n\}\n/, ''))) {
+    soucis.push('src/store.js  validerDocument n’est plus appelé à l’import');
+  }
+  for (const table of ['verifier', 'agent']) {
+    if (!new RegExp(`\\n\\s*${table}:\\s*\\{`).test((store.match(/const ENUMS = \{[\s\S]*?\n\};/) || [''])[0])) {
+      soucis.push(`src/store.js  ENUMS sans entrée « ${table} » — ce qui décide d'une exécution n'a plus de liste fermée`);
+    }
+  }
+  soucis.length
+    ? fail('Verrous de sécurité du serveur (guard.md)', soucis)
+    : ok('GET sans effet, env des processus filtré, fichiers servis par la porte prudente, import validé');
+}
+
+
 console.log(failures ? '\nContrôles serveur : ÉCHEC\n' : '\nContrôles serveur : OK\n');
 process.exit(failures ? 1 : 0);

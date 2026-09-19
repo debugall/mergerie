@@ -41,7 +41,9 @@ describe('Vérificateurs automatiques sur les nouvelles MR', () => {
   const mrApi = (iid) => ({
     iid, title: `MR ${iid}`, state: 'opened', source_branch: 'feature/x', target_branch: 'main',
     web_url: `https://gitlab.test/grp/app/-/merge_requests/${iid}`,
-    sha: d.head, created_at: new Date().toISOString(), author: { name: 'A' },
+    sha: d.head, created_at: new Date().toISOString(),
+    // L'utilisateur du faux GitLab : par défaut, seules SES merge requests partent toutes seules.
+    author: { name: 'Testeur', username: 'testeur' },
   });
   const verifications = () => app.db.prepare('SELECT * FROM verification ORDER BY id').all();
 
@@ -154,6 +156,51 @@ describe('Vérificateurs automatiques sur les nouvelles MR', () => {
     assert.equal(verifications().length, avant + 6);
 
     await app.api('PUT', '/api/config', { verif_auto_max: 5 });   // on rend l'état aux suivants
+  });
+
+  /* LE CODE DE QUI S'EXÉCUTE ICI SANS UN CLIC. Une vérification lance les commandes du projet
+     sur la branche : c'est le code de son auteur qui tourne sur ce poste. Par défaut, seulement
+     le mien — reconnu par l'identifiant, pas par le nom affiché, qu'on imite en deux clics.
+     Brouillon et fork ne partent jamais tout seuls, même « tous les auteurs » coché. */
+  test('l’auteur, le brouillon et le fork décident de ce qui part tout seul', async () => {
+    const lancees = async (mrs) => {
+      app.state.mrs['grp/app'] = mrs;
+      return (await app.api('POST', '/api/discover')).body.auto_verify.lancees;
+    };
+    const autre = { ...mrApi(501), author: { name: 'Testeur', username: 'imposteur' } };
+    assert.equal(await lancees([autre]), 0, 'un autre auteur qui prend mon nom affiché ne passe pas');
+
+    const reglage = await app.api('PUT', '/api/config', { verif_auto_authors: 'all' });
+    assert.equal(reglage.status, 200, reglage.text);
+    assert.equal((await app.api('GET', '/api/config')).body.verif_auto_authors, 'all', 'le choix se relit');
+    assert.equal(await lancees([{ ...mrApi(502), author: { name: 'B', username: 'b' } }]), 1, '« tous les auteurs » : choisi, il part');
+
+    assert.equal(await lancees([{ ...mrApi(503), draft: true }]), 0, 'un brouillon attend son clic');
+    assert.equal(await lancees([{ ...mrApi(504), source_project_id: 99, target_project_id: 1 }]), 0,
+      'le code d’un fork ne s’exécute pas sans qu’on le veuille');
+
+    await app.api('PUT', '/api/config', { verif_auto_authors: 'mine' });
+  });
+
+  /* UN RUN PARTI TOUT SEUL NE VOIT PAS LE VRAI HOME : ni ~/.ssh, ni ~/.npmrc, ni ~/.aws à portée
+     du code de la branche. On lit le HOME que la commande a reçu, une fois le run terminé. */
+  test('une vérification automatique tourne avec un HOME jetable', async () => {
+    const marque = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'home-vu-')), 'home.txt');
+    const espion = path.join(path.dirname(script), 'home.sh');
+    fs.writeFileSync(espion, `#!/bin/sh\necho "$HOME" > ${marque}\n`);
+    fs.chmodSync(espion, 0o755);
+    const { body: v } = await app.api('POST', '/api/verifiers', {
+      name: 'espion-home', kind: 'commands', commands: [espion], run_base: false, auto_on_mr: 1,
+      repos: [{ repo_id: repoId, mode: 'worktree' }],
+    });
+    app.state.mrs['grp/app'] = [mrApi(800)];
+    await app.api('POST', '/api/discover');
+    const fin = Date.now() + 60000;
+    while (!fs.existsSync(marque) && Date.now() < fin) await new Promise((r) => setTimeout(r, 100));
+    const vu = fs.readFileSync(marque, 'utf8').trim();
+    assert.notEqual(vu, os.homedir(), 'pas le vrai HOME');
+    assert.match(vu, /verif-home-/, `un dossier jetable : ${vu}`);
+    await app.api('PUT', `/api/verifiers/${v.id}`, { auto_on_mr: 0 });
   });
 
   /* RELANCER QUAND LE VERDICT SE PÉRIME. Un vert rendu sur des commits qui ne sont plus les

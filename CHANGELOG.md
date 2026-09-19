@@ -20,6 +20,167 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   author whether there is anything urgent without opening the report. And the variables are now
   **listed under the field**, where you look while typing, instead of hiding in a tooltip.
 
+- **The screen follows your team's work after a sync.** A merge request a teammate reviewed
+  moves from “To review” to “Reviewed” on your open screen, with its counters and menu badge; the
+  same goes for an open report, todos, notes pages, questions, agents, verifiers, review rules,
+  team settings and stats — with the manual sync buttons and with automatic sync alike, without
+  reloading the page.
+- **Shared items say who shared them**: “shared by Claire” or “shared by me” on sessions,
+  questions, notes pages and todos.
+- **An open notes page no longer overwrites a teammate's edit.** If a sync brought their version
+  while you were typing, a banner names them and lets you take their version or keep yours;
+  nothing is saved until you choose.
+
+### Changed
+
+- **Code contributions are closed.** Mergerie is written by one maintainer, who stays its only
+  rights holder — that is what keeps the project free to evolve its licensing, the AGPL staying in
+  place. Pull requests on the GitHub mirror are now closed automatically with a note explaining
+  why. Issues remain the place for bugs, ideas and
+  translation errors; CONTRIBUTING.md says what a useful report carries, and asks for the fix in
+  words rather than as a patch, for the same reason.
+
+### Fixed
+
+- **Reviews: sorting by lowest score now sorts.** “Lowest score first” left the list in arrival
+  order, and “Blocking first” did not break ties by score either.
+- **Reviews: “ready to merge” no longer includes low-scored merge requests.** A merge request
+  scored 2/10 with a green verification was listed as ready; the list now applies the same score
+  threshold as the morning brief. The copied reference of a scored merge request shows its score
+  properly.
+- **Reviews: “Search for new MRs” updates the counter and the Review button.** On an empty queue
+  they stayed at 0 and greyed out above the merge requests just found.
+- **Reviews: the “To review by me” chip appears in the “To review” queue**, where review requests
+  wait — it only looked at reviewed reports.
+- **AI dev: “Resume in terminal” is offered on free questions and out-of-repo folders** again;
+  the list never carried the command.
+- **AI dev: the verifier list follows the projects of the session form** when a project is added
+  or removed, not only when a repository is changed.
+- **Agents: “Sessions” on an exploration agent opens the Exploration list**, filtered on that
+  agent, instead of an empty Coding list.
+- **Agents: “Duplicate” and “Code” on an agent awaiting approval say why they are refused**
+  instead of reporting an unexpected error.
+
+- **Stats: the period and repository filters apply to every block.** Token cost and the
+  sent/received ratio now follow the period; “Per project”, recurring findings and the green rate
+  follow the chosen repository. The repository list is filled even when Stats is the first screen
+  opened, and an exploration among the most expensive sessions opens in the Exploration list.
+- **Settings: a review rule added without choosing a repository applies to all repositories**, as
+  its help says — it was silently limited to the first one.
+- **Settings: editing a verifier keeps its environment variables.** The form opened with the field
+  empty, and saving it again erased the values stored on this machine.
+- **Git: “Select all” in Git commands ticks the projects** instead of doing nothing, and the merge
+  work screen names the merge request it belongs to, like the running-merges list.
+- **Jira: a short outage no longer hides the Sprint filter or the workflow statuses** until the next
+  restart; removing a field-filter criterion keeps the filter menu open; “Make the AI code” offers
+  the ticket's screenshots; the comment box offers to insert the links of the ticket's merge
+  requests; and changing a status or un-watching from the Watched list refreshes that list.
+- **Notes: the todo add bar understands the short syntax it advertises** (`@tomorrow`, `!!`, `!217`,
+  `PROJ-12`), and the hint shows it as code rather than raw tags. A ticket linked from a note or a
+  todo opens that ticket, not the first of your list, and the share button is there from the first
+  visit to Todos.
+
+- **A window opened from another window now opens on top of it.** “Add to todos” and
+  “Investigate” from a Jenkins job's window opened behind it, out of reach of the mouse.
+- **Jenkins: “My branches” and the `!iid` tags work when Mergerie opens straight on Jenkins**,
+  without visiting Reviews first — a remembered “My branches” used to empty the list.
+- **Docker: “Put in the grid” appears for a local project again** — the server call behind it
+  always failed.
+- **Links: the copy button of a grid cell can be clicked** — it sat under the edit pencil.
+
+- **Activity: “Retry” is offered on a failed or stopped job**, as in the log banner, and
+  double-clicking a log line opens the merge request it is about. The banner counts only the jobs
+  still running (“2 jobs running” with one stopped and one running).
+- **A pasted link wins over the last tab and over the morning brief**: the object opens in front,
+  instead of in a hidden Reviews tab.
+- **Keyboard: Enter opens the selected report**, and Enter on a branch chip only copies its name —
+  it also started the review of another merge request. The palette opens a watched ticket
+  instead of the first of your list. The footer's “stats” mode is shown correctly after a reload.
+- **Sync: a push refused at every attempt (protected branch, read-only access) is reported**
+  instead of showing “up to date” forever, and a new sync cadence applies without a restart.
+- **Sharing: only its author can unshare or delete a shared note page or todo** — from a
+  colleague's machine it removed the file from the shared repository, for everyone. Editing
+  stays open to the team, as before.
+
+- **Settings: saving no longer writes back a team setting a teammate changed meanwhile** — the
+  form now sends only the fields you changed.
+- **Sync: a review report deleted by a teammate is deleted here too**; it survived, still
+  openable, next to a merge request back in “To review”.
+
+### Security
+
+A security review of the whole tool, and what came out of it. Most of it is invisible when all goes
+well; a few things now ask for a click or a setting, and those are listed first.
+
+**What you may notice**
+
+- **Exposing the server now requires a token.** With `HOST` set to anything but a loopback address,
+  Mergerie refuses to start without `MERGERIE_ACCESS_TOKEN`; the browser enters it once on an
+  `/acces` page, scripts send it as a `Bearer` header. On `localhost`, nothing changes.
+- **Reaching Mergerie through a host name** (reverse proxy, `/etc/hosts` entry) needs that name in
+  `MERGERIE_ALLOWED_HOSTS`; anything else gets a 421. `localhost` and IP addresses always work.
+- **Code that arrives through the shared data repository waits for you.** A verifier whose commands
+  changed, an agent whose permissions or schedule changed, the automatic reviews switched on by a
+  colleague: each is marked “to approve”, shows what changed, and does not run on your machine until
+  you click **Approve on this machine**. The click approves what the screen showed: if sync brings yet
+  another version in between, it is refused and the new one is shown. Every change that counts is
+  listed — “all the project's authors” for automatic verifications, an agent's skills and subagents
+  with their tools. What you create or edit yourself is approved on the way, and everything that
+  existed before this version is taken over once.
+- **Reviews, explanations, questions and explorations run the agent read-only.** The broad mode from
+  `COPILOT_ARGS` (`--dangerously-skip-permissions`) no longer applies to them; the report comes back as
+  the agent's answer. Coding sessions keep your mode but lose web fetching, `curl`, `ssh`, `git push`,
+  `git remote` and `git config`. With Copilot CLI, which has no tool list, the run log says the read is
+  not restricted.
+- **Converging or coding on a branch that changes `CLAUDE.md`, `.claude/`, `.mcp.json` or
+  `.github/copilot-instructions.md` stops first** and names the files: that branch would rewrite the
+  rules of the agent about to work in it. Confirm once for that content; a new push that changes them
+  asks again.
+- **“The merge request's author” is now recognised by the forge username only**, not by the
+  display name, which anyone can change to someone else's: the display name is kept as a fallback
+  for a merge request discovered before its username was recorded.
+- **Automatic verifications run only on your own merge requests by default**, never on a draft or a
+  fork, with a throwaway `HOME`. “All the project's authors” is a new explicit choice in Settings →
+  Verifiers.
+- **Two new AI bounds** in Settings → AI, set per machine: at most N turns per agent session (200
+  by default) and an optional daily spend cap. They do not travel with the team settings — one push
+  could otherwise lift both on every machine.
+- **The git palette is an allowlist** of everyday subcommands (status, fetch, pull, push, log, diff,
+  branch, checkout, rebase, stash, tag…). Entries outside it — `config`, `bisect`, `submodule`, an
+  option that runs a program or writes outside the repository — are refused when saved and when run.
+- **“Test” with a changed address requires typing the token again**: the saved token is only ever sent
+  to its own address.
+- **The dictation command** must be `whisper-server` — in PATH, or the absolute path of an existing `whisper-server` file.
+- **The backup README no longer claims the tokens are removed**: the archive carries the database,
+  tokens included, and now says to keep it like a password.
+
+**What closed without asking anything**
+
+- Another website open in your browser can no longer drive Mergerie: `Host` check against DNS
+  rebinding, `Sec-Fetch-Site` check on the API, a strict Content Security Policy, `nosniff`,
+  `no-referrer`; the backup and the data repository preview became `POST`s.
+- The forge token is no longer written in the clones' `origin` URL, where the agent could read it: it
+  travels as an HTTP header in the git process's environment only, and existing clones are cleaned at
+  startup. Every git command runs without hooks, `fsmonitor`, external diff or `textconv`.
+- The agent's environment is an allowlist — nothing from Mergerie's `.env` — and its file tools cannot
+  read the database or the `.env`.
+- Text from elsewhere (MR title and description, Jira ticket, previous report, exchanges from another
+  machine, domain cards) enters the prompt framed as data, between tags a text cannot close. Automatic
+  posting waits for a complete findings block; convergence reads its score only from the requested
+  “Overall score: X/10” line.
+- Importing the shared repository validates each file (types, closed lists, 8 MB, no symbolic link) and
+  refuses silent rewrites of append-only documents; a verifier's local folder no longer travels. Each
+  review rule shows who set it.
+- Files supplied by others (attachments, note captures, ticket images) are served through one careful
+  door: only raster images and PDFs display, the rest downloads, under `nosniff` and a `sandbox` CSP.
+- Docker actions only run in a compose folder found under your local folders; the data repository
+  address refuses `http://`, `ext::` and friends; Docker drift masks secrets by value, not just by name.
+- “Stop” now kills the whole process group, grandchildren included.
+- The whisper install script downloads a pinned version and checks each file's sha256; the CI pins its
+  actions by commit and runs with a read-only token. A `.env` in the current folder that picks the agent
+  binary is flagged at startup.
+- The data folder is created readable by you only.
+
 ## [1.7.0] - 2026-09-18
 
 ### Added

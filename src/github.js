@@ -188,6 +188,11 @@ async function listOpenMRs(cfg, project, pattern) {
         draft: pr.draft === true || /^\s*(draft|wip)\s*:/i.test(String(pr.title || '')),
         reviewers: Array.isArray(pr.requested_reviewers)
           ? pr.requested_reviewers.map((r) => (r && r.login) || '').filter(Boolean) : [],
+        // Mêmes champs que GitLab (vérification automatique) : identifiant, et fork ou non —
+        // une branche de tête sans dépôt est celle d'un fork supprimé.
+        author_username: (pr.user && pr.user.login) || '',
+        is_fork: !(pr.head && pr.head.repo) || !(pr.base && pr.base.repo)
+          || pr.head.repo.full_name !== pr.base.repo.full_name,
       };
     });
 }

@@ -13,15 +13,9 @@
     <link rel="alternate icon" href="images/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png" />
     <link rel="stylesheet" href="/style.css" />
-    <script>
-      // Applique le thème AVANT le premier rendu (évite un flash de thème sombre).
-      try {
-        var p = localStorage.getItem('aidevtools_theme') || 'auto';
-        var r = p === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : p;
-        document.documentElement.setAttribute('data-theme', r);
-        document.documentElement.lang = localStorage.getItem('aidevtools_lang') || 'fr';
-      } catch (e) { /* stockage indisponible : thème sombre + français par défaut */ }
-    </script>
+    <!-- Le thème avant le premier rendu. Un FICHIER et non un script en ligne : la politique
+         de contenu n'admet que les scripts servis par l'application. -->
+    <script src="/theme-early.js"></script>
 </head>
 <body>
 <div id="demoBanner" hidden><span data-i18n="demo.banner">Mode démo — données fictives, aucune connexion GitLab. Explore librement.</span></div>
@@ -829,7 +823,7 @@
             <!-- C14 : la syntaxe courte existe depuis 1.4.0 et rien ne la disait. Une barre de
                  saisie qui comprend `!217`, `@demain` et `!!` sans l'annoncer n'est comprise
                  que par qui a lu le CHANGELOG. -->
-            <p class="muted todo-syntaxe" data-i18n="notes.todo.syntax-help">Astuce : <code>!217</code> lie à une MR, <code>PROJ-42</code> à un ticket, <code>@demain</code> pose l'échéance, <code>!!</code> la priorité haute.</p>
+            <p class="muted todo-syntaxe" data-i18n-html="notes.todo.syntax-help">Astuce : <code>!217</code> lie à une MR, <code>PROJ-42</code> à un ticket, <code>@demain</code> pose l'échéance, <code>!!</code> la priorité haute.</p>
             <div id="todoList" class="todo-list"></div>
         </div>
 
@@ -985,6 +979,12 @@
                 <h3 data-i18n="settings.verifier.group.auto">Vérifications automatiques</h3>
                 <label><span data-i18n="settings.lbl.verif-auto-max">Au plus N vérifications automatiques par recherche de MR</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verif-auto-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input form="configForm" name="verif_auto_max" type="number" min="0" max="50" step="1" placeholder="5" />
+                </label>
+                <label><span data-i18n="settings.lbl.verif-auto-authors">Lancer automatiquement sur les merge requests de</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verif-auto-authors" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="verif_auto_authors">
+                        <option value="mine" data-i18n="settings.opt.verif-auto-authors.mine">Moi seulement</option>
+                        <option value="all" data-i18n="settings.opt.verif-auto-authors.all">Tous les auteurs du projet</option>
+                    </select>
                 </label>
                 <div class="form-actions">
                     <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -1422,6 +1422,10 @@
              chargés/enregistrés par la même logique que le Général (un seul /config). -->
         <div id="sub-mr" class="subtab">
         <h2 data-i18n="settings.sub.mr">Merge Request</h2>
+        <!-- LES RÉGLAGES D'AUTOMATISME CHANGÉS PAR LA SYNCHRO attendent un geste ici : ils font
+             tourner des reviews toutes seules, sur ce poste, avec son abonnement. Rempli par
+             `poserApprobationAuto` à chaque chargement de la configuration. -->
+        <div id="autoApprovalBanner" hidden></div>
         <!-- NEUF RÉGLAGES À LA SUITE, SANS TITRE, dont un interrupteur séparé de son propre
              plafond par un autre réglage. Trois groupes titrés : ce que produit une review,
              ce qui part tout seul, et la boucle de convergence. Le plafond des vérifications
@@ -1521,6 +1525,10 @@
                      limite qu'on met à ce qui peut se déclencher tout seul dans la journée. -->
                 <label><span data-i18n="ui.config.agent-auto-max">Runs d'agent automatiques par jour (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-auto-max-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input form="configForm" name="agent_auto_max" id="cfgAgentAutoMax" type="number" min="0" max="1000" step="1" placeholder="10" /></label>
+                <label><span data-i18n="ui.config.agent-max-turns">Tours au plus par session d’agent (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-max-turns-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="agent_max_turns" type="number" min="0" max="10000" step="1" placeholder="200" /></label>
+                <label><span data-i18n="ui.config.agent-budget">Dépense d’IA au plus par jour, en dollars (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-budget-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input form="configForm" name="agent_daily_budget_usd" type="number" min="0" step="0.01" placeholder="0" /></label>
                 <p>
                     <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
                     <span id="configInfoAi" class="muted"></span>
@@ -1619,7 +1627,7 @@
 <div id="jiraLightbox" class="modal jira-lightbox" hidden>
     <figure class="jira-lightbox-fig">
         <img id="jiraLightboxImg" src="" alt="" />
-        <figcaption class="jira-lightbox-cap"><span id="jiraLightboxName"></span> <a id="jiraLightboxOpen" href="" target="_blank" rel="noopener" data-i18n="jira.open-new-tab">Ouvrir dans un onglet ↗</a></figcaption>
+        <figcaption class="jira-lightbox-cap"><span id="jiraLightboxName"></span> <a id="jiraLightboxOpen" href="" target="_blank" rel="noopener noreferrer" data-i18n="jira.open-new-tab">Ouvrir dans un onglet ↗</a></figcaption>
     </figure>
 </div>
 
@@ -1840,7 +1848,6 @@
                     <label class="inline-check"><input type="radio" name="permission_mode" value="" checked /> <span data-i18n="agents.permission.acceptEdits">Modifier les fichiers (défaut)</span></label>
                     <label class="inline-check"><input type="radio" name="permission_mode" value="plan" /> <span data-i18n="agents.permission.plan">Plan seulement : il propose, il ne touche à rien</span></label>
                     <label class="inline-check"><input type="radio" name="permission_mode" value="dontAsk" /> <span data-i18n="agents.permission.dontAsk">Ne rien demander</span></label>
-                    <label class="inline-check"><input type="radio" name="permission_mode" value="bypassPermissions" /> <span class="perm-warn" data-i18n="agents.permission.bypassPermissions">Tout, sans garde-fou — à réserver à un dépôt jetable</span></label>
                 </div>
                 <label><span data-i18n="agents.f.allowed">Outils autorisés (séparés par des virgules)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="agents.f.allowed-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input id="agentAllowed" name="allowed_tools" placeholder="vide = la liste par défaut de son type" data-i18n-placeholder="agents.f.allowed-ph" />
@@ -2710,7 +2717,9 @@
          rendent la densité tenable — et rien à l'écran ne les annonçait : personne ne les
          trouvait. Le bandeau du bas est le seul endroit présent sur les dix onglets. -->
     <button id="footerHelp" class="footer-mode" type="button" title="Raccourcis clavier (?)" data-i18n-title="context.title.raccourcis-clavier">?</button>
-    <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau" data-i18n-title="context.title.mode-d-affichage-du-bandeau" data-i18n="context.btn.live">live</button>
+    <!-- Libellé et bulle posés par `setMode` (app.js) : un `data-i18n` ici les réécrivait en
+         « live » après coup, même en mode stats. -->
+    <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau">live</button>
     <button id="footerHide" class="footer-hide" type="button" title="Masquer le bandeau" data-i18n-title="context.title.masquer-le-bandeau">✕</button>
 </footer>
 <button id="footerShow" class="footer-show" type="button" title="Afficher le bandeau de télémétrie" data-i18n-title="context.title.afficher-le-bandeau-de-telemetrie" hidden><svg class="ico ico-sm"><use href="#i-zap"/></svg></button>

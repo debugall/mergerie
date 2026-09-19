@@ -197,11 +197,11 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
         const doResume = !!d.session_key;
         let r; let created = !doResume;
         try {
-          r = await agentsession.runInSession({ key, handle: doResume ? d.session_key : null, prompt: promptText, cwd: d.path, resume: doResume, onLog });
+          r = await agentsession.runInSession({ key, handle: doResume ? d.session_key : null, prompt: promptText, cwd: d.path, resume: doResume, onLog, saveur: 'local' });
         } catch (e) {
           if (!doResume) throw e;
           onLog(`⚠ reprise impossible (${String(e.message).split('\n')[0]}) → session neuve`);
-          r = await agentsession.runInSession({ key, prompt: promptText, cwd: d.path, resume: false, onLog });
+          r = await agentsession.runInSession({ key, prompt: promptText, cwd: d.path, resume: false, onLog, saveur: 'local' });
           created = true;
         }
         copilot.recordUsage('task', promptText, r.text || '', null, { kind: 'local', id: taskId });

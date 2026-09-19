@@ -17,18 +17,15 @@ const os = require('os');
 const path = require('path');
 const copilot = require('./copilot');
 const agentargs = require('./agentargs');
+const agentpolicy = require('./agentpolicy');
+const { avecPreambule } = require('./nonfiable');
 const { DATA_DIR, ensureDir } = require('./paths');
 const { t } = require('../public/i18n-runtime.js');
 
 const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);
 const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé
 
-function backendName() {
-  const bin = String(copilot.COPILOT_BIN || '').toLowerCase();
-  if (bin.includes('claude')) return 'claude';
-  if (bin.includes('copilot')) return 'copilot';
-  return 'unknown';
-}
+const backendName = () => agentpolicy.backendDe(copilot.COPILOT_BIN);
 
 const slug = (key) => String(key).replace(/[^\w.-]/g, '_').slice(0, 120);
 
@@ -50,10 +47,12 @@ function spawnAgent({ args, cwd, env }, onLog = () => {}) {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, { cwd, env: { ...process.env, ...(env || {}) }, stdio: STDIO });
+    // L'environnement en liste blanche (`agentpolicy.envAgent`) : rien du `.env` de Mergerie.
+    const child = spawn(bin, args, proc.options({ cwd, env: { ...agentpolicy.envAgent('copilot'), ...(env || {}) }, stdio: STDIO }));
     proc.setActive(child);                    // sans ça, « Stop » ne tue pas l'agent (cf. en-tête)
     let stdout = ''; let stderr = ''; let obuf = '';
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
+    // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
+    const timer = setTimeout(() => { proc.tuerGroupe(child, 'SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
     child.stderr.on('data', (d) => { stderr += d; });
@@ -107,11 +106,12 @@ function runClaudeStream(args, cwd, onLog) {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, { cwd, stdio: STDIO });
+    const child = spawn(bin, args, proc.options({ cwd, env: agentpolicy.envAgent('claude'), stdio: STDIO }));
     proc.setActive(child);                    // idem : c'est LE chemin par défaut (claude)
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
     let costUsd = null; let denials = [];
-    const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
+    // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
+    const timer = setTimeout(() => { proc.tuerGroupe(child, 'SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     const handleLine = (line) => {
       const s = line.trim();
       if (!s) return;
@@ -225,11 +225,17 @@ function enrichCopilotError(e, bootstrap, home) {
  * prochaine fois — il peut différer de celui passé en entrée (cf. claude --resume, qui forke).
  * Le handle et le cwd sont à PERSISTER par
  * l'appelant (le cwd fait partie de l'identité de session — refuser une reprise si mismatch).
+ * `saveur` dit ce qu'on demande à l'agent (`agentpolicy`) : une saveur de lecture le lance sans
+ * le mode large de `COPILOT_ARGS` ; une saveur inconnue garde l'écriture. `addDirs` : dossiers
+ * hors du cwd que la lecture doit pouvoir ouvrir.
  */
-async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = () => {}, options }) {
+async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = false, onLog = () => {}, options, saveur, addDirs }) {
   const backend = backendName();
   if (backend === 'unknown') throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN }));
-  const EXTRA = copilot.EXTRA_ARGS;
+  agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
+  const pol = argvSaveur(backend, saveur, options, addDirs, onLog);
+  const prompt = avecPreambule(promptRecu);  // ce qui est balisé comme donnée est dit tel
+  const EXTRA = [...pol.extra, ...pol.args];
   /* Les options du PROFIL viennent après `COPILOT_ARGS` : le .env pose le socle commun à
      toutes les sessions, l'agent l'affine. Sans profil, `extra.args` est vide et l'argv est
      exactement celui d'avant — c'est l'invariant d'`agentargs`. */
@@ -240,7 +246,8 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
     const id = handle || crypto.randomUUID();
     // stream-json (+ --verbose, requis en -p) : événements en DIRECT → progression visible.
     const sess = resume ? ['--resume', id] : ['--session-id', id];
-    const args = [...EXTRA, ...extra.args, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
+    const bornes = agentpolicy.argsMaxTurns(backend, [...EXTRA, ...extra.args]);
+    const args = [...EXTRA, ...extra.args, ...bornes, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
     const out = await runClaudeStream(args, cwd, onLog);
     /* LE HANDLE À GARDER EST CELUI QUE L'AGENT ANNONCE, pas celui qu'on lui a passé. `claude
        --resume <id>` ne poursuit pas l'échange sous le même identifiant : il en ouvre un
@@ -267,6 +274,17 @@ async function runInSession({ key, handle, prompt, cwd, resume = false, onLog = 
   }
 }
 
+/* Les options de permission d'un lancement, et ce qu'on en dit au journal quand elles ne
+   peuvent pas tenir (copilot n'a pas de liste d'outils). */
+function argvSaveur(backend, saveur, options, addDirs, onLog = () => {}) {
+  const profil = !!(options && (options.permissionMode || (options.allowedTools || []).length));
+  const pol = agentpolicy.argvPermissions({
+    backend, bin: copilot.COPILOT_BIN, extra: copilot.EXTRA_ARGS, kind: saveur, profil, addDirs,
+  });
+  if (pol.note) onLog(t('agents.log.copilot-not-restricted'));
+  return pol;
+}
+
 // Commande à COPIER pour reprendre soi-même la session dans un terminal : `cd` vers le bon
 // dossier + lancement de l'agent avec le handle de session. claude : --resume <uuid> ;
 // copilot : COPILOT_HOME=<home> + --continue. Renvoie null si la session n'a pas de handle.
@@ -288,4 +306,4 @@ function resumeCommand(backend, handle, cwd, options) {
   return null;
 }
 
-module.exports = { backendName, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT };
+module.exports = { backendName, argvSaveur, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT };
