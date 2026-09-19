@@ -28,7 +28,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const git = require('./git');
+const git = require('./git/git');
 const { TASKS_DIR, ensureDir } = require('./core/paths');
 const { t } = require('../public/i18n-runtime.js');
 

@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 
 const db = require('./db');
-const git = require('./git');
+const git = require('./git/git');
 const forge = require('./forge');
 const proc = require('./core/proc');
 const verify = require('./verify');

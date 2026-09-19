@@ -2,10 +2,10 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const { DEFAULT_CLONE_DIR, DATA_DIR, ensureDir, slugify } = require('./core/paths');
-const forge = require('./forge');
-const proc = require('./core/proc');
-const { t } = require('../public/i18n-runtime.js');
+const { DEFAULT_CLONE_DIR, DATA_DIR, ensureDir, slugify } = require('../core/paths');
+const forge = require('../forge');
+const proc = require('../core/proc');
+const { t } = require('../../public/i18n-runtime.js');
 
 // Émet les lignes complètes d'un buffer vers onLog, renvoie le reste incomplet.
 function emitLines(buf, onLog) {
@@ -88,7 +88,7 @@ function envGit(supplement = {}) {
   env.GIT_LFS_SKIP_SMUDGE = '1';             // un pointeur LFS suffit à relire du code
   let cfg = null;
   // eslint-disable-next-line global-require
-  try { cfg = require('./config').getConfig(); } catch { /* base pas encore prête : sans jeton */ }
+  try { cfg = require('../config').getConfig(); } catch { /* base pas encore prête : sans jeton */ }
   const entetes = enTetesForge(cfg);
   env.GIT_CONFIG_COUNT = String(entetes.length);
   entetes.forEach((e, i) => {
@@ -272,7 +272,7 @@ async function ensureRepo(cfg, repo, onLog = () => {}) {
   /* Le clone vient de bouger : un skill ajouté dans `.claude/skills/` doit apparaître au
      prochain regard, pas cinq minutes plus tard. Require paresseux — `skillscan` dépend de
      ce module, et le charger en tête ferait un cycle. */
-  try { require('./skillscan').invalidate(); } catch { /* module absent : rien à invalider */ }
+  try { require('../skillscan').invalidate(); } catch { /* module absent : rien à invalider */ }
   return dir;
 }
 

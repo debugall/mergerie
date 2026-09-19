@@ -26,7 +26,7 @@ const {
 /* On importe le module PUR, jamais `src/gitmerge` : celui-ci require `src/db`, qui OUVRE la
    base au chargement — et à cet instant le harnais n'a pas encore posé `MERGERIE_DATA_DIR`.
    Un tel import écrit dans la base RÉELLE de l'utilisateur. C'est arrivé ; d'où `src/conflits`. */
-const conflits = require('../src/conflits');
+const conflits = require('../src/git/conflits');
 
 const { dispo } = navigateurDispo();
 
@@ -128,7 +128,7 @@ describe('Git · Merge de branche à branche', () => {
 
     const cfg = app.db.prepare('SELECT * FROM config WHERE id = 1').get();
     const repo = app.db.prepare('SELECT * FROM repo WHERE id = ?').get(repoId);
-    const clone = require('../src/git').cloneDirFor(cfg, repo);
+    const clone = require('../src/git/git').cloneDirFor(cfg, repo);
     assert.equal(fs.existsSync(path.join(clone, '.git', 'MERGE_HEAD')), false,
       'le merge doit vivre dans SON worktree, pas dans le clone');
     assert.equal(g(clone, 'status', '--porcelain'), '', 'et le clone doit rester propre');

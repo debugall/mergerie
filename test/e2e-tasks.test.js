@@ -81,7 +81,7 @@ describe('Sessions de dev de bout en bout', () => {
      travail. Confondre les deux renvoyait la session en erreur sans diff ni bouton « Créer la
      MR », alors que le code était là. C'est `aheadOf` qui les sépare. */
   test('une branche qui porte déjà le travail est reconnue comme telle', async () => {
-    const gitmod = require('../src/git');
+    const gitmod = require('../src/git/git');
     const dir = fs.mkdtempSync(path.join(app.dataDir, 'ahead-'));
     const r = makeRemoteRepo(dir, { branch: 'feature/deja-fait' });
     const work = path.join(dir, 'work');

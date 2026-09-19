@@ -14,7 +14,7 @@
  * change encore redemande.
  */
 const crypto = require('node:crypto');
-const git = require('./git');
+const git = require('./git/git');
 const { etat } = require('./localstate');
 
 const SENSIBLE = /(^|\/)(CLAUDE\.md|CLAUDE\.local\.md|AGENTS\.md|\.mcp\.json)$|(^|\/)\.claude\/|^\.github\/(copilot-instructions\.md|instructions\/|agents\/|chatmodes\/)/;

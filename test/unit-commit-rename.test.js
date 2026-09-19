@@ -25,7 +25,7 @@ const { execFileSync } = require('node:child_process');
    l'ouvrait quand même. */
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'commit-rename-'));
 
-const git = require('../src/git');
+const git = require('../src/git/git');
 const taskrunner = require('../src/taskrunner');
 const { poserIdentiteGit } = require('./helpers/app');
 

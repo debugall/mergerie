@@ -14,12 +14,12 @@
    les objets devenus inatteignables ; une fois passé, seuls les objets présents
    dans un clone permettent encore de reconstituer la branche. */
 
-const db = require('./db');
-const forge = require('./forge');
+const db = require('../db');
+const forge = require('../forge');
 const git = require('./git');
-const demoGit = require('./demo/git');
-const { getConfig } = require('./config');
-const { t } = require('../public/i18n-runtime.js');
+const demoGit = require('../demo/git');
+const { getConfig } = require('../config');
+const { t } = require('../../public/i18n-runtime.js');
 
 const ACTIONS = ['new_branch', 'delete_branch', 'create_tag', 'delete_tag'];
 const isDestructive = (a) => a === 'delete_branch' || a === 'delete_tag';

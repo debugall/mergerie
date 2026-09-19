@@ -17,7 +17,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { run } = require('../git'); // spawn générique { stdout, stderr }, redaction incluse
+const { run } = require('../git/git'); // spawn générique { stdout, stderr }, redaction incluse
 const { pMap } = require('../core/pmap');
 
 const COMPOSE_FILES = ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'];

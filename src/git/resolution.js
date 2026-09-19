@@ -14,7 +14,7 @@
 
 const crypto = require('crypto');
 const git = require('./git');
-const { t } = require('../public/i18n-runtime.js');
+const { t } = require('../../public/i18n-runtime.js');
 
 const SEVERITIES = ['blocker', 'major', 'minor', 'info'];
 

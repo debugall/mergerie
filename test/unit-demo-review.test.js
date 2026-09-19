@@ -21,7 +21,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const demoReview = require('../src/demo/review');
 const demoDiff = require('../src/demo/diff');
-const resolution = require('../src/resolution');
+const resolution = require('../src/git/resolution');
 const { extractNote } = require('../src/note');
 
 const MR = {

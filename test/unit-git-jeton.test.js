@@ -40,7 +40,7 @@ describe('Le jeton ne s’écrit plus dans le clone, et git ne lance plus ce qu�
 
     serveur = await serveurGitHttp({ racine, utilisateur: 'oauth2', jeton: JETON });
     config = require('../src/config');
-    git = require('../src/git');
+    git = require('../src/git/git');
     config.updateConfig({
       gitlab_url: serveur.url, access_token: JETON,
       clone_path: path.join(process.env.MERGERIE_DATA_DIR, 'clones'),

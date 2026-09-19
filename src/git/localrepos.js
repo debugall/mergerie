@@ -15,11 +15,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const db = require('./db');
+const db = require('../db');
 const git = require('./git');
-const proc = require('./core/proc');
+const proc = require('../core/proc');
 const gitpalette = require('./gitpalette');
-const { t } = require('../public/i18n-runtime.js');
+const { t } = require('../../public/i18n-runtime.js');
 
 // Mode démo : dépôts locaux FICTIFS (la machine réelle n'existe pas en démo) pour que
 // Navigation et « Commandes Git » restent consultables. Séquence figée.
