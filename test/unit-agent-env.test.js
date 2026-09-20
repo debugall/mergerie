@@ -22,6 +22,9 @@ process.env.COPILOT_ARGS = '--dangerously-skip-permissions';
 process.env.GITLAB_TOKEN = 'glpat-NE-DOIT-PAS-PASSER';
 process.env.JIRA_API_TOKEN = 'jira-NE-DOIT-PAS-PASSER';
 process.env.MERGERIE_ACCESS_TOKEN = 'acces-NE-DOIT-PAS-PASSER';
+process.env.SSH_AUTH_SOCK = '/tmp/ssh-agent.sock-ne-doit-pas-passer-en-lecture';
+process.env.MERGERIE_AGENT_ENV = 'MON_SECRET_PROJET';
+process.env.MON_SECRET_PROJET = 'ne-doit-pas-passer-en-lecture';
 delete process.env.COPILOT_DRY_RUN;
 
 // Après les variables d'environnement : copilot.js fige COPILOT_BIN et COPILOT_ARGS au chargement.
@@ -31,7 +34,8 @@ const agentsession = require('../src/agent/session');
 const copilot = require('../src/agent/copilot');
 
 after(() => {
-  for (const k of ['GITLAB_TOKEN', 'JIRA_API_TOKEN', 'MERGERIE_ACCESS_TOKEN', 'COPILOT_ARGS']) delete process.env[k];
+  for (const k of ['GITLAB_TOKEN', 'JIRA_API_TOKEN', 'MERGERIE_ACCESS_TOKEN', 'COPILOT_ARGS',
+    'SSH_AUTH_SOCK', 'MERGERIE_AGENT_ENV', 'MON_SECRET_PROJET']) delete process.env[k];
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
@@ -62,6 +66,15 @@ describe('Ce que reçoit le processus de l’agent', () => {
     assert.equal(env.MERGERIE_ACCESS_TOKEN, undefined);
     assert.equal(env.MERGERIE_DATA_DIR, undefined, 'ni où est la base');
     assert.ok(env.PATH && env.HOME, 'mais de quoi trouver ses outils');
+  });
+
+  test('en lecture, ni l’agent SSH ni l’extension MERGERIE_AGENT_ENV du .env — en écriture, les deux passent', async () => {
+    await lancer('review');
+    assert.equal(faux.env().SSH_AUTH_SOCK, undefined, 'lecture : jamais l’agent SSH');
+    assert.equal(faux.env().MON_SECRET_PROJET, undefined, 'lecture : jamais l’extension MERGERIE_AGENT_ENV');
+    await lancer('code');
+    assert.equal(faux.env().SSH_AUTH_SOCK, process.env.SSH_AUTH_SOCK);
+    assert.equal(faux.env().MON_SECRET_PROJET, 'ne-doit-pas-passer-en-lecture');
   });
 
   test('le chemin sans session (runPrompt) suit la même politique', async () => {

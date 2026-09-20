@@ -13,11 +13,11 @@ const { spawn } = require('child_process');
 const proc = require('../core/proc');
 const crypto = require('crypto');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const copilot = require('./copilot');
 const agentargs = require('./args');
 const agentpolicy = require('./policy');
+const credentials = require('../sandbox/credentials');
 const { avecPreambule } = require('../core/nonfiable');
 const { DATA_DIR, ensureDir } = require('../core/paths');
 const { t } = require('../core/i18n');
@@ -42,13 +42,14 @@ const STDIO = ['ignore', 'pipe', 'pipe'];
    délai — quinze minutes à écrire dans le clone et à consommer des tokens. Or c'est le chemin
    NOMINAL (COPILOT_BIN=claude), c'est-à-dire précisément la phase qu'on veut pouvoir arrêter. */
 
-function spawnAgent({ args, cwd, env }, onLog = () => {}) {
+function spawnAgent({ args, cwd, env, lecture }, onLog = () => {}) {
   return new Promise((resolve, reject) => {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
     // L'environnement en liste blanche (`agentpolicy.envAgent`) : rien du `.env` de Mergerie.
-    const child = spawn(bin, args, proc.options({ cwd, env: { ...agentpolicy.envAgent('copilot'), ...(env || {}) }, stdio: STDIO }));
+    const saveur = lecture ? 'lecture' : 'ecriture';
+    const child = spawn(bin, args, proc.options({ cwd, env: { ...agentpolicy.envAgent('copilot', process.env, saveur), ...(env || {}) }, stdio: STDIO }));
     proc.setActive(child);                    // sans ça, « Stop » ne tue pas l'agent (cf. en-tête)
     let stdout = ''; let stderr = ''; let obuf = '';
     // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
@@ -101,12 +102,12 @@ function ligneOutil(c) {
 // Claude en `--output-format stream-json` émet des ÉVÉNEMENTS NDJSON en DIRECT (contrairement
 // à `json` qui ne rend qu'à la fin). On les streame en clair dans le log (texte de l'assistant
 // + outils utilisés) et on capture le RÉSULTAT final (texte + session_id).
-function runClaudeStream(args, cwd, onLog) {
+function runClaudeStream(args, cwd, onLog, lecture) {
   return new Promise((resolve, reject) => {
     const bin = copilot.COPILOT_BIN;
     const shown = args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ');
     onLog(`$ ${bin} ${shown}  (cwd=${cwd})`);
-    const child = spawn(bin, args, proc.options({ cwd, env: agentpolicy.envAgent('claude'), stdio: STDIO }));
+    const child = spawn(bin, args, proc.options({ cwd, env: agentpolicy.envAgent('claude', process.env, lecture ? 'lecture' : 'ecriture'), stdio: STDIO }));
     proc.setActive(child);                    // idem : c'est LE chemin par défaut (claude)
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
     let costUsd = null; let denials = [];
@@ -153,37 +154,18 @@ function runClaudeStream(args, cwd, onLog) {
   });
 }
 
-// Entrées du home Copilot à NE PAS importer dans le home isolé : sessions/historique (pour
-// que --continue reprenne la bonne session et ne pollue pas l'historique réel) et contexte
-// d'agent (skills, instructions) qui altérerait le comportement.
-const COPILOT_EXCLUDE_ENTRIES = new Set([
-  'history', 'history-session-state', 'sessions', 'session-state', 'logs', 'tmp',
-  'skills', 'copilot-instructions.md',
-]);
-
-function firstExistingDir(cands) {
-  for (const c of cands) { if (c && fs.existsSync(c)) return c; }
-  return null;
-}
-
-// Un home isolé n'a pas l'auth du `/login` (stockée dans le home par défaut) : on lie
-// (symlink) l'auth + la config du home source en écartant sessions et contexte. Best-effort.
+// Un home isolé n'a pas l'auth du `/login` (stockée dans le home par défaut) : on en COPIE
+// l'auth + la config, jamais par lien symbolique (`sandbox/credentials.js` — un lien resterait
+// un chemin vivant vers le home réel, une copie en est coupée dès qu'elle est faite). Best-effort
+// au sens où un home source absent ne bloque rien ici : `enrichCopilotError` explique alors
+// l'échec d'authentification qui suit, plutôt que de refuser un lancement qui pourrait tourner
+// avec `COPILOT_GITHUB_TOKEN`/`GH_TOKEN` seuls.
 function bootstrapCopilotHome(home) {
-  const source = firstExistingDir([
-    process.env.COPILOT_HOME,
-    path.join(os.homedir(), '.copilot'),
-    process.env.XDG_CONFIG_HOME && path.join(process.env.XDG_CONFIG_HOME, 'copilot'),
-  ]);
   ensureDir(home);
+  const source = credentials.sourceCopilotHome();
   if (!source || path.resolve(source) === path.resolve(home)) return { source: null, linked: [] };
-  const linked = [];
-  for (const name of fs.readdirSync(source)) {
-    if (COPILOT_EXCLUDE_ENTRIES.has(name)) continue;
-    const dest = path.join(home, name);
-    if (fs.existsSync(dest)) continue;
-    try { fs.symlinkSync(path.join(source, name), dest); linked.push(name); } catch { /* best-effort */ }
-  }
-  return { source, linked };
+  try { return credentials.copierHomeCopilot(source, home); }
+  catch { return { source, linked: [] }; }
 }
 
 /* Le CLI copilot dit « authentication » aussi bien quand le jeton manque que quand il n'a
@@ -248,7 +230,7 @@ async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = fal
     const sess = resume ? ['--resume', id] : ['--session-id', id];
     const bornes = agentpolicy.argsMaxTurns(backend, [...EXTRA, ...extra.args]);
     const args = [...EXTRA, ...extra.args, ...bornes, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
-    const out = await runClaudeStream(args, cwd, onLog);
+    const out = await runClaudeStream(args, cwd, onLog, pol.lecture);
     /* LE HANDLE À GARDER EST CELUI QUE L'AGENT ANNONCE, pas celui qu'on lui a passé. `claude
        --resume <id>` ne poursuit pas l'échange sous le même identifiant : il en ouvre un
        nouveau, qui porte l'ancien plus le tour qu'on vient de faire. Rendre l'ancien faisait
@@ -267,7 +249,7 @@ async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = fal
   }
   const args = resume ? [...EXTRA, ...extra.args, '--continue', '-p', prompt] : [...EXTRA, ...extra.args, '-p', prompt];
   try {
-    const text = await spawnAgent({ args, cwd, env: { COPILOT_HOME: home } }, onLog);
+    const text = await spawnAgent({ args, cwd, env: { COPILOT_HOME: home }, lecture: pol.lecture }, onLog);
     return { text, sessionId: null, handle: home, backend, costUsd: null, denials: [] };
   } catch (e) {
     throw enrichCopilotError(e, bootstrap, home);

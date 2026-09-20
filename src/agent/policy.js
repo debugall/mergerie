@@ -222,12 +222,17 @@ const PREFIXES = {
 
 /* `MERGERIE_AGENT_ENV=NOM1,NOM2` ajoute des noms à la liste — le besoin d'un projet qu'on ne
    devine pas (`DATABASE_URL` de test, `KUBECONFIG`…). C'est un choix de l'utilisateur, fait dans
-   SON `.env` : il sait ce qu'il donne. */
-function envAgent(backend, source = process.env) {
+   SON `.env` : il sait ce qu'il donne. EN LECTURE (review/explain/question/explore/…), cette
+   extension est ignorée et `SSH_AUTH_SOCK` retiré : un texte non fiable (description de MR,
+   commentaire, réponse de modèle) ne doit pas pouvoir compter sur une variable que l'utilisateur
+   a ajoutée pour SES besoins d'écriture (§5.2 du plan). */
+function envAgent(backend, source = process.env, saveur = 'ecriture') {
+  const lecture = saveur === 'lecture';
   const prefixes = [...PREFIXES_COMMUNS, ...(PREFIXES[backend] || [...PREFIXES.claude, ...PREFIXES.copilot])];
-  const enPlus = new Set(String(source.MERGERIE_AGENT_ENV || '').split(',').map((x) => x.trim()).filter(Boolean));
+  const enPlus = lecture ? new Set() : new Set(String(source.MERGERIE_AGENT_ENV || '').split(',').map((x) => x.trim()).filter(Boolean));
   const env = {};
   for (const [k, v] of Object.entries(source)) {
+    if (lecture && k === 'SSH_AUTH_SOCK') continue;
     if (NOMS.has(k) || enPlus.has(k) || prefixes.some((p) => k.startsWith(p))) env[k] = v;
   }
   // Ce que Mergerie lui-même porte ne va jamais à l'agent, quel que soit son préfixe.

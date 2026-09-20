@@ -119,7 +119,7 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
     onLog(`$ ${parts.join(' ')}  (cwd=${cwd})`);
     /* stdin fermée : sinon le CLI attend des données sur un tube que personne n'alimente,
        avertit au bout de trois secondes et l'avertissement masque la vraie erreur. */
-    const env = agentpolicy.envAgent(backend === 'unknown' ? null : backend);
+    const env = agentpolicy.envAgent(backend === 'unknown' ? null : backend, process.env, pol.lecture ? 'lecture' : 'ecriture');
     const child = spawn(COPILOT_BIN, args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }));
     proc.setActive(child);
     let stdout = '';
