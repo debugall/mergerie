@@ -197,6 +197,11 @@ Mergerie couvre déjà l'arrêt en pratique.
 | `sandbox/backends/linux.js` | **bubblewrap rootless**, Linux uniquement : `capabilities()` lance un bwrap PROCHE du réel (un simple `--unshare-user` peut réussir alors que monter `/proc` échoue ensuite, constaté en conteneur imbriqué), `buildCommand` (argv jamais une chaîne shell, système monté en lecture seule pour que l'agent lui-même soit exécutable), `run` (suit `core/proc.js`) |
 | `sandbox/backends/legacy.js` | le mode non sandboxé — choisi UNIQUEMENT si `sandbox: 'disabled'` explicite, jamais un repli silencieux ; environnement filtré comme le reste (pas `process.env` tel quel) |
 
+`backends/legacy.js` n'est aujourd'hui joignable que par les tests : aucun appelant réel ne passe
+`sandbox: 'disabled'` (les deux seuls états visibles sont `agent_sandbox` à `'off'`, qui ne route
+pas du tout par ce module, ou à `'required'`). Il sert de brique prête pour un futur mode
+explicitement dégradé, pas de fonctionnalité utilisateur aujourd'hui.
+
 Ni cgroups v2 « garantis » ni filtre seccomp custom dans cette première livraison : les
 namespaces, l'absence de capabilities et les montages en lecture seule sont la ligne de défense ;
 les deux sont documentés comme un chantier suivant plutôt que simulés. Le filtrage réseau par

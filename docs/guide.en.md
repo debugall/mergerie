@@ -3010,9 +3010,21 @@ level is a *logical* limit, not an operating-system isolation. A machine setting
 “Secure sandbox”, **off by default**) runs every read-only launch — review, explanation, question — in
 its own Linux namespace via `bubblewrap`: the shared clone is seen read-only (an extraction of the
 commit, never the clone itself), no network, no access to secrets, the SSH agent or the Docker socket.
-`bubblewrap` is Linux only: turning this setting to “Required” on a machine that cannot provide it makes
-every affected launch **fail** with an explicit message, rather than run unprotected in silence. Coding,
-verification and planning do not go through this sandbox yet.
+A **verifier**'s commands (Settings → Verifiers) go through the same sandbox, writable in a disposable
+worktree and with the network open (installing dependencies before tests is the common case) — except
+in “in place” mode, which keeps its own consent and stays out of the sandbox. **Out-of-repo coding**
+works IN PLACE in your real folder: sandboxing it would mean working on a copy while claiming your
+folder changed — with the setting on “Required”, each affected folder fails explicitly instead of a
+false promise of isolation. Repo coding and planning do not go through this sandbox yet.
+
+`bubblewrap` is **Linux only**: turning this setting to “Required” on a machine that cannot provide it
+makes every affected launch **fail** with an explicit message, rather than run unprotected in silence —
+Settings → AI says so upfront, before you even save. To install it: `apt install bubblewrap`
+(Debian/Ubuntu), `dnf install bubblewrap` (Fedora), `pacman -S bubblewrap` (Arch); `bwrap --version`
+confirms it responds. If the setting still refuses to start a launch (“user namespaces unavailable”),
+the kernel restricts unprivileged user namespaces — `sysctl kernel.unprivileged_userns_clone=1`
+(Debian) or an AppArmor policy for `/usr/bin/bwrap` (Ubuntu 24.04+) depending on the distribution;
+`MERGERIE_BWRAP_BIN` points at a different path than the one on `PATH` if needed.
 
 **Text from elsewhere is data, and is said to be.** MR title and description, Jira ticket, previous
 report, exchanges from another machine, domain cards enter the prompt between tags with a **random nonce**

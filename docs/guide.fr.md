@@ -3110,10 +3110,24 @@ retire au niveau du CLI reste une limite *logique*, pas une isolation du systèm
 (Réglages → IA → « Sandbox sécurisée », **désactivé par défaut**) fait tourner chaque lancement en
 lecture — review, explication, question — dans son propre espace de noms Linux via `bubblewrap` : le
 clone partagé n'est vu qu'en lecture seule (une extraction du commit, jamais le clone lui-même), aucun
-réseau, aucun accès aux secrets, à l'agent SSH ni au socket Docker. `bubblewrap` est Linux uniquement :
-mettre ce réglage sur « Obligatoire » sur un poste qui ne peut pas le tenir fait **échouer** chaque
-lancement concerné avec un message explicite, plutôt que de tourner sans isolation en silence. Le codage,
-la vérification et la planification ne passent pas encore par cette sandbox.
+réseau, aucun accès aux secrets, à l'agent SSH ni au socket Docker. Les commandes d'un **vérificateur**
+(onglet Réglages → Vérificateurs) passent par la même sandbox, en écriture dans un worktree jetable et
+avec le réseau ouvert (l'installation des dépendances avant les tests est le cas courant) — sauf en mode
+« in place », qui garde son propre consentement et reste hors sandbox. Le **codage hors dépôt**, lui,
+travaille EN PLACE dans ton dossier réel : le sandboxer reviendrait à travailler sur une copie tout en
+laissant croire que ton dossier a changé — avec le réglage sur « Obligatoire », chaque dossier concerné
+échoue donc avec un message explicite plutôt qu'une fausse promesse d'isolation. Le codage de dépôt et la
+planification ne passent pas encore par cette sandbox.
+
+`bubblewrap` est **Linux uniquement** : mettre ce réglage sur « Obligatoire » sur un poste qui ne peut
+pas le tenir fait **échouer** chaque lancement concerné avec un message explicite, plutôt que de tourner
+sans isolation en silence — et Réglages → IA le dit d'avance, avant même d'enregistrer. Pour l'installer :
+`apt install bubblewrap` (Debian/Ubuntu), `dnf install bubblewrap` (Fedora), `pacman -S bubblewrap`
+(Arch) ; `bwrap --version` confirme qu'il répond. Si le réglage refuse quand même de démarrer un
+lancement (« espaces de noms utilisateur indisponibles »), le noyau restreint les espaces de noms
+utilisateur non privilégiés — `sysctl kernel.unprivileged_userns_clone=1` (Debian) ou une politique
+AppArmor pour `/usr/bin/bwrap` (Ubuntu 24.04+) selon la distribution ; `MERGERIE_BWRAP_BIN` désigne un
+autre chemin que celui du `PATH` si besoin.
 
 **Le texte venu d'ailleurs est une donnée, dite comme telle.** Titre et description de MR, ticket Jira,
 rapport précédent, échanges d'une autre machine, cartes de domaine entrent dans le prompt entre des balises
