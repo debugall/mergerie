@@ -45,6 +45,7 @@ async function loadConfig() {
   const c = await api('/config');
   poserBadgesConfig(c.scopes);   // avant les abandons ci-dessous : un badge ne touche à aucune valeur
   chargerDataSync();             // l'état de la synchro, indépendant des champs
+  chargerSandboxStatus();        // ce que CE poste peut tenir, indépendant des champs aussi
   if (configFrappe >= depart) return;      // l'utilisateur a tapé pendant ce temps : on s'abstient
   /* ET S'IL A TAPÉ AVANT ? Chaque sous-onglet de Réglages rappelle `loadConfig` en s'ouvrant :
      une valeur modifiée puis non enregistrée était écrasée par le serveur au premier changement

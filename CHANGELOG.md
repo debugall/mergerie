@@ -40,6 +40,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   mode — never for “in place”, which keeps its own separate consent. Network stays open (a
   `npm install` before tests is the common case), only the filesystem and process are isolated.
 
+- **Settings → AI now says whether this machine can actually support the secure sandbox**, right
+  under the setting, before you turn it on — “Required” on a machine without bubblewrap is
+  flagged loudly instead of discovered later through failed launches.
+
 - **A read-only API for the secure sandbox**: what this machine can support
   (`/api/sandbox/capabilities`), the compiled policy of each mode (`/api/sandbox/policies`,
   `/api/sandbox/preview`), and the log of jobs already run (`/api/sandbox/jobs`). No route

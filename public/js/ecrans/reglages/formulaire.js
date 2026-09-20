@@ -25,6 +25,24 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share'];
+
+/* CE QUE CE POSTE PEUT TENIR, à côté du réglage lui-même : dit AVANT que l'admin ne mette
+   « Obligatoire » si bubblewrap n'est pas là, plutôt que de le laisser découvrir un lancement
+   d'agent en échec ensuite. Sondé une fois côté serveur (mis en cache), un appel de plus ici
+   ne coûte donc rien. */
+async function chargerSandboxStatus() {
+  const zone = $('#cfgAgentSandboxStatus');
+  if (!zone) return;
+  let cap;
+  try { cap = await api('/sandbox/capabilities'); } catch { return; }
+  if (cap.disponible) { zone.textContent = tr('ui.config.agent-sandbox-status-ok'); return; }
+  const raison = !cap.platform ? tr('ui.config.agent-sandbox-status-platform')
+    : (!cap.bin ? tr('ui.config.agent-sandbox-status-nobin') : tr('ui.config.agent-sandbox-status-nonamespaces'));
+  zone.textContent = cap.reglage === 'required'
+    ? tr('ui.config.agent-sandbox-status-broken', { raison })
+    : tr('ui.config.agent-sandbox-status-unavailable', { raison });
+}
+
 /* CE QUI EST TAPÉ NE DOIT PAS ÊTRE EFFACÉ PAR UN CHARGEMENT EN RETARD.
  *
  * `loadConfig()` part à chaque ouverture d'un sous-onglet de réglages, et sa réponse revient

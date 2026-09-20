@@ -184,6 +184,15 @@ codage, vérification et plan restent sur le chemin direct (chantier suivant).
 toujours depuis un job Mergerie existant, dont le bouton « Stop » l'arrête déjà — un `/cancel` à
 part demanderait de faire correspondre un id de job de sandbox à un id de job Mergerie, jamais
 tracé aujourd'hui.
+
+**UI minimale (§8.3 du plan) : un seul indicateur, pas un écran de statut complet.** Réglages →
+IA → Sessions IA affiche, sous le réglage `agent_sandbox`, ce que CE POSTE peut tenir
+(`chargerSandboxStatus()`, `public/js/ecrans/reglages/formulaire.js`, via
+`GET /api/sandbox/capabilities`) — avant que l'admin ne mette « Obligatoire », pas après avoir
+découvert des lancements en échec. Un badge par job, un lien « voir le plan d'exécution » et un
+bouton d'arrêt DÉDIÉS à la sandbox restent un chantier à part : le journal d'un job existe déjà
+(`GET /api/sandbox/jobs`), mais rien n'affiche encore la liste, et le bouton « Stop » d'un job
+Mergerie couvre déjà l'arrêt en pratique.
 | `sandbox/runner.js` | **le superviseur** : choisit le backend (jamais de repli automatique vers `legacy` — refus fermé sauf `sandbox: 'disabled'` explicite), prépare le dossier, lance, collecte, nettoie dans un `finally`. Tourne dans le contexte d'annulation du JOB APPELANT (`proc.run`) : c'est ce qui laisse le bouton « Stop » existant fonctionner sans câblage neuf |
 | `sandbox/backends/linux.js` | **bubblewrap rootless**, Linux uniquement : `capabilities()` lance un bwrap PROCHE du réel (un simple `--unshare-user` peut réussir alors que monter `/proc` échoue ensuite, constaté en conteneur imbriqué), `buildCommand` (argv jamais une chaîne shell, système monté en lecture seule pour que l'agent lui-même soit exécutable), `run` (suit `core/proc.js`) |
 | `sandbox/backends/legacy.js` | le mode non sandboxé — choisi UNIQUEMENT si `sandbox: 'disabled'` explicite, jamais un repli silencieux ; environnement filtré comme le reste (pas `process.env` tel quel) |
