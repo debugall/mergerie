@@ -17,7 +17,6 @@
             <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
             <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
             <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
-            <button data-sub="dictation" role="tab" title="Dicter dans n'importe quel champ de texte, avec le vocabulaire de tes dépôts" data-i18n-title="settings.title.dictation" data-i18n="settings.sub.dictation">Dictée vocale</button>
         </div>
 
         <!-- Sous-onglet : Vérificateurs (vérification objective) -->
@@ -600,80 +599,4 @@
             </p>
             <div id="aiSessionResult"></div>
         </div><!-- /sub-aisession -->
-
-        <!-- DICTÉE VOCALE (whisper.md §6.3, §6.5). Treize réglages et un panneau qui DÉROULE la
-             chaîne au lieu de la « pinguer » : binaire, modèle, VAD, démarrage, transcription
-             d'un échantillon, vocabulaire, fournisseur distant, puis les deux étapes que le
-             serveur ne peut pas connaître (origine sûre, micro). -->
-        <div id="sub-dictation" class="subtab">
-            <h2 data-i18n="settings.dictation.title">Dictée vocale</h2>
-            <p class="muted" style="max-width:760px" data-i18n="settings.dictation.intro">Un micro apparaît sur le champ où tu écris : tu parles, le texte s'écrit au curseur.</p>
-            <p class="muted" style="max-width:760px" data-i18n="settings.dictation.privacy">Avec le moteur local, l'audio ne quitte pas la machine.</p>
-
-            <div class="form" style="max-width:620px">
-                <label><span data-i18n="settings.dictation.lbl.provider">Fournisseur</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.provider" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <select form="configForm" name="dictation_provider" id="dictationProvider">
-                        <option value="off" data-i18n="ui.off">Éteinte</option>
-                        <option value="local">whisper.cpp (local)</option>
-                        <option value="openai">API compatible OpenAI</option>
-                        <option value="browser" data-i18n="settings.dictation.provider.browser">Navigateur</option>
-                    </select>
-                </label>
-                <p id="dictationBrowserWarn" class="field-note warn" hidden data-i18n="settings.dictation.warn-browser">Le fournisseur « navigateur » envoie l'audio aux serveurs de Google ou d'Apple.</p>
-
-                <label><span data-i18n="settings.dictation.lbl.language">Langue dictée</span>
-                    <select form="configForm" name="dictation_language">
-                        <option value="auto" data-i18n="settings.dictation.lang.auto">Celle de l'interface</option>
-                        <option value="fr">Français</option>
-                        <option value="en">English</option>
-                    </select>
-                </label>
-
-                <div class="dictation-local">
-                    <label><span data-i18n="settings.dictation.lbl.model">Modèle local (chemin du fichier .bin)</span>
-                        <input form="configForm" name="dictation_model" placeholder="data/models/ggml-large-v3-turbo.bin" /></label>
-                    <label><span data-i18n="settings.dictation.lbl.vad">Modèle de détection de voix (Silero, facultatif)</span>
-                        <input form="configForm" name="dictation_vad_model" placeholder="data/models/ggml-silero-v5.1.2.bin" /></label>
-                    <label><span data-i18n="settings.dictation.lbl.command">Commande du moteur (vide = whisper-server du PATH)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                        <input form="configForm" name="dictation_command" placeholder="whisper-server" /></label>
-                </div>
-
-                <div class="dictation-remote">
-                    <label><span data-i18n="settings.dictation.lbl.url">URL du fournisseur compatible OpenAI</span>
-                        <input form="configForm" name="dictation_url" placeholder="https://api.openai.com" /></label>
-                    <label><span data-i18n="settings.dictation.lbl.key">Clé d'API</span>
-                        <input form="configForm" name="dictation_api_key" type="password" autocomplete="off" placeholder="sk-…" /></label>
-                    <label><span data-i18n="settings.dictation.lbl.remote-model">Modèle distant</span>
-                        <input form="configForm" name="dictation_remote_model" placeholder="gpt-4o-mini-transcribe" /></label>
-                </div>
-
-                <label><span data-i18n="settings.dictation.lbl.vocabulary">Glossaire (un terme par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.vocabulary" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <textarea form="configForm" name="dictation_vocabulary" rows="4" spellcheck="false" data-i18n-placeholder="settings.dictation.ph.vocabulary" placeholder="webapp-front"></textarea></label>
-                <label><span data-i18n="settings.dictation.lbl.replacements">Corrections (entendu =&gt; écrit, une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.replacements" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <textarea form="configForm" name="dictation_replacements" rows="3" spellcheck="false" data-i18n-placeholder="settings.dictation.ph.replacements" placeholder="Jean-Kim => Jenkins"></textarea></label>
-                <label><span data-i18n="settings.dictation.lbl.silence">Fin de phrase après (ms de silence)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.dictation.tip.silence" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <input form="configForm" name="dictation_silence_ms" type="number" min="400" max="1500" step="50" placeholder="700" /></label>
-                <label><span data-i18n="settings.dictation.lbl.idle">Arrêter le moteur après (minutes sans dictée, 0 = jamais)</span>
-                    <input form="configForm" name="dictation_idle_minutes" type="number" min="0" max="240" step="1" placeholder="15" /></label>
-                <label class="check"><input form="configForm" type="checkbox" name="dictation_final_pass" />
-                    <span data-i18n="settings.dictation.lbl.final-pass">Relire l'audio complet à l'arrêt (plus précis)</span></label>
-
-                <div class="form-actions">
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                    <span id="configInfoDictation" class="muted"></span>
-                </div>
-            </div>
-
-            <div id="dictationPanel" class="dictation-panel">
-                <p>
-                    <button id="dictationTest" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.dictation.test">Tester</span></button>
-                    <button id="dictationInstall" class="btn" type="button"><svg class="ico"><use href="#i-download"/></svg><span id="dictationInstallLabel" data-i18n="settings.dictation.install">Installer</span></button>
-                    <span id="dictationInfo" class="muted"></span>
-                </p>
-                <div id="dictationVerdict" class="dictation-verdict" hidden></div>
-                <div id="dictationSteps"></div>
-                <p id="dictationDropped" class="muted" hidden></p>
-                <pre id="dictationLog" class="dictation-log" hidden></pre>
-            </div>
-        </div><!-- /sub-dictation -->
     </section>

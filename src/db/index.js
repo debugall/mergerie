@@ -23,7 +23,6 @@ const TRANCHES = [
   '08-liens',
   '09-notes',
   '10-jenkins-config',
-  '11-dictee',
   '12-agents',
   '13-local-config',
   '14-identite',

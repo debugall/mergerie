@@ -13,14 +13,6 @@ secrets, no-shell execution, targeted guards, served files, destructive operatio
 **[security section of the guide](./docs/guide.en.md#security)** (also
 **[in French](./docs/guide.fr.md#sécurité)**).
 
-**Voice dictation** is off by default and, once on, sends audio only where the provider you picked
-sends it — the screen says which before you choose. With the recommended **local** engine
-(whisper.cpp) the audio goes from the browser to the server on `localhost`, then to the engine bound
-to `127.0.0.1`: it is never written to disk nor logged, and its WAV header is validated before any
-relay. The engine is spawned **without a shell**, with a minimal environment carrying **no token**,
-and the install button only runs the repository's own script, at a fixed path, with a model taken
-from a closed list.
-
 ## Reporting a vulnerability
 
 **Please do not open a public issue for security vulnerabilities.** Public disclosure before a fix puts every

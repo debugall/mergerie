@@ -44,9 +44,6 @@ honoured either way. The `.env` is read **from the folder the command is run in*
 wherever you are when you type it, so come back to that folder next time. What the shell exports
 wins over the file, as everywhere with Node.
 
-Optional, for **voice dictation**: `sh scripts/install-whisper.sh` (macOS/Linux) or the **Install**
-button in Settings → Voice dictation. Nothing else is needed to run the tool.
-
 **`npm run demo` — see it live in 30 seconds, no config, no tokens.** It seeds a realistic fake database
 (reviews, scores, resolution tracking, token cost, AI sessions, and a browsable fictional repository behind
 "View diff") into an isolated `data-demo/`, then launches the tool on it in dry-run — no forge connection,
@@ -84,15 +81,10 @@ carries the everyday work first — one tick in Settings → General → Menus b
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
 name — `!217` or `PROJ-1408` typed alone go straight there), `j` / `k` walk the current list,
-`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. A **microphone on every
-text field** (`Ctrl`/`Cmd` + `Shift` + `Space`) writes what you say at the caret: transcription is
-**local**, by whisper.cpp, and the engine is fed **your** vocabulary — repositories, services,
-environments, Jira prefixes, open branches — which is what makes it write `webapp-front` and `!214`
-instead of "web app front" and "214". Off by default; installed from the settings screen, which
-walks the whole chain and names the first step that breaks. **Any window you type into minimises**
-to the bottom of the menu with a `—`, so you can go and check a branch name or a ticket without
-losing what you had written, and come back to it — fields, cursor and tab included. The tool
-reopens on the tab and review stage you left, and the report panel opens on what changed since
+`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. **Any window you type into
+minimises** to the bottom of the menu with a `—`, so you can go and check a branch name or a ticket
+without losing what you had written, and come back to it — fields, cursor and tab included. The
+tool reopens on the tab and review stage you left, and the report panel opens on what changed since
 your last visit.
 
 **The tabs talk to each other.** A todo tied to a merge request ticks itself when that merge request

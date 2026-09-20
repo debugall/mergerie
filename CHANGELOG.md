@@ -11,6 +11,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Removed
+
+- **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the
+  local whisper.cpp engine (and its install scripts), the OpenAI-compatible and browser providers,
+  and every setting that configured them are gone. Text fields go back to typing and pasting only.
+
 ### Changed
 
 - **The screen's code is now organised by screen and by layer** (`public/js/core/`,
