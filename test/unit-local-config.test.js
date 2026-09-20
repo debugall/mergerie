@@ -105,4 +105,11 @@ describe('local_config — ce qui reste sur ce poste', () => {
     const avant = db.prepare('SELECT COUNT(*) n FROM git_command').get().n;
     assert.equal(avant, 5);
   });
+
+  test('agent_sandbox est une énumération fermée : une valeur inconnue retombe sur « off », jamais « required »', () => {
+    assert.equal(config.updateConfig({ agent_sandbox: 'nimportequoi' }).agent_sandbox, 'off');
+    assert.equal(config.updateConfig({ agent_sandbox: 'required' }).agent_sandbox, 'required');
+    assert.equal(config.destinationDe('agent_sandbox'), 'poste');
+    config.updateConfig({ agent_sandbox: 'off' });
+  });
 });

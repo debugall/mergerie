@@ -77,6 +77,12 @@ const COLONNES_LOCALES = [
      d'équipe aurait permis à un seul push de retirer les deux bornes chez tout le monde, sans porte. */
   ['agent_max_turns', 'INTEGER NOT NULL DEFAULT 200'],
   ['agent_daily_budget_usd', 'REAL NOT NULL DEFAULT 0'],
+  /* LA SANDBOX SÉCURISÉE EST UN CHOIX DE CE POSTE : bubblewrap est Linux uniquement, et
+     l'exiger par défaut casserait tout lancement d'agent sur un poste macOS/Windows, ou un
+     Linux sans bubblewrap. `'off'` (le comportement d'avant ce lot) reste le défaut ; `agent
+     policy` refuse de démarrer un job sensible si l'admin est passé sur `'required'` et que le
+     poste ne peut pas tenir la promesse (voir `sandbox/runner.js`, jamais un repli silencieux). */
+  ['agent_sandbox', "TEXT NOT NULL DEFAULT 'off'"],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),

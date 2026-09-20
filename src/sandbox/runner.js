@@ -45,6 +45,16 @@ async function choisirBackend(sandbox) {
 
 /**
  * Exécute un job de sandbox de bout en bout.
+ *
+ * PAS DE CONTEXTE D'ANNULATION À SOI : tourne dans celui du JOB APPELANT (`jobs/ordonnanceur.js`
+ * en pose un autour de chaque job, `proc.run(() => runEntry(entry))`) — c'est ce qui permet au
+ * bouton « Stop » existant de tuer le process sandboxé sans câblage neuf, `proc.setActive()`
+ * (posé par `backend.run()`) et `surveillerDisque` (qui annule par `proc.cancel()`) visant tous
+ * les deux LE MÊME contexte que le job en cours. Un appelant HORS job (un test, un usage
+ * ponctuel) doit s'envelopper lui-même dans `proc.run(() => sandbox.executer(...))` : sans
+ * contexte ambiant, une limite dépassée annulerait l'ambient PAR DÉFAUT jusqu'à `proc.reset()`,
+ * et un appel git sans rapport lancé juste après échouerait avec `err.job.stopped`.
+ *
  * @param {object} specBrut     voir `spec.js` — sera validé ici
  * @param {object} options
  * @param {'required'|'disabled'} [options.sandbox]
@@ -54,18 +64,7 @@ async function choisirBackend(sandbox) {
  *        `layout.sourceRo` (§4.2) — propre à l'appelant : lui seul sait d'où vient la source
  *        (clone d'un repo Mergerie, dossier local déclaré…).
  */
-/* CHAQUE JOB DANS SON PROPRE CONTEXTE D'ANNULATION (`proc.run`), jamais dans l'ambient partagé :
- * `surveillerDisque` annule par le MÊME mécanisme que le bouton « Stop » (`proc.cancel()`, sans
- * contexte explicite = celui du CALLEUR). Sans cet enveloppement, une limite dépassée sur CE job
- * empoisonnerait l'ambient pour tout le reste du process tant que personne n'appelle
- * `proc.reset()` — une opération git sans rapport, lancée juste après, échouerait avec
- * `err.job.stopped`. Constaté en écrivant le test d'intégration de ce backend. */
-async function executer(specBrut, options) {
-  const { done } = proc.run(() => executerDansContexte(specBrut, options));
-  return done;
-}
-
-async function executerDansContexte(specBrut, { sandbox = 'required', onLog = () => {}, env = {}, prepareSource } = {}) {
+async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env = {}, prepareSource } = {}) {
   const spec = validerSpec(specBrut);
   const { backend, legacyChoisi } = await choisirBackend(sandbox);
   const worktree = spec.permissions.filesystem === 'job-write';

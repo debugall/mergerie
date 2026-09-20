@@ -29,6 +29,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A secure sandbox for read-only AI launches (review, explanation, questions), opt-in.** A new
+  “Secure sandbox” setting in Settings → AI (off by default) isolates each read-only agent launch
+  in its own Linux namespace via bubblewrap — no write access to the shared clone, no network,
+  no access to secrets, SSH agent or Docker socket. Linux with bubblewrap only: turning it
+  “Required” on a machine that cannot provide it makes launches fail with a clear message rather
+  than run unprotected. Coding, verification and planning launches are not routed through it yet.
+
 - **Schedule a session for a date and time.** The session modal — coding, exploration and
   off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create
   and schedule”; the session is created and waits, its card showing the date with a cross to cancel

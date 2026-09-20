@@ -586,6 +586,15 @@
                     <input form="configForm" name="agent_max_turns" type="number" min="0" max="10000" step="1" placeholder="200" /></label>
                 <label><span data-i18n="ui.config.agent-budget">Dépense d’IA au plus par jour, en dollars (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-budget-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input form="configForm" name="agent_daily_budget_usd" type="number" min="0" step="0.01" placeholder="0" /></label>
+                <!-- SANDBOX SÉCURISÉE : réglage de CE POSTE (bubblewrap est Linux uniquement),
+                     désactivé par défaut — l'activer sur un poste qui ne peut pas le tenir fait
+                     échouer chaque lancement d'agent avec un message explicite, jamais un repli
+                     silencieux vers un lancement non isolé. -->
+                <label><span data-i18n="ui.config.agent-sandbox">Sandbox sécurisée pour les agents</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-sandbox-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="agent_sandbox">
+                        <option value="off" data-i18n="ui.config.agent-sandbox-off">Désactivée (comportement actuel)</option>
+                        <option value="required" data-i18n="ui.config.agent-sandbox-required">Obligatoire (Linux + bubblewrap requis)</option>
+                    </select></label>
                 <p>
                     <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
                     <span id="configInfoAi" class="muted"></span>

@@ -9,7 +9,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
-  'agent_max_turns', 'agent_daily_budget_usd',
+  'agent_max_turns', 'agent_daily_budget_usd', 'agent_sandbox',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',

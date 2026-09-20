@@ -3105,6 +3105,16 @@ Copilot CLI n'a pas de liste d'outils : avec lui, la lecture n'est pas restreint
 dit. **Limite, à ne pas oublier** : un agent qui écrit du code peut écrire un code qui fuit ; ce qui borne
 les dégâts, c'est ce qu'il n'a plus sous la main.
 
+**Sandbox sécurisée (Linux, optionnelle) pour les lancements en lecture.** Ce que la liste ci-dessus
+retire au niveau du CLI reste une limite *logique*, pas une isolation du système. Un réglage de poste
+(Réglages → IA → « Sandbox sécurisée », **désactivé par défaut**) fait tourner chaque lancement en
+lecture — review, explication, question — dans son propre espace de noms Linux via `bubblewrap` : le
+clone partagé n'est vu qu'en lecture seule (une extraction du commit, jamais le clone lui-même), aucun
+réseau, aucun accès aux secrets, à l'agent SSH ni au socket Docker. `bubblewrap` est Linux uniquement :
+mettre ce réglage sur « Obligatoire » sur un poste qui ne peut pas le tenir fait **échouer** chaque
+lancement concerné avec un message explicite, plutôt que de tourner sans isolation en silence. Le codage,
+la vérification et la planification ne passent pas encore par cette sandbox.
+
 **Le texte venu d'ailleurs est une donnée, dite comme telle.** Titre et description de MR, ticket Jira,
 rapport précédent, échanges d'une autre machine, cartes de domaine entrent dans le prompt entre des balises
 à **nonce aléatoire** (`<<<DONNEE …>>>`), qu'un texte ne peut ni deviner ni fermer, avec un préambule :

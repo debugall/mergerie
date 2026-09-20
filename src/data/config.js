@@ -43,7 +43,7 @@ const ALLOWED = [
   'auto_runner',
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
-  'agent_max_turns', 'agent_daily_budget_usd',
+  'agent_max_turns', 'agent_daily_budget_usd', 'agent_sandbox',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -159,6 +159,10 @@ function updateConfig(patch, opts = {}) {
     const b = parseFloat(String(patch.agent_daily_budget_usd).replace(',', '.'));
     next.agent_daily_budget_usd = Number.isFinite(b) && b >= 0 ? Math.min(100000, Math.round(b * 100) / 100) : 0;
   }
+  /* SANDBOX SÉCURISÉE : une ÉNUMÉRATION fermée, comme le fournisseur de dictée — une valeur
+     inconnue retombe sur `'off'` (le comportement d'avant ce réglage), jamais sur `'required'`
+     qui arrêterait tout lancement d'agent sur un poste qui ne peut pas le tenir. */
+  if (!['off', 'required'].includes(next.agent_sandbox)) next.agent_sandbox = 'off';
   /* ---------- Dictée vocale ----------
      Le fournisseur est une ÉNUMÉRATION : une valeur inconnue retombe sur « éteint » plutôt
      que d'être écrite telle quelle — un réglage illisible ne doit pas laisser croire qu'un
@@ -310,7 +314,8 @@ function updateConfig(patch, opts = {}) {
       task_default_notify_jira = @task_default_notify_jira,
       task_default_converge = @task_default_converge,
       agent_max_turns = @agent_max_turns,
-      agent_daily_budget_usd = @agent_daily_budget_usd
+      agent_daily_budget_usd = @agent_daily_budget_usd,
+      agent_sandbox = @agent_sandbox
     WHERE id = 1`).run(next);
   /* LES RÉGLAGES D'AUTOMATISME SUIVENT L'APPROBATION, SANS LA CONTOURNER. Ce que l'utilisateur
      règle ICI sur une base déjà approuvée est approuvé avec — il vient de le décider. Mais si

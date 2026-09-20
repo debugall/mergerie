@@ -1455,7 +1455,10 @@ const REGISTRE = [
       'task_default_converge',
       // Les bornes d'un agent : le budget se dépense sur CE poste, et une borne d'équipe se
       // relâcherait chez tout le monde d'un seul push.
-      'agent_max_turns', 'agent_daily_budget_usd'],
+      'agent_max_turns', 'agent_daily_budget_usd',
+      // La sandbox sécurisée dépend de ce que CE poste peut tenir (Linux + bubblewrap) : une
+      // valeur d'équipe l'activerait chez quelqu'un dont le poste ne le permet pas.
+      'agent_sandbox'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',

@@ -85,7 +85,9 @@ function validerSpec(brut) {
 
   const source = brut.source || {};
   assertConnu(source, CHAMPS_SOURCE, 'source');
-  assertString(source.repoId != null ? String(source.repoId) : '', 'source.repoId');
+  // `repoId` est informatif (rapport, audit) : un dossier local ou une question libre n'ont pas
+  // de dépôt Mergerie associé. Ce qui borne réellement le job, c'est `sourcePath` — obligatoire.
+  if (source.repoId != null) assertString(String(source.repoId), 'source.repoId');
   assertString(source.sourcePath, 'source.sourcePath');
   assertString(source.revision, 'source.revision');
   assertEnum(source.sourceMode, SOURCE_MODES, 'source.sourceMode');

@@ -94,6 +94,66 @@ function emitLines(buf, onLog) {
   return remainder;
 }
 
+/* Un `--add-dir <chemin hôte>` de `flags` ne vaudrait rien à l'intérieur du bac à sable : chaque
+ * dossier lié y est monté sous `/extra/<nom>` (`sandbox/paths.js:listMountsFor`), jamais à son
+ * chemin réel. On réécrit donc l'argument juste avant de l'y envoyer — nulle part ailleurs. */
+function argsPourSandbox(flags, addDirs) {
+  const guest = new Map((addDirs || []).map((d) => [d, `/extra/${path.basename(d)}`]));
+  const out = [];
+  for (let i = 0; i < flags.length; i += 1) {
+    if (flags[i] === '--add-dir' && guest.has(flags[i + 1])) { out.push('--add-dir', guest.get(flags[i + 1])); i += 1; continue; }
+    out.push(flags[i]);
+  }
+  return out;
+}
+
+/* LE CHEMIN SANDBOXÉ D'UN LANCEMENT EN LECTURE — choisi seulement quand l'admin a mis
+ * `agent_sandbox` sur `'required'` (Réglages → IA), jamais par défaut. `cwd` est le clone ou
+ * dossier de travail réel : on en tire un instantané `git archive` (ou une copie simple, hors
+ * dépôt) plutôt que de le monter directement — le clone partagé n'est jamais touché
+ * (`sandbox/fs.js`). Le texte renvoyé doit rester un STRING, comme le chemin direct ci-dessous :
+ * c'est le contrat que tous les appelants de `runReal` connaissent déjà. */
+async function runReviewSandbox({ backend, flags, prompt, cwd, onLog, meta }) {
+  const agentpolicy = require('./policy');
+  const runner = require('../sandbox/runner');
+  const sfs = require('../sandbox/fs');
+  const crypto = require('node:crypto');
+  const args = [...argsPourSandbox(flags, meta.addDirs), '-p', prompt];
+  let revision = null;
+  try { revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', timeout: 8000 }).stdout.trim() || null; }
+  catch { /* pas un dépôt git : source copiée telle quelle plus bas */ }
+  const spec = {
+    id: crypto.randomUUID(),
+    kind: 'review',
+    source: {
+      repoId: null, sourcePath: cwd, revision: revision || 'HEAD', sourceMode: 'snapshot',
+      allowExtraDirs: meta.addDirs || [],
+    },
+    command: {
+      program: COPILOT_BIN, args, cwdRel: '.',
+      agentBackend: backend === 'claude' ? 'claude' : (backend === 'copilot' ? 'copilot' : 'verifier'),
+      agentOptions: {},
+    },
+    permissions: { filesystem: 'read-only', network: 'none' },
+    limits: { wallTimeMs: TIMEOUT_MS },
+    policyHash: null,
+  };
+  const env = agentpolicy.envAgent(backend === 'unknown' ? null : backend, process.env, 'lecture');
+  let stdout = '';
+  const resultat = await runner.executer(spec, {
+    sandbox: 'required',
+    onLog: (texte) => { stdout += texte; onLog(texte); },
+    env,
+    prepareSource: async (layout) => {
+      if (revision && fs.existsSync(path.join(cwd, '.git'))) await sfs.archiverVersDossier(cwd, revision, layout.sourceRo);
+      else fs.cpSync(cwd, layout.sourceRo, { recursive: true });
+    },
+  });
+  if (resultat.timedOut) throw new Error(t('err.cmd.timeout', { cmd: 'copilot', ms: TIMEOUT_MS }));
+  if (resultat.code !== 0) throw new Error(t('err.cmd.failed', { cmd: 'copilot', code: resultat.code, sortie: stdout.slice(-500) }));
+  return stdout.trim();
+}
+
 // Lance `copilot -p "<prompt>"` dans cwd, renvoie stdout (le rapport).
 // onLog reçoit la commande puis la sortie en temps réel (ligne à ligne).
 /* `meta.saveur` (ou `meta.kind`) choisit les permissions (`agentpolicy`) : une review n'emporte
@@ -110,6 +170,12 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   const flags = [...pol.extra, ...pol.args];
   flags.push(...agentpolicy.argsMaxTurns(backend, flags));
   prompt = require('../core/nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
+  // Sandbox sécurisée : réglage de CE POSTE (Réglages → IA), off par défaut — voir §6.1 du plan
+  // « lecture seule et sandbox sécurisée ». Seule la saveur LECTURE y passe pour l'instant :
+  // écriture/verify/plan restent sur le chemin direct (chantier suivant, documenté).
+  if (pol.lecture && require('../data/config').getConfig().agent_sandbox === 'required') {
+    return runReviewSandbox({ backend, flags, prompt, cwd, onLog, meta });
+  }
   return new Promise((resolve, reject) => {
     // flags additionnels (ex: --yolo) placés AVANT -p
     const args = [...flags, '-p', prompt];
