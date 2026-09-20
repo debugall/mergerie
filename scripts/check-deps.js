@@ -43,7 +43,7 @@ const ok = (msg) => console.log(`✅ ${msg}`);
 const RANG = {
   core: 0,
   db: 1, data: 1, forge: 1, git: 1,
-  agent: 2, review: 2, session: 2, verify: 2, notes: 2, integrations: 2,
+  agent: 2, review: 2, session: 2, verify: 2, notes: 2, integrations: 2, sandbox: 2,
   jobs: 3,
   app: 4, racine: 4,
   demo: 4,
