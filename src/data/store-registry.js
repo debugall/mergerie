@@ -140,62 +140,26 @@ const numOuNull = (v) => (v ? String(v) : null);
      fichiers — les fichiers de contenu posés à côté, pour mémoire */
 const REGISTRE = [
   /* ── Dépôts, merge requests, reviews ─────────────────────────────────────────────────── */
-  {
-    table: 'repo', famille: 'P', uidPropre: true, cle: 'project', chemin: 'repos/{forge}/{project}.json',
-    fusion: 'last-writer',
-    note: 'l’URL, le motif de branche et les bascules sont d’équipe ; le chemin de clone est dans config',
-    commitMessage: (r) => `repo ${r.forge || 'gitlab'}/${r.project}`,
-    toFile: (r, ctx) => ({
-      uid: r.uid,
-      forge: r.forge || 'gitlab',
-      project: r.project,
-      url: r.url,
-      branch_pattern: r.branch_pattern || null,
-      enabled: r.enabled ? 1 : 0,
-      fetch_mrs: r.fetch_mrs ? 1 : 0,
-      created_at: r.created_at,
-      /* Les projets liés PAR DÉFAUT vivent dans SON fichier : ils ne se modifient qu'avec lui,
-         et un conflit sur eux est un conflit sur le dépôt. Les jobs Jenkins, eux, ont quitté ce
-         fichier avec le reste de l'onglet Jenkins — voir `repo_jenkins`. */
-      linked: ctx.enfants('repo_link', 'repo_id', r.id)
-        .map((l) => ({ repo: ctx.repoRef(l.linked_repo_id), branch: l.branch || null }))
-        .filter((l) => l.repo),
-    }),
-    fromFile: (doc) => ({
-      uid: doc.uid,
-      forge: doc.forge || 'gitlab',
-      project: doc.project,
-      url: doc.url,
-      branch_pattern: doc.branch_pattern || '',
-      enabled: doc.enabled ? 1 : 0,
-      fetch_mrs: doc.fetch_mrs ? 1 : 0,
-      created_at: doc.created_at,
-    }),
-    listes: [
-      {
-        table: 'repo_link',
-        liste: 'linked',
-        colonneParent: 'repo_id',
-        remplace: (db2, parent, items, ctx, signaler) => {
-          db2.prepare('DELETE FROM repo_link WHERE repo_id = ?').run(parent.id);
-          const ins = db2.prepare('INSERT INTO repo_link (repo_id, linked_repo_id, branch) VALUES (?,?,?)');
-          for (const l of items) {
-            const id = ctx.repoId(l.repo);
-            if (!id) { signaler(`projet lié « ${l.repo} », dépôt inconnu sur ce poste`); continue; }
-            ins.run(parent.id, id, l.branch || '');
-          }
-        },
-      },
-    ],
-  },
-  { table: 'repo_link', famille: 'P', uidPropre: true, parent: 'repo', liste: 'linked', fusion: 'parent' },
-  /* LES TROIS ONGLETS QUI RESTENT À SOI : DOCKER, JENKINS, GIT.
+  /* `repo` EST LOCALE, ET C'EST UN REVIREMENT : elle partait, nommée par sa clé naturelle
+     (`repos/{forge}/{project}.json`), avec ses projets liés (`repo_link`) dans le même fichier.
+     Partagée, elle faisait apparaître chez tout le monde les dépôts ajoutés par un seul — et,
+     avec eux, leur clonage et la découverte de leurs merge requests au démarrage suivant, sans
+     case à cocher pour la refuser. Ce que chacun SUIT n'est pas un travail accumulé, c'est une
+     décision de poste : quels dépôts CE compte de forge, avec CE jeton, doit synchroniser. Deux
+     collègues sur le même projet GitLab suivent chacun leur propre ligne `repo`, chacun avec ses
+     réglages (branches suivies, bascules), et chacun ne synchronise que ce qu'il a ajouté —
+     exactement le même raisonnement que pour Docker, Jenkins, Git et Jira ci-dessous, dont `repo`
+     rejoint la famille. `repo_link` (les projets liés par défaut d'un dépôt) la suit : une liste
+     fille n'a pas de sort séparé de son parent. */
+  { table: 'repo', famille: 'L', uidPropre: true, note: 'les dépôts que CE poste suit : à chacun les siens' },
+  { table: 'repo_link', famille: 'L', uidPropre: true, note: 'les projets liés par défaut d’un dépôt suivi par CE poste' },
+  /* LES QUATRE ONGLETS QUI RESTENT À SOI : DOCKER, JENKINS, GIT ET LES DÉPÔTS SUIVIS.
      Ils ne décrivent pas un travail accumulé mais une MACHINE et ses accès. Un job Jenkins visé
      depuis ici, une palette de commandes git, le journal des refs qu'on a créées ou supprimées,
-     les conteneurs qu'on sauvegarde : tout cela dit comment CE poste est branché, pas ce que
-     l'équipe a produit — et le partager imposerait à chacun l'outillage du voisin. C'est le même
-     raisonnement que pour l'onglet Liens. */
-  /* `uidPropre` RESTE sur ces quatre tables bien qu'elles soient locales : l'uid n'est pas
+     les conteneurs qu'on sauvegarde, les dépôts qu'on a choisi de suivre : tout cela dit comment
+     CE poste est branché, pas ce que l'équipe a produit — et le partager imposerait à chacun
+     l'outillage du voisin. C'est le même raisonnement que pour l'onglet Liens. */
+  /* `uidPropre` RESTE sur ces tables locales (`repo` et `repo_link` compris) : l'uid n'est pas
      réservé au partage, c'est une identité stable que SQLite ne recycle pas (voir `mr`, cache et
      pourtant uidPropre). Le retirer ferait surtout DIVERGER une base neuve d'une base existante
      — la colonne ne serait plus créée d'un côté et resterait de l'autre, ce qui est exactement

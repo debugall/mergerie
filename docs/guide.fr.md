@@ -2856,12 +2856,19 @@ le moteur de dictée, les chemins absolus de cette machine, les sessions rangée
 jobs. Chaque colonne de la base est classée nommément, et un contrôle automatique refuse une
 colonne au nom de secret qui ne serait pas déclarée — parce qu'**un secret commité dans git est
 définitif** : l'historique est immuable, chaque clone le garde, la forge le garde. Le retirer ne
-suffit pas, il faut révoquer. **CINQ ONGLETS RESTENT LOCAUX** : **Liens**, **Docker**, **Jenkins**, **Git**
+suffit pas, il faut révoquer. **SIX ONGLETS RESTENT LOCAUX** : **Dépôts**, **Liens**, **Docker**, **Jenkins**, **Git**
 et **Jira**. La grille services × environnements, une palette de commandes git, un job Jenkins
 visé, un conteneur sauvegardé, un ticket surveillé : tout cela dit où l'on va travailler et
 comment on est branché — pas ce qu'on a produit. Les partager imposerait à chacun l'outillage du
 voisin, ferait voyager un journal d'actions que personne d'autre ne peut rejouer, et remplirait
 la liste de todos de tout le monde au premier changement d'état d'un ticket suivi par un seul.
+**Les dépôts que tu suis sont aussi les tiens** : en ajouter un, c'est ajouter son clonage et la
+découverte de ses merge requests avec lui, sur ton jeton et ton abonnement — partager la liste
+aurait déclenché tout ça sur chaque poste dès qu'un seul ajoutait un dépôt, sans case à cocher
+pour le refuser. Chaque poste garde sa propre liste et ne synchronise que les dépôts qu'elle
+porte ; une merge request ou une règle de revue désigne toujours son dépôt de la même façon pour
+tout le monde une fois découverte, donc une équipe lit toujours la même histoire sur les dépôts
+qu'elle suit des deux côtés.
 
 **Les todos aussi se partagent une par une**, et jamais celles qu'aucune main n'a écrites : la
 todo née d'une veille Jira ou d'une question posée par un agent ne quitte jamais le poste qui l'a

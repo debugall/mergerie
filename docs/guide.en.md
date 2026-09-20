@@ -2768,12 +2768,18 @@ administer: the team already has a forge, permissions, backups and a history.
 dictation engine, this machine's absolute paths, tidied-away sessions, job logs. Every column of
 the database is classified by name, and an automatic check refuses a secret-looking column that is
 not declared — because **a secret committed to git is permanent**: history is immutable, every
-clone keeps it, the forge keeps it. Removing it is not enough; you have to revoke. **FIVE TABS STAY LOCAL**: **Links**, **Docker**, **Jenkins**,
+clone keeps it, the forge keeps it. Removing it is not enough; you have to revoke. **SIX TABS STAY LOCAL**: **Repositories**, **Links**, **Docker**, **Jenkins**,
 **Git** and **Jira**. The services × environments grid, a palette of git commands, a Jenkins job
 you point at, a container you backed up, a ticket you watch: all of that says where you go to
 work and how you are wired up — not what you produced. Sharing it would impose one person's
 tooling on everyone, carry a log of actions nobody else can replay, and fill everyone's todo list
-the moment a ticket watched by one person changed state.
+the moment a ticket watched by one person changed state. **The repositories you follow are yours
+too**: adding one adds its cloning and its merge-request discovery with it, on your token and your
+subscription — sharing the list would have started all that on every machine the moment anyone
+added a repository, with no checkbox to decline it. Each machine keeps its own list and syncs only
+the repositories on it; a merge request or a review rule still designates its repository the same
+way for everyone once discovered, so a team still reads the same history on the ones they both
+follow.
 
 **Todos are shared one by one too**, and never the ones nobody typed: a todo born of a Jira watch
 or of a question an agent stopped to ask never leaves the machine that created it — shared, they

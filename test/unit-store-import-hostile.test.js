@@ -36,7 +36,6 @@ describe('Import du dépôt partagé : ce qui vient d’ailleurs', () => {
     ({ SHARED_DIR } = require('../src/core/paths'));
     fs.mkdirSync(SHARED_DIR, { recursive: true });
     repoId = db.prepare("INSERT INTO repo (forge, project, url) VALUES ('gitlab', 'eq/api', 'https://gitlab.test/eq/api.git')").run().lastInsertRowid;
-    store.rafraichir('repo', repoId);
   });
 
   const lire = (rel) => JSON.parse(fs.readFileSync(path.join(SHARED_DIR, rel), 'utf8'));

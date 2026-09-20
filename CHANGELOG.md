@@ -13,6 +13,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **Repositories join Docker, Jenkins, Git and Jira on the local side.** Which repositories you
+  follow no longer travels through the team's data repository: adding one used to make it appear
+  on every machine, with its cloning and its merge-request discovery starting there too — on that
+  machine's own token — the moment anyone synced, with no checkbox to decline it. Each machine now
+  keeps its own list and syncs only the repositories on it. A merge request, a review rule or a
+  verifier's coverage still designates its repository the same way for everyone once discovered,
+  so a team still reads the same history on the repositories it follows on both sides. Repositories
+  already sent to a team's data repository are removed from it once, on the next start — otherwise
+  they would sit there and land back on a colleague's machine at their next sync.
 - **The screen's code is now organised by screen and by layer** (`public/js/core/`,
   `public/js/ecrans/<screen>/`, `public/css/`, `public/i18n/`, `public/html/` — see PLAN.md).
   Nothing changes on screen: same tabs, same shortcuts, same labels, same behaviour. What changes

@@ -217,8 +217,12 @@ describe('datasync — deux postes, un dépôt de données', () => {
 
     const listing = execFileSync('git', ['-C', nu, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
     assert.match(listing, /notes\/avant-l-equipe\.md/, 'la note d’avant doit monter avec');
-    assert.match(listing, /repos\/gitlab\/eq\/api\.json/, 'le dépôt suivi aussi');
-    assert.match(listing, /mrs\/gitlab\/eq\/api\/41\.json/, 'et la MR relue — la question posée');
+    /* LE DÉPÔT SUIVI, LUI, RESTE LOCAL : chacun ajoute les siens, et rejoindre une équipe ne les
+       lui impose ni ne les lui emporte. */
+    assert.doesNotMatch(listing, /repos\/gitlab\/eq\/api\.json/,
+      'la liste des dépôts suivis n’a rien à faire dans le dépôt d’équipe');
+    assert.match(listing, /mrs\/gitlab\/eq\/api\/41\.json/,
+      'et la MR relue — la question posée — voyage quand même, désignée par sa clé naturelle');
     assert.doesNotMatch(listing, /mon-brouillon/,
       'rejoindre n’emporte PAS les notes qu’on n’a pas cochées : ce serait publier un brouillon');
 
@@ -399,6 +403,35 @@ describe('datasync — deux postes, un dépôt de données', () => {
       return store.listerFichiers('git-commands').length;
     }`);
     assert.equal(ecrit, 0, 'la palette de commandes reste à soi');
+  });
+
+  test('la liste des dépôts suivis, redevenue locale, SORT du dépôt sur le même calendrier', () => {
+    /* MÊME BASCULE, PLUS TARD : `repo` a rejoint Docker, Jenkins, Git et Jira, sur un second
+       passage plutôt qu'une entrée de plus dans celui du dessus — un poste déjà à jour du
+       premier ne doit pas sauter le second. */
+    const posteG = path.join(racine, 'G');
+    fs.mkdirSync(posteG);
+    const avant = dans(posteG, `async ({ db, store, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nu)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      store.ecrireFichier('repos/gitlab/acme/web.json', store.serialize({
+        uid: '01M2GDDDDDDDDDDDDDDDDDDDD', forge: 'gitlab', project: 'acme/web', url: 'https://x/acme/web.git',
+      }));
+      db.prepare("DELETE FROM local_state WHERE key = 'repos_locaux'").run();
+      return store.listerFichiers('repos').length;
+    }`);
+    assert.equal(avant, 1, 'on part bien d’un dépôt d’équipe qui porte encore un dépôt suivi');
+
+    const apres = dans(posteG, `async ({ store }) => store.listerFichiers('repos').length`);
+    assert.equal(apres, 0, 'la liste des dépôts suivis doit sortir du dépôt d’équipe');
+
+    // …et un dépôt ajouté ensuite ne produit plus aucun fichier.
+    const ecrit = dans(posteG, `async ({ db, store }) => {
+      db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'acme/api', 'https://x/acme/api.git', 1, ?)")
+        .run(new Date().toISOString());
+      store.ecouler();
+      return store.listerFichiers('repos').length;
+    }`);
+    assert.equal(ecrit, 0, 'chacun ajoute les dépôts qu’il veut suivre, sans en avertir l’équipe');
   });
 
   test('UN DÉPÔT VIDÉ NE VIDE PAS LA BASE — le garde-fou', () => {

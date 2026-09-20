@@ -710,6 +710,30 @@ const RACINES_RETIREES = ['git-commands', 'git-ops', 'docker-backups', 'jira'];
   }
 }
 
+/* LA LISTE DES DÉPÔTS SUIVIS REJOINT LA MÊME FAMILLE, PLUS TARD, DONC À PART.
+ *
+ * `repo` (et `repo_link`, sa liste de projets liés) partait dans le dépôt d'équipe, nommée par
+ * sa clé naturelle : ajouter un dépôt sur un poste le faisait apparaître chez tout le monde, avec
+ * son clonage et la découverte de ses merge requests au démarrage suivant, sans case à cocher pour
+ * le refuser. Ce que chacun suit est une décision de poste, pas un travail accumulé — le même
+ * raisonnement que pour Docker, Jenkins, Git et Jira ci-dessus, sur un calendrier différent, d'où
+ * un second passage plutôt qu'une entrée de plus dans `RACINES_RETIREES` : un poste déjà à jour du
+ * premier ne doit pas sauter le second. Les fichiers déjà poussés restent dans le dépôt jusqu'à ce
+ * retrait, sans quoi ils reviendraient chez un collègue à sa prochaine synchronisation ; ce que ce
+ * poste suit, lui, ne bouge pas — retiré du dépôt d'équipe, `repo` continue d'exister en local. */
+{
+  const fait = db.prepare(
+    "SELECT 1 FROM local_state WHERE kind = 'data' AND ref = 'depot' AND key = 'repos_locaux'",
+  ).get();
+  if (!fait) {
+    let n = 0;
+    for (const relatif of listerFichiers('repos')) { supprimerFichier(relatif); n += 1; }
+    if (n) console.log(`[store] ${n} fichier(s) de dépôts suivis, redevenus locaux, retirés du dépôt`);
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'depot', 'repos_locaux', '1', ?)`).run(new Date().toISOString());
+  }
+}
+
 /* CE QUE L'EXPORT FERAIT, SANS LE FAIRE.
  *
  * On compose en mémoire exactement ce que `exporterTout` écrirait, et on le compare à ce que le

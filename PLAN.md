@@ -367,18 +367,22 @@ le socle sur lequel tout le reste s'appuie.
 **La décision de fond n'est pas technique, elle est de classement** : chaque table appartient à
 une famille, et à une seule, déclarée dans `src/data/store-registry.js`.
 
-- **P — partagé** (36 tables) : le travail accumulé. Une ligne = un fichier du dépôt
+- **P — partagé** (28 tables) : le travail accumulé. Une ligne = un fichier du dépôt
   (`todos/<uid>.json`, `notes/<slug>.md`, `reviews/<forge>/<projet>/<iid>/<uid>.md`), ou une
-  **liste dans le fichier de son parent** quand elle ne se modifie qu'avec lui (`repo_link`,
-  `verifier_command`, `finding`, `service_url`…). Chaque entrée dit aussi comment deux postes se
+  **liste dans le fichier de son parent** quand elle ne se modifie qu'avec lui
+  (`verifier_command`, `finding`, `service_url`…). Chaque entrée dit aussi comment deux postes se
   départagent : `append-only` (le fichier est nommé par un ULID, deux postes ne touchent jamais le
   même — aucun conflit possible) ou `last-writer` (le plus récent gagne, l'autre est prévenu et
   récupère sa version d'un clic).
-- **L — local** (10 tables) : secret, ou propre à un poste. N'entre jamais dans le dépôt. **Tout
+- **L — local** (24 tables) : secret, ou propre à un poste. N'entre jamais dans le dépôt. **Tout
   l'onglet Liens en fait partie** — la grille « services × environnements », les gabarits d'URL de
   contexte et les liens libres décrivent où l'on va travailler, pas ce qu'on a produit. Les
   partager imposerait à l'équipe la façon dont une personne range ses raccourcis, et ferait entrer
-  dans un dépôt des adresses d'infrastructure que rien n'oblige à écrire quelque part.
+  dans un dépôt des adresses d'infrastructure que rien n'oblige à écrire quelque part. **Les
+  dépôts suivis (`repo`, `repo_link`) en font partie eux aussi**, aux côtés de Docker, Jenkins,
+  Git et Jira : quels dépôts CE poste synchronise, avec quel jeton, est une décision de machine,
+  pas un travail accumulé — partagée, elle aurait imposé à chacun les dépôts ajoutés par un seul,
+  avec leur clonage et la découverte de leurs merge requests au démarrage suivant.
 - **C — cache** (8 tables) : relu de la forge, de Jenkins, de Docker ou du disque. Le partager
   serait partager du périmé. `job_log` pèse à lui seul 58 % de la base : de la console
   d'exécution locale, précisément ce qui n'a aucune raison de voyager.
