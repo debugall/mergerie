@@ -122,6 +122,25 @@ function tailleDossier(dir) {
   return total;
 }
 
+/** Fichiers sous `dir`, récursif — même logique que `tailleDossier`, pour surveiller `files`
+ *  pendant qu'un job tourne. */
+function compterFichiers(dir) {
+  let total = 0;
+  const pile = [dir];
+  while (pile.length) {
+    const courant = pile.pop();
+    let entrees;
+    try { entrees = fs.readdirSync(courant, { withFileTypes: true }); } catch { continue; }
+    for (const e of entrees) {
+      const p = path.join(courant, e.name);
+      if (e.isSymbolicLink()) { total += 1; continue; }
+      if (e.isDirectory()) { pile.push(p); continue; }
+      total += 1;
+    }
+  }
+  return total;
+}
+
 /** Détruit le dossier d'un job — best-effort : un ménage qui échoue ne doit jamais faire
  *  échouer le job lui-même (§ Definition of Done : « aucune fuite… », pas « aucune erreur »). */
 function nettoyerJob(layout) {
@@ -143,5 +162,5 @@ function gcJobs() {
 
 module.exports = {
   creerLayout, archiverVersDossier, copierDossier, listerLiens, diffArbres, collecterSortie,
-  tailleDossier, nettoyerJob, gcJobs,
+  tailleDossier, compterFichiers, nettoyerJob, gcJobs,
 };
