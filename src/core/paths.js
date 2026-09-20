@@ -38,6 +38,10 @@ const AGENTS_DIR = path.join(DATA_DIR, 'agents');
    Il vit sous `DATA_DIR` comme le reste, et non ailleurs sur le disque : une sauvegarde du
    dossier de données doit continuer de tout emporter. */
 const SHARED_DIR = path.join(DATA_DIR, 'shared');
+// Le dossier de travail de chaque job de sandbox (`<id>/source-ro`, `worktree-rw`, `scratch`,
+// `home`, `out`, `logs` — voir src/sandbox/fs.js). Sous TMP_DIR : purgeable sans perte, comme le
+// reste de ce qui y vit déjà.
+const SANDBOX_JOBS_DIR = path.join(TMP_DIR, 'jobs');
 
 // Le dossier de connaissance d'un agent, créé à la demande.
 function agentsDir(agentId) { return ensureDir(path.join(AGENTS_DIR, String(agentId))); }
@@ -60,6 +64,7 @@ function initDirs() {
   ensureDir(TMP_DIR);
   ensureDir(AGENTS_DIR);
   ensureDir(SHARED_DIR);
+  ensureDir(SANDBOX_JOBS_DIR);
 }
 
 // slug sûr pour un chemin de dossier à partir d'un "group/sub/project"
@@ -71,6 +76,7 @@ function slugify(project) {
 
 module.exports = {
   ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, AGENTS_DIR, SHARED_DIR,
+  SANDBOX_JOBS_DIR,
   agentsDir,
   ensureDir, initDirs, slugify,
 };
