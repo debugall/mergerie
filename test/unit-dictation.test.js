@@ -24,12 +24,12 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'dictation
 const { test, describe, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 
-const RT = require('../public/dictation-runtime.js');
+const RT = require('../public/runtime/dictation-runtime.js');
 const dictation = require('../src/integrations/dictation');
 const demo = require('../src/demo/dictation');
 const db = require('../src/db');
 const { updateConfig } = require('../src/data/config');
-const i18n = require('../public/i18n-runtime.js');
+const i18n = require('../public/runtime/i18n-runtime.js');
 const { countTokens } = require('../src/agent/copilot');
 
 const NBSP = ' ';

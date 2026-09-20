@@ -1,0 +1,35 @@
+/* ---------- Réglages : le panneau de diagnostic ----------
+   Une ligne par étape, dans l'ordre de la chaîne : la première ✗ est celle qu'on va réparer,
+   et son remède est écrit à côté d'elle, pas dans un message ailleurs. */
+.dictation-panel { margin-top: 18px; max-width: 760px; }
+.dictation-panel.dictation-off { opacity: .6; }
+.dictation-verdict {
+  margin: 8px 0; padding: 8px 12px; border-radius: var(--r-sm);
+  border-left: 3px solid var(--line); background: var(--panel2); font-weight: 600;
+}
+.dictation-verdict.ok { border-left-color: var(--ok); color: var(--ok-text); }
+.dictation-verdict.ko { border-left-color: var(--danger); color: var(--danger-text); }
+.dictation-verdict[data-stale="1"] { opacity: .5; font-style: italic; }
+.dict-step {
+  display: grid; grid-template-columns: 20px 150px 1fr; gap: 4px 8px; align-items: baseline;
+  padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px;
+}
+.dict-ico { text-align: center; font-weight: 700; }
+.dict-ok .dict-ico { color: var(--ok-text); }
+.dict-warn .dict-ico { color: var(--amber-text, var(--muted)); }
+.dict-fail .dict-ico { color: var(--danger-text); }
+.dict-skip { opacity: .5; }
+.dict-name { color: var(--muted); }
+.dict-detail { word-break: break-word; }
+.dict-remedy {
+  grid-column: 3; color: var(--muted); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.dict-fail .dict-remedy { color: var(--danger-text); }
+.dictation-log {
+  margin-top: 10px; max-height: 300px; overflow: auto; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); font-family: var(--ff-mono); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word;
+}
+

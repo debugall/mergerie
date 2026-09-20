@@ -42,7 +42,7 @@ Les briques sans métier : chemins, processus, HTTP, identité git, notification
 | `core/garde.js` | accès : hôte admis, site étranger, adresse de dépôt admise, jeton d'accès (voir *Sécurité*) |
 | `core/glob.js` | matching glob minimal (gitignore-like) pour les **règles par chemin** et le badge « risque » |
 | `core/httpreq.js` | requête HTTP(S) bas niveau partagée par les clients de forge + fabrique d'**agent TLS scopé** (`GITLAB_CA_CERT`/`GITLAB_INSECURE_TLS`, `GITHUB_CA_CERT`/`GITHUB_INSECURE_TLS`) ; timeout de 30 s (sans lui, une forge qui ne répond jamais gèlerait la file de jobs) |
-| `core/i18n.js` | le dictionnaire du serveur (`public/i18n-runtime.js`) à une profondeur près : tout module traduit avec `require('…/core/i18n')`, et `npm run check` reconnaît à cet import que `t` y est réservé |
+| `core/i18n.js` | le dictionnaire du serveur (`public/runtime/i18n-runtime.js`) à une profondeur près : tout module traduit avec `require('…/core/i18n')`, et `npm run check` reconnaît à cet import que `t` y est réservé |
 | `core/identite.js` | l'identité git du poste — pas de compte Mergerie, pas de mot de passe |
 | `core/nonfiable.js` | balisage à nonce des données non fiables dans les prompts |
 | `core/notify.js` | **ring buffer en mémoire** des événements (notifications bureau) : `push`/`since`/`latestId` |
@@ -179,9 +179,9 @@ Jira, Jenkins, Docker, la dictée vocale, l’export .docx, la veille de fond.
 | `integrations/docx.js` | **export d'une réponse d'agent en `.docx`**, sans dépendance : Markdown → OOXML (titres, paragraphes, listes indentées, blocs de code, citations, filets, **tableaux**, et en ligne `code`/gras/italique — exactement le sous-ensemble que `mdToHtml` AFFICHE), puis empaquetage **ZIP** écrit à la main (CRC-32 + `zlib.deflateRawSync`). Deux détails qui rendent sinon le fichier « illisible » pour Word : l'échappement XML et le retrait des caractères de contrôle. Dates ZIP figées → export **reproductible**. Le HTML et le PDF, eux, restent au front (contenu déjà rendu, boîte d'impression du navigateur) || `jira.js` | client Jira Cloud (Basic, API v3) + **convertisseur ADF → Markdown** ; fetch du contexte ticket au discover (best-effort) ; **onglet Jira** : `listAssignees` (`myself` + assignés récents découverts via `assignee IS NOT EMPTY` → cases du filtre par personne, moi coché par défaut) + `searchByAssignees` (JQL `assignee IN (accountIds)`, vide = `currentUser()` ; accountIds validés anti-injection JQL ; écarte `statusCategory = Done` sauf `includeDone`, tri `updated DESC`) + `transitions`/`transitionIssue` (changer l'état via l'API transitions) + `addComment` (`textToAdf` : texte brut → ADF pour poster un commentaire) + `issueDetail` (métadonnées + description ADF→MD + commentaires ADF→MD + **pièces jointes** : métadonnées seulement, contenu à la demande) + `downloadAttachment` (proxy : récupère le fichier avec le token, suit la redirection Jira→média en **retirant l'auth hors hôte**, bufferisé, ≤ 25 Mo ; **`inline` UNIQUEMENT pour les images matricielles** png/jpeg/gif/webp/bmp/avif — `image/svg+xml` (script possible) et tout le reste en `attachment`, + `X-Content-Type-Options: nosniff` et CSP `sandbox` : un SVG ouvert en navigation top-level ne peut pas exécuter de script sur l'origine de l'app). Images **embarquées** (ADF `mediaSingle`) : `adfToMarkdown(adf, {attachments})` résout le nom de fichier du média vers l'id de pièce jointe → `![nom](/api/jira/attachment/id)` (rendu inline par `mdToHtml`, restreint à ce proxy = sûr ; clic = lightbox), placeholder nommé sinon. **Cloud a retiré l'ancien `/search` (410 Gone)** → on appelle le nouveau **`/rest/api/3/search/jql`** (recherche enhanced, sans `total`), avec repli sur `/search` si 404 (Jira Server/DC) |
 | `integrations/jenkins.js` | **client Jenkins** (voir/lancer des jobs). Trois particularités de Jenkins portent tout le module : les jobs forment un ARBRE (dossiers, multibranches) qu'on aplatit en chemins `a/b/c` → URL `/job/a/job/b/job/c` ; l'état tient dans une COULEUR (`blue`=succès, suffixe `_anime`=en cours) traduite ici et non dans une feuille de style ; lancer est un POST donc soumis au CSRF — le crumb est demandé ET son cookie renvoyé avec lui (le crumb seul donne un 403 aussi sûrement que rien). Avec paramètres → `buildWithParameters` (`build` les ignorerait en silence). Aucune requête sans un geste : pas de sondage |
 | `integrations/veille.js` | **veille de fond du serveur** (B14/B15) : un timer d'une minute, deux surveillances. **Jenkins** — `attendreJenkins(chemin, depuis)` est appelé par `POST /api/jenkins/build` avec le dernier numéro connu de l'écran ; le tour suivant lit `jenkins.detail(…, 1)` et pousse `jenkins_done` quand un build **strictement plus grand** est terminé. Rien n'est demandé à Jenkins tant qu'aucun lancement n'est attendu (un outil local ne martèle pas le CI de l'équipe), et une attente qui n'aboutit pas s'oublie au bout de 6 h. **Docker** — `listContainers()` (un seul `docker ps -a`), et `docker_down` sur une **transition** « tournait → tombé », jamais sur un état : sinon le conteneur arrêté depuis trois jours redonne l'alerte à chaque tour. `estTombe` est partagé avec le badge de santé — l'alarme et le badge doivent dire la même chose du même conteneur. Le dernier relevé (`dockerTombes()`) alimente la section Docker du brief, qui reste ainsi **sans réseau**. Désactivée en démo ; timer `unref` |
-| `public/ansi-runtime.js` | **séquences d'échappement ANSI** — même code dans le navigateur et dans Node (montage de `i18n-runtime.js`). `stripAnsi` rend le texte nu, `parseAnsi` des segments { fg, bright, bold, underline }. Une application dans un container colore sa sortie, `docker logs` la relaie telle quelle, et le navigateur n'est pas un terminal : il affichait `ESC[34mdebug ESC[39m`. Le SSE Docker envoie la ligne BRUTE (le client décide, cf. case « afficher les couleurs ») ; les lignes de `job_log`, elles, sont nettoyées à l'écriture — elles sont persistées, pas rejouables. Les couleurs de FOND sont ignorées : elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes |
-| `public/dictation-mic.js` | **la capture**, côté navigateur : `getUserMedia` 16 kHz mono + `AudioWorklet` (`dictation-worklet.js`), **découpage aux silences** (RMS glissant, seuil adaptatif au bruit de fond, segment fermé après le silence réglé ou 12 s), envoi par segment numéroté avec le contexte glissant, **réordonnancement** des réponses, insertion par `setRangeText` + `InputEvent` synthétique (une affectation de `.value` contournerait l'autosave des brouillons et la garde `configFrappe`), cible retrouvée par **sélecteur stable** à chaque insertion (les cartes se redessinent toutes les 1,5 s), seconde passe sur l'audio complet à l'arrêt, bandeau « texte non inséré » si le champ a disparu |
-| `public/dictation-runtime.js` | **la logique PURE de la dictée**, même code dans le navigateur et dans Node (montage de `i18n-runtime.js`) : validation et fabrication du WAV 16 kHz, normalisation (`!214`/`PROJ-720` depuis leurs formes parlées, espace insécable française **hors blocs de code**, majuscule après un point), commandes vocales, liste de corrections, filtre anti-hallucination (phrases fantômes FR/EN, boucles, répétition), similarité de mots. Partagée parce que le fournisseur `browser` transcrit **sans passer par le serveur** et doit produire exactement le même texte |
+| `public/runtime/ansi-runtime.js` | **séquences d'échappement ANSI** — même code dans le navigateur et dans Node (montage de `i18n-runtime.js`). `stripAnsi` rend le texte nu, `parseAnsi` des segments { fg, bright, bold, underline }. Une application dans un container colore sa sortie, `docker logs` la relaie telle quelle, et le navigateur n'est pas un terminal : il affichait `ESC[34mdebug ESC[39m`. Le SSE Docker envoie la ligne BRUTE (le client décide, cf. case « afficher les couleurs ») ; les lignes de `job_log`, elles, sont nettoyées à l'écriture — elles sont persistées, pas rejouables. Les couleurs de FOND sont ignorées : elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes |
+| `public/js/transverse/dictee.js` | **la capture**, côté navigateur : `getUserMedia` 16 kHz mono + `AudioWorklet` (`dictee-worklet.js`), **découpage aux silences** (RMS glissant, seuil adaptatif au bruit de fond, segment fermé après le silence réglé ou 12 s), envoi par segment numéroté avec le contexte glissant, **réordonnancement** des réponses, insertion par `setRangeText` + `InputEvent` synthétique (une affectation de `.value` contournerait l'autosave des brouillons et la garde `configFrappe`), cible retrouvée par **sélecteur stable** à chaque insertion (les cartes se redessinent toutes les 1,5 s), seconde passe sur l'audio complet à l'arrêt, bandeau « texte non inséré » si le champ a disparu |
+| `public/runtime/dictation-runtime.js` | **la logique PURE de la dictée**, même code dans le navigateur et dans Node (montage de `i18n-runtime.js`) : validation et fabrication du WAV 16 kHz, normalisation (`!214`/`PROJ-720` depuis leurs formes parlées, espace insécable française **hors blocs de code**, majuscule après un point), commandes vocales, liste de corrections, filtre anti-hallucination (phrases fantômes FR/EN, boucles, répétition), similarité de mots. Partagée parce que le fournisseur `browser` transcrit **sans passer par le serveur** et doit produire exactement le même texte |
 
 ### `jobs/`
 
@@ -234,6 +234,80 @@ Les deux points d’entrée.
 | Fichier | Rôle |
 |---|---|
 | `server.js` | chargement `.env`, endpoints REST, static (`Cache-Control: no-cache` → le navigateur revalide à chaque chargement, plus de « je ne vois pas mes changements ») — depuis la réorganisation, réduit au point d’entrée : le `.env`, l’application, l’ordre de montage de `app/`, `listen`, les timers de fond |
+
+## Le front (`public/`)
+
+Pas de build, pas de bundler, pas de modules ES : ce que le navigateur charge est exactement ce qui
+est dans le dépôt, et la politique de contenu (`script-src 'self'`) n'admet ni script en ligne ni
+CDN. Depuis la réorganisation de septembre 2026, `public/` est rangé **par écran et par couche**,
+comme `src/` — des fichiers courts à la place d'un `app.js` de 25 000 lignes, d'un `style.css` de
+4 000 et d'un `i18n.js` de 8 000 :
+
+```
+public/
+  index.html        la COQUILLE : <head>, squelette du <body>, marqueurs <!--@include html/…-->,
+                    et LE MANIFESTE — la liste ordonnée des <link> et des <script>
+  html/             les morceaux de la page : sprite, en-tête, journal, sidebar, pied,
+                    ecrans/<onglet>.html (un par onglet), modales/<écran>.html
+  css/              socle.css (variables, thèmes, reset) · composants/ · transverse/ · ecrans/
+  i18n/             _socle.js (navigateur) · index.js (Node) · un fichier par famille, fr et en côte à côte
+  js/
+    core/           le socle : ce que tout le monde appelle, et qui n'appelle personne ($, api, tr, esc,
+                    toast, busy, combo, format, feedback, modale…)
+    transverse/     ce qui traverse les écrans sans en être un : navigation, menus, dock, jobs/,
+                    palette, adresses, raccourcis, notifications, pied, dictée
+    ecrans/<x>/     un dossier par onglet (reviews, sessions, agents, dashboard, git, docker, jira,
+                    notes, jenkins, liens, reglages, verification) ; un fichier par section
+    demarrage.js    « Init » : ce qui s'exécute au chargement, en dernier
+    theme-early.js  chargé dans le <head>, avant le premier rendu
+  runtime/          le code qui tourne AUSSI dans Node (UMD) : i18n, ansi, notes, dictation
+  images/ vendor/   inchangés
+```
+
+**La direction des dépendances** est contrôlée par `scripts/check-front.js` (`npm run check`) :
+
+```
+core  ←  transverse  ←  ecrans/<x>  ←  demarrage
+                          ↕ (entre écrans : par les PORTS déclarés)
+```
+
+`core/` n'appelle que `core/` ; `transverse/` appelle `core/` et les ports des écrans ; un écran
+appelle `core/`, `transverse/`, son propre dossier — et les **ports** d'un autre écran, jamais son
+intérieur. Un port est un nom déclaré en tête du fichier qui le définit, `// @expose nom1, nom2` ;
+un usage inter-écran d'un nom non exposé échoue, un port que personne n'appelle aussi (une
+promesse). L'état global (`let`) obéit à la même règle. Le jour où un dossier passe en modules ES,
+ses `@expose` sont ses `export`.
+
+**Le manifeste.** Sans build ni modules, l'ordre des balises d'`index.html` est l'ordre
+d'évaluation, et les scripts partagent une seule portée globale — la sémantique d'une
+concaténation. Le contrôle exige la bijection : tout fichier de `js/`, `css/`, `i18n/`,
+`runtime/` et `html/` est cité exactement une fois, toute balise et tout marqueur visent un
+fichier présent ; `core/` en tête, `demarrage.js` en dernier ; `'use strict';` en première ligne
+de chaque fichier ; un fichier de `js/` au-delà de 600 lignes de code avertit, de 1 200 échoue.
+Les outils du navigateur nomment le bon fichier (`ecrans/sessions/modale.js:120`), et un
+`pageerror` de Playwright aussi (`test/e2e-front-decoupage.test.js` ouvre chaque onglet et
+vérifie que chaque fichier du manifeste a été chargé).
+
+**La page assemblée** (`src/core/page.js`) est l'unique exception au « pas de build » : le HTML
+n'a pas d'inclusion native, donc `index.html` garde la coquille et des marqueurs
+`<!--@include html/ecrans/reviews.html-->`, résolus (un niveau, chemin relatif à `public/`,
+erreur si le morceau manque) pour `/` et `/index.html` par une route posée avant `express.static`
+(`index: false`), en `no-cache`, mémorisée et relue quand un morceau change. Le module n'importe
+rien de `src/` : les scripts et les tests le chargent sans `MERGERIE_DATA_DIR`. Les morceaux
+suivent **l'ordre du texte** de l'ancien fichier — pour les modales, c'est l'ordre d'empilement
+quand deux sont ouvertes —, d'où plusieurs fichiers pour un même écran quand ses modales
+n'étaient pas contiguës (`modales/reviews-merge.html`, `reviews-mr.html`, `reviews-contexte.html`).
+
+**Où ranger** : une fonction d'un seul écran dans `js/ecrans/<écran>/` ; appelée par deux écrans,
+dans `core/` si elle ne connaît aucun écran, `transverse/` sinon ; un libellé dans
+`i18n/<famille>.js`, fr et en dans le même commit ; un style dans `css/ecrans/<écran>.css`, classe
+préfixée par l'écran, `css/composants/` si deux écrans le portent, jamais une règle d'écran dans
+`socle.css` ; une modale dans `html/modales/<écran>.html` ; un nouvel onglet = un dossier de `js/`,
+une feuille, un morceau de page, une famille i18n, ses lignes dans le manifeste, ses tests.
+Un fichier se déplace avec `node scripts/move-front.js <ancien> <nouveau>` (il `git mv` et réécrit
+la ligne du manifeste ou le marqueur, et les `require` de Node pour un runtime) ; un test qui lit
+le front comme du texte passe par `test/helpers/front.js` (`lireFront()`, `lireFichierFront('ecrans/git/commandes')`,
+`lireHtml()`), jamais par un chemin en dur.
 
 ## Modèle de données (SQLite)
 
@@ -998,15 +1072,18 @@ qu'un démarrage propre). Le panneau de rapport s'ouvre sur le **delta depuis la
 du tout si rien n'a bougé).
 **Garde-fous statiques** (`npm run check`) : `check-front.js` (sélecteur `$` traité en liste,
 sous-onglet sans `segmented`, id inconnu, icône absente, `busy()` mal appelé, **nom redéfini au
-premier niveau d'`app.js`** (une `function` écrase la précédente par hoisting sans avertissement ; un `const`/`let` en double est pire — SyntaxError, et plus une ligne d'`app.js` ne s'exécute), **liste de
+premier niveau du front** — lu comme la concaténation des scripts du manifeste, une seule portée globale (une `function` écrase la précédente par hoisting sans avertissement ; un `const`/`let` en double est pire — SyntaxError, et plus une ligne du fichier fautif ni des suivants ne s'exécute), **liste de
 refs git sans recherche**, `<select>` de dépôt
 sans recherche) et `i18n-check.js` (parité fr/en, clés absentes, entités HTML, français en dur).
 Chacun est né d'un bug réel : ils attrapent en statique ce que `node --check` ne voit pas.
 
 ## Internationalisation (fr / en)
 
-Dictionnaire unique `public/i18n.js` (UMD : chargé côté navigateur **et** côté serveur — les messages
-d'erreur du serveur sont de l'interface), moteur `public/i18n-runtime.js` (`tr()`, pluriels
+Dictionnaire découpé par famille de préfixe dans `public/i18n/` (`task.*` dans `sessions.js`, `err.*`
+dans `erreurs.js`… — le tableau famille → fichier est dans `i18n/index.js`, et `i18n-check` refuse une
+clé rangée ailleurs), `fr` et `en` **côte à côte** dans chaque fichier ; le navigateur les charge par
+les balises du manifeste après `_socle.js`, Node par `i18n/index.js` (UMD : les messages d'erreur du
+serveur sont de l'interface). Moteur `public/runtime/i18n-runtime.js` (`tr()`, pluriels
 `{one, other}`, `currentLocale()`). La préférence vit en base (`config.language`) car le serveur en a
 besoin, avec un miroir `localStorage` pour appliquer la langue avant le premier rendu. Les rapports IA
 suivent la langue via les gabarits de prompt de `src/core/prompts.js`, **sans jamais écraser un prompt

@@ -1,0 +1,6 @@
+/* Bannière du mode démo (npm run demo). */
+/* `--accent-btn` et non `--accent` : c'est la teinte réglée pour porter du blanc (4,70:1),
+   quand l'accent de marque n'en rendait que 3,22 en thème sombre. Même bandeau, même bleu
+   perçu, lisible. */
+#demoBanner { background: var(--accent-btn); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
+

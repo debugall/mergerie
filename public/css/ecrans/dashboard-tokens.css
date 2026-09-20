@@ -1,0 +1,66 @@
+/* ---------- Dashboard : coût tokens + tendances + légendes d'utilité ---------- */
+.dash-help { margin: -4px 0 12px; font-size: 12px; color: var(--muted); font-style: italic; }
+
+/* Camembert des tokens par type (conic-gradient : aucun calcul d'arc SVG). */
+.donut-wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.donut { width: 120px; height: 120px; border-radius: 50%; flex: 0 0 120px;
+  -webkit-mask: radial-gradient(circle 34px at center, transparent 98%, #000 100%);
+          mask: radial-gradient(circle 34px at center, transparent 98%, #000 100%); }
+.donut-legend { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 4px; }
+.donut-leg { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); }
+.donut-leg .dot { width: 10px; height: 10px; border-radius: 2px; flex: 0 0 10px; }
+.dash-floor { margin: 8px 0 0; font-size: 11px; }
+
+/* Barres de la tendance de note : teintées par niveau, semaine sans donnée = creux. */
+.vbar-fill.vf-good { background: var(--green); }
+.vbar-fill.vf-mid { background: var(--amber); }
+.vbar-fill.vf-bad { background: var(--red); }
+.vbar-empty { opacity: .25; }
+
+/* Flèche de tendance par projet. */
+.proj-trend { font-weight: 700; white-space: nowrap; }
+.proj-trend.up { color: var(--green); }
+.proj-trend.down { color: var(--red); }
+.proj-trend.flat { color: var(--muted); }
+
+/* Badge « risque » sur les cartes MR : calculé sur les chemins du diff × règles. */
+.tag.risk { color: var(--red); border-color: var(--red); font-weight: 600; }
+.rule-label { max-width: 140px; }
+
+/* Projets liés dans la modale de contexte. */
+.ticket-links { border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; margin: 10px 0; }
+.ticket-links-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.link-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; align-items: flex-start; }
+.link-row .repo-combo { flex: 1 1 240px; min-width: 200px; }
+.link-branch-combo { flex: 1 1 40%; min-width: 120px; }
+
+/* Liste des tags dans l'explorateur de branches. */
+.git-tags { margin-top: 22px; }
+.git-tag-msg { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Branche(s) portant un tag : pastilles qui s'enroulent sur plusieurs lignes. */
+.git-tag-branches { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 260px; }
+/* « Trouver une ref » : une ligne par branche = pastille + date de son dernier commit. */
+.findref-branches { display: flex; flex-direction: column; gap: 4px; }
+.findref-branch { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.findref-tip { color: var(--ok, #2e7d32); font-weight: 600; }
+
+/* « L'IA pose une question » : bandeau de statut + formulaire de réponses sur la carte. */
+/* L'accent de marque sur un fond teinté du même accent : 2,86:1 en clair pour 11 px de texte.
+   Le fond s'allège et la couleur passe par la teinte réglée pour le texte. */
+.tag.needs-input { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
+.questions-box { margin: 8px 0 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent, #7c5cff) 45%, var(--border, #ccc)); border-radius: 10px; background: color-mix(in srgb, var(--accent, #7c5cff) 7%, transparent); }
+.questions-box .q-head { font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.q-item { margin: 10px 0; }
+.q-question { font-weight: 600; }
+.q-context { font-size: 13px; margin: 2px 0 6px; }
+.q-opts { display: flex; flex-direction: column; gap: 4px; }
+.q-opt { display: flex; align-items: center; gap: 6px; }
+.q-opt input[type=radio] { width: auto; }
+/* « Autre : … » est une RÉPONSE qu'on tape, au milieu d'options qu'on coche : le champ était
+   celui du navigateur, 21 px, dans un panneau dont tous les autres champs en font 38. */
+.q-other-text { flex: 1; min-width: 160px; margin-left: 6px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 7px 10px; font: inherit; }
+.q-free { width: 100%; min-height: 54px; }
+.q-actions { margin-top: 10px; }
+

@@ -26,6 +26,7 @@ const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 const { startApp, navigateurDispo, lancerNavigateur, attendreServeur } = require('./helpers/app');
+const { manifeste, lireHtml } = require('./helpers/front');
 
 const ROOT = path.join(__dirname, '..');
 const ATTENTE = 20000;
@@ -103,7 +104,7 @@ describe('La porte : Host, lecture croisée, en-têtes, politique de contenu', (
   });
 
   test('toute réponse porte la politique de contenu, nosniff et no-referrer — et plus X-Powered-By', async () => {
-    for (const chemin of ['/', '/api/config', '/app.js']) {
+    for (const chemin of ['/', '/api/config', '/' + manifeste().scripts[0]]) {
       const r = await brut(app.base, 'GET', chemin);
       assert.match(r.headers['content-security-policy'] || '', /script-src 'self'/, `${chemin} : CSP`);
       assert.match(r.headers['content-security-policy'] || '', /frame-ancestors 'none'/, `${chemin} : pas d’encadrement`);
@@ -124,7 +125,7 @@ describe('La porte : Host, lecture croisée, en-têtes, politique de contenu', (
   });
 
   test('la page d’index ne porte plus aucun script en ligne', () => {
-    const html = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8');
+    const html = lireHtml();
     const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/g)];
     assert.equal(enLigne.length, 0, 'sous `script-src \'self\'`, un script en ligne ne s’exécuterait plus');
   });

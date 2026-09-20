@@ -1,0 +1,104 @@
+    <!-- Reviews : les 3 stades d'une même MR, réunis (le parcours ne casse plus au milieu) -->
+    <section id="tab-review" class="tab active">
+        <div class="toolbar">
+            <button id="btnDiscover" class="btn" title="Interroger GitLab pour récupérer les merge requests ouvertes" data-i18n-title="ui.title.interroger-gitlab-pour-recuperer-les"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="ui.btn.chercher-les-nouvelles-mr">Chercher les nouvelles MR</span></button>
+            <button id="btnReview" class="btn btn-primary" title="Lancer la review IA sur toutes les MR à traiter" data-i18n-title="ui.title.lancer-la-review-ia-sur"><svg class="ico"><use href="#i-play"/></svg><span id="btnReviewLabel" data-i18n="ui.span.reviewer">Reviewer</span></button>
+            <span id="discoverInfo" class="muted"></span>
+        </div>
+        <div class="segmented" role="tablist">
+            <button data-seg="to_review" class="active" role="tab"><span data-i18n="review.seg.to-review">À traiter</span> <span class="seg-count is-waiting" id="segCountToReview"></span></button>
+            <button data-seg="reviewed" role="tab"><span data-i18n="review.seg.reviewed">Reviewées</span> <span class="seg-count is-waiting" id="segCountReviewed"></span></button>
+            <button data-seg="done" role="tab"><span data-i18n="review.seg.done">Traitées</span> <span class="seg-count is-waiting" id="segCountDone"></span></button>
+        </div>
+        <!-- QUI ATTEND QUOI. Onze merge requests à traiter dont quatre à soi : ce que
+             l'équipe attend, ce sont les sept autres. Le compte du jeton est connu des deux
+             forges ; les pastilles n'apparaissent que si on a pu le lire. -->
+        <!-- QUI, et DANS QUEL ORDRE, sur une seule ligne : ce sont deux façons de réduire la
+             même file, elles se lisent ensemble. Le tri est une LISTE DÉROULANTE et non des
+             pastilles — quatre ordres dont un seul actif, c'est la forme d'un choix unique, et
+             une rangée de sept pastilles se lisait comme sept filtres cumulables. -->
+        <div class="mr-filtres">
+            <div id="mrAuteurFiltre" class="chips" role="group" hidden></div>
+            <label class="mr-tri"><span data-i18n="review.tri.label">Trier</span>
+                <select id="mrTri">
+                    <option value="defaut" data-i18n="review.tri.defaut">Ordre habituel</option>
+                    <option value="petites" data-i18n="review.tri.petites">Petites d'abord</option>
+                    <option value="anciennes" data-i18n="review.tri.anciennes">Plus anciennes</option>
+                    <option value="note" data-i18n="review.tri.note">Note la plus basse</option>
+                    <!-- Une note de 7,2 avec un bloquant et une note de 7,2 sans aucun ne se
+                         traitent pas pareil : c'est la gravité qui décide par quoi commencer. -->
+                    <option value="bloquants" data-i18n="review.tri.bloquants">Bloquants d'abord</option>
+                </select>
+            </label>
+        </div>
+        <input id="searchReview" class="search" type="search" placeholder="Rechercher (titre, auteur, projet, ticket)…" data-i18n-placeholder="ui.ph.rechercher-titre-auteur-projet-ticket" />
+        <div id="reviewErrors"></div>
+        <!-- Sélection multiple : vérifier ENSEMBLE des MR qui ne valent qu'ensemble.
+             La barre n'apparaît qu'une fois au moins une case cochée. -->
+        <div id="mrBulkBar" class="bulk-bar" hidden>
+            <span id="mrBulkCount" class="muted"></span>
+            <span class="spacer"></span>
+            <span id="mrBulkWarn" class="bulk-warn" hidden></span>
+            <button id="btnBulkVerify" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.btn.verify-together">Vérifier ensemble</span></button>
+            <input id="mrBulkLotName" class="bulk-lot-name" type="text" placeholder="nom du lot" data-i18n-placeholder="verify.ph.lot-name" />
+            <button id="btnBulkLot" class="btn" type="button"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="verify.btn.make-lot">Créer un lot</span></button>
+            <!-- C4 : créer un lot ET le vérifier est le geste réel — on ne crée pas un lot
+                 pour le regarder. Le bouton simple reste, pour préparer sans lancer. -->
+            <button id="btnBulkLotVerify" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.btn.make-lot-verify">Créer et vérifier</span></button>
+            <button id="btnBulkClear" class="btn" type="button" data-i18n="verify.btn.clear-selection">Tout décocher</button>
+        </div>
+        <!-- stade « à traiter » : liste simple -->
+        <!-- SQUELETTE DE DÉPART, ÉCRIT DANS LE HTML. Le poser en JavaScript ne suffisait pas :
+             au démarrage, l'application demande d'abord la configuration (pour savoir quel
+             onglet ouvrir), et la requête des merge requests — celle qui posait le squelette —
+             ne partait qu'après. Sur une instance lente, cela laissait plusieurs secondes de
+             blanc muet là où trois cartes grises disent « je charge ». Ici, il est à l'écran
+             dès le premier rendu, sans une ligne de script. Le premier rendu de la liste le
+             remplace. -->
+        <div id="toReviewList" class="list"><div class="sk-wrap"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>
+        <!-- stades « reviewées » / « traitées » : liste + rapport -->
+        <div id="reportSplit" class="split" hidden>
+            <div class="col-list">
+                <!-- Filtre par couleur de note. Trois cases indépendantes : on cherche
+                     souvent « les rouges ET les oranges », pas une seule tranche. -->
+                <div id="noteFilters" class="note-filters">
+                    <span class="nf-label" data-i18n="review.filter.note">Note</span>
+                    <label class="nf-item" title="Notes de 7/10 et plus" data-i18n-title="review.filter.good-title">
+                        <input type="checkbox" class="note-pick" value="good" checked />
+                        <span class="note good" data-i18n="review.filter.good">≥ 7</span>
+                        <span class="nf-count" data-nf-count="good"></span>
+                    </label>
+                    <label class="nf-item" title="Notes de 4/10 à 6,9/10" data-i18n-title="review.filter.mid-title">
+                        <input type="checkbox" class="note-pick" value="mid" checked />
+                        <span class="note mid" data-i18n="review.filter.mid">4 – 6,9</span>
+                        <span class="nf-count" data-nf-count="mid"></span>
+                    </label>
+                    <label class="nf-item" title="Notes en dessous de 4/10" data-i18n-title="review.filter.bad-title">
+                        <input type="checkbox" class="note-pick" value="bad" checked />
+                        <span class="note bad" data-i18n="review.filter.bad">&lt; 4</span>
+                        <span class="nf-count" data-nf-count="bad"></span>
+                    </label>
+                    <!-- Sans note : un rapport dont l'IA n'a pas produit de note globale. Sans
+                         cette case, il sortait de la liste dès qu'on filtrait, sans rien dire. -->
+                    <label class="nf-item" title="Rapports dont aucune note globale n'a pu être lue" data-i18n-title="review.filter.none-title">
+                        <input type="checkbox" class="note-pick" value="none" checked />
+                        <span class="note none" data-i18n="review.filter.none">— sans note</span>
+                        <span class="nf-count" data-nf-count="none"></span>
+                    </label>
+                    <!-- CE QUI NE DEMANDE PLUS RIEN. Le brief compte les merge requests prêtes
+                         à merger et renvoie ici — où rien ne les isolait : il fallait relire
+                         quatre badges par carte pour retrouver les trois qu'il annonçait.
+                         Les quatre critères sont ceux du brief, mot pour mot. -->
+                    <label class="nf-item nf-pret" title="Note au-dessus du seuil, vérification verte et à jour, aucun conflit, aucun ticket en travers" data-i18n-title="review.filter.ready-title">
+                        <input type="checkbox" id="filtrePret" />
+                        <span class="note good" data-i18n="review.filter.ready">prêtes à merger</span>
+                        <span class="nf-count" data-nf-count="ready"></span>
+                    </label>
+                </div>
+                <div id="reportList" class="list"><div class="sk-wrap"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div></div>
+            </div>
+            <div class="col-detail" id="reportDetail">
+                <p class="muted" data-i18n="ui.p.selectionne-un-rapport-a-gauche">Sélectionne un rapport à gauche.</p>
+            </div>
+        </div>
+    </section>

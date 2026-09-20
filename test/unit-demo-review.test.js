@@ -161,7 +161,7 @@ describe('demo-review — l’explication', () => {
    bouts : plus une phrase française quand la langue est l'anglais, et la note reste lisible par
    `extractNote` alors que le séparateur décimal et le titre de section ont changé. */
 describe('demo-review — le rapport suit la langue de l’interface', () => {
-  const i18n = require('../public/i18n-runtime.js');
+  const i18n = require('../public/runtime/i18n-runtime.js');
   const enAnglais = (fn) => {
     const avant = i18n.getLang();
     i18n.setLang('en');

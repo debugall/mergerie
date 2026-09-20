@@ -1,0 +1,216 @@
+    <!-- Git : opérations multi-dépôts (branches, tags, commandes, navigation) -->
+    <section id="tab-git" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-gsub="actions" class="active" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.actions">Actions</span></button>
+            <button data-gsub="merge" role="tab"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="git.sub.merge">Merge</span></button>
+            <button data-gsub="navigate" role="tab"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="git.sub.navigate">Navigation</span></button>
+            <button data-gsub="commands" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.commands">Commandes Git</span></button>
+            <button data-gsub="explore" role="tab"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.sub.explorer">Explorateur de branches</span></button>
+            <button data-gsub="compare" role="tab"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.sub.compare">Comparer</span></button>
+            <button data-gsub="findref" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.findref">Trouver une ref</span></button>
+            <button data-gsub="history" role="tab"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="git.sub.history">Historique</span></button>
+        </div>
+
+        <!-- Sous-onglet : actions multi-dépôts -->
+        <div id="gsub-actions" class="subtab active">
+            <!-- « Est-ce que develop est encore vert ? » : la question du retour de congés se
+                 pose devant un dépôt et ses branches, c'est-à-dire ici. -->
+            <!-- VIDE GUIDÉ, comme partout ailleurs. Sans dépôt suivi, cet écran affichait une
+                 ligne désactivée invitant à « ajouter d'abord un dépôt » et un « chargement… »
+                 qui ne finissait jamais : trois impasses au lieu d'une porte. -->
+            <div id="gitNoRepo" hidden></div>
+            <!-- B7 : les branches des merge requests mergées, en un lot pré-rempli. Le bouton
+                 n'apparaît que s'il y en a — un bouton qui annonce « 0 » n'apprend rien. -->
+            <p id="gitMergedBar" hidden><button type="button" class="btn" id="gitMergedFill"></button></p>
+            <p class="muted" style="max-width:900px" data-i18n="git.actions.intro">Applique la même opération à plusieurs dépôts d'un coup. Rien n'est exécuté sans un aperçu préalable.</p>
+            <!-- 900 px comme les sous-onglets voisins (Navigation, Commandes) : à 760, le
+                 champ de branche tombait sous les 330 px et coupait les noms longs. -->
+            <div class="form" style="max-width:900px">
+                <label><span data-i18n="git.lbl.action">Action</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.tip.action" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select id="gitAction">
+                        <option value="new_branch" data-i18n="git.action.new_branch">Créer une branche</option>
+                        <option value="create_tag" data-i18n="git.action.create_tag">Créer un tag</option>
+                        <option value="delete_branch" data-i18n="git.action.delete_branch">Supprimer des branches</option>
+                        <option value="delete_tag" data-i18n="git.action.delete_tag">Supprimer des tags</option>
+                    </select>
+                </label>
+
+                <!-- La bascule est AVANT la liste : c'est elle qui décide si le nom se
+                     saisit dans chaque ligne ou une seule fois dans le champ du dessous. -->
+                <label class="inline-check" id="gitSameNameField"><input type="checkbox" id="gitSameName" checked /> <span id="gitSameNameLabel" data-i18n="git.lbl.same-name-all">Utiliser le même nom pour tous les projets</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.tip.same-name-all" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                </label>
+
+                <div class="targets-head">
+                    <strong id="gitTargetsLabel" data-i18n="git.targets.source">Projets et branches source</strong>
+                    <button type="button" id="gitAddTarget" class="btn btn-sm" data-i18n-title="git.title.add-project"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="git.btn.add-project">Ajouter un projet</span></button>
+                </div>
+                <div id="gitTargetRows"></div>
+
+                <div id="gitNameField">
+                    <label id="gitNameRow"><span id="gitNameLabel" data-i18n="git.lbl.branch-name">Nom de la branche à créer</span>
+                        <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.tip.name" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input id="gitRefName" placeholder="release/1.0" data-i18n-placeholder="git.ph.name" />
+                        <!-- A/Git 2 : le nom d'une branche se retape rarement de zéro. Deux
+                             propositions, toutes deux à la demande : le dernier motif créé
+                             avec son numéro incrémenté, et la clé de ticket du presse-papiers
+                             (lue au CLIC — jamais en fond, ce serait lire par-dessus l'épaule). -->
+                        <span class="git-name-aide">
+                            <button type="button" class="btn btn-sm" id="gitNameSuivant" hidden></button>
+                            <button type="button" class="btn btn-sm" id="gitNameColler" data-i18n="git.name.from-clipboard">Depuis le presse-papiers</button>
+                        </span>
+                    </label>
+                    <label id="gitMsgField" hidden><span data-i18n="git.lbl.tag-message">Message du tag (facultatif)</span>
+                        <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.tip.tag-message" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <input id="gitTagMsg" data-i18n-placeholder="git.ph.tag-message" placeholder="Version 1.0 — livraison du 20/07" />
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button id="gitPreview" class="btn btn-primary" data-i18n-title="git.title.preview"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="git.btn.preview">Prévisualiser</span></button>
+                    <!-- « Est-ce que develop est encore vert ? » : la question du retour de congés se
+                         pose devant un dépôt et ses branches, c'est-à-dire ici. Le bouton flottait
+                         seul en haut de l'écran, avant même de savoir de quoi il parlait. -->
+                    <button type="button" class="btn" id="btnVerifyBranch" data-i18n-title="verify.branch.btn-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="verify.branch.btn">Vérifier une branche</span></button>
+                </div>
+                <p class="field-note" data-i18n="verify.branch.hint">« Vérifier une branche » ne touche à rien : il lance un vérificateur sur une branche et rend son verdict.</p>
+            </div>
+            <div id="gitPreviewBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : MERGE de branche à branche, conflits résolus à l'écran.
+             Le travail se fait dans un worktree dédié (cf. src/gitmerge.js) : le clone partagé
+             n'est jamais laissé à moitié fusionné pendant qu'on résout. -->
+        <div id="gsub-merge" class="subtab">
+            <p class="muted" style="max-width:900px" data-i18n="git.merge.intro">Fusionne une branche dans une autre. Les conflits se résolvent ici, fichier par fichier : tu vois les deux versions, tu choisis celle que tu gardes — ou tu écris la tienne. Rien n'est commité ni poussé sans ton clic.</p>
+            <div class="form" style="max-width:900px">
+                <div class="target-row merge-pick" data-row="0">
+                    <label class="merge-lbl"><span data-i18n="git.merge.repo">Dépôt</span></label>
+                    <div id="mergeRepoBox"></div>
+                </div>
+                <div class="target-row merge-pick" data-row="0">
+                    <label class="merge-lbl"><span data-i18n="git.merge.source">Branche à fusionner</span></label>
+                    <div id="mergeSourceBox"></div>
+                    <span class="merge-arrow" aria-hidden="true">→</span>
+                    <label class="merge-lbl"><span data-i18n="git.merge.target">Dans la branche</span></label>
+                    <div id="mergeTargetBox"></div>
+                </div>
+                <div class="form-actions">
+                    <button id="mergeStart" class="btn btn-primary" data-i18n-title="git.merge.start-title"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="git.merge.start">Préparer le merge</span></button>
+                    <span id="mergeStartInfo" class="muted"></span>
+                </div>
+            </div>
+            <!-- Refus « historiques sans ancêtre commun » : une question, pas une panne. Le bloc
+                 n'apparaît qu'après le refus, pour ne pas encombrer un formulaire de trois champs. -->
+            <p id="mergeUnrelated" class="converge-note note-bad" hidden style="max-width:900px">
+                <svg class="ico ico-sm"><use href="#i-alert"/></svg>
+                <span class="mu-text"></span>
+                <button type="button" id="mergeUnrelatedGo" class="btn btn-sm"><span data-i18n="git.merge.unrelated-check">Fusionner sans ancêtre commun (--allow-unrelated-histories)</span></button>
+            </p>
+            <div id="mergeRunning"></div>
+            <div id="mergeWork" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : navigation — positionner des projets LOCAUX sur une branche -->
+        <div id="gsub-navigate" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.navigate.intro">Positionne plusieurs projets locaux sur la branche de ton choix. Rien n'est jeté : si un dépôt a des modifications en cours, le checkout est fait et les fichiers concernés sont listés.</p>
+            <div class="form" style="max-width:900px">
+                <label><span data-i18n="git.navigate.root">Répertoire local</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.navigate.tip.root" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="navRootBox" class="nav-root-box"></div>
+                </label>
+                <div class="targets-head">
+                    <strong data-i18n="git.navigate.projects">Projets et branches cibles</strong>
+                    <button type="button" id="navAddTarget" class="btn btn-sm" data-i18n-title="git.navigate.add-project-title"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="git.navigate.add-project">Ajouter un projet</span></button>
+                </div>
+                <div id="navTargetRows"></div>
+                <div class="form-actions">
+                    <button id="navGo" class="btn btn-primary" data-i18n-title="git.navigate.go-title"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.navigate.go">Se positionner</span></button>
+                    <span id="navInfo" class="muted"></span>
+                </div>
+            </div>
+            <div id="navResultBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : Commandes Git — exécuter UNE commande git à la racine de plusieurs
+             projets locaux. Palette (Réglages → Git) + saisie libre → prévisualiser → exécuter. -->
+        <div id="gsub-commands" class="subtab">
+            <p class="muted" style="max-width:820px" data-i18n="git.commands.intro">Exécute la même commande git à la racine de plusieurs projets locaux. Choisis un répertoire, coche les projets, sélectionne une commande de la palette (ou saisis-la), prévisualise puis exécute. La sortie de chaque projet est affichée.</p>
+            <div class="form" style="max-width:900px">
+                <label><span data-i18n="git.navigate.root">Répertoire local</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.navigate.tip.root" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div id="cmdRootBox" class="nav-root-box"></div>
+                </label>
+                <div class="targets-head">
+                    <strong data-i18n="git.commands.projects">Projets (racine)</strong>
+                    <span id="cmdPickCount" class="muted"></span>
+                </div>
+                <div id="cmdProjectBox" class="cmd-projects"></div>
+                <label><span data-i18n="git.commands.command">Commande git</span>
+                    <button type="button" class="hint" tabindex="-1" data-i18n-tip="git.commands.tip.command" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div class="cmd-cmd-row">
+                        <select id="cmdPalette" class="cmd-palette"><option value="" data-i18n="git.commands.palette-ph">— palette —</option></select>
+                        <span class="cmd-input-wrap"><span class="cmd-prefix">git</span><input id="cmdInput" type="text" placeholder="fetch --all --prune" data-i18n-placeholder="git.commands.input-ph" /></span>
+                    </div>
+                </label>
+                <div class="form-actions">
+                    <button id="cmdPreview" class="btn btn-primary" data-i18n-title="git.commands.preview-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="git.commands.preview">Prévisualiser</span></button>
+                </div>
+            </div>
+            <div id="cmdPreviewBox" hidden></div>
+            <div id="cmdResultBox" hidden></div>
+        </div>
+
+        <!-- Sous-onglet : explorateur -->
+        <div id="gsub-explore" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.explorer.intro">Sélectionne un ou plusieurs dépôts, puis Analyser. Le résultat de chaque dépôt s'affiche dans un bloc repliable.</p>
+            <div id="gitExploreRepoBox" class="repo-multi"></div>
+            <div class="form-actions" style="margin-top:10px">
+                <button id="gitExploreGo" class="btn btn-primary" data-i18n-title="git.title.analyze"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.btn.analyze">Analyser</span></button>
+                <span id="gitExploreInfo" class="muted"></span>
+            </div>
+            <div id="gitExploreBox"></div>
+        </div>
+
+        <!-- Sous-onglet : trouver une ref (tag ou branche) dans tous les dépôts -->
+        <!-- Sous-onglet : comparer le CONTENU de deux dépôts. Deux dépôts n'ont pas d'histoire
+             commune : ce qu'on compare, ce sont les fichiers de chaque branche. -->
+        <div id="gsub-compare" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.compare.intro">Compare le contenu de deux dépôts, branche par branche : ce qui existe d'un côté et pas de l'autre, et ce qui porte le même chemin mais un contenu différent. Aucune histoire commune n'est requise.</p>
+            <div class="form" style="max-width:900px">
+                <div id="compareCotes" class="compare-cotes"></div>
+                <p><button type="button" class="btn btn-primary" id="btnCompare"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.compare.go">Comparer</span></button>
+                   <span id="compareInfo" class="muted"></span></p>
+            </div>
+            <div id="compareResult"></div>
+        </div>
+
+        <div id="gsub-findref" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.findref.intro">Saisis un nom de tag ou de branche : l'outil cherche dans tous les dépôts actifs lesquels le possèdent.</p>
+            <form id="findRefForm" class="form inline" style="max-width:none">
+                <input id="findRefName" placeholder="ex. v1.2.0 ou feature/PROJ-42" data-i18n-placeholder="git.findref.ph" autocomplete="off" required />
+                <select id="findRefType">
+                    <option value="both" data-i18n="git.findref.type.both">Tag ou branche</option>
+                    <option value="tag" data-i18n="git.findref.type.tag">Tag</option>
+                    <option value="branch" data-i18n="git.findref.type.branch">Branche</option>
+                </select>
+                <button id="findRefGo" type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.findref.search">Rechercher</span></button>
+                <span id="findRefInfo" class="muted"></span>
+            </form>
+            <div id="findRefBox"></div>
+        </div>
+
+        <!-- Sous-onglet : historique -->
+        <div id="gsub-history" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.history.intro">Chaque opération est journalisée. Une suppression reste restaurable tant que les objets existent — l'outil en garde une copie locale, faite juste avant.</p>
+            <!-- Deux cents lignes sans filtre : on cherchait « la branche supprimée jeudi » en
+                 faisant défiler. Il MASQUE, comme partout ailleurs dans l'outil. -->
+            <div class="toolbar">
+                <input id="gitHistFilter" class="search" type="search" placeholder="Filtrer (projet, ref, action)…" data-i18n-placeholder="git.history.filter-ph" />
+                <label class="inline-check"><input type="checkbox" id="gitHistErrOnly" /><span data-i18n="git.history.err-only">Échecs seulement</span></label>
+            </div>
+            <div id="gitHistoryBox" class="list"></div>
+            <p id="gitHistNoMatch" class="muted" hidden data-i18n="git.history.no-match">Aucune opération ne correspond.</p>
+        </div>
+    </section>

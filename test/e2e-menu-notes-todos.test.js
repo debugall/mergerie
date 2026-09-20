@@ -147,7 +147,7 @@ describe('Menu Notes · Todos', { skip: dispo ? false : MSG_NAVIGATEUR }, () => 
 
   /* La barre d'ajout ANNONCE la syntaxe courte (« Astuce : !217 lie à une MR, PROJ-42 à un
      ticket, @demain pose l'échéance, !! la priorité haute ») et le CHANGELOG dit « the short
-     syntax finally written under the add bar ». Mais `todoQuickAdd` (public/app.js) envoie le
+     syntax finally written under the add bar ». Mais `todoQuickAdd` (public/js/ecrans/notes/todos.js) envoie le
      titre BRUT : seule la capture « n » passe par `lireCaptureCourte`. */
   test('la barre d’ajout comprend la syntaxe courte qu’elle affiche', async () => {
     await viderTodos();

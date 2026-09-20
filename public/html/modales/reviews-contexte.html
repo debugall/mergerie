@@ -1,0 +1,45 @@
+<!-- Modale : contexte libre de la review (ticket, spec, échange… + capture facultative) -->
+<div id="ticketModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3><span data-i18n="context.head.title">Contexte</span> <span id="ticketMrTitle" class="muted"></span></h3>
+        <p class="muted" data-i18n="context.p.facultatif-sera-pris-en-compte">Facultatif — sera pris en compte lors de la review.</p>
+        <!-- Contexte récupéré depuis Jira (lecture) : distinct du complément manuel
+             ci-dessous, les deux sont concaténés à la review. -->
+        <div id="ticketJira" class="ticket-jira" hidden>
+            <div class="ticket-jira-head">
+                <strong><span data-i18n="context.jira.title">Contexte Jira</span> <code id="ticketJiraKey"></code></strong>
+                <span class="spacer"></span>
+                <span id="ticketJiraAt" class="muted"></span>
+                <button type="button" id="ticketJiraRefresh" class="btn btn-sm" title="Re-récupérer le ticket depuis Jira" data-i18n-title="context.jira.refresh-title"><svg class="ico ico-sm"><use href="#i-refresh"/></svg><span data-i18n="context.jira.refresh">Rafraîchir</span></button>
+            </div>
+            <div id="ticketJiraBody" class="ticket-jira-body md"></div>
+            <div id="ticketJiraError" class="ticket-jira-error" hidden></div>
+        </div>
+        <label><span data-i18n="context.lbl.contexte-a-transmettre-a-l">Complément manuel (spécification, règle métier, échange…)</span> <button type="button" class="hint" tabindex="-1" aria-label="Tout ce qui aide à juger la MR : contenu du ticket, spécification, règle métier, extrait d'échange, contrainte technique… C'est injecté dans le prompt de review, en plus du diff." data-tip="Tout ce qui aide à juger la MR : contenu du ticket, spécification, règle métier, extrait d'échange, contrainte technique… C'est injecté dans le prompt de review, en plus du diff." data-i18n-tip="context.tip.tout-ce-qui-aide-a"><svg class="ico"><use href="#i-info"/></svg></button>
+            <textarea id="ticketText" rows="7" placeholder="Contenu du ticket, spécification, règle métier, extrait de discussion…" data-i18n-placeholder="context.ph.contenu-du-ticket-specification-regle"></textarea>
+        </label>
+        <div id="ticketDrop" class="ticket-drop">
+            <label class="ticket-file"><svg class="ico"><use href="#i-clip"/></svg><span data-i18n="context.lbl.pick-screenshot">Choisir une capture</span><input type="file" id="ticketFile" accept="image/*" hidden /></label>
+            <span class="muted" data-i18n="context.span.ou-colle-une-capture-ctrl">…ou colle une capture (Ctrl+V) n'importe où dans cette fenêtre</span>
+            <div class="ticket-preview-wrap" hidden>
+                <img id="ticketPreview" alt="capture jointe au contexte" />
+                <button id="ticketRemoveImg" type="button" class="btn btn-sm btn-danger" title="Retirer la capture jointe" data-i18n-title="context.title.retirer-la-capture-jointe" data-i18n="context.btn.retirer">retirer</button>
+            </div>
+        </div>
+        <!-- Projets liés : l'IA analyse l'impact des changements sur ces dépôts (lecture seule). -->
+        <div class="ticket-links">
+            <div class="ticket-links-head">
+                <strong data-i18n="context.links.title">Projets liés (analyse d'impact)</strong>
+                <button type="button" class="hint" tabindex="0" data-i18n-tip="context.links.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <span class="spacer"></span>
+                <button type="button" id="linkSetDefault" class="btn btn-sm" data-i18n-title="context.links.default-title"><svg class="ico ico-sm"><use href="#i-save"/></svg><span data-i18n="context.links.default">Par défaut du dépôt</span></button>
+                <button type="button" id="linkAdd" class="btn btn-sm" data-i18n-title="context.links.add-title"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="context.links.add">Ajouter un projet</span></button>
+            </div>
+            <div id="linkRows"></div>
+        </div>
+        <div class="modal-actions">
+            <button id="ticketCancel" type="button" class="btn" title="Fermer sans enregistrer le contexte" data-i18n-title="context.title.fermer-sans-enregistrer-le-contexte" data-i18n="task.btn.annuler">Annuler</button>
+            <button class="btn btn-primary" id="ticketSave" type="button" title="Enregistrer ce contexte — il sera pris en compte à la prochaine review" data-i18n-title="context.title.enregistrer-ce-contexte-il-sera" data-i18n="settings.btn.enregistrer">Enregistrer</button>
+        </div>
+    </div>
+</div>

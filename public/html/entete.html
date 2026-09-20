@@ -1,0 +1,42 @@
+<header>
+    <div class="brand">
+        <!-- Deux fichiers plutôt qu'un SVG en `currentColor` : le logo n'est pas monochrome
+             (le commit de merge reste vert dans les deux thèmes), seule l'encre du « M » change.
+             Le CSS n'en montre qu'un ; alt vide car le nom du produit suit juste à côté. -->
+        <img class="brand-logo light" src="images/mergerie-logo.svg" alt="" width="30" height="30" />
+        <img class="brand-logo dark" src="images/mergerie-logo-dark.svg" alt="" width="30" height="30" />
+        <div class="brand-text">
+        <!-- Nom du produit : jamais traduit → pas de data-i18n ici. -->
+        <h1>Mergerie</h1>
+        <!-- Deux lignes, alignées sous le nom du produit : la phrase disait la même chose
+             sur une ligne, mais elle courait alors jusqu'à la navigation. La coupure est
+             sémantique — ce que fait l'IA, puis ce que tu fais — et non un repli de place. -->
+        <span class="baseline"><span data-i18n="ui.baseline.1">L'IA prépare tes MR — review, corrections, convergence.</span><span data-i18n="ui.baseline.2">C'est toi qui merges.</span></span>
+        </div>
+    </div>
+    <!-- La navigation est partie à gauche : l'en-tête avait un grand vide au milieu. Il
+         accueille le déclencheur de la PALETTE — qui souffrait du défaut inverse, être
+         invisible tant qu'on ne connaît pas le raccourci. L'espace sert, et la fonction se
+         découvre. -->
+    <button type="button" id="paletteTrigger" class="palette-trigger" data-i18n-title="palette.open-title">
+        <svg class="ico"><use href="#i-search"/></svg>
+        <span data-i18n="palette.open">Rechercher un lien, une MR, un ticket…</span>
+        <kbd id="paletteKbd">Ctrl K</kbd>
+    </button>
+    <div class="header-right">
+        <span id="dryBadge" class="badge" hidden title="Mode dry-run : les rapports sont simulés, l'IA n'est pas appelée" data-i18n-title="ui.title.mode-dry-run-les-rapports">dry-run</span>
+        <!-- CHRONO DE SESSION DE TRAVAIL. Il occupait le coin de l'écran sur les dix onglets,
+             en gros chiffres, sans dire de quoi il parlait : « 00:00 ▶ ↺ » ressemble à un
+             minuteur du produit. Il porte maintenant une icône qui le nomme, il passe APRÈS
+             les badges d'état (qui, eux, parlent de l'application), et il se réduit à l'icône
+             et au bouton de départ tant qu'il est à zéro — la remise à zéro d'un zéro ne
+             servait à rien et faisait la moitié de son encombrement. -->
+        <div id="chrono" class="chrono" title="Chrono de session de travail" data-i18n-title="ui.title.chrono-de-session-de-travail">
+            <svg class="ico ico-sm chrono-ico" aria-hidden="true"><use href="#i-clock"/></svg>
+            <span id="chronoTime">00:00</span>
+            <button id="chronoStart" title="Démarrer" data-i18n-title="ui.title.demarrer"><svg class="ico ico-sm"><use href="#i-play"/></svg></button>
+            <button id="chronoPause" title="Pause" data-i18n-title="ui.title.pause" hidden><svg class="ico ico-sm"><use href="#i-pause"/></svg></button>
+            <button id="chronoReset" title="Remettre à zéro" data-i18n-title="ui.title.remettre-a-zero"><svg class="ico ico-sm"><use href="#i-reset"/></svg></button>
+        </div>
+    </div>
+</header>

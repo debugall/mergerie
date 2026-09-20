@@ -1,0 +1,72 @@
+/* Onglet Docker : projets compose (drift .env) + containers hors-compose. */
+/* Filtre affichage/masquage des projets compose (choix persisté). */
+/* Barre de recherche + état de l'onglet Compose : même gabarit que le sous-onglet
+   Actions (.dact-search / .dact-action), au-dessus du filtre par projet. */
+.docker-svcbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 10px; }
+.dact-action-grow { flex: 1 1 260px; min-width: 200px; }
+.docker-svcbar .dact-search { width: 100%; }
+.docker-svc-hidden { margin: 6px 0 0; font-size: 12px; }
+.docker-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; margin-bottom: 12px; border: 1px solid var(--border, #ccc); border-radius: 10px; }
+/* Noms de projet : toujours sur une ligne → case et libellé centrés l'un sur l'autre. */
+.docker-filter .inline-check > span { line-height: 1; }
+/* État du container, bien visible : pastille colorée + libellé. */
+/* Pas de `capitalize` : il forçait une majuscule sur CHAQUE mot (« Non Démarré », « En Cours »),
+   ce que le français n'écrit pas. Les libellés viennent du dictionnaire, ils sont déjà casés. */
+.docker-state { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+.docker-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.docker-state-running { color: var(--ok-text); background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.docker-state-exited, .docker-state-dead { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* `--amber-text` et non un `#b26a00` en dur : le même orange ne peut pas tenir le contraste
+   sur fond clair ET sur fond sombre. Mesuré, il rendait 4,24:1 en clair et 3,97:1 en sombre
+   pour un texte de 12 px, sous les 4,5:1 exigés. */
+.docker-state-paused, .docker-state-restarting, .docker-state-created {
+  color: var(--amber-text); background: color-mix(in srgb, var(--amber-text) 14%, transparent); }
+.docker-state-none, .docker-state-unknown { color: var(--muted, #888); background: transparent; border: 1px dashed var(--border, #ccc); }
+
+.docker-orphan { align-items: flex-start; }
+/* Carte « placeholder » pendant le chargement progressif d'un projet compose. */
+.docker-ph { opacity: .75; }
+.docker-ph .docker-project-head { min-height: 34px; }
+.docker-slot { display: block; }
+/* Projet compose : en-tête (titre + actions) puis corps en DEUX COLONNES — Makefile à gauche
+   (visible sans scroller), services à droite. Empile sur écran étroit. */
+.docker-project { flex-direction: column; align-items: stretch; }
+.docker-project-head { display: flex; align-items: center; gap: 10px; }
+.docker-project-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.docker-project-body { display: flex; gap: 16px; align-items: flex-start; margin-top: 10px; flex-wrap: wrap; }
+/* La colonne Makefile se dimensionne à SON CONTENU (la commande la plus longue), sans grandir
+   au-delà ; les services prennent tout le reste. Bornée pour ne pas dominer l'écran. */
+.docker-make-col { flex: 0 1 auto; align-self: flex-start; min-width: 280px; max-width: 640px; }
+.docker-svcs-col { flex: 1 1 440px; min-width: 320px; }
+.docker-make-col .docker-make { margin-top: 0; }
+.docker-svcs { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.docker-svcs-col .docker-svcs { margin-top: 0; }
+.docker-svc { border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 10px 12px; }
+.docker-svc-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* La colonne d'actions : un rail. Elle ne se replie pas et ne se comprime pas — c'est la
+   partie gauche (nom, image, nom du container) qui cède la place, sinon les six boutons
+   changeaient d'abscisse à chaque ligne. */
+.docker-svc-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; flex-shrink: 0; margin-left: auto; }
+@media (max-width: 900px) { .docker-svc-actions { flex-wrap: wrap; } }
+.docker-imgdrift { font-size: 13px; margin-top: 6px; }
+.env-diff { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.env-diff li { font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.env-kind { font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.env-added { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
+.env-modified { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
+.env-removed { background: color-mix(in srgb, var(--danger, #c62828) 18%, transparent); color: var(--danger, #c62828); }
+.env-name { font-weight: 600; }
+.docker-run { background: var(--code-bg, #f4f4f4); padding: 10px 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-all; margin-top: 8px; font-size: 12px; }
+
+/* Makefile à côté du compose : recherche + exécution des commandes. */
+.docker-make { margin-top: 10px; border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 8px 12px; }
+.docker-make > summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.docker-make .mk-search { margin: 10px 0 6px; width: 100%; }
+.mk-list { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow: auto; }
+.mk-item { display: flex; align-items: center; gap: 10px; padding: 3px 4px; border-radius: 8px; }
+.mk-item:hover { background: color-mix(in srgb, var(--accent, #7c5cff) 8%, transparent); }
+.mk-name { font-weight: 600; white-space: nowrap; }
+.mk-desc { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-run { flex-shrink: 0; }
+.mk-eye { flex-shrink: 0; padding: 0 2px; }
+

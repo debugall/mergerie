@@ -1,0 +1,84 @@
+/* Le rapport (colonne droite) plafonne à 900px de mesure ; la bande liste+rapport se centre
+   pour éviter un vide à droite sur écran large (V2.6). minmax(0,…) reste compressible en dessous. */
+#reportSplit.split { grid-template-columns: 320px minmax(0, 900px); justify-content: center; }
+.col-list .filters { padding: 6px 0; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.col-detail { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; min-height: 300px; }
+
+/* Filtre par couleur de note, au-dessus de la liste. Les pastilles reprennent EXACTEMENT
+   l'habillage des notes des cartes (`.note.good/.mid/.bad`) : c'est ce qui rend le lien
+   évident sans une ligne d'explication. */
+/* Sauvegarde : une action isolée dans un formulaire de réglages — elle ne s'enregistre pas
+   avec le reste, elle produit un fichier. D'où sa propre ligne, et son compte rendu à côté. */
+.backup-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0 4px; }
+.backup-row .ok { color: var(--green); }
+.backup-row .err { color: var(--red-text, var(--red)); }
+
+.note-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 2px 0 10px; }
+.note-filters .nf-label { color: var(--muted); font-size: var(--fs-xs); }
+/* Même dessin que `.chip` (bord arrondi complet, fond `panel2`) : ces tranches sont un filtre
+   à valeurs peu nombreuses et stables, la règle leur donne donc la pastille. La case reste,
+   elle : le choix est MULTIPLE ici (« les rouges ET les oranges »), et la pastille seule ne
+   dit pas qu'on peut en cocher plusieurs. */
+.nf-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+  border: 1px solid var(--line); border-radius: var(--r-full); padding: 2px 10px 2px 6px;
+  background: var(--panel2); }
+.nf-item:hover { color: var(--text); }
+.nf-item input { cursor: pointer; margin: 0; }
+.nf-item .note { min-width: 0; padding: 2px 6px; font-size: 11px; }
+.nf-count { color: var(--muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* Un filtre actif se voit AU REPOS : sans ce repère, une liste courte se lit comme
+   « il n'y a que ça », et on ne pense pas à regarder trois cases au-dessus. */
+.note-filters.is-filtering .nf-label { color: var(--accent); font-weight: 600; }
+.nf-item:has(input:not(:checked)) .note { opacity: .4; }
+
+/* Liste et rapport défilent CHACUN pour soi. Avec une seule barre de page, descendre la liste
+   pour changer de merge request emportait le rapport hors de l'écran, et il fallait remonter
+   pour le lire — alors qu'on regarde les deux ensemble. Chaque colonne s'accroche donc sous
+   l'en-tête (`--header-h`, mesuré en JS) et garde son propre ascenseur.
+   `align-items: start` est indispensable : par défaut une piste de grille s'étire sur toute
+   la hauteur de la rangée, la colonne courte prend la taille de la longue et rien ne colle. */
+#reportSplit.split { align-items: start; }
+#reportSplit .col-list,
+#reportSplit .col-detail {
+  position: sticky; top: calc(var(--header-h, 56px) + 6px);
+  max-height: calc(100vh - var(--header-h, 56px) - 28px);
+  overflow-y: auto;
+  /* Arrivé en bas de la liste, la molette ne doit pas enchaîner sur la page : on croirait
+     que la liste continue alors que c'est tout l'écran qui bouge. */
+  overscroll-behavior: contain;
+}
+/* Le rapport peut être court : la barre de défilement du navigateur ne s'affiche alors pas,
+   mais `min-height: 300px` le ferait dépasser sur un écran bas — d'où le plafond commun. */
+#reportSplit .col-detail { min-height: 0; }
+.note { flex: 0 0 auto; min-width: 44px; text-align: center; font-weight: 700; font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
+.note.good { color: var(--on-green); background: var(--green); border-color: var(--green); }
+.note.mid { color: var(--on-amber); background: var(--amber); border-color: var(--amber); }
+.note.bad { color: var(--on-red); background: var(--red); border-color: var(--red); }
+.note.none { color: var(--muted); background: transparent; }
+
+.list .card.selectable { cursor: pointer; }
+.list .card.selectable:hover { border-color: var(--accent); }
+.list .card.active { border-color: var(--accent); }
+
+.md { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 15px; margin-top: 16px; } .md h3 { font-size: 14px; }
+.md-body h1 { font-size: 17px; } .md-body h2 { font-size: 15px; } .md-body h3, .md-body h4 { font-size: 14px; }
+/* Le markdown rendu écrit ses propres titres : ce sont ceux de l'AUTEUR du rapport, pas des
+   sections d'interface. Ils reprennent donc la couleur et la casse du texte, pas le traitement
+   de section posé plus haut sur `h4`. */
+.md h4, .md-body h4 { text-transform: none; letter-spacing: normal; color: var(--text); font-weight: var(--fw-sem); }
+.md code, .md-body code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+.md pre, .md-body pre { background: var(--code-bg); padding: 10px; border-radius: 6px; overflow-x: auto; }
+/* Dans un bloc, le code ne reprend pas la pastille du code INLINE : deux fonds l'un sur
+   l'autre feraient un damier sur chaque identifiant. */
+.md pre code, .md-body pre code { background: none; padding: 0; }
+.md blockquote, .md-body blockquote { border-left: 3px solid var(--accent); margin: 8px 0; padding: 2px 12px; color: var(--muted); }
+.md ul, .md-body ul { padding-left: 22px; }
+.md-body hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.md-tablewrap { overflow-x: auto; margin: 12px 0; }
+.md-table { border-collapse: collapse; }
+.md-table th, .md-table td { border: 1px solid var(--line); padding: 6px 11px; font-size: 13px; vertical-align: top; }
+/* En-tête entièrement vide : la source n'en avait pas. On le masque plutôt que d'afficher
+   une bande sans libellé — et surtout plutôt que de promouvoir une ligne de données. */
+.md-table-nohead thead { display: none; }
+

@@ -195,7 +195,7 @@ describe('Transverse — accueil, états vides, bandeau, notifications, langue',
     await page.waitForFunction(() => localStorage.getItem('aidevtools_footer_mode') === 'stats');
   });
 
-  /* BUG : le bandeau pose son mode retenu (`setMode`, public/app.js, « Bascule live / stats »)
+  /* BUG : le bandeau pose son mode retenu (`setMode`, public/js/transverse/pied.js, « Bascule live / stats »)
      AVANT que `language()` n'applique les traductions statiques (`I18Nrt.applyStaticI18n()`,
      plus bas dans le même fichier). Le bouton porte `data-i18n="context.btn.live"` : son libellé
      est réécrit en « live » et sa bulle en « Mode d'affichage du bandeau » — alors que le

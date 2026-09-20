@@ -246,16 +246,15 @@ describe('Docker — découverte compose', () => {
   });
 });
 
-/* Le filtre d'état de l'onglet Docker vit dans le front (`public/app.js`) : pas exportable,
+/* Le filtre d'état de l'onglet Docker vit dans le front (`ecrans/docker/actions.js`) : pas exportable,
    mais évaluable isolément. Ce prédicat décide de ce qui s'affiche ET de ce qui est ciblé
    par une action groupée — se tromper sur « ne tourne pas » n'est pas anodin. */
 describe('front : filtre d’état des services Docker', () => {
-  const fs2 = require('node:fs');
-  const path2 = require('node:path');
-  const src = fs2.readFileSync(path2.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const { lireFichierFront } = require('./helpers/front');
+  const src = lireFichierFront('ecrans/docker/actions');
   const from = src.indexOf('function dactIsDrift');
   const to = src.indexOf('const DOCKER_STATE_FILTERS');
-  assert.ok(from > 0 && to > from, 'dactIsDrift et dactMatchesFilter doivent rester voisins');
+  assert.ok(from > 0 && to > from, 'dactIsDrift et dactMatchesFilter doivent rester voisins dans ecrans/docker/actions.js');
   // eslint-disable-next-line no-new-func
   const match = new Function(`${src.slice(from, to)}\nreturn dactMatchesFilter;`)();
 

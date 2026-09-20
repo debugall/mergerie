@@ -164,7 +164,7 @@ describe('Menu Dev IA — exploration, hors dépôt, question libre', { skip: di
     const libres = page.locator(`${carte} .questions-box .q-free`);
     for (let i = 0; i < await libres.count(); i += 1) await libres.nth(i).fill('Oui, par mois');
     await page.locator(`${carte} [data-qsubmit]`).click();
-    await attendreServeur(async () => (await exploration(ids.exploreQ)).status !== 'needs_input', 'l’exploration a repris');
+    await attendreServeur(async () => (await exploration(ids.exploreQ)).status !== 'needs_input', 'l’exploration a repris', 60000);
     await waitForJobs(app.api, { timeout: 60000 });
   });
 

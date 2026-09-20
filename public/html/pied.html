@@ -1,0 +1,21 @@
+<footer id="footer" class="footer" title="Télémétrie live — activité, tokens IA et MR de l'équipe" data-i18n-title="context.title.telemetrie-live-activite-tokens-ia">
+    <span class="footer-prompt">dev@mergerie:~$<span class="footer-cursor">▮</span></span>
+    <span id="footerFrame" class="footer-frame"></span>
+    <span id="footerTokens" class="footer-tokens" title="Tokens IA consommés (cumul estimé)" data-i18n-title="context.title.tokens-ia-consommes-cumul-estime"><svg class="ico ico-sm"><use href="#i-zap"/></svg> <b id="footerTokCount">0</b> tok</span>
+    <!-- LA SYNCHRO DU DÉPÔT DE DONNÉES, en trois caractères. Caché tant qu'aucun dépôt n'est
+         configuré : le mode mono-poste ne doit rien voir de tout ça. Vert = à jour, ambre =
+         hors ligne (les commits sont locaux, rien n'est perdu), rouge = une modification à
+         reprendre. Cliquer force un tour et ouvre les réglages en cas de conflit. -->
+    <button id="footerSync" class="footer-mode footer-sync" type="button" hidden data-tip="Données partagées" data-i18n-tip="datasync.head"><svg class="ico ico-sm"><use href="#i-refresh"/></svg><span id="footerSyncTxt">↑0 ↓0</span></button>
+    <button id="footerLogs" class="footer-mode footer-logs" type="button" hidden title="Réafficher le journal du dernier job (raccourci : l)" data-i18n-title="context.title.reafficher-le-journal"><span class="footer-logs-dot"></span><svg class="ico ico-sm"><use href="#i-doc"/></svg><span data-i18n="context.btn.journal">journal</span></button>
+    <button id="footerMute" class="footer-mode" type="button" title="Mode silencieux (notifications bureau)"><svg class="ico ico-sm"><use href="#i-bell"/></svg></button>
+    <!-- LA COUCHE CLAVIER SE VOIT. Onze raccourcis existent — dont `j`/`k` et `1`–`9`, ceux qui
+         rendent la densité tenable — et rien à l'écran ne les annonçait : personne ne les
+         trouvait. Le bandeau du bas est le seul endroit présent sur les dix onglets. -->
+    <button id="footerHelp" class="footer-mode" type="button" title="Raccourcis clavier (?)" data-i18n-title="context.title.raccourcis-clavier">?</button>
+    <!-- Libellé et bulle posés par `setMode` (js/transverse/pied.js) : un `data-i18n` ici les réécrivait en
+         « live » après coup, même en mode stats. -->
+    <button id="footerMode" class="footer-mode" type="button" title="Mode d'affichage du bandeau">live</button>
+    <button id="footerHide" class="footer-hide" type="button" title="Masquer le bandeau" data-i18n-title="context.title.masquer-le-bandeau">✕</button>
+</footer>
+<button id="footerShow" class="footer-show" type="button" title="Afficher le bandeau de télémétrie" data-i18n-title="context.title.afficher-le-bandeau-de-telemetrie" hidden><svg class="ico ico-sm"><use href="#i-zap"/></svg></button>
