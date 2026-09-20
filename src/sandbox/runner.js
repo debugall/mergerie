@@ -67,14 +67,20 @@ async function choisirBackend(sandbox) {
 async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env = {}, prepareSource } = {}) {
   const spec = validerSpec(specBrut);
   const { backend, legacyChoisi } = await choisirBackend(sandbox);
+  const localDir = spec.source.sourceMode === 'local-dir';
   const worktree = spec.permissions.filesystem === 'job-write';
-  const collecterPatch = spec.kind === 'plan' || spec.kind === 'edit';
-  const layout = sfs.creerLayout(spec.id, { worktree });
+  const collecterPatch = !localDir && (spec.kind === 'plan' || spec.kind === 'edit');
+  const layout = sfs.creerLayout(spec.id, { worktree, localDir });
   const consigner = audit.pour(spec.id, layout.logs);
   consigner('job_started', { kind: spec.kind, backend: legacyChoisi ? 'legacy' : 'linux', policyHash: spec.policyHash });
   try {
-    if (prepareSource) await prepareSource(layout);
-    if (worktree) sfs.copierDossier(layout.sourceRo, layout.worktreeRw);
+    // `local-dir` : le dossier existe déjà (un worktree préparé par l'appelant, §6.5) — rien à
+    // extraire ni à copier, et `collecterSortie` (basé sur une comparaison d'arbres) ne
+    // s'applique pas : l'appelant relit lui-même ce qu'il a besoin de relire (rapport JUnit…).
+    if (!localDir) {
+      if (prepareSource) await prepareSource(layout);
+      if (worktree) sfs.copierDossier(layout.sourceRo, layout.worktreeRw);
+    }
 
     const minuteurDisque = surveillerDisque(layout, spec.limits, consigner);
     let resultat;

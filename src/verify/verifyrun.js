@@ -13,6 +13,7 @@
  */
 
 const { spawn } = require('child_process');
+const crypto = require('node:crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -113,6 +114,40 @@ function lancerUne(programme, args, { cwd, env, resteMs, onLog }) {
   });
 }
 
+/* LA MÊME COMMANDE, DANS LA SANDBOX SÉCURISÉE — choisie par `lancerCommandes` seulement quand
+ * l'admin a mis `agent_sandbox` sur `'required'` (Réglages → IA) ET que ce dépôt n'est pas en
+ * mode « in place » (§6.5 du plan : le in place reste séparé, avec son propre consentement).
+ * `cwd` est un worktree DÉJÀ PRÉPARÉ par `ajouterWorktree` : `sourceMode: 'local-dir'` le monte
+ * à sa place — jamais copié, jamais détruit par la sandbox (`sandbox/fs.js`). Le réseau reste
+ * ouvert (`network: 'allowlist'`, non filtré dans cette version — voir `sandbox/policy.js`) : un
+ * `npm install` avant les tests est le cas courant, pas l'exception. Renvoie le MÊME contrat que
+ * `lancerUne` (`code`/`output`/`duration_ms`/`timedOut`/`erreurLancement`). */
+async function lancerUneSandbox(programme, args, { cwd, env, resteMs, onLog }) {
+  const runner = require('../sandbox/runner');
+  const debut = Date.now();
+  let sortie = '';
+  const ajouter = (c) => {
+    sortie += stripAnsi(String(c));
+    if (sortie.length > verify.MAX_LOG) sortie = sortie.slice(-verify.MAX_LOG);
+    for (const l of stripAnsi(String(c)).split('\n')) if (l.trim()) onLog(l.trim());
+  };
+  const spec = {
+    id: crypto.randomUUID(),
+    kind: 'verify',
+    source: { repoId: null, sourcePath: cwd, revision: 'HEAD', sourceMode: 'local-dir', allowExtraDirs: [] },
+    command: { program: programme, args, cwdRel: '.', agentBackend: 'verifier', agentOptions: {} },
+    permissions: { filesystem: 'job-write', network: 'allowlist' },
+    limits: { wallTimeMs: Math.max(1, resteMs) },
+    policyHash: null,
+  };
+  try {
+    const resultat = await runner.executer(spec, { onLog: ajouter, env });
+    return { code: resultat.code == null ? 1 : resultat.code, output: sortie, duration_ms: Date.now() - debut, timedOut: resultat.timedOut };
+  } catch (e) {
+    return { erreurLancement: e.message, output: sortie, duration_ms: Date.now() - debut };
+  }
+}
+
 /* Retrouver le NOM des tests cassés, sans jamais deviner. Dans l'ordre : le fichier de
    rapport JUnit s'il est déclaré (le plus fiable, insensible à la troncature), puis le TAP
    dans la sortie (gratuit, aucun réglage). Rien des deux → on rend `null` et l'appelant le
@@ -184,6 +219,10 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { h
   const multi = repos.length > 1;
   const tous = [];
   const details = [];
+  // Sandbox sécurisée : réglage de CE poste (Réglages → IA), `off` par défaut. Le mode « in
+  // place » (§6.5) reste hors sandbox dans tous les cas — son consentement porte sur un accès
+  // direct au dossier de l'utilisateur, pas sur ce que ce lot ajoute.
+  const sandboxRequis = require('../data/config').getConfig().agent_sandbox === 'required';
 
   for (const r of repos) {
     if (multi) onLog(`— ${r.name}`);
@@ -205,7 +244,10 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { h
       if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
 
       onLog(`$ ${brut}`);
-      const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
+      const sandboxer = sandboxRequis && r.mode !== 'in_place';
+      const res = sandboxer
+        ? await lancerUneSandbox(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog })
+        : await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
       if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
       if (res.erreurLancement) {
         return { erreur: `${d.programme} : ${res.erreurLancement} — vérifie le PATH du serveur, ou déclare les variables d'environnement du vérificateur` };

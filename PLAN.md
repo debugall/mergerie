@@ -181,7 +181,17 @@ codage, vérification et plan restent sur le chemin direct (chantier suivant).
 
 Ni cgroups v2 « garantis » ni filtre seccomp custom dans cette première livraison : les
 namespaces, l'absence de capabilities et les montages en lecture seule sont la ligne de défense ;
-les deux sont documentés comme un chantier suivant plutôt que simulés.
+les deux sont documentés comme un chantier suivant plutôt que simulés. Le filtrage réseau par
+allowlist n'existe pas non plus : `network: 'allowlist'`/`'model-proxy'` valent aujourd'hui
+« réseau complet », seul `'none'` coupe réellement (`--unshare-net`).
+
+**Mode `local-dir`** (`source.sourceMode`) : un dossier déjà préparé par l'appelant — un worktree
+de vérification (`verify/verifyrun.js:lancerUneSandbox`), demain un dossier local hors dépôt — se
+monte à sa place (`/workspace`, un seul montage), sans extraction ni copie, et n'est ni touché ni
+détruit par `sandbox/fs.js` : c'est l'appelant qui le crée et le nettoie. `verify` l'utilise pour
+les dépôts en mode `worktree` (jamais `in_place`, qui reste hors sandbox, §6.5), avec
+`network: 'allowlist'` — la plupart des vérificateurs installent leurs dépendances avant de
+lancer les tests.
 
 ### `notes/`
 

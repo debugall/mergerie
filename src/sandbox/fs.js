@@ -20,12 +20,15 @@ const { SANDBOX_JOBS_DIR } = require('../core/paths');
 const git = require('../git/git');
 const { erreurSandbox } = require('./errors');
 
-function creerLayout(jobId, { worktree = false } = {}) {
+/* `localDir` (worktree de vérification déjà préparé par l'appelant, §6.5) : ni `source-ro` ni
+ * `worktree-rw` ne sont créés ici — le montage vise directement `spec.source.sourcePath`
+ * (`sandbox/paths.js`), et ce dossier n'appartient pas à ce job : ni copié, ni détruit par lui. */
+function creerLayout(jobId, { worktree = false, localDir = false } = {}) {
   const racine = path.join(SANDBOX_JOBS_DIR, String(jobId));
   const layout = {
     racine,
-    sourceRo: path.join(racine, 'source-ro'),
-    worktreeRw: worktree ? path.join(racine, 'worktree-rw') : null,
+    sourceRo: localDir ? null : path.join(racine, 'source-ro'),
+    worktreeRw: (worktree && !localDir) ? path.join(racine, 'worktree-rw') : null,
     scratch: path.join(racine, 'scratch'),
     home: path.join(racine, 'home'),
     out: path.join(racine, 'out'),

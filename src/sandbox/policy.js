@@ -22,7 +22,12 @@ const { erreurSandbox } = require('./errors');
 // source ni de commande) : `spec.validerSpec` reste l'autorité une fois le job assemblé.
 const PROFILS = Object.freeze({
   review: { filesystem: 'read-only', network: 'none' },
-  verify: { filesystem: 'job-write', network: 'none' },
+  // `verify` a besoin du réseau AUJOURD'HUI (un `npm install` avant les tests, un vérificateur
+  // qui parle à un service de préproduction déclaré) : lui couper le réseau par défaut casserait
+  // silencieusement la majorité des vérificateurs réels dès l'activation de la sandbox. `'allowlist'`
+  // ici ne filtre rien de plus fin qu'« autorisé » — voir `backends/linux.js`, qui ne distingue
+  // encore que none/pas-none (chantier suivant, documenté, jamais présenté comme un filtrage réel).
+  verify: { filesystem: 'job-write', network: 'allowlist' },
   plan: { filesystem: 'job-write', network: 'none' },
   edit: { filesystem: 'job-write', network: 'none' },
 });

@@ -16,10 +16,15 @@ const assert = require('node:assert/strict');
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sbx-linux-data-'));
 
 const linux = require('../src/sandbox/backends/linux');
-const runner = require('../src/sandbox/runner');
+const runnerSandbox = require('../src/sandbox/runner');
 const sfs = require('../src/sandbox/fs');
+const proc = require('../src/core/proc');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'sandbox-agent.js');
+/* `runner.executer` tourne dans LE CONTEXTE DU JOB APPELANT (voir son en-tête) : un vrai
+ * lancement en a toujours un (`jobs/ordonnanceur.js`). Un appel direct depuis un test n'en a
+ * pas — chaque appel s'enveloppe donc ici, exactement comme le ferait un job réel. */
+const runner = { executer: (spec, opts) => proc.run(() => runnerSandbox.executer(spec, opts)).done };
 // Le faux agent doit être VISIBLE depuis l'intérieur du bac à sable : un chemin hôte arbitraire
 // dans `command.args` n'y existe pas plus qu'un autre fichier non monté — c'est justement ce que
 // ce test vérifie pour tout le reste. On le copie donc dans la source avant chaque job, et on le
@@ -160,6 +165,30 @@ describe('sandbox backend Linux : confinement réel contre un agent malveillant'
     });
     assert.equal(resultat.timedOut, true);
     assert.ok(Date.now() - debut < 15000, 'le timeout a bien coupé court, pas laissé la boucle de fichiers finir');
+  });
+
+  test('local-dir (worktree de vérification déjà préparé) : monté à sa place, jamais copié ni détruit', async (t) => {
+    if (!dispo) return t.skip(raisonIndispo);
+    const worktree = fs.mkdtempSync(path.join(os.tmpdir(), 'sbx-linux-worktree-'));
+    fs.writeFileSync(path.join(worktree, 'existant.txt'), 'déjà là\n');
+    const spec = {
+      id: `sbx-localdir-${Math.random().toString(36).slice(2)}`,
+      kind: 'verify',
+      source: { repoId: null, sourcePath: worktree, revision: 'HEAD', sourceMode: 'local-dir', allowExtraDirs: [] },
+      command: { program: '/bin/sh', args: ['-c', 'echo écrit-depuis-la-sandbox > nouveau.txt; cat existant.txt'], cwdRel: '.', agentBackend: 'verifier', agentOptions: {} },
+      permissions: { filesystem: 'job-write', network: 'none' },
+      limits: { wallTimeMs: 15000 },
+      policyHash: null,
+    };
+    try {
+      const logs = [];
+      const resultat = await runner.executer(spec, { onLog: (l) => logs.push(l) });
+      assert.equal(resultat.code, 0, logs.join(''));
+      // Écrit DIRECTEMENT dans le worktree hôte — jamais une copie ailleurs.
+      assert.equal(fs.readFileSync(path.join(worktree, 'nouveau.txt'), 'utf8').trim(), 'écrit-depuis-la-sandbox');
+      // Le dossier lui-même a survécu au nettoyage du job (ce n'est pas le sien).
+      assert.equal(fs.existsSync(path.join(worktree, 'existant.txt')), true);
+    } finally { fs.rmSync(worktree, { recursive: true, force: true }); }
   });
 
   test('SANDBOX_UNAVAILABLE, jamais un lancement hôte silencieux, quand `bwrap` est absent', async () => {

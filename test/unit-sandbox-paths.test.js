@@ -101,4 +101,14 @@ describe('sandbox/paths : montages', () => {
     assert.equal(extra.mode, 'ro');
     assert.equal(extra.guest, '/extra/lib');
   });
+
+  test('local-dir (worktree déjà préparé) : un seul montage, à /workspace, pas de source-ro', () => {
+    const spec = { permissions: permissions('job-write'), source: { sourceMode: 'local-dir', sourcePath: '/data/verify-worktrees/repo-abc', allowExtraDirs: [] } };
+    const mounts = listMountsFor(spec, layout);
+    assert.equal(mounts.filter((m) => m.guest === '/workspace').length, 1);
+    assert.equal(mounts.find((m) => m.guest === '/workspace').host, '/data/verify-worktrees/repo-abc');
+    assert.equal(mounts.find((m) => m.guest === '/workspace').mode, 'rw');
+    assert.equal(mounts.some((m) => m.guest === '/workspace-rw'), false);
+    assert.equal(mounts.some((m) => m.host === layout.sourceRo), false, 'source-ro du job ne doit pas apparaître');
+  });
 });

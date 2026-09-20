@@ -65,8 +65,21 @@ function assertNoExternalSymlink(root, candidate) {
 
 /** La liste des montages d'un job — pure : ne crée rien, ne lance rien. `layout` vient de
  *  `sandbox/fs.js` (les dossiers déjà créés pour CE job). Jamais `/`, `$HOME`, `/run`, un socket
- *  ou un clone entier : seulement ce que ce job précis a demandé (§3.3). */
+ *  ou un clone entier : seulement ce que ce job précis a demandé (§3.3).
+ *
+ *  `source.sourceMode === 'local-dir'` (un worktree de vérification déjà préparé par
+ *  l'appelant, par ex.) : UN SEUL montage, à `/workspace`, en écriture si la politique
+ *  l'autorise — pas de `source-ro` séparé, puisqu'il n'y a rien à comparer après coup. */
 function listMountsFor(spec, layout) {
+  if (spec.source.sourceMode === 'local-dir') {
+    return [
+      { host: spec.source.sourcePath, guest: '/workspace', mode: spec.permissions.filesystem === 'job-write' ? 'rw' : 'ro' },
+      { host: layout.home, guest: '/home/mergerie', mode: 'ro' },
+      { host: layout.scratch, guest: '/tmp', mode: 'rw' },
+      { host: layout.out, guest: '/out', mode: 'rw' },
+      ...spec.source.allowExtraDirs.map((dir) => ({ host: dir, guest: `/extra/${path.basename(dir)}`, mode: 'ro' })),
+    ];
+  }
   const mounts = [
     { host: layout.sourceRo, guest: '/workspace', mode: 'ro' },
     { host: layout.home, guest: '/home/mergerie', mode: 'ro' },

@@ -34,7 +34,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   in its own Linux namespace via bubblewrap — no write access to the shared clone, no network,
   no access to secrets, SSH agent or Docker socket. Linux with bubblewrap only: turning it
   “Required” on a machine that cannot provide it makes launches fail with a clear message rather
-  than run unprotected. Coding, verification and planning launches are not routed through it yet.
+  than run unprotected. Coding and planning launches are not routed through it yet.
+
+- **Verifier commands run in the same secure sandbox when it is on**, for the normal (worktree)
+  mode — never for “in place”, which keeps its own separate consent. Network stays open (a
+  `npm install` before tests is the common case), only the filesystem and process are isolated.
 
 - **Schedule a session for a date and time.** The session modal — coding, exploration and
   off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create

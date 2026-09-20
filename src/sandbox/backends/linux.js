@@ -101,7 +101,8 @@ function buildCommand(spec, layout, env = {}) {
   for (const m of autres) argv.push(m.mode === 'ro' ? '--ro-bind' : '--bind', m.host, m.guest);
   if (scratch) argv.push('--bind', scratch.host, '/tmp');
   argv.push('--proc', '/proc', '--dev', '/dev');
-  argv.push('--chdir', spec.permissions.filesystem === 'job-write' ? '/workspace-rw' : '/workspace');
+  const dansWorkspaceRw = spec.source.sourceMode !== 'local-dir' && spec.permissions.filesystem === 'job-write';
+  argv.push('--chdir', dansWorkspaceRw ? '/workspace-rw' : '/workspace');
   argv.push('--clearenv');
   argv.push('--setenv', 'HOME', '/home/mergerie');
   argv.push('--setenv', 'TMPDIR', '/tmp');
@@ -110,6 +111,10 @@ function buildCommand(spec, layout, env = {}) {
     if (['HOME', 'TMPDIR', 'PATH'].includes(k)) continue; // ceux ci-dessus font autorité
     argv.push('--setenv', k, String(v));
   }
+  // `'none'` coupe réellement le réseau (`--unshare-net`). `'allowlist'`/`'model-proxy'` ne
+  // filtrent PAS encore par destination dans cette version : ils valent seulement « réseau
+  // complet, comme avant la sandbox » — un vrai filtrage par allowlist est un chantier suivant,
+  // documenté, jamais présenté comme actif tant qu'il ne l'est pas.
   if (spec.permissions.network === 'none') argv.push('--unshare-net');
   argv.push('--', spec.command.program, ...spec.command.args);
   return [BWRAP_BIN(), ...argv];
