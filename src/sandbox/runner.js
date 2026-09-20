@@ -99,7 +99,11 @@ async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env 
     }
 
     consigner('job_finished', { code: resultat.code, timedOut: resultat.timedOut, degradedLimits: resultat.degradedLimits });
-    store.terminer(spec.id, { status: resultat.code === 0 ? 'done' : 'error', resultPath: sortie ? sortie.patchPath : null });
+    store.terminer(spec.id, {
+      status: resultat.code === 0 ? 'done' : 'error',
+      resultPath: sortie ? sortie.patchPath : null,
+      auditPath: sfs.archiverAudit(layout, spec.id),
+    });
     return {
       code: resultat.code, signal: resultat.signal, timedOut: resultat.timedOut,
       truncated: resultat.truncated, degradedLimits: resultat.degradedLimits,
@@ -107,7 +111,7 @@ async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env 
     };
   } catch (e) {
     consigner('job_failed', { code: e.code || null });
-    store.terminer(spec.id, { status: 'error', errorCode: e.code || null, errorMessage: e.message });
+    store.terminer(spec.id, { status: 'error', errorCode: e.code || null, errorMessage: e.message, auditPath: sfs.archiverAudit(layout, spec.id) });
     throw e;
   } finally {
     await backend.cleanup().catch(() => {});

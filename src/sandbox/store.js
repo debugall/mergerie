@@ -27,10 +27,11 @@ function demarrer(spec, { backend, auditPath } = {}) {
   } catch { /* bookkeeping : jamais fatal */ }
 }
 
-function terminer(jobId, { status, errorCode, errorMessage, resultPath } = {}) {
+function terminer(jobId, { status, errorCode, errorMessage, resultPath, auditPath } = {}) {
   try {
-    db.prepare(`UPDATE sandbox_job SET status = ?, finished_at = ?, error_code = ?, error_message = ?, result_path = ? WHERE id = ?`)
-      .run(status, maintenant(), errorCode || null, errorMessage ? String(errorMessage).slice(0, 2000) : null, resultPath || null, jobId);
+    db.prepare(`UPDATE sandbox_job SET status = ?, finished_at = ?, error_code = ?, error_message = ?, result_path = ?,
+        audit_path = COALESCE(?, audit_path) WHERE id = ?`)
+      .run(status, maintenant(), errorCode || null, errorMessage ? String(errorMessage).slice(0, 2000) : null, resultPath || null, auditPath || null, jobId);
   } catch { /* idem */ }
 }
 

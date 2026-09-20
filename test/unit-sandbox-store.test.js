@@ -10,9 +10,16 @@ const assert = require('node:assert/strict');
 
 process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sbx-store-'));
 
+const { DATA_DIR } = require('../src/core/paths');
 const db = require('../src/db');
 const store = require('../src/sandbox/store');
+const runnerSandbox = require('../src/sandbox/runner');
+const proc = require('../src/core/proc');
 const { policyFor } = require('../src/sandbox/policy');
+
+// `runner.executer` tourne dans le contexte du JOB APPELANT (voir son en-tête) : un appel
+// direct, hors job, s'enveloppe donc lui-même — comme le font les autres tests de ce module.
+const runner = { executer: (spec, opts) => proc.run(() => runnerSandbox.executer(spec, opts)).done };
 
 const specDeBase = (id) => {
   const p = policyFor('review');
@@ -54,5 +61,29 @@ describe('sandbox/store : journal des jobs', () => {
 
   test('une écriture ratée ne lève jamais (best-effort)', () => {
     assert.doesNotThrow(() => store.terminer('job-jamais-demarre-et-alors', { status: 'error' }));
+  });
+
+  test('bout en bout (backend legacy, portable) : l’audit survit à la destruction du dossier du job', async () => {
+    const jobId = 'job-store-e2e-1';
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbx-store-e2e-'));
+    const resultat = await runner.executer({
+      id: jobId, kind: 'verify',
+      source: { repoId: null, sourcePath: dir, revision: 'HEAD', sourceMode: 'local-dir', allowExtraDirs: [] },
+      command: { program: process.execPath, args: ['-e', 'process.exit(0)'], cwdRel: '.', agentBackend: 'verifier', agentOptions: {} },
+      permissions: { filesystem: 'job-write', network: 'none' },
+      limits: {},
+      policyHash: null,
+    }, { sandbox: 'disabled' });
+    assert.equal(resultat.code, 0);
+
+    const ligne = db.prepare('SELECT * FROM sandbox_job WHERE id = ?').get(jobId);
+    assert.equal(ligne.status, 'done');
+    assert.ok(ligne.audit_path, 'audit_path doit être renseigné');
+    assert.ok(ligne.audit_path.startsWith(path.join(DATA_DIR, 'sandbox-audit')), ligne.audit_path);
+    // Le fichier archivé existe VRAIMENT, et le dossier de travail du job a bien disparu.
+    assert.equal(fs.existsSync(ligne.audit_path), true);
+    const evenements = fs.readFileSync(ligne.audit_path, 'utf8').trim().split('\n').map((l) => JSON.parse(l).type);
+    assert.ok(evenements.includes('job_started'));
+    assert.ok(evenements.includes('job_finished'));
   });
 });

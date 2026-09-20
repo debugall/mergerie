@@ -16,7 +16,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { SANDBOX_JOBS_DIR } = require('../core/paths');
+const { SANDBOX_JOBS_DIR, SANDBOX_AUDIT_DIR } = require('../core/paths');
 const git = require('../git/git');
 const { erreurSandbox } = require('./errors');
 
@@ -144,6 +144,17 @@ function compterFichiers(dir) {
   return total;
 }
 
+/** Copie `logs/audit.jsonl` vers un dossier qui survit au job — appelé AVANT `nettoyerJob`.
+ *  Best-effort : un audit qu'on ne peut pas archiver ne doit pas faire échouer le job qu'il
+ *  observe. Renvoie le chemin archivé, ou `null` s'il n'y avait rien à archiver. */
+function archiverAudit(layout, jobId) {
+  const source = path.join(layout.logs, 'audit.jsonl');
+  if (!fs.existsSync(source)) return null;
+  const dest = path.join(SANDBOX_AUDIT_DIR, `${jobId}.jsonl`);
+  try { fs.copyFileSync(source, dest); return dest; }
+  catch { return null; }
+}
+
 /** Détruit le dossier d'un job — best-effort : un ménage qui échoue ne doit jamais faire
  *  échouer le job lui-même (§ Definition of Done : « aucune fuite… », pas « aucune erreur »). */
 function nettoyerJob(layout) {
@@ -165,5 +176,5 @@ function gcJobs() {
 
 module.exports = {
   creerLayout, archiverVersDossier, copierDossier, listerLiens, diffArbres, collecterSortie,
-  tailleDossier, compterFichiers, nettoyerJob, gcJobs,
+  tailleDossier, compterFichiers, archiverAudit, nettoyerJob, gcJobs,
 };

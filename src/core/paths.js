@@ -42,6 +42,10 @@ const SHARED_DIR = path.join(DATA_DIR, 'shared');
 // `home`, `out`, `logs` — voir src/sandbox/fs.js). Sous TMP_DIR : purgeable sans perte, comme le
 // reste de ce qui y vit déjà.
 const SANDBOX_JOBS_DIR = path.join(TMP_DIR, 'jobs');
+// L'audit d'un job (`sandbox/audit.js`) survit à son dossier de travail, détruit à la fin du job
+// (`sandbox/fs.js:nettoyerJob`) : une ligne par job, sous son id, ARCHIVÉE avant destruction —
+// sinon « chaque refus est journalisé » (DoD du plan) ne vaudrait que le temps du job lui-même.
+const SANDBOX_AUDIT_DIR = path.join(DATA_DIR, 'sandbox-audit');
 
 // Le dossier de connaissance d'un agent, créé à la demande.
 function agentsDir(agentId) { return ensureDir(path.join(AGENTS_DIR, String(agentId))); }
@@ -65,6 +69,7 @@ function initDirs() {
   ensureDir(AGENTS_DIR);
   ensureDir(SHARED_DIR);
   ensureDir(SANDBOX_JOBS_DIR);
+  ensureDir(SANDBOX_AUDIT_DIR);
 }
 
 // slug sûr pour un chemin de dossier à partir d'un "group/sub/project"
@@ -76,7 +81,7 @@ function slugify(project) {
 
 module.exports = {
   ROOT, DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, AGENTS_DIR, SHARED_DIR,
-  SANDBOX_JOBS_DIR,
+  SANDBOX_JOBS_DIR, SANDBOX_AUDIT_DIR,
   agentsDir,
   ensureDir, initDirs, slugify,
 };
