@@ -1,0 +1,103 @@
+    <!-- Docker : projets compose (drift .env) + containers hors-compose -->
+    <section id="tab-docker" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-dsub="compose" class="active" role="tab"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="docker.sub.compose">Compose</span></button>
+            <button data-dsub="orphans" role="tab"><svg class="ico"><use href="#i-inbox"/></svg><span data-i18n="docker.sub.orphans">Hors-compose</span></button>
+            <button data-dsub="logs" role="tab"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="docker.sub.logs">Logs</span></button>
+            <button data-dsub="actions" role="tab"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="docker.sub.actions">Actions</span></button>
+        </div>
+        <div class="toolbar">
+            <button id="dockerRefresh" class="btn" data-i18n-title="docker.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="docker.refresh">Rafraîchir</span></button>
+            <span id="dockerInfo" class="muted"></span>
+        </div>
+        <div id="dockerError"></div>
+        <div id="dsub-compose" class="subtab active"><div id="dockerComposeBox"></div></div>
+        <div id="dsub-orphans" class="subtab"><div id="dockerOrphansBox"></div>
+            <!-- A/Docker 1 : de quoi refaire un container supprimé par erreur. L'inspect était
+                 sauvegardé avant chaque suppression et aucun écran ne le lisait. -->
+            <div id="dockerBackupsBox"></div>
+        </div>
+
+        <!-- Tail live multi-container : choix des containers + filtres inclure/exclure
+             (persistés) + défilement auto pausable. Rendu optimisé (buffer borné + rAF). -->
+        <div id="dsub-logs" class="subtab">
+            <div class="dlog-top">
+                <div class="dlog-picker">
+                    <div class="dlog-picker-head">
+                        <strong data-i18n="docker.logs.containers">Containers à suivre</strong>
+                        <input id="dlogSearch" class="dlog-search" type="search" placeholder="Rechercher un container…" data-i18n-placeholder="docker.logs.search" />
+                    </div>
+                    <div id="dlogContainers" class="dlog-clist"></div>
+                </div>
+                <div class="dlog-filter">
+                    <label data-i18n="docker.logs.include-lbl">N'afficher que les lignes contenant (au moins un)</label>
+                    <form id="dlogIncludeForm" class="dlog-chipform" autocomplete="off">
+                        <input id="dlogIncludeInput" type="text" placeholder="mot ou expression + Entrée" data-i18n-placeholder="docker.logs.word-ph" />
+                        <button class="btn btn-sm" type="submit"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button>
+                    </form>
+                    <div id="dlogIncludeChips" class="dlog-chips"></div>
+                </div>
+                <div class="dlog-filter">
+                    <label data-i18n="docker.logs.exclude-lbl">Exclure les lignes contenant</label>
+                    <form id="dlogExcludeForm" class="dlog-chipform" autocomplete="off">
+                        <input id="dlogExcludeInput" type="text" placeholder="mot ou expression + Entrée" data-i18n-placeholder="docker.logs.word-ph" />
+                        <button class="btn btn-sm" type="submit"><svg class="ico ico-sm"><use href="#i-plus"/></svg></button>
+                    </form>
+                    <div id="dlogExcludeChips" class="dlog-chips"></div>
+                </div>
+                <div class="dlog-run">
+                    <label class="dlog-tail"><span data-i18n="docker.logs.tail">Nombre de lignes (tail)</span>
+                        <input id="dlogTail" type="number" min="0" max="10000" step="50" value="200" />
+                    </label>
+                    <div class="dlog-run-actions">
+                        <button id="dlogStart" class="btn btn-primary" data-i18n-title="docker.logs.start-title"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="docker.logs.start">Démarrer le tail</span></button>
+                        <button id="dlogStop" class="btn" disabled data-i18n-title="docker.logs.stop-title"><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="docker.logs.stop">Arrêter</span></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dlog-bar">
+                <span id="dlogStatus" class="muted"></span>
+                <span class="dlog-bar-right">
+                    <label class="inline-check"><input type="checkbox" id="dlogWrap" /> <span data-i18n="docker.logs.wrap">Retour à la ligne</span></label>
+                    <label class="inline-check"><input type="checkbox" id="dlogColor" /> <span data-i18n="docker.logs.color">Afficher les couleurs</span> <button type="button" class="hint" tabindex="-1" aria-label="Rend les couleurs que l'application écrit elle-même dans ses lignes (niveau de log, codes HTTP…). Décoché, les lignes s'affichent en texte nu : c'est plus léger sur un flux qui débite en rafale, et c'est le défaut. Les couleurs de fond ne sont jamais rendues — elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes." data-tip="Rend les couleurs que l'application écrit elle-même dans ses lignes (niveau de log, codes HTTP…). Décoché, les lignes s'affichent en texte nu : c'est plus léger sur un flux qui débite en rafale, et c'est le défaut. Les couleurs de fond ne sont jamais rendues — elles supposent un terminal dont on maîtrise le contraste, pas deux thèmes." data-i18n-tip="docker.logs.color-tip"><svg class="ico ico-sm"><use href="#i-info"/></svg></button></label>
+                    <button id="dlogClear" class="btn btn-sm" data-i18n-title="docker.logs.clear-title"><svg class="ico ico-sm"><use href="#i-trash"/></svg><span data-i18n="docker.logs.clear">Vider</span></button>
+                    <button id="dlogPause" class="btn btn-sm" data-i18n-title="docker.logs.pause-title"><svg class="ico ico-sm"><use href="#i-pause"/></svg><span id="dlogPauseLabel" data-i18n="docker.logs.pause">Pause défilement</span></button>
+                </span>
+            </div>
+            <div id="dlogView" class="dlog-view" tabindex="0"></div>
+        </div>
+
+        <!-- Action groupée : on choisit l'action, la liste des containers CONCERNÉS s'affiche
+             (filtrée selon l'action), on coche, on valide → un `docker compose` par projet. -->
+        <div id="dsub-actions" class="subtab">
+            <div class="dact-head">
+                <label class="dact-action"><span data-i18n="docker.actions.choose">Action à appliquer</span>
+                    <select id="dactAction">
+                        <option value="recreate" data-i18n="docker.act.recreate">Recréer</option>
+                        <option value="build" data-i18n="docker.act.build">Build</option>
+                        <option value="restart" data-i18n="docker.act.restart">Redémarrer</option>
+                        <option value="up" data-i18n="docker.act.up">Démarrer</option>
+                        <option value="stop" data-i18n="docker.act.stop">Stop</option>
+                        <option value="pull" data-i18n="docker.act.pull">Pull</option>
+                    </select>
+                </label>
+                <div class="dact-action"><span data-i18n="docker.actions.filter">N'afficher que</span>
+                    <!-- Pastilles peuplées par js/ecrans/docker/actions.js depuis DOCKER_STATE_FILTERS : la MÊME liste
+                         que le filtre de l'onglet Compose. Deux filtres « N'afficher que » côte à
+                         côte qui divergeraient seraient un piège. -->
+                    <div id="dactFilter" class="chips" role="group" data-state="all"></div>
+                </div>
+                <input id="dactSearch" class="dact-search" type="search" placeholder="Rechercher un service…" data-i18n-placeholder="docker.actions.search" />
+            </div>
+            <p class="muted" data-i18n="docker.actions.hint">Coche les containers auxquels appliquer l'action, puis valide. La liste ne montre que les services concernés par l'action choisie.</p>
+            <div class="dact-bar">
+                <label class="inline-check"><input type="checkbox" id="dactAll" /> <span data-i18n="docker.actions.all">Tout cocher</span></label>
+                <span id="dactCount" class="muted"></span>
+            </div>
+            <div id="dactList" class="dact-list"></div>
+            <div class="form-actions">
+                <button id="dactApply" class="btn btn-primary" disabled><svg class="ico"><use href="#i-play"/></svg><span data-i18n="docker.actions.apply">Appliquer l'action</span></button>
+            </div>
+        </div>
+    </section>

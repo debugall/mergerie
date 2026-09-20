@@ -1,0 +1,11 @@
+/* ---------- Approuver sur ce poste ----------
+   Ce qui exécute du code et arrive changé par la synchro. Un encadré AMBRE : pas une erreur, une
+   décision qui attend. Le diff se lit en police fixe, lignes ajoutées et retirées distinguées. */
+.approval-box { border: 1px solid var(--amber); border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: color-mix(in srgb, var(--amber) 8%, transparent); }
+.approval-text { margin: 0 0 6px; display: flex; gap: 6px; align-items: flex-start; }
+.approval-diff { font-family: var(--mono, ui-monospace, monospace); font-size: .85em; margin: 6px 0; display: grid; gap: 2px; }
+.approval-line code { background: none; padding: 0; white-space: pre-wrap; word-break: break-word; }
+.approval-line.added code { color: var(--green-text, var(--green)); }
+.approval-line.gone code { color: var(--red-text); text-decoration: line-through; }
+.approval-line.same code { color: var(--muted-text); }
+.approval-actions { display: flex; gap: 8px; margin-top: 6px; }

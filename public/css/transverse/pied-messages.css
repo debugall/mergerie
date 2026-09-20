@@ -1,0 +1,29 @@
+/* Footer : message statique (fondu), cliquable quand il mène quelque part */
+.footer-msg {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  animation: msg-in .35s ease both;
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: inherit; text-align: left;
+}
+@keyframes msg-in { from { opacity: 0; transform: translateY(3px); } }
+.footer-msg.clickable { cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: color var(--t-fast), text-decoration-color var(--t-fast); }
+.footer-msg.clickable:hover { color: #b8f5cd; text-decoration-color: currentColor; }
+.footer-mode {
+  background: transparent; border: 1px solid #1c3b26; color: #3f8f5c;
+  border-radius: var(--r-full); padding: 1px 9px; cursor: pointer;
+  font: inherit; font-size: 11px; letter-spacing: .04em;
+}
+.footer-mode:hover { border-color: #7ee39a; color: #7ee39a; }
+/* Bouton « journal » du bandeau : rouvre le panneau de job replié. La pastille rappelle
+   l'issue du dernier job (verte = terminé, rouge = échec). */
+.footer-logs { display: inline-flex; align-items: center; gap: 5px; }
+.footer-logs .footer-logs-dot { width: 6px; height: 6px; border-radius: 50%; background: #3f8f5c; flex: none; }
+.footer-logs.st-done .footer-logs-dot { background: #35c07f; }
+.footer-logs.st-error .footer-logs-dot { background: #e05a5a; }
+/* Toggle « mode silencieux » : même gabarit que les autres boutons du bandeau,
+   avec la cloche. À l'état muet on vire l'accent vert (signal visuel « coupé »). */
+#footerMute { display: inline-flex; align-items: center; padding: 1px 7px; }
+#footerMute .ico { width: 13px; height: 13px; flex-basis: 13px; }
+#footerMute.on { color: #8a6d3b; border-color: #4a3a1c; }
+#footerMute.on:hover { color: #e0b464; border-color: #e0b464; }
+

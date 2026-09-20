@@ -1,0 +1,17 @@
+/* ---------- Les diagrammes Mermaid d'une note ----------
+   La bibliothèque cuit ses couleurs dans le SVG au moment du rendu (le thème lui est passé) :
+   le CSS ne fait donc ici que le cadre, la largeur et le repli. Le SVG est centré et borné à
+   la colonne — un schéma de base de données déborde vite, et une note ne défile pas de côté. */
+.mermaid-wrap { margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: 12px; overflow-x: auto; }
+.mermaid-svg { display: flex; justify-content: center; }
+.mermaid-svg svg { max-width: 100%; height: auto; }
+/* Le diagramme fautif GARDE sa source : on la relit pour trouver la faute de frappe. */
+.mermaid-wrap.mermaid-ko { border-color: var(--amber); background: var(--code-bg); }
+.mermaid-err { margin: 0 0 8px; color: var(--amber-text); font-size: 12px; font-weight: 600; }
+.mermaid-wrap pre { margin: 0; background: none; padding: 0; }
+.md-table th { background: var(--panel2); font-weight: 600; text-align: left; white-space: nowrap; }
+.md-table tbody tr:nth-child(even), .md-table tbody tr:nth-child(even) { background: var(--row-alt); }
+
+.form { display: flex; flex-direction: column; gap: 10px; max-width: 720px; margin-bottom: 24px; }
+.form.inline { flex-direction: row; flex-wrap: wrap; align-items: center; max-width: none; }
+.form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }

@@ -1,0 +1,174 @@
+/* ---------- Agents ----------
+   Les cartes reprennent le modèle des cartes de vérificateur ; les listes du disque, celui
+   des listes de réglages. Toutes les couleurs viennent des variables de thème : rien de
+   codé en dur, sinon le mode clair rendrait un texte gris sur gris. */
+.agent-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.agent-filters > .search { flex: 2 1 260px; min-width: 0; }
+.agent-filters > div { flex: 1 1 200px; min-width: 0; }
+
+.skill-group { margin-bottom: 14px; }
+.skill-group > h3 { margin: 10px 0 6px; font-size: 14px; color: var(--muted); }
+.skill-row {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); margin-bottom: 6px;
+}
+.skill-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.skill-desc { font-size: 12px; margin-top: 2px; word-break: break-word; }
+.skill-path { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); word-break: break-all; }
+
+/* Une liste à cocher défile plutôt que d'allonger la modale sans fin : trente skills
+   pousseraient les boutons hors de l'écran. */
+/* Les cases sur PLUSIEURS COLONNES dès qu'il y a la place : vingt dépôts en une colonne de
+   1180 px de large font une liste haute et étroite au milieu du vide, qu'on fait défiler pour
+   rien. `columns` coupe là où il faut sans imposer un nombre. */
+.check-list {
+  columns: 220px auto; column-gap: 18px;
+  max-height: 190px; overflow: auto; margin: 4px 0 8px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); padding: 6px 8px;
+  background: var(--panel2);
+}
+.check-list > label { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0;
+  break-inside: avoid; }
+#taskSkillsRow > .search { width: 100%; box-sizing: border-box; }
+
+/* Le menu d'autocomplétion réutilise `.combo-options` ; seule la sélection au clavier
+   demande un état de plus, que les combos n'ont pas. */
+.ac-menu .combo-opt.is-sel { background: var(--panel); }
+
+/* ---------- Agents : cartes, éditeur, connaissance ---------- */
+/* `.card` centre ses enfants (align-items: center) : c'est ce qu'il faut à une ligne, pas à
+   une colonne — sans ce `stretch`, chaque bloc de la carte se retrouvait centré et la carte
+   n'avait plus de bord gauche à suivre. */
+.agent-card { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.agent-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.agent-desc { font-size: 13px; }
+.agent-knowledge { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.agent-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+/* L'âge est un BOUTON : il ouvre les commits qui ont vieilli la carte. Il n'a ni cadre ni
+   fond — un badge cliquable, pas un bouton de plus dans une ligne qui en compte déjà dix —
+   et ne prend le curseur et le soulignement que lorsqu'il mène quelque part. */
+.agent-age {
+  font-size: 12px; color: var(--muted); background: none; border: 0; padding: 0;
+  font: inherit; font-size: 12px; text-align: left;
+}
+.agent-age:disabled { cursor: default; }
+.agent-age:not(:disabled) { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.agent-age:not(:disabled):hover { color: var(--text); }
+.agent-age-stale { color: var(--amber-text, var(--muted)); font-weight: 600; }
+/* Ce que chaque version de carte coûte à lire, à droite de sa date. */
+.knowledge-tok { font-size: 11px; }
+/* Les commits qui ont vieilli la carte, groupés par dépôt. */
+.age-repo + .age-repo { margin-top: 16px; }
+.age-repo h4 { margin: 0 0 6px; }
+.age-sha { font-family: var(--ff-mono); font-size: 11px; }
+#ageBody { max-height: 60vh; overflow: auto; }
+/* Le nom du dépôt prend la place, le rôle en prend juste assez : sans ces largeurs, le
+   `<select>` s'étalait et un `groupe/webapp-front` passait à la ligne. */
+.agent-repo-row { display: flex; gap: 8px; align-items: center; }
+.agent-repo-row > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-repo-row > .ag-role { flex: 0 0 auto; width: auto; min-width: 120px; }
+
+/* La pastille d'agent sur une carte de session : elle dit QUI a produit ce travail. */
+.tag-agent { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Les états d'une version de connaissance. Les trois couleurs viennent du thème : jamais
+   de valeur codée en dur, sinon le mode clair rend du gris sur gris. */
+.badge.k-active { background: var(--green); color: var(--on-green, #06210f); }
+.badge.k-pending { background: var(--amber); color: var(--on-amber); }
+.badge.k-superseded { background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+.badge.k-warn { background: var(--amber); color: var(--on-amber); }
+.perm-warn { color: var(--amber-text, var(--muted)); font-weight: 600; }
+
+.seg-radios { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
+.sched-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.argv-preview {
+  margin: 4px 0 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); font-family: var(--ff-mono); font-size: 12px;
+  white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow: auto;
+}
+/* CE PLAFOND CONTREDISAIT SA PROPRE RÈGLE. `.modal-box.modal-lg` est déclarée plus haut à
+   `width: min(1180px, 95vw)` — le commentaire y dit pourquoi : 900 px repliaient l'historique
+   Jenkins en accordéon. Ce `max-width: 980px`, ajouté ensuite pour le formulaire d'agent,
+   ramenait TOUTES les modales larges à 980 sans le dire, Jenkins compris. Les deux règles
+   n'en font plus qu'une, et une modale large fait la même largeur que la session de codage. */
+.modal-lg > .modal-box { width: min(1180px, 95vw); }
+
+.knowledge-split { display: flex; gap: 12px; align-items: stretch; min-height: 320px; }
+.knowledge-versions { flex: 0 0 220px; max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.knowledge-version {
+  text-align: left; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--panel2); color: var(--text); cursor: pointer; display: flex; gap: 6px;
+  align-items: center; flex-wrap: wrap;
+}
+.knowledge-version.active { border-color: var(--accent); }
+.knowledge-main { flex: 1 1 auto; min-width: 0; max-height: 60vh; overflow: auto; }
+.knowledge-main > textarea { width: 100%; box-sizing: border-box; font-family: var(--ff-mono); font-size: 12px; }
+.diff-line { font-family: var(--ff-mono); font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+
+/* Le filtre par agent, à côté de la recherche de sessions : ils se partagent la ligne. */
+.task-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.task-filters > .search { flex: 2 1 320px; min-width: 0; }
+.task-filters > div { flex: 1 1 220px; min-width: 0; }
+
+@media (max-width: 700px) {
+  .knowledge-split { flex-direction: column; }
+  .knowledge-versions { flex: 0 0 auto; max-height: 160px; }
+}
+
+/* Historique Git : un LOT se lit comme un bloc, ses opérations comme des lignes. Sans ce
+   groupement, dix suppressions d'un même geste se lisaient comme dix décisions séparées. */
+.git-op-groupe { display: block; }
+.git-op-groupe .git-op-l { display: block; }
+.git-op-lot { font-size: var(--fs-sm); margin-bottom: 6px; }
+.git-op-groupe .git-op-l + .git-op-l { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
+.git-op-err { font-size: var(--fs-sm); color: var(--danger); margin-top: 4px; white-space: pre-wrap; }
+
+/* Une commande d'aperçu est un bouton de copie qui ne s'annonce pas comme tel : le code garde
+   son apparence, le curseur et le survol disent qu'il se clique. */
+.git-cmd-copy { background: none; border: 0; padding: 0; margin: 0; cursor: copy; text-align: left; font: inherit; color: inherit; }
+.git-cmd-copy:hover code { text-decoration: underline dotted; }
+
+/* Le panneau « ? » ne parlait que de touches : la section des pastilles s'en détache. */
+.shortcut-titre { margin: 18px 0 8px; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+
+/* « brouillon » : une métadonnée, pas une alerte — elle ne bloque rien, elle prévient. */
+.tag.draft { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); }
+
+/* Gravité des constats qui restent : le bloquant crie, le majeur prévient. */
+.tag.sev-blocker { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+.tag.sev-major { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+
+/* Les chips de gravité au-dessus des constats : MASQUER, pas retirer — une gravité écartée
+   revient à un clic, et son compte reste lisible. */
+.findings-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+.findings-chips .chip { opacity: .45; }
+.findings-chips .chip.active { opacity: 1; }
+/* Les deux gestes d'un constat, discrets jusqu'au survol de sa ligne. */
+.f-actions { display: inline-flex; gap: 2px; opacity: 0; transition: opacity .12s; }
+.finding:hover .f-actions, .finding:focus-within .f-actions { opacity: 1; }
+
+/* Le libellé d'une session se renomme sur place : le crayon n'apparaît qu'au survol de la
+   carte, pour ne pas transformer une ligne de lecture en barre d'outils. */
+.task-label { display: flex; align-items: center; gap: 6px; }
+.task-label-edit { background: none; border: 0; padding: 0 2px; cursor: pointer; color: var(--muted); opacity: 0; transition: opacity .12s; }
+.card:hover .task-label-edit, .task-label:focus-within .task-label-edit { opacity: 1; }
+.task-label-input { flex: 1; min-width: 0; font: inherit; }
+
+/* Le remède proposé sous une erreur : une action, pas un paragraphe de plus. */
+.err-remede { margin: 6px 0 2px; }
+
+/* Le titre de la merge request sur une ligne de branche : il informe sans voler la vedette au
+   nom de la branche, qui reste ce qu'on cherche du regard. */
+.git-ex-titre { font-size: var(--fs-sm); }
+
+/* La barre de période du tableau de bord : elle donne son sens à tout ce qui suit, donc elle
+   passe en tête et se lit d'un trait. */
+.dash-periode { display: flex; align-items: center; gap: 8px; margin-bottom: var(--s-3); flex-wrap: wrap; }
+
+/* La barre de filtre du journal d'activité, au-dessus de ses lignes. */
+.log-hist-bar { display: flex; gap: 10px; align-items: center; }
+.hist-raison { font-size: var(--fs-sm); }
+
+/* Les remarques jamais envoyées : ambre, comme tout ce qui attend un geste de l'utilisateur. */
+.tag.draft-pending { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); cursor: pointer; }
+

@@ -1,0 +1,33 @@
+/* ---------- Navigation & en-tête ---------- */
+.brand { display: flex; align-items: flex-start; gap: var(--s-3); line-height: 1.15; }
+.brand-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+/* Un seul des deux logos est affiché : celui dont l'encre se voit sur le fond du thème. */
+.brand-logo { display: block; flex: none; width: 30px; height: 30px; }
+.brand-logo.dark { display: none; }
+:root[data-theme="dark"] .brand-logo.light { display: none; }
+:root[data-theme="dark"] .brand-logo.dark { display: block; }
+/* Deux lignes, chacune insécable : c'est la COUPURE qui est choisie, pas la largeur qui la
+   décide — sinon elle se déplacerait à chaque redimensionnement, et le sens avec elle. */
+.baseline { display: flex; flex-direction: column; font-size: var(--fs-xs); color: var(--muted);
+  letter-spacing: .01em; line-height: 1.35; }
+.baseline > span { white-space: nowrap; }
+/* baseline : masquée quand la place manque, pour ne pas écraser la navigation */
+@media (max-width: 1200px) { .baseline { display: none; } }
+nav button { display: inline-flex; align-items: center; gap: 6px; transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast); }
+nav button:hover { color: var(--text); background: var(--hover); }
+.nav-count {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: var(--r-full);
+  /* --accent-btn (fond de bouton) au lieu de --accent : blanc dessus = 4,70:1 (AA) vs 3,22:1 avant. */
+  background: var(--accent-btn); color: var(--on-accent);
+  font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; text-align: center;
+}
+/* Badges santé du menu Docker : ROUGE = en erreur (restarting/dead), ORANGE = unhealthy. */
+.nav-health {
+  min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: var(--r-full);
+  color: var(--on-accent); font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; text-align: center;
+}
+.nav-health.err { background: var(--badge-err); }
+.nav-health.warn { background: var(--badge-warn); }
+/* Le chiffre explique ce qu'il compte au survol : le curseur d'aide l'annonce. */
+.nav-health[data-tip] { cursor: help; }
+

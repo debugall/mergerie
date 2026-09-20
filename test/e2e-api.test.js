@@ -1321,8 +1321,32 @@ describe('API de bout en bout', () => {
   });
 
   test('Les fichiers statiques du front sont servis', async () => {
-    const res = await fetch(`${app.base}/index.html`);
+    const res = await fetch(`${app.base}/js/demarrage.js`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('cache-control'), 'no-cache');
+  });
+
+  /* LA PAGE EST ASSEMBLÉE PAR MORCEAUX : `index.html` est une coquille et des marqueurs
+     `<!--@include html/…-->`, résolus par `src/core/page.js` pour `/` et `/index.html`. Servir
+     le gabarit brut (ce que ferait `express.static` sans `index: false`) donnerait une page sans
+     onglet ni modale, et aucun test d'écran ne nommerait la cause. */
+  test('/ et /index.html rendent la page assemblée, pas le gabarit brut, en no-cache', async () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    assert.match(brut, /<!--@include html\/ecrans\/reviews\.html-->/, 'la coquille inclut l’onglet Reviews par un marqueur');
+    assert.doesNotMatch(brut, /id="tab-review"/, 'le gabarit brut ne porte pas l’onglet lui-même');
+    const pages = [];
+    for (const chemin of ['/', '/index.html']) {
+      const res = await fetch(`${app.base}${chemin}`);
+      assert.equal(res.status, 200, chemin);
+      assert.equal(res.headers.get('cache-control'), 'no-cache', chemin);
+      assert.match(res.headers.get('content-type') || '', /text\/html/, chemin);
+      pages.push(await res.text());
+    }
+    assert.equal(pages[0], pages[1], '/ et /index.html servent la même page');
+    for (const id of ['tab-review', 'tab-admin', 'taskModal', 'confirmModal', 'footer']) {
+      assert.ok(pages[0].includes(`id="${id}"`), `#${id} est dans la page servie`);
+    }
   });
 });

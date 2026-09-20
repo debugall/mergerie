@@ -1,0 +1,48 @@
+<!-- Vue plein écran : diff d'une tâche -->
+
+<!-- Vue plein écran : rapport/explication à gauche, diff à droite -->
+<div id="splitView" class="splitview" hidden>
+    <div class="split-head">
+        <button id="reportToggle" class="btn" title="Afficher / masquer le rapport" data-i18n-title="context.title.afficher-masquer-le-rapport"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="context.btn.rapport">Rapport</span></button>
+        <button id="treeToggle" class="btn" title="Afficher / masquer l'arborescence" data-i18n-title="context.title.afficher-masquer-l-arborescence"><svg class="ico"><use href="#i-sliders"/></svg><span data-i18n="context.btn.arbre">Arbre</span></button>
+        <span id="splitTitle" class="split-title"></span>
+        <span class="spacer"></span>
+        <!-- LE RAPPEL. Sans compteur visible, on referme la MR en laissant ses remarques en
+             local — et personne ne les lira jamais. -->
+        <button id="draftsSend" class="btn btn-primary" hidden data-i18n-title="cmt.draft.send-title" title="Envoyer les commentaires en attente vers la forge"><svg class="ico"><use href="#i-upload"/></svg><span data-i18n="cmt.draft.send">Envoyer les commentaires</span> (<span id="draftsCount">0</span>)</button>
+        <!-- …ET LA SORTIE DE SECOURS. Une remarque qu'on ne veut plus, ou que la forge refuse
+             (une position hors du diff), bloque l'envoi groupé et se supprime une par une, dans
+             le fichier où elle se trouve — donc en les rouvrant tous. Ce bouton vide le lot
+             d'un coup, après confirmation qui dit combien partent à la corbeille. -->
+        <button id="draftsWipe" class="btn btn-danger" hidden data-i18n-title="cmt.draft.wipe-title" title="Supprimer tous les commentaires en attente"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="cmt.draft.wipe">Tout supprimer</span></button>
+        <button id="splitClose" class="btn" title="Fermer la vue plein écran (Échap)" data-i18n-title="context.title.fermer-la-vue-plein-ecran"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
+    </div>
+    <div class="split-body code-body">
+        <div id="reportPane" class="code-report">
+            <div class="split-tabs">
+                <button data-split="review" class="active" title="Afficher le rapport de revue" data-i18n-title="context.title.afficher-le-rapport-de-revue" data-i18n="context.btn.rapport-de-revue">Rapport de revue</button>
+                <button data-split="explanation" title="Afficher l'explication pédagogique de la MR" data-i18n-title="context.title.afficher-l-explication-pedagogique-de" data-i18n="context.btn.explication">Explication</button>
+            </div>
+            <div id="splitMd" class="md"></div>
+        </div>
+        <div id="treePane" class="code-tree">
+            <input id="treeSearch" class="search" type="search" placeholder="filtrer les fichiers…" data-i18n-placeholder="context.ph.filtrer-les-fichiers" />
+            <div id="treeList" class="tree-list"></div>
+        </div>
+        <div id="filePane" class="code-file">
+            <div class="file-bar">
+                <span id="fileName" class="file-name" data-i18n="context.span.selectionne-un-fichier">Sélectionne un fichier</span>
+                <span class="spacer"></span>
+                <div id="changeNav" class="change-nav" hidden>
+                    <button id="prevChange" title="Changement précédent" data-i18n-title="context.title.changement-precedent"><svg class="ico"><use href="#i-left"/></svg></button>
+                    <span id="changeCounter" class="muted"></span>
+                    <button id="nextChange" title="Changement suivant" data-i18n-title="context.title.changement-suivant"><svg class="ico"><use href="#i-right"/></svg></button>
+                </div>
+            </div>
+            <div class="file-body">
+                <div id="fileContent" class="file-content"></div>
+                <div id="minimap" class="minimap" hidden></div>
+            </div>
+        </div>
+    </div>
+</div>

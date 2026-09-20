@@ -3,7 +3,7 @@
    Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const path = require('node:path');
 const db = require('../db');
-const { stripAnsi } = require('../../public/ansi-runtime.js');
+const { stripAnsi } = require('../../public/runtime/ansi-runtime.js');
 
 /* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est
    persisté en table `job` pour survivre à la fermeture d'onglet.

@@ -1,0 +1,63 @@
+/* ---------- État vide ----------
+   C'est le PREMIER écran d'un outil qui démarre à vide : il doit expliquer et proposer. */
+.empty {
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-3);
+  padding: var(--s-12) var(--s-6); text-align: center; color: var(--muted);
+  border: 1px dashed var(--line); border-radius: var(--r-lg); background: var(--panel);
+}
+.empty .ico { width: 34px; height: 34px; flex-basis: 34px; opacity: .45; }
+.empty-t { font-size: var(--fs-lg); color: var(--text); font-weight: var(--fw-sem); }
+.empty-s { max-width: 46ch; font-size: var(--fs-sm); line-height: 1.6; margin: 0; }
+.empty-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; margin-top: var(--s-2); }
+/* onboarding : les 3 étapes de démarrage */
+.steps { display: flex; flex-direction: column; gap: var(--s-2); width: 100%; max-width: 560px; text-align: left; margin-top: var(--s-2); }
+.step { display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4); background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.step-n { flex: 0 0 26px; height: 26px; border-radius: var(--r-full); display: grid; place-items: center; background: var(--line); color: var(--text); font-size: var(--fs-xs); font-weight: var(--fw-bold); }
+.step.done .step-n { background: var(--green); color: var(--on-green); }
+.step-txt { flex: 1; min-width: 0; }
+.step-t { font-size: var(--fs-sm); color: var(--text); font-weight: var(--fw-med); }
+.step-s { font-size: var(--fs-xs); color: var(--muted); }
+/* un état vide (ou un message) rendu dans la liste ne doit pas cumuler deux cadres */
+.list:has(.empty), .list:has(> p) { border: none; background: transparent; border-radius: 0; }
+
+/* Résumé actionnable dans la colonne de droite (au lieu d'un simple placeholder) */
+.ph-summary { padding: var(--s-2); }
+/* « Ça tourne » posé sur l'objet lui-même (P9) : un liseré animé sur le bord gauche de la
+   carte concernée. Un seul objet par job en cours, jamais tout un lot.
+   Deux coupures nettes : onglet en arrière-plan (rien à regarder, batterie inutile) et
+   mouvement réduit (le liseré reste, fixe — l'information passe, pas le mouvement). */
+.card.running-now { position: relative; }
+.card.running-now::before {
+  content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+  border-radius: 3px; background: var(--accent);
+  animation: running-pulse 1.8s ease-in-out infinite;
+}
+@keyframes running-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+body.tab-cachee .card.running-now::before { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .card.running-now::before { animation: none; opacity: 1; } }
+
+/* Delta depuis la dernière visite : discret par construction (trois lignes au plus),
+   il ouvre le panneau sans concurrencer le résumé qui suit. */
+.ph-delta { border-left: 2px solid var(--accent); padding: 2px 0 2px var(--s-3); margin-bottom: var(--s-3); }
+.ph-delta ul { margin: 4px 0 0; padding-left: 18px; color: var(--muted); font-size: var(--fs-sm); }
+.ph-delta li { margin: 2px 0; }
+.ph-worst { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
+.ph-item { display: flex; align-items: center; gap: var(--s-2); width: 100%; text-align: left;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: 8px 10px; cursor: pointer; color: var(--text); font: inherit; font-size: var(--fs-sm);
+  transition: border-color var(--t-fast); }
+.ph-item:hover { border-color: var(--accent); }
+.ph-item-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Squelettes de chargement : supprime le saut de mise en page et le « chargement… » gris */
+.sk-wrap { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2) 0; }
+.sk { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-lg);
+  height: 62px; position: relative; overflow: hidden; }
+.sk::after { content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--row-alt), transparent);
+  animation: sheen 1.2s linear infinite; }
+@keyframes sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.toast-btn { background: transparent; border: 1px solid var(--line); color: var(--accent);
+  border-radius: var(--r-sm); padding: 3px 8px; cursor: pointer; font: inherit; font-size: var(--fs-xs); white-space: nowrap; }
+.toast-btn:hover { border-color: var(--accent); }
+

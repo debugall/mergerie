@@ -1,0 +1,20 @@
+<!-- DICTÉE VOCALE. Un SEUL micro pour toute l'application, posé à l'angle du champ qui a le
+     focus et repositionné au défilement : un micro par champ en parsèmerait l'écran, et il
+     faudrait le câbler dans vingt-cinq gabarits. Masqué tant qu'aucun fournisseur n'est réglé. -->
+<button id="dictationMic" type="button" data-etat="ready" hidden
+        title="Dicter — Ctrl/Cmd + Maj + Espace · ⇧-clic pour dicter dans l'autre langue" data-i18n-title="dictation.btn" aria-label="">
+    <svg class="ico"><use href="#i-mic"/></svg>
+    <span class="mic-vu" aria-hidden="true"><i></i><i></i><i></i></span>
+</button>
+<div id="dictationHint" class="dictation-hint" hidden></div>
+
+<!-- Le champ a disparu pendant qu'un segment était en vol (modale annulée, carte retirée) :
+     ce qui a été dit n'est pas jeté en silence, il est proposé. -->
+<div id="dictationLost" class="dictation-lost" hidden>
+    <p data-i18n="dictation.lost.title">Le champ a disparu — ce texte n'a pas été inséré :</p>
+    <blockquote id="dictationLostText"></blockquote>
+    <div class="modal-actions">
+        <button id="dictationLostCopy" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="dictation.lost.copy">Copier</span></button>
+        <button id="dictationLostClose" type="button" class="btn" data-i18n="dictation.lost.close">Abandonner</button>
+    </div>
+</div>

@@ -1,0 +1,48 @@
+/* ---- Densité compacte (Réglages → Général) : resserre les listes pour en voir plus à l'écran ---- */
+:root[data-density="compact"] .list { gap: 5px; padding: 3px 0; }
+:root[data-density="compact"] .card { padding: 8px 12px; gap: 8px; }
+:root[data-density="compact"] .target-line { padding: 4px 9px; }
+:root[data-density="compact"] .dash-card { padding: 11px 14px; margin: 8px 0; }
+/* la meta (projet · auteur · date · ticket) reste sur une ligne, tronquée si trop longue */
+.list .card .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+/* les branches source → cible passent sur leur propre ligne et WRAPPENT : des noms
+   longs restent lisibles en entier au lieu d'être coupés. */
+.list .card .meta.branches { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* Journal d'activité : une ligne récemment terminée et pas encore lue porte un liseré, pour
+   que « ce qui a changé depuis ma dernière visite » se voie sans lire les horodatages. */
+.log-queue-row.hist-neuf { border-left: 2px solid var(--accent); padding-left: 6px; }
+/* Date + heure de fin : chiffres à chasse fixe pour que la colonne s'aligne d'une ligne à l'autre. */
+.hist-quand { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum'; white-space: nowrap; }
+.linklike { background: none; border: none; padding: 0; font: inherit; color: var(--accent);
+  cursor: pointer; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.linklike:hover { text-decoration: underline; }
+
+/* Repli de la liste de projets d'une session multi-dépôts. Le chevron pointe à droite quand
+   c'est replié, vers le bas quand c'est ouvert — la direction dit ce qu'un clic va faire. */
+.targets-toggle { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 2px;
+  background: none; border: none; padding: 2px 0; cursor: pointer;
+  color: var(--muted); font: inherit; font-size: var(--fs-sm); }
+.targets-toggle:hover { color: var(--text); }
+.targets-toggle .ico { transition: transform var(--t-fast); }
+.targets-toggle[aria-expanded="true"] .ico { transform: rotate(90deg); }
+
+/* Précision sous un champ pré-rempli : dit d'où vient la valeur proposée, sans crier. */
+.field-note { display: block; margin-top: 4px; color: var(--muted); font-size: var(--fs-xs); }
+
+/* Ligne des liens sortants : elle passe à la ligne, jamais elle ne tronque — c'est tout
+   l'intérêt de l'avoir sortie de la ligne d'identité. */
+.list .card .meta.links { overflow: visible; text-overflow: clip; white-space: normal;
+  margin-top: 3px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; }
+.list .card .meta.links a { display: inline-flex; align-items: center; gap: 4px; }
+.list .card .meta.branches .branch-arrow { color: var(--muted); opacity: .8; }
+/* le TITRE, lui, passe à la ligne (soft wrap) : un titre de MR long doit rester lisible en entier */
+.list .card .title { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+/* dans la liste des rapports : on affiche le titre entier (wrap) au lieu de tronquer */
+#reportList .card { align-items: flex-start; }
+#reportList .card .title, #reportList .card .meta { overflow: visible; text-overflow: clip; white-space: normal; word-break: break-word; }
+/* rapport : titre/meta prennent toute la largeur ; les tags passent sur une dernière ligne */
+#reportList .report-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#reportList .report-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.card a { color: var(--accent); text-decoration: none; }
+

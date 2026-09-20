@@ -12,7 +12,7 @@ Régénérée par :
 
 ```sh
 node -e "
-const fs=require('fs'), RT=require('./public/dictation-runtime.js'), SR=16000;
+const fs=require('fs'), RT=require('./public/runtime/dictation-runtime.js'), SR=16000;
 const n=SR*3, pcm=new Int16Array(n);
 for(let i=0;i<n;i++){const t=i/SR; if(t<0.3||t>2.5){pcm[i]=0;continue;}
   const env=0.35*(0.55+0.45*Math.sin(2*Math.PI*4.5*t));

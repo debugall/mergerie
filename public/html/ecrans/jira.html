@@ -1,0 +1,87 @@
+    <!-- Jira : mes tickets affectés (liste) → détail (contenu, métadonnées, commentaires). -->
+    <section id="tab-jira" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-jsub="mine" class="active" role="tab" data-i18n-title="jira.sub.mine-title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="jira.sub.mine">Mes tickets</span></button>
+            <button data-jsub="watch" role="tab" data-i18n-title="jira.sub.watch-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="jira.sub.watch">Surveillés</span><span class="nav-count" id="jiraWatchCount" hidden>0</span></button>
+        </div>
+        <div id="jiraSubMine">
+        <div class="toolbar">
+            <button id="jiraRefresh" class="btn" data-i18n-title="jira.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.refresh">Rafraîchir</span></button>
+            <label class="inline-check"><input type="checkbox" id="jiraIncludeDone" /> <span data-i18n="jira.include-done">Inclure les terminés</span></label>
+            <span id="jiraInfo" class="muted"></span>
+        </div>
+        <div id="jiraError"></div>
+        <div class="jira-layout">
+            <div class="jira-list-col">
+                <input id="jiraSearch" type="search" class="jira-search" placeholder="Rechercher un ticket…" data-i18n-placeholder="jira.search" />
+                <div id="jiraList" class="jira-list"></div>
+            </div>
+            <div class="jira-detail-col">
+            <div class="jira-filters">
+                <details id="jiraAssigneeFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-bot"/></svg> <span data-i18n="jira.assignees">Assignés</span> <span id="jiraAssigneeFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraAssigneeSearch" type="search" class="jira-sf-search" placeholder="Rechercher une personne…" data-i18n-placeholder="jira.people-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfall="assignee" data-i18n="jira.sf.all">Tout cocher</button>
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfnone="assignee" data-i18n-title="jira.sf.none-assignee-title" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraAssigneeFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
+                <details id="jiraStatusFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.statuses">Statuts</span> <span id="jiraStatusFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraStatusSearch" type="search" class="jira-sf-search" placeholder="Rechercher un statut…" data-i18n-placeholder="jira.status-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfall="status" data-i18n="jira.sf.all">Tout cocher</button>
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfnone="status" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraStatusFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
+                <details id="jiraSprintFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-repeat"/></svg> <span data-i18n="jira.sprints">Sprints</span> <span id="jiraSprintFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraSprintSearch" type="search" class="jira-sf-search" placeholder="Rechercher un sprint…" data-i18n-placeholder="jira.sprint-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsfnone="sprint" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraSprintFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
+                <details id="jiraFieldFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.ff.title">Filtres</span> <span id="jiraFieldFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <div id="jiraFieldFilterPick" class="jira-ff-pick"></div>
+                        <div id="jiraFieldFilterBody"></div>
+                    </div>
+                </details>
+            </div>
+                <div id="jiraDetail" class="jira-detail js-jira-detail"></div>
+            </div>
+        </div>
+        </div>
+
+        <div id="jiraSubWatch" hidden>
+            <div class="toolbar">
+                <input id="jiraWatchKey" type="text" class="jira-watch-key" spellcheck="false" autocomplete="off" placeholder="PROJ-1421" data-i18n-placeholder="jira.watch.ph" />
+                <textarea id="jiraWatchNote" class="jira-watch-note" rows="2" maxlength="500" placeholder="pourquoi tu le surveilles (optionnel)" data-i18n-placeholder="jira.watch.note-ph" data-i18n-title="jira.watch.note-hint" title="Entrée passe à la ligne ; Ctrl/Cmd + Entrée enregistre."></textarea>
+                <button id="jiraWatchAdd" class="btn btn-primary" data-i18n-title="jira.watch.add-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="jira.watch.add">Surveiller</span></button>
+                <button id="jiraWatchCheck" class="btn" data-i18n-title="jira.watch.check-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.watch.check">Vérifier maintenant</span></button>
+                <span id="jiraWatchInfo" class="muted"></span>
+            </div>
+            <p class="muted" data-i18n="jira.watch.help">Un ticket surveillé n'a pas besoin de t'être affecté. Dès que son état change, tu reçois une notification.</p>
+            <!-- Même disposition que « Mes tickets » : la liste à gauche, le ticket à droite.
+                 Un ticket surveillé se consulte autant qu'un ticket affecté — l'ouvrir dans
+                 Jira pour le lire obligeait à quitter Mergerie. -->
+            <div class="jira-layout">
+                <div class="jira-list-col">
+                    <div id="jiraWatchList" class="jira-list"></div>
+                </div>
+                <div class="jira-detail-col">
+                    <div id="jiraWatchDetail" class="jira-detail js-jira-detail"></div>
+                </div>
+            </div>
+        </div>
+    </section>

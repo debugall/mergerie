@@ -1,0 +1,12 @@
+/* ---------- Badge « équipe » / « ce poste » (Réglages) ----------
+   Un réglage d'équipe part dans le dépôt de données partagé ; un réglage de poste reste ici.
+   La distinction tient à la couleur ET au mot : une puce qui ne se distinguerait que par sa
+   teinte ne dirait rien à qui ne voit pas la différence. Les deux teintes sont les variantes
+   calibrées pour du texte (`--accent-text`, `--muted-text`), qui suivent les deux thèmes. */
+.scope-badge {
+  font-size: var(--fs-2xs); line-height: 1.5; font-weight: var(--fw-med);
+  padding: 0 6px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--line); background: var(--panel2); color: var(--muted-text);
+}
+.scope-badge[data-scope="equipe"] { color: var(--accent-text); border-color: var(--accent-text); }
+

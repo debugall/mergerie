@@ -199,8 +199,11 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs 
     assert.equal((await depot('grp/reel')).clone_state, 'absent', 'renoncer ne clone rien');
     await ligne(d.id).locator(`[data-reclone="${d.id}"]`).click();
     await confirmer();
+    /* « présent » = `.git` existe, ce que `git clone` pose AVANT d'extraire les fichiers : sur un
+       runner chargé, l'état arrive avant le README. On attend l'effet, le fichier lui-même. */
     await attendreServeur(async () => (await depot('grp/reel')).clone_state === 'present', 'le clone est posé', 60000);
-    assert.ok(fs.existsSync(path.join((await depot('grp/reel')).clone_dir, 'README.md')), 'le clone porte les fichiers du dépôt');
+    const cloneDir = (await depot('grp/reel')).clone_dir;
+    await attendreServeur(() => fs.existsSync(path.join(cloneDir, 'README.md')), 'le clone porte les fichiers du dépôt', 60000);
     await page.waitForSelector(`#repoList .repo-row[data-repo="${d.id}"] .repo-clone-present`);
   });
 

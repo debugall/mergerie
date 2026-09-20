@@ -60,7 +60,7 @@ function fichierUnique(marqueur, quoi) {
 }
 
 /* Résout un `require` relatif comme Node : tel quel, puis `.js`, puis `/index.js`. Rend un
-   chemin relatif à `src/`, ou null hors de `src/` (`../public/i18n-runtime.js`). */
+   chemin relatif à `src/`, ou null hors de `src/` (`../public/runtime/i18n-runtime.js`). */
 function resoudre(depuisRel, rel) {
   const base = path.resolve(SRC, path.dirname(depuisRel), rel);
   for (const c of [base, base + '.js', path.join(base, 'index.js')]) {
@@ -99,7 +99,7 @@ const LIAISONS = [
   { re: /\bfunction\s*[\w$]*\s*\(\s*t\s*[,)]/, quoi: 'paramètre de fonction `function (t…)`' },
 ];
 
-/* Un fichier TRADUIT s'il importe le dictionnaire : `public/i18n-runtime.js` directement, ou
+/* Un fichier TRADUIT s'il importe le dictionnaire : `public/runtime/i18n-runtime.js` directement, ou
    `core/i18n.js`, qui le ré-exporte pour que la profondeur du dossier n'entre pas en compte. */
 const IMPORTE_T = /require\(['"][^'"]*(?:i18n-runtime|\/i18n)(?:\.js)?['"]\)/;
 const coupables = [];

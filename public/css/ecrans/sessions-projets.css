@@ -1,0 +1,88 @@
+/* ---------- Codage hors dépôt : éditeur de dossiers locaux ---------- */
+.local-dir-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.local-dir-row .local-dir { flex: 1; min-width: 0; }
+.local-dir-path { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- Session de dev : enrichir depuis un ticket Jira ---------- */
+.task-jira .jira-fetch { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 100%; }
+.task-jira .jira-fetch input { flex: 0 1 180px; min-width: 120px; }
+.task-jira #taskJiraStatus { display: inline-block; margin-top: 4px; font-size: 12px; }
+
+/* ---------- Sessions Dev IA : projets multiples ---------- */
+/* Éditeur de projets dans la modale */
+.targets-editor { border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s-3); background: var(--panel2); }
+.targets-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--fs-sm); color: var(--muted); }
+.target-row { display: flex; gap: var(--s-2); align-items: center; margin-bottom: var(--s-2); }
+.target-row:last-child { margin-bottom: 0; }
+.target-row { flex-wrap: wrap; align-items: flex-start; }
+.target-row .t-repo { flex: 1 1 28%; min-width: 140px; }
+/* les champs de branche sont enveloppés dans .combo : c'est lui qui porte le flex */
+:is(.target-row, .target-head-row) .combo { flex: 1 1 30%; min-width: 150px; }
+:is(.target-row, .target-head-row) > .t-branch { flex: 1 1 30%; min-width: 150px; }
+/* La ligne d'en-têtes : mêmes colonnes que la ligne de champs, sans champ. Les espaceurs
+   valent exactement la largeur du « ? » (16 px) et de la croix (32 px, .btn-icon).
+   Elle ne porte PAS la classe `.target-row` : une dizaine de sélecteurs — dans le code comme
+   dans les tests — comptent les lignes de projet par cette classe, et une ligne de titres s'y
+   serait ajoutée comme un projet fantôme. */
+.target-head-row { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; margin-bottom: 2px; }
+/* Pas de `min-width: 0` ici : les min-width des colonnes participent à la répartition flex,
+   et les écraser décalait l'en-tête de 60 px par rapport aux champs qu'il coiffe. */
+.target-head-row .t-lab { font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.target-head-row .t-lab-hint { flex: 0 0 16px; }
+.target-head-row .t-lab-rm { flex: 0 0 32px; }
+
+/* Ligne d'un projet dans une carte de session */
+.targets { display: flex; flex-direction: column; gap: 4px; margin: var(--s-2) 0; }
+.target-line {
+  display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+  padding: 6px 10px; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--r-md); font-size: var(--fs-sm);
+}
+.target-line .spacer { flex: 1; }
+.target-line .t-name { font-weight: var(--fw-med); }
+.target-line .t-err { color: var(--red); font-size: var(--fs-xs); cursor: help; }
+/* Fil d'étape (créée → commit → push → MR) : 4 pastilles, remplies jusqu'à l'étape atteinte.
+   Compact à dessein — sur une session multi-projets, chaque ligne reste lisible. */
+.tstepper { display: inline-flex; align-items: center; gap: 4px; }
+.tstep-pip { width: 7px; height: 7px; border-radius: var(--r-full); background: var(--line); transition: background var(--t-fast); }
+.tstep-pip.done { background: var(--green); }
+.tstep-pip.current { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent); }
+.tstepper.merged .tstep-pip { background: var(--accent); }
+.task-projects { font-size: var(--fs-xs); color: var(--muted); }
+.task-date { margin-left: auto; font-size: var(--fs-xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+/* Le libellé domine le prompt : c'est lui qu'on parcourt des yeux dans une liste. */
+.task-label { font-weight: var(--fw-sem); font-size: 14px; margin: 2px 0 1px; }
+.card .title { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+
+/* Historique des reviews : sélecteur de version + avertissement de lecture antérieure */
+.md-version { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--r-sm); padding: 3px 8px; font: inherit; font-size: var(--fs-xs); max-width: 320px; }
+/* Prompt d'une itération : texte brut (ce qui a été envoyé à l'agent), pas du Markdown. */
+.pass-prompt { white-space: pre-wrap; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 12px; font-size: var(--fs-sm); overflow-x: auto; }
+/* « Voir ce que cette itération a changé » : collé sous la demande, séparé du retour de l'IA
+   qui suit. Les deux variantes — le bouton et la phrase « rien changé » — occupent la même
+   place, pour que l'œil trouve la réponse toujours au même endroit. */
+.pass-diff-line { margin: 8px 0 18px; }
+
+/* Les échanges d'une revue : une question et sa réponse. La question est mise en avant comme
+   une citation — c'est elle qu'on relit pour retrouver un échange —, la réponse se lit comme le
+   rapport, dont elle reprend la mise en forme. */
+.ask-history { display: flex; flex-direction: column; gap: 10px; margin-bottom: var(--s-3); }
+.ask-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; background: var(--panel2); }
+.ask-entry-head { display: flex; justify-content: space-between; font-size: var(--fs-sm); margin-bottom: 6px; }
+.ask-q { border-left: 3px solid var(--accent); padding-left: 10px; white-space: pre-wrap; font-weight: 600; }
+.ask-a { margin-top: 8px; }
+.ask-a > :first-child { margin-top: 0; }
+.ask-entry.pending { opacity: .75; }
+
+/* Historique des demandes de modification d'un rapport : une entrée = la demande + sa date. */
+.modify-history { margin-bottom: var(--s-3); display: flex; flex-direction: column; gap: 8px; }
+.modify-entry { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; background: var(--panel2); }
+.modify-entry-head { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); }
+.modify-entry-head .muted { flex: 1; }
+.modify-entry-text { margin-top: 4px; white-space: pre-wrap; font-size: var(--fs-sm); }
+.version-note { margin: var(--s-2) 0 0; padding: 7px 10px; font-size: var(--fs-sm);
+  color: var(--text); background: var(--hover); border-left: 3px solid var(--amber); border-radius: var(--r-sm); }
+

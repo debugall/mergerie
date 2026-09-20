@@ -1,0 +1,463 @@
+/* ============ Liens : grille services × environnements ============ */
+
+.link-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.lf-lab { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.lt-n { margin-left: 6px; opacity: .7; font-variant-numeric: tabular-nums; }
+.link-tag .link-env-dot { margin-right: 5px; }
+.btn.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+
+/* UNE SEULE LIGNE DE FILTRES, collée à la grille. Trois rangées de pastilles la précédaient —
+   environnements, services, tags — et le contenu commençait au tiers de l'écran. Les
+   interrupteurs de colonnes portent un état LISIBLE : allumé et neutre avaient le même
+   visuel, si bien que « tout allumé » (c'est-à-dire aucun filtre) se lisait comme une
+   sélection posée. */
+.link-cols { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 8px; }
+/* La seule étiquette qui reste ne CRIE plus : trois libellés en capitales précédaient la
+   grille, et le regard n'avait rien à quoi s'accrocher avant le tiers de l'écran. */
+.link-cols .lf-lab { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.link-col-sw {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px;
+  font-size: 12px; cursor: pointer; color: var(--muted);
+  background: transparent; border: 1px solid var(--line); border-radius: var(--r-full);
+}
+.link-col-sw .link-env-dot { opacity: .3; }
+.link-col-sw.on { color: var(--text); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--panel); }
+.link-col-sw.on .link-env-dot { opacity: 1; }
+.link-col-sw:hover { color: var(--text); border-color: var(--accent); }
+.link-col-empty { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.link-col-empty input { width: auto; }
+.link-filter-chips { display: inline-flex; gap: 6px; align-items: center; }
+
+/* L'aperçu d'import : un dossier par ligne, replié, avec sa case et son compte. */
+.import-folder-box > summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 5px 4px;
+  border-radius: var(--r-sm); list-style: none;
+}
+.import-folder-box > summary::-webkit-details-marker { display: none; }
+.import-folder-box > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
+.import-folder-box[open] > summary::before { content: '▾'; }
+.import-folder-box > summary:hover { background: var(--hover); }
+.import-folder-box .import-item { padding-left: 26px; }
+
+/* La grille proposée par l'import : un aperçu, pas un tableau de travail — assez lisible pour
+   juger, assez compact pour tenir dans la modale. */
+.import-proposal { border: 1px solid var(--accent); border-radius: var(--r-md); padding: 10px 12px; margin: 10px 0; }
+.import-grid { border-collapse: collapse; margin: 8px 0 4px; font-size: 12px; }
+.import-grid th, .import-grid td { border: 1px solid var(--line); padding: 3px 9px; text-align: center; }
+.import-grid td:first-child, .import-grid th:first-child { text-align: left; font-weight: var(--fw-sem); }
+.import-proposal p { margin: 4px 0 0; font-size: 11px; }
+.import-grid .ig-first { display: flex; align-items: center; gap: 8px; }
+.import-grid .ig-name { width: 190px; height: 24px; padding: 2px 6px; font: inherit; font-size: 12px; }
+
+/* Les liens libres groupés par dossier : même pliage que l'aperçu d'import, pour qu'on
+   reconnaisse le geste d'un écran à l'autre. */
+.link-free-group > summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 4px;
+  font-weight: var(--fw-sem); font-size: 13px; border-radius: var(--r-sm); list-style: none;
+}
+.link-free-group > summary::-webkit-details-marker { display: none; }
+.link-free-group > summary::before { content: '▸'; color: var(--muted); font-size: 11px; }
+.link-free-group[open] > summary::before { content: '▾'; }
+.link-free-group > summary:hover { background: var(--hover); }
+/* Le bouton de pliage d'un dossier : discret, et il ne se montre qu'au survol de sa ligne. */
+.link-free-group > summary .lfg-fold { margin-left: 2px; }
+.link-free-group > summary:hover .lfg-fold, .lfg-fold:focus-visible { opacity: 1; }
+.link-free-group .link-free-row { margin-left: 18px; }
+/* Un arbre : chaque niveau se décale du sien, sans quoi la profondeur ne se voit pas. */
+.link-free-group .link-free-group { margin-left: 14px; }
+
+
+/* LA PASTILLE DE FILTRE, une seule fois pour toute l'application. Règle : pastilles quand les
+   valeurs sont peu nombreuses et stables (environnements, tags, états Docker, tranches de note),
+   liste à cocher avec champ de filtre au-delà (dépôts, dossiers, branches, personnes) — c'est ce
+   que font déjà Jenkins et Jira. `.link-tag` est le nom historique du même objet, gardé pour ne
+   pas réécrire l'onglet Liens et ses tests. */
+.chip, .link-tag {
+  padding: 3px 10px; border-radius: var(--r-full); font-size: 12px; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
+}
+.chip:hover, .link-tag:hover { color: var(--text); }
+/* Le nom d'un container devient un bouton : il doit rester un NOM à l'œil — pas de cadre,
+   pas de fond, juste le curseur qui dit qu'il se copie. */
+button.dlog-cname { font: inherit; background: none; border: 0; padding: 0; color: inherit;
+  cursor: pointer; text-align: left; }
+button.dlog-cname:hover { text-decoration: underline; }
+button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Les sauvegardes Docker : une ligne par container refaisable, la commande en petit. */
+/* Les raccourcis d'insertion sous le champ de commentaire Jira : discrets, alignés. */
+/* Une surveillance en échec doit se voir : sinon le ticket paraît simplement immobile. */
+/* Ce qui se copie d'un clic doit RESTER ce qu'il est à l'œil : une clé, un SHA, une commande.
+   Pas de cadre, pas de fond — seul le curseur et le soulignement au survol le disent. */
+/* La copie d'une case de la grille : discrète, elle n'apparaît qu'au survol de la ligne —
+   ouvrir reste le geste principal, copier est le second. */
+/* L'aide de syntaxe et les échéances rapides : discrètes, sous le champ qu'elles servent. */
+/* « depuis v1 » : une précision, pas un badge — elle se lit après le constat, pas avant. */
+.f-since { font-size: 11px; white-space: nowrap; }
+.session-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; }
+.todo-syntaxe { font-size: 12px; margin: 2px 0 8px; }
+.todo-syntaxe code { font-size: 11px; }
+.capture-quick { display: flex; gap: 6px; flex-wrap: wrap; margin: -4px 0 8px; }
+.jk-liens { display: inline-flex; gap: 4px; }
+.dk-port { font-variant-numeric: tabular-nums; }
+.link-line { display: inline-flex; align-items: center; gap: 2px; }
+.link-copy { background: none; border: 0; padding: 0 2px; color: var(--muted); cursor: pointer;
+  opacity: 0; transition: opacity .12s; }
+.link-line:hover .link-copy, .link-copy:focus-visible { opacity: 1; }
+.link-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.jira-key-copy, .git-sha-copy, .code-copy { font: inherit; background: none; border: 0; padding: 0;
+  color: inherit; cursor: pointer; }
+.jira-key-copy:hover, .git-sha-copy:hover, .code-copy:hover { text-decoration: underline; }
+.jira-key-copy:focus-visible, .git-sha-copy:focus-visible, .code-copy:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; }
+.jira-watch-err { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--red-text); }
+.jira-insert-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; }
+/* QUI et DANS QUEL ORDRE, sur une seule ligne. Les pastilles d'auteur peuvent être masquées
+   (jeton dont on ne lit pas le compte) : le tri reste alors seul, à gauche, sans trou. */
+.mr-filtres { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0; }
+.mr-filtres .chips { margin: 0; }
+.mr-tri { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); position: relative; }
+/* LE TRI EST HABILLÉ COMME UNE PASTILLE — même hauteur, même fond, même rayon, même famille de
+   couleurs. Un `<select>` natif au milieu de trois pastilles arrondies se lit comme un corps
+   étranger : la rangée dit « qui » et « dans quel ordre », c'est une seule idée. L'apparence
+   native est donc retirée (elle change de forme et de flèche à chaque système) et remplacée
+   par un chevron dessiné dans le `::after` du label — lui hérite de la couleur du thème, ce
+   qu'une flèche en image de fond ne saurait pas faire. */
+.mr-tri select {
+  appearance: none; -webkit-appearance: none;
+  font: inherit; font-size: 12px; line-height: 1.5;
+  padding: 3px 26px 3px 10px;
+  border-radius: var(--r-full);
+  background: var(--panel2); border: 1px solid var(--line); color: var(--muted);
+  cursor: pointer;
+}
+.mr-tri select:hover { color: var(--text); }
+.mr-tri select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Le chevron : posé par-dessus, transparent au clic pour que toute la pastille reste cliquable. */
+.mr-tri::after {
+  content: '▾'; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; color: inherit; pointer-events: none;
+}
+/* UN ORDRE INHABITUEL DOIT SE VOIR. Une file rangée par « note la plus basse » ressemble à une
+   file en désordre : sans marque, on cherche pourquoi la première carte n'est pas celle qu'on
+   attendait. Même traitement que la pastille active, pour la même raison. */
+.mr-tri.actif select { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+.mr-tri.actif { color: var(--on-accent); }
+.mr-tri.actif > span { color: var(--muted); }
+.dk-backup { display: flex; align-items: flex-start; gap: 8px; }
+.dk-backup-cmd { margin: 4px 0 0; font-size: 11px; white-space: pre-wrap; opacity: .8; max-height: 6.5em; overflow: auto; }
+.chip.active, .link-tag.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+/* Un groupe de pastilles : même gouttière partout, et il se replie plutôt que de déborder. */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* La grille défile HORIZONTALEMENT dans son cadre : à six environnements, elle dépasse, et
+   c'est elle qui doit défiler — pas la page entière. */
+/* LES COLONNES SE PARTAGENT LA LARGEUR, elles ne l'imposent pas. Avec des largeurs dictées par
+   le contenu, cinq environnements d'URLs longues débordaient : on faisait défiler de côté pour
+   lire une grille dont tout l'intérêt est de se voir d'un coup.
+   `table-layout: fixed` fige le calcul sur la première ligne : la colonne des services garde sa
+   place, les environnements se répartissent le reste à parts égales, et les adresses s'abrègent
+   au lieu d'élargir. Le débordement reste possible au-delà de sept colonnes — mieux vaut
+   défiler que rendre chaque case illisible. */
+.link-grid-wrap { overflow-x: auto; }
+.link-grid { border-collapse: separate; border-spacing: 0; width: 100%; table-layout: fixed; min-width: 640px; }
+.link-grid th, .link-grid td { border-bottom: 1px solid var(--line); padding: 0; vertical-align: top; }
+/* La colonne des services reste visible pendant qu'on fait défiler les environnements :
+   une case sans savoir de quel service elle est ne dit rien. */
+.link-grid th.link-svc, .link-grid td.link-svc {
+  position: sticky; left: 0; z-index: 1; background: var(--bg);
+  width: 340px; padding: 6px 12px 6px 0;
+}
+.link-grid thead th { font-size: 12px; font-weight: var(--fw-sem); text-align: left; padding: 6px 8px; white-space: nowrap; }
+/* L'en-tête porte la couleur de l'environnement — sur une pastille, pas en fond : un aplat
+   de couleur derrière du texte redevient un problème de contraste à chaque thème. */
+.link-env { display: inline-flex; align-items: center; gap: 6px; }
+.link-env-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+/* UNE LIGNE COMPACTE. Le nom, le dépôt et les tags tenaient sur trois lignes de texte, ce qui
+   faisait des lignes de grille hautes de 90 px pour une adresse par case. Tout tient sur une
+   ligne : lettre teintée, nom, dépôt en gris, tags. La teinte vient d'un hachage du NOM (la
+   même mécanique que les paramètres Jenkins), donc elle ne bouge pas quand la grille change. */
+.link-svc-in { display: flex; align-items: center; gap: 8px; }
+.link-svc-txt { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; overflow: hidden; }
+.link-svc-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: var(--fw-sem);
+  color: var(--text); cursor: pointer; white-space: nowrap; }
+.link-svc-btn:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.link-svc-repo, .link-svc-tag { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* Le dépôt s'abrège AVANT les tags : il est long et se devine à moitié (`groupe/api-…`),
+   là où un tag coupé ne dit plus rien du tout. Il ne disparaît jamais pour autant — c'est lui
+   qui relie la ligne aux merge requests. */
+.link-svc-repo, .link-grid .link-svc-tags { overflow: hidden; text-overflow: ellipsis; min-width: 3em; flex: 0 1 auto; }
+.link-grid .link-svc-tags { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.link-svc-btn { flex: none; }
+.link-svc-tag { background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-full); padding: 0 7px; }
+.link-ava {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 22px; height: 22px; border-radius: var(--r-sm);
+  font-size: 11px; font-weight: var(--fw-sem); color: var(--text);
+  border: 1px solid var(--line);
+}
+.link-ava.la-c0 { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.link-ava.la-c1 { background: color-mix(in srgb, var(--green) 20%, transparent); }
+.link-ava.la-c2 { background: color-mix(in srgb, var(--amber) 22%, transparent); }
+.link-ava.la-c3 { background: color-mix(in srgb, var(--purple) 20%, transparent); }
+.link-ava.la-c4 { background: color-mix(in srgb, var(--red) 18%, transparent); }
+.link-ava.la-c5 { background: color-mix(in srgb, #3fb6c4 20%, transparent); }
+.link-ava.la-c6 { background: color-mix(in srgb, #d2691e 18%, transparent); }
+.link-ava.la-c7 { background: color-mix(in srgb, #8b8b3a 20%, transparent); }
+/* La poignée de glisser : invisible au repos comme les autres actions de la grille. */
+.link-move { display: inline-flex; align-items: center; color: var(--muted); cursor: grab; opacity: 0; flex: none; }
+.link-move .ico { width: 14px; height: 14px; }
+.link-grid tr:hover .link-move { opacity: .6; }
+.link-grid-row.dragging, .link-grid th.dragging { opacity: .45; }
+/* Le trait qui sépare les épinglés du reste : « épinglé » veut dire « en tête », et rien ne
+   disait où la tête s'arrêtait. */
+.link-grid-row.apres-epingles > td { border-top: 2px solid var(--line); }
+.link-pin.on { opacity: 1; color: var(--amber); }
+/* LA COLONNE EST TEINTÉE, très faiblement : *preprod* se reconnaît sans lire son en-tête.
+   La couleur de l'environnement ne vivait que dans un point de 9 px tout en haut. */
+.link-cell { padding: 4px 6px; background: color-mix(in srgb, var(--envc, transparent) 7%, transparent); }
+.link-grid thead th.link-col { background: color-mix(in srgb, var(--envc, transparent) 15%, transparent); }
+.link-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Le tableau sans une seule ligne : les colonnes restent là, et on dit pourquoi c'est vide. */
+.link-grid-empty td { padding: 18px 8px; color: var(--muted); text-align: center; }
+/* Une adresse trop longue s'ABRÈGE : sans ça, elle élargit sa colonne et pousse les autres
+   hors de l'écran. L'adresse entière reste au survol, et le nom prime sur l'URL quand il existe. */
+.link-open > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* L'ADRESSE EST DU TEXTE, pas un bouton. Chaque adresse portait une bordure et un fond : une
+   grille de vingt services affichait cent cadres, et la case ressemblait à un formulaire. Le
+   survol suffit à dire que c'est cliquable — et la case entière est la cible quand elle n'a
+   qu'une adresse. */
+.link-open {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 4px 8px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius);
+  color: var(--accent); text-decoration: none; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.link-open:hover { background: var(--panel2); border-color: var(--line); color: var(--accent-hi); }
+/* Case vide : un `+` discret. Une case vide et une case pleine doivent se distinguer sans
+   qu'on les compare — sinon on clique au hasard. */
+/* CASE VIDE : RIEN AU REPOS. Le `+` en pointillé pleine largeur dominait visuellement les
+   adresses sur une grille où la moitié des cases sont légitimement vides — il n'y a pas de
+   Kibana en local. Il revient au survol de la ligne, et au focus clavier. */
+.link-add {
+  width: 100%; padding: 6px 9px; background: transparent; border: 1px dashed var(--line);
+  border-radius: var(--radius); color: var(--muted); cursor: pointer; font-size: 12.5px; text-align: left;
+  opacity: 0; transition: opacity .12s;
+}
+.link-grid tr:hover .link-add, .link-cell:focus-within .link-add, .link-add:focus-visible { opacity: 1; }
+.link-add:hover { border-color: var(--accent); color: var(--text); }
+/* UNE CASE À UNE ADRESSE EST CLIQUABLE EN ENTIER : le lien remplit la case, viser un chip de
+   120 px au milieu de 190 px était une visée pour rien. */
+.link-cell.une .link-open { min-height: 30px; }
+/* Les champs de l'éditeur portent la taille des champs de formulaire de l'application : on y
+   saisit une URL, pas une abréviation. Ils faisaient 12,5 px sur 5 px de marge intérieure. */
+.link-cell input, .link-cell textarea {
+  width: 100%; padding: 8px 10px; font: inherit; font-size: 13px; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: var(--radius); color: var(--text);
+}
+.link-cell input:focus, .link-cell textarea:focus { border-color: var(--accent); }
+
+.link-free-head { margin-top: 26px; }
+
+/* ---- Onglet Liens : ce qui se fait, et ce qui se voit ------------------------------------
+   Les boutons d'action de la grille (crayon, flèches, réglages) restent INVISIBLES au repos
+   et apparaissent au survol de leur ligne ou colonne — et au focus clavier, sans quoi ils
+   n'existeraient que pour la souris. Une grille de vingt services couverte de trente icônes
+   ne se lit plus ; une grille qui n'en montre aucune ne laisse rien deviner. Le survol est
+   le compromis : calme au repos, complet dès qu'on s'approche. */
+.link-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; flex: none;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: transparent; color: var(--muted); cursor: pointer;
+  opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease;
+}
+.link-icon .ico { width: 14px; height: 14px; }
+.link-icon:hover { color: var(--text); border-color: var(--line); background: var(--panel2); }
+.link-icon:disabled { opacity: 0 !important; cursor: default; }
+/* Au clavier, l'icône se montre dès qu'elle prend le focus : sans ça elle serait atteignable
+   par Tab tout en restant invisible — le pire des deux mondes. */
+.link-icon:focus-visible { opacity: 1; outline: 2px solid var(--accent); outline-offset: 1px; }
+.link-cell:hover .link-icon,
+.link-grid tr:hover td.link-svc .link-icon,
+.link-grid th:hover .link-icon { opacity: 1; }
+.link-grid th:hover .link-icon:disabled { opacity: .25 !important; }
+
+.link-cell { position: relative; }
+.link-cell .link-edit { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: var(--panel); }
+/* Le nom d'un environnement EST le bouton qui l'ouvre : c'est ce qu'on vise pour agir sur une
+   colonne. Il se souligne au survol, sans quoi rien ne dirait qu'il est cliquable. */
+.link-env-name { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; }
+.link-env-name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.link-env-acts { display: inline-flex; align-items: center; gap: 1px; margin-left: 4px; }
+
+/* TROIS ADRESSES AU PLUS, TOUJOURS. Le dépliage en place faisait des lignes de 700 px pour
+   une case chargée ; le reste vit dans le panneau. Le bouton qui l'ouvre n'est plus un « +48 »
+   de 11 px qu'on ne remarquait pas : il dit ce qu'il ouvre. */
+.link-cell .link-line + .link-line { margin-top: 3px; }
+/* La ligne s'arrête AVANT le crayon : pleine largeur, elle poussait le bouton « copier » tout
+   à droite, exactement sous le crayon posé en absolu — le clic de copie tombait sur l'édition. */
+.link-cell .link-line { display: flex; padding-right: 34px; }
+.link-more-addr {
+  display: block; margin: 4px 0 0; padding: 2px 9px; font-size: 12px; cursor: pointer;
+  background: transparent; border: 1px solid var(--line); border-radius: var(--r-full); color: var(--muted);
+}
+.link-more-addr:hover { border-color: var(--accent); color: var(--text); }
+
+/* L'éditeur d'une case : un panneau posé SOUS sa case, à une largeur où l'on peut lire une
+   URL. Encastré dans la colonne, il héritait de ses 190 px — le champ d'URL en faisait 90.
+   Voir `placerEditeurCase` pour le pourquoi du `fixed` (une grille qui défile rogne l'absolu). */
+.link-cell-panel {
+  position: fixed; z-index: 40; width: min(560px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--panel); border: 1px solid var(--accent); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); text-align: left;
+}
+.lcp-head { display: flex; align-items: center; gap: 8px; font-weight: var(--fw-sem); font-size: 13px; }
+.lcp-bar { display: flex; align-items: center; gap: 8px; }
+.lcp-bar .lcp-search { flex: 1; min-width: 0; }
+/* LA LISTE DÉFILE DANS LE PANNEAU, la grille ne bouge pas. Cinquante adresses empilées sous la
+   ligne poussaient les liens libres hors de l'écran ; ici elles restent à leur place, et le
+   tamis en montre trois en une frappe. */
+.lcp-list { max-height: min(46vh, 320px); overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 1px; }
+.lcp-row {
+  display: grid; grid-template-columns: 8px minmax(0, 1fr) minmax(0, 1fr) auto 24px 24px;
+  align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--r-sm); cursor: pointer;
+}
+.lcp-row:hover, .lcp-row.cur { background: var(--hover); }
+.lcp-row.cur { outline: 1px solid color-mix(in srgb, var(--accent) 50%, transparent); }
+.lcp-name, .lcp-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lcp-name { font-size: 13px; }
+.lcp-url, .lcp-when { font-size: 11px; }
+.lcp-when { white-space: nowrap; }
+/* Le point marque les trois plus ouvertes — celles que la case montre. Pas un tri caché :
+   l'ordre reste celui qu'on a posé. */
+.lcp-dot { width: 6px; height: 6px; border-radius: 50%; background: transparent; }
+.lcp-dot.on { background: var(--accent); }
+.lcp-row .link-icon, .lcp-row .lcp-open { opacity: .35; }
+.lcp-row:hover .link-icon, .lcp-row.cur .link-icon { opacity: 1; }
+.lcp-multi { display: flex; flex-direction: column; gap: 6px; }
+.lcp-multi textarea { width: 100%; }
+/* La case en cours d'édition se souligne : le panneau flotte à côté d'elle, il faut pouvoir
+   dire d'un coup d'œil de laquelle il parle. */
+.link-cell.en-edition { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lce-head { display: flex; align-items: center; gap: 8px; font-weight: var(--fw-sem); font-size: 13px; }
+.lce-env { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 12px; color: var(--muted); }
+.lce-row > input { min-width: 0; }
+.lce-rows { display: flex; flex-direction: column; gap: 6px; }
+/* Le nom d'une adresse est court (« api », « admin ») ; l'URL ne l'est jamais. La colonne
+   fixe va au nom, le reste à l'adresse. */
+.lce-row { display: grid; grid-template-columns: 22px 150px 1fr 28px; gap: 6px; align-items: center; }
+/* Réordonner une adresse : deux flèches plutôt qu'une poignée. Elles marchent au clavier, et
+   « supprimer puis ressaisir » n'était pas un ordre, c'était une perte. */
+.lce-ord { display: flex; flex-direction: column; gap: 0; }
+.lce-ord .link-icon { width: 18px; height: 14px; opacity: .45; }
+.lce-row:hover .lce-ord .link-icon { opacity: 1; }
+.lce-ord .ico { width: 12px; height: 12px; }
+.lce-rows { max-height: min(42vh, 300px); overflow-y: auto; overscroll-behavior: contain; }
+/* Fenêtre étroite : le panneau ne peut plus faire ses 520 px, et deux colonnes ne laisseraient
+   plus rien à l'adresse. Le nom repasse alors AU-DESSUS d'elle, comme il le faisait dans la
+   case — c'est la seule disposition où les deux restent lisibles. */
+@media (max-width: 560px) {
+  .lce-row { grid-template-columns: 22px 1fr 28px; }
+  .lce-row .lce-label { grid-column: 2 / -1; }
+}
+.lce-row .lce-del { opacity: .55; }
+.lce-row:hover .lce-del { opacity: 1; }
+.lce-actions { display: flex; align-items: center; gap: 6px; }
+.lce-hint { font-size: 11px; margin: 0; }
+
+
+/* La ligne qu'on vient de créer ou de modifier se signale, puis se tait. */
+@keyframes link-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
+.link-flash td { animation: link-flash 1.6s ease-out; }
+
+/* Les adresses par environnement, dans la modale de service. */
+.link-urls-list { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+/* TOUTES les adresses d'une case, une par ligne : la fiche n'en montrait que la première, et
+   annonçait le reste par un compte qu'on ne pouvait pas ouvrir. */
+.link-url-env { display: grid; grid-template-columns: 130px 1fr; align-items: start; gap: 10px; }
+.link-url-env > .link-env { font-size: 12px; color: var(--muted); padding-top: 8px; }
+.link-url-rows { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.link-url-row { display: grid; grid-template-columns: 140px 1fr 28px; align-items: center; gap: 8px; }
+.link-url-row .link-icon { opacity: .45; }
+.link-url-row:hover .link-icon { opacity: 1; }
+@media (max-width: 620px) {
+  .link-url-env { grid-template-columns: 1fr; }
+  .link-url-row { grid-template-columns: 1fr 28px; }
+  .link-url-row .svc-url-label { grid-column: 1 / -1; }
+}
+
+.link-free-bar { padding-left: 0; padding-right: 0; }
+.link-free-bar .link-free-head { margin: 0; }
+
+/* UNE LISTE, PAS DES CARTES. Quarante-cinq pixels et une bordure par lien : soixante liens
+   faisaient deux écrans et demi pour soixante lignes de texte, et l'URL entière en clair
+   mangeait la place du nom. Vingt-huit pixels, une lettre, le nom, l'hôte abrégé. */
+.link-free-list { display: flex; flex-direction: column; max-width: 980px; }
+.link-free-row {
+  display: grid; grid-template-columns: 18px 22px minmax(120px, 1fr) minmax(0, 1.2fr) auto auto;
+  align-items: center; gap: 10px; padding: 3px 8px; border-radius: var(--r-sm); min-height: 28px;
+}
+.link-free-row:hover { background: var(--hover); }
+.link-free-row .link-free-label { font-weight: var(--fw-sem); color: var(--text); text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.link-free-row .link-free-label:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.link-free-row .link-free-url { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.link-free-tags { display: inline-flex; gap: 4px; }
+.link-free-acts { display: inline-flex; gap: 2px; }
+.link-free-row:hover .link-icon, .link-free-row:focus-within .link-icon { opacity: 1; }
+/* LA COCHE APPARAÎT AU SURVOL. Un mode « Sélectionner » à activer d'abord faisait payer chaque
+   jour le prix d'un geste rare ; toujours visible, elle ajoutait une colonne de cases à un
+   écran qui sert d'abord à lire. */
+.link-free-row .lfr-pick { width: auto; opacity: 0; }
+.link-free-row:hover .lfr-pick, .link-free-row .lfr-pick:checked,
+.link-free-row .lfr-pick:focus-visible, .link-free-list.mode-select .lfr-pick { opacity: 1; }
+.link-ctx-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.link-ctx-form input { flex: 1 1 220px; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
+.link-ctx-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12.5px; }
+.link-ctx-row code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-service { width: min(720px, 94vw); }
+/* L'import porte une GRILLE : à 720 px, un tableau de cinq colonnes se lisait de biais. */
+.modal-import { width: min(1180px, 96vw); }
+.import-tree { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+.import-folder { font-weight: var(--fw-sem); margin: 8px 0 2px; font-size: 12.5px; color: var(--muted); }
+.import-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 2px 0 2px 14px; }
+.import-item .import-url { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+
+/* ---- Coller une adresse ------------------------------------------------------------------
+   Une zone de texte, puis une proposition PAR ADRESSE : le nom, le service, la colonne. Rien
+   n'est deviné en silence — chaque proposition est un sélecteur qu'on voit et qu'on corrige. */
+.paste-modal { width: min(780px, 95vw); }
+.paste-rows { display: flex; flex-direction: column; gap: 10px; max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; }
+.paste-row { border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; }
+.paste-row.invalide { border-color: color-mix(in srgb, var(--red) 45%, var(--line)); display: flex; gap: 10px; align-items: center; }
+.pr-bad { color: var(--red); font-size: 12px; }
+.pr-url { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-fields { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.pr-f { display: flex; flex-direction: column; gap: 3px; flex: 1 1 180px; min-width: 0; font-size: 11px; color: var(--muted); }
+.pr-f input, .pr-f select { width: 100%; }
+.pr-f-svc { flex: 1 1 220px; }
+
+/* L'état vide : un champ, une adresse. Il disait « crée un environnement, puis des services » —
+   deux mots qu'on n'a pas encore rencontrés, et trois écrans avant la première adresse. */
+.link-empty-form { display: flex; gap: 8px; justify-content: center; margin: 10px 0 2px; width: min(460px, 100%); }
+.link-empty-form input { flex: 1; min-width: 0; }
+.link-empty { display: flex; flex-direction: column; align-items: center; }
+
+/* Les boutons contextuels sur une merge request. Un gabarit non résoluble ici reste VISIBLE,
+   grisé, avec sa raison : le faire disparaître laisserait croire qu'il n'existe pas. */
+.mr-links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.mr-links .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+/* Sous 1100 px, la sidebar se compacte d'elle-même : à cette largeur, 194 px de menu
+   prennent sur la lecture, qui est ce qu'on est venu faire. */
+@media (max-width: 1100px) {
+  body:not(.sidebar-large) { --sidebar-w: 56px; }
+  body:not(.sidebar-large) .sidebar button > span:not([class]) { display: none; }
+  body:not(.sidebar-large) .sidebar button[data-tab] { justify-content: center; padding: 9px 0; position: relative; }
+  body:not(.sidebar-large) .sidebar-toggle { justify-content: center; }
+}
+
+

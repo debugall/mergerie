@@ -1,0 +1,42 @@
+/* Palette de commandes : une boîte étroite, ANCRÉE SOUS le champ de l'en-tête d'où on
+   l'ouvre — l'œil y est déjà. Centrée au milieu de l'écran, elle obligeait à le déplacer.
+   La position est posée en JS (`placerPalette`), qui la recale au redimensionnement. */
+.palette-box { position: fixed; width: 560px; max-width: 92vw; padding: 0; overflow: hidden; }
+/* Le fond de la modale ne s'assombrit pas : la palette est une suggestion, pas une décision
+   qui met le reste en pause — et on veut continuer de voir ce qu'on quitte. */
+#paletteModal { background: transparent; align-items: flex-start; justify-content: flex-start; }
+.palette-input { width: 100%; border: none; border-bottom: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 15px; padding: 14px 16px; outline: none; }
+.palette-list { max-height: 320px; overflow-y: auto; }
+/* En-tête de section de la palette (état vide seulement). */
+.palette-head { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  padding: 8px 10px 3px; }
+.palette-head:first-child { padding-top: 3px; }
+.palette-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; font-size: 13.5px; }
+.palette-item.active, .palette-item:hover { background: var(--panel2); }
+.palette-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-kind { flex: 0 0 auto; font-size: 12px; }
+.palette-empty { padding: 14px 16px; font-size: 13px; }
+.palette-hint { padding: 8px 16px; margin: 0; border-top: 1px solid var(--line); font-size: 12px; }
+/* Feuille de raccourcis : deux colonnes, la touche puis ce qu'elle fait. */
+.shortcuts-list { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 10px 0 4px; }
+.shortcuts-list kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+/* Anneau de sélection clavier. Absent tant qu'on n'a pas pressé j/k : un raccourci qui agit
+   sur un élément qu'on n'a pas désigné est un piège. */
+.card.focused { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Atterrissage d'un résultat : un balayage unique sur la PASTILLE de note. Sur la carte
+   entière ce serait un flash ; ici c'est exactement l'objet qui vient d'apparaître. */
+@keyframes landed { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; } }
+.note.just-landed { animation: landed .9s ease-out 1; }
+/* …et la même chose sur une CARTE, quand on arrive dessus depuis ailleurs (une notification,
+   l'explorateur de branches, la palette) : sans elle, la liste s'ouvre au bon endroit sans que
+   rien ne dise laquelle des douze cartes on était venu voir. Un balayage, une fois. */
+.card.just-landed { animation: landed .9s ease-out 1; }
+
+@keyframes card-in { from { opacity: 0; transform: translateY(6px); } }
+/* L'entrée en cascade est portée par la LISTE (`animate-in`, posée par `stagger`), pas par la
+   carte : sinon elle rejouait à chaque rendu — donc à chaque frappe dans une recherche et à
+   chaque rafraîchissement. Le mouvement doit dire « ça a changé », jamais « ça a été rendu ». */
+.list.animate-in > .card { animation: card-in .26s cubic-bezier(.2,.8,.3,1) both; animation-delay: calc(var(--i, 0) * 22ms); }
+

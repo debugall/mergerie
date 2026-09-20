@@ -1,0 +1,79 @@
+/* ===== Docker · Logs (tail live) ===== */
+/* Une seule rangée horizontale : Containers · Inclure · Exclure · (tail + actions). */
+.dlog-top { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 12px; }
+.dlog-picker { flex: 1 1 300px; min-width: 280px; border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 10px 12px; }
+.dlog-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.dlog-search { width: 190px; max-width: 55%; }
+/* Les trois champs du tail — chercher un container, ajouter un mot à filtrer, dire combien de
+   lignes — étaient les champs du NAVIGATEUR : 21 px de haut, bordure creuse, à côté de boutons
+   de 30. Ils prennent l'habillage des champs de l'application, à la taille des barres d'outils. */
+.dlog-search, .dlog-chipform input, .dlog-tail input {
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 6px 10px; font: inherit; font-size: 13px;
+}
+.dlog-search:focus, .dlog-chipform input:focus, .dlog-tail input:focus { border-color: var(--accent); }
+.dlog-clist { display: flex; flex-direction: column; gap: 2px; max-height: 210px; overflow: auto; }
+.dlog-citem { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.dlog-citem:hover { background: color-mix(in srgb, var(--accent, #7c5cff) 8%, transparent); }
+.dlog-citem input { flex-shrink: 0; }
+.dlog-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dlog-dot.run { background: var(--ok, #2e7d32); }
+.dlog-dot.stop { background: var(--muted, #999); }
+.dlog-cname { font-weight: 600; }
+.dlog-cproj { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
+.dlog-run { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.dlog-tail { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.dlog-tail input { width: 150px; }
+.dlog-run-actions { display: flex; gap: 6px; }
+
+.dlog-filter { flex: 1 1 260px; min-width: 240px; align-self: stretch; }
+.dlog-filter > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; min-height: 2.6em; }
+.dlog-chipform { display: flex; gap: 6px; }
+.dlog-chipform input { flex: 1; }
+.dlog-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; min-height: 22px; }
+.dlog-empty { font-size: 12px; }
+/* min-height 24px : cible tactile AA (2.5.8) — les deux boutons du chip s'étirent (align-items:stretch). */
+.dlog-chip { display: inline-flex; align-items: stretch; min-height: 24px; border: 1px solid var(--border, #ccc); border-radius: 999px; overflow: hidden; font-size: 12.5px; }
+.dlog-chip-w { padding: 2px 4px 2px 10px; background: transparent; border: none; color: var(--text); cursor: pointer; font: inherit; transition: color var(--t-fast); }
+.dlog-chip-x { padding: 2px 8px 2px 4px; background: transparent; border: none; color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; transition: color var(--t-fast); }
+.dlog-chip-x:hover { color: var(--danger, #c62828); }
+.dlog-chip.off { opacity: 0.5; text-decoration: line-through; }
+
+.dlog-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.dlog-bar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+#dlogPause.active { border-color: var(--accent, #7c5cff); color: var(--accent, #7c5cff); }
+/* La vue de logs : monospace, plafonnée en hauteur, scroll interne. white-space:pre par
+   défaut (perf + fidélité), retour à la ligne optionnel via .wrap. */
+.dlog-view { height: 60vh; min-height: 300px; overflow: auto; background: var(--code-bg, #111); color: var(--code-text, #ddd);
+  border: 1px solid var(--border, #333); border-radius: 10px; padding: 8px 10px;
+  font-family: var(--ff-mono); font-size: 12px; line-height: 1.5; }
+.dlog-row { display: flex; gap: 10px; white-space: pre; }
+.dlog-view.wrap .dlog-row { white-space: pre-wrap; word-break: break-word; }
+.dlog-tag { flex: 0 0 auto; font-weight: 700; user-select: none; }
+.dlog-msg { flex: 1 1 auto; }
+.dlog-sys .dlog-msg { color: var(--muted); font-style: italic; }
+.dlog-sys-error .dlog-msg { color: var(--danger, #e57373); font-style: normal; }
+/* Couleurs ANSI de l'application (case « Afficher les couleurs »). Les huit teintes de base
+   sont redéfinies PAR THÈME : les valeurs d'un terminal sombre (le bleu 0000ee, le noir)
+   deviennent illisibles sur fond clair. Le « noir » et le « blanc » ANSI sont d'ailleurs
+   rendus par la couleur de texte courante, faute de quoi l'un des deux thèmes les efface. */
+:root {
+  --ansi-0: var(--text); --ansi-1: #f07178; --ansi-2: #6ac16a; --ansi-3: #d9a441;
+  --ansi-4: #6aa9f4; --ansi-5: #c792ea; --ansi-6: #4dd0c4; --ansi-7: var(--text);
+}
+:root[data-theme="light"] {
+  --ansi-1: #c62d2d; --ansi-2: #2c7a2c; --ansi-3: #8a6100;
+  --ansi-4: #1f5fbf; --ansi-5: #7b3fbf; --ansi-6: #0f7c74;
+}
+.ansi-fg-0 { color: var(--ansi-0); }
+.ansi-fg-1 { color: var(--ansi-1); }
+.ansi-fg-2 { color: var(--ansi-2); }
+.ansi-fg-3 { color: var(--ansi-3); }
+.ansi-fg-4 { color: var(--ansi-4); }
+.ansi-fg-5 { color: var(--ansi-5); }
+.ansi-fg-6 { color: var(--ansi-6); }
+.ansi-fg-7 { color: var(--ansi-7); }
+.ansi-bright { filter: brightness(1.25); }
+.ansi-b { font-weight: 700; }
+.ansi-u { text-decoration: underline; }
+

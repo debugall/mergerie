@@ -1,0 +1,19 @@
+<!-- Modale : ajout en masse de dépôts depuis GitLab -->
+<div id="bulkModal" class="modal" hidden>
+    <div class="modal-box bulk-box">
+        <h3 id="bulkTitle">Ajouter des dépôts depuis GitLab</h3>
+        <div class="bulk-toolbar">
+            <input id="bulkSearch" class="search" type="search" placeholder="Filtrer les projets…" data-i18n-placeholder="settings.ph.filtrer-les-projets" /><button type="button" class="hint" tabindex="0" aria-label="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-tip="Filtre l’affichage de la liste ci-dessous (nom ou chemin du projet). N’a aucun effet sur ce qui sera ajouté : seules les cases cochées comptent." data-i18n-tip="settings.tip.filtre-l-affichage-de-la"><svg class="ico"><use href="#i-info"/></svg></button>
+            <button id="bulkAll" type="button" class="btn btn-sm" title="Cocher tous les projets affichés" data-i18n-title="settings.title.cocher-tous-les-projets-affiches" data-i18n="settings.btn.tout-cocher">Tout cocher</button>
+            <button id="bulkNone" type="button" class="btn btn-sm" title="Décocher tous les projets" data-i18n-title="settings.title.decocher-tous-les-projets" data-i18n="settings.btn.tout-decocher">Tout décocher</button><button type="button" class="hint" tabindex="0" aria-label="Tous les projets GitLab auxquels ton token donne accès. Ceux qui apparaissent grisés sont déjà dans tes dépôts et ne peuvent pas être cochés deux fois." data-tip="Tous les projets GitLab auxquels ton token donne accès. Ceux qui apparaissent grisés sont déjà dans tes dépôts et ne peuvent pas être cochés deux fois." data-i18n-tip="settings.tip.tous-les-projets-gitlab-auxquels"><svg class="ico"><use href="#i-info"/></svg></button>
+        </div>
+        <div id="bulkList" class="bulk-list"><p class="muted" data-i18n="settings.p.chargement">Chargement…</p></div>
+        <div class="bulk-footer">
+            <label class="muted"><span data-i18n="settings.lbl.pattern">Pattern</span> <button type="button" class="hint" tabindex="-1" aria-label="Appliqué à TOUS les projets ajoutés en une fois : fragment que le nom de la branche source doit contenir pour que la MR soit récupérée (ex. PROJ-). Vide = toutes les MR. Modifiable ensuite dépôt par dépôt." data-tip="Appliqué à TOUS les projets ajoutés en une fois : fragment que le nom de la branche source doit contenir pour que la MR soit récupérée (ex. PROJ-). Vide = toutes les MR. Modifiable ensuite dépôt par dépôt." data-i18n-tip="settings.tip.applique-a-tous-les-projets"><svg class="ico"><use href="#i-info"/></svg></button> <input id="bulkPattern" placeholder="vide = toutes les MR" data-i18n-placeholder="settings.ph.vide-toutes-les-mr" /></label>
+            <span id="bulkCount" class="muted"></span>
+            <span class="spacer"></span>
+            <button id="bulkCancel" type="button" class="btn" title="Fermer sans rien ajouter" data-i18n-title="settings.title.fermer-sans-rien-ajouter" data-i18n="task.btn.annuler">Annuler</button>
+            <button class="btn btn-primary" id="bulkAdd" type="button" title="Ajouter les projets cochés à la liste des dépôts" data-i18n-title="settings.title.ajouter-les-projets-coches-a" data-i18n="settings.btn.ajouter-la-selection">Ajouter la sélection</button>
+        </div>
+    </div>
+</div>
