@@ -356,6 +356,7 @@
       "err.sandbox.sandbox-source-changed": "La source a changé depuis la préparation du job ; relance-le.",
       "err.sandbox.sandbox-cleanup-failed": "Le nettoyage du job {jobId} a échoué ; des fichiers temporaires peuvent subsister.",
       "err.sandbox.local-in-place-unsupported-in-sandbox": "Le codage hors dépôt en place n'est pas pris en charge en mode sécurisé ; utilise le mode plan, ou le mode legacy explicite.",
+      "err.sandbox.job-introuvable": "Job de sandbox introuvable (déjà purgé, ou identifiant invalide).",
     },
     en: {
       "err.citations-sans-cible": "a merge request or a ticket is required",
@@ -704,6 +705,7 @@
       "err.sandbox.sandbox-source-changed": "The source changed since the job was prepared; run it again.",
       "err.sandbox.sandbox-cleanup-failed": "Cleanup failed for job {jobId}; temporary files may remain.",
       "err.sandbox.local-in-place-unsupported-in-sandbox": "In-place out-of-repo coding is not supported in secure mode; use plan mode, or the explicit legacy mode.",
+      "err.sandbox.job-introuvable": "Sandbox job not found (already purged, or invalid id).",
     },
   };
 }));

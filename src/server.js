@@ -123,6 +123,7 @@ require('./app/routes/programmation');
 require('./app/routes/questions');
 require('./app/routes/repos');
 require('./app/routes/rules');
+require('./app/routes/sandbox');
 require('./app/routes/statut');
 require('./app/routes/tasks');
 require('./app/routes/tasks-actions');

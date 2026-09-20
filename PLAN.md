@@ -176,6 +176,14 @@ codage, vérification et plan restent sur le chemin direct (chantier suivant).
 | `sandbox/credentials.js` | broker de credentials Copilot : COPIE (jamais un lien) de ce qui n'est pas sur liste noire (historique, sessions, logs, cache) vers un home isolé ; refuse si rien n'a pu être importé plutôt que de lancer un home vide |
 | `sandbox/audit.js` | un événement JSON par ligne, par job (`logs/audit.jsonl`) — jamais de prompt ni de secret (tout champ dont le NOM y ressemble est exclu) |
 | `sandbox/store.js` | le journal `sandbox_job` (une ligne par job, best-effort) — seulement la politique COMPILÉE (permissions, limites) et des chemins, jamais `spec.command` (le prompt vit ailleurs) |
+
+`src/app/routes/sandbox.js` expose `GET /api/sandbox/capabilities` (ce que CE poste peut tenir),
+`GET /api/sandbox/policies` (la politique compilée des 4 modes), `POST /api/sandbox/preview`
+(compile SANS rien lancer), `GET /api/sandbox/jobs` et `/jobs/:id` (le journal, avec les
+événements d'audit archivés). Pas de route de lancement ni d'annulation : un job de sandbox part
+toujours depuis un job Mergerie existant, dont le bouton « Stop » l'arrête déjà — un `/cancel` à
+part demanderait de faire correspondre un id de job de sandbox à un id de job Mergerie, jamais
+tracé aujourd'hui.
 | `sandbox/runner.js` | **le superviseur** : choisit le backend (jamais de repli automatique vers `legacy` — refus fermé sauf `sandbox: 'disabled'` explicite), prépare le dossier, lance, collecte, nettoie dans un `finally`. Tourne dans le contexte d'annulation du JOB APPELANT (`proc.run`) : c'est ce qui laisse le bouton « Stop » existant fonctionner sans câblage neuf |
 | `sandbox/backends/linux.js` | **bubblewrap rootless**, Linux uniquement : `capabilities()` lance un bwrap PROCHE du réel (un simple `--unshare-user` peut réussir alors que monter `/proc` échoue ensuite, constaté en conteneur imbriqué), `buildCommand` (argv jamais une chaîne shell, système monté en lecture seule pour que l'agent lui-même soit exécutable), `run` (suit `core/proc.js`) |
 | `sandbox/backends/legacy.js` | le mode non sandboxé — choisi UNIQUEMENT si `sandbox: 'disabled'` explicite, jamais un repli silencieux ; environnement filtré comme le reste (pas `process.env` tel quel) |

@@ -40,6 +40,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   mode — never for “in place”, which keeps its own separate consent. Network stays open (a
   `npm install` before tests is the common case), only the filesystem and process are isolated.
 
+- **A read-only API for the secure sandbox**: what this machine can support
+  (`/api/sandbox/capabilities`), the compiled policy of each mode (`/api/sandbox/policies`,
+  `/api/sandbox/preview`), and the log of jobs already run (`/api/sandbox/jobs`). No route
+  starts or cancels a job — that still goes through the existing job and its Stop button.
+
 - **Out-of-repo coding refuses cleanly when the secure sandbox is required.** That mode works
   in place, directly in your own folder — sandboxing it would mean working on a hidden copy and
   claiming the folder changed. With the setting on, each affected folder is marked failed with a
