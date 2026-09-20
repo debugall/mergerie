@@ -1422,6 +1422,9 @@ const REGISTRE = [
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
   { table: 'docker_backup', famille: 'L', uidPropre: true, note: 'les conteneurs sauvegardés sur CE poste' },
+  /* `uidPropre: false` : rien ne référence un job de sandbox par identité stable, et la table
+     est créée APRÈS `14-identite.js` (schéma §8.2) — un `uid` n'y aurait aucun rôle à jouer. */
+  { table: 'sandbox_job', famille: 'L', uidPropre: false, note: 'le journal des jobs de sandbox de CE poste — jamais un secret, mais rien qu\'un collègue pourrait rejouer' },
 
   /* ── Réglages ────────────────────────────────────────────────────────────────────────── */
   /* `config` est la seule table dont CHAQUE colonne est classée nommément, et dont les deux

@@ -29,6 +29,7 @@ delete process.env.COPILOT_DRY_RUN;
 
 const copilot = require('../src/agent/copilot');
 const config = require('../src/data/config');
+const linux = require('../src/sandbox/backends/linux');
 
 const depot = (() => {
   const dir = fs.mkdtempSync(path.join(tmp, 'repo-'));
@@ -45,7 +46,14 @@ before(() => config.updateConfig({ agent_sandbox: 'required' }));
 after(() => { config.updateConfig({ agent_sandbox: 'off' }); try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 
 describe('copilot.runReal : engage la sandbox en lecture quand `agent_sandbox` l’exige', () => {
-  test('review : refuse (SANDBOX_UNAVAILABLE), jamais un lancement direct silencieux', async () => {
+  test('review : refuse (SANDBOX_UNAVAILABLE), jamais un lancement direct silencieux', async (t) => {
+    const cap = await linux.capabilities().catch(() => ({ platform: false, bin: null, namespaces: false }));
+    if (cap.platform && cap.bin && cap.namespaces) {
+      // Ce poste PEUT tenir la sandbox : le faux binaire de ce fichier (sous `os.tmpdir()`)
+      // n'y est justement pas visible (voir l'en-tête) — `unit-sandbox-linux.test.js` prouve
+      // le lancement réel, ce test-ci ne prouve que le refus sur un poste qui ne peut pas.
+      return t.skip('bubblewrap disponible ici : ce test ne couvre que le cas contraire');
+    }
     await assert.rejects(
       copilot.runPrompt('question', depot, { kind: 'explain' }),
       (e) => e.code === 'SANDBOX_UNAVAILABLE',

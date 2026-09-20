@@ -11,6 +11,7 @@ const sfs = require('./fs');
 const linux = require('./backends/linux');
 const legacy = require('./backends/legacy');
 const audit = require('./audit');
+const store = require('./store');
 const proc = require('../core/proc');
 
 /** `diskBytes`/`files` n'ont pas d'équivalent cgroup ici (§3.5) : surveillés par sondage plutôt
@@ -72,7 +73,9 @@ async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env 
   const collecterPatch = !localDir && (spec.kind === 'plan' || spec.kind === 'edit');
   const layout = sfs.creerLayout(spec.id, { worktree, localDir });
   const consigner = audit.pour(spec.id, layout.logs);
-  consigner('job_started', { kind: spec.kind, backend: legacyChoisi ? 'legacy' : 'linux', policyHash: spec.policyHash });
+  const nomBackend = legacyChoisi ? 'legacy' : 'linux';
+  consigner('job_started', { kind: spec.kind, backend: nomBackend, policyHash: spec.policyHash });
+  store.demarrer(spec, { backend: nomBackend, auditPath: `${layout.logs}/audit.jsonl` });
   try {
     // `local-dir` : le dossier existe déjà (un worktree préparé par l'appelant, §6.5) — rien à
     // extraire ni à copier, et `collecterSortie` (basé sur une comparaison d'arbres) ne
@@ -96,6 +99,7 @@ async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env 
     }
 
     consigner('job_finished', { code: resultat.code, timedOut: resultat.timedOut, degradedLimits: resultat.degradedLimits });
+    store.terminer(spec.id, { status: resultat.code === 0 ? 'done' : 'error', resultPath: sortie ? sortie.patchPath : null });
     return {
       code: resultat.code, signal: resultat.signal, timedOut: resultat.timedOut,
       truncated: resultat.truncated, degradedLimits: resultat.degradedLimits,
@@ -103,6 +107,7 @@ async function executer(specBrut, { sandbox = 'required', onLog = () => {}, env 
     };
   } catch (e) {
     consigner('job_failed', { code: e.code || null });
+    store.terminer(spec.id, { status: 'error', errorCode: e.code || null, errorMessage: e.message });
     throw e;
   } finally {
     await backend.cleanup().catch(() => {});

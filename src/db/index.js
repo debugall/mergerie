@@ -30,6 +30,7 @@ const TRANCHES = [
   '15-local-state',
   '16-slug',
   '17-store',
+  '18-sandbox',
 ];
 for (const nom of TRANCHES) require(`./schema/${nom}`);
 const { DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY } = require('./schema/10-jenkins-config');
