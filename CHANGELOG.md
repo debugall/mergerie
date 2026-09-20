@@ -40,6 +40,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   mode — never for “in place”, which keeps its own separate consent. Network stays open (a
   `npm install` before tests is the common case), only the filesystem and process are isolated.
 
+- **Out-of-repo coding refuses cleanly when the secure sandbox is required.** That mode works
+  in place, directly in your own folder — sandboxing it would mean working on a hidden copy and
+  claiming the folder changed. With the setting on, each affected folder is marked failed with a
+  clear reason instead of silently running unprotected or silently copying.
+
 - **Schedule a session for a date and time.** The session modal — coding, exploration and
   off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create
   and schedule”; the session is created and waits, its card showing the date with a cross to cancel

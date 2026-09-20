@@ -193,6 +193,14 @@ les dépôts en mode `worktree` (jamais `in_place`, qui reste hors sandbox, §6.
 `network: 'allowlist'` — la plupart des vérificateurs installent leurs dépendances avant de
 lancer les tests.
 
+**Codage hors dépôt (`session/localcoder.js`) : refus explicite, jamais une copie déguisée.**
+Ce mode travaille EN PLACE dans le dossier réel de l'utilisateur ; le sandboxer reviendrait à
+travailler sur une copie temporaire tout en laissant croire que LE dossier a changé. Avec
+`agent_sandbox: 'required'`, chaque dossier concerné échoue avec `LOCAL_IN_PLACE_UNSUPPORTED_IN_SANDBOX`
+plutôt que de tourner sans isolation ou de mentir sur ce qui a été modifié — jamais en dry-run,
+qui n'invoque aucun agent réel. Proposer un `plan` sur une copie temporaire (§6.4 du plan) reste
+un chantier à part, pas encore fait.
+
 ### `notes/`
 
 Les notes, le brief du matin, les liens, la découverte des MR et des tickets.

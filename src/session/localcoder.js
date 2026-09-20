@@ -177,6 +177,14 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
         if (r) agentpass.attacherDiff('local', taskId, d.id, passeN, { baseSha: avant, headSha: r.sha, diff: r.diff });
       };
 
+      /* CODAGE EN PLACE, dans le dossier RÉEL de l'utilisateur — structurellement incompatible
+       * avec la sandbox sécurisée : l'isoler reviendrait à travailler sur une COPIE, ce qui n'est
+       * plus « en place » et ferait croire que le dossier a été modifié quand seule une copie
+       * l'a été (§6.4 du plan). Refus explicite plutôt qu'une fausse promesse de confinement —
+       * jamais en dry-run, qui n'invoque aucun agent réel. */
+      if (!copilot.isDryRun() && getConfig().agent_sandbox === 'required') {
+        throw require('../sandbox/errors').erreurSandbox('LOCAL_IN_PLACE_UNSUPPORTED_IN_SANDBOX', {});
+      }
       onLog(`codage (${copilot.isDryRun() ? 'dry-run' : 'IA'})`);
       if (copilot.isDryRun() && task.ask_questions && !followup && !reponses) {
         // Dry-run, première passe : l'agent simule ses questions plutôt que de coder.
