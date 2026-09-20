@@ -100,6 +100,11 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 /* La date d'un suivi, sur sa ligne ; le champ garde sa largeur naturelle. */
 .followup-at-line { flex: 1 1 100%; }
 .followup-at-line > input { flex: 0 0 auto; width: auto; }
+/* La date et l'heure de lancement, deux `<input>` natifs côte à côte : chacun garde son propre
+   sélecteur (calendrier / horloge) ET reste saisissable au clavier — pas de largeur imposée par
+   `.form label > input`, ce n'est pas un enfant direct du label. */
+.schedule-inputs { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.schedule-inputs > input { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 /* « Programmée pour le … » et sa croix, dans la ligne de titre de la carte. */
 .tag-programme { color: var(--accent); border-color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
 .tag-x { background: none; border: 0; padding: 0 2px; color: var(--muted); cursor: pointer; line-height: 1; display: inline-flex; align-items: center; }
