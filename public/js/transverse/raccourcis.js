@@ -36,10 +36,6 @@ const SHORTCUTS = [
      CHANGELOG. Le panneau `?` est l'endroit où on les cherche. */
   ['Ctrl/Cmd + Entrée', 'shortcuts.ctrl-enter'],
   ['⇧ + clic', 'shortcuts.shift-click'],
-  /* La dictée : le geste ne se devine pas, et les touches nues sont prises par les cartes.
-     Listé ici comme les deux précédents — un raccourci qui n'est écrit nulle part n'existe
-     que pour qui lit le CHANGELOG. */
-  ['Ctrl/Cmd + Maj + Espace', 'shortcuts.dictation'],
   /* LES COMBOS AU CLAVIER : quatre listes déroulantes à recherche dans l'outil, et le geste
      n'était écrit nulle part — on cliquait, faute de savoir qu'on pouvait taper. */
   ['↓ ↑ · Entrée', 'shortcuts.combo'],

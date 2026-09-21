@@ -56,13 +56,13 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
   test('la barre est rangée dans l’ordre du parcours', async () => {
     const ordre = await page.locator('#tab-admin .subnav [data-sub]')
       .evaluateAll((els) => els.map((e) => e.dataset.sub));
-    /* « Dictée vocale » ferme la marche, à côté de « AI sessions » : ce sont les deux panneaux
-       qui portent un BANC D'ESSAI plutôt qu'un simple réglage — on y vient pour éprouver une
-       installation, pas pour cocher une case en passant. */
+    /* « AI sessions » ferme la marche : c'est le seul panneau qui porte un BANC D'ESSAI plutôt
+       qu'un simple réglage — on y vient pour éprouver une installation, pas pour cocher une
+       case en passant. */
     /* « Données partagées » suit « Général » : les deux règlent L'OUTIL, l'un pour soi, l'autre
        à plusieurs. Elle passe avant Jira et Jenkins, qui branchent des services du dehors. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'datasync', 'jiracfg', 'jenkinscfg', 'aisession', 'dictation']);
+      'notif', 'config', 'datasync', 'jiracfg', 'jenkinscfg', 'aisession']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne

@@ -1,8 +1,7 @@
 'use strict';
 /* DÉCOUPER UNE LIGNE DE COMMANDE EN MOTS, sans shell. C'est ce qui sépare « une commande » de
    « ce qu'un shell en ferait » : ni tube, ni redirection, ni variable — un programme et ses
-   arguments, les guillemets respectés. Les vérificateurs, la dictée et la validation des
-   réglages en ont tous besoin, et aucun ne doit dépendre des deux autres pour ça : d'où core/. */
+   arguments, les guillemets respectés. Les vérificateurs en ont besoin, d'où core/. */
 const META_SHELL = /[;|&<>`$\n\r]|\$\(/;
 
 function decouperCommande(ligne) {

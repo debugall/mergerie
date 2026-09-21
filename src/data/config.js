@@ -1,6 +1,4 @@
 'use strict';
-const fs = require('node:fs');
-const path = require('node:path');
 const db = require('../db');
 const { DEFAULT_CLONE_DIR } = require('../core/paths');
 const { promptsFor } = require('../core/prompts');
@@ -11,9 +9,9 @@ const approbation = require('./approbation');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
    décidé : gabarits de prompt, seuils, politiques, URL de la forge) et dans `local_config` (ce
-   qui appartient à CE POSTE : les sept jetons, le chemin des clones, la langue, le moteur de
-   dictée). Le tri est déclaré une fois pour toutes dans `src/store-registry.js`, colonne par
-   colonne, et `npm run check` refuse un champ sans destination.
+   qui appartient à CE POSTE : les six jetons, le chemin des clones, la langue). Le tri est
+   déclaré une fois pour toutes dans `src/store-registry.js`, colonne par colonne, et
+   `npm run check` refuse un champ sans destination.
 
    Le reste de l'application ne voit rien de ce découpage : `getConfig()` rend le même objet
    qu'avant, `updateConfig()` accepte le même patch. Seule change la table où chaque valeur
@@ -47,15 +45,10 @@ const ALLOWED = [
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
-  'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
-  'dictation_url', 'dictation_api_key', 'dictation_remote_model', 'dictation_language',
-  'dictation_vocabulary', 'dictation_replacements', 'dictation_final_pass',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
 
-/* `opts.installation` : ce qu'écrit l'installation de whisper elle-même (chemin qu'elle vient de
-   poser) — la garde de `dictation_command` ne s'applique qu'à ce qu'on SAISIT. */
-function updateConfig(patch, opts = {}) {
+function updateConfig(patch) {
   const current = getConfig();
   const next = { ...current };
   for (const key of ALLOWED) {
@@ -159,50 +152,6 @@ function updateConfig(patch, opts = {}) {
     const b = parseFloat(String(patch.agent_daily_budget_usd).replace(',', '.'));
     next.agent_daily_budget_usd = Number.isFinite(b) && b >= 0 ? Math.min(100000, Math.round(b * 100) / 100) : 0;
   }
-  /* ---------- Dictée vocale ----------
-     Le fournisseur est une ÉNUMÉRATION : une valeur inconnue retombe sur « éteint » plutôt
-     que d'être écrite telle quelle — un réglage illisible ne doit pas laisser croire qu'un
-     micro est actif. Même règle que pour la langue. */
-  if (!['off', 'local', 'openai', 'browser'].includes(next.dictation_provider)) next.dictation_provider = 'off';
-  if (!['auto', 'fr', 'en'].includes(next.dictation_language)) next.dictation_language = 'auto';
-  if (next.dictation_url) next.dictation_url = next.dictation_url.trim().replace(/\/+$/, '');
-  /* LA COMMANDE DE DICTÉE LANCE UN PROGRAMME. Elle n'accepte que `whisper-server` — cherché dans
-     le PATH, ou par le chemin ABSOLU d'un fichier de ce nom qui existe —, éventuellement derrière
-     `nice`. Tout autre programme (`sh`, `/bin/sh`, `curl`…) ou un chemin relatif est refusé :
-     c'est ici qu'on le voit, pas au premier clic sur le micro. */
-  // Seulement quand elle CHANGE : un binaire désinstallé depuis ne doit pas bloquer l'enregistrement
-  // de tous les autres réglages — le diagnostic de dictée, lui, le signale.
-  if (!opts.installation && 'dictation_command' in patch && String(next.dictation_command || '').trim()
-    && String(next.dictation_command) !== String(current.dictation_command || '')) {
-    // eslint-disable-next-line global-require
-    const d = require('../core/commande').decouperCommande(next.dictation_command);
-    let mots = d.ok ? [d.programme, ...d.args] : [];
-    if (mots[0] === 'nice') mots = mots.slice(1).filter((m, i, l) => !(m.startsWith('-') || (i > 0 && l[i - 1] === '-n')));
-    const prog = mots[0] || '';
-    const fichier = (p) => { try { return path.isAbsolute(p) && fs.statSync(p).isFile(); } catch { return false; } };
-    /* Un chemin absolu ne suffit pas — `/bin/sh -c …` en est un. C'est le SERVEUR whisper, par
-       son nom, où qu'il soit installé. */
-    const estWhisper = (p) => p === 'whisper-server' || (fichier(p) && /^whisper-server(\.exe)?$/i.test(path.basename(p)));
-    if (!d.ok || !estWhisper(prog)) {
-      const e = new Error(t('err.dictation.command-refused', { cmd: String(next.dictation_command).slice(0, 120) }));
-      e.status = 400;
-      throw e;
-    }
-  }
-  /* Fin de phrase : bornée [400, 1500] ms. En dessous, on coupe au milieu d'une respiration
-     et le moteur décode des bouts de mots ; au-dessus, le texte n'arrive plus « pendant
-     qu'on parle », ce qui est toute la promesse. */
-  if ('dictation_silence_ms' in patch) {
-    const ds = parseInt(patch.dictation_silence_ms, 10);
-    next.dictation_silence_ms = Number.isFinite(ds) ? Math.min(1500, Math.max(400, ds)) : 700;
-  }
-  /* Arrêt du moteur après inactivité : 0 = jamais (assumé), sinon au moins une minute.
-     turbo occupe deux gigaoctets de mémoire unifiée — le défaut d'un quart d'heure est là
-     pour ça, pas pour la vitesse. */
-  if ('dictation_idle_minutes' in patch) {
-    const di = parseInt(patch.dictation_idle_minutes, 10);
-    next.dictation_idle_minutes = (!Number.isFinite(di) || di <= 0) ? 0 : Math.min(240, Math.max(1, di));
-  }
   /* ---------- Données partagées ----------
      L'URL est normalisée comme les autres (pas de slash final). La branche vide retombe sur
      `main` : une branche vide ferait échouer le premier `push` avec un message que personne ne
@@ -220,9 +169,9 @@ function updateConfig(patch, opts = {}) {
   /* UNE ADRESSE DE DÉPÔT QUE GIT NE DOIT PAS JOINDRE est refusée À L'ENREGISTREMENT : `ext::`
      y lancerait une commande, `http://` y enverrait les identifiants en clair. Refuser ici, où
      l'écran peut le dire, plutôt qu'au premier tour de synchro, qui échouerait en silence. */
-  /* Seulement quand elle CHANGE, comme la commande de dictée : une adresse enregistrée avant cette
-     règle (un GitLab interne en `http://`) ne doit pas bloquer l'enregistrement de TOUS les autres
-     réglages avec un message sans rapport avec le champ modifié. La synchro, elle, la refuse et le dit. */
+  /* Seulement quand elle CHANGE : une adresse enregistrée avant cette règle (un GitLab interne
+     en `http://`) ne doit pas bloquer l'enregistrement de TOUS les autres réglages avec un
+     message sans rapport avec le champ modifié. La synchro, elle, la refuse et le dit. */
   if (String(next.data_repo_url || '') !== String(current.data_repo_url || '')
     && !adresseAdmise(next.data_repo_url)) throw new Error(t('err.datasync.url-scheme'));
   /* UN GABARIT DE LIEN SANS `{url}` NE PORTE PAS DE LIEN. Le commentaire partirait sur les
@@ -232,8 +181,6 @@ function updateConfig(patch, opts = {}) {
   if (String(next.review_link_template || '').trim() && !String(next.review_link_template).includes('{url}')) {
     throw new Error(t('err.config.link-template-no-url'));
   }
-  // Seconde passe : booléen en texte, ACTIVÉE par défaut (elle ne coûte rien en local).
-  next.dictation_final_pass = next.dictation_final_pass === '0' ? '0' : '1';
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
@@ -268,11 +215,9 @@ function updateConfig(patch, opts = {}) {
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
-      agent_auto_max = @agent_auto_max,
-      dictation_vocabulary = @dictation_vocabulary,
-      dictation_replacements = @dictation_replacements
+      agent_auto_max = @agent_auto_max
     WHERE id = 1`).run(next);
-  /* CE QUI APPARTIENT À CE POSTE. Les sept jetons sont ici, et nulle part ailleurs : les
+  /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
   db.prepare(`UPDATE local_config SET
       access_token = @access_token,
@@ -284,17 +229,6 @@ function updateConfig(patch, opts = {}) {
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,
-      dictation_provider = @dictation_provider,
-      dictation_model = @dictation_model,
-      dictation_vad_model = @dictation_vad_model,
-      dictation_command = @dictation_command,
-      dictation_url = @dictation_url,
-      dictation_api_key = @dictation_api_key,
-      dictation_remote_model = @dictation_remote_model,
-      dictation_language = @dictation_language,
-      dictation_silence_ms = @dictation_silence_ms,
-      dictation_final_pass = @dictation_final_pass,
-      dictation_idle_minutes = @dictation_idle_minutes,
       data_repo_url = @data_repo_url,
       data_repo_branch = @data_repo_branch,
       data_sync_seconds = @data_sync_seconds,

@@ -7,9 +7,9 @@ const db = require('../connexion');
 /* ---------- CE QUI RESTE SUR CE POSTE : `local_config` ----------
  *
  * `config` est une table d'équipe : gabarits de prompt, seuils, politiques, URL de la forge.
- * Elle porte pourtant sept jetons d'API, le chemin des clones et le moteur de dictée de CETTE
- * machine — autant de choses qui n'ont rien à faire dans un dépôt partagé, et que le lot
- * « base partagée » y enverrait si on ne les sortait pas.
+ * Elle porte pourtant six jetons d'API et le chemin des clones de CETTE machine — autant de
+ * choses qui n'ont rien à faire dans un dépôt partagé, et que le lot « base partagée » y
+ * enverrait si on ne les sortait pas.
  *
  * Le tri n'est pas fait ici : il est déclaré dans `src/store-registry.js`, où chaque colonne de
  * `config` figure nommément dans `locales` (ce poste) ou dans `partagees` (l'équipe), les deux
@@ -33,21 +33,10 @@ const COLONNES_LOCALES = [
   ["jira_token", "TEXT DEFAULT ''"],
   ["jenkins_user", "TEXT DEFAULT ''"],
   ["jenkins_token", "TEXT DEFAULT ''"],
-  ["dictation_api_key", "TEXT DEFAULT ''"],
   ["clone_path", "TEXT DEFAULT ''"],
   ["language", "TEXT DEFAULT 'fr'"],
   ['jenkins_refresh_minutes', 'INTEGER DEFAULT 1'],
   ['git_commands_seeded', 'INTEGER DEFAULT 0'],
-  ["dictation_provider", "TEXT DEFAULT 'off'"],
-  ["dictation_model", "TEXT DEFAULT ''"],
-  ["dictation_vad_model", "TEXT DEFAULT ''"],
-  ["dictation_command", "TEXT DEFAULT ''"],
-  ["dictation_url", "TEXT DEFAULT 'https://api.openai.com'"],
-  ["dictation_remote_model", "TEXT DEFAULT 'gpt-4o-mini-transcribe'"],
-  ["dictation_language", "TEXT DEFAULT 'auto'"],
-  ['dictation_silence_ms', 'INTEGER DEFAULT 700'],
-  ["dictation_final_pass", "TEXT DEFAULT '1'"],
-  ['dictation_idle_minutes', 'INTEGER DEFAULT 15'],
   /* LE DÉPÔT DE DONNÉES PARTAGÉ. De poste, et non d'équipe : c'est l'adresse par laquelle CE
      poste rejoint l'équipe, et elle doit être renseignée avant que quoi que ce soit soit
      partagé — la mettre dans les réglages d'équipe serait circulaire. Vide = mode mono-poste,

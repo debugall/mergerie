@@ -2085,7 +2085,7 @@ tous de même nature. Un réglage d'**équipe** décrit l'outil : les gabarits d
 les politiques de review, l'adresse de la forge — deux reviews de la même merge request faites avec
 des consignes différentes ne sont pas comparables, donc ces réglages-là sont faits pour être
 communs. Un réglage de **ce poste** n'appartient qu'à ta machine : les jetons d'API, le dossier de
-clonage, la langue, le moteur de dictée. Ils sont rangés à part, dans une table qui n'a pas
+clonage, la langue. Ils sont rangés à part, dans une table qui n'a pas
 vocation à voyager : c'est ce qui permettra plus tard à une équipe de partager son outil sans que
 le moindre secret quitte les machines.
 
@@ -2190,95 +2190,6 @@ seuls les gabarits restés au défaut sont réalignés.
 > Migration en cours : la coquille de l'interface, les notifications et les messages d'erreur
 > sont traduits ; le contenu des cartes et des listes est encore en français.
 > Contrôle de cohérence du dictionnaire : `npm run i18n:check`.
-
-### Dictée vocale
-Un **micro apparaît sur le champ où tu écris** : tu parles, le texte s'écrit **au curseur**, comme
-si tu l'avais tapé. Le clic sur le micro, ou **`Ctrl`/`Cmd` + `Maj` + `Espace`** ; **`Échap`** arrête.
-Éteinte par défaut — elle s'allume dans **Réglages → Dictée vocale**, et tant qu'aucun fournisseur
-n'est choisi, aucun micro n'apparaît nulle part.
-
-Une phrase dans l'autre langue ne vaut pas d'aller changer un réglage : **⇧-clic sur le micro**
-dicte dans l'autre langue, le temps de cette dictée-là — et la bulle l'annonce (« J'écoute (EN) »).
-
-Elle est proposée sur tous les champs de **rédaction** : le prompt d'une session, un suivi, une
-réponse à l'agent, un commentaire de merge request, une page de notes, une todo, un message de
-commit, une règle de review. Pas sur les champs d'URL, de jeton, de chemin ni de recherche : on
-n'y dicte pas, et un micro y serait du bruit.
-
-#### Ce qui la rend précise sur *tes* noms
-Un moteur généraliste écrit « la mer je-re-re-queuse 244 sur Eubat Front ». Mergerie envoie au
-moteur, **avec chaque phrase**, le vocabulaire qu'elle connaît déjà : tes **dépôts**, tes
-**services** et **environnements** de l'onglet Liens, tes **préfixes de clés Jira**, tes
-**vérificateurs**, tes **jobs Jenkins liés**, et les **branches des merge requests ouvertes**. La
-même phrase ressort alors « la merge request 244 sur webapp-front ». C'est le levier le plus
-efficace de toute la fonctionnalité, et il ne coûte rien à l'exécution.
-
-Deux réglages complètent ce que la base ne peut pas deviner :
-
-- le **glossaire** — un terme par ligne : noms de code, acronymes maison, prénoms. Il passe **en
-  premier** et n'est jamais évincé par la limite du moteur ;
-- les **corrections** — `entendu => écrit`, une par ligne : la réponse aux erreurs qui reviennent
-  toujours sur les mêmes mots (« Jean-Kim => Jenkins »). Mot entier, sans tenir compte de la casse.
-
-Ce qui est dicté est ensuite remis en forme : `!214` et `PROJ-720` sont reconstitués depuis leurs
-formes parlées (« MR 214 », « proj tiret 720 ») — ce sont eux qui deviennent des liens dans les
-notes et des cibles dans la palette —, l'espace insécable du français est posée devant `? ! : ;`
-mais **jamais dans un bloc de code**, et la majuscule arrive après un point. Trois commandes
-vocales, et pas une de plus : « nouvelle ligne », « nouveau paragraphe », « annule ça » (elles ne
-valent que **seules** dans une phrase ; la ponctuation, elle, ne se dicte pas — le moteur la met).
-
-#### Les silences font le rythme
-Une phrase part à la transcription après **700 ms de silence** (réglable de 400 à 1500), ou au bout
-de douze secondes de parole continue. Le texte arrive donc **pendant** qu'on parle, environ une
-seconde après la fin de la phrase, et non à l'arrêt. À l'arrêt, justement, l'**audio complet est
-relu d'un bloc** en arrière-plan et remplace ce qui a été inséré — un peu plus juste, parce que
-décodé avec tout son contexte. Cette relecture ne touche à rien si tu as déjà corrigé le texte
-toi-même, et se désactive.
-
-Le moteur **invente du texte sur le silence** — « Sous-titres réalisés par la communauté
-d'Amara.org » est la phrase fantôme la plus célèbre en français. Quatre gardes l'en empêchent :
-détection de voix dans le navigateur, détection de voix côté moteur, seuils de décodage, et une
-liste de phrases fantômes. Ce qui est écarté est **compté**, et le compte s'affiche dans les
-réglages : s'il monte, le micro capte du bruit.
-
-#### Trois fournisseurs, un seul réglage
-| Fournisseur | Où va l'audio | Ce qu'il faut |
-|---|---|---|
-| **whisper.cpp (local)** — recommandé | Nulle part : navigateur → serveur → moteur sur `127.0.0.1`. Jamais écrit sur disque. | Un binaire et un modèle, installés depuis l'écran (ci-dessous) |
-| **API compatible OpenAI** | Chez le fournisseur que tu configures (OpenAI, Groq, Mistral, LocalAI…) | Une URL, une clé, un nom de modèle |
-| **Navigateur** | **Chez Google (Chrome) ou Apple (Safari)** — dit en toutes lettres à l'écran | Rien à installer. Moins précis : aucun vocabulaire ne peut lui être fourni |
-
-#### Installer le moteur local, et savoir qu'il marche
-Le panneau **Réglages → Dictée vocale** ne fait pas un « ping » : il **déroule la chaîne** et nomme
-la première marche qui casse, avec le geste qui la répare — binaire, modèle, détection de voix,
-démarrage (avec l'**accélération détectée** : Metal, CUDA, Vulkan ou processeur), transcription
-d'un échantillon, vocabulaire, puis deux étapes que le serveur ne peut pas connaître : l'**origine
-sûre** et le **micro** (accordé *et* qui entend vraiment quelque chose).
-
-**« Installer »** lance le script du dépôt qui correspond au système **du serveur**, dans un job :
-son journal s'affiche en direct, « Stop » l'arrête proprement, et un téléchargement interrompu
-reprend au lancement suivant. Avant de partir, il **nomme ce qui va se passer** — un téléchargement
-de 1,6 Go ne se déclenche pas d'un clic muet — et rien n'est demandé en administrateur. À la fin, il
-**remplit les réglages** lui-même et relance le test : le tableau passe au vert sans un clic de plus.
-
-Le même travail à la main, si tu préfères :
-
-```sh
-sh scripts/install-whisper.sh                     # large-v3-turbo (1,6 Go), dans data/models
-sh scripts/install-whisper.sh --model large-v3-turbo-q5_0   # 574 Mo, machine sans GPU
-powershell -ExecutionPolicy Bypass -File scripts\install-whisper.ps1   # Windows
-```
-
-Sur macOS Apple Silicon, Metal est actif d'office et une phrase de dix secondes se transcrit en une
-seconde environ. Sur une machine sans GPU, compter trois à cinq fois plus et préférer le modèle
-`q5_0`. Le moteur s'arrête tout seul après **quinze minutes sans dictée** (il occupe deux
-gigaoctets) et redémarre au survol du micro. Il s'arrête aussi **avec Mergerie** : jamais de
-process oublié qui garderait la mémoire après la fermeture.
-
-> **Le micro est refusé ?** Le navigateur ne le donne que sur une **origine sûre** : `localhost` ou
-> HTTPS. Avec `HOST=0.0.0.0` et une adresse `http://192.168.…`, il refusera — ouvre l'outil sur
-> `http://localhost:4319`, ou passe par un tunnel SSH. Le panneau de diagnostic le dit, et donne le
-> chemin. Si la permission a été refusée une fois, elle se rétablit dans les réglages du site.
 
 ### Confort d'usage
 **Les objets ont une adresse.** Un rapport de review, une session et une page de notes s'écrivent
@@ -2755,9 +2666,6 @@ passe devant le fichier.
 | `JENKINS_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour Jenkins uniquement** (dépannage) |
 | `GIT_CLONE_SSH` | 0 | `1` = clone via SSH (ta clé) au lieu de HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | dossier de données isolé (utile pour les tests) |
-| `DICTATION_DRY_RUN` | 0 | `1` = moteur de **dictée simulé** (phrases scriptées, durée réelle de l'audio mesurée) |
-| `DICTATION_CA` | — | CA à épingler pour un fournisseur de **transcription** derrière un certificat d'entreprise |
-| `DICTATION_INSECURE` | 0 | `1` = ignore la vérif TLS **pour la transcription uniquement** (dépannage) |
 
 L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 
@@ -2851,8 +2759,8 @@ instance, **ses** jetons et **son** abonnement au CLI d'IA : les requêtes parte
 lui sont facturées, et c'est le résultat qui est partagé. Il n'y a rien à installer, rien à
 administrer : l'équipe a déjà une forge, des droits, des sauvegardes et un historique.
 
-**Ce qui ne part JAMAIS dans le dépôt.** Les sept jetons d'API, le dossier de clonage, la langue,
-le moteur de dictée, les chemins absolus de cette machine, les sessions rangées, les journaux de
+**Ce qui ne part JAMAIS dans le dépôt.** Les six jetons d'API, le dossier de clonage, la langue,
+les chemins absolus de cette machine, les sessions rangées, les journaux de
 jobs. Chaque colonne de la base est classée nommément, et un contrôle automatique refuse une
 colonne au nom de secret qui ne serait pas déclarée — parce qu'**un secret commité dans git est
 définitif** : l'historique est immuable, chaque clone le garde, la forge le garde. Le retirer ne
@@ -3127,16 +3035,7 @@ processus. La **vérification automatique** ne part ni sur un **brouillon**, ni 
 par le nom affiché) — « tous les auteurs » est un choix explicite (Réglages → Vérificateurs). Un run
 automatique tourne avec un **`HOME` jetable** : ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`.
 
-**Dictée vocale.** Ce qui est dit part **où le fournisseur choisi l'envoie**, et l'écran le dit avant
-qu'on choisisse. Avec le moteur **local** (le défaut recommandé), l'audio va du navigateur au serveur sur
-`localhost`, puis au moteur sur `127.0.0.1` : il n'est **jamais écrit sur disque** ni journalisé. Le moteur
-est lancé **sans shell**, avec un environnement **minimal sans aucun jeton** ; la commande enregistrée doit
-être `whisper-server`, cherché dans le PATH ou désigné par le **chemin absolu d'un fichier `whisper-server` existant** (éventuellement derrière `nice`) — un autre programme, `/bin/sh` compris, est refusé. Le
-corps audio est plafonné à 10 Mo et son **en-tête WAV est validé**. Le bouton **« Installer »** lance le
-script du dépôt, qui télécharge une **version épinglée** de whisper.cpp et des modèles, et **vérifie
-l'empreinte sha256** de chaque fichier avant de l'utiliser.
-
-**Secrets.** Les jetons (GitLab, GitHub, Jira, Jenkins, clé de dictée) sont stockés **en local**, dans une
+**Secrets.** Les jetons (GitLab, GitHub, Jira, Jenkins) sont stockés **en local**, dans une
 table de poste qui ne voyage jamais, sous un dossier de données créé en `0700`. L'API et l'UI ne les
 renvoient **jamais en clair** (`***`), et envoyer `***` **ne les écrase pas**. Un bouton **« Tester »**
 dont l'adresse a changé exige de **retaper** le jeton : le jeton enregistré n'est jamais envoyé qu'à son

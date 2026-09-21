@@ -119,7 +119,7 @@ function modeDEmploi(maintenant, contenu) {
     '  inclure multiplierait la taille de cette archive sans rien sauver d’irremplaçable.',
     '',
     'CETTE ARCHIVE CONTIENT VOS JETONS',
-    '  La base qu’elle emporte garde les jetons de ce poste (forge, Jira, Jenkins, dictée) :',
+    '  La base qu’elle emporte garde les jetons de ce poste (forge, Jira, Jenkins) :',
     '  gardez-la comme un mot de passe — pas dans un dossier partagé, pas en pièce jointe.',
     '',
     'SI VOUS PARTAGEZ VOS DONNÉES AVEC UNE ÉQUIPE',

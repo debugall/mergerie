@@ -4,8 +4,8 @@
  * Deux frontières, éprouvées entre DEUX VRAIS POSTES (ce serveur piloté par l'écran, et Claire,
  * seconde instance de Mergerie en processus enfant — `helpers/synchro-collegue`) :
  *
- * 1. CE QUI NE QUITTE PAS CE POSTE. Les jetons saisis À L'ÉCRAN (GitLab, GitHub, Jira, Jenkins,
- *    dictée), l'e-mail et l'utilisateur de connexion, les VALEURS d'environnement d'un
+ * 1. CE QUI NE QUITTE PAS CE POSTE. Les jetons saisis À L'ÉCRAN (GitLab, GitHub, Jira, Jenkins),
+ *    l'e-mail et l'utilisateur de connexion, les VALEURS d'environnement d'un
  *    vérificateur, les chemins de ce disque (dossier de clonage, dossier d'une session hors
  *    dépôt), les poignées de session d'agent. On ne regarde pas un libellé : on fouille TOUT
  *    l'historique du dépôt nu — un secret commité puis retiré reste dans chaque clone, il faut le
@@ -42,7 +42,6 @@ const SECRETS = {
   jira_token: 'ATATT-FUITE-ECRAN-JIRA',
   jenkins_user: 'fuite-jenkins-utilisateur',
   jenkins_token: 'jk-FUITE-ECRAN-JENKINS',
-  dictation_api_key: 'sk-FUITE-DICTEE',
   env: 'postgres://FUITE-VERIF@db.interne/app',
   session_key: 'SESSION-FUITE-POIGNEE',
 };
@@ -130,12 +129,6 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       await attendreServeur(async () => Object.entries(champs).every(([n, v]) => n.endsWith('_url') || localCfg()[n] === v),
         `les champs de « ${sub} » sont en base, côté poste`);
     }
-    // La clé de dictée n'a de champ qu'avec le fournisseur distant : par l'API.
-    await app.api('PUT', '/api/config', {
-      dictation_provider: 'openai', dictation_url: 'https://stt.equipe.test', dictation_api_key: SECRETS.dictation_api_key,
-    });
-    assert.equal(localCfg().dictation_api_key, SECRETS.dictation_api_key);
-
     // Un vérificateur avec la VALEUR d'une variable, et un réglage d'équipe qui, lui, doit partir.
     const v = await app.api('POST', '/api/verifiers', {
       name: 'Vérif du poste', kind: 'commands', commands: ['npm test'], env: `DATABASE_URL=${SECRETS.env}`, repos: [],
@@ -189,7 +182,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
     }
     const reglages = JSON.parse(gitNu('show', 'main:settings.json'));
     for (const cle of ['access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token',
-      'dictation_api_key', 'clone_path', 'data_repo_url', 'data_repo_branch', 'data_sync_seconds']) {
+      'clone_path', 'data_repo_url', 'data_repo_branch', 'data_sync_seconds']) {
       assert.ok(!(cle in reglages), `settings.json ne porte pas « ${cle} »`);
     }
   });

@@ -159,8 +159,7 @@ app.get('/api/footer', wrap((req, res) => {
   });
 }));
 /* Aucun jeton ne redescend au front : '***' dit « il y en a un », '' dit « il n'y en a
-   pas », et le front renvoie le masque tel quel quand il n'y a pas touché. La clé de dictée
-   suit la même règle que les jetons de forge et de Jira — c'en est un. */
+   pas », et le front renvoie le masque tel quel quand il n'y a pas touché. */
 function sansSecrets(c) {
   return {
     ...c,
@@ -168,14 +167,13 @@ function sansSecrets(c) {
     jira_token: c.jira_token ? '***' : '',
     github_token: c.github_token ? '***' : '',
     jenkins_token: c.jenkins_token ? '***' : '',
-    dictation_api_key: c.dictation_api_key ? '***' : '',
   };
 }
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
   /* `scopes` dit, champ par champ, ce qu'un changement ENGAGE : « equipe » (le réglage vit dans
      `config` et partira dans le dépôt de données partagé) ou « poste » (il reste sur cette
-     machine — les jetons, le chemin des clones, la langue, le moteur de dictée). L'écran en fait
+     machine — les jetons, le chemin des clones, la langue). L'écran en fait
      un badge à côté de chaque champ. La liste vient du registre, pas d'une copie côté client :
      dupliquée, elle mentirait au premier réglage déplacé, et un badge qui ment sur un jeton est
      pire que pas de badge du tout. */
@@ -204,7 +202,6 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
   if (patch.jenkins_token === '***') delete patch.jenkins_token;
-  if (patch.dictation_api_key === '***') delete patch.dictation_api_key;
   const avant = getConfig();
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue

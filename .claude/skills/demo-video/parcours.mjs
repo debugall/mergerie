@@ -700,11 +700,6 @@ async function principal() {
   await versEl('#btnTestGitlab'); await dit();
   await clique(reglage('notif'));
   await versEl('#notifThreshold'); await dit();
-  /* LA DICTÉE : un micro sur chaque champ, et le vocabulaire des dépôts donné au moteur. */
-  await clique(reglage('dictation'));
-  await montreOptions('#dictationProvider'); await dit();
-  await fermeOptions('#dictationProvider');
-  await versEl('#dictationPanel'); await dit();
 
   /* Journal : on lance une vraie recherche de MR (elle rend maintenant un compte propre en
      démo), puis on désigne la barre du bas. On n'ouvre PAS le panneau de logs : il ne se

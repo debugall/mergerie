@@ -96,3 +96,9 @@ try { db.exec('ALTER TABLE config ADD COLUMN agent_daily_budget_usd REAL NOT NUL
    `runner` porte l'identité git de l'exécutant ; vide = personne, l'agent ne tourne qu'à la
    main. Migration APRÈS le `CREATE TABLE agent` ci-dessus. */
 try { db.exec('ALTER TABLE agent ADD COLUMN runner TEXT'); } catch { /* déjà présente */ }
+
+/* Rapatrié depuis l'ancienne tranche 11 (supprimée avec la dictée vocale, qui n'avait rien à
+   voir avec ce DROP) : une base qui n'a jamais joué cette tranche ne doit pas garder ces deux
+   colonnes de `config`, orphelines depuis longtemps. */
+try { db.exec('ALTER TABLE config DROP COLUMN health_check'); } catch { /* déjà retirée */ }
+try { db.exec('ALTER TABLE config DROP COLUMN health_minutes'); } catch { /* déjà retirée */ }

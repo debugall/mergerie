@@ -10,8 +10,8 @@
  *   — la LECTURE CROISÉE : une page d'un autre site qui interroge l'API ;
  *   — les GET À EFFET DE BORD, qui échappaient au filtre d'origine : la sauvegarde (la base avec
  *     ses jetons) et l'aperçu du dépôt de données (un `git ls-remote` vers l'adresse reçue) ;
- *   — la POLITIQUE DE CONTENU, vérifiée À L'ÉCRAN : une règle qui bloquerait Mermaid ou la
- *     dictée passerait tous les tests d'API et casserait l'outil ;
+ *   — la POLITIQUE DE CONTENU, vérifiée À L'ÉCRAN : une règle qui bloquerait Mermaid
+ *     passerait tous les tests d'API et casserait l'outil ;
  *   — l'EXPOSITION au réseau, qui ne démarre plus sans jeton d'accès.
  *
  * `http.request` et non `fetch` : `Host` est un en-tête interdit pour `fetch`, qui refuse de le

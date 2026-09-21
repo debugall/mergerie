@@ -57,7 +57,7 @@ le **vidage des remarques en attente**, le **tri de la file**, la **carte de dom
 une merge request, ce que la **veille** a vu (conteneurs tombés, builds terminés), **Copier pour
 le daily**, le **report d'une todo**, **Coller une adresse**, les **opérations git** dans les
 stats, **Merge** et **Comparer** dans l'onglet Git, ce que **Mergerie sait d'un ticket Jira**,
-les **tickets surveillés**, et la **dictée vocale**.
+et les **tickets surveillés**.
 
 ## Ce qui avait cassé le parcours, et qui recassera pareil
 
