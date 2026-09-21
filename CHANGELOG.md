@@ -32,6 +32,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   “Launch later”, in the coding, exploration and off-repo forms alike. The accordion (commit
   message, agent session to resume, skills) is folded by default so the form fits the screen; one
   click unfolds it, and editing a session unfolds it by itself when one of its fields holds a value.
+- **Scheduling a session's launch now uses a date field and a time field, side by side**,
+  instead of one combined field — each opens its own native picker (a calendar, a clock), and
+  both stay just as typeable by hand. Filling only one of the two is signalled under the field
+  that's missing, the same way a passed date already was.
 
 ### Added
 
