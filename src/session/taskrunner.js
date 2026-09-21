@@ -9,7 +9,7 @@ const git = require('../git/git');
 const configagent = require('../data/configagent');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
-const crypto = require('node:crypto');
+const protocolesecret = require('../core/protocolesecret');
 const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
@@ -200,9 +200,10 @@ async function reappliquerMessage(cwd, branch, message, onLog = () => {}) {
    aux questions), la consigne n'est envoyée qu'à la CRÉATION de la session — l'agent la garde
    en mémoire, mais aucune passe suivante ne la réémet, donc le parseur d'une passe suivante doit
    reconnaître le nonce que l'agent a gardé, pas en attendre un nouveau qu'il n'a jamais vu.
-   Dérivé de l'id de la tâche : stable sur toute sa durée, et une donnée ne le devine pas plus
-   qu'elle ne devine l'id interne de la session qui la traite. */
-const nonceQuestionsTache = (task) => crypto.createHash('sha256').update(`questions-${task && task.id}`).digest('hex').slice(0, 6);
+   Dérivé de l'id de la tâche PAR HMAC (`core/protocolesecret.js`, revue de add-secure-layer-2) :
+   un simple hachage de l'id, sans secret, se précalcule pour tous les ids plausibles depuis un
+   fichier que l'agent lirait ; l'HMAC ferme ce calcul derrière le secret de ce poste. */
+const nonceQuestionsTache = (task) => protocolesecret.hmac(`questions-${task && task.id}`, 12);
 
 /* Prompt de dev et message de commit d'une session : UNE seule définition, partagée
    par la session « normale » (runTask) et la session « convergée » (converge.js).

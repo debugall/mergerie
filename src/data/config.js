@@ -165,7 +165,12 @@ function updateConfig(patch) {
   if (!['sandbox', 'allowlist', 'large'].includes(next.agent_write_mode)) next.agent_write_mode = 'sandbox';
   next.agent_write_allow = String(next.agent_write_allow || '').trim();
   next.agent_sandbox_network_domains = String(next.agent_sandbox_network_domains || '').trim();
-  next.agent_read_unrestricted = next.agent_read_unrestricted === '1' ? '1' : '0';
+  /* COLONNE INTEGER, PAS TEXT COMME SES VOISINES (revue de add-secure-layer-2) : relue depuis
+     `local_config`, sa valeur est le NOMBRE 1 ou 0, jamais la CHAÎNE '1' — un `=== '1'` la
+     ratait donc à chaque tour, et remettait ce choix explicite à 0 dès la moindre mise à jour
+     partielle de la config qui ne le touchait pas. `String(…)` avant comparaison couvre les
+     deux formes. */
+  next.agent_read_unrestricted = String(next.agent_read_unrestricted) === '1' ? '1' : '0';
   /* ---------- Données partagées ----------
      L'URL est normalisée comme les autres (pas de slash final). La branche vide retombe sur
      `main` : une branche vide ferait échouer le premier `push` avec un message que personne ne

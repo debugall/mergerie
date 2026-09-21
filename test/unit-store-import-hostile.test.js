@@ -206,4 +206,37 @@ describe('Import du dépôt partagé : ce qui vient d’ailleurs', () => {
     assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_fail',
       'le verdict d’origine reste celui que l’écran et l’automatisme lisent');
   });
+
+  /* Revue de add-secure-layer-2 : une synchro tombée PENDANT le run (avant que `verdict` et
+     `finished_at` n'existent) ne doit pas figer l'empreinte sur la version sans verdict — sinon
+     le verdict final, arrivé ensuite, se fait refuser comme « modifié après sa création » et
+     personne ne le voit jamais. */
+  test('une vérification vue EN COURS n’empêche pas d’accueillir son verdict final', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('unit', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, targets_json, created_at)
+      VALUES (?, 'unit', 'running', '[]', ?)`).run(vid, now).lastInsertRowid;
+    store.rafraichir('verification', id);
+    const uid = db.prepare('SELECT uid FROM verification WHERE id = ?').get(id).uid;
+    const rel = `verifications/${uid}.json`;
+
+    // Un collègue synchronise PENDANT le run : le fichier n'a ni verdict ni finished_at.
+    const enCours = lire(rel);
+    assert.ok(!enCours.verdict, 'pas encore de verdict');
+    assert.ok(!enCours.finished_at, 'pas encore fini');
+    const bilanEnCours = store.hydraterFichiers([rel]);
+    assert.ok(!bilanEnCours.orphelins.length, `rien à refuser sur une vérification en cours : ${bilanEnCours.orphelins.join(' | ')}`);
+
+    // Le run se termine, le verdict et finished_at arrivent, ré-exportés dans le même fichier.
+    db.prepare("UPDATE verification SET status = 'done', verdict = 'verified_pass', finished_at = ? WHERE id = ?").run(now, id);
+    store.rafraichir('verification', id);
+    const termine = lire(rel);
+    assert.equal(termine.verdict, 'verified_pass');
+
+    // La synchro suivante, chez ce même collègue, doit accueillir ce verdict — pas le refuser.
+    const bilanFinal = store.hydraterFichiers([rel]);
+    assert.ok(!bilanFinal.orphelins.length, `le verdict final est accueilli : ${bilanFinal.orphelins.join(' | ')}`);
+    assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_pass');
+  });
 });

@@ -64,6 +64,7 @@ function interditsDonnees() {
   const path = require('node:path');
   const { DATA_DIR, ROOT } = require('../core/paths');
   const jetonlocal = require('../core/jetonlocal');
+  const protocolesecret = require('../core/protocolesecret');
   const fs = require('node:fs');
   /* Le CLI compare au chemin RÉEL (`/var` → `/private/var` sur macOS) : on pose les deux. */
   const reels = (p) => { const r = [path.resolve(p)]; try { r.push(fs.realpathSync(p)); } catch { /* absent */ } return r; };
@@ -73,6 +74,10 @@ function interditsDonnees() {
     /* Le jeton de session local (lot B, S1) : lu par un agent, il ouvrirait l'API depuis SON
        Bash comme n'importe quel processus du poste. */
     ...reels(jetonlocal.FICHIER).map(abs),
+    /* Le secret des nonces de protocole (lot D, revue) : lu par un agent, il pourrait forger
+       n'importe quel bloc `<<<AGENT…>>>`/`<<<QUESTIONS…>>>` et le glisser dans un fichier qu'un
+       AUTRE run lirait comme sa propre sortie. */
+    ...reels(protocolesecret.FICHIER).map(abs),
     ...[path.join(ROOT, '.env'), path.join(process.cwd(), '.env')].flatMap(reels).map(abs),
   ];
   return [...new Set(cibles)].flatMap((c) => [`Read(${c})`, `Edit(${c})`]);
@@ -173,9 +178,11 @@ function sandboxDenyRead() {
   const path = require('node:path');
   const { DATA_DIR, ROOT } = require('../core/paths');
   const jetonlocal = require('../core/jetonlocal');
+  const protocolesecret = require('../core/protocolesecret');
   return [
     path.join(DATA_DIR, 'reviewer.db*'),
     jetonlocal.FICHIER,
+    protocolesecret.FICHIER,
     path.join(DATA_DIR, 'shared'),
     path.join(ROOT, '.env'),
     '~/.ssh', '~/.aws', '~/.config/gh', '~/.netrc',
@@ -204,7 +211,11 @@ function sandboxSettings(cwd) {
 /* Les commandes des VÉRIFICATEURS APPROUVÉS sur ce poste (Réglages → Vérificateurs) : ce qu'on
    sait déjà vouloir laisser tourner sans surveillance — `npm test`, `npm run lint`… — devient la
    liste blanche du repli sans sandbox. Un vérificateur non approuvé n'y contribue rien : son
-   contenu peut avoir changé par la synchro sans qu'on l'ait relu (`data/approbation.js`). */
+   contenu peut avoir changé par la synchro sans qu'on l'ait relu (`data/approbation.js`).
+   L'ENTRÉE EST LA COMMANDE EXACTE, jamais `Bash(<programme>:*)` (revue de add-secure-layer-2) :
+   un `:*` sur `npm` autorise aussi `npm exec`/`npm publish`/`npm run <n'importe quoi>`, sur
+   `node` autorise `node -e "…"` — un shell complet, alors que seule LA commande approuvée doit
+   tourner sans surveillance. */
 function commandesVerificateursApprouves() {
   const db = require('../db');
   const approbation = require('../data/approbation');
@@ -212,8 +223,8 @@ function commandesVerificateursApprouves() {
   for (const v of db.prepare('SELECT id FROM verifier').all()) {
     if (!approbation.verificateurApprouve(v.id)) continue;
     for (const c of db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position').all(v.id)) {
-      const prog = String((c && c.command) || '').trim().split(/\s+/)[0];
-      if (prog) out.add(`Bash(${prog}:*)`);
+      const cmd = String((c && c.command) || '').trim();
+      if (cmd) out.add(`Bash(${cmd})`);
     }
   }
   return [...out];

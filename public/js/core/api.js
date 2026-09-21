@@ -12,6 +12,12 @@ async function api(path, opts = {}) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    /* LE JETON LOCAL EST RÉGÉNÉRÉ À CHAQUE DÉMARRAGE DU SERVEUR (revue de add-secure-layer-2) :
+       un onglet resté ouvert depuis avant un redémarrage porte l'ANCIEN cookie, et resterait
+       bloqué en 401 sur chaque appel jusqu'à ce qu'on recharge la page à la main. On le fait à
+       sa place — recharger repose un cookie frais (`GET /` le fait), et c'est la seule sortie :
+       aucun jeton présenté par l'utilisateur ne peut réparer celui-ci. */
+    if (data.code === 'JETON_LOCAL') { location.reload(); }
     const e = new Error(data.error || res.statusText);
     /* Le CODE du refus, quand le serveur en donne un. Reconnaître un cas particulier au mot
        près dans le message ne marcherait pas : il est traduit. */

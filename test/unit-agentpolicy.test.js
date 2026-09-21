@@ -168,14 +168,29 @@ describe('agentpolicy : écriture — plus jamais de mode large sans réglage ex
     assert.equal(r.sandboxDemandeNonVerifie, false);
   });
 
-  test('les commandes des vérificateurs APPROUVÉS entrent dans la liste blanche', () => {
+  /* Revue de add-secure-layer-2 : la commande approuvée entre EXACTE, jamais en `prog:*` — sinon
+     approuver « npm test » autoriserait aussi « npm publish » ou « node -e "…" » selon le
+     programme, un shell complet en mode allowlist. */
+  test('les commandes des vérificateurs APPROUVÉS entrent dans la liste blanche, EXACTES', () => {
     const now = new Date().toISOString();
     const vid = db.prepare("INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at) VALUES ('t', '', 60, 0, 0, ?)").run(now).lastInsertRowid;
     db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(vid, 'npm test');
     approbation.approuverVerificateur(vid);
     const r = pol.argvPermissions({ backend: 'claude', bin: COMPLET, extra: [], kind: 'code' });
     const outils = r.args[r.args.indexOf('--allowedTools') + 1];
-    assert.match(outils, /Bash\(npm:\*\)/, outils);
+    assert.match(outils, /Bash\(npm test\)/, outils);
+    assert.equal(/Bash\(npm:\*\)/.test(outils), false, 'un programme entier autorisé, pas juste sa commande, serait trop large');
+  });
+
+  test('un interpréteur approuvé (node, bash…) n’ouvre que SA commande, jamais tout le programme', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare("INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at) VALUES ('t2', '', 60, 0, 0, ?)").run(now).lastInsertRowid;
+    db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(vid, 'node scripts/test.js');
+    approbation.approuverVerificateur(vid);
+    const r = pol.argvPermissions({ backend: 'claude', bin: COMPLET, extra: [], kind: 'code' });
+    const outils = r.args[r.args.indexOf('--allowedTools') + 1];
+    assert.match(outils, /Bash\(node scripts\/test\.js\)/, outils);
+    assert.equal(/Bash\(node:\*\)/.test(outils), false, '« node -e » ne doit pas être ouvert par la commande approuvée');
   });
 
   test('agent_write_allow ajoute des commandes explicites à la liste blanche', () => {
@@ -184,6 +199,29 @@ describe('agentpolicy : écriture — plus jamais de mode large sans réglage ex
     const outils = r.args[r.args.indexOf('--allowedTools') + 1];
     assert.match(outils, /Bash\(make\)/);
     assert.match(outils, /Bash\(mvn:\*\)/);
+  });
+
+  /* Revue de add-secure-layer-2 : les nonces de protocole (`protocol.nonceAgentRun`,
+     `taskrunner.nonceQuestionsTache`) sont un HMAC gardé par ce secret — un agent qui le lirait
+     pourrait forger n'importe quel bloc `<<<AGENT…>>>` pour n'importe quel id. */
+  test('le secret des nonces de protocole est fermé à l’agent, comme le jeton local', () => {
+    const protocolesecret = require('../src/core/protocolesecret');
+    for (const kind of ['review', 'code']) {
+      const r = pol.argvPermissions({ backend: 'claude', bin: COMPLET, extra: [], kind });
+      const interdits = r.args[r.args.indexOf('--disallowedTools') + 1];
+      assert.match(interdits, /Read\(\/\/[^)]*protocol-secret\)/, `${kind} : ${interdits}`);
+    }
+    db.prepare("UPDATE local_config SET agent_sandbox_verified = 1 WHERE id = 1").run();
+    const r = pol.argvPermissions({ backend: 'claude', bin: COMPLET, extra: [], kind: 'code', cwd: '/le/dossier' });
+    const cfg = JSON.parse(r.args[r.args.indexOf('--settings') + 1]);
+    assert.ok(cfg.sandbox.filesystem.denyRead.includes(protocolesecret.FICHIER));
+  });
+
+  test('le nonce d’un agent n’est pas un simple hachage de son id : sans le secret, on ne le retrouve pas', () => {
+    const protocol = require('../src/agent/protocol');
+    const crypto = require('node:crypto');
+    const naif = crypto.createHash('sha256').update('protocol-agent-1').digest('hex').slice(0, 12);
+    assert.notEqual(protocol.nonceAgentRun(1), naif, 'un hachage sans secret se précalculerait pour tout id plausible');
   });
 
   test('la base et le .env sont fermés aux outils de fichiers, dans toutes les saveurs', () => {

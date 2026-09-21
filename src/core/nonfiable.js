@@ -19,14 +19,18 @@ const crypto = require('node:crypto');
 const { t } = require('./i18n');
 
 const MARQUE = '<<<DONNEE';
-/* TOUT `<<<MOT` EN MAJUSCULES (plan_secure.md, lot D, point 1) — pas seulement `DONNEE`/`FIN
-   DONNEE`. Une donnée qui contient `<<<FINDINGS … FINDINGS>>>` ou `<<<QUESTIONS … QUESTIONS>>>`
-   tout formés se faisait lire comme le bloc de sortie du RUN COURANT si l'agent la recopiait —
-   c'est le vecteur direct de S6. La défense principale est le nonce par run que chaque module
-   de parsing exige désormais (`resolution.js`, `protocol.js`, `questions.js`) ; ceci est la
-   profondeur : un CLI qui perdrait le nonce reste protégé, puisque la donnée ne porte plus
-   aucune balise reconnaissable AVANT même d'atteindre le prompt. */
-const IMITATION = /<<<(\s*)([A-Z][A-Z_ ]{0,40})/g;
+/* LES MARQUEURS DE PROTOCOLE CONNUS (plan_secure.md, lot D, point 1) — pas seulement `DONNEE`/
+   `FIN DONNEE`. Une donnée qui contient `<<<FINDINGS … FINDINGS>>>` ou `<<<QUESTIONS …
+   QUESTIONS>>>` tout formés se faisait lire comme le bloc de sortie du RUN COURANT si l'agent
+   la recopiait — c'est le vecteur direct de S6. La défense principale est le nonce par run que
+   chaque module de parsing exige désormais (`resolution.js`, `protocol.js`, `questions.js`) ;
+   ceci est la profondeur : un CLI qui perdrait le nonce reste protégé, puisque la donnée ne
+   porte plus aucune balise reconnaissable AVANT même d'atteindre le prompt.
+   LA LISTE EST FERMÉE (revue de add-secure-layer-2), pas « tout mot en majuscules » : un
+   heredoc PHP (`<<<SQL`, `<<<EOT`, `<<<HTML`) ou un here-string shell cité dans une description
+   de MR, un ticket, un rapport précédent partait déformé chez l'agent, qui y lisait alors de
+   fausses erreurs de syntaxe. Tenue à jour avec `protocol.NOMS`, `questions.js`, `resolution.js`. */
+const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE)\b/g;
 
 const neutraliser = (texte) => String(texte == null ? '' : texte).replace(IMITATION, '‹‹‹$1$2');
 

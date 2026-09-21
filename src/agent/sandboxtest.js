@@ -15,7 +15,7 @@
  */
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const proc = require('../core/proc');
 const copilot = require('./copilot');
 const agentpolicy = require('./policy');
@@ -23,9 +23,20 @@ const { DATA_DIR, ensureDir } = require('../core/paths');
 const { t } = require('../core/i18n');
 
 const TIMEOUT_MS = 120000;
+const TEMOIN_URL = 'https://example.com/';
 let running = false;
 
 const MARQUEUR_ECRITURE = () => `sonde-${crypto.randomBytes(3).toString('hex')}`;
+
+/* LE RÉSEAU EST-IL JOIGNABLE HORS SANDBOX (revue de add-secure-layer-2) ? Sans ce témoin, un
+   `curl` qui échoue DANS le sandbox — poste hors ligne, DNS en panne, proxy d'entreprise, CLI
+   sans réseau du tout — se lisait comme « le sandbox l'a coupé », et marquait le sandbox vérifié
+   sans qu'il ait jamais rien bloqué. On sonde donc la même adresse, EN DEHORS du sandbox : si
+   elle-même échoue, il n'y a rien à démontrer, et on le dit plutôt que de conclure à tort. */
+function reseauJoignableHorsSandbox() {
+  const r = spawnSync('curl', ['-s', '-o', '/dev/null', '--max-time', '4', TEMOIN_URL], { timeout: 8000 });
+  return r.status === 0;
+}
 
 function prompt(marqueur) {
   return [
@@ -75,31 +86,40 @@ async function testerSandbox(onLog = () => {}) {
     if (!cap.settings) {
       return { ok: false, detail: t('agents.sandboxtest.no-settings') };
     }
+    if (!reseauJoignableHorsSandbox()) {
+      return { ok: false, detail: t('agents.sandboxtest.no-network') };
+    }
     const cwd = ensureDir(path.join(DATA_DIR, 'tmp', `sandbox-test-${Date.now()}`));
-    const marqueur = MARQUEUR_ECRITURE();
-    const settings = agentpolicy.sandboxSettings(cwd);
-    const args = [
-      '--permission-mode', 'acceptEdits',
-      ...(cap.permissionPrompts ? ['--permission-prompts', 'none'] : []),
-      '--allowedTools', 'Bash',
-      '--settings', JSON.stringify(settings),
-      '-p', prompt(marqueur),
-    ];
-    onLog(t('agents.sandboxtest.log.running'));
-    const texte = await appeler(args, cwd, agentpolicy.envAgent('claude'));
+    try {
+      const marqueur = MARQUEUR_ECRITURE();
+      const settings = agentpolicy.sandboxSettings(cwd);
+      const args = [
+        '--permission-mode', 'acceptEdits',
+        ...(cap.permissionPrompts ? ['--permission-prompts', 'none'] : []),
+        '--allowedTools', 'Bash',
+        '--settings', JSON.stringify(settings),
+        '-p', prompt(marqueur),
+      ];
+      onLog(t('agents.sandboxtest.log.running'));
+      const texte = await appeler(args, cwd, agentpolicy.envAgent('claude'));
 
-    const ecriture = /ECRITURE_EXIT:(-?\d+)/.exec(texte);
-    const reseau = /RESEAU_EXIT:(-?\d+)/.exec(texte);
-    const ecritureOk = !!ecriture && ecriture[1] === '0' && texte.includes(marqueur);
-    const reseauBloque = !!reseau && reseau[1] !== '0';
+      const ecriture = /ECRITURE_EXIT:(-?\d+)/.exec(texte);
+      const reseau = /RESEAU_EXIT:(-?\d+)/.exec(texte);
+      const ecritureOk = !!ecriture && ecriture[1] === '0' && texte.includes(marqueur);
+      const reseauBloque = !!reseau && reseau[1] !== '0';
 
-    const ok = ecritureOk && reseauBloque;
-    const detail = t(ok ? 'agents.sandboxtest.ok' : 'agents.sandboxtest.ko', {
-      ecriture: t(ecritureOk ? 'agents.sandboxtest.pass' : 'agents.sandboxtest.fail'),
-      reseau: t(reseauBloque ? 'agents.sandboxtest.blocked' : 'agents.sandboxtest.leaked'),
-    });
-    onLog(detail);
-    return { ok, detail, texte, ecritureOk, reseauBloque };
+      const ok = ecritureOk && reseauBloque;
+      const detail = t(ok ? 'agents.sandboxtest.ok' : 'agents.sandboxtest.ko', {
+        ecriture: t(ecritureOk ? 'agents.sandboxtest.pass' : 'agents.sandboxtest.fail'),
+        reseau: t(reseauBloque ? 'agents.sandboxtest.blocked' : 'agents.sandboxtest.leaked'),
+      });
+      onLog(detail);
+      return { ok, detail, texte, ecritureOk, reseauBloque };
+    } finally {
+      // Chaque essai laissait son dossier derrière lui (revue de add-secure-layer-2).
+      const fs = require('node:fs');
+      try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* déjà parti, ou verrouillé — tant pis */ }
+    }
   } finally {
     running = false;
   }

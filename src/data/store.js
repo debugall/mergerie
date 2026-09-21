@@ -1261,8 +1261,16 @@ function hydraterFichiers(relatifs) {
     /* MÊME GARDE, POUR UN DOCUMENT JSON ENTIER (plan_secure.md, lot C, S5) : `verification` et
        `piece_jointe` ne sont pas le format à deux fichiers de `corps` — `verdictImmuable` nomme
        les champs qui FONT le document ; ce qui vient après (`comment_posted_at`…) n'y figure
-       pas exprès. */
-    if (e.verdictImmuable) {
+       pas exprès.
+       UNE VÉRIFICATION EN COURS N'EST PAS ENCORE CE DOCUMENT (revue de add-secure-layer-2) :
+       `status` passe à `running` avant que `verdict` n'existe (`verifyrun.js`), et ce fichier-là
+       est bien exporté entre-temps. Fixer l'empreinte sur cette version SANS VERDICT, parce
+       qu'une synchro d'un collègue est tombée pile pendant le run, refusait ensuite le verdict
+       final comme « modifié après sa création » — personne ne le voyait jamais. On attend donc
+       la fin (`finished_at` posé, ou un `verdict`) avant de figer quoi que ce soit ; une
+       vérification encore en cours est importée telle quelle, sans empreinte. */
+    const verificationEnCours = e.table === 'verification' && !doc.finished_at && !doc.verdict;
+    if (e.verdictImmuable && !verificationEnCours) {
       const sha = empreinte(JSON.stringify(e.verdictImmuable.map((champ) => (doc[champ] == null ? null : doc[champ]))));
       const connu = etat.lire(APPEND, relatif, 'sha');
       if (connu && connu !== sha) {

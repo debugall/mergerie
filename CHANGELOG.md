@@ -37,6 +37,28 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   repository it names, the agent it proposes to create). Every such block now carries a nonce
   tied to the run that asked for it, on top of the existing data-tagging; a look-alike block a
   piece of text might contain is neutralised regardless.
+- **Follow-up hardening, from an internal review of the changes above:**
+  - The local session token closed `/api/` requests case-sensitively; `GET /API/config` slipped
+    through unrouted case-insensitively by Express itself. Both the local token and the
+    cross-origin guard now compare paths without regard to case.
+  - The nonce carried by an agent's protocol blocks was derived from a plain hash of a
+    sequential database id — guessable in advance for every plausible id. It's now an HMAC keyed
+    by a per-installation secret that never leaves this machine and is closed to the agent itself.
+  - A verifier command approved for the unsandboxed write allowlist granted the whole program
+    (`npm test` opened all of `npm`, including `npm publish`; `node script.js` opened `node -e`).
+    Only the exact approved command line is granted now.
+  - A verification synced while still running (before it has a verdict) no longer has its
+    fingerprint locked in — syncing mid-run used to make the real, later verdict look like a
+    silent rewrite and get rejected.
+  - “Test the sandbox” could mark the sandbox verified from an offline machine, since any failed
+    network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
+    checks the network works *outside* the sandbox first.
+  - An automatic verifier's network isolation (`unshare` on Linux) needed real root and was
+    silently never active for a normal user; it now runs in its own user namespace instead.
+    Unchanged limitation, noted rather than fixed: on both Linux and macOS, cutting outbound
+    network for an automatic verifier also cuts its access to `localhost` — a test suite that
+    depends on a database, Redis, or a `docker-compose` service on `localhost` will need it
+    reachable another way while running under automatic verification.
 
 ### Removed
 

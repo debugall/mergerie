@@ -14,7 +14,7 @@
  * est lisible ; c'est le protocole qui a raté, et le run vaut mieux que son protocole. On
  * l'ignore et on le journalise.
  */
-const crypto = require('node:crypto');
+const protocolesecret = require('../core/protocolesecret');
 
 /* LE NONCE DE CES BLOCS (plan_secure.md, lot D, point 1) — une donnée (description de MR,
    ticket, fichier lu par l'agent) ne le connaît pas, donc ne peut pas fabriquer un `<<<AGENT>>>`
@@ -22,9 +22,12 @@ const crypto = require('node:crypto');
    profile/prompt.js) est écrite UNE FOIS, à la création de la tâche — avant que `task.id`
    n'existe — et persistée dans `task.prompt` ; le nonce doit donc rester calculable plus tard
    à partir de ce qu'on a encore sous la main (`task.agent_id`), pas d'un tirage aléatoire perdu
-   entre-temps. Dérivé de l'id de l'agent : stable, et un agent créé par l'interface porte un id
-   qu'aucune donnée tierce ne devine. */
-const nonceAgentRun = (agentId) => crypto.createHash('sha256').update(`protocol-agent-${agentId}`).digest('hex').slice(0, 6);
+   entre-temps. Dérivé de l'id de l'agent PAR HMAC (`core/protocolesecret.js`) : un simple hachage
+   de l'id, sans secret, se précalcule pour tous les ids plausibles — un fichier lu par l'agent
+   pourrait alors porter un `<<<AGENT …>>>` tout formé. L'HMAC le ferme : sans le secret du
+   poste, fermé à l'agent (`agentpolicy.interditsDonnees`/`sandboxDenyRead`), deviner le nonce
+   d'un id ne dit rien du nonce d'un autre. */
+const nonceAgentRun = (agentId) => protocolesecret.hmac(`agent-${agentId}`, 12);
 
 // Un seul bloc par balise est pris : le premier. Un agent qui en émet deux a hésité, et
 // deviner lequel compte reviendrait à choisir à sa place.
