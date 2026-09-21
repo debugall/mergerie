@@ -626,6 +626,41 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.equal(t.status, 'new', 'modifier ne lance rien');
   });
 
+  /* « AUCUN » VÉRIFICATEUR CHOISI EN ÉDITION DOIT LE RESTER. Sur un seul dépôt couvert par un
+     seul vérificateur, celui-ci se choisit tout seul à l'INITIALISATION — pratique à la création,
+     où un sélecteur vide ne se remarque pas. Mais rouvrir une session déjà écrite où « aucun » a
+     été choisi et enregistré est aussi une initialisation du sélecteur : sans distinction, ce
+     même réflexe effaçait le retrait délibéré à chaque réouverture. */
+  test('codage : « aucun » vérificateur choisi en édition reste « aucun » à la réouverture', async () => {
+    const avant = compte('task');
+    const cree = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Solo', targets: [{ repo_id: repoApp, branch: 'ai/solo' }],
+      auto_push: true, verifier_id: verif.id,
+    })).body;
+    assert.equal(cree.verifier_id, verif.id, 'le seul vérificateur qui couvre ce dépôt est accepté à la création');
+
+    await aller('code');
+    const carte = `#taskList .card[data-task="${cree.id}"]`;
+    await page.waitForSelector(carte);
+    await page.locator(`${carte} [data-tedit]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction((v) => document.querySelector('#taskVerifier').value === String(v), verif.id);
+
+    await page.locator('#taskVerifier').selectOption('');
+    await page.locator('#taskSubmit').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    await attendreServeur(async () => (await app.api('GET', `/api/tasks/${cree.id}`)).body.task.verifier_id === null,
+      '« aucun » est enregistré');
+
+    await page.locator(`${carte} [data-tedit]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelectorAll('#taskVerifier option').length > 1);
+    assert.equal(await page.locator('#taskVerifier').inputValue(), '',
+      '« aucun », choisi et enregistré, ne doit pas revenir au seul vérificateur couvrant');
+    await fermer();
+    assert.equal(compte('task'), avant + 1);
+  });
+
   test('hors dépôt : modifier relit le répertoire et les projets, et enregistre', async () => {
     const id = app.db.prepare("SELECT id FROM local_task WHERE label = 'Rangement'").get().id;
     await aller('local');

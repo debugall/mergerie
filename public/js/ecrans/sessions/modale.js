@@ -67,7 +67,7 @@ function applyKindToModal(kind) {
    un vérificateur qui n'en couvre que la moitié rendrait un vert qui ne dit rien de l'autre,
    et le proposer serait promettre un verdict qu'on ne peut pas tenir. La liste se refait donc
    à chaque changement de projets. */
-async function majVerificateursSession(choisi = null) {
+async function majVerificateursSession(choisi = null, { autoPick = true } = {}) {
   const sel = $('#taskVerifier');
   if (!sel) return;
   const garde = choisi === null ? sel.value : String(choisi || '');
@@ -108,9 +108,11 @@ async function majVerificateursSession(choisi = null) {
   /* UN SEUL VÉRIFICATEUR COUVRE TOUS LES DÉPÔTS : il se choisit tout seul. Sans ça, on lit le
      rapport, on clique « Faire corriger », on lance — et la session finit « poussée » sans
      verdict, parce qu'un sélecteur vide ne se remarque pas. Un clic suffit à le retirer.
-     Seulement à l'INITIALISATION (`choisi` non nul) : sur un simple changement de projets
-     (`null`), re-choisir écraserait un retrait délibéré à chaque ligne ajoutée. */
-  if (!sel.value && choisi !== null && couvrants.length === 1) sel.value = String(couvrants[0].id);
+     Seulement à l'INITIALISATION (`choisi` non nul) d'une NOUVELLE session (`autoPick`) : sur
+     un simple changement de projets (`null`), re-choisir écraserait un retrait délibéré à
+     chaque ligne ajoutée — et en ÉDITION, « aucun » peut être le choix enregistré, pas un
+     oubli : le réappliquer masquerait ce choix à chaque réouverture. */
+  if (!sel.value && choisi !== null && autoPick && couvrants.length === 1) sel.value = String(couvrants[0].id);
   majLienVerifPush();
 }
 
