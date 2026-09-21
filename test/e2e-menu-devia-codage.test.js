@@ -328,6 +328,41 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
     assert.deepEqual((await session(ids.multi)).targets.map((x) => passes(x.id)), [a, b], 'aucune passe d’agent de plus');
   });
 
+  /* L'IA qui s'arrête pour demander « je continue sur les lots C/D/E ? » sans passer par le
+     bloc de questions structuré n'a RIEN commité : `execOnTarget` le traite comme un échec
+     (aucun fichier changé) et le projet finit en erreur — mais la session d'agent, elle,
+     reste vivante. `resume_cmd` (dérivé du handle local) le dit : c'est lui qui doit décider
+     si « Envoyer un suivi » apparaît, pas le seul statut. */
+  test('un projet en erreur qui a une session d’agent vivante garde son suivi accessible', async () => {
+    // eslint-disable-next-line import/order
+    const localsession = require('../src/data/localsession');
+    const id = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoApp, branch: 'feature/pause-ia' }],
+    })).body.id;
+    const tg = (await session(id)).targets[0];
+    const { uid } = app.db.prepare('SELECT uid FROM task_target WHERE id = ?').get(tg.id);
+    localsession.ecrire('task_target', uid, { session_key: 'sess-pause', session_backend: 'claude', session_cwd: '/tmp/pause' });
+    app.db.prepare("UPDATE task_target SET status = 'error', last_error = ? WHERE id = ?").run(
+      'L’IA n’a modifié aucun fichier — elle a répondu au lieu de coder :\n\n« Je m’arrête là, dis-moi si je continue sur les lots C/D/E. »',
+      tg.id,
+    );
+    app.db.prepare("UPDATE task SET status = 'error' WHERE id = ?").run(id);
+    await recharger();
+    await page.locator(`${carte(id)} [data-tfollow]`).waitFor();
+  });
+
+  test('un projet en erreur SANS session à reprendre n’affiche pas le suivi', async () => {
+    const id = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoApp, branch: 'feature/echec-sec' }],
+    })).body.id;
+    const tg = (await session(id)).targets[0];
+    app.db.prepare("UPDATE task_target SET status = 'error', last_error = 'Dépôt introuvable.' WHERE id = ?").run(tg.id);
+    app.db.prepare("UPDATE task SET status = 'error' WHERE id = ?").run(id);
+    await recharger();
+    await page.locator(carte(id)).waitFor();
+    assert.equal(await page.locator(`${carte(id)} [data-tfollow]`).count(), 0);
+  });
+
   test('une session entièrement mergée propose de se ranger', async () => {
     app.db.prepare('UPDATE task_target SET mr_merged = 1 WHERE task_id = ?').run(ids.multi);
     await recharger();

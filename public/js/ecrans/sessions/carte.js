@@ -179,7 +179,15 @@ const boutonSuiviReview = (taskId, targetId = null) => `<button class="btn" data
 function codeCard(t) {
   const cibles = t.targets || [];
   const enCours = t.status === 'running';
-  const canFollow = enCours || cibles.some((x) => ['committed', 'pushed'].includes(x.status));
+  /* UN PROJET « EN ERREUR » PEUT PORTER UNE CONVERSATION BIEN VIVANTE. L'IA n'a pas toujours
+     tort de s'arrêter sans committer : « je m'arrête là, dis-moi si je continue sur les lots
+     C/D/E » n'est pas un échec, c'est une pause — mais sans bloc de questions structuré
+     (`ask_questions`), `execOnTarget` le traite comme un échec (aucun fichier changé) et la
+     cible finit en erreur, SANS bouton pour répondre. `resume_cmd` dit si une session d'agent
+     existe encore pour ce projet : si oui, envoyer un suivi la reprend telle quelle — c'est
+     exactement le geste qui manquait pour répondre « continue ». */
+  const canFollow = enCours || cibles.some((x) => ['committed', 'pushed'].includes(x.status)
+    || (x.status === 'error' && x.resume_cmd));
   const canRun = ['new', 'error', 'committed', 'pushed'].includes(t.status);
   /* Repli de la liste de projets. Au-delà de quelques dépôts, une session occupe tout l'écran et
      on ne voit plus les autres. L'état est PERSISTÉ : sans ça, il se rouvrirait à chaque

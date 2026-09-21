@@ -64,6 +64,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **A coding session's project line shows the same “in conflict” tag as the merge request queue**,
   next to “Update with {base}”, when the forge has actually flagged a conflict — not just any
   rejected push. The button offered the fix already; nothing said why it was there.
+- **“Send a follow-up” now shows up on a project that stopped without coding, as long as its AI
+  session is still alive.** An AI that pauses to ask “should I continue into the next batch?” in
+  plain text (no structured question) had nothing committed, so the project landed in “error” —
+  and with it, the one button that could actually reply to that pause and say “continue”.
 
 - **The report-link comment can say how many findings the pass carries.** Three new variables in
   the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
