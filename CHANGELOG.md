@@ -16,6 +16,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the
   local whisper.cpp engine (and its install scripts), the OpenAI-compatible and browser providers,
   and every setting that configured them are gone. Text fields go back to typing and pasting only.
+- **The dollar cost of a session, everywhere it showed up** — the sessions list, “Agent's
+  response” — is gone; only the token count remains. A dollar figure only ever came from a
+  backend willing to report one, didn't compare from one month to the next as prices moved, and
+  duplicated the token count sitting right next to it. Tokens alone are shown now, consistently
+  with what Stats already did.
 
 ### Changed
 
@@ -96,11 +101,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **An open notes page no longer overwrites a teammate's edit.** If a sync brought their version
   while you were typing, a banner names them and lets you take their version or keep yours;
   nothing is saved until you choose.
-- **“How many iterations already?” and “what did they cost?” are answered without opening
-  “Agent's response.”** The number of iterations already done shows up next to “Prepare a
-  follow-up”, on every session, question and off-repo card. Inside “Agent's response”, each
-  iteration now shows its token count instead of a dollar cost that only a talkative backend ever
-  reports, and the list's heading adds up the tokens of every iteration shown below it. A
+- **“How many iterations already?” is answered without opening “Agent's response.”** The
+  session's follow-up button now carries its own count in its label — “Send a follow-up (2)” —
+  on every session, question and off-repo card. Inside “Agent's response”, each iteration shows
+  its token count, and the list's heading adds up the tokens of every iteration shown below it. A
   follow-up can also be written and sent right there — no need to close the view, find the card
   again, and reopen its own form to ask for the thing you were just reading about.
 

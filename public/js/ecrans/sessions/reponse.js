@@ -21,13 +21,6 @@ function coutCarte(t) {
   if (t && (t.shared || t.author)) bouts.push(esc(texteAuteurPartage(t)));
   if (t && t.duration_ms) bouts.push(esc(dureeCourte(t.duration_ms)));
   if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
-  /* LE COÛT EN DOLLARS, quand le backend l'annonce. Il était servi avec chaque session et
-     n'apparaissait nulle part : les tokens estimés répondent à « combien de texte », le
-     dollar à « combien ça m'a coûté » — et c'est la seconde question qu'on se pose devant une
-     session de vingt minutes. Absent sur les backends muets, ce qui est honnête. */
-  if (t && t.cost_usd != null) {
-    bouts.push(`<span title="${esc(tr('task.cost.usd-title'))}">${esc(fmtCout(t.cost_usd))}</span>`);
-  }
   /* QUAND ÇA S'EST TERMINÉ. `finished_at` était stocké, servait au TRI de la liste, et
      n'apparaissait nulle part : on lisait « terminée » sans savoir si c'était il y a trois
      minutes ou trois semaines. Relatif, avec la date exacte au survol comme partout. */

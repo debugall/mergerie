@@ -271,14 +271,36 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
     assert.ok(chiffres.includes(String(total)), `le total (${total}) apparaît en tête : « ${titre} »`);
   });
 
-  /* LE NOMBRE D'ITÉRATIONS DÉJÀ FAITES, à côté du bouton « Préparer un suivi » — avant de
-     demander un énième suivi, sans avoir à ouvrir « Retour de l'IA » pour le savoir. */
-  test('le nombre d’itérations déjà faites apparaît à côté de « Préparer un suivi »', async () => {
+  /* NULLE PART UN COÛT EN DOLLARS, y compris sur la carte de la liste des sessions : il ne se
+     compare pas d'un mois à l'autre (les tarifs bougent) et n'existe que sur les backends qui
+     l'annoncent. Le nombre de tokens, lui, se calcule toujours et se compare toujours. Le
+     dry-run de test ne passe pas par `usage` (aucun coût annoncé à enregistrer) : on pose la
+     ligne à la main, EXACTEMENT comme le ferait un vrai backend qui annonce un coût, pour
+     prouver que la carte ne le montre plus. */
+  test('la carte de la liste des sessions montre les tokens, jamais un coût en dollars', async () => {
+    app.db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, cost_usd, created_at, owner_kind, owner_id)
+      VALUES ('local', 400, 800, 1234, 0.42, ?, 'local', ?)`).run(new Date().toISOString(), multi.id);
+
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    await page.reload();
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector('#localList .card');
+
+    const cout = await page.locator(`#localList .card[data-local="${multi.id}"] .task-cout`).innerText();
+    assert.match(cout, /tokens?/i, `la carte porte ses tokens : « ${cout} »`);
+    assert.ok(!/\$/.test(cout), `la carte ne montre aucun coût en dollars, même quand le backend en annonce un : « ${cout} »`);
+  });
+
+  /* LE NOMBRE D'ITÉRATIONS DÉJÀ FAITES, DANS LE LIBELLÉ du bouton lui-même (« Envoyer un
+     suivi (3) ») — avant de demander un énième suivi, sans avoir à ouvrir « Retour de l'IA »
+     pour le savoir. */
+  test('le nombre d’itérations déjà faites apparaît dans le libellé du bouton de suivi', async () => {
     if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
     const carte = page.locator(`#localList .card[data-local="${multi.id}"]`);
     await carte.locator('[data-lfollow]').waitFor();
-    const bloc = await carte.locator('[data-lfollow]').locator('xpath=..').innerText();
-    assert.match(bloc, /3/, `le compteur porte les trois itérations déjà faites : ${bloc}`);
+    assert.match(await carte.locator('[data-lfollow]').innerText(), /\(3\)/,
+      'le bouton porte les trois itérations déjà faites');
   });
 
   /* ENVOYER UN SUIVI SANS QUITTER CETTE VUE. Il fallait jusqu'ici fermer, retrouver la carte,

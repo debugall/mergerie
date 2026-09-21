@@ -1,6 +1,6 @@
 'use strict';
 /* Onglet Agents, les profils : cartes, ce qu'un agent a fait, le coût, la connaissance. */
-// @expose agentDe, agents, chargerAgents, fmtCout, loadAgentList, loadAgents, showAgentsSub
+// @expose agentDe, agents, chargerAgents, loadAgentList, loadAgents, showAgentsSub
 /* ---------- Onglet Agents ---------- */
 
 /* Les deux sous-onglets. Une FONCTION plutôt qu'un objet de premier niveau, pour la même
@@ -88,10 +88,6 @@ function prochainRunHtml(a) {
   return `<span class="tag" data-when="${esc(a.next_run)}" title="${esc(tr('agents.card.next-run-title', { when: fmtDateTime(a.next_run) }))}">`
     + `${svgIco('clock')} ${esc(tr('agents.card.next-run', { when: depuis(a.next_run) }))}</span>`;
 }
-
-/* Le coût : quelques centimes ou quelques euros, jamais douze décimales. Déclarée `function`
-   et non `const` : elle sert AUSSI au tableau de bord, écrit douze mille lignes plus haut. */
-function fmtCout(v) { return v == null ? '' : `$${Number(v) < 1 ? Number(v).toFixed(3) : Number(v).toFixed(2)}`; }
 
 function agentKnowledgeHtml(a) {
   if (!a.is_domain) return '';

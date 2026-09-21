@@ -84,11 +84,6 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .task-pushcmd code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; }
 .mr-create { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .mr-create .mr-title { flex: 1; min-width: 220px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font: inherit; }
-/* Le nombre d'itérations déjà faites, sous le bouton « Préparer un suivi » plutôt qu'à côté :
-   `.ta-work` empile ses boutons en colonne, et une puce sur la même ligne s'écraserait contre
-   la largeur du bouton. */
-.follow-with-count { display: flex; flex-direction: column; align-items: stretch; gap: 2px; }
-.follow-with-count .pass-count { font-size: 12px; text-align: center; }
 .followup { flex-wrap: wrap; }
 .followup-text { flex: 1 1 100%; min-height: 60px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 /* Suivi en attente : un encadré qui se remarque sans crier. Le liseré à gauche suffit à le
