@@ -4,18 +4,21 @@
    deviendrait « le premier perd en silence ». D'où le cadre ambre : ce n'est pas une erreur,
    c'est quelque chose à regarder. */
 #dataSyncState { margin-top: .4rem; font-size: var(--fs-xs); }
-.conflits-h { font-size: var(--fs-sm); margin: 1rem 0 .4rem; color: var(--amber-text); }
-.conflit {
+/* Préfixées `partage-` : `.conflit` tout court collidait avec `.tag.conflit` (badge « en conflit »
+   d'une merge request, `reviews-cartes.css`/`verification.css`) — même classe, deux écrans, la
+   bordure ambre et le cadre 8 px de celui-ci fuyaient sur le badge pilule de l'autre. */
+.partage-conflits-h { font-size: var(--fs-sm); margin: 1rem 0 .4rem; color: var(--amber-text); }
+.partage-conflit {
   border: 1px solid var(--amber); border-radius: var(--r, 8px);
   background: var(--panel2); padding: .6rem .7rem; margin-bottom: .6rem;
 }
-.conflit-nom { font-family: var(--ff-mono); font-size: var(--fs-xs); color: var(--muted-text); }
-.conflit-mienne {
+.partage-conflit-nom { font-family: var(--ff-mono); font-size: var(--fs-xs); color: var(--muted-text); }
+.partage-conflit-mienne {
   max-height: 9rem; overflow: auto; margin: .4rem 0; padding: .4rem .5rem;
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   font-size: var(--fs-xs); white-space: pre-wrap; word-break: break-word;
 }
-.conflit-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+.partage-conflit-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
 
 /* Le témoin de synchronisation du pied de page. Trois états, trois teintes — et le TEXTE dit la
    même chose (« ↑2 ↓0 », « 1 à reprendre ») : une pastille de couleur seule ne dirait rien à qui

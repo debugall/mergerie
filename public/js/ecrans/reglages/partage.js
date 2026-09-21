@@ -39,11 +39,11 @@ function rendreConflits(liste) {
   const zone = $('#dataSyncConflicts');
   if (!zone) return;
   if (!liste.length) { zone.innerHTML = ''; return; }
-  zone.innerHTML = `<h3 class="conflits-h">${esc(tr('datasync.conflicts.head', { n: liste.length }))}</h3>`
-    + liste.map((c) => `<div class="conflit" data-file="${esc(c.fichier)}">
-        <div class="conflit-nom">${esc(c.fichier)}</div>
-        <pre class="conflit-mienne">${esc(String(c.mienne || '').slice(0, 2000))}</pre>
-        <div class="conflit-actions">
+  zone.innerHTML = `<h3 class="partage-conflits-h">${esc(tr('datasync.conflicts.head', { n: liste.length }))}</h3>`
+    + liste.map((c) => `<div class="partage-conflit" data-file="${esc(c.fichier)}">
+        <div class="partage-conflit-nom">${esc(c.fichier)}</div>
+        <pre class="partage-conflit-mienne">${esc(String(c.mienne || '').slice(0, 2000))}</pre>
+        <div class="partage-conflit-actions">
           <button class="btn btn-small" data-keep="mine">${esc(tr('datasync.conflicts.keep-mine'))}</button>
           <button class="btn btn-small" data-keep="theirs">${esc(tr('datasync.conflicts.keep-theirs'))}</button>
         </div>
@@ -53,7 +53,7 @@ function rendreConflits(liste) {
 document.addEventListener('click', async (ev) => {
   const b = ev.target.closest('#dataSyncConflicts [data-keep]');
   if (!b) return;
-  const fichier = b.closest('.conflit').dataset.file;
+  const fichier = b.closest('.partage-conflit').dataset.file;
   b.disabled = true;
   try {
     const r = await api('/data-sync/conflicts/resolve', { method: 'POST', body: { file: fichier, keep: b.dataset.keep } });

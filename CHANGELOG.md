@@ -97,6 +97,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The “in conflict” badge on a merge request card had the wrong shape.** It shared its class
+  name with an unrelated block on Settings → Sharing (a kept version of a data-sync conflict),
+  which leaked that block's square corners, padding and background onto the badge. Renamed the
+  Sharing screen's classes to stop the collision — same conflict-resolution UI, unrelated pill.
 - **“Catch up with the base and retry” now offers something to catch up on plain push rejections
   too, not only forge-flagged conflicts.** The button appeared on any rejected push, but the
   project card's own “Update base” action only showed up once GitLab had flagged the merge

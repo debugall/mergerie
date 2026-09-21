@@ -275,15 +275,15 @@ describe('Données partagées · deux postes, un dépôt, l’écran de ce poste
     await page.waitForSelector('#footerSync[data-etat="conflit"]');
     await page.locator('#footerSync').click();
     await page.waitForSelector('#sub-datasync.active');
-    const carte = page.locator('#dataSyncConflicts .conflit[data-file="notes/duel.md"]');
+    const carte = page.locator('#dataSyncConflicts .partage-conflit[data-file="notes/duel.md"]');
     await carte.waitFor();
-    assert.match(await carte.locator('.conflit-mienne').textContent(), /ma version à moi/, 'on LIT sa version avant de choisir');
-    assert.equal(await page.locator('#dataSyncConflicts .conflit').count(), 1,
+    assert.match(await carte.locator('.partage-conflit-mienne').textContent(), /ma version à moi/, 'on LIT sa version avant de choisir');
+    assert.equal(await page.locator('#dataSyncConflicts .partage-conflit').count(), 1,
       'un conflit par OBJET : le .md et son .json jumeau ne font qu’une page');
 
     await carte.locator('[data-keep="mine"]').click();
     await attendreServeur(async () => (await etat()).conflits.length === 0, 'le conflit est tranché');
-    await page.waitForSelector('#dataSyncConflicts .conflit', { state: 'detached' });
+    await page.waitForSelector('#dataSyncConflicts .partage-conflit', { state: 'detached' });
     assert.equal((await ici('Duel')).content, 'ma version à moi', 'sa version redevient la ligne ici');
 
     await synchroniser();
@@ -298,12 +298,12 @@ describe('Données partagées · deux postes, un dépôt, l’écran de ce poste
     await provoquerConflit('Duel', 'Claire, deuxième version', 'moi, deuxième version');
     const avant = gitNu('rev-parse', 'main').trim();
     await ouvrirPartage();
-    const carte = page.locator('#dataSyncConflicts .conflit[data-file="notes/duel.md"]');
+    const carte = page.locator('#dataSyncConflicts .partage-conflit[data-file="notes/duel.md"]');
     await carte.waitFor();
-    assert.match(await carte.locator('.conflit-mienne').textContent(), /moi, deuxième version/);
+    assert.match(await carte.locator('.partage-conflit-mienne').textContent(), /moi, deuxième version/);
     await carte.locator('[data-keep="theirs"]').click();
     await attendreServeur(async () => (await etat()).conflits.length === 0, 'le conflit est oublié');
-    await page.waitForSelector('#dataSyncConflicts .conflit', { state: 'detached' });
+    await page.waitForSelector('#dataSyncConflicts .partage-conflit', { state: 'detached' });
 
     await synchroniser();
     assert.equal(gitNu('rev-parse', 'main').trim(), avant, '« garder la leur » n’envoie rien');

@@ -136,19 +136,19 @@ describe('Menu Réglages → Données partagées : synchroniser, ré-envoyer, tr
     await page.waitForSelector('#footerSync[data-etat="conflit"]');
     await page.locator('#footerSync').click();
     await page.waitForSelector('#sub-datasync.active');
-    await page.waitForSelector('#dataSyncConflicts .conflit[data-file="notes/conflit-leur.md"]');
-    assert.equal(await page.locator('#dataSyncConflicts .conflit').count(), 2);
-    assert.match(await page.locator('#dataSyncConflicts .conflit[data-file="notes/conflit-mienne.md"] .conflit-mienne').textContent(),
+    await page.waitForSelector('#dataSyncConflicts .partage-conflit[data-file="notes/conflit-leur.md"]');
+    assert.equal(await page.locator('#dataSyncConflicts .partage-conflit').count(), 2);
+    assert.match(await page.locator('#dataSyncConflicts .partage-conflit[data-file="notes/conflit-mienne.md"] .partage-conflit-mienne').textContent(),
       /Ma version, reprise/, 'on LIT sa version avant de choisir');
 
     const conflits = async () => ((await app.api('GET', '/api/data-sync')).body.conflits || []).map((c) => c.fichier);
-    await page.locator('#dataSyncConflicts .conflit[data-file="notes/conflit-leur.md"] [data-keep="theirs"]').click();
+    await page.locator('#dataSyncConflicts .partage-conflit[data-file="notes/conflit-leur.md"] [data-keep="theirs"]').click();
     await attendreServeur(async () => !(await conflits()).includes('notes/conflit-leur.md'), 'le conflit est oublié');
-    await page.waitForSelector('#dataSyncConflicts .conflit[data-file="notes/conflit-leur.md"]', { state: 'detached' });
+    await page.waitForSelector('#dataSyncConflicts .partage-conflit[data-file="notes/conflit-leur.md"]', { state: 'detached' });
 
-    await page.locator('#dataSyncConflicts .conflit[data-file="notes/conflit-mienne.md"] [data-keep="mine"]').click();
+    await page.locator('#dataSyncConflicts .partage-conflit[data-file="notes/conflit-mienne.md"] [data-keep="mine"]').click();
     await attendreServeur(async () => (await conflits()).length === 0, 'plus aucun conflit');
-    await page.waitForSelector('#dataSyncConflicts .conflit', { state: 'detached' });
+    await page.waitForSelector('#dataSyncConflicts .partage-conflit', { state: 'detached' });
     // Sa version est reposée : le tour suivant l'envoie.
     await page.locator('#btnDataNow').click();
     await attendreServeur(async () => fichiers().includes('notes/conflit-mienne.md'), 'la version reprise est dans le dépôt');

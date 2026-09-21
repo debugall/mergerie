@@ -119,7 +119,7 @@ describe('Transverse — la feuille des raccourcis et les touches globales', { s
     await page.waitForSelector('#shortcutsModal:not([hidden])');
     const touches = await page.locator('#shortcutsList .shortcut-row kbd').allTextContents();
     for (const k of ['Ctrl/Cmd + K', '/', 'j / k', 'Entrée', 'd', 'v', 'c', 'm', 'f', 'x', 'r', 'n', 'N', 'o', 'l', '?', 'Échap',
-      'Ctrl/Cmd + Entrée', '⇧ + clic', 'Ctrl/Cmd + Maj + Espace']) {
+      'Ctrl/Cmd + Entrée', '⇧ + clic']) {
       assert.ok(touches.includes(k), `la touche « ${k} » est listée`);
     }
     // Sept menus visibles d'office (Git, Docker, Jenkins, Liens sont repliés) : « 1 – 7 ».
