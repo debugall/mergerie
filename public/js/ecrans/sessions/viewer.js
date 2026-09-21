@@ -85,6 +85,9 @@ async function openPasses(base, n, dossiers = null) {
        filtre (on cherchait quelque chose), ouvrir une autre session repart de zéro. */
     if (passCtx.base !== base) passFiltre = '';
     passCtx = { base, dossiers };
+    // Une autre unité s'ouvre : le suivi qu'on tapait pour la précédente n'a plus sa place ici.
+    $('#taskMdFollow').hidden = true;
+    $('#taskMdFollowText').value = '';
     $('#taskMdTitle').textContent = d.title || '';
     /* Sélecteur de DOSSIER : propre au codage hors dépôt, où une session en couvre plusieurs.
        Comme la liste d'itérations, il disparaît quand il n'y a rien à choisir. */
@@ -93,7 +96,7 @@ async function openPasses(base, n, dossiers = null) {
     if (!selDir.hidden) {
       selDir.innerHTML = dossiers.map((x) => `<option value="${x.id}" ${base.endsWith(`/${x.id}`) ? 'selected' : ''}>${esc(x.path)}</option>`).join('');
     }
-    renderPassList(d.passes || [], d.current ? d.current.n : 0);
+    renderPassList(d.passes || [], d.current ? d.current.n : 0, d.tokens_total);
     $('#taskMdBody').innerHTML = passBodyHtml(d.current);
     const bouton = $('#taskMdBody [data-passdiff]');
     if (bouton) bouton.addEventListener('click', () => openPassDiff(base, d.current));
@@ -105,7 +108,7 @@ async function openPasses(base, n, dossiers = null) {
 /* La liste des itérations, à GAUCHE. Chaque entrée porte la demande qui l'a produite : une
    réponse relue sans savoir à quoi elle répondait n'apprend rien, et c'est par la demande
    qu'on retrouve l'itération qu'on cherche — pas par son numéro. */
-function renderPassList(passes, courante) {
+function renderPassList(passes, courante, tokensTotal) {
   const aside = $('#taskPassAside');
   const corps = $('#taskPassAside').closest('.split-body');
   // Une seule itération : rien à choisir, la réponse prend toute la largeur.
@@ -114,7 +117,10 @@ function renderPassList(passes, courante) {
   corps.classList.toggle('no-list', !montrer);
   if (!montrer) return;
 
-  $('#taskPassTitle').textContent = tr('task.pass.list-title', { n: passes.length });
+  // Le total de la colonne, en tête : ce qu'UNE passe a coûté se lit ligne par ligne juste
+  // en dessous, mais l'addition des six qu'on vient de relire n'apparaissait nulle part.
+  $('#taskPassTitle').innerHTML = `${esc(tr('task.pass.list-title', { n: passes.length }))}`
+    + (tokensTotal ? ` <span class="muted">${esc(tr('task.pass.tokens-total', { n: fmtMilliers(tokensTotal) }))}</span>` : '');
   /* LES ÉPINGLÉES EN TÊTE. Au-delà de quelques itérations, celle qu'on cherche est presque
      toujours l'une des deux ou trois qui ont compté : les remonter évite de faire défiler.
      Le NUMÉRO reste affiché, donc la chronologie se lit encore — c'est le même choix que les
@@ -134,7 +140,7 @@ function renderPassList(passes, courante) {
       <button type="button" class="pass-open" title="${esc(prompt || tr('task.pass.no-prompt'))}">
         <span class="pass-item-head">${esc(tr('task.pass.option', {
     n: p.n, kind: tr(`task.pass.kind.${p.kind}`), date: fmtDateTime(p.created_at),
-  }))}${p.cost_usd != null ? ` <span class="muted">· ${esc(fmtCout(p.cost_usd))}</span>` : ''}</span>
+  }))}${p.tokens_est != null ? ` <span class="muted">· ${esc(tr('task.cost.tokens', { n: fmtMilliers(p.tokens_est) }))}</span>` : ''}</span>
         ${titre ? `<span class="pass-item-name">${esc(titre)}</span>` : ''}
         <span class="pass-item-prompt${prompt ? '' : ' muted'}">${esc(prompt || tr('task.pass.no-prompt'))}</span>
       </button>
@@ -284,4 +290,39 @@ $('#taskPassDir') && $('#taskPassDir').addEventListener('change', (e) => {
 });
 $('#taskMdClose').addEventListener('click', () => { $('#taskMdView').hidden = true; });
 $('#taskMdCopy').addEventListener('click', () => copyText(currentMd, $('#taskMdCopy')));
+
+/* ENVOYER UN SUIVI DEPUIS CETTE VUE, sans repasser par la carte de la session. `passCtx.base`
+   porte la forme exacte de l'unité ouverte — un projet de codage, une exploration, une question
+   libre ou un dossier hors dépôt — et c'est elle qui dit la route de suivi et, pour un projet,
+   le `targets` qui restreint la correction à LUI plutôt qu'à tous les projets de la session. */
+function followupRouteFor(base) {
+  let m = /^(\/tasks\/\d+)\/targets\/(\d+)$/.exec(base || '');
+  if (m) return { route: `${m[1]}/followup`, body: { targets: [Number(m[2])] } };
+  m = /^(\/local-tasks\/\d+)\/dirs\/\d+$/.exec(base || '');
+  if (m) return { route: `${m[1]}/followup`, body: {} };
+  if (/^\/(tasks|questions)\/\d+$/.test(base || '')) return { route: `${base}/followup`, body: {} };
+  return null;
+}
+$('#taskMdFollowToggle').addEventListener('click', () => {
+  const box = $('#taskMdFollow');
+  box.hidden = !box.hidden;
+  if (!box.hidden) $('#taskMdFollowText').focus();
+});
+$('#taskMdFollowCancel').addEventListener('click', () => {
+  $('#taskMdFollow').hidden = true;
+  $('#taskMdFollowText').value = '';
+});
+$('#taskMdFollowSend').addEventListener('click', async (e) => {
+  const route = followupRouteFor(passCtx.base);
+  if (!route) return;
+  const instruction = $('#taskMdFollowText').value.trim();
+  if (!instruction) { toast(tr('err.demande-de-suivi-requise'), true); return; }
+  try {
+    await busy(e.currentTarget, () => api(route.route, { method: 'POST', body: { instruction, ...route.body } }));
+    toast(tr('toast.lance'));
+    $('#taskMdFollow').hidden = true;
+    $('#taskMdFollowText').value = '';
+    refreshStatus(); loadTasks();
+  } catch (err) { toast(explainError(err.message), true); }
+});
 

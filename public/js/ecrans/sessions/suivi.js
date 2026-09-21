@@ -159,9 +159,16 @@ async function confirmerRelance(dejaLance, cle = 'confirm.rerun') {
 }
 
 // Le bouton qui ouvre le formulaire de suivi : « préparer » tant que ça tourne, « corriger » après.
+/* LE NOMBRE D'ITÉRATIONS DÉJÀ FAITES, à côté du bouton. Il ne se lisait qu'en ouvrant
+   « Retour de l'IA » — avant de demander un énième suivi, savoir qu'on en est à la sixième
+   passe se lit désormais sans un clic de plus. Absent (jamais lancée) : rien ne s'affiche,
+   un « 0 itération » se lirait comme une mesure plutôt que comme une absence. */
 const followBtn = (t, attr, titreFini, libelleFini = 'task.btn.request-fix') => {
   const enCours = t.status === 'running';
-  return `<button class="btn" data-${attr}="${t.id}" title="${esc(tr(enCours ? 'task.title.draft-followup' : titreFini))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr(enCours ? 'task.btn.draft-followup' : libelleFini)}</button>`;
+  const n = t.passes_count || 0;
+  const bouton = `<button class="btn" data-${attr}="${t.id}" title="${esc(tr(enCours ? 'task.title.draft-followup' : titreFini))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr(enCours ? 'task.btn.draft-followup' : libelleFini)}</button>`;
+  if (!n) return bouton;
+  return `<div class="follow-with-count">${bouton}<span class="muted pass-count" title="${esc(tr('task.pass.count-title'))}">${esc(tr('task.pass.count', { n, count: n }))}</span></div>`;
 };
 
 /* Le rang du dernier chargement lancé. Deux appels peuvent être en vol — un clic et un

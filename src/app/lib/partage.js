@@ -57,7 +57,13 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
       /* Le coût de CETTE itération. Il était lu en base et jamais servi : on voyait le total
          de la session, jamais laquelle des six passes avait coûté la moitié. */
       cost_usd: p.cost_usd == null ? null : p.cost_usd,
+      // Les tokens de CETTE itération : le dollar n'est jamais garanti (backend muet), le
+      // nombre de tokens, lui, se calcule toujours — c'est lui que la liste affiche.
+      tokens_est: p.tokens_est == null ? null : p.tokens_est,
     }));
+  // Le total de la liste, affiché en tête : sans lui on ne savait que ce qu'UNE passe avait
+  // coûté, jamais l'addition des six qu'on venait de relire.
+  const tokensTotal = passes.reduce((s, p) => s + (p.tokens_est || 0), 0);
 
   /* Sessions antérieures à l'historique des passes : elles n'ont aucune ligne
      `agent_pass`, mais leur `output_path` pointe toujours un retour valide. On le
@@ -83,11 +89,13 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
   return {
     title,
     passes,
+    tokens_total: tokensTotal,
     current: current ? {
       id: current.id, n: current.n, kind: current.kind, created_at: current.created_at,
       prompt: current.prompt, output: current.output ? protocol.nettoyer(current.output) : current.output, favori: current.favori ? 1 : 0, titre: current.titre || '',
       has_diff: !!current.diff_path || recalculable(current), no_change: sansChangement(current),
       cost_usd: current.cost_usd == null ? null : current.cost_usd,
+      tokens_est: current.tokens_est == null ? null : current.tokens_est,
     } : null,
   };
 }

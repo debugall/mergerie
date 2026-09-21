@@ -33,6 +33,7 @@ app.get('/api/local-tasks', wrap((req, res) => {
   const durees = dureeParSession('local');
   const range = rangement('local_task');
   const prog = programmations('local_task');
+  const passes = agentpass.countsFor('local');
   /* « PAR QUI » — lu de git, sans colonne. C'est ce qui décide si la carte propose « supprimer »
      ou seulement « ranger » : la session d'un collègue ne se retire pas du dépôt. */
   const parQui = auteurs('local_task', list);
@@ -49,6 +50,7 @@ app.get('/api/local-tasks', wrap((req, res) => {
     lt.tokens_est = (couts[lt.id] || {}).tokens || null;
     lt.cost_usd = (couts[lt.id] || {}).cost_usd ?? null;
     lt.duration_ms = durees[lt.id] != null ? durees[lt.id] : null;
+    lt.passes_count = passes[lt.id] || 0;
     lt.todo_waiting = !!db.prepare(`SELECT 1 FROM todo
       WHERE auto_kind = 'local_question' AND auto_ref = ? AND status = 'open' AND archived_at IS NULL`)
       .get(String(lt.id));

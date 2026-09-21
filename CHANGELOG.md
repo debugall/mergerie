@@ -90,6 +90,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **An open notes page no longer overwrites a teammate's edit.** If a sync brought their version
   while you were typing, a banner names them and lets you take their version or keep yours;
   nothing is saved until you choose.
+- **“How many iterations already?” and “what did they cost?” are answered without opening
+  “Agent's response.”** The number of iterations already done shows up next to “Prepare a
+  follow-up”, on every session, question and off-repo card. Inside “Agent's response”, each
+  iteration now shows its token count instead of a dollar cost that only a talkative backend ever
+  reports, and the list's heading adds up the tokens of every iteration shown below it. A
+  follow-up can also be written and sent right there — no need to close the view, find the card
+  again, and reopen its own form to ask for the thing you were just reading about.
 
 ### Changed
 

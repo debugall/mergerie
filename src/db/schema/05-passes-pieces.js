@@ -39,6 +39,12 @@ try { db.exec('ALTER TABLE agent_pass ADD COLUMN titre TEXT'); } catch { /* déj
    flux `claude`). L'estimation en tokens reste : elle couvre les backends qui ne disent rien.
    Nulle sur toute passe antérieure, et sur tout backend muet — l'affichage doit le supporter. */
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN cost_usd REAL'); } catch { /* déjà présente */ }
+/* TOKENS D'UNE PASSE, comme `usage.tokens_est` : le même comptage (prompt envoyé + retour de
+   l'agent), mais par ITÉRATION plutôt que pour toute la session — la colonne « Retour de l'IA »
+   affichait un coût en dollars par passe alors que le dollar n'est jamais garanti (backend
+   muet) ; le nombre de tokens, lui, se calcule toujours. Nul sur toute passe antérieure à
+   cette mesure — l'affichage doit le supporter. */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN tokens_est INTEGER'); } catch { /* déjà présente */ }
 /* LE DIFF D'UNE SEULE ITÉRATION. Relire une session de codage revenait à relire TOUT le diff
    de la branche à chaque suivi : la correction de trois lignes qu'on vient de demander se
    cherchait au milieu de deux cents. On retient donc les deux bornes de la passe — le HEAD

@@ -45,6 +45,7 @@ app.get('/api/questions', wrap((req, res) => {
   const range = rangement('question');
   const poignees = localsession.carte('question');
   const parQui = auteurs('question', rows);
+  const passes = agentpass.countsFor('ask');
   res.json(rows.map((brute) => {
     /* La poignée de session vit dans `local_session` : la commande de reprise se calcule sur
        la ligne RECOLLÉE, jamais sur la ligne brute — où elle n'est plus, et où elle rendait
@@ -57,6 +58,7 @@ app.get('/api/questions', wrap((req, res) => {
       tokens_est: (couts[q.id] || {}).tokens || null,
       cost_usd: (couts[q.id] || {}).cost_usd ?? null,
       duration_ms: durees[q.id] != null ? durees[q.id] : null,
+      passes_count: passes[q.id] || 0,
       resume_cmd: agentsession.resumeCommand(q.session_backend, q.session_key, q.session_cwd),
     };
   }));

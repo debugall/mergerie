@@ -246,4 +246,69 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
 
     assert.equal((await app.api('PUT', '/api/agent-passes/999999', { titre: 'x' })).status, 404);
   });
+
+  /* LE COÛT EN TOKENS, PAS EN DOLLARS. Le dollar n'est jamais garanti — seul le backend
+     `claude` l'annonce, et seulement s'il le veut bien — alors que le nombre de tokens se
+     calcule toujours, même en dry-run. La colonne affichait `$…` ; elle affiche des tokens. */
+  test('chaque itération montre ses tokens, jamais un coût en dollars', async () => {
+    await ouvrirRetour(multi.id);
+    const textes = await items().allTextContents();
+    assert.ok(textes.every((x) => /tokens?/.test(x)), `chaque ligne porte ses tokens : ${textes.join(' / ')}`);
+    assert.ok(textes.every((x) => !/\$/.test(x)), `aucune ligne ne montre un coût en dollars : ${textes.join(' / ')}`);
+  });
+
+  /* LE TOTAL, EN TÊTE DE COLONNE. On lisait ce qu'UNE passe avait coûté, jamais l'addition
+     des trois qu'on venait de relire. */
+  test('le total des tokens de la session est affiché en tête de la liste', async () => {
+    await ouvrirRetour(multi.id);
+    const total = app.db.prepare("SELECT COALESCE(SUM(tokens_est), 0) s FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(multi.id).s;
+    assert.ok(total > 0, 'les passes de fixture portent bien des tokens');
+    const titre = await page.locator('#taskPassTitle').innerText();
+    assert.match(titre, /Itérations \(3\)/i);
+    assert.match(titre, /tokens/i, `le titre porte un total de tokens : « ${titre} »`);
+    // Les séparateurs de milliers dépendent de la locale : on compare les CHIFFRES seuls.
+    const chiffres = titre.replace(/\D/g, '');
+    assert.ok(chiffres.includes(String(total)), `le total (${total}) apparaît en tête : « ${titre} »`);
+  });
+
+  /* LE NOMBRE D'ITÉRATIONS DÉJÀ FAITES, à côté du bouton « Préparer un suivi » — avant de
+     demander un énième suivi, sans avoir à ouvrir « Retour de l'IA » pour le savoir. */
+  test('le nombre d’itérations déjà faites apparaît à côté de « Préparer un suivi »', async () => {
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    const carte = page.locator(`#localList .card[data-local="${multi.id}"]`);
+    await carte.locator('[data-lfollow]').waitFor();
+    const bloc = await carte.locator('[data-lfollow]').locator('xpath=..').innerText();
+    assert.match(bloc, /3/, `le compteur porte les trois itérations déjà faites : ${bloc}`);
+  });
+
+  /* ENVOYER UN SUIVI SANS QUITTER CETTE VUE. Il fallait jusqu'ici fermer, retrouver la carte,
+     rouvrir son formulaire — pour redemander quelque chose qu'on venait justement de lire ici. */
+  test('on peut envoyer un suivi directement depuis « Retour de l’IA »', async () => {
+    await ouvrirRetour(multi.id);
+    const avant = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(multi.id).c;
+
+    assert.equal(await page.locator('#taskMdFollow').isVisible(), false, 'replié tant qu’on n’a rien demandé');
+    await page.locator('#taskMdFollowToggle').click();
+    await page.locator('#taskMdFollowText').fill('Ajoute un commentaire en tête de chaque fichier');
+    await page.locator('#taskMdFollowSend').click();
+    await page.waitForFunction(() => document.querySelector('#taskMdFollow').hidden === true);
+
+    await waitForJobs(app.api);
+    const apres = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(multi.id).c;
+    assert.equal(apres, avant + 1, 'une itération de plus a été enregistrée');
+    const derniere = app.db.prepare("SELECT prompt FROM agent_pass WHERE scope = 'local' AND task_id = ? ORDER BY n DESC LIMIT 1").get(multi.id);
+    assert.match(derniere.prompt, /commentaire en tête de chaque fichier/, 'c’est bien CETTE demande qui est partie');
+  });
+
+  /* Un champ vide n'envoie rien : la même règle que le formulaire de suivi de la carte. */
+  test('un suivi vide n’envoie rien, et le dit', async () => {
+    await ouvrirRetour(seule.id);
+    const avant = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(seule.id).c;
+    await page.locator('#taskMdFollowToggle').click();
+    await page.locator('#taskMdFollowText').fill('   ');
+    await page.locator('#taskMdFollowSend').click();
+    await page.waitForSelector('#toasts .toast-msg');
+    assert.match(await page.locator('#toasts .toast-msg').last().textContent(), /requise/i);
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(seule.id).c, avant);
+  });
 });

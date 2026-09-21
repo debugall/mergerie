@@ -18,6 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const db = require('../db');
 const { TASKS_DIR, ensureDir } = require('../core/paths');
+const { countTokens } = require('./copilot');
 
 // Dossier de travail d'une unité : <tasks>/<id>/<unit> ou <tasks>/local/<id>/<unit>.
 /* CHAQUE SCOPE A SON DOSSIER. Les identifiants sont propres à chaque table : la question n°3
@@ -44,6 +45,8 @@ function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
     .get(scope, taskId, unitId);
   const n = ((row && row.v) || 0) + 1;
   let outPath = null;
+  // Même comptage que `usage.tokens_est` (prompt + retour), pour CETTE itération seule.
+  const tokensEst = countTokens(prompt) + countTokens(text);
   /* L'`uid` PLUTÔT QUE LE NUMÉRO pour désigner une passe hors de cette base : `n` est un
      compteur local, renuméroté à chaque hydratation dans l'ordre des uid. Un repère posé sur
      `n` désignerait une autre passe dès qu'une itération venue d'ailleurs s'intercale. */
@@ -53,10 +56,10 @@ function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
       outPath = path.join(unitDir(scope, taskId, unitId), `output-v${n}.md`);
       fs.writeFileSync(outPath, md, 'utf8');
     }
-    const info = db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd)
-      VALUES (?,?,?,?,?,?,?,?,?)`)
+    const info = db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd, tokens_est)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`)
       .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString(),
-        typeof costUsd === 'number' ? costUsd : null);
+        typeof costUsd === 'number' ? costUsd : null, tokensEst);
     // L'uid est posé par un déclencheur à l'insertion : on le relit plutôt que de le deviner.
     uid = (db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(info.lastInsertRowid) || {}).uid || null;
   } catch { /* trace best-effort */ }
@@ -65,9 +68,22 @@ function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
 
 // Les passes d'une unité, de la plus ancienne à la plus récente (contenu lu à la demande).
 function list(scope, taskId, unitId) {
-  return db.prepare(`SELECT id, uid, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+  return db.prepare(`SELECT id, uid, n, kind, prompt, output_path, created_at, favori, titre, cost_usd, tokens_est,
       base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? ORDER BY n`).all(scope, taskId, unitId);
+}
+
+/* Nombre d'itérations déjà faites, par session — TOUTES unités confondues (chaque projet d'une
+   session de codage, chaque dossier d'un codage hors dépôt). Affiché à côté du bouton « Préparer
+   un suivi » : savoir qu'on en est à la sixième passe avant d'en redemander une change la
+   décision, et cette information n'existait qu'en ouvrant « Retour de l'IA ». Une requête
+   GROUP BY pour toute la liste, comme `coutParSession` — pas une par carte. */
+function countsFor(scope) {
+  const out = {};
+  for (const r of db.prepare('SELECT task_id AS id, COUNT(*) AS n FROM agent_pass WHERE scope = ? GROUP BY task_id').all(scope)) {
+    out[r.id] = r.n;
+  }
+  return out;
 }
 
 /* CE QUE CETTE ITÉRATION-LÀ A CHANGÉ. La passe est enregistrée avant le commit — c'est le
@@ -155,7 +171,7 @@ function marquer(id, { favori, titre } = {}) {
 
 // Une passe précise, avec le retour de l'agent lu sur disque.
 function get(scope, taskId, unitId, n) {
-  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd,
+  const p = db.prepare(`SELECT id, n, kind, prompt, output_path, created_at, favori, titre, cost_usd, tokens_est,
       base_sha, head_sha, diff_path FROM agent_pass
     WHERE scope = ? AND task_id = ? AND unit_id = ? AND n = ?`).get(scope, taskId, unitId, Number(n));
   if (!p) return null;
@@ -171,4 +187,4 @@ function removeTask(scope, taskId) {
   db.prepare('DELETE FROM agent_pass WHERE scope = ? AND task_id = ?').run(scope, taskId);
 }
 
-module.exports = { record, list, get, marquer, removeTask, attacherDiff, diffDe, purgerDiffsAnciens };
+module.exports = { record, list, get, marquer, removeTask, attacherDiff, diffDe, purgerDiffsAnciens, countsFor };

@@ -6,6 +6,7 @@ const db = require('../../db');
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const { wrap } = require('../http');
+const agentpass = require('../../agent/pass');
 const { auteurs, avecRangement, programmations, rangement } = require('../lib/partage');
 const { piecesExposees } = require('../lib/pieces');
 const { chapeauReponse, coutParSession, dureeParSession, taskById, taskTargets } = require('../lib/sessions');
@@ -59,6 +60,7 @@ app.get('/api/tasks', wrap((req, res) => {
   const range = rangement('task');
   const prog = programmations('task');
   const parQui = auteurs('task', rows);
+  const passes = agentpass.countsFor('task');
   res.json(rows.map((tache) => ({
     author: parQui.get(tache.id) || null,
     ...avecRangement('task', tache, range, prog),
@@ -67,6 +69,8 @@ app.get('/api/tasks', wrap((req, res) => {
     answer_head: tache.kind === 'explore' ? chapeauReponse(tache.md_path) : '',
     tokens_est: (couts[tache.id] || {}).tokens || null,
     cost_usd: (couts[tache.id] || {}).cost_usd ?? null,
+    // Le nombre d'itérations déjà faites, affiché à côté de « Préparer un suivi ».
+    passes_count: passes[tache.id] || 0,
     duration_ms: durees[tache.id] != null ? durees[tache.id] : null,
     /* UNE TODO T'ATTEND. L'outil en pose une quand l'agent s'arrête sur une question — elle
        vit dans Notes, et la carte de session, elle, ne disait rien. On la signale là où on

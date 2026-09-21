@@ -66,6 +66,7 @@ const EXCEPTIONS = {
   'mr_comment_draft.old_path': 'un chemin DANS le diff, relatif au dépôt : le même partout',
   'mr_comment_draft.new_path': 'un chemin DANS le diff, relatif au dépôt : le même partout',
   'agent_knowledge.tokens': 'un NOMBRE de jetons de modèle — le coût de la connaissance, pas un secret',
+  'agent_pass.tokens_est': 'un NOMBRE de jetons de modèle pour cette itération — le même compteur que `usage.tokens_est`, pas un secret',
 };
 
 /* L'extension d'un fichier joint, `.png` à défaut : le dépôt nomme l'image par l'uid de sa

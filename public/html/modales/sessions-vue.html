@@ -9,6 +9,10 @@
         <!-- L'ENQUÊTEUR A NOMMÉ UN DÉPÔT : le geste suivant est d'y coder. Le bouton n'existe
              que si le rapport porte un bloc <<<REPO>>> qui désigne un dépôt connu. -->
         <button id="taskMdFix" class="btn btn-sm btn-primary" hidden><svg class="ico"><use href="#i-bot"/></svg><span id="taskMdFixLabel"></span></button>
+        <!-- Envoyer un suivi SANS quitter cette vue : jusqu'ici il fallait fermer, retrouver la
+             carte de la session, puis rouvrir son formulaire de suivi pour continuer sur ce
+             qu'on venait justement de relire ici. -->
+        <button id="taskMdFollowToggle" class="btn btn-sm" title="" data-i18n-title="task.title.draft-followup"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="task.btn.draft-followup">Préparer un suivi</span></button>
         <button id="taskMdCopy" class="btn btn-sm" title="Copier la réponse en Markdown" data-i18n-title="context.title.copier-la-reponse-en-markdown"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="settings.btn.copier">Copier</span></button>
         <div class="split-menu-wrap">
             <button id="taskMdExport" class="btn btn-sm" aria-haspopup="true" aria-expanded="false" title="Exporter la réponse" data-i18n-title="export.title"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="export.btn">Exporter</span></button>
@@ -19,6 +23,11 @@
             </div>
         </div>
         <button id="taskMdClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
+    </div>
+    <div id="taskMdFollow" class="mr-create followup" hidden>
+        <textarea id="taskMdFollowText" class="followup-text" placeholder="Demande de suivi : fais aussi X, corrige Y…" data-i18n-placeholder="task.followup.ph"></textarea>
+        <button id="taskMdFollowCancel" class="btn" type="button" data-i18n="ui.cancel">Annuler</button>
+        <button id="taskMdFollowSend" class="btn btn-primary" type="button" data-i18n="task.btn.send-followup">Envoyer le suivi</button>
     </div>
     <!-- Les ITÉRATIONS sont une liste à gauche, pas une liste déroulante : on les lit toutes
          d'un coup d'œil, avec la demande qui a produit chacune, et on cherche dedans. -->
