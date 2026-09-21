@@ -526,6 +526,28 @@ function wireTaskActions() {
       toast(tr('task.followup-ci.filled', { n: b.dataset.build }));
     } catch (e) { toast(explainError(e.message), true); }
   });
+  /* LE RATTRAPAGE TOURNE EN TÂCHE DE FOND (l'IA peut devoir trancher des conflits) : le clic ne
+     dit que « lancé ». Sans repli, la seule preuve qu'il a réussi — et qu'il FAUT maintenant
+     pousser en forçant — était de remarquer, sur une carte qui se redessine toutes les secondes
+     et demie, qu'un bouton avait changé de libellé tout seul. On guette donc CE job précis
+     jusqu'à sa fin pour le dire — succès ou échec, jamais un silence qui laisserait deviner. */
+  async function suivreRattrapage(jobId, branch, base) {
+    /* 800 × 1,5 s ≈ 20 min : jusqu'à `REBASE_MAX_PASSES` (5) passes IA sur des conflits, au
+       même rythme que le reste de l'écran (« se redessine toutes les secondes et demie »). Passé
+       ça, on se tait plutôt que de continuer à interroger un job qu'on n'attend plus — le
+       rafraîchissement normal de la carte reste le filet. */
+    for (let i = 0; i < 800; i += 1) {
+      let d;
+      try { d = await api(`/jobs/${jobId}/log?after=0`); } catch { return; }
+      if (d.finished_at) {
+        if (d.status === 'done') toast(tr('toast.update-base.done', { branch, base }));
+        else if (d.status === 'error') toast(explainError(d.message || branch), true);
+        refreshStatus(); loadTasks();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
   /* Le rebase RÉÉCRIT l'historique de la branche : on le dit avant, pas après. Le push qui
      suivra devra être forcé, et une branche que d'autres ont pu tirer n'est pas un détail. */
   on('[data-tgrebase]', async (b) => {
@@ -537,9 +559,10 @@ function wireTaskActions() {
       danger: false,
     })) return;
     try {
-      await api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgrebase}/update-base`, { method: 'POST' });
+      const job = await api(`/tasks/${b.dataset.task}/targets/${b.dataset.tgrebase}/update-base`, { method: 'POST' });
       toast(tr('toast.update-base.started', { branch }));
       refreshStatus(); loadTasks();
+      if (job && job.id) suivreRattrapage(job.id, branch, base);
     } catch (e) { toast(e.message, true); }
   });
   on('[data-followcancel]', (b) => {

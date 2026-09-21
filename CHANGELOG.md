@@ -68,6 +68,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   session is still alive.** An AI that pauses to ask “should I continue into the next batch?” in
   plain text (no structured question) had nothing committed, so the project landed in “error” —
   and with it, the one button that could actually reply to that pause and say “continue”.
+- **“Update with {base}” now says when it's done, and that a force-push is next.** It runs in the
+  background (the AI may need to settle conflicts), and the only sign it had finished was a
+  button quietly changing label on a card that redraws itself every second and a half. A toast
+  now follows that one job to its end, success or failure, instead of leaving it to be noticed.
 
 - **The report-link comment can say how many findings the pass carries.** Three new variables in
   the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,

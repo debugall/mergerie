@@ -280,6 +280,21 @@ describe('Rattraper la branche de départ', () => {
       assert.equal(tg.status, 'committed');
       assert.equal(tg.last_error, null, JSON.stringify(tg.last_error));
     });
+
+    /* LE JOB TOURNE EN TÂCHE DE FOND : sans repli, la seule preuve d'un rattrapage réussi
+       était de remarquer, sur une carte qui se redessine toute seule, qu'un bouton avait changé
+       de libellé. Un toast le dit maintenant explicitement — succès compris le geste qui suit
+       (pousser en forçant). Rejoue le MÊME bouton que le test précédent, déjà à jour cette
+       fois : le job réussit encore (rien à rejouer n'est pas un échec), ce qui suffit à
+       prouver que le toast de fin suit le job, pas une simple minuterie côté écran. */
+    test('un rattrapage réussi le dit, et qu’il faut maintenant pousser en forçant', async () => {
+      await page.locator(`#taskList [data-tgrebase="${targetId}"]`).click();
+      await page.locator('#confirmModal:not([hidden])').waitFor();
+      await page.locator('#confirmOk').click();
+      // « réécrit » (l'historique) est le mot distinctif du toast de fin — pas celui de départ.
+      await page.waitForFunction(() => [...document.querySelectorAll('#toasts .toast-msg')]
+        .some((el) => /réécrit/i.test(el.textContent)), null, { timeout: 15000 });
+    });
   });
 
   /* ------------------------------------------- quand le bouton s'affiche ---- */
