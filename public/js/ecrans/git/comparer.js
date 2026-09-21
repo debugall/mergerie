@@ -219,6 +219,18 @@ function showGitSub(name) {
   if (name === 'merge') mergeLoad();
 }
 
+// Le compte de dépôts cochés, comme partout ailleurs où l'on coche dans une longue liste
+// (A/Git — « combien de dépôts vais-je analyser ? » ne se lisait qu'en comptant les cases).
+// Fonction à part : `poserMemoireExplorer` (explorateur.js) coche des cases par le code, ce
+// qui ne déclenche pas d'évènement `change`, et doit donc rafraîchir le compte lui aussi.
+function gitExploreMajCompte() {
+  const box = $('#gitExploreRepoBox');
+  if (!box) return;
+  const n = $$('.git-multi-pick:checked', box).length;
+  const compte = $('.git-multi-count', box);
+  if (compte) compte.textContent = n ? tr('git.explorer.repos-picked', { n, count: n }) : '';
+}
+
 // Explorateur : sélection MULTIPLE de dépôts (cases à cocher) avec recherche à la frappe
 // (le nombre de dépôts peut être élevé). Pas de présélection : on n'analyse rien sans choix.
 function renderGitExploreRepos() {
@@ -226,13 +238,30 @@ function renderGitExploreRepos() {
   if (!box) return;
   const items = repoOptions.map((r) =>
     `<label class="repo-multi-item"><input type="checkbox" class="git-multi-pick" value="${r.id}" /> <span>${esc(r.project)}</span></label>`).join('');
-  box.innerHTML = `<input class="repo-multi-search" type="search" placeholder="${esc(tr('git.explorer.search-ph'))}" />
-    <div class="repo-multi-list">${items || `<span class="muted">${esc(tr('settings.repo.empty.title'))}</span>`}</div>`;
+  box.innerHTML = `<div class="repo-multi-toolbar">
+      <input class="repo-multi-search" type="search" placeholder="${esc(tr('git.explorer.search-ph'))}" />
+      <button type="button" class="btn btn-sm git-multi-all">${esc(tr('git.explorer.select-all'))}</button>
+      <button type="button" class="btn btn-sm git-multi-none">${esc(tr('git.explorer.clear-all'))}</button>
+    </div>
+    <div class="repo-multi-list">${items || `<span class="muted">${esc(tr('settings.repo.empty.title'))}</span>`}</div>
+    <p class="muted git-multi-count"></p>`;
   const search = $('.repo-multi-search', box);
   search.addEventListener('input', () => {
     const q = search.value.toLowerCase().trim();
     $$('.repo-multi-item', box).forEach((it) => { it.hidden = !!q && !$('span', it).textContent.toLowerCase().includes(q); });
   });
+  box.addEventListener('change', (e) => { if (e.target.classList.contains('git-multi-pick')) gitExploreMajCompte(); });
+  // « Tout cocher » ne coche que ce que le filtre montre encore — cocher un dépôt masqué
+  // par la recherche surprendrait plus qu'il n'aiderait.
+  $('.git-multi-all', box).addEventListener('click', () => {
+    $$('.repo-multi-item', box).forEach((it) => { if (!it.hidden) $('.git-multi-pick', it).checked = true; });
+    gitExploreMajCompte();
+  });
+  $('.git-multi-none', box).addEventListener('click', () => {
+    $$('.git-multi-pick', box).forEach((cb) => { cb.checked = false; });
+    gitExploreMajCompte();
+  });
+  gitExploreMajCompte();
 }
 
 async function loadGit() {

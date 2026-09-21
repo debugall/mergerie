@@ -267,6 +267,7 @@ function poserMemoireExplorer() {
   const cases = $$('#gitExploreRepoBox .git-multi-pick');
   if (!cases.length || cases.some((c) => c.checked)) return;   // déjà un choix à l'écran : on n'y touche pas
   cases.forEach((c) => { if (ids.includes(Number(c.value))) c.checked = true; });
+  gitExploreMajCompte();   // cocher par le code ne déclenche pas `change`
 }
 function retenirDepotsExplorer(ids) {
   try { localStorage.setItem(MEMO_EXPLORER, JSON.stringify(ids || [])); } catch { /* stockage indisponible */ }

@@ -67,11 +67,13 @@
 
 /* ---------- Explorateur : multi-sélection de dépôts + résultats repliables ---------- */
 .repo-multi { max-width: 520px; }
-.repo-multi-search { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; margin-bottom: 6px; }
+.repo-multi-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.repo-multi-search { flex: 1; width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
 .repo-multi-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); padding: 4px; }
 .repo-multi-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; }
 .repo-multi-item:hover { background: var(--panel); }
 .repo-multi-item input { flex: 0 0 auto; }
+.git-multi-count { margin: 6px 0 0; }
 /* « Vérifier une branche » réemploie cette liste : un dépôt à cocher, puis SA branche en
    dessous, indentée sous son libellé. Décochée, la ligne s'éteint — on veut continuer à lire
    ce qu'on ne vérifie pas, sans le confondre avec ce qui va partir. */
