@@ -29,11 +29,12 @@ code rigoureuse, actionnable et honnête.
 
 ## Contexte fourni
 
-- **Source → Target** : {branche source} → {branche cible}
-- **Description de la MR** : {description fournie par l'auteur}
-- **Ticket / issue lié** : {référence éventuelle}
-- **Contexte projet** : {stack, conventions, contraintes particulières}
-- **Diff / fichiers modifiés** : {diff complet ou liste de fichiers}
+- **Source → Target** : {source} → {target}
+- **Diff** : fichier \`{diff_file}\` (chemin relatif au dépôt). Analyse UNIQUEMENT ces
+  changements ; tu peux ouvrir les fichiers modifiés pour le contexte, mais ne parse pas
+  tout le dépôt.
+- Le titre et la description de la MR, le ticket éventuel et les règles projet sont
+  ajoutés à la suite de ce prompt.
 
 ## Ta démarche
 
@@ -136,11 +137,12 @@ actionable and honest code review.
 
 ## Provided context
 
-- **Source → Target**: {source branch} → {target branch}
-- **MR description**: {description written by the author}
-- **Linked ticket / issue**: {reference if any}
-- **Project context**: {stack, conventions, specific constraints}
-- **Diff / changed files**: {full diff or list of files}
+- **Source → Target**: {source} → {target}
+- **Diff**: file \`{diff_file}\` (path relative to the repository). Analyze ONLY these
+  changes; you may open the changed files for context, but do not parse the whole
+  repository.
+- The MR's title and description, any linked ticket, and project rules are appended
+  after this prompt.
 
 ## Your approach
 
