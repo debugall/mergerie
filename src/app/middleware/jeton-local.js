@@ -17,6 +17,7 @@
  * `interditsDonnees()`) pour un vrai coût : un appel exposé légitime à deux jetons. */
 const { app } = require('../app');
 const i18n = require('../../core/i18n');
+const garde = require('../../core/garde');
 const jetonlocal = require('../../core/jetonlocal');
 const { EXPOSE } = require('./origine');
 
@@ -31,10 +32,17 @@ app.use((req, res, next) => {
   next();
 });
 
-/* SEULEMENT SUR LOOPBACK (`!EXPOSE`) : voir la note en tête de fichier. */
+/* SEULEMENT SUR LOOPBACK (`!EXPOSE`) : voir la note en tête de fichier. `garde.estApi` compare en
+   minuscules : Express route sans tenir compte de la casse, un `req.path.startsWith('/api/')`
+   sensible à la casse laissait passer `GET /API/config` — même processus sans navigateur, même
+   route atteinte, jeton jamais demandé (revue de add-secure-layer-2). */
 app.use((req, res, next) => {
-  if (EXPOSE || !req.path.startsWith('/api/') || jetonlocal.valide(req)) return next();
-  res.status(401).json({ error: i18n.t('err.jeton-local-requis') });
+  if (EXPOSE || !garde.estApi(req) || jetonlocal.valide(req)) return next();
+  /* `code: 'JETON_LOCAL'` (revue de add-secure-layer-2) : le jeton est RÉGÉNÉRÉ à chaque
+     démarrage du serveur (voir jetonlocal.js) — un onglet déjà chargé avant un redémarrage
+     porte l'ANCIEN cookie et resterait bloqué en 401 jusqu'à un rechargement manuel. Le code
+     laisse le front distinguer ce cas précis (recharger la page) d'un vrai refus. */
+  res.status(401).json({ error: i18n.t('err.jeton-local-requis'), code: 'JETON_LOCAL' });
 });
 
 module.exports = { jetonlocal };

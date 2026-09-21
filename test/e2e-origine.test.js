@@ -47,6 +47,16 @@ describe('Origine des requêtes', () => {
       'la merge request n’a pas été remise en file');
   });
 
+  /* Express route SANS tenir compte de la casse : `GET /API/…` atteint la même route que
+     `/api/…`. Une garde sensible à la casse (`req.path.startsWith('/api/')`) laissait passer un
+     `Sec-Fetch-Site: cross-site` sur ce chemin-là. */
+  test('la casse de l’URL ne contourne pas la garde Sec-Fetch-Site', async () => {
+    const r = await fetch(`${app.base}/API/config`, {
+      headers: { Authorization: `Bearer ${app.localToken}`, 'Sec-Fetch-Site': 'cross-site' },
+    });
+    assert.equal(r.status, 403);
+  });
+
   test('le refus dit ce qui s’est passé, sans jargon', async () => {
     const r = await poster('/api/reports/reset', 'https://evil.example');
     const { error } = await r.json();

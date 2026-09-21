@@ -42,7 +42,7 @@ app.use((req, res, next) => {
   res.status(421).json({ error: i18n.t('err.hote-inconnu', { host: garde.nomHote(req.headers.host) }) });
 });
 app.use((req, res, next) => {
-  if (!req.path.startsWith('/api/') || !garde.siteEtranger(req)) return next();
+  if (!garde.estApi(req) || !garde.siteEtranger(req)) return next();
   res.status(403).json({ error: i18n.t('err.origine-etrangere') });
 });
 if (EXPOSE) {
@@ -60,7 +60,7 @@ if (EXPOSE) {
   });
   app.use((req, res, next) => {
     if (garde.memeJeton(garde.jetonPresente(req), JETON_ACCES)) return next();
-    if (req.path.startsWith('/api/')) return res.status(401).json({ error: i18n.t('err.acces-requis') });
+    if (garde.estApi(req)) return res.status(401).json({ error: i18n.t('err.acces-requis') });
     return res.redirect(303, '/acces');
   });
 }

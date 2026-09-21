@@ -71,6 +71,11 @@ function siteEtranger(req) {
   return site === 'cross-site' || site === 'same-site';
 }
 
+/** La requête vise-t-elle `/api/` ? EN MINUSCULES : Express route sans tenir compte de la casse
+ *  (pas de `case sensitive routing`), donc `GET /API/config` atteint bien la route `/api/config`
+ *  — un test sensible à la casse ici laisserait passer une requête que la route, elle, sert. */
+const estApi = (req) => req.path.toLowerCase().startsWith('/api/');
+
 /* ---------------------------------------------------------------- les adresses de dépôt */
 
 /* LES ADRESSES QU'ON ACCEPTE DE JOINDRE. `git` sait parler bien plus de langues qu'il n'en
@@ -153,6 +158,6 @@ function jetonFraisRequis(urlCorps, urlBase, jetonCorps, jetonBase, defaut = '')
 
 module.exports = {
   jetonFraisRequis, origineDe,
-  nomHote, estIpLitterale, estBoucle, nomsAutorises, hoteAutorise, siteEtranger, adresseAdmise,
+  nomHote, estIpLitterale, estBoucle, nomsAutorises, hoteAutorise, siteEtranger, estApi, adresseAdmise,
   COOKIE, memeJeton, lireCookie, jetonPresente, pageAcces,
 };

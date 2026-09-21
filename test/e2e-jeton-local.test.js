@@ -21,12 +21,23 @@ describe('Le jeton de session local', () => {
   test('sans cookie ni Bearer, /api est fermée — comme le ferait un processus quelconque du poste', async () => {
     const r = await fetch(`${app.base}/api/config`);
     assert.equal(r.status, 401);
-    const { error } = await r.json();
+    const { error, code } = await r.json();
     assert.match(error, /jeton|token/i);
+    // Le front distingue « pas de jeton du tout » (recharger ne suffirait pas) d'un jeton
+    // périmé par un redémarrage du serveur — même code ici, le cas qui compte est testé plus bas.
+    assert.equal(code, 'JETON_LOCAL');
   });
 
   test('un Bearer faux est refusé comme une absence', async () => {
     const r = await fetch(`${app.base}/api/config`, { headers: { Authorization: 'Bearer pas-le-bon' } });
+    assert.equal(r.status, 401);
+  });
+
+  /* Express route SANS tenir compte de la casse (pas de `case sensitive routing`) : `GET
+     /API/config` atteint la même route que `/api/config`. Une garde sensible à la casse la
+     laisserait passer sans jeton — exactement le processus sans navigateur que ce jeton ferme. */
+  test('la casse de l’URL ne contourne pas la garde', async () => {
+    const r = await fetch(`${app.base}/API/config`);
     assert.equal(r.status, 401);
   });
 
