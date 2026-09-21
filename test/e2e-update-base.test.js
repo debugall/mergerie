@@ -310,6 +310,23 @@ describe('Rattraper la branche de départ', () => {
       const { targetId } = await sessionPoussee('feature/avec-conflit', { conflits: 1 });
       assert.equal(await boutonPour(targetId), 1);
     });
+
+    // Le même tag que sur la file des merge requests : un conflit se voit avant de cliquer.
+    test('conflit avéré : le tag « en conflit » apparaît aussi, pas seulement le bouton', async () => {
+      const { taskId, targetId } = await sessionPoussee('feature/avec-conflit-tag', { conflits: 1 });
+      await boutonPour(targetId);
+      const carte = page.locator(`#taskList .card[data-task="${taskId}"]`);
+      await carte.locator('.tag.conflict-info').waitFor();
+      assert.match(await carte.locator('.tag.conflict-info').textContent(), /conflit/i);
+    });
+
+    test('conflit inconnu ou absent : pas de tag « en conflit »', async () => {
+      const { taskId, targetId } = await sessionPoussee('feature/tag-sans-conflit', { conflits: 0 });
+      await boutonPour(targetId);
+      const carte = page.locator(`#taskList .card[data-task="${taskId}"]`);
+      await carte.locator('.target-line').first().waitFor();
+      assert.equal(await carte.locator('.tag.conflict-info').count(), 0);
+    });
   });
 
   /* -------------------------------------- ce que la découverte relève ---- */

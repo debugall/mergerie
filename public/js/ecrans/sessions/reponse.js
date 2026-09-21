@@ -123,6 +123,12 @@ function targetLine(t, tg) {
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
     ${mrIid ? (mrUrl ? ` <a href="${esc(safeUrl(mrUrl))}" target="_blank" rel="noopener noreferrer">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
     ${etatMrDeLaLigne(tg)}
+    ${/* LE MÊME TAG QUE DANS REVIEWS. Le bouton « Mettre à jour avec {base} » offre le geste,
+          mais rien ne disait POURQUOI il est là — sur la file des MR, un conflit se voit avant
+          de cliquer quoi que ce soit ; ici il fallait deviner. Seulement sur un vrai conflit
+          flagué par la forge (`mr_conflicts`), pas sur un simple push non-fast-forward : le
+          mot « conflit » doit rester vrai, la seconde moitié de `peutRattraper` n'en est pas un. */''}
+    ${tg.mr_conflicts === 1 ? `<span class="tag conflict-info" title="${esc(tr('task.tag.conflict-title', { base: tg.base_branch || 'main' }))}">${svgIco('alert')} ${esc(tr('mr.tag.conflict'))}</span>` : ''}
     ${/* B5 — L'ÉTAT DU TICKET sur la ligne de projet. La ligne disait la note, le verdict et
           les brouillons ; le ticket, jamais — alors qu'« il est repassé en cours » change ce
           qu'on fait de la branche autant qu'un test rouge. */''}

@@ -194,6 +194,10 @@ body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
    pour le texte — la bordure, elle, garde la teinte de marque. */
 .tag.done { color: var(--green-text); border-color: var(--green); }
 .tag.stale { color: var(--red); border-color: var(--red); }
+/* Même rouge que `.tag.conflit` (verification.css) mais sans son curseur ni son survol : cette
+   pastille-ci est une INFORMATION posée sur une ligne de session, pas un bouton — le geste qui
+   résout le conflit est déjà juste à côté (« Mettre à jour avec {base} »). */
+.tag.conflict-info { color: var(--red); border-color: var(--red); }
 .tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
 .muted { color: var(--muted); font-size: 13px; }
 

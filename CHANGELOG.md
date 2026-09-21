@@ -61,6 +61,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   “still running” separately from “done” (green) and “failed” (red).
 - **A session error's remedy buttons (“Catch up with the base and retry”, “Resolve the conflict”,
   “Start from a fresh agent session”, “Re-clone the repository”) explain themselves on hover.**
+- **A coding session's project line shows the same “in conflict” tag as the merge request queue**,
+  next to “Update with {base}”, when the forge has actually flagged a conflict — not just any
+  rejected push. The button offered the fix already; nothing said why it was there.
 
 - **The report-link comment can say how many findings the pass carries.** Three new variables in
   the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
