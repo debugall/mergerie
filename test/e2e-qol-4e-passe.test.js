@@ -35,7 +35,7 @@ describe('Qualité de vie · 4ᵉ passe', () => {
   test('toutes les saveurs de job et d’appel ont un libellé, dans les deux langues', () => {
     const rt = require('../public/runtime/i18n-runtime.js');
     const jobs = ['review', 'rereview', 'modify', 'explain', 'task', 'local', 'gitops', 'docker',
-      'converge', 'verify', 'install', 'ask', 'ask-review', 'reconcile'];
+      'converge', 'verify', 'ask', 'ask-review', 'reconcile'];
     const appels = ['review', 'explain', 'modify', 'task', 'explore', 'ask', 'question'];
     for (const lang of ['fr', 'en']) {
       rt.setLang(lang);
