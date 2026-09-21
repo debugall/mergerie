@@ -23,7 +23,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const MARQUEUR = /^[ \t]*<!--@include ([^\s>]+)-->[ \t]*$/;
+/* `\r?` en fin : `public/` peut être extrait avec des fins de ligne CRLF (checkout Windows,
+   `core.autocrlf=true`) — sans lui, le marqueur ne matche plus jamais et la page sert les
+   commentaires `<!--@include …-->` tels quels, coquille vide, tous les `$(...)` de scripts null. */
+const MARQUEUR = /^[ \t]*<!--@include ([^\s>]+)-->[ \t]*\r?$/;
 
 /* Le chemin d'un morceau, vérifié : relatif, sous `public/`, jamais au-dessus. */
 function cheminMorceau(base, rel, ou) {
