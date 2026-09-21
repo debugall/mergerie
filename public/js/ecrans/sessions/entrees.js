@@ -310,7 +310,10 @@ async function dupliquerTask(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
-  await majVerificateursSession(t.verifier_id || '');
+  /* « AUCUN » SE COPIE AUSSI. La duplication reprend le vérificateur de l'original — son
+     commentaire le dit — donc un « aucun » délibéré ne doit pas se faire remplacer par le
+     vérificateur unique qui couvre les dépôts : même raison qu'à l'édition. */
+  await majVerificateursSession(t.verifier_id || '', { autoPick: false });
   /* L'AGENT FAIT PARTIE DE CE QU'ON COPIE. La duplication reprenait tout — prompt, dépôts,
      cases, vérificateur — sauf le profil d'agent : la copie d'un run de l'enquêteur repartait
      en session ordinaire, sans son rôle, ses outils ni ses skills, et rien ne le disait. */
