@@ -113,7 +113,11 @@ document.addEventListener('click', async (e) => {
     navTab('git');
     showGitSub('explore');
     const c = $(`#gitExploreRepoBox .git-multi-pick[value="${Number(br.dataset.todoBranch)}"]`);
-    if (c) { $$('#gitExploreRepoBox .git-multi-pick:checked').forEach((x) => { x.checked = false; }); c.checked = true; }
+    if (c) {
+      $$('#gitExploreRepoBox .git-multi-pick:checked').forEach((x) => { x.checked = false; });
+      c.checked = true;
+      gitExploreMajCompte();   // cocher par le code ne déclenche pas `change`
+    }
     const go = $('#gitExploreGo');
     if (go) go.click();
     toast(tr('notes.todo.branch-go', { branch: br.dataset.todoBranchName || '' }));
