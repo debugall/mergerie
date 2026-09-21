@@ -101,6 +101,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the list never carried the command.
 - **AI dev: the verifier list follows the projects of the session form** when a project is added
   or removed, not only when a repository is changed.
+- **AI dev: choosing “none” as the verifier of a coding session now sticks.** Reopening the
+  session for editing brought back the single verifier that covers its projects, silently undoing
+  the deliberate choice to run without one.
 - **Agents: “Sessions” on an exploration agent opens the Exploration list**, filtered on that
   agent, instead of an empty Coding list.
 - **Agents: “Duplicate” and “Code” on an agent awaiting approval say why they are refused**

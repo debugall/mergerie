@@ -243,7 +243,7 @@ async function openTaskEdit(id) {
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
     poserDateProgrammee(f, t.scheduled_at);
-    await majVerificateursSession(t.verifier_id || '');
+    await majVerificateursSession(t.verifier_id || '', { autoPick: false });
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     deplierAvanceSiRempli(f);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
