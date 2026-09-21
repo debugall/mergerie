@@ -48,6 +48,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   a session by hand cancels its date, a date already past is refused, and the date belongs to the
   workstation that set it: that one launches, and catches up at the next minute if it was switched
   off at the time. Free questions are not schedulable.
+- **“Check all” / “Uncheck all” on the branch explorer's repository picker**, with a running
+  count of how many are ticked (Git → Explorer of branches). Matches what “Git commands” already
+  offered on its own project picker.
 
 - **The report-link comment can say how many findings the pass carries.** Three new variables in
   the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
