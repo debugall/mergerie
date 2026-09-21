@@ -258,6 +258,17 @@ app.post('/api/tasks/:id/run', wrap(async (req, res) => {
       if (targetIds && !targetIds.includes(tg.id)) continue;
       await gardeConfigAgent(db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id), tg.branch, tg.base_branch, req.body);
     }
+  } else if (tache.kind === 'explore') {
+    /* plan_secure.md, lot A, point 6 : la branche explorée peut réécrire les règles de l'agent
+       tout autant qu'une branche codée — `gardeConfigAgent` n'était appelé que pour `kind ===
+       'code'`. `base` volontairement omis (pas `tg.base_branch`, qui vaut ici la branche
+       explorée elle-même, posée par `runExploration`) : le garde retombe sur la branche par
+       défaut du dépôt, la seule comparaison qui ait un sens pour une exploration. */
+    for (const tg of db.prepare('SELECT * FROM task_target WHERE task_id = ?').all(tache.id)) {
+      if (targetIds && !targetIds.includes(tg.id)) continue;
+      if (!tg.branch) continue;   // pas de branche choisie : l'exploration prendra le défaut, rien à comparer
+      await gardeConfigAgent(db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id), tg.branch, null, req.body);
+    }
   }
   // Lancer à la main annule le lancement programmé : la session ne doit pas partir deux fois.
   jobs.programmation.programmer('task', tache.uid, 'run', null);

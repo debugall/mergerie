@@ -611,6 +611,21 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       } else {
         throw new Error(t('err.branch-missing-on-project', { branch, project: tg.project }));
       }
+      /* LA BRANCHE EXPLORÉE PEUT RÉÉCRIRE LES RÈGLES DE L'AGENT (plan_secure.md, lot A, point 6) :
+         un `CLAUDE.md`/`.claude/`/`.mcp.json` qui diffère de la branche par défaut devient un
+         contexte actif pour l'agent qui l'explore, au même titre qu'un codage sur cette branche —
+         `configagent.examiner` n'était appelé que pour l'écriture. Pas de distinction « première
+         passe seulement » ici : une exploration ne commite jamais, donc rien de ce qu'elle
+         produirait elle-même ne peut expliquer un changement vu à la passe suivante. */
+      if (!copilot.isDryRun()) {
+        const defaut = await git.defaultBranch(cwd);
+        if (branch !== defaut) {
+          const examen = await configagent.examiner(cwd, `origin/${defaut}`, branch);
+          if (examen.fichiers.length && !configagent.accepte(repo, branch, examen.empreinte)) {
+            throw configagent.erreur(t('err.agent-config.touched', { branch, files: examen.fichiers.join(', ') }), examen);
+          }
+        }
+      }
       dirs.push({ dir: path.relative(root, cwd) || path.basename(cwd), project: tg.project, branch, cwd, repo_id: tg.repo_id });
       setTarget(tg.id, { base_branch: branch, status: 'done', last_error: null });
       /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : relevé AVANT le run,
