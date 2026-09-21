@@ -383,7 +383,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
      que les « projets liés » d'une review (src/review/reviewer.js) : montés en symlink sous
      ai-dev-tools-internal/context/<projet> (déjà git-exclu), remis à zéro après. */
   const ctxRoot = path.join(cwd, WORK_REL, 'context');
-  const ctxDirs = []; // { cwd } des clones liés, à remettre à zéro après
+  const ctxDirs = []; // { cwd, sha } des clones liés, à remettre à zéro après (sha = avant toute écriture de l'agent)
   let ctxBlock = '';
   const ctxLinks = db.prepare('SELECT * FROM task_context_repo WHERE task_id = ?').all(task.id);
   if (ctxLinks.length) {
@@ -403,7 +403,10 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
         const slug = slugify(lrepo.project);
         const linkPath = path.join(ctxRoot, slug);
         try { fs.symlinkSync(lcwd, linkPath); } catch { fs.rmSync(linkPath, { recursive: true, force: true }); fs.symlinkSync(lcwd, linkPath); }
-        ctxDirs.push({ cwd: lcwd });
+        // Capturé juste après le checkout, AVANT que l'agent n'y touche : c'est l'état auquel
+        // le cleanup ramène le clone, plutôt qu'un simple `checkout -- .` qui laisse passer les
+        // fichiers ignorés et un éventuel commit fait par l'agent malgré la consigne.
+        ctxDirs.push({ cwd: lcwd, sha: await git.headSha(lcwd) });
         mounted.push({ rel: `${WORK_REL}/context/${slug}`, project: lrepo.project, branch });
         onLog(t('log.task.context-ok', { project: lrepo.project, branch }));
       } catch (e) { onLog(t('log.task.context-error', { project: lrepo.project, message: e.message.split('\n')[0] })); }
@@ -417,12 +420,26 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     }
   }
   // Remet à zéro les worktrees des projets liés (garantie lecture seule) et retire les liens.
+  // `reset --hard` + `clean -fdx` plutôt que le `resetWorktree` habituel : celui-ci laisse
+  // passer les fichiers ignorés (pas de `-x`) et un commit que l'agent aurait fait malgré la
+  // consigne — deux façons de laisser une trace dans un clone qui doit rester lecture seule.
   async function cleanupContext() {
-    for (const d of ctxDirs) { try { await git.resetWorktree(d.cwd, () => {}); } catch { /* best-effort */ } }
+    for (const d of ctxDirs) {
+      try {
+        await git.run('git', ['reset', '--hard', d.sha], { cwd: d.cwd });
+        await git.run('git', ['clean', '-fdx'], { cwd: d.cwd });
+      } catch { /* best-effort */ }
+    }
     try { fs.rmSync(ctxRoot, { recursive: true, force: true }); } catch { /* déjà parti */ }
     if (ctxDirs.length) onLog(t('log.task.context-reset'));
   }
-  if (ctxBlock) promptText += ctxBlock;
+  /* Ajouté aussi à `promptRepli` : à la toute première passe (pas de handle de session), c'est
+     LUI que `reinjecte()` envoie, pas `promptText` — sans ça l'IA n'apprenait jamais l'existence
+     des projets montés, alors qu'ils venaient d'être clonés pour rien. */
+  if (ctxBlock) {
+    promptText += ctxBlock;
+    if (promptRepli != null) promptRepli += ctxBlock;
+  }
 
   try {
   const imgBlock = attachImages(task, cwd, onLog, { imageIds });

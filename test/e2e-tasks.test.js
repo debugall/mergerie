@@ -416,6 +416,18 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(inchangee.body.context_repos.length, 0, 'absent du corps : pas de résurrection des projets liés effacés');
     await app.api('PUT', `/api/tasks/${taskId}`, { context_repos: [{ repo_id: repo2Id }] }); // branche vide = défaut
 
+    /* Chevauchement dans l'AUTRE sens : ajouter comme CIBLE un dépôt déjà lié en lecture
+       seule. Refusé, et la recréation des cibles qui l'accompagnait doit être annulée avec —
+       pas de cible à moitié réécrite derrière une erreur 400. */
+    const avantChevauchement = (await app.api('GET', `/api/tasks/${taskId}`)).body.task.targets;
+    const chevauchement = await app.api('PUT', `/api/tasks/${taskId}`, {
+      targets: [{ repo_id: repoId, branch: 'ctx/ok' }, { repo_id: repo2Id, branch: 'ctx/ok2' }],
+    });
+    assert.equal(chevauchement.status, 400, 'un dépôt déjà lié en lecture seule ne peut pas devenir cible');
+    const apresChevauchement = (await app.api('GET', `/api/tasks/${taskId}`)).body.task.targets;
+    assert.deepEqual(apresChevauchement.map((x) => x.repo_id), avantChevauchement.map((x) => x.repo_id),
+      'la requête refusée n’a pas laissé les cibles à moitié réécrites');
+
     // Exécution : le projet lié est cloné, monté en lecture seule le temps de la passe,
     // puis remis à zéro — comme les « projets liés » d'une review.
     const depuis = app.db.prepare('SELECT COALESCE(MAX(id), 0) m FROM job_log').get().m;
@@ -873,6 +885,24 @@ describe('Sessions de dev de bout en bout', () => {
     const kUn = [...jobKeys({ kind: 'task', taskId: un.id })];
     assert.deepEqual(kUn, [`repo:${repo2Id}`]);
     assert.equal(keysClash(kDeux, kUn), true, 'ils partagent un dépôt : jamais en parallèle');
+
+    /* Un projet lié en LECTURE SEULE est réservé comme les cibles : le clone est remis à zéro
+       pendant la passe (checkout, reset --hard), une autre session qui code DANS ce dépôt ne
+       doit donc jamais tourner en même temps — elle y perdrait du travail non commité. */
+    const avecContexte = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoId, branch: 'ai/k3' }],
+      context_repos: [{ repo_id: repo2Id }],
+    })).body;
+    const kCtx = [...jobKeys({ kind: 'task', taskId: avecContexte.id })];
+    assert.deepEqual(kCtx.sort(), [`repo:${repoId}`, `repo:${repo2Id}`].sort(),
+      'le dépôt lié en lecture seule compte parmi les dépôts touchés');
+    assert.equal(keysClash(kCtx, kUn), true,
+      'une session qui code dans le dépôt lié ne doit pas tourner en parallèle du montage lecture seule');
+    /* Une passe CIBLÉE sur le seul projet codé touche quand même le projet lié : celui-ci est
+       monté à CHAQUE passe de la session, quel que soit `targetIds`. */
+    const cibleId = (await app.api('GET', `/api/tasks/${avecContexte.id}`)).body.task.targets[0].id;
+    const kCtxCible = [...jobKeys({ kind: 'task', taskId: avecContexte.id, opts: { targetIds: [cibleId] } })];
+    assert.deepEqual(kCtxCible.sort(), [`repo:${repoId}`, `repo:${repo2Id}`].sort());
 
     // Docker ne touche aucun dépôt ; une opération git déclare les siens.
     assert.deepEqual([...jobKeys({ kind: 'docker', payload: {} })], []);
