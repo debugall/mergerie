@@ -34,8 +34,14 @@ function appliquerPleinEcran() {
 }
 // ÉCHAP EN SORT, d'où qu'on parte dans la page (le titre, le Markdown) : le clavier reste
 // sinon capturé par le champ actif et la touche n'atteindrait jamais ce gestionnaire global.
+// LE PLUS HAUT D'ABORD : une modale (confirmation de suppression, « Faire coder l'IA »,
+// palette) ou la vue plein écran des revues, ouvertes PAR-DESSUS, consomment Échap — sinon
+// supprimer une page en plein écran puis se raviser (Échap sur la confirmation) renvoyait
+// aussi en vue deux colonnes, d'une seule touche. Voir reviews/commentaires.js.
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || !notePleinEcran) return;
+  if ($$('.modal').some((m) => !m.hidden)) return;
+  if ($('#splitView') && !$('#splitView').hidden) return;
   notePleinEcran = false;
   appliquerPleinEcran();
 });
@@ -242,6 +248,11 @@ function renderPageEditor() {
   if (!box) return;
   const p = NOTES.page;
   if (!p) {
+    // SANS PAGE, PAS DE PLEIN ÉCRAN : sinon une page supprimée en plein écran (le bouton
+    // pour en sortir disparaît avec le reste de l'en-tête) laisse un écran couvrant toute
+    // la fenêtre avec pour seul contenu « Aucune page sélectionnée », sans rien pour en sortir.
+    notePleinEcran = false;
+    appliquerPleinEcran();
     box.innerHTML = `<p class="muted note-none">${esc(tr('notes.page.none-selected'))}</p>`;
     return;
   }
