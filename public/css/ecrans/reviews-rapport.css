@@ -43,9 +43,13 @@
   position: sticky; top: calc(var(--header-h, 56px) + 6px);
   max-height: calc(100vh - var(--header-h, 56px) - 28px);
   overflow-y: auto;
-  /* Arrivé en bas de la liste, la molette ne doit pas enchaîner sur la page : on croirait
-     que la liste continue alors que c'est tout l'écran qui bouge. */
-  overscroll-behavior: contain;
+  /* ARRIVÉ EN HAUT OU EN BAS D'UNE COLONNE, LA MOLETTE DOIT ENCHAÎNER SUR LA PAGE : sans ça, il
+     fallait sortir la souris de la liste ou du rapport pour reprendre le défilement de l'écran —
+     un `contain` posé ici l'a un temps empêché, pour éviter qu'un défilement de fin de liste ne
+     fasse sauter tout l'écran, mais le prix (rester coincé dans la colonne) était pire que le
+     mal qu'il évitait. `auto` est la valeur par défaut du navigateur ; le nommer ici documente
+     le choix plutôt que de le laisser implicite. */
+  overscroll-behavior: auto;
 }
 /* Le rapport peut être court : la barre de défilement du navigateur ne s'affiche alors pas,
    mais `min-height: 300px` le ferait dépasser sur un écran bas — d'où le plafond commun. */

@@ -314,9 +314,11 @@ function contexte() {
     /* CETTE SESSION SE PARTAGE-T-ELLE ? Les passes et les pièces jointes n'ont pas de case à
        elles : une session ne peut pas être « à moitié » partagée, sinon on publierait le
        retour de l'agent sans la demande qui l'a produit. Le `review` est le seul scope qui n'a
-       pas de session : une passe de review appartient à la merge request, produit d'équipe. */
+       pas de session — une question posée sur un rapport reste PRIVÉE : le rapport lui-même est
+       le produit d'équipe, pas la curiosité personnelle de qui le lit ni la réponse qu'elle a
+       reçue. Jamais partagée, donc, quel que soit le dépôt de données de la MR. */
     sessionPartagee(scope, id) {
-      if (scope === 'review') return true;
+      if (scope === 'review') return false;
       const table = { task: 'task', local: 'local_task', ask: 'question' }[scope];
       if (!table || !id) return false;
       const r = memoise(`sp:${table}:${id}`,

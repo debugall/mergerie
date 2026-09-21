@@ -132,6 +132,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A question asked on a review report, and its answer, are never shared with the team** —
+  they used to travel with the team's data repository unconditionally, on the theory that the
+  report itself is team work. The report still is; a personal question about it, and what the
+  agent answered, now stay on the machine that asked, like a session's own follow-ups.
+- **Scrolling to the top or bottom of a review report, or of the merge request list next to
+  it, now keeps scrolling the page**, instead of stopping dead and forcing the mouse out of the
+  panel to reach the rest of the screen. The list used to hold the wheel at its own edges on
+  purpose, to keep a short scroll there from jumping the whole screen — but getting stuck inside
+  the panel turned out to be the worse annoyance of the two.
 - **The “in conflict” tag and the “Update with {base}” button no longer outlive the conflict
   they pointed at.** A successful catch-up replays the session's commits on top of an up-to-date
   base — resolved, locally — but the flag behind both stayed set until a push and the forge's

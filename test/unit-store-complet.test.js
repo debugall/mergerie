@@ -241,22 +241,26 @@ describe('store — la base prévient, le store écrit', () => {
     assert.ok(store.existe(`todos/${uid}.json`));
   });
 
-  /* UNE LIGNE QUI NE SAIT PAS ENCORE DEVENIR UN FICHIER RESTE DANS LA FILE.
+  /* UNE LIGNE QUI NE SAIT PAS ENCORE CALCULER SON CHEMIN RESTE DANS LA FILE.
      C'était l'intention écrite au-dessus du `catch`, et elle ne s'appliquait pas : un
      `oublier.run()` inconditionnel suivait, et retirait la ligne de toute façon. Une passe dont
      le chemin ne se calculait pas disparaissait donc POUR TOUJOURS — pas de fichier, file vide,
      aucune trace. Vu de l'équipe : un suivi qui n'arrive jamais chez personne. Vu en vrai, sur
      une vraie base : deux suivis évaporés sur sept.
      On reproduit la panne exactement : une passe dont la session ne se résout pas (le chemin
-     `sessions/{session}/…` ne peut pas être écrit), puis la session apparaît. */
-  test('une ligne qui ne sait pas ENCORE devenir un fichier attend, elle ne s’évapore pas', () => {
+     `sessions/{session}/…` ne peut pas être écrit, PAS MÊME pour constater qu'il n'y a rien à
+     retirer), puis la session apparaît. */
+  test('une ligne qui ne sait pas ENCORE calculer son chemin attend, elle ne s’évapore pas', () => {
     const now = new Date().toISOString();
     /* LE CAS DU COMMENTAIRE, MOT POUR MOT : une passe dont la « session » ne se résout pas
-       encore. Une passe de REVIEW appartient à la merge request — produit d'équipe, donc
-       toujours partagée : rien ne la retient, et pourtant son chemin se calcule à partir de la
-       MR. Sans elle, `cheminDe` refuse de nommer le fichier. C'est le « pas encore » que la
-       file existe pour absorber. (`agent_pass` n'a pas de clé étrangère : deux tables parentes
-       possibles selon le scope — c'est ce qui rend la situation atteignable.) */
+       encore. `cheminDe` refuse de nommer le fichier tant que la MR n'existe pas — que la ligne
+       finisse ou non par se PARTAGER n'y change rien : calculer le chemin à retirer échoue tout
+       autant que calculer celui à écrire. C'est le « pas encore » que la file existe pour
+       absorber. Une passe de REVIEW ne se partage jamais (voir `sessionPartagee`) : elle sert
+       ici à isoler la mécanique de la file de celle du partage, précisément parce qu'elle est
+       toujours dans le même cas — jamais écrite, qu'elle attende ou non.
+       (`agent_pass` n'a pas de clé étrangère : deux tables parentes possibles selon le scope —
+       c'est ce qui rend la situation atteignable.) */
     const absente = 999999;
     db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
       VALUES ('review', ?, 0, 1, 'question', 'la question qui doit finir par partir', NULL, ?)`)
@@ -269,18 +273,19 @@ describe('store — la base prévient, le store écrit', () => {
     store.ecouler();
     assert.ok(enFile() >= 1, 'elle doit ATTENDRE sa merge request, pas disparaître de la file');
 
-    /* La MR apparaît : le passage suivant écrit le fichier, sans que personne ait à y penser.
-       C'est toute la promesse de la file — et elle était morte. */
+    /* La MR apparaît : le passage suivant sait enfin nommer le fichier — et n'en écrit aucun,
+       une question de review ne se partageant jamais. Ce qui compte ici : la ligne QUITTE la
+       file proprement (elle n'attend plus pour rien), sans jamais avoir écrit de fichier. */
     const dep = db.prepare("INSERT INTO repo (project, url, forge, enabled) VALUES ('grp/attente','https://x/grp/attente.git','gitlab',1)").run();
     db.prepare(`INSERT INTO mr (id, repo_id, iid, title, source_branch, target_branch, status, updated_at)
       VALUES (?, ?, 4242, 'MR retrouvée', 'feat/x', 'main', 'to_review', ?)`)
       .run(absente, dep.lastInsertRowid, now);
     store.ecouler();
-    assert.equal(enFile(), 0, 'une fois écrite, elle quitte la file');
+    assert.equal(enFile(), 0, 'une fois son chemin calculable, elle quitte la file');
     const mrUid = db.prepare('SELECT uid FROM mr WHERE id = ?').get(absente).uid;
     const passUid = db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(rid).uid;
-    assert.ok(store.lireFichier(`sessions/${mrUid}/pass-${passUid}.md`) !== null,
-      'et le fichier finit par exister : c’est tout ce qu’on lui demandait');
+    assert.equal(store.lireFichier(`sessions/${mrUid}/pass-${passUid}.md`), null,
+      'une question de review ne se partage jamais : aucun fichier n’est écrit');
   });
 
   /* CE QUI ATTENDAIT DANS LA FILE SURVIT À UNE HYDRATATION.

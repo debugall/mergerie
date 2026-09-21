@@ -1124,7 +1124,9 @@ const REGISTRE = [
     fusion: 'append-only', locales: ['output_path', 'diff_path', 'n', 'cost_usd'],
     /* UNE PASSE SUIT SA SESSION. Elle n'a pas de case à elle : publier le retour de l'agent sans
        la demande qui l'a produit n'aurait pas de sens, et une session « à moitié » partagée non
-       plus. Les passes de review, elles, appartiennent à la merge request — produit d'équipe. */
+       plus. Les passes de review (`scope === 'review'`, une question posée sur un rapport) ne se
+       partagent JAMAIS : le rapport est le produit d'équipe, pas la question qu'on lui pose ni sa
+       réponse — voir `sessionPartagee`. */
     partageable: (r, ctx) => ctx.sessionPartagee(r.scope, r.task_id),
     fichiers: ['pass-{uid}.json (demande, genre, coût)'],
     note: '`favori` et `titre` sont PARTAGÉS — ranger une passe utile sert à toute l’équipe ; `n` est dérivé. '
