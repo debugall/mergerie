@@ -8,7 +8,7 @@ const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('../core/paths');
 const git = require('../git/git');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
-const { nonFiable } = require('../core/nonfiable');
+const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const { extractNote } = require('./note');
 const resolution = require('../git/resolution');
@@ -34,9 +34,13 @@ const { SHARED_DIR } = require('../core/paths');
    de résolution d'une passe à l'autre (ideas.md).
    La consigne « titre stable » est ce qui rend l'appariement mécanique fiable :
    un même problème doit garder le même titre pour être reconnu. */
-const FINDINGS_INSTRUCTION =
+/* À NONCE PAR RUN (plan_secure.md, lot D, point 1) : le nonce est tiré une fois par review
+   (`prepareContext`) et redemandé ici à l'agent, en clair — ce n'est pas un secret, c'est ce qui
+   empêche une donnée de fabriquer un bloc que le parseur prendrait pour celui de CE run. */
+const findingsInstruction = (nonce) =>
   `\n\nEn PLUS du rapport ci-dessus, ajoute tout à la fin du fichier un bloc de ` +
-  `constats structurés, délimité EXACTEMENT par ${resolution.START} et ${resolution.END}. ` +
+  `constats structurés, délimité EXACTEMENT par ${resolution.START(nonce)} et ${resolution.END(nonce)} ` +
+  `(le nombre ${nonce} doit apparaître EXACTEMENT ainsi, c'est ce qui identifie CE rapport-ci). ` +
   `À l'intérieur, une ligne par constat, au format : sévérité | fichier | ligne | titre court. ` +
   `La sévérité vaut blocker, major, minor ou info ; « fichier » est relatif au dépôt ; « ligne » ` +
   `est le numéro concerné (ou vide). Donne à chaque problème un TITRE stable et descriptif : le ` +
@@ -56,6 +60,9 @@ function reviewDirFor(repo, mr) {
 // Utilisé aussi bien par la review que par la modification (même comportement).
 async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   onLog(t('log.review.prepare', { project: repo.project }));
+  // Un seul nonce pour tout le run : la review ET son explication partagent le même contexte,
+  // mais seule la review porte un bloc de constats (voir `fi` dans `generate`).
+  const nonceFindings = nonceRun();
   /* En démo, `gitlab.demo` n'existe pas : cloner échouait, et la fonctionnalité centrale de
      l'outil était la seule qu'on ne pouvait pas montrer. On travaille alors dans un dossier
      sans git, avec le diff fictif de `demo-diff.js` — voir `demo-review.js`. */
@@ -262,7 +269,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       // Une question n'est pas un rapport : rendre le rapport ici aurait fait croire, en démo,
       // qu'une question régénère la revue — exactement ce que la fonctionnalité évite.
       if (kind === 'question') return demoReview.reponseQuestion(mr, diff, opts.question);
-      return demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
+      return demoReview.rapport(mr, diff, { START: resolution.START(nonceFindings), END: resolution.END(nonceFindings) });
     }
     const outAbs = path.join(cwd, outRel);
     try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
@@ -276,7 +283,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
         `\`${outRel}\` (chemin relatif au dépôt courant). Écris uniquement le contenu du ` +
         `document dans ce fichier, sans le dupliquer dans la sortie standard.`;
     const rb = (kind === 'review') ? rulesBlock : ''; // règles = prompt de review uniquement
-    const fi = (kind === 'review') ? FINDINGS_INSTRUCTION : ''; // constats = review uniquement
+    const fi = (kind === 'review') ? findingsInstruction(nonceFindings) : ''; // constats = review uniquement
     /* Ajoutée à l'EXÉCUTION, comme les constats : le gabarit de l'utilisateur n'a pas à
        connaître ce fichier, et un gabarit personnalisé doit en profiter aussi. */
     const li = (kind === 'review') ? `\n\n${t('review.lines-instruction', { file: lignesName })}` : '';
@@ -342,7 +349,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   // `incremental` = true seulement si le diff delta a réellement été produit (permet à
   // reviewMr d'injecter le rapport précédent en contexte, et de savoir qu'il ne voit
   // qu'une partie de la MR).
-  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental };
+  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental, nonceFindings };
 }
 
 // Enregistre une NOUVELLE version de la review au lieu d'écraser la précédente.
@@ -551,7 +558,7 @@ async function publierLienRapport(mr, cfg, { onLog = () => {} } = {}) {
 async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
   const cfg = getConfig();
   const explain = opts.explain != null ? !!opts.explain : cfg.review_explain !== '0';
-  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
+  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
 
   try {
     // En incrémental, l'IA ne voit QUE le delta : on lui donne le rapport précédent en
@@ -571,7 +578,7 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     const rawReview = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
     // On retire le bloc de constats du rapport affiché : il ne doit pas polluer la
     // lecture. Ce qui est enregistré et montré est le Markdown SANS le bloc.
-    const { markdown: reviewContent, block } = resolution.splitFindings(rawReview);
+    const { markdown: reviewContent, block } = resolution.splitFindings(rawReview, nonceFindings);
     const findings = resolution.parseFindings(block);
 
     let explainContent = null;
@@ -613,8 +620,8 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        jamais refermé — n'a pas suivi le format demandé : le motif le plus probable est une
        réponse détournée (une consigne glissée dans la MR). Il reste enregistré et publiable à
        la main ; il ne part pas chez les autres sans que quelqu'un l'ait lu. */
-    const debutBloc = rawReview.indexOf(resolution.START);
-    const blocComplet = debutBloc !== -1 && rawReview.indexOf(resolution.END, debutBloc) !== -1;
+    const debutBloc = rawReview.indexOf(resolution.START(nonceFindings));
+    const blocComplet = debutBloc !== -1 && rawReview.indexOf(resolution.END(nonceFindings), debutBloc) !== -1;
     if (cfg.auto_post_review === '1' && !blocComplet) {
       onLog(t('log.review.post-no-findings'));
     } else if (cfg.auto_post_review === '1') {
@@ -740,9 +747,15 @@ async function askReview(repo, mr, question, onLog = () => {}) {
 
   const { generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
   try {
+    /* LE RAPPORT PRÉCÉDENT EST UNE DONNÉE (plan_secure.md, lot D, point 2) : il vient d'un
+       fichier que l'IA a elle-même écrit une passe plus tôt, mais qui peut recopier — voire
+       citer tel quel — un extrait de diff ou de ticket. Le `"""` d'avant se refermait sur
+       n'importe quel `"""` que le texte contenait ; `nonFiable()` le ferme avec un nonce que
+       rien dans le texte ne peut deviner. */
     const extra = `
 
-${t('review.ask.report', { rapport: rapport || t('review.ask.no-report') })}`
+${t('review.ask.report-label')}
+${rapport ? nonFiable('rapport de revue actuel', rapport) : t('review.ask.no-report')}`
       + `
 
 ${t('review.ask.question', { question })}`;

@@ -638,7 +638,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
      quand l'agent s'en souvient, et en dry-run ou sur un backend non reprenable elle reste
      le seul fil de continuité. */
   const prev = (previous && !doResume)
-    ? `\n\nTu as déjà produit la réponse suivante :\n"""\n${previous}\n"""\nPrends-la en compte et complète-la selon la nouvelle demande.`
+    ? `\n\nTu as déjà produit la réponse suivante :\n${nonFiable('réponse précédente', previous)}\nPrends-la en compte et complète-la selon la nouvelle demande.`
     : '';
 
   const prompt =
@@ -679,7 +679,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
         // réinjecte la réponse précédente, seul contexte dont dispose une session neuve.
         onLog(t('log.task.resume-failed', { raison: String(e.message).split('\n')[0] }));
         const withPrev = previous
-          ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
+          ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n${nonFiable('réponse précédente', previous)}`
           : prompt;
         r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog, options, saveur: 'explore' });
         created = true;

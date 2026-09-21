@@ -25,6 +25,7 @@ const agentpass = require('../agent/pass');
 const pieces = require('../agent/pieces');
 const { TASKS_DIR, ensureDir } = require('../core/paths');
 const { t } = require('../core/i18n');
+const { nonFiable } = require('../core/nonfiable');
 
 const now = () => new Date().toISOString();
 
@@ -63,7 +64,7 @@ function construirePrompt(question, { suivi, precedente, reprise, piecesBloc = '
   /* La réponse précédente n'est réinjectée que HORS session : quand l'agent s'en souvient,
      la redonner lui ferait relire son propre texte au lieu de son raisonnement. */
   const prev = (precedente && !reprise)
-    ? `\n\nTu as déjà produit la réponse suivante :\n"""\n${precedente}\n"""\nPrends-la en compte et complète-la selon la nouvelle demande.`
+    ? `\n\nTu as déjà produit la réponse suivante :\n${nonFiable('réponse précédente', precedente)}\nPrends-la en compte et complète-la selon la nouvelle demande.`
     : '';
   const entete = suivi
     ? `QUESTION DE SUIVI : ${question}`

@@ -28,7 +28,9 @@ const MR = {
   iid: 218, project: 'groupe/orders-service', title: 'Paiement 3× : éligibilité > 100 €',
   source_branch: 'feat/PROJ-1408-paiement-3x', target_branch: 'main',
 };
-const BORNES = { START: resolution.START, END: resolution.END };
+// Nonce fixe : ces tests éprouvent la FORME du rapport, pas le tirage — voir resolution.js.
+const NONCE = 'demo01';
+const BORNES = { START: resolution.START(NONCE), END: resolution.END(NONCE) };
 const rapport = (mr = MR) => demoReview.rapport(mr, demoDiff.diffPour(mr), BORNES);
 
 /** Les lignes réellement modifiées par le diff, fichier par fichier — la vérité de référence. */
@@ -65,7 +67,7 @@ describe('demo-review — le rapport que la démo rend à la place d’un modèl
   });
 
   test('le bloc de constats se relit par la chaîne réelle, pas par une lecture ad hoc', () => {
-    const { markdown, block } = resolution.splitFindings(rapport());
+    const { markdown, block } = resolution.splitFindings(rapport(), NONCE);
     const constats = resolution.parseFindings(block);
     assert.ok(constats.length > 0, 'un rapport sans constat ne remplirait jamais l’onglet');
     for (const c of constats) {
@@ -74,12 +76,12 @@ describe('demo-review — le rapport que la démo rend à la place d’un modèl
       assert.equal(typeof c.line, 'number');
     }
     // Le markdown rendu au lecteur ne doit plus contenir les bornes techniques.
-    assert.doesNotMatch(markdown, new RegExp(resolution.START));
-    assert.doesNotMatch(markdown, new RegExp(resolution.END));
+    assert.doesNotMatch(markdown, new RegExp(resolution.START(NONCE)));
+    assert.doesNotMatch(markdown, new RegExp(resolution.END(NONCE)));
   });
 
   test('la note est extraite par extractNote — c’est elle qui alimente le filtre de l’écran', () => {
-    const { markdown } = resolution.splitFindings(rapport());
+    const { markdown } = resolution.splitFindings(rapport(), NONCE);
     const note = extractNote(markdown);
     assert.ok(note, 'sans note, la merge request tombe dans « sans note » et sort des filtres');
     assert.ok(note.value > 0 && note.value <= 1, `valeur hors bornes : ${note.value}`);
@@ -89,7 +91,7 @@ describe('demo-review — le rapport que la démo rend à la place d’un modèl
     const diff = demoDiff.diffPour(MR);
     const attendu = lignesDuDiff(diff);
     const constats = resolution.parseFindings(resolution.splitFindings(
-      demoReview.rapport(MR, diff, BORNES)).block);
+      demoReview.rapport(MR, diff, BORNES), NONCE).block);
     for (const c of constats) {
       const plages = attendu.get(c.file);
       assert.ok(plages, `constat sur \`${c.file}\`, absent du diff`);
@@ -115,7 +117,7 @@ describe('demo-review — le contexte saisi par le relecteur', () => {
 
   test('le premier constat rend compte de la consigne, en restant un constat lisible', () => {
     const md = rapport({ ...MR, ticket_text: CONSIGNE });
-    const [premier] = resolution.parseFindings(resolution.splitFindings(md).block);
+    const [premier] = resolution.parseFindings(resolution.splitFindings(md, NONCE).block);
     assert.match(premier.title, /contexte du relecteur/i);
     assert.ok(premier.line, 'le constat reste situé, comme les autres');
   });
@@ -123,7 +125,7 @@ describe('demo-review — le contexte saisi par le relecteur', () => {
   test('une consigne très longue est coupée sur un mot, jamais au milieu', () => {
     const longue = `${'onze lettres '.repeat(20)}fin`;
     const md = rapport({ ...MR, ticket_text: longue });
-    const [premier] = resolution.parseFindings(resolution.splitFindings(md).block);
+    const [premier] = resolution.parseFindings(resolution.splitFindings(md, NONCE).block);
     const extrait = premier.title.replace(/^contexte du relecteur : /i, '').replace(/…$/, '');
     assert.ok(premier.title.endsWith('…'), 'la coupe doit se voir');
     assert.ok(longue.startsWith(extrait), 'l’extrait doit être un préfixe exact de la consigne');
@@ -151,7 +153,7 @@ describe('demo-review — l’explication', () => {
   test('elle ne porte AUCUN bloc de constats — c’est un autre onglet', () => {
     // Un bloc ici ferait remonter des constats depuis l'explication, en doublon de la review.
     assert.doesNotMatch(demoReview.explication(MR, demoDiff.diffPour(MR)),
-      new RegExp(resolution.START));
+      new RegExp(resolution.START(NONCE)));
   });
 });
 
@@ -204,7 +206,7 @@ describe('demo-review — le rapport suit la langue de l’interface', () => {
     // extractNote cherche « note globale » OU « overall score/rating/grade » : changer le titre
     // sans vérifier ce point ferait tomber toute la démo anglaise dans « sans note ».
     const note = enAnglais(() => {
-      const { markdown } = resolution.splitFindings(rapport());
+      const { markdown } = resolution.splitFindings(rapport(), NONCE);
       assert.match(markdown, /## Overall score/);
       assert.match(markdown, /\*\*\d+\.\d+\/10\*\*/, 'la note anglaise s’écrit avec un point');
       return extractNote(markdown);
@@ -214,7 +216,7 @@ describe('demo-review — le rapport suit la langue de l’interface', () => {
   });
 
   test('en anglais le bloc de constats se relit toujours par la chaîne réelle', () => {
-    const constats = enAnglais(() => resolution.parseFindings(resolution.splitFindings(rapport()).block));
+    const constats = enAnglais(() => resolution.parseFindings(resolution.splitFindings(rapport(), NONCE).block));
     assert.ok(constats.length > 0);
     for (const c of constats) {
       assert.ok(resolution.SEVERITIES.includes(c.severity), `sévérité hors barème : ${c.severity}`);

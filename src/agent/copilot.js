@@ -158,6 +158,10 @@ function mockReport(prompt, cwd, meta = {}) {
   const added = (diff.match(/^\+(?!\+\+)/gm) || []).length;
   const removed = (diff.match(/^-(?!--)/gm) || []).length;
   const kind = meta.kind || 'review';
+  /* LE MOCK JOUE L'AGENT BIEN LUNÉ (plan_secure.md, lot D, point 1) : il lit dans le PROMPT le
+     nonce que `findingsInstruction` a demandé, et l'utilise dans son propre bloc — sans ça,
+     `resolution.splitFindings` ne reconnaîtrait jamais un bloc à nonce fixe en dry-run. */
+  const nonceFindings = (String(prompt || '').match(/<<<FINDINGS (\S+)/) || [])[1] || 'dry-run';
 
   /* PROPOSITION DE MERGE (dry-run) : un bloc `<<<FiHj … FiHj>>>` et son `<<<RiHj … RiHj>>>`
      par conflit RÉEL de chaque fichier de `meta.fichiers` (même protocole que
@@ -218,9 +222,9 @@ function mockReport(prompt, cwd, meta = {}) {
     // garde-fou git du suivi de résolution soit réellement exercé en dry-run.
     // TITRE stable par fichier → un même fichier reste « persistant » d'une passe à
     // l'autre ; un fichier qui sort du diff devient « résolu ».
-    '<<<FINDINGS',
+    `<<<FINDINGS ${nonceFindings}`,
     ...mockFindingLines(diff).map((x, i) => `${['blocker', 'major', 'minor', 'info'][i % 4]} | ${x.file} | ${x.line} | Point de revue sur ${x.file}`),
-    'FINDINGS>>>',
+    `FINDINGS ${nonceFindings}>>>`,
   ].join('\n');
 }
 

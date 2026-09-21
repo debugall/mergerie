@@ -43,7 +43,14 @@ describe('La note globale d’une review', () => {
 
     // eslint-disable-next-line global-require
     copilot = require('../src/agent/copilot');
-    copilot.runPrompt = async (prompt) => { prompts.push(prompt); return reponse; };
+    copilot.runPrompt = async (prompt) => {
+      prompts.push(prompt);
+      // Le mock joue l'agent bien luné : il lit dans le prompt le nonce que
+      // `findingsInstruction` a demandé, et l'utilise dans le bloc de constats qu'on lui a
+      // préparé — sinon `resolution.splitFindings` ne le reconnaîtrait jamais (lot D, S6).
+      const nonce = (String(prompt).match(/<<<FINDINGS (\S+)/) || [])[1];
+      return nonce ? reponse.replace('<<<FINDINGS\n', `<<<FINDINGS ${nonce}\n`).replace('FINDINGS>>>', `FINDINGS ${nonce}>>>`) : reponse;
+    };
   });
   after(async () => { await app.stop(); });
 
