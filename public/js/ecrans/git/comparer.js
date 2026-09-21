@@ -1,6 +1,6 @@
 'use strict';
 /* Comparer le contenu de deux dépôts, A31 le diff du merge commité. */
-// @expose loadGit, showGitSub
+// @expose loadGit, showGitSub, gitExploreMajCompte
 /* ---------- Comparer le contenu de deux dépôts ----------
    Deux dépôts, deux branches, et la question « qu'est-ce qui existe ici et pas là ? ». Les
    quatre sélecteurs passent par un combo à RECHERCHE : autant de dépôts qu'on veut, et un dépôt
@@ -250,7 +250,9 @@ function renderGitExploreRepos() {
     const q = search.value.toLowerCase().trim();
     $$('.repo-multi-item', box).forEach((it) => { it.hidden = !!q && !$('span', it).textContent.toLowerCase().includes(q); });
   });
-  box.addEventListener('change', (e) => { if (e.target.classList.contains('git-multi-pick')) gitExploreMajCompte(); });
+  // Sur `.repo-multi-list`, recréée à chaque rendu — `box` lui survit d'un rendu à l'autre,
+  // et y poser l'écouteur en empilerait un de plus à chaque passage sur l'onglet Git.
+  $('.repo-multi-list', box).addEventListener('change', (e) => { if (e.target.classList.contains('git-multi-pick')) gitExploreMajCompte(); });
   // « Tout cocher » ne coche que ce que le filtre montre encore — cocher un dépôt masqué
   // par la recherche surprendrait plus qu'il n'aiderait.
   $('.git-multi-all', box).addEventListener('click', () => {
