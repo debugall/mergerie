@@ -322,7 +322,6 @@
       "err.jira.no-mr-yet": "Cette session n’a pas encore ouvert sa merge request.",
       "err.jenkins.job-required": "Choisis un job Jenkins.",
       "err.lot.session-kind": "Un lot ne groupe que des merge requests : la vérification groupée n’a de sens que sur elles.",
-      /* ---------- Dictée vocale (whisper.md) ---------- */
       "err.budget.daily": "Plafond de dépense du jour atteint ({spent} $ sur {cap} $) : aucun agent ne part plus aujourd’hui. Relevez-le dans Réglages → IA si c’est voulu.",
     },
     en: {
@@ -638,7 +637,6 @@
       "err.jira.no-mr-yet": "This session has not opened its merge request yet.",
       "err.jenkins.job-required": "Pick a Jenkins job.",
       "err.lot.session-kind": "A lot only groups merge requests: joint verification only makes sense on them.",
-      /* ---------- Dictée vocale (whisper.md) ---------- */
       "err.budget.daily": "Today’s spend cap reached (${spent} of ${cap}): no agent starts again today. Raise it in Settings → AI if that is intended.",
     },
   };
