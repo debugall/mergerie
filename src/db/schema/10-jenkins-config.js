@@ -3,7 +3,7 @@
    Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
-const { PROMPTS, ANCIENS_PROMPTS } = require('../../core/prompts');
+const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT } = require('../../core/prompts');
 const { DEFAULT_CLONE_DIR } = require('../../core/paths');
 
 /* ---------- B8 : quel job Jenkins déploie quel dépôt ----------
@@ -78,6 +78,15 @@ db.exec(`UPDATE config SET
 for (const lang of ['fr', 'en']) {
   db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
     .run(PROMPTS[lang].prompt_review, ANCIENS_PROMPTS[lang].prompt_review);
+}
+
+/* LE GABARIT DE REVIEW EST DEVENU UN GABARIT STRUCTURÉ (sévérités, note calibrée, checklist de
+   merge), remplaçant l'ancien défaut court (une phrase). Même garde-fou que ci-dessus : on ne
+   remplace que le gabarit resté RIGOUREUSEMENT IDENTIQUE à l'ancien défaut, dans SA langue.
+   Rejouable : après le premier passage, plus aucune ligne ne correspond. */
+for (const lang of ['fr', 'en']) {
+  db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
+    .run(PROMPTS[lang].prompt_review, ANCIEN_PROMPT_REVIEW_COURT[lang]);
 }
 
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
