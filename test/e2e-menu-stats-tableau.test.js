@@ -262,6 +262,32 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
     assert.equal((await rows.first().locator('[data-rec-rule]').textContent()).trim(), 'En faire une règle');
   });
 
+  /* LA VUE CROSS-DÉPÔT : un constat qui n'atteint 3 dans AUCUN des deux dépôts pris seul (2 sur
+     alpha, 1 sur beta) mais s'y répète collectivement. Pas de fichiers affichés : sans préfixe
+     commun entre deux dépôts, aucun `path_match` n'aurait de sens. */
+  test('les mêmes constats, sur plusieurs dépôts : invisibles par dépôt, visibles ensemble', async () => {
+    seed.insererConstat(app.db, donnees.mr.a1, 'Le mot de passe est en clair', 'src/auth/login.js');
+    seed.insererConstat(app.db, donnees.mr.a4, 'le mot de passe est en clair.', 'src/auth/session.js');
+    seed.insererConstat(app.db, donnees.mr.b2, 'Le mot de passe est en clair', 'src/auth/login.js');
+    await page.locator('#dashRefresh').click();
+
+    const c = carte('Les mêmes constats, sur plusieurs dépôts');
+    await c.locator('tbody tr').first().waitFor();
+    const rows = c.locator('tbody tr');
+    assert.equal(await rows.count(), 1, 'un seul constat normalisé');
+    const txt = (await rows.first().textContent()).replace(/\s+/g, ' ');
+    assert.match(txt, /3 merge requests/);
+    assert.match(txt, /2 dépôts/);
+    const projets = await rows.first().locator('.stats-rec-files code').allTextContents();
+    assert.deepEqual([...projets].sort(), ['grp/alpha', 'grp/beta']);
+    // Aucun fichier proposé : deux dépôts n'ont pas de préfixe de dossier commun.
+    assert.doesNotMatch(txt, /\.js/);
+
+    // « Le numéro de carte est loggé » (3 fois sur alpha SEUL) n'apparaît pas ici : il est déjà
+    // couvert par la vue par dépôt, et n'est pas cross-dépôt.
+    assert.doesNotMatch(await c.textContent(), /numéro de carte/);
+  });
+
   test('le Top 5 de la forge et la carte d’activité sont chargés à part', async () => {
     const top = await page.$$eval('#dashTop5 tbody tr', (trs) => trs.map((tr) => tr.children[0].textContent.trim()));
     assert.deepEqual(top, ['grp/alpha', 'grp/beta'], 'le commit le plus récent en tête');

@@ -28,12 +28,24 @@ document.addEventListener('click', (e) => {
   const f = $('#ruleForm');
   if (!f) return;
   f.reset();
-  if (f.path_match) f.path_match.value = motifDepuisFichiers(String(b.dataset.recFiles || '').split(','));
+  /* SANS FICHIERS (`data-rec-files` absent : un constat cross-dépôt), aucun préfixe ne se
+     déduit — mais une règle a besoin d'AU MOINS un déclencheur (branche ou chemin), sans quoi
+     le serveur la refuse. `**` (tout fichier, tout dossier) est le déclencheur honnête d'une
+     règle qui ne s'est jamais voulue limitée à un chemin. */
+  if (f.path_match) {
+    f.path_match.value = 'recFiles' in b.dataset
+      ? motifDepuisFichiers(String(b.dataset.recFiles || '').split(','))
+      : '**';
+  }
   if (f.label) f.label.value = b.dataset.recRule.slice(0, 60);
   if (f.content) f.content.value = b.dataset.recRule;
   f.scrollIntoView({ block: 'start', behavior: 'smooth' });
   if (f.content) f.content.focus({ preventScroll: true });
-  toast(tr('stats.recurring.prefilled', { project: b.dataset.recProject }));
+  /* LE CONSTAT CROSS-DÉPÔT NE NOMME AUCUN PROJET (`data-rec-project` absent) : la règle qu'il
+     prépare vaut pour tous, et le dit plutôt que d'afficher un projet inventé. */
+  toast(b.dataset.recProject
+    ? tr('stats.recurring.prefilled', { project: b.dataset.recProject })
+    : tr('stats.recurring-cross.prefilled'));
 });
 
 /* La porte d'un chiffre de statistiques : Reviews, au bon stade, filtré sur ce projet. On
@@ -228,6 +240,18 @@ async function loadDashboard() {
       </tr>`).join('')}</tbody></table></div>`
     : `<p class="muted">${esc(tr('stats.recurring.empty'))}</p>`}</div>`;
 
+  /* LES MÊMES CONSTATS, TOUS DÉPÔTS CONFONDUS — un constat qui n'atteint 3 dans AUCUN dépôt
+     pris seul mais s'y répète collectivement. Pas de fichiers ni de `path_match` proposé (ils
+     n'ont pas de préfixe commun entre deux dépôts) : le bouton prépare une règle GLOBALE. */
+  const recCross = s.recurrentsCross || [];
+  const recCrossHtml = `<div class="dash-card"><h3>${tr('stats.recurring-cross.title')}</h3>${cap('stats.recurring-cross.help')}
+    ${recCross.length ? `<div class="md-tablewrap"><table class="md-table"><tbody>${recCross.map((r) => `<tr>
+        <td>${esc(r.title)}<div class="muted stats-rec-files">${r.projects.map((p) => `<code>${esc(p)}</code>`).join(' ')}</div></td>
+        <td>${esc(tr('stats.recurring.count', { n: r.count, count: r.count }))} · ${esc(tr('stats.recurring-cross.repos', { n: r.projects.length, count: r.projects.length }))}</td>
+        <td><button type="button" class="btn btn-sm" data-rec-rule="${esc(r.title)}">${esc(tr('stats.recurring.rule'))}</button></td>
+      </tr>`).join('')}</tbody></table></div>`
+    : `<p class="muted">${esc(tr('stats.recurring-cross.empty'))}</p>`}</div>`;
+
   /* A/Stats 1 — LES REVIEWS LES PLUS CHÈRES, à côté des sessions : même question, autre
      famille. Chaque ligne mène à son rapport, comme partout ailleurs un nombre est une porte. */
   const tr5 = s.topReviews || [];
@@ -302,7 +326,7 @@ async function loadDashboard() {
     + funnelHtml + `<div class="dash-grid">${notesHtml}${trendHtml}${weeklyHtml}${tokHtml}</div>`
     + `<div id="dashActivity" class="dash-card">${skeleton(3)}</div>` + projHtml + devHtml
     + cycHtml
-    + `<div class="dash-grid">${topHtml}${trevHtml}${agHtml}${ratHtml}${vpdHtml}${goHtml}${recHtml}</div>`;
+    + `<div class="dash-grid">${topHtml}${trevHtml}${agHtml}${ratHtml}${vpdHtml}${goHtml}${recHtml}${recCrossHtml}</div>`;
 
   /* Les portes des statistiques : une ligne de tableau mène à l'objet qu'elle décrit. Sans
      elles, on relisait des chiffres qu'on ne pouvait pas suivre. */

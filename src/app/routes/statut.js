@@ -416,6 +416,29 @@ app.get('/api/stats', wrap((req, res) => {
       files: String(r.fichiers || '').split(',').filter(Boolean).slice(0, 6),
     }));
 
+  /* LES MÊMES CONSTATS, TOUS DÉPÔTS CONFONDUS. Un constat comme « clé API en dur » peut
+     apparaître deux fois sur un dépôt et une fois sur un autre : invisible ci-dessus (aucun des
+     deux n'atteint 3 tout seul), c'est pourtant la même consigne à écrire — en RÈGLE GLOBALE
+     cette fois (`repo_id` NULL), puisque les fichiers de deux dépôts n'ont pas de préfixe commun
+     qui vaille un `path_match`. Ignore volontairement le filtre dépôt de l'écran : restreindre
+     une vue « cross-dépôt » à un seul dépôt n'aurait plus de sens. `nDepots >= 2` est ce qui la
+     distingue de la liste par dépôt : un constat qui n'atteint 3 qu'à l'intérieur d'un seul
+     dépôt y est déjà, le répéter ici n'apprendrait rien. */
+  const recurrentsCross = db.prepare(`SELECT
+      LOWER(TRIM(RTRIM(f.title, '. '))) AS titre,
+      COUNT(DISTINCT f.mr_id) AS n,
+      COUNT(DISTINCT repo.id) AS nDepots,
+      GROUP_CONCAT(DISTINCT repo.project) AS depots,
+      MAX(f.title) AS exemple
+    FROM finding f JOIN mr ON mr.id = f.mr_id JOIN repo ON repo.id = mr.repo_id
+    WHERE f.title IS NOT NULL AND f.title != ''
+    GROUP BY titre HAVING n >= 3 AND nDepots >= 2
+    ORDER BY nDepots DESC, n DESC LIMIT 10`).all()
+    .map((r) => ({
+      title: r.exemple, count: r.n,
+      projects: String(r.depots || '').split(',').filter(Boolean).sort(),
+    }));
+
   /* B14 — CE QUE GIT A FAIT, agrégé. `git_op` était la seule table de trace que Statistiques
      ignorait : « combien de branches ai-je supprimées ce mois-ci, et combien ont échoué ? »
      n'avait pas de réponse, alors que chaque ligne est écrite depuis toujours. Le taux d'échec
@@ -441,7 +464,7 @@ app.get('/api/stats', wrap((req, res) => {
 
   res.json({
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
-    topTasks, topReviews, ratio, verifsParDepot, recurrents, gitOps,
+    topTasks, topReviews, ratio, verifsParDepot, recurrents, recurrentsCross, gitOps,
     cycle: delaiDeCycle(projet, depuis),
     agentCosts: parAgent,
     lowScores: faibles,

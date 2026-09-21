@@ -177,6 +177,40 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
     assert.equal(r.content, contenu);
   });
 
+  /* UN CONSTAT CROSS-DÉPÔT PRÉ-REMPLIT UNE RÈGLE GLOBALE : sans fichiers communs entre deux
+     dépôts différents, aucun `path_match` ne se déduit, et aucun dépôt n'est présélectionné —
+     la règle vaut donc pour tous, comme le dit son aide. */
+  test('« En faire une règle » depuis un constat cross-dépôt pré-remplit une règle globale, sans chemin', async () => {
+    seed.insererConstat(app.db, donnees.mr.a1, 'Le mot de passe est en clair', 'src/auth/login.js');
+    seed.insererConstat(app.db, donnees.mr.a4, 'le mot de passe est en clair.', 'src/auth/session.js');
+    seed.insererConstat(app.db, donnees.mr.b2, 'Le mot de passe est en clair', 'src/auth/login.js');
+    const avant = (await regles()).length;
+    await allerStats();
+    await page.locator('#dashRefresh').click();
+
+    const carteCross = page.locator('#dashboard .dash-card')
+      .filter({ has: page.locator('h3', { hasText: 'Les mêmes constats, sur plusieurs dépôts' }) });
+    await carteCross.locator('[data-rec-rule]').waitFor();
+    await carteCross.locator('[data-rec-rule]').click();
+    await page.waitForSelector('#tab-admin.active #sub-rules.active');
+    const f = page.locator('#ruleForm');
+    await page.waitForFunction(() => document.querySelector('#ruleForm [name="content"]').value !== '');
+
+    const contenu = await f.locator('[name="content"]').inputValue();
+    assert.match(contenu, /^[Ll]e mot de passe est en clair\.?$/);
+    assert.equal(await f.locator('[name="path_match"]').inputValue(), '**',
+      'deux dépôts n’ont pas de préfixe de dossier commun : le déclencheur proposé est « tout fichier »');
+    assert.equal(await page.locator('#ruleRepoBox .rule-repo').inputValue(), '',
+      'aucun dépôt présélectionné : la règle proposée vaut pour tous');
+
+    await f.locator('button[type="submit"]').click();
+    await attendreServeur(async () => (await regles()).length === avant + 1, 'la règle globale est enregistrée');
+    const r = (await regles()).slice(-1)[0];
+    assert.equal(r.path_match, '**');
+    assert.equal(r.repo_id, null);
+    assert.equal(r.content, contenu);
+  });
+
   test('aucune exception JavaScript pendant les navigations', () => {
     assert.deepEqual(erreurs, []);
   });

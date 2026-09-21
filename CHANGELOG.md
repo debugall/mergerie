@@ -107,6 +107,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   its token count, and the list's heading adds up the tokens of every iteration shown below it. A
   follow-up can also be written and sent right there — no need to close the view, find the card
   again, and reopen its own form to ask for the thing you were just reading about.
+- **Stats → “Findings that keep coming back” gained a cross-repository twin.** The existing
+  card only ever compares a finding against merge requests of the *same* repository, so a
+  finding raised twice on one repository and once on another never reached its threshold of
+  three anywhere. The new “The same findings, across repositories” card catches exactly that
+  case (three merge requests, at least two repositories) and proposes a rule scoped to no
+  repository and no file path — a `**` trigger, since two unrelated repositories share no path
+  prefix worth deducing.
 
 ### Changed
 

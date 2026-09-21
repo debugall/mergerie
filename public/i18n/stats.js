@@ -144,6 +144,11 @@
       "stats.recurring.count": { "one": "{n} merge request", "other": "{n} merge requests" },
       "stats.recurring.rule": "En faire une règle",
       "stats.recurring.prefilled": "Règle pré-remplie depuis {project} — relis et enregistre.",
+      "stats.recurring-cross.title": "Les mêmes constats, sur plusieurs dépôts",
+      "stats.recurring-cross.help": "Le même constat relevé sur au moins trois merge requests, réparties sur au moins deux dépôts — invisible dans la liste par dépôt si aucun n’atteint le seuil à lui seul. Sans fichiers en commun entre deux dépôts, la règle proposée est globale plutôt que limitée à un chemin.",
+      "stats.recurring-cross.empty": "Aucun constat ne revient encore sur plusieurs dépôts à la fois.",
+      "stats.recurring-cross.repos": { "one": "{n} dépôt", "other": "{n} dépôts" },
+      "stats.recurring-cross.prefilled": "Règle globale pré-remplie — relis et enregistre.",
     },
     en: {
       "stats.col.last-commit": "Last commit",
@@ -280,6 +285,11 @@
       "stats.recurring.count": { "one": "{n} merge request", "other": "{n} merge requests" },
       "stats.recurring.rule": "Make it a rule",
       "stats.recurring.prefilled": "Rule pre-filled from {project} — review it and save.",
+      "stats.recurring-cross.title": "The same findings, across repositories",
+      "stats.recurring-cross.help": "The same finding raised on at least three merge requests, spread across at least two repositories — invisible in the per-repository list when none of them reaches the threshold alone. With no file path shared between two repositories, the proposed rule is global rather than limited to a path.",
+      "stats.recurring-cross.empty": "No finding comes back across several repositories yet.",
+      "stats.recurring-cross.repos": { "one": "{n} repository", "other": "{n} repositories" },
+      "stats.recurring-cross.prefilled": "Global rule pre-filled — review it and save.",
     },
   };
 }));
