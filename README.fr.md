@@ -110,7 +110,9 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   request** des dépôts qu'il couvre : le verdict attend alors sur la carte, et « Voir le résultat des
   vérificateurs » ouvre ce qui a tourné, sur quels commits, et ce que les commandes ont répondu.
   Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
-- **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, todos priorisées dont
+- **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, avec un **mode plein
+  écran** qui retire la colonne des pages pour lire sans distraction, en gardant Rendu / Deux colonnes /
+  Markdown à un clic, todos priorisées dont
   l'échéance sert de **rappel bureau**, et un **brief du matin** qui ouvre la journée — rappels, sessions en
   attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans
   aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un

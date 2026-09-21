@@ -18,6 +18,34 @@ let notePanesMode = (() => {
   catch { return 'preview'; }
 })();
 
+/* PLEIN ÉCRAN D'UNE PAGE : la colonne des pages n'aide pas à LIRE une page, et prend
+   justement la place qui manque pour ça. Un confort de session, pas un réglage : il n'a rien
+   à faire en base ni dans le navigateur, comme le pli des sous-pages. */
+let notePleinEcran = false;
+
+function appliquerPleinEcran() {
+  const zone = $('.notes-layout');
+  if (zone) zone.classList.toggle('note-fullscreen', notePleinEcran);
+  const b = $('#pageFullscreen');
+  if (!b) return;
+  b.classList.toggle('active', notePleinEcran);
+  b.dataset.tip = tr(notePleinEcran ? 'notes.page.fullscreen-exit-title' : 'notes.page.fullscreen-title');
+  b.innerHTML = `${svgIco(notePleinEcran ? 'close' : 'expand')}<span>${esc(tr(notePleinEcran ? 'notes.page.fullscreen-exit' : 'notes.page.fullscreen'))}</span>`;
+}
+// ÉCHAP EN SORT, d'où qu'on parte dans la page (le titre, le Markdown) : le clavier reste
+// sinon capturé par le champ actif et la touche n'atteindrait jamais ce gestionnaire global.
+// LE PLUS HAUT D'ABORD : une modale (confirmation de suppression, « Faire coder l'IA »,
+// palette) ou la vue plein écran des revues, ouvertes PAR-DESSUS, consomment Échap — sinon
+// supprimer une page en plein écran puis se raviser (Échap sur la confirmation) renvoyait
+// aussi en vue deux colonnes, d'une seule touche. Voir reviews/commentaires.js.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !notePleinEcran) return;
+  if ($$('.modal').some((m) => !m.hidden)) return;
+  if ($('#splitView') && !$('#splitView').hidden) return;
+  notePleinEcran = false;
+  appliquerPleinEcran();
+});
+
 async function loadPages() {
   const box = $('#pageList');
   if (!box) return;
@@ -220,6 +248,11 @@ function renderPageEditor() {
   if (!box) return;
   const p = NOTES.page;
   if (!p) {
+    // SANS PAGE, PAS DE PLEIN ÉCRAN : sinon une page supprimée en plein écran (le bouton
+    // pour en sortir disparaît avec le reste de l'en-tête) laisse un écran couvrant toute
+    // la fenêtre avec pour seul contenu « Aucune page sélectionnée », sans rien pour en sortir.
+    notePleinEcran = false;
+    appliquerPleinEcran();
     box.innerHTML = `<p class="muted note-none">${esc(tr('notes.page.none-selected'))}</p>`;
     return;
   }
@@ -270,10 +303,13 @@ function renderPageEditor() {
       <button type="button" class="lien-page" data-page="${p.parent_id}">${esc(p.parent_title || tr('notes.page.untitled'))}</button></p>` : ''}
     ${(p.children || []).length ? `<p class="muted note-children">${esc(tr('notes.page.children', { n: p.children.length, count: p.children.length }))}
       ${p.children.map((c) => `<button type="button" class="lien-page" data-page="${c.id}">${esc(c.title || tr('notes.page.untitled'))}</button>`).join(' ')}</p>` : ''}
-    <div class="segmented note-panes-pick" role="tablist">
-      <button type="button" data-panes="preview" class="${mode === 'preview' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.preview-tip'))}">${esc(tr('notes.panes.preview'))}</button>
-      <button type="button" data-panes="both" class="${mode === 'both' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.both-tip'))}">${esc(tr('notes.panes.both'))}</button>
-      <button type="button" data-panes="editor" class="${mode === 'editor' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.editor-tip'))}">${esc(tr('notes.panes.editor'))}</button>
+    <div class="note-panes-row">
+      <div class="segmented note-panes-pick" role="tablist">
+        <button type="button" data-panes="preview" class="${mode === 'preview' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.preview-tip'))}">${esc(tr('notes.panes.preview'))}</button>
+        <button type="button" data-panes="both" class="${mode === 'both' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.both-tip'))}">${esc(tr('notes.panes.both'))}</button>
+        <button type="button" data-panes="editor" class="${mode === 'editor' ? 'active' : ''}" role="tab" data-tip="${esc(tr('notes.panes.editor-tip'))}">${esc(tr('notes.panes.editor'))}</button>
+      </div>
+      <button type="button" id="pageFullscreen" class="btn btn-sm"></button>
     </div>
     <div id="pageHistoryPanel" class="note-history-panel" hidden></div>
     <div class="note-panes panes-${esc(mode)}">
@@ -292,6 +328,12 @@ function renderPageEditor() {
       if (notePanesMode !== 'preview') $('#pageContent').focus();
     });
   }
+
+  appliquerPleinEcran();
+  $('#pageFullscreen').addEventListener('click', () => {
+    notePleinEcran = !notePleinEcran;
+    appliquerPleinEcran();
+  });
 
   for (const b of $$('#pageEditor .lien-page')) {
     b.addEventListener('click', () => openNotePage(Number(b.dataset.page)));
