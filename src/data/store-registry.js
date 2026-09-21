@@ -1428,20 +1428,16 @@ const REGISTRE = [
      listes doivent couvrir le schéma exactement (test unitaire). Ailleurs, une colonne nouvelle
      est partagée par défaut et c'est le bon défaut — une colonne nouvelle de `todo` est une
      donnée de todo. Ici le défaut serait catastrophique : cette table est un fourre-tout où
-     voisinent des gabarits de prompt et sept jetons d'API. */
+     voisinent des gabarits de prompt et six jetons d'API. */
   {
     table: 'config', famille: 'P', uidPropre: false /* une seule ligne, qui EST le fichier settings.json : elle n'a pas d'identité à porter */, cle: 'id', chemin: 'settings.json', fusion: 'last-writer',
     locales: ['id',
       // Secrets. Un secret commité dans git est définitif : l'historique est immuable, chaque
       // clone le garde, la forge le garde. Il ne suffit pas de les retirer, il faut révoquer.
       'access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token',
-      'dictation_api_key',
       // Propre au poste : où sont les clones, dans quelle langue on lit, à quelle cadence CE
-      // poste interroge Jenkins, quel moteur de dictée tourne sur CETTE machine.
+      // poste interroge Jenkins.
       'clone_path', 'language', 'jenkins_refresh_minutes', 'git_commands_seeded',
-      'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
-      'dictation_url', 'dictation_remote_model', 'dictation_language', 'dictation_silence_ms',
-      'dictation_final_pass', 'dictation_idle_minutes',
       // L'adresse par laquelle CE poste rejoint l'équipe. Vide = mono-poste.
       'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
       /* DES HABITUDES, PAS DES POLITIQUES. Ouvrir le brief au lancement est une habitude
@@ -1463,8 +1459,6 @@ const REGISTRE = [
       // faites avec des consignes différentes ne sont pas comparables.
       'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'review_skill',
       'ai_extra_instructions',
-      // Le glossaire de dictée : les noms propres du métier, pas la machine qui les entend.
-      'dictation_vocabulary', 'dictation_replacements',
       // Politiques : ce qui part tout seul, à quelle cadence, jusqu'où, et ce qu'on garde.
       'auto_review_new', 'auto_rereview_stale', 'auto_post_review', 'auto_post_blocking_only',
       'auto_post_review_link',
@@ -1513,8 +1507,8 @@ const REGISTRE = [
   { table: 'free_link', famille: 'L', note: 'les liens libres, avec leurs étiquettes et leurs dossiers' },
   {
     table: 'local_config', famille: 'L',
-    note: 'les réglages de CE poste : les sept jetons, le chemin des clones, la langue, le moteur '
-      + 'de dictée. Jumelle de `config`, dont elle reçoit les colonnes `locales` — qui y sont '
+    note: 'les réglages de CE poste : les six jetons, le chemin des clones, la langue. '
+      + 'Jumelle de `config`, dont elle reçoit les colonnes `locales` — qui y sont '
       + 'ensuite vidées et gelées, avec une assertion au démarrage.',
   },
   {

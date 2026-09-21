@@ -171,7 +171,7 @@ const declared = new Set(
 );
 // Champs libres du formulaire : on exclut ceux traités à part (cases à cocher,
 // nombres) car ils ont leur propre ligne dans le chargement/enregistrement.
-const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'auto_rereview_stale', 'dictation_final_pass']);
+const HANDLED_APART = new Set(['auto_refresh_minutes', 'review_explain', 'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_review_new', 'auto_rereview_stale']);
 const orphanFields = [];
 for (const m of html.matchAll(/<input[^>]*\bform="configForm"[^>]*>/g)) {
   const tag = m[0];
@@ -276,19 +276,6 @@ const fondKo = [...fondManuel, ...fondInconnu];
 fondKo.length
   ? fail('Fermeture au clic sur le fond', fondKo)
   : ok(`Toutes les modales se ferment au fond par fermerAuFond() (${[...app.matchAll(/fermerAuFond\('#/g)].length})`);
-
-/* 12. La dictée existe, mais son raccourci n'est écrit nulle part.
-   `Ctrl/Cmd + Maj + Espace` ne se devine pas : c'est la modale `?` qu'on ouvre pour le
-   chercher. Le fichier de capture peut vivre sans que le raccourci y soit listé — et alors
-   la fonctionnalité n'existe que pour qui lit le CHANGELOG. */
-if (man.scripts.some((s) => /(?:^|\/)(?:dictee|dictation-mic)\.js$/.test(s))) {
-  const manque = [];
-  if (!/shortcuts\.dictation/.test(app)) manque.push("public/  SHORTCUTS ne cite pas 'shortcuts.dictation' — le raccourci de dictée n'est listé nulle part");
-  if (!html.includes('id="dictationMic"')) manque.push('public/index.html  #dictationMic absent — le micro n\'a nulle part où s\'afficher');
-  manque.length
-    ? fail('Dictée vocale câblée à moitié', manque)
-    : ok('Dictée vocale : le micro existe et son raccourci est documenté');
-}
 
 /* 13. Une liste à cocher de skills, de sous-agents, de dépôts ou d'agents sans son filtre.
    Même raison que les contrôles 7 et 9, pour les listes qu'ont amenées les agents : un home
@@ -418,7 +405,6 @@ function tousLes(dir, ext, out = []) {
 {
   const HORS_MANIFESTE = {
     'i18n/index.js': 'assemblage pour Node, jamais chargé par le navigateur',
-    'js/transverse/dictee-worklet.js': 'chargé par `audioWorklet.addModule`, pas par une balise',
   };
   const surDisque = [
     ...tousLes(path.join(PUBLIC, 'js'), '.js'), ...tousLes(path.join(PUBLIC, 'i18n'), '.js'),
@@ -498,10 +484,9 @@ function tousLes(dir, ext, out = []) {
 /* (d) AUCUN ORDRE CASSÉ PAR LE MANIFESTE. Le dictionnaire avant le moteur qui le lit, les
    runtimes avant l'application, `core/` — ce que tout le monde appelle et qui n'appelle
    personne — en tête de `js/`, `demarrage.js` en dernier : c'est lui qui câble, et il appelle
-   ce qu'il veut. La dictée était déjà chargée après `app.js` (elle s'appuie sur `toast`) : elle
-   reste après. */
+   ce qu'il veut. */
 {
-  const js = man.scripts.filter((s) => s.startsWith('js/') && !/theme-early\.js$/.test(s) && s !== 'js/transverse/dictee.js');
+  const js = man.scripts.filter((s) => s.startsWith('js/') && !/theme-early\.js$/.test(s));
   const soucis = [];
   if (js.length) {
     const premierNonCore = js.findIndex((s) => !s.startsWith('js/core/'));
@@ -534,7 +519,7 @@ function tousLes(dir, ext, out = []) {
    Le jour où un dossier passe en modules ES, ses `@expose` sont ses `export` et ses usages de
    `core/` ses `import` : la liste est déjà exacte. */
 {
-  const fichiersJs = fichiersApp.filter((f) => f.startsWith('js/') && f !== 'js/transverse/dictee.js');
+  const fichiersJs = fichiersApp.filter((f) => f.startsWith('js/'));
   const dossier = (f) => {
     if (f === 'js/demarrage.js') return { genre: 'demarrage', cle: 'demarrage' };
     const m = f.match(/^js\/(core|transverse)\//);

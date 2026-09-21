@@ -448,12 +448,6 @@ NARRATION = [
         "Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel on veut être averti. La surveillance de fond en ajoute : un build Jenkins terminé, un conteneur qui tombe, une restauration en échec, un plafond automatique atteint. "
     ),
     (
-        "La dictée vocale se règle ici. Le moteur peut tourner sur ta machine, ou passer par le navigateur — auquel cas l'audio part chez Google ou Apple, et l'écran le dit. "
-    ),
-    (
-        "Chaque champ de texte porte alors un micro, et le vocabulaire de tes propres dépôts est donné au moteur : les noms de projets, de branches et de tickets s'écrivent correctement du premier coup. "
-    ),
-    (
         "En bas de l'écran, une barre suit les jobs en direct : ce qui tourne, les tokens consommés, et un journal qui se déplie. Ce journal contient une vue Activité, qui liste ce qui a été lancé et ce qui s'est terminé, avec un lien qui ramène directement sur l'objet concerné. "
     ),
     (

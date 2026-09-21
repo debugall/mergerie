@@ -503,12 +503,11 @@ async function oomKilled(ids) {
   } catch { return new Set(); }
 }
 
-/* LES NOMS QU'ON A DÉJÀ VUS. La dictée a besoin du vocabulaire de la machine — `api-core`,
-   `webapp-front`, `redis-cache` — sinon whisper écrit « API corps ». Mais l'appeler depuis le
-   chemin de la dictée ferait un `docker ps` avant chaque phrase dictée, sur une machine où
-   Docker peut être absent ou lent. On garde donc ce que le badge de santé a DÉJÀ listé : pas
-   un sondage de plus, et le vocabulaire suit ce que l'écran connaît. Vide tant que Docker n'a
-   pas été regardé une première fois — c'est honnête, et sans conséquence. */
+/* LES NOMS QU'ON A DÉJÀ VUS. La palette de commandes (`notes/links.js`) propose les projets
+   Docker compose parmi ses suggestions. Les appeler depuis là ferait un `docker ps` à chaque
+   frappe, sur une machine où Docker peut être absent ou lent. On garde donc ce que le badge de
+   santé a DÉJÀ listé : pas un sondage de plus, et la palette suit ce que l'écran connaît. Vide
+   tant que Docker n'a pas été regardé une première fois — c'est honnête, et sans conséquence. */
 let nomsVus = [];
 const nomsConnus = () => nomsVus.slice();
 

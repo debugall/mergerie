@@ -76,7 +76,6 @@ const demoDocker = require('./demo/docker');
 const veille = require('./integrations/veille');
 const verifyrun = require('./verify/verifyrun');
 const copilot = require('./agent/copilot');
-const dictation = require('./integrations/dictation');
 const agentprofile = require('./agent/profile');
 const agentschedule = require('./agent/schedule');
 const jobs = require('./jobs');
@@ -104,7 +103,6 @@ require('./app/routes/agent-passes');
 require('./app/routes/agents');
 require('./app/routes/config');
 require('./app/routes/data-sync');
-require('./app/routes/dictation');
 require('./app/routes/docker');
 require('./app/routes/git');
 require('./app/routes/git-compare');
@@ -268,9 +266,6 @@ module.exports = {
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
     veille.arreter();
-    /* Le moteur de dictée est un PROCESS ENFANT, pas un timer : oublié, il garde deux
-       gigaoctets et le process en vie — la suite de tests ne rendrait jamais la main. */
-    dictation.arreterMoteur();
     // Même raison pour le tic des horaires d'agents.
     agentschedule.arreter();
     jobs.programmation.arreter();

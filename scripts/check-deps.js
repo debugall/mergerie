@@ -69,8 +69,8 @@ const IMPORTEURS = {
   ], motif: 'la file de jobs se lance depuis app/, pas depuis le métier' },
   demo: { dossiers: ['app', 'racine', 'jobs', 'demo'], fichiers: [
     /* Les modules qui savent déjà répondre en mode démo (`isDemo()`), et eux seuls. */
-    'review/reviewer.js', 'verify/verifyrun.js', 'integrations/dictation.js', 'git/gitops.js', 'session/taskrunner.js',
-  ], motif: 'le mode démo se branche depuis app/ et cinq modules nommés' },
+    'review/reviewer.js', 'verify/verifyrun.js', 'git/gitops.js', 'session/taskrunner.js',
+  ], motif: 'le mode démo se branche depuis app/ et quatre modules nommés' },
 };
 
 /* LES ARÊTES TOLÉRÉES, une par une, avec leur motif — et le commit qui les fera disparaître. */

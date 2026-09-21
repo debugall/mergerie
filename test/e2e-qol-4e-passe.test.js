@@ -87,9 +87,9 @@ describe('Qualité de vie · 4ᵉ passe', () => {
     assert.ok(!/^job\./.test(j.no_retry_reason), `clé brute : ${j.no_retry_reason}`);
   });
 
-  /* C25 — les noms de conteneurs se dictent tous les jours ; ils s'écrivaient de travers.
+  /* C25 — les noms de conteneurs servent à filtrer les liens (routes/links.js).
      On ne sonde pas Docker pour autant : on lit ce que le badge de santé a déjà vu. */
-  test('le vocabulaire de dictée sait lire les noms de conteneurs déjà vus', () => {
+  test('les noms de conteneurs déjà vus se lisent sans sonder Docker', () => {
     const docker = require('../src/integrations/docker');
     assert.deepEqual(docker.nomsConnus(), [], 'rien tant que Docker n’a pas été regardé');
     assert.doesNotThrow(() => docker.nomsConnus());

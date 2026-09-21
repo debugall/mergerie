@@ -448,12 +448,6 @@ NARRATION = [
         "And notifications warn you when a job finishes, with a score threshold below which you want to be alerted. The background watch adds its own: a Jenkins build finished, a container that goes down, a failed restore, an automatic cap reached. "
     ),
     (
-        "Voice dictation is configured here. The engine can run on your own machine, or go through the browser — in which case the audio leaves for Google or Apple, and the screen says so. "
-    ),
-    (
-        "Every text field then carries a microphone, and the vocabulary of your own repositories is handed to the engine: project, branch and ticket names come out right the first time. "
-    ),
-    (
         "At the bottom of the screen, a bar follows jobs live: what is running, the tokens spent, and a log that unfolds. That log holds an Activity view, listing what was launched and what finished, with a link that takes you straight back to the object concerned. "
     ),
     (

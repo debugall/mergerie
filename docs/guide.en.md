@@ -2012,9 +2012,9 @@ Every field carries a **“team”** or **“this machine”** badge, because se
 same kind. A **team** setting describes the tool: the prompt templates, the thresholds, the review
 policies, the forge address — two reviews of the same merge request written under different
 instructions are not comparable, so those settings are meant to be shared. A **this machine**
-setting belongs to your computer alone: the API tokens, the clone folder, the language, the
-dictation engine. They are stored apart, in a table that is never meant to travel: that is what
-will later let a team share its tool without a single secret leaving anyone's machine.
+setting belongs to your computer alone: the API tokens, the clone folder, the language. They are
+stored apart, in a table that is never meant to travel: that is what will later let a team share
+its tool without a single secret leaving anyone's machine.
 
 Sub-tabs, **in the order of the journey** — connect, choose the code, tune the review, tune the
 tool, the optional integrations, the test bench:
@@ -2117,93 +2117,6 @@ default are realigned.
 > Migration in progress: the shell of the interface, the notifications and the error messages are
 > translated; the content of the cards and lists is still in French.
 > Consistency check of the dictionary: `npm run i18n:check`.
-
-### Voice dictation
-A **microphone appears on the field you are writing in**: you speak, the text lands **at the
-caret**, as if you had typed it. Click the microphone, or press **`Ctrl`/`Cmd` + `Shift` +
-`Space`**; **`Esc`** stops. Off by default — turn it on in **Settings → Voice dictation**, and as
-long as no provider is chosen, no microphone appears anywhere.
-
-One sentence in the other language is not worth changing a setting for: **⇧-click the microphone**
-to dictate in the other language, for that take only — and the bubble says so (“Listening (FR)”).
-
-It is offered on every **writing** field: a session prompt, a follow-up, an answer to the agent, a
-merge request comment, a notes page, a todo, a commit message, a review rule. Not on URL, token,
-path or search fields: you do not dictate there, and a microphone would just be noise.
-
-#### What makes it accurate on *your* names
-A general-purpose engine writes “the merge rec west 244 on web app front”. With every sentence,
-Mergerie sends the engine the vocabulary it already knows: your **repositories**, the **services**
-and **environments** of the Links tab, your **Jira key prefixes**, your **verifiers**, your linked
-**Jenkins jobs**, and the **branches of open merge requests**. The same sentence then comes back as
-“merge request 244 on webapp-front”. It is the most effective lever of the whole feature, and it
-costs nothing at run time.
-
-Two settings cover what the database cannot guess:
-
-- the **glossary** — one term per line: code names, in-house acronyms, first names. It goes
-  **first** and is never dropped by the engine's limit;
-- the **corrections** — `heard => written`, one per line: the answer to the mistakes that keep
-  coming back on the same words (“Jane Kim => Jenkins”). Whole word, case-insensitive.
-
-What is dictated is then reshaped: `!214` and `PROJ-720` are rebuilt from their spoken forms (“MR
-214”, “proj dash 720”) — those are what become links in notes and targets in the palette —, French
-gets its non-breaking space before `? ! : ;` but **never inside a code block**, and a capital
-follows a full stop. Three voice commands, and not one more: “new line”, “new paragraph”, “scratch
-that” (they only count when **alone** in a sentence; punctuation is not dictated — the engine adds it).
-
-#### Silence sets the rhythm
-A sentence is sent for transcription after **700 ms of silence** (adjustable from 400 to 1500), or
-after twelve seconds of continuous speech. The text therefore arrives **while** you are talking,
-about a second after the end of the sentence, not when you stop. When you do stop, the **whole
-audio is re-read in one pass** in the background and replaces what was inserted — slightly more
-accurate, because decoded with its full context. That re-read touches nothing if you have already
-corrected the text yourself, and can be switched off.
-
-The engine **invents text over silence** — “Sous-titres réalisés par la communauté d'Amara.org” is
-the most famous ghost sentence in French, “Thank you for watching” in English. Four guards stop it:
-voice detection in the browser, voice detection in the engine, decoding thresholds, and a list of
-ghost sentences. What is dropped is **counted**, and the count shows in the settings: if it climbs,
-the microphone is picking up noise.
-
-#### Three providers, one setting
-| Provider | Where the audio goes | What it needs |
-|---|---|---|
-| **whisper.cpp (local)** — recommended | Nowhere: browser → server → engine on `127.0.0.1`. Never written to disk. | A binary and a model, installed from the screen (below) |
-| **OpenAI-compatible API** | To the provider you configure (OpenAI, Groq, Mistral, LocalAI…) | A URL, a key, a model name |
-| **Browser** | **To Google (Chrome) or Apple (Safari)** — said in plain words on screen | Nothing to install. Less accurate: no vocabulary can be given to it |
-
-#### Installing the local engine, and knowing that it works
-The **Settings → Voice dictation** panel does not “ping”: it **walks the chain** and names the first
-step that breaks, with the gesture that repairs it — binary, model, voice detection, startup (with
-the **acceleration it detected**: Metal, CUDA, Vulkan or CPU), transcription of a sample,
-vocabulary, then two steps the server cannot know about: the **secure origin** and the
-**microphone** (granted *and* actually hearing something).
-
-**“Install”** runs the repository script matching the **server's** system, as a job: its log shows
-live, “Stop” ends it cleanly, and an interrupted download resumes on the next run. Before starting,
-it **names what is about to happen** — a 1.6 GB download does not begin on a silent click — and
-nothing is asked as administrator. When it finishes it **fills in the settings** itself and re-runs
-the test: the table turns green without one more click.
-
-The same work by hand, if you prefer:
-
-```sh
-sh scripts/install-whisper.sh                     # large-v3-turbo (1.6 GB), into data/models
-sh scripts/install-whisper.sh --model large-v3-turbo-q5_0   # 574 MB, machine without a GPU
-powershell -ExecutionPolicy Bypass -File scripts\install-whisper.ps1   # Windows
-```
-
-On Apple Silicon, Metal is on by default and a ten-second sentence transcribes in about a second.
-On a machine without a GPU, count three to five times that and prefer the `q5_0` model. The engine
-stops on its own after **fifteen minutes without dictation** (it takes two gigabytes) and restarts
-when you hover the microphone. It also stops **with Mergerie**: never a forgotten process holding
-onto memory after you close the tool.
-
-> **Microphone refused?** The browser only grants it on a **secure origin**: `localhost` or HTTPS.
-> With `HOST=0.0.0.0` and a `http://192.168.…` address it will refuse — open the tool on
-> `http://localhost:4319`, or use an SSH tunnel. The diagnostic panel says so, and gives the way
-> out. If permission was denied once, it is restored in the site settings.
 
 ### Everyday comfort
 **Objects have an address.** A review report, a session and a note page are written `#/reviews/216`,
@@ -2667,9 +2580,6 @@ exports wins over the file.
 | `JENKINS_INSECURE_TLS` | 0 | `1` = skip the TLS check **for Jenkins only** (troubleshooting) |
 | `GIT_CLONE_SSH` | 0 | `1` = clone over SSH (your key) instead of HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | isolated data folder (useful for tests) |
-| `DICTATION_DRY_RUN` | 0 | `1` = **simulated dictation engine** (scripted sentences, real audio duration measured) |
-| `DICTATION_CA` | — | CA to pin for a **transcription** provider behind a corporate certificate |
-| `DICTATION_INSECURE` | 0 | `1` = skip TLS verification **for transcription only** (troubleshooting) |
 
 The AI agent must be able to **modify files** (“yolo” mode) for the coding sessions. Explorations, on the
 other hand, are read-only: the repositories are reset after each pass.
@@ -2764,8 +2674,8 @@ instance, **their** tokens and **their** AI CLI subscription: requests leave the
 billed to them, and it is the result that is shared. There is nothing to install and nothing to
 administer: the team already has a forge, permissions, backups and a history.
 
-**What NEVER goes into the repository.** The seven API tokens, the clone folder, the language, the
-dictation engine, this machine's absolute paths, tidied-away sessions, job logs. Every column of
+**What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
+this machine's absolute paths, tidied-away sessions, job logs. Every column of
 the database is classified by name, and an automatic check refuses a secret-looking column that is
 not declared — because **a secret committed to git is permanent**: history is immutable, every
 clone keeps it, the forge keeps it. Removing it is not enough; you have to revoke. **FIVE TABS STAY LOCAL**: **Links**, **Docker**, **Jenkins**,
@@ -3026,16 +2936,7 @@ default only on **your** merge requests (recognised by the forge username, not t
 authors” is an explicit choice (Settings → Verifiers). An automatic run gets a **throwaway `HOME`**: no
 `~/.ssh`, no `~/.npmrc`, no `~/.aws`.
 
-**Voice dictation.** What is said goes **where the chosen provider sends it**, and the screen says so
-before you choose. With the **local** engine (the recommended default), audio goes from the browser to
-the server on `localhost`, then to the engine on `127.0.0.1`: it is **never written to disk** nor logged.
-The engine is spawned **without a shell**, with a **minimal environment carrying no token**; the saved
-command must be `whisper-server`, looked up in PATH or given as the **absolute path of an existing `whisper-server` file** (optionally behind `nice`) — any other program, `/bin/sh` included, is refused.
-The audio body is capped at 10 MB and its **WAV header is validated**. The **“Install”** button runs the
-repository's script, which downloads a **pinned version** of whisper.cpp and of the models, and **checks
-the sha256** of each file before using it.
-
-**Secrets.** Tokens (GitLab, GitHub, Jira, Jenkins, dictation key) are stored **locally**, in a
+**Secrets.** Tokens (GitLab, GitHub, Jira, Jenkins) are stored **locally**, in a
 machine-only table that never travels, under a data folder created as `0700`. The API and UI **never**
 return them in clear (`***`), and sending `***` **does not overwrite** them. A **“Test”** button whose
 address changed requires **retyping** the token: the saved token is only ever sent to its own address.

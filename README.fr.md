@@ -50,9 +50,6 @@ dans les deux cas. Le `.env` est lu **dans le dossier d'où la commande est lanc
 là où tu te trouves au moment de la taper, donc reviens-y la fois suivante. Ce que le shell exporte
 passe devant le fichier, comme partout avec Node.
 
-Optionnel, pour la **dictée vocale** : `sh scripts/install-whisper.sh` (macOS/Linux) ou le bouton
-**Installer** de Réglages → Dictée vocale. Rien d'autre n'est nécessaire pour faire tourner l'outil.
-
 Au premier lancement, l'onglet **Reviews** affiche les trois étapes de démarrage, chacune avec son
 bouton. Elles correspondent à l'onglet **Réglages** :
 1. **Git** — URL GitLab + **access token** (PAT scopes `api` + `read_repository`) et/ou **token GitHub** (scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge valide le tout. *(URL Jira et connexion Jira optionnelles : onglet **Jira**.)*
@@ -152,16 +149,11 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste
-courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. Un
-**micro sur chaque champ de texte** (`Ctrl`/`Cmd` + `Maj` + `Espace`) écrit ce que tu dis au curseur :
-la transcription est **locale**, par whisper.cpp, et le moteur reçoit **ton** vocabulaire — dépôts,
-services, environnements, préfixes Jira, branches ouvertes —, ce qui lui fait écrire `webapp-front` et
-`!214` plutôt que « web app front » et « 214 ». Éteinte par défaut ; elle s'installe depuis l'écran de
-réglages, qui déroule toute la chaîne et nomme la première marche qui casse. **Toute fenêtre où l'on
-saisit se réduit** dans le bas du menu par un `—` : on va vérifier un nom de branche ou un ticket sans
-perdre ce qu'on écrivait, et on la reprend telle quelle — champs, curseur et onglet compris. L'outil
-rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur **ce qui a changé
-depuis ta dernière visite**.
+courante, `v` / `c` / `m` / `x` agissent sur la carte au focus, `?` liste tous les raccourcis. **Toute
+fenêtre où l'on saisit se réduit** dans le bas du menu par un `—` : on va vérifier un nom de branche ou
+un ticket sans perdre ce qu'on écrivait, et on la reprend telle quelle — champs, curseur et onglet
+compris. L'outil rouvre sur l'onglet et le stade que tu as quittés, et le panneau de rapport ouvre sur
+**ce qui a changé depuis ta dernière visite**.
 
 **Les onglets se parlent.** Une todo liée à une merge request se coche quand celle-ci est mergée ;
 le dernier build Jenkins qui porte une branche s'écrit sur la carte de sa merge request ; un ticket
