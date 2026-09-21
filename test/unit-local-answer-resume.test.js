@@ -42,7 +42,10 @@ describe('Hors dépôt : la reprise après réponses', () => {
     agentsession.runInSession = async ({ key, handle, resume, cwd, prompt }) => {
       n += 1;
       appels.push({ key, handle: handle || null, resume: !!resume, cwd, prompt });
-      const texte = n === 1 ? questions.DRYRUN_QUESTIONS : `travail de la passe ${n}`;
+      // Le décor joue l'agent CONFORME : il lit dans la consigne reçue le nonce du run et
+      // l'utilise dans son propre bloc de questions (lot D, point 1).
+      const nonce = (String(prompt).match(/<<<QUESTIONS (\S+)/) || [])[1];
+      const texte = n === 1 ? questions.dryrunQuestions(nonce) : `travail de la passe ${n}`;
       return { text: texte, sessionId: `sess-${n}`, handle: `sess-${n}`, backend: 'claude' };
     };
     copilot.isDryRun = () => false;      // sans quoi le chemin « session » n'est jamais pris

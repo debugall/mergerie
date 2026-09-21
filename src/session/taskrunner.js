@@ -9,7 +9,8 @@ const git = require('../git/git');
 const configagent = require('../data/configagent');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
-const { nonFiable } = require('../core/nonfiable');
+const crypto = require('node:crypto');
+const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
 const { avecConsignes } = require('../core/prompts');
@@ -193,6 +194,16 @@ async function reappliquerMessage(cwd, branch, message, onLog = () => {}) {
 
 /* ================= CODAGE ================= */
 
+/* LE NONCE DES BLOCS <<<QUESTIONS>>> D'UNE TÂCHE (plan_secure.md, lot D, point 1). À la
+   différence de celui d'un rapport de review (un par RUN, tiré au hasard dans `nonceRun()`),
+   celui-ci doit rester LE MÊME d'une passe à l'autre : sur une session reprise (suivi, réponse
+   aux questions), la consigne n'est envoyée qu'à la CRÉATION de la session — l'agent la garde
+   en mémoire, mais aucune passe suivante ne la réémet, donc le parseur d'une passe suivante doit
+   reconnaître le nonce que l'agent a gardé, pas en attendre un nouveau qu'il n'a jamais vu.
+   Dérivé de l'id de la tâche : stable sur toute sa durée, et une donnée ne le devine pas plus
+   qu'elle ne devine l'id interne de la session qui la traite. */
+const nonceQuestionsTache = (task) => crypto.createHash('sha256').update(`questions-${task && task.id}`).digest('hex').slice(0, 6);
+
 /* Prompt de dev et message de commit d'une session : UNE seule définition, partagée
    par la session « normale » (runTask) et la session « convergée » (converge.js).
    Le jour où on affine ce prompt — c'est le cœur produit — les deux chemins suivent. */
@@ -200,7 +211,7 @@ function buildCodePrompt(task) {
   const base = avecConsignes('Réalise la tâche de développement suivante dans ce dépôt. '
     + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`, consignesPermanentes());
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
-  return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
+  return task && task.ask_questions ? base + questions.questionsInstruction(nonceQuestionsTache(task)) : base;
 }
 
 /* REPRENDRE UNE CONVERSATION QUI S'EST TENUE AILLEURS.
@@ -386,7 +397,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   if (copilot.isDryRun()) {
     if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      agentText = questions.DRYRUN_QUESTIONS; // simule le bloc <<<QUESTIONS>>> au 1er passage
+      agentText = questions.dryrunQuestions(nonceQuestionsTache(task)); // simule le bloc <<<QUESTIONS>>> au 1er passage
     } else {
       onLog('$ (DRY-RUN — aucune vraie modification)');
       fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), `\n## ${message}\n${promptText.slice(0, 200)}\n`, 'utf8');
@@ -460,7 +471,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
   if (task.ask_questions) {
-    const qs = questions.parseQuestions(agentText);
+    const qs = questions.parseQuestions(agentText, nonceQuestionsTache(task));
     if (qs && qs.length) {
       setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
       onLog(t('log.task.questions', { n: qs.length, count: qs.length }));
@@ -640,6 +651,10 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   const prev = (previous && !doResume)
     ? `\n\nTu as déjà produit la réponse suivante :\n${nonFiable('réponse précédente', previous)}\nPrends-la en compte et complète-la selon la nouvelle demande.`
     : '';
+  /* Nonce FRAIS À CHAQUE APPEL (contrairement à celui d'un codage) : le prompt d'exploration est
+     intégralement RENVOYÉ à chaque passe — suivi compris —, la consigne des questions avec lui ;
+     rien ne dépend donc de ce que l'agent aurait gardé en mémoire d'un tour précédent. */
+  const nonceExplore = task.ask_questions ? nonceRun() : null;
 
   const prompt =
     `Tu explores ${dirs.length} dépôt(s) de code, chacun dans un sous-dossier du répertoire courant :\n${listing}\n\n`
@@ -658,7 +673,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     /* …et on lève la CONTRADICTION avec la consigne ci-dessus : « n'écris rien sur la sortie
        standard » d'un côté, « émets ce bloc à la fin de ta sortie » de l'autre. Un agent doit
        pouvoir poser sa question sans se demander où la mettre. Les deux endroits sont lus. */
-    + (task.ask_questions ? `${questions.QUESTIONS_INSTRUCTION}\n\nCe bloc est la SEULE exception `
+    + (task.ask_questions ? `${questions.questionsInstruction(nonceExplore)}\n\nCe bloc est la SEULE exception `
       + `à la consigne ci-dessus : émets-le sur la sortie standard OU dans \`${outRel}\`, et `
       + `n'écris alors pas de réponse de synthèse — tu la rédigeras une fois les réponses reçues.` : '');
 
@@ -714,7 +729,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
          personne n'emprunte. (Le codage et le hors dépôt, eux, répondent sur la sortie
          standard : les deux chemins restent couverts.) */
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      fs.writeFileSync(outAbs, questions.DRYRUN_QUESTIONS, 'utf8');
+      fs.writeFileSync(outAbs, questions.dryrunQuestions(nonceExplore), 'utf8');
       stdout = 'J’ai besoin de précisions avant de répondre.';
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
@@ -744,7 +759,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
        sortie ». Un agent qui hésite pose donc sa question là où on lui a dit d'écrire — dans le
        fichier. Ne lire que la sortie standard laissait l'exploration se terminer « normalement »,
        avec le bloc brut en guise de réponse et aucun formulaire à l'écran. */
-    const qs = questions.parseQuestions(stdout) || questions.parseQuestions(content);
+    const qs = questions.parseQuestions(stdout, nonceExplore) || questions.parseQuestions(content, nonceExplore);
     if (qs && qs.length) {
       for (const tg of targets) {
         setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });

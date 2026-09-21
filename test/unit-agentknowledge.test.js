@@ -26,6 +26,8 @@ const agentknowledge = require('../src/agent/knowledge');
 // eslint-disable-next-line import/order
 const agentprofile = require('../src/agent/profile');
 // eslint-disable-next-line import/order
+const protocol = require('../src/agent/protocol');
+// eslint-disable-next-line import/order
 const { getConfig, updateConfig } = require('../src/data/config');
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
@@ -53,8 +55,10 @@ before(() => {
   git(cloneDir, ['commit', '-m', 'init']);
 });
 
-const EN_TETE = [
-  '<<<AGENT',
+// Le bloc <<<AGENT>>> porte le nonce du cartographe qui l'a émis (lot D, point 1) : l'en-tête
+// n'est reconnu qu'à CE nonce précis — c'est ce que `enTete` fabrique, comme `composer()` le ferait.
+const enTete = (nonce) => [
+  `<<<AGENT ${nonce}`,
   'name: Notifications',
   'repo: grp/api | émet et route',
   'repo: grp/inconnu | pas chez nous',
@@ -63,8 +67,10 @@ const EN_TETE = [
   'path: grp/api | src/absent.js',
   'path: grp/api | ../../etc/passwd',
   'path: grp/api | /etc/hosts',
-  'AGENT>>>',
+  `AGENT ${nonce}>>>`,
 ].join('\n');
+const TEST_NONCE = 'abc123';
+const EN_TETE = enTete(TEST_NONCE);
 
 const CORPS = [
   '# Les notifications',
@@ -87,7 +93,7 @@ const CORPS = [
 
 describe('agentknowledge : l’en-tête <<<AGENT>>>', () => {
   test('un en-tête valide donne le nom, les dépôts, les chemins — et le reste du document', () => {
-    const h = agentknowledge.parseHeader(`${EN_TETE}\n\n${CORPS}`);
+    const h = agentknowledge.parseHeader(`${EN_TETE}\n\n${CORPS}`, TEST_NONCE);
     assert.equal(h.name, 'Notifications');
     assert.deepEqual(h.repos.map((r) => r.project), ['grp/api', 'grp/inconnu']);
     assert.equal(h.repos[0].role, 'émet et route');
@@ -97,14 +103,18 @@ describe('agentknowledge : l’en-tête <<<AGENT>>>', () => {
   });
 
   test('en-tête absent : rien — et surtout pas un agent créé au hasard', () => {
-    assert.equal(agentknowledge.parseHeader('# Un document sans en-tête'), null);
+    assert.equal(agentknowledge.parseHeader('# Un document sans en-tête', TEST_NONCE), null);
   });
 
   test('en-tête mal formé : les lignes illisibles sont ignorées, pas le bloc entier', () => {
-    const h = agentknowledge.parseHeader('<<<AGENT\nname: X\nn’importe quoi\nrepo: grp/api\nAGENT>>>\ncorps');
+    const h = agentknowledge.parseHeader(`<<<AGENT ${TEST_NONCE}\nname: X\nn’importe quoi\nrepo: grp/api\nAGENT ${TEST_NONCE}>>>\ncorps`, TEST_NONCE);
     assert.equal(h.name, 'X');
     assert.deepEqual(h.repos.map((r) => r.project), ['grp/api']);
     assert.deepEqual(h.paths, []);
+  });
+
+  test('un en-tête au mauvais nonce est ignoré — c’est la même donnée qui aurait pu le fabriquer', () => {
+    assert.equal(agentknowledge.parseHeader(`${EN_TETE}\n\n${CORPS}`, 'autre-nonce'), null);
   });
 });
 
@@ -152,7 +162,7 @@ describe('agentknowledge : créer puis mettre à jour', () => {
     agentprofile.seedBuiltins();
     const carto = agentprofile.parCle('cartographer');
     const task = poserTask(carto, 'les notifications');
-    const r = await agentknowledge.ingest(task, carto, `${EN_TETE}\n\n${CORPS}`, () => {});
+    const r = await agentknowledge.ingest(task, carto, `${enTete(protocol.nonceAgentRun(carto.id))}\n\n${CORPS}`, () => {});
     assert.equal(r.status, 'active');
     assert.equal(r.version, 1);
     agentId = r.agent_id;
@@ -183,7 +193,7 @@ describe('agentknowledge : créer puis mettre à jour', () => {
     const carto = agentprofile.parCle('cartographer');
     const task = poserTask(carto, 'les notifications', agentId);
     // …et le cartographe, lui, a « oublié » la section.
-    const nouveau = `${EN_TETE}\n\n${CORPS.replace('## Notes de l’équipe\n', '## Notes de l’équipe\n')}`;
+    const nouveau = `${enTete(protocol.nonceAgentRun(carto.id))}\n\n${CORPS.replace('## Notes de l’équipe\n', '## Notes de l’équipe\n')}`;
     const r = await agentknowledge.ingest(task, carto, nouveau, () => {});
     assert.equal(r.status, 'pending');
     assert.equal(r.agent_id, agentId);
@@ -239,7 +249,7 @@ describe('agentknowledge : créer puis mettre à jour', () => {
   test('un nom déjà pris ne réécrit pas l’agent existant : il est suffixé', async () => {
     const carto = agentprofile.parCle('cartographer');
     const task = poserTask(carto, 'encore les notifications');
-    const r = await agentknowledge.ingest(task, carto, `${EN_TETE}\n\n${CORPS}`, () => {});
+    const r = await agentknowledge.ingest(task, carto, `${enTete(protocol.nonceAgentRun(carto.id))}\n\n${CORPS}`, () => {});
     assert.notEqual(r.agent_id, agentId);
     assert.match(agentprofile.lire(r.agent_id).name, /Notifications \(2\)/);
   });

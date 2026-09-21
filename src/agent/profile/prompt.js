@@ -13,6 +13,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const knowledge = require('../knowledge');
 const { OUTILS_DEFAUT, jsonOu, repos } = require('./modele');
+const { nonceAgentRun } = require('../protocol');
 
 /* ---------- Du profil aux options de lancement ---------- */
 
@@ -118,23 +119,28 @@ function composer(agent, { question, targets, kind, entrees }) {
   // 5. les consignes permanentes des réglages, comme toute session.
   let prompt = avecConsignes(morceaux.join('\n\n'), cfg.ai_extra_instructions);
 
-  // 6. les protocoles, dans l'ordre.
-  if (agent.builtin_key === 'investigator') prompt += PROTO_REPO();
-  if (agent.builtin_key === 'cartographer') prompt += PROTO_AGENT();
-  if (agent.knowledge_prompt) prompt += PROTO_STALE();
-  if (agent.output_kind === 'note_page') prompt += PROTO_PAGES();
+  /* 6. les protocoles, dans l'ordre — AU NONCE DE CET AGENT (plan_secure.md, lot D, point 1) :
+     `composer()` tourne à la CRÉATION de la tâche, avant que `task.id` n'existe, et son résultat
+     est persisté tel quel dans `task.prompt`. Le nonce doit donc être calculable plus tard à
+     partir de ce qui survit — `task.agent_id` — d'où `nonceAgentRun(agent.id)`, stable, plutôt
+     qu'un tirage perdu au premier redémarrage. */
+  const nonce = nonceAgentRun(agent.id);
+  if (agent.builtin_key === 'investigator') prompt += PROTO_REPO(nonce);
+  if (agent.builtin_key === 'cartographer') prompt += PROTO_AGENT(nonce);
+  if (agent.knowledge_prompt) prompt += PROTO_STALE(nonce);
+  if (agent.output_kind === 'note_page') prompt += PROTO_PAGES(nonce);
   return { prompt, kind: kind || agent.kind };
 }
 /* Les textes de protocole. Écrits ici plutôt que dans le gabarit : ce sont des contrats de
    MACHINE, et un utilisateur qui affine son gabarit ne doit pas pouvoir les casser sans le
    savoir — le bouton « Corriger sur X » disparaîtrait sans un mot. */
-const PROTO_REPO = () => `\n\n---\n${t('agents.proto.repo')}\n\n<<<REPO\n<projet> | <chemin> | <ligne>\nREPO>>>\n`;
-const PROTO_AGENT = () => `\n\n---\n${t('agents.proto.agent')}\n\n<<<AGENT\nname: <nom>\nrepo: <projet> | <rôle>\npath: <projet> | <chemin>\nAGENT>>>\n`;
-const PROTO_STALE = () => `\n\n---\n${t('agents.proto.stale')}\n\n<<<STALE\n<projet> | <chemin> | <ce qui ne colle plus>\nSTALE>>>\n`;
+const PROTO_REPO = (nonce) => `\n\n---\n${t('agents.proto.repo')}\n\n<<<REPO ${nonce}\n<projet> | <chemin> | <ligne>\nREPO ${nonce}>>>\n`;
+const PROTO_AGENT = (nonce) => `\n\n---\n${t('agents.proto.agent')}\n\n<<<AGENT ${nonce}\nname: <nom>\nrepo: <projet> | <rôle>\npath: <projet> | <chemin>\nAGENT ${nonce}>>>\n`;
+const PROTO_STALE = (nonce) => `\n\n---\n${t('agents.proto.stale')}\n\n<<<STALE ${nonce}\n<projet> | <chemin> | <ce qui ne colle plus>\nSTALE ${nonce}>>>\n`;
 /* La sortie « page de notes » peut se DÉCOUPER. Le texte hors bloc devient la page racine,
    chaque bloc une sous-page. Combien et comment, c'est l'agent qui en juge : lui seul sait
    si son sujet a trois points ou douze. */
-const PROTO_PAGES = () => `\n\n---\n${t('agents.proto.pages')}\n\n<<<PAGE\ntitle: <titre de la sous-page>\n<son contenu en Markdown>\nPAGE>>>\n`;
+const PROTO_PAGES = (nonce) => `\n\n---\n${t('agents.proto.pages')}\n\n<<<PAGE ${nonce}\ntitle: <titre de la sous-page>\n<son contenu en Markdown>\nPAGE ${nonce}>>>\n`;
 /* ---------- Matérialiser et lancer ---------- */
 
 function ciblesDe(agent, { repoIds }) {

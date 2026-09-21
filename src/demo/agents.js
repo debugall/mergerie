@@ -77,6 +77,15 @@ function rapport(agent, mode, question, promptComplet) {
   const role = veut('AGENT') ? 'cartographer'
     : (veut('REPO') ? 'investigator'
       : (veut('STALE') ? 'domain' : (agent.builtin_key || (agent.knowledge_prompt ? 'domain' : 'librarian'))));
+  /* LE NONCE EST LU DANS LA CONSIGNE REÇUE (plan_secure.md, lot D, point 1), jamais retiré : le
+     décor joue l'agent CONFORME, celui qui recopie dans sa sortie le nonce que la consigne lui a
+     donné — sinon aucun de ces blocs ne serait jamais reconnu par le vrai parseur, et la démo
+     validerait un chemin que personne n'emprunte. */
+  const nonceDuBloc = (bloc) => (demande.match(new RegExp(`<<<${bloc} (\\S+)`)) || [])[1] || 'demo';
+  const nonceRepo = nonceDuBloc('REPO');
+  const noncePage = nonceDuBloc('PAGE');
+  const nonceAgent = nonceDuBloc('AGENT');
+  const nonceStale = nonceDuBloc('STALE');
   if (role === 'investigator') {
     return [
       '# Où est ce code',
@@ -96,9 +105,9 @@ function rapport(agent, mode, question, promptComplet) {
       '## Ce que je n’ai pas trouvé',
       'Aucun test ne couvre la reconnexion après expiration du cookie.',
       '',
-      '<<<REPO',
+      `<<<REPO ${nonceRepo}`,
       `${p0} | src/cart/session.js | 118`,
-      'REPO>>>',
+      `REPO ${nonceRepo}>>>`,
     ].join('\n');
   }
   /* Un identifiant Mermaid ne supporte ni `/` ni `-` : `grp/app` ouvrirait un nœud que le
@@ -130,7 +139,7 @@ function rapport(agent, mode, question, promptComplet) {
       '```',
       '',
       ...p.flatMap((x) => [
-        '<<<PAGE',
+        `<<<PAGE ${noncePage}`,
         `title: ${x}`,
         `## Rôle`,
         `${role_(x)[0].toUpperCase()}${role_(x).slice(1)}.`,
@@ -163,7 +172,7 @@ function rapport(agent, mode, question, promptComplet) {
         '    datetime creee_le',
         '  }',
         '```',
-        'PAGE>>>',
+        `PAGE ${noncePage}>>>`,
         '',
       ]),
     ].join('\n');
@@ -174,7 +183,7 @@ function rapport(agent, mode, question, promptComplet) {
     const sujet = String(question || '').split('\n').map((x) => x.trim()).find(Boolean) || 'Les notifications';
     const nom = sujet.replace(/^les\s+/i, '').replace(/\s*:.*$/, '').trim().slice(0, 40) || 'Notifications';
     return [
-      '<<<AGENT',
+      `<<<AGENT ${nonceAgent}`,
       `name: ${nom.charAt(0).toUpperCase()}${nom.slice(1)}`,
       `repo: ${p0} | émet et route les notifications`,
       `repo: ${p1} | les affiche`,
@@ -182,7 +191,7 @@ function rapport(agent, mode, question, promptComplet) {
       `path: ${p0} | src/templates/notifications`,
       `path: ${p1} | src/components/Toast.jsx`,
       `path: ${p0} | src/notify-inexistant.js`,
-      'AGENT>>>',
+      `AGENT ${nonceAgent}>>>`,
       '',
       `# ${sujet.slice(0, 120)}`,
       '## Périmètre',
@@ -216,9 +225,9 @@ function rapport(agent, mode, question, promptComplet) {
     '',
     'Attention : le chemin des gabarits a changé depuis la dernière cartographie.',
     '',
-    '<<<STALE',
+    `<<<STALE ${nonceStale}`,
     `${p0} | src/templates/notifications | le dossier a été renommé en src/notifications/templates`,
-    'STALE>>>',
+    `STALE ${nonceStale}>>>`,
   ].join('\n');
 }
 

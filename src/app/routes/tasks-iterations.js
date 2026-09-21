@@ -161,7 +161,7 @@ app.get('/api/tasks/:id/repo-hint', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
   const brut = tache.md_path ? readFileSafe(tache.md_path) : '';
-  const { block } = protocol.extraire(brut || '', 'REPO');
+  const { block } = protocol.extraire(brut || '', 'REPO', protocol.nonceAgentRun(tache.agent_id));
   if (!block) return res.json(null);
   for (const champs of protocol.lignes(block)) {
     const projet = champs[0];

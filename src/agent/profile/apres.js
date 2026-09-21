@@ -27,12 +27,17 @@ async function apresRun(task, onLog = () => {}) {
     return knowledge.ingest(task, a, texte, onLog);
   }
   /* UNE MISE À JOUR DE CONNAISSANCE porte l'agent de DOMAINE (c'est sur sa carte qu'elle doit
-     apparaître), mais c'est le cartographe qui l'a exécutée — et lui seul émet `<<<AGENT>>>`.
-     La présence de ce bloc sur un agent de domaine est donc le signal fiable : un agent de
-     domaine, lui, n'émet jamais ce bloc (il n'a que `<<<STALE>>>`). */
-  if (a.knowledge_prompt && protocol.extraire(texte, 'AGENT').block) {
+     apparaître), mais c'est le cartographe qui l'a exécutée — et lui seul émet `<<<AGENT>>>`,
+     AU NONCE DU CARTOGRAPHE (plan_secure.md, lot D, point 1) : c'est son id, pas celui de
+     l'agent de domaine porteur, que `composer()` a utilisé pour composer ce prompt-ci
+     (`lancer.refreshKnowledge` fait tourner le cartographe « au nom de » l'agent de domaine).
+     La présence de ce bloc, à CE nonce, est donc le signal fiable : un agent de domaine, lui,
+     n'émet jamais ce bloc (il n'a que `<<<STALE>>>`). */
+  if (a.knowledge_prompt) {
     const carto = parCle('cartographer');
-    if (carto) return knowledge.ingest(task, carto, texte, onLog);
+    if (carto && protocol.extraire(texte, 'AGENT', protocol.nonceAgentRun(carto.id)).block) {
+      return knowledge.ingest(task, carto, texte, onLog);
+    }
   }
   if (a.output_kind === 'note_page') return versPageDeNotes(a, task, texte, onLog);
 
@@ -40,7 +45,7 @@ async function apresRun(task, onLog = () => {}) {
      dans sa propre connaissance. Il ne la corrige pas lui-même — il la signale, et la
      correction reste un geste. */
   if (a.knowledge_prompt) {
-    const { block } = protocol.extraire(texte, 'STALE');
+    const { block } = protocol.extraire(texte, 'STALE', protocol.nonceAgentRun(a.id));
     if (block) {
       const gaps = protocol.lignes(block).map((c) => ({ project: c[0] || '', path: c[1] || '', note: c[2] || '' }));
       if (gaps.length) knowledge.addGaps(a, task, gaps);
@@ -61,7 +66,7 @@ function versPageDeNotes(agent, task, texte, onLog) {
      texte général, et le détail de chaque point à côté. C'est l'agent qui juge combien il en
      faut et comment il les découpe — nous, on range. Ce qui reste après extraction est la
      page RACINE : le texte général, avec ses renvois. */
-  const { blocks, rest } = protocol.extraireTous(texte, 'PAGE');
+  const { blocks, rest } = protocol.extraireTous(texte, 'PAGE', protocol.nonceAgentRun(agent.id));
   const entete = t('agents.note.header', { name: agent.name, date: new Date().toLocaleString(i18n.currentLocale()) });
   const contenu = `${entete}\n\n${protocol.nettoyer(rest)}`;
   const id = Number(agent.output_ref) || 0;

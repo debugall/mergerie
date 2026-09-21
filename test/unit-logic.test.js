@@ -473,15 +473,17 @@ describe('i18n : moteur de traduction partagé serveur / navigateur', () => {
 describe('questions : parsing du bloc <<<QUESTIONS>>> (ask → stop → resume)', () => {
   const questions = require('../src/agent/questions');
 
+  const NONCE = 'ab12cd';
+
   test('un bloc valide est extrait et normalisé', () => {
     const out = questions.parseQuestions(`bla bla
-<<<QUESTIONS
+<<<QUESTIONS ${NONCE}
 [
   {"id":"q1","question":"Où mettre le retry ?","context":"deux conventions","options":[{"value":"a","label":"A"},{"value":"b","label":"B"}]},
   {"id":"q2","question":"Migrer ?","options":null}
 ]
-QUESTIONS>>>
-suite ignorée`);
+QUESTIONS ${NONCE}>>>
+suite ignorée`, NONCE);
     assert.equal(out.length, 2);
     assert.equal(out[0].options.length, 2);
     assert.equal(out[1].options, null, 'options null → réponse libre');
@@ -489,15 +491,21 @@ suite ignorée`);
   });
 
   test('bloc absent ou malformé → null (ne bloque pas la session)', () => {
-    assert.equal(questions.parseQuestions('rien du tout'), null);
-    assert.equal(questions.parseQuestions('<<<QUESTIONS\nceci n\'est pas du JSON\nQUESTIONS>>>'), null);
-    assert.equal(questions.parseQuestions('<<<QUESTIONS\n[]\nQUESTIONS>>>'), null, 'liste vide → null');
-    assert.equal(questions.parseQuestions('<<<QUESTIONS\n[{"context":"sans question"}]\nQUESTIONS>>>'), null, 'entrée sans question → écartée');
+    assert.equal(questions.parseQuestions('rien du tout', NONCE), null);
+    assert.equal(questions.parseQuestions(`<<<QUESTIONS ${NONCE}\nceci n'est pas du JSON\nQUESTIONS ${NONCE}>>>`, NONCE), null);
+    assert.equal(questions.parseQuestions(`<<<QUESTIONS ${NONCE}\n[]\nQUESTIONS ${NONCE}>>>`, NONCE), null, 'liste vide → null');
+    assert.equal(questions.parseQuestions(`<<<QUESTIONS ${NONCE}\n[{"context":"sans question"}]\nQUESTIONS ${NONCE}>>>`, NONCE), null, 'entrée sans question → écartée');
+  });
+
+  test('un bloc au mauvais nonce est ignoré — c’est la même donnée qui aurait pu le fabriquer', () => {
+    const md = `<<<QUESTIONS ${NONCE}\n[{"id":"q1","question":"Q ?"}]\nQUESTIONS ${NONCE}>>>`;
+    assert.equal(questions.parseQuestions(md, 'autre-nonce'), null);
+    assert.equal(questions.parseQuestions(md), null);
   });
 
   test('au-delà de 5 questions, on tronque', () => {
     const many = JSON.stringify(Array.from({ length: 9 }, (_, i) => ({ id: `q${i}`, question: `Q${i}` })));
-    const out = questions.parseQuestions(`<<<QUESTIONS\n${many}\nQUESTIONS>>>`);
+    const out = questions.parseQuestions(`<<<QUESTIONS ${NONCE}\n${many}\nQUESTIONS ${NONCE}>>>`, NONCE);
     assert.equal(out.length, questions.MAX_QUESTIONS);
   });
 

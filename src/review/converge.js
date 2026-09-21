@@ -25,7 +25,7 @@ const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
 const { getConfig } = require('../data/config');
 const { reviewMr, fillTemplate } = require('./reviewer');
-const { nonFiable } = require('../core/nonfiable');
+const { nonFiable, nonceRun } = require('../core/nonfiable');
 const prompts = require('../core/prompts');
 const { t } = require('../core/i18n');
 
@@ -73,13 +73,14 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
   }
 
   const ask = !!(ctx.task && ctx.task.ask_questions);
+  const nonceQuestions = ask ? nonceRun() : null;
   /* LE MÊME GABARIT QUE « FAIRE CORRIGER PAR L'IA ». Ce texte était recopié ici en français,
      hors des réglages : ni traduit, ni éditable, et deux copies qui auraient divergé dès la
      première retouche de l'une d'elles. */
   let prompt = fillTemplate(prompts.gabarit('prompt_fix', cfg), {
     source: mr.source_branch, target: mr.target_branch || '', report: nonFiable('rapport de revue', reviewMd),
   });
-  if (ask) prompt += questions.QUESTIONS_INSTRUCTION;
+  if (ask) prompt += questions.questionsInstruction(nonceQuestions);
 
   onLog(`correction IA (${copilot.isDryRun() ? 'dry-run' : 'copilot'})`);
   let agentText = '';
@@ -111,7 +112,7 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
   }
 
   if (ask) {
-    const qs = questions.parseQuestions(agentText);
+    const qs = questions.parseQuestions(agentText, nonceQuestions);
     if (qs && qs.length) return { needsInput: true, questions: qs };
   }
 
