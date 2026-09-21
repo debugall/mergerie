@@ -24,10 +24,18 @@ describe('Lancer plus tard : sessions et suivis programmés', { skip: dispo ? fa
   let app; let nav; let page; let repoApp; let dossier;
   const erreurs = [];
   const ids = {};
-  // Une date à venir, en heure LOCALE : celle que le champ affiche, celle que le poste lancera.
+  // Une date à venir, en heure LOCALE : celle que les champs affichent, celle que le poste
+  // lancera. Deux champs natifs — date et heure — plutôt qu'un seul `datetime-local` : chacun
+  // garde son propre sélecteur, et reste saisissable au clavier.
   const DATE_LOCALE = '2031-06-15T07:30';
+  const [DATE_JOUR, DATE_HEURE] = DATE_LOCALE.split('T');
   const DATE_ISO = new Date(DATE_LOCALE).toISOString();
   const PASSEE = '2020-01-01T00:00:00.000Z';
+  const remplirDate = async (loc) => {
+    const [jour, heure] = loc.split('T');
+    await page.locator('#taskScheduleDate').fill(jour || '');
+    await page.locator('#taskScheduleTime').fill(heure || '');
+  };
 
   const carte = (id) => `#taskList .card[data-task="${id}"]`;
   const carteLocale = (id) => `#localList .card[data-local="${id}"]`;
@@ -88,15 +96,15 @@ describe('Lancer plus tard : sessions et suivis programmés', { skip: dispo ? fa
     while (await lignes().count() > 1) await lignes().nth(1).locator('[data-rmrow]').click();
     await lignes().nth(0).locator('.t-branch').fill('ai/programmee');
     await lignes().nth(0).locator('.t-base').fill('main');
-    await page.locator('#taskScheduleAt').fill(DATE_LOCALE);
+    await remplirDate(DATE_LOCALE);
     // Le bouton change avec la date, et « Créer sans lancer » n'a plus de sens.
     await page.waitForFunction((lib) => document.querySelector('#taskSubmit').textContent.trim() === lib, await tr('task.btn.create-schedule'));
     assert.equal(await page.locator('#taskSubmitOnly').isVisible(), false);
     // Effacer la date rend les boutons d'avant ; la remettre les reprend.
-    await page.locator('#taskScheduleAt').fill('');
+    await remplirDate('');
     await page.waitForFunction((lib) => document.querySelector('#taskSubmit').textContent.trim() === lib, await tr('task.btn.create-run'));
     assert.equal(await page.locator('#taskSubmitOnly').isVisible(), true);
-    await page.locator('#taskScheduleAt').fill(DATE_LOCALE);
+    await remplirDate(DATE_LOCALE);
     await page.waitForFunction((lib) => document.querySelector('#taskSubmit').textContent.trim() === lib, await tr('task.btn.create-schedule'));
 
     await page.locator('#taskSubmit').click();
@@ -116,11 +124,26 @@ describe('Lancer plus tard : sessions et suivis programmés', { skip: dispo ? fa
     await ouvrir('explore');
     assert.equal(await page.locator('#taskScheduleRow').isVisible(), true, 'le champ est là en exploration');
     await page.locator('#taskPrompt').fill('Trop tard');
-    await page.locator('#taskScheduleAt').fill('2020-01-01T08:00');
+    await remplirDate('2020-01-01T08:00');
     await page.locator('#taskSubmit').click();
     await page.waitForSelector('#taskScheduleRow .field-error');
     assert.equal(await page.locator('#taskModal').isVisible(), true, 'la modale reste ouverte');
     assert.equal(app.db.prepare('SELECT COUNT(*) c FROM task').get().c, avant);
+    await page.locator('#taskCancel').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+  });
+
+  test('une date sans heure (ou l’inverse) est signalée sous le champ qui manque', async () => {
+    await ouvrir('explore');
+    await page.locator('#taskPrompt').fill('Moitié programmée');
+    await page.locator('#taskScheduleDate').fill(DATE_JOUR);
+    await page.locator('#taskSubmit').click();
+    await page.waitForSelector('#taskScheduleTime.is-invalid');
+    await page.locator('#taskScheduleDate').fill('');
+    await page.locator('#taskScheduleTime').fill(DATE_HEURE);
+    await page.locator('#taskSubmit').click();
+    await page.waitForSelector('#taskScheduleDate.is-invalid');
+    assert.equal(await page.locator('#taskModal').isVisible(), true, 'la modale reste ouverte');
     await page.locator('#taskCancel').click();
     await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
   });
@@ -146,15 +169,17 @@ describe('Lancer plus tard : sessions et suivis programmés', { skip: dispo ? fa
     await aller('code');
     await page.locator(`${carte(ids.code)} [data-tedit]`).click();
     await page.waitForSelector('#taskModal:not([hidden])');
-    assert.equal(await page.locator('#taskScheduleAt').inputValue(), '', 'plus de date après la croix');
-    await page.locator('#taskScheduleAt').fill(DATE_LOCALE);
+    assert.equal(await page.locator('#taskScheduleDate').inputValue(), '', 'plus de date après la croix');
+    assert.equal(await page.locator('#taskScheduleTime').inputValue(), '', 'plus d’heure après la croix');
+    await remplirDate(DATE_LOCALE);
     await page.locator('#taskSubmit').click();
     await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
     await attendreServeur(async () => (await session(ids.code)).scheduled_at === DATE_ISO, 'la date posée à l’édition est enregistrée');
     // Rouverte, la modale montre la date ; enregistrer sans y toucher la laisse en place.
     await page.locator(`${carte(ids.code)} [data-tedit]`).click();
     await page.waitForSelector('#taskModal:not([hidden])');
-    assert.equal(await page.locator('#taskScheduleAt').inputValue(), DATE_LOCALE);
+    assert.equal(await page.locator('#taskScheduleDate').inputValue(), DATE_JOUR);
+    assert.equal(await page.locator('#taskScheduleTime').inputValue(), DATE_HEURE);
     await page.locator('#taskSubmit').click();
     await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
     assert.equal((await session(ids.code)).scheduled_at, DATE_ISO);

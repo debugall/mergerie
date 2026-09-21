@@ -161,7 +161,6 @@ $('#taskSubmitOnly').addEventListener('click', () => {
   launchAfterCreate = false; // on crée, on ne lance pas
   $('#taskForm').requestSubmit();            // passe par la validation native du formulaire
 });
-$('#taskScheduleAt').addEventListener('input', majBoutonProgrammation);
 fermerAuFond('#taskModal', closeTaskModal);
 
 /* La proposition de branche suit le libellé et le prompt tant qu'on n'a pas touché au champ.
@@ -336,7 +335,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
      seconde fenêtre pour redemander ce qui vient d'être affiché. */
   const veutConverger = !editingTaskId && taskKind === 'code' && !!(f.converge_after && f.converge_after.checked);
   // Une convergence ne se programme pas : on le dit sous la date plutôt que d'en ignorer une des deux.
-  if (veutConverger && programmeA) { signalerChamp(f.scheduled_at, tr('err.programmation.converge')); return; }
+  if (veutConverger && programmeA) { signalerChamp(f.scheduled_at_date, tr('err.programmation.converge')); return; }
   let convergeId = null;
   try {
     await busy(btn, async () => {
