@@ -108,6 +108,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The “in conflict” tag and the “Update with {base}” button no longer outlive the conflict
+  they pointed at.** A successful catch-up replays the session's commits on top of an up-to-date
+  base — resolved, locally — but the flag behind both stayed set until a push and the forge's
+  next sync caught up, so a card kept offering (and warning about) a conflict already gone.
 - **A merge request merged directly on the forge no longer loses its link to the coding session
   that opened it.** Merging from the session's own “Merge” button recorded the link; discovery,
   which is what actually notices a merge done anywhere else (GitLab's UI, another teammate), only

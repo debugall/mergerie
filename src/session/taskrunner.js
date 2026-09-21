@@ -909,7 +909,7 @@ async function mettreAJourDepuisBase(taskId, targetId, onLog = () => {}) {
     /* Rien à rattraper. On le DIT plutôt que de rejouer un rebase à vide : « rien ne s'est
        passé » et « tout était déjà bon » se ressemblent trop dans un journal. */
     onLog(t('log.task.rebase.up-to-date', { base }));
-    setTarget(tg.id, { last_error: null });
+    setTarget(tg.id, { last_error: null, mr_conflicts: 0 });
     return { aJour: true, passes: 0 };
   }
   onLog(t('log.task.rebase.start', { branch: tg.branch, base, n: retard, count: retard }));
@@ -954,6 +954,13 @@ async function mettreAJourDepuisBase(taskId, targetId, onLog = () => {}) {
        un push normal sera refusé. On le RETIENT, au lieu de laisser l'utilisateur buter sur le
        refus puis chercher comment forcer — le bouton « Pousser » le fera de lui-même. */
     force_push: 1,
+    /* LE CONFLIT VENAIT DE LA FORGE, LE RATTRAPAGE EST LOCAL. Sans ce reset, le tag « en
+       conflit » et le bouton « Mettre à jour avec {base} » restaient affichés indéfiniment —
+       jusqu'au push ET au prochain passage de la découverte — alors que les commits viennent
+       justement d'être rejoués par-dessus une base à jour : il n'y a plus rien à rattraper tant
+       qu'un nouveau push distant ne fait pas repartir la branche en retard. La découverte
+       remettra le drapeau à 1 elle-même si la forge voit encore un problème après le push. */
+    mr_conflicts: 0,
     status: 'committed', last_error: null,
   });
   syncTaskStatus(task.id);
