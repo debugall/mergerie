@@ -15,11 +15,14 @@
 }
 .footer-mode:hover { border-color: #7ee39a; color: #7ee39a; }
 /* Bouton « journal » du bandeau : rouvre le panneau de job replié. La pastille rappelle
-   l'issue du dernier job (verte = terminé, rouge = échec). */
+   l'issue du dernier job (verte = terminé, rouge = échec) — ou, tant qu'il tourne ENCORE
+   derrière le panneau masqué, ambre et pulsante (même code que `.logstatus.running .dot` et
+   les onglets de job) : sans elle, un job masqué en plein travail avait l'air arrêté. */
 .footer-logs { display: inline-flex; align-items: center; gap: 5px; }
 .footer-logs .footer-logs-dot { width: 6px; height: 6px; border-radius: 50%; background: #3f8f5c; flex: none; }
 .footer-logs.st-done .footer-logs-dot { background: #35c07f; }
 .footer-logs.st-error .footer-logs-dot { background: #e05a5a; }
+.footer-logs.st-running .footer-logs-dot { background: var(--amber); animation: pulse 1s infinite; }
 /* Toggle « mode silencieux » : même gabarit que les autres boutons du bandeau,
    avec la cloche. À l'état muet on vire l'accent vert (signal visuel « coupé »). */
 #footerMute { display: inline-flex; align-items: center; padding: 1px 7px; }

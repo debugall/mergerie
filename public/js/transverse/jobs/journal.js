@@ -7,6 +7,7 @@ let logHidden = false;
 let autoHideJobId = null;
 let autoHideTimer = null;
 let lastJobStatus = null; // dernière issue connue (done/error/stopped…) → pastille du bouton « journal »
+let lastJobRunning = false; // le job tourne ENCORE derrière un panneau masqué → pastille en cours
 
 // Rouvre le panneau de log (masqué par « masquer » ou par le repli auto).
 function showLogPanel() {
@@ -31,14 +32,18 @@ if (typeof ResizeObserver === 'function' && $('#logPanel')) {
 }
 
 // Bouton « journal » du bandeau : visible seulement quand un job a tourné ET que le panneau est
-// masqué (sinon il ferait doublon). La pastille rappelle l'issue du dernier job.
+// masqué (sinon il ferait doublon). La pastille rappelle l'issue du dernier job — ou, tant qu'il
+// tourne encore derrière le panneau masqué (« masquer », ou un job qui redémarre en tâche de
+// fond), le dit ambre et pulsante : sans elle rien ne distinguait « terminé » de « en cours,
+// mais cette carte n'affiche que masquer/rafraîchir ».
 function updateFooterLogs() {
   mesurerLogPanel();
   const b = $('#footerLogs');
   if (!b) return;
   b.hidden = !(logJobId && $('#logPanel').hidden);
-  b.classList.toggle('st-done', lastJobStatus === 'done');
-  b.classList.toggle('st-error', lastJobStatus === 'error');
+  b.classList.toggle('st-running', lastJobRunning);
+  b.classList.toggle('st-done', !lastJobRunning && lastJobStatus === 'done');
+  b.classList.toggle('st-error', !lastJobRunning && lastJobStatus === 'error');
 }
 
 /* Coloration d'une ligne de journal. La détection d'erreur reste volontairement large et
@@ -323,6 +328,7 @@ async function pumpLog() {
     }, DELAI_REPLI);
   }
   lastJobStatus = d.status;
+  lastJobRunning = running;
   updateLogQueueBtn(d.queued || 0);
   if (logQueueOpen) renderLogQueue();
   updateFooterLogs();

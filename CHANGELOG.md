@@ -55,6 +55,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **“Check all” / “Uncheck all” on the branch explorer's repository picker**, with a running
   count of how many are ticked (Git → Explorer of branches). Matches what “Git commands” already
   offered on its own project picker.
+- **The footer's “journal” button turns amber and pulses while a job still runs behind it.**
+  Hiding the log panel (“masquer”, or its own auto-collapse a few seconds after a job finishes)
+  left the button looking the same whether the job was still working or long done — it now marks
+  “still running” separately from “done” (green) and “failed” (red).
+- **A session error's remedy buttons (“Catch up with the base and retry”, “Resolve the conflict”,
+  “Start from a fresh agent session”, “Re-clone the repository”) explain themselves on hover.**
 
 - **The report-link comment can say how many findings the pass carries.** Three new variables in
   the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
@@ -91,6 +97,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **“Catch up with the base and retry” now offers something to catch up on plain push rejections
+  too, not only forge-flagged conflicts.** The button appeared on any rejected push, but the
+  project card's own “Update base” action only showed up once GitLab had flagged the merge
+  request as conflicting — a plain non-fast-forward push (no forge-side conflict yet) left the
+  button with nothing to click, and a “not available here” message instead.
+- **The assembled page tolerates CRLF line endings in `public/index.html`.** A checkout with
+  Windows-style line endings made the `<!--@include …-->` markers stop matching entirely, serving
+  the bare shell with none of its screens or modals filled in.
 - **Reviews: sorting by lowest score now sorts.** “Lowest score first” left the list in arrival
   order, and “Blocking first” did not break ties by score either.
 - **Reviews: “ready to merge” no longer includes low-scored merge requests.** A merge request
