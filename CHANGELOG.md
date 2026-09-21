@@ -53,15 +53,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   - “Test the sandbox” could mark the sandbox verified from an offline machine, since any failed
     network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
     checks the network works *outside* the sandbox first.
-  - An automatic verifier's network isolation (`unshare` on Linux) needed real root and was
-    silently never active for a normal user; it now runs in its own user namespace instead,
-    keeping the real UID (`--map-current-user`) where the installed `unshare` supports it, since
-    running as UID 0 inside that namespace made some test tooling (headless Chrome, PostgreSQL's
-    `initdb`) refuse to start or change behaviour. Unchanged limitation, noted rather than fixed:
-    on both Linux and macOS, cutting outbound network for an automatic verifier also cuts its
-    access to `localhost` — a test suite that depends on a database, Redis, or a `docker-compose`
-    service on `localhost` will need it reachable another way while running under automatic
-    verification.
+  - An automatic verifier's outbound network was briefly cut off (`unshare` on Linux,
+    `sandbox-exec` on macOS) for the duration of this work, then removed again: cutting the
+    network also cut access to `localhost`, breaking any verifier whose commands reach a
+    database, Redis, or a `docker-compose` service there — with no way to opt back in. Automatic
+    verifiers keep the network open; what still closes this path is the local session token
+    above and the throwaway `HOME` they already ran under.
   - A second review pass caught two of its own fixes: the “verification synced mid-run” fix
     above had left a hole where a verification whose verdict was already locked in could be
     erased by resending it without a verdict; and narrowing the injection-marker regex to known

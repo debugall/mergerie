@@ -20,7 +20,6 @@ const db = require('../db');
 const git = require('../git/git');
 const forge = require('../forge');
 const proc = require('../core/proc');
-const sandboxreseau = require('../core/sandboxreseau');
 const verify = require('./verify');
 const demoVerify = require('../demo/verify');
 const { DATA_DIR, ensureDir } = require('../core/paths');
@@ -69,13 +68,12 @@ function envVerifier(verifier, { home } = {}) {
 }
 
 // Une commande, sans shell, avec un délai RESTANT (le budget est global au vérificateur).
-function lancerUne(programme, args, { cwd, env, resteMs, onLog, sansReseau }) {
+function lancerUne(programme, args, { cwd, env, resteMs, onLog }) {
   return new Promise((resolve) => {
     const debut = Date.now();
     let child;
-    const cmd = sansReseau ? sandboxreseau.envelopper(programme, args) : { programme, args };
     // Chef de son groupe : au délai comme à « Stop », on tue aussi ce que la commande a lancé.
-    try { child = spawn(cmd.programme, cmd.args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })); }
+    try { child = spawn(programme, args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })); }
     catch (e) { return resolve({ erreurLancement: e.message }); }
     proc.setActive(child);
 
@@ -177,7 +175,7 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis 
  *     cassent plutôt qu'un seul vaut mieux que de s'arrêter au premier.
  * Le verdict est le ET : tout doit passer.
  */
-async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home, sansReseau } = {}) {
+async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home } = {}) {
   if (!repos.length) return { erreur: 'aucun dépôt préparé' };
   if (!commandes.length) return { erreur: 'aucune commande déclarée' };
 
@@ -207,7 +205,7 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { h
       if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
 
       onLog(`$ ${brut}`);
-      const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog, sansReseau });
+      const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
       if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
       if (res.erreurLancement) {
         return { erreur: `${d.programme} : ${res.erreurLancement} — vérifie le PATH du serveur, ou déclare les variables d'environnement du vérificateur` };
@@ -510,19 +508,17 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
     /* Une seule famille depuis la 2.0 : la liste de commandes. Le `role` ('base' | 'head') ne
        sert plus qu'à préparer les dépôts — il ne change rien à la façon de lancer. */
     /* UN RUN PARTI TOUT SEUL NE VOIT PAS LE VRAI `HOME`. Personne ne l'a lancé en connaissance de
-       cause : le code de la branche ne doit trouver ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`. */
-    let sansReseau = false;
+       cause : le code de la branche ne doit trouver ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`.
+       LE RÉSEAU, LUI, RESTE OUVERT (retiré sur demande explicite, après le lot B) : le couper
+       (`unshare`/`sandbox-exec`) coupait aussi la boucle locale — une commande qui vise une base,
+       Redis ou un `docker-compose` sur `localhost` échouait alors en run automatique, sans
+       échappatoire. Le jeton de session local (lot B) ferme déjà l'API à ce processus ; c'est la
+       protection qui reste ici. */
     if (v.automatic) {
       homeIsole = fs.mkdtempSync(path.join(ensureDir(path.join(DATA_DIR, 'tmp')), 'verif-home-'));
       noter(t('log.verify.home-isolated'));
-      /* MÊME LOGIQUE, POUR LE RÉSEAU (plan_secure.md, lot B, point 4) : un run automatique
-         peut exécuter le code d'une MR hostile sous vérification, sans qu'un humain ait
-         regardé quoi que ce soit. Best-effort : dit dans le journal quand l'outil manque,
-         jamais une erreur qui ferait échouer la vérification pour ça. */
-      sansReseau = !!sandboxreseau.disponible();
-      noter(sansReseau ? t('log.verify.network-isolated') : t('log.verify.network-not-isolated'));
     }
-    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole, sansReseau });
+    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole });
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
        quelqu'un d'autre serait imputé à cette branche.
