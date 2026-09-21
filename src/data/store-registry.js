@@ -703,7 +703,11 @@ const REGISTRE = [
   { table: 'verifier_repo', famille: 'P', uidPropre: false /* pas de clé primaire propre : (vérificateur, dépôt) la décrit entièrement */, parent: 'verifier', liste: 'repos', fusion: 'parent' },
   {
     table: 'verification', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'verifications/{uid}.json',
-    fusion: 'append-only',
+    /* APPEND-ONLY RÉELLEMENT APPLIQUÉ (plan_secure.md, lot C, S5), MAIS PAS PAR `corps` :
+       ce champ suppose le format à deux fichiers (`.md` + jumeau JSON) — `verification` est un
+       `.json` unique. La garde vit dans `verdictImmuable` (store.js), même principe (empreinte
+       à la première vue, refusé si elle change) pour un document JSON entier. */
+    fusion: 'append-only', verdictImmuable: ['verdict', 'targets_json', 'base_run_json', 'head_run_json', 'imputable_json'],
     note: 'une archive : elle recopie déjà `verifier_name` et `lot_name`, donc elle survit à la '
       + 'suppression du vérificateur. Un VERDICT est ce qu’une équipe a le plus intérêt à ne pas '
       + 'recalculer six fois.',
@@ -938,7 +942,9 @@ const REGISTRE = [
     /* LES BROUILLONS NE PARTENT JAMAIS, quelle que soit la case du parent : `followup_draft`
        est le texte d'une relance en cours de frappe, et `agent_draft_json` le profil qu'on
        ESSAIE — l'endroit même où l'on tente un prompt sans engager l'équipe. */
-    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json'],
+    /* `auto_push` NE VOYAGE PAS (plan_secure.md, lot C, S5) : une session reçue du dépôt
+       partagé avec `auto_push: 1` poussait, lue brute à l'exécution. */
+    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push'],
     /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT : comme `fromFile` ci-dessous, le
        balayage lit le dépôt de la PREMIÈRE cible — c'est elle qui décide si cette session
        s'hydrate ici. Une session sans cible connue n'a rien à juger. */
@@ -957,7 +963,6 @@ const REGISTRE = [
       agent_question: r.agent_question || null,
       label: r.label || null,
       commit_message: r.commit_message || null,
-      auto_push: r.auto_push ? 1 : 0,
       ask_questions: r.ask_questions ? 1 : 0,
       notify_jira: r.notify_jira ? 1 : 0,
       review_after: r.review_after ? 1 : 0,
@@ -1022,7 +1027,8 @@ const REGISTRE = [
       branch: ((doc.targets || [])[0] || {}).branch || '',
       base_branch: ((doc.targets || [])[0] || {}).base_branch || null,
       commit_message: doc.commit_message || null,
-      auto_push: doc.auto_push ? 1 : 0,
+      // `auto_push` reste toujours à 0 à l'import (locale, lot C, S5).
+      auto_push: 0,
       ask_questions: doc.ask_questions ? 1 : 0,
       notify_jira: doc.notify_jira ? 1 : 0,
       review_after: doc.review_after ? 1 : 0,
@@ -1259,7 +1265,10 @@ const REGISTRE = [
   },
   {
     table: 'piece_jointe', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{session}/attachments/{uid}.json',
-    fusion: 'append-only', locales: ['path'],
+    /* Même garde que `verification`, même raison de ne pas utiliser `corps` (voir sa note) :
+       un uid déjà vu ne doit pas revenir avec un AUTRE fichier binaire (`file`) sans que rien
+       ne le remarque. */
+    fusion: 'append-only', verdictImmuable: ['name', 'mime', 'file'], locales: ['path'],
     /* Comme les passes : la capture suit sa session. Une image collée montre volontiers autre
        chose que ce qu'on croit — un autre onglet, une fenêtre voisine. */
     partageable: (r, ctx) => ctx.sessionPartagee(r.scope, r.owner_id),

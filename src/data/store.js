@@ -1258,6 +1258,19 @@ function hydraterFichiers(relatifs) {
       }
       if (!connu) etat.ecrire(APPEND, md, 'sha', sha);
     }
+    /* MÊME GARDE, POUR UN DOCUMENT JSON ENTIER (plan_secure.md, lot C, S5) : `verification` et
+       `piece_jointe` ne sont pas le format à deux fichiers de `corps` — `verdictImmuable` nomme
+       les champs qui FONT le document ; ce qui vient après (`comment_posted_at`…) n'y figure
+       pas exprès. */
+    if (e.verdictImmuable) {
+      const sha = empreinte(JSON.stringify(e.verdictImmuable.map((champ) => (doc[champ] == null ? null : doc[champ]))));
+      const connu = etat.lire(APPEND, relatif, 'sha');
+      if (connu && connu !== sha) {
+        bilan.orphelins.push(`${relatif} : modifié après sa création — ignoré, l'original reste celui qu'on lit`);
+        continue;
+      }
+      if (!connu) etat.ecrire(APPEND, relatif, 'sha', sha);
+    }
     /* Une entité se reconnaît à son uid — sauf celles qui ont une clé naturelle et une seule
        ligne possible : `settings.json`, ou un ticket Jira nommé par sa clé. */
     if (!doc.uid && e.cle !== 'id' && !doc[e.cle]) { bilan.orphelins.push(`${relatif} : sans identité`); continue; }

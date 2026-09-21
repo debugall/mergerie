@@ -162,4 +162,48 @@ describe('Import du dépôt partagé : ce qui vient d’ailleurs', () => {
     assert.match(fs.readFileSync(courant, 'utf8'), /Rapport d’origine/,
       'le rapport courant — celui que « Faire corriger » colle dans le prompt — est toujours l’original');
   });
+
+  /* plan_secure.md, lot C, S5 : `task.auto_push` ne voyage plus. */
+  test('une session importée avec auto_push: 1 arrive à 0 — jamais coché ici', () => {
+    const now = new Date().toISOString();
+    const id = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, auto_push, created_at, updated_at)
+      VALUES (?, 'code', 'ajoute un cache', 'ai/cache', 'new', 1, 1, ?, ?)`).run(repoId, now, now).lastInsertRowid;
+    db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
+      VALUES (?, ?, 'ai/cache', 'new', ?)`).run(id, repoId, now);
+    store.rafraichir('task', id);
+    const uid = db.prepare('SELECT uid FROM task WHERE id = ?').get(id).uid;
+    const rel = `sessions/${uid}/session.json`;
+    const doc = lire(rel);
+    assert.ok(!('auto_push' in doc), 'et déjà à l’export : le champ ne part pas dans le fichier');
+
+    db.prepare('DELETE FROM task_target WHERE task_id = ?').run(id);
+    db.prepare('DELETE FROM task WHERE id = ?').run(id);
+    ecrire(rel, { ...doc, auto_push: 1 });
+    store.hydraterFichiers([rel]);
+    const relue = db.prepare('SELECT auto_push FROM task WHERE uid = ?').get(uid);
+    assert.ok(relue, 'la session est bien arrivée');
+    assert.equal(relue.auto_push, 0, 'auto_push reste à 0 : une session importée ne pousse jamais');
+  });
+
+  /* plan_secure.md, lot C, S5 : un verdict de vérification est append-only pour de vrai. */
+  test('un verdict de vérification réécrit dans le dépôt est refusé, l’original reste', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('lint', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, verdict, targets_json, created_at, finished_at)
+      VALUES (?, 'lint', 'done', 'verified_fail', '[]', ?, ?)`).run(vid, now, now).lastInsertRowid;
+    store.rafraichir('verification', id);
+    const uid = db.prepare('SELECT uid FROM verification WHERE id = ?').get(id).uid;
+    const rel = `verifications/${uid}.json`;
+    const doc = lire(rel);
+    assert.equal(doc.verdict, 'verified_fail');
+    // La première hydratation enregistre l'empreinte d'origine.
+    store.hydraterFichiers([rel]);
+
+    ecrire(rel, { ...doc, verdict: 'verified_pass' });
+    const bilan = store.hydraterFichiers([rel]);
+    assert.ok(bilan.orphelins.some((o) => /modifié après sa création/.test(o)), `refusé et dit : ${bilan.orphelins.join(' | ')}`);
+    assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_fail',
+      'le verdict d’origine reste celui que l’écran et l’automatisme lisent');
+  });
 });

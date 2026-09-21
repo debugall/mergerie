@@ -36,6 +36,8 @@ const identite = require('../core/identite');
 const { etat } = require('./localstate');
 const { SHARED_DIR } = require('../core/paths');
 const { getConfig } = require('./config');
+const gitcore = require('../git/git');
+const i18n = require('../core/i18n');
 
 const execFileP = promisify(execFile);
 
@@ -90,15 +92,19 @@ const etatSync = {
 
 /* Un runner à nous, et non `src/git.js` : celui-ci passe par `proc`, la mécanique d'annulation
    des JOBS. Une synchronisation de fond n'est pas un job — l'utilisateur qui arrête une review
-   ne doit pas arrêter la synchronisation, et inversement. */
+   ne doit pas arrêter la synchronisation, et inversement.
+   DURCI COMME PARTOUT AILLEURS (plan_secure.md, lot C, S5) : `git/git.js` retire déjà les
+   hooks, `fsmonitor` et le transport `ext::`, et filtre l'environnement en liste blanche — un
+   `fetch`/`pull --rebase`/`commit`/`rebase --continue` sur le dépôt de DONNÉES en profite
+   maintenant lui aussi, alors qu'il tournait jusqu'ici avec `process.env` entier et sans aucune
+   des deux protections. */
 async function git(args, opts = {}) {
-  const { stdout } = await execFileP('git', args, {
+  const { stdout } = await execFileP('git', gitcore.argsDurcis(['-c', 'core.symlinks=false', ...args]), {
     cwd: opts.cwd || SHARED_DIR,
     timeout: opts.timeout || 120000,
     maxBuffer: 32 * 1024 * 1024,
     env: {
-      ...process.env,
-      GIT_TERMINAL_PROMPT: '0',          // jamais de demande de mot de passe : on ne la verrait pas
+      ...gitcore.envGit(),
       GIT_ASKPASS: 'echo',
       /* Les seuls transports d'un dépôt d'équipe. `ext::` (une commande), `fd::`, `http://` en
          clair : refusés par git lui-même, quoi qu'on lui passe. */
@@ -135,14 +141,14 @@ const config = () => getConfig();
  * plutôt que de compter sur un `--` à chaque appel — un oubli y serait invisible.
  */
 const sansOption = (v) => {
-  const t = String(v || '').trim();
-  return t.startsWith('-') ? '' : t;
+  const brut = String(v || '').trim();
+  return brut.startsWith('-') ? '' : brut;
 };
 /* Une ADRESSE, pas seulement une valeur sans tiret : la branche passe par `sansOption`, l'URL
    par ceci — une branche nommée « equipe » n'a pas de schéma et ne doit pas en exiger un. */
 const sansOptionAdresse = (v) => {
-  const t = sansOption(v);
-  return adresseAdmise(t) ? t : '';
+  const brut = sansOption(v);
+  return adresseAdmise(brut) ? brut : '';
 };
 
 const { adresseAdmise } = require('../core/garde');
@@ -363,8 +369,18 @@ async function hydraterDepuis(avant, apres) {
  * Un tour complet. Jamais deux en même temps : une synchronisation qui se chevauche produit
  * exactement le genre de rebase à moitié fait qu'on veut éviter.
  */
+/* UN `.gitmodules` À LA RACINE DU DÉPÔT DE DONNÉES N'EST JAMAIS SUIVI (plan_secure.md, lot C,
+   point 1). Un sous-module pointe vers un AUTRE dépôt, que `git submodule update` cloner+checkout
+   sans qu'on l'ait demandé — Mergerie ne lance jamais `submodule`, mais sa seule PRÉSENCE
+   suspend la synchro plutôt que de la traiter comme un fichier de plus, en le disant clairement. */
+const gitmodulesPresent = () => fs.existsSync(path.join(SHARED_DIR, '.gitmodules'));
+
 async function tourMaintenant() {
   const bilan = { pull: false, push: false, hydrate: null, conflits: [] };
+  if (gitmodulesPresent()) {
+    etatSync.erreur = i18n.t('err.datasync.gitmodules');
+    return bilan;
+  }
   try {
     // Si l'on a accepté de dire sa dépense, c'est le moment : avant de regarder ce qui a changé.
     try { exporterUsage(); } catch { /* la dépense n'est pas une raison d'échouer une synchro */ }

@@ -20,6 +20,7 @@ const db = require('../db');
 const git = require('../git/git');
 const forge = require('../forge');
 const proc = require('../core/proc');
+const sandboxreseau = require('../core/sandboxreseau');
 const verify = require('./verify');
 const demoVerify = require('../demo/verify');
 const { DATA_DIR, ensureDir } = require('../core/paths');
@@ -68,12 +69,13 @@ function envVerifier(verifier, { home } = {}) {
 }
 
 // Une commande, sans shell, avec un délai RESTANT (le budget est global au vérificateur).
-function lancerUne(programme, args, { cwd, env, resteMs, onLog }) {
+function lancerUne(programme, args, { cwd, env, resteMs, onLog, sansReseau }) {
   return new Promise((resolve) => {
     const debut = Date.now();
     let child;
+    const cmd = sansReseau ? sandboxreseau.envelopper(programme, args) : { programme, args };
     // Chef de son groupe : au délai comme à « Stop », on tue aussi ce que la commande a lancé.
-    try { child = spawn(programme, args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })); }
+    try { child = spawn(cmd.programme, cmd.args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })); }
     catch (e) { return resolve({ erreurLancement: e.message }); }
     proc.setActive(child);
 
@@ -175,7 +177,7 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis 
  *     cassent plutôt qu'un seul vaut mieux que de s'arrêter au premier.
  * Le verdict est le ET : tout doit passer.
  */
-async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home } = {}) {
+async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home, sansReseau } = {}) {
   if (!repos.length) return { erreur: 'aucun dépôt préparé' };
   if (!commandes.length) return { erreur: 'aucune commande déclarée' };
 
@@ -205,7 +207,7 @@ async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { h
       if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
 
       onLog(`$ ${brut}`);
-      const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
+      const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog, sansReseau });
       if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
       if (res.erreurLancement) {
         return { erreur: `${d.programme} : ${res.erreurLancement} — vérifie le PATH du serveur, ou déclare les variables d'environnement du vérificateur` };
