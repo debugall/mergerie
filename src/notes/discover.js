@@ -124,7 +124,7 @@ async function discoverAll() {
         }
       }
       // MR connues, jamais signalées closes, absentes du set ouvert → mergées/fermées.
-      const gone = db.prepare('SELECT id, iid, title, author, updated_at FROM mr WHERE repo_id = ? AND (closed_seen IS NULL OR closed_seen = 0)').all(repo.id)
+      const gone = db.prepare('SELECT id, iid, title, author, updated_at, source_branch FROM mr WHERE repo_id = ? AND (closed_seen IS NULL OR closed_seen = 0)').all(repo.id)
         .filter((g) => !openIids.has(g.iid));
       for (const g of gone) {
         /* L'INSTANT DU MERGE VIENT DE LA FORGE, pas de nous. Une MR qui quitte la liste des
@@ -132,13 +132,26 @@ async function discoverAll() {
            QUAND. Un appel par MR qui vient de disparaître, ce qui se compte sur les doigts d'un
            tour de découverte. Best-effort : la date manquante ne doit jamais faire échouer la
            découverte, et le tour suivant n'y reviendra pas (`closed_seen` est posé). */
+        let mergee = false;
         try {
           const detail = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, g.iid);
-          if (detail && detail.merged_at) poserMerge.run(detail.merged_at, g.id);
+          if (detail && detail.merged_at) { poserMerge.run(detail.merged_at, g.id); mergee = true; }
         } catch { /* la forge n'a pas répondu : le rattrapage ci-dessous s'en chargera */ }
         const recent = g.updated_at && (Date.parse(now) - Date.parse(g.updated_at)) < FRESH_MS;
         if (recent) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
         markClosed.run(g.id); // dans tous les cas : ne pas re-signaler
+        /* LE LIEN AVEC LA SESSION QUI L'A OUVERTE NE DOIT PAS DÉPENDRE DE QUI L'A MERGÉE.
+           `/tasks/.../merge` pose déjà `mr_iid`/`mr_merged` — mais seulement quand la réponse de
+           la forge dit `state: 'merged'` DANS L'INSTANT (GitLab peut fusionner en différé, pipeline
+           ou train de fusion) ; mergée depuis GitLab directement, ce chemin n'est jamais pris du
+           tout. Ici, `closed_seen` VIENT d'être posé sur cette MR : plus rien ne la rattachera
+           jamais à sa session si on ne le fait pas maintenant. Sans lui, la carte perd toute trace
+           qu'une MR a existé — « Créer la MR » réapparaît sur une branche déjà mergée. `COALESCE`
+           ne prend la main que si la session ne savait pas déjà mieux. */
+        if (mergee && g.source_branch) {
+          db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
+            WHERE repo_id = ? AND branch = ?`).run(g.iid, now, repo.id, g.source_branch);
+        }
         /* B1 — LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE. Elle se
            coche, avec la mention de ce qui l'a fermée ; rien n'est supprimé. Débrayable
            (Réglages → Général) pour qui veut cocher lui-même. */

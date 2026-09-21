@@ -108,6 +108,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A merge request merged directly on the forge no longer loses its link to the coding session
+  that opened it.** Merging from the session's own “Merge” button recorded the link; discovery,
+  which is what actually notices a merge done anywhere else (GitLab's UI, another teammate), only
+  ever updated the merge request's own row — never the session's. Once the forge stopped listing
+  it as open, the project's link to it vanished from the session card, and “Create the MR”
+  reappeared on a branch that was already merged.
 - **A coding session that fails now says why, instead of “claude failed (code 1): ” with nothing
   after the colon.** In streaming mode, the CLI's explanation for a failed run arrives as a
   `result` event on stdout, not on stderr — the error message only ever looked at stderr, which

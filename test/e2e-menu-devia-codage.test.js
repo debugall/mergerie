@@ -400,6 +400,43 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
     await page.waitForSelector(`${carte(ids.solo)} .target-line a[href*="merge_requests"]`);
   });
 
+  /* UNE MR MERGÉE DIRECTEMENT SUR LA FORGE — jamais via le bouton « Merger » d'ici — ne doit
+     pas faire perdre le lien avec sa session : `/tasks/.../merge` pose `mr_iid`/`mr_merged`
+     sur `task_target`, mais seulement quand ON merge depuis cet écran. La découverte, elle, ne
+     touchait jusqu'ici que la table `mr` — une MR jamais créée par l'app (`mr_iid` resté NULL
+     sur `task_target`) qui se fait merger ailleurs redevenait invisible dès que `closed_seen`
+     l'exclut de la jointure, et « Créer la MR » réapparaissait sur une branche déjà mergée. */
+  test('une MR mergée sur la forge sans passer par « Merger » reste liée à sa session', async () => {
+    const id = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'p', targets: [{ repo_id: repoApp, branch: 'feature/deja-existante' }],
+    })).body.id;
+    const tg0 = (await session(id)).targets[0];
+    app.db.prepare("UPDATE task_target SET status = 'pushed' WHERE id = ?").run(tg0.id);
+    // La MR existe déjà côté forge, mais Mergerie ne l'a jamais créée : mr_iid reste NULL.
+    app.state.mrs['grp/app'].push({
+      iid: 950, title: 'Déjà ouverte ailleurs', state: 'opened',
+      source_branch: 'feature/deja-existante', target_branch: 'main',
+      web_url: 'https://gitlab.test/grp/app/-/merge_requests/950',
+      sha: 'sha950', created_at: new Date().toISOString(), author: { name: 'Bob' },
+    });
+    await app.api('POST', '/api/discover');
+    assert.equal((await cible(id, repoApp)).mr_iid, null, 'préalable : Mergerie ne l’a pas créée elle-même');
+
+    // Mergée DIRECTEMENT sur la forge : elle quitte la liste des OUVERTES, mais reste
+    // consultable par iid — comme GitLab la garde, jamais effacée.
+    const mr950 = app.state.mrs['grp/app'].find((m) => m.iid === 950);
+    mr950.state = 'merged';
+    mr950.merged_at = new Date().toISOString();
+    await app.api('POST', '/api/discover');
+
+    const tg = await cible(id, repoApp);
+    assert.equal(tg.mr_iid, 950, 'le lien se fait quand même, depuis la découverte');
+    assert.equal(tg.mr_merged, 1);
+    await recharger();
+    assert.equal(await ligne(id, 'grp/app').locator('[data-tgmr]').count(), 0,
+      '« Créer la MR » ne doit pas réapparaître sur une branche déjà mergée');
+  });
+
   /* ------------------------------------------------------------ questions de l'agent ---- */
 
   test('« J’ai répondu au terminal » demande confirmation, puis relit la branche sans relancer l’agent', async () => {
