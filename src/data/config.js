@@ -4,7 +4,7 @@ const { DEFAULT_CLONE_DIR } = require('../core/paths');
 const { promptsFor } = require('../core/prompts');
 const registre = require('./store-registry');
 const { t } = require('../core/i18n');
-const { adresseAdmise } = require('../core/garde');
+const { adresseAdmise, origineDe } = require('../core/garde');
 const approbation = require('./approbation');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
@@ -60,6 +60,15 @@ function updateConfig(patch) {
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
   if (next.jenkins_url) next.jenkins_url = next.jenkins_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
+  /* UNE ADRESSE QUI CHANGE INVALIDE LE JETON STOCKÉ (plan_secure.md, lot B, S1). */
+  const invaliderSiOrigineChangee = (champUrl, champJeton, defaut = '') => {
+    if (champJeton in patch) return;
+    if (origineDe(next[champUrl], defaut) !== origineDe(current[champUrl], defaut)) next[champJeton] = '';
+  };
+  invaliderSiOrigineChangee('gitlab_url', 'access_token');
+  invaliderSiOrigineChangee('github_url', 'github_token', 'https://github.com');
+  invaliderSiOrigineChangee('jira_url', 'jira_token');
+  invaliderSiOrigineChangee('jenkins_url', 'jenkins_token');
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
   if ('auto_refresh_minutes' in patch) {
     let m = parseInt(patch.auto_refresh_minutes, 10);

@@ -1,0 +1,40 @@
+'use strict';
+/* L'API N'APPARTIENT QU'AU NAVIGATEUR DE L'UTILISATEUR (plan_secure.md, lot B, constat S1).
+ * Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près.
+ *
+ * `origine.js` refuse un `Host` ou une `Origin` étrangers — ce qu'un NAVIGATEUR annonce. Un
+ * processus du poste (un agent en écriture via Bash, une commande de vérificateur, un script
+ * `postinstall` d'une MR sous vérification) n'en annonce aucun, et passait. Ici, toute route
+ * `/api/` exige en plus le jeton de session local (`core/jetonlocal.js`) — écrit sur disque au
+ * démarrage, jamais transmis à un enfant (agent, git, vérificateur) — par cookie ou par
+ * `Authorization: Bearer`. Monté APRÈS `origine.js` (ses gardes s'appliquent d'abord) et AVANT
+ * les routes.
+ *
+ * SEULEMENT SUR LOOPBACK (`!EXPOSE`) : exposé au réseau, `origine.js` exige déjà
+ * `MERGERIE_ACCESS_TOKEN` sur CHAQUE route `/api/`, ce qui ferme identiquement le processus sans
+ * navigateur — un `Authorization: Bearer` ne porte qu'UNE valeur, en exiger une seconde n'aurait
+ * fermé qu'un script qui connaît déjà le jeton d'accès (lui-même hors de portée d'un agent, dans
+ * `interditsDonnees()`) pour un vrai coût : un appel exposé légitime à deux jetons. */
+const { app } = require('../app');
+const i18n = require('../../core/i18n');
+const jetonlocal = require('../../core/jetonlocal');
+const { EXPOSE } = require('./origine');
+
+jetonlocal.regenerer();
+
+/* Ces trois chemins sont ce que `GET` sert sans le jeton (la page elle-même, et la page
+   d'accès de l'exposition réseau) : c'est ce qui le distribue au navigateur, il doit donc
+   rester joignable sans lui. */
+const PAGES = new Set(['/', '/index.html', '/acces']);
+app.use((req, res, next) => {
+  if (req.method === 'GET' && PAGES.has(req.path)) jetonlocal.poserCookie(res);
+  next();
+});
+
+/* SEULEMENT SUR LOOPBACK (`!EXPOSE`) : voir la note en tête de fichier. */
+app.use((req, res, next) => {
+  if (EXPOSE || !req.path.startsWith('/api/') || jetonlocal.valide(req)) return next();
+  res.status(401).json({ error: i18n.t('err.jeton-local-requis') });
+});
+
+module.exports = { jetonlocal };

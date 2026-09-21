@@ -88,6 +88,7 @@ const jobs = require('./jobs');
    dernier. */
 require('./app/middleware/entetes');
 const { JETON_ACCES } = require('./app/middleware/origine');
+require('./app/middleware/jeton-local');
 require('./app/middleware/memo-requete');
 require('./app/middleware/langue');
 require('./app/middleware/ecriture-depot');

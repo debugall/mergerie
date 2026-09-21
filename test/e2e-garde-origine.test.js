@@ -32,12 +32,14 @@ const ROOT = path.join(__dirname, '..');
 const ATTENTE = 20000;
 
 /** Une requête brute : les en-têtes partent tels qu'on les écrit, `Host` compris. */
-function brut(base, methode, chemin, { headers = {}, corps = null } = {}) {
+function brut(base, methode, chemin, { headers = {}, corps = null, jeton } = {}) {
   const u = new URL(base);
+  const avecJeton = jeton && !Object.keys(headers).some((h) => h.toLowerCase() === 'authorization')
+    ? { authorization: `Bearer ${jeton}` } : {};
   return new Promise((ok, ko) => {
     const req = http.request({
       host: u.hostname, port: u.port, method: methode, path: chemin,
-      headers: { ...(corps !== null ? { 'content-type': 'application/json' } : {}), ...headers },
+      headers: { ...(corps !== null ? { 'content-type': 'application/json' } : {}), ...avecJeton, ...headers },
     }, (res) => {
       let texte = '';
       res.setEncoding('utf8');
@@ -63,49 +65,49 @@ describe('La porte : Host, lecture croisée, en-têtes, politique de contenu', (
   test('un Host étranger est refusé (421), en lecture ET en écriture', async () => {
     /* La forme exacte d'une page rebindée : `Host` et `Origin` à SON nom, identiques. */
     const pirate = { host: `evil.example:${port}`, origin: `http://evil.example:${port}` };
-    const lire = await brut(app.base, 'GET', '/api/config', { headers: pirate });
+    const lire = await brut(app.base, 'GET', '/api/config', { headers: pirate, jeton: app.localToken });
     assert.equal(lire.status, 421, 'la configuration ne se lit plus depuis un nom rebindé');
     assert.doesNotMatch(lire.texte, /access_token|gitlab_url/, 'et la réponse ne contient rien de la config');
     assert.match(lire.texte, /MERGERIE_ALLOWED_HOSTS/, 'le refus dit comment ouvrir un nom légitime');
 
-    const ecrire = await brut(app.base, 'PUT', '/api/config', { headers: pirate, corps: { stale_mr_days: '9' } });
+    const ecrire = await brut(app.base, 'PUT', '/api/config', { headers: pirate, corps: { stale_mr_days: '9' }, jeton: app.localToken });
     assert.equal(ecrire.status, 421, 'et elle ne s’écrit pas non plus');
   });
 
   test('les noms légitimes passent : localhost, une IP, un nom déclaré', async () => {
     for (const host of [`localhost:${port}`, `127.0.0.1:${port}`, `[::1]:${port}`]) {
-      const r = await brut(app.base, 'GET', '/api/config', { headers: { host } });
+      const r = await brut(app.base, 'GET', '/api/config', { headers: { host }, jeton: app.localToken });
       assert.equal(r.status, 200, `Host ${host} doit passer`);
     }
   });
 
   test('une page d’un autre site ne lit pas l’API, même en GET', async () => {
-    const r = await brut(app.base, 'GET', '/api/config', { headers: { 'sec-fetch-site': 'cross-site' } });
+    const r = await brut(app.base, 'GET', '/api/config', { headers: { 'sec-fetch-site': 'cross-site' }, jeton: app.localToken });
     assert.equal(r.status, 403);
     // …un autre port de localhost est « same-site » : pas davantage.
-    const voisin = await brut(app.base, 'GET', '/api/config', { headers: { 'sec-fetch-site': 'same-site' } });
+    const voisin = await brut(app.base, 'GET', '/api/config', { headers: { 'sec-fetch-site': 'same-site' }, jeton: app.localToken });
     assert.equal(voisin.status, 403);
     // L'application elle-même, et un outil sans navigateur, passent.
-    assert.equal((await brut(app.base, 'GET', '/api/config', { headers: { 'sec-fetch-site': 'same-origin' } })).status, 200);
-    assert.equal((await brut(app.base, 'GET', '/api/config')).status, 200, 'curl n’envoie rien : il passe');
+    assert.equal((await brut(app.base, 'GET', '/api/config', { headers: { 'sec-fetch-site': 'same-origin' }, jeton: app.localToken })).status, 200);
+    assert.equal((await brut(app.base, 'GET', '/api/config', { jeton: app.localToken })).status, 200, 'curl n’envoie rien : il passe');
     // Ouvrir l'application depuis un lien doit marcher : la garde ne vise que l'API.
     const page = await brut(app.base, 'GET', '/', { headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate' } });
     assert.equal(page.status, 200, 'suivre un lien vers Mergerie ouvre Mergerie');
   });
 
   test('la sauvegarde et l’aperçu ne sont plus des GET', async () => {
-    assert.equal((await brut(app.base, 'GET', '/api/backup')).status, 404,
+    assert.equal((await brut(app.base, 'GET', '/api/backup', { jeton: app.localToken })).status, 404,
       'la base, jetons compris, ne se télécharge plus par un simple GET');
-    const pirate = await brut(app.base, 'POST', '/api/backup', { headers: { origin: 'http://evil.example' }, corps: {} });
+    const pirate = await brut(app.base, 'POST', '/api/backup', { headers: { origin: 'http://evil.example' }, corps: {}, jeton: app.localToken });
     assert.equal(pirate.status, 403, 'et le POST venu d’ailleurs est refusé par le filtre d’origine');
-    const apercu = await brut(app.base, 'POST', '/api/data-sync/preview', { corps: { url: 'ext::sh -c touch% /tmp/mergerie-pwn' } });
+    const apercu = await brut(app.base, 'POST', '/api/data-sync/preview', { corps: { url: 'ext::sh -c touch% /tmp/mergerie-pwn' }, jeton: app.localToken });
     assert.equal(apercu.status, 400, 'une adresse `ext::` ne part jamais vers git');
     assert.match(JSON.parse(apercu.texte).error, /https|ssh/i, 'et le refus dit ce qui est admis');
   });
 
   test('toute réponse porte la politique de contenu, nosniff et no-referrer — et plus X-Powered-By', async () => {
     for (const chemin of ['/', '/api/config', '/' + manifeste().scripts[0]]) {
-      const r = await brut(app.base, 'GET', chemin);
+      const r = await brut(app.base, 'GET', chemin, { jeton: app.localToken });
       assert.match(r.headers['content-security-policy'] || '', /script-src 'self'/, `${chemin} : CSP`);
       assert.match(r.headers['content-security-policy'] || '', /frame-ancestors 'none'/, `${chemin} : pas d’encadrement`);
       assert.equal(r.headers['x-content-type-options'], 'nosniff', `${chemin} : nosniff`);
@@ -113,12 +115,12 @@ describe('La porte : Host, lecture croisée, en-têtes, politique de contenu', (
       assert.equal(r.headers['x-powered-by'], undefined, `${chemin} : la pile ne se présente plus`);
     }
     // …même un refus les porte : les en-têtes sont posés AVANT les gardes.
-    const refus = await brut(app.base, 'GET', '/api/config', { headers: { host: 'evil.example' } });
+    const refus = await brut(app.base, 'GET', '/api/config', { headers: { host: 'evil.example' }, jeton: app.localToken });
     assert.match(refus.headers['content-security-policy'] || '', /script-src 'self'/);
   });
 
   test('un JSON illisible rend du JSON, pas une pile d’appels', async () => {
-    const r = await brut(app.base, 'PUT', '/api/config', { corps: '{"pas du json' });
+    const r = await brut(app.base, 'PUT', '/api/config', { corps: '{"pas du json', jeton: app.localToken });
     assert.equal(r.status, 400);
     assert.match(r.headers['content-type'] || '', /json/);
     assert.doesNotMatch(r.texte, /at .*\.js:\d+|node_modules|\/Users\/|\/home\//, 'ni chemin ni pile dans la réponse');

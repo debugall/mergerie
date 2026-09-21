@@ -63,12 +63,16 @@ const INTERDITS_ECRITURE = ['WebFetch', 'WebSearch', 'Bash(curl:*)', 'Bash(wget:
 function interditsDonnees() {
   const path = require('node:path');
   const { DATA_DIR, ROOT } = require('../core/paths');
+  const jetonlocal = require('../core/jetonlocal');
   const fs = require('node:fs');
   /* Le CLI compare au chemin RÉEL (`/var` → `/private/var` sur macOS) : on pose les deux. */
   const reels = (p) => { const r = [path.resolve(p)]; try { r.push(fs.realpathSync(p)); } catch { /* absent */ } return r; };
   const abs = (p) => `/${p}`.replace(/\\/g, '/');     // `//chemin` = absolu pour le CLI
   const cibles = [
     ...reels(DATA_DIR).map((d) => `${abs(d)}/reviewer.db*`),
+    /* Le jeton de session local (lot B, S1) : lu par un agent, il ouvrirait l'API depuis SON
+       Bash comme n'importe quel processus du poste. */
+    ...reels(jetonlocal.FICHIER).map(abs),
     ...[path.join(ROOT, '.env'), path.join(process.cwd(), '.env')].flatMap(reels).map(abs),
   ];
   return [...new Set(cibles)].flatMap((c) => [`Read(${c})`, `Edit(${c})`]);

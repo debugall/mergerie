@@ -180,12 +180,13 @@ describe('Pièces jointes des sessions', () => {
       targets: [{ repo_id: repoId, branch: 'feat/maquette', base_branch: 'main' }],
     });
     const [html, png] = pieces('task', t.id);
-    const r = await fetch(`${app.base}/api/pieces/task/${html.id}`);
+    const enTete = { headers: { Authorization: `Bearer ${app.localToken}` } };
+    const r = await fetch(`${app.base}/api/pieces/task/${html.id}`, enTete);
     assert.equal(r.status, 200);
     assert.match(r.headers.get('content-disposition') || '', /^attachment/, 'téléchargée, pas rendue');
     assert.equal(r.headers.get('x-content-type-options'), 'nosniff');
     assert.match(r.headers.get('content-security-policy') || '', /sandbox/);
-    const i = await fetch(`${app.base}/api/pieces/task/${png.id}`);
+    const i = await fetch(`${app.base}/api/pieces/task/${png.id}`, enTete);
     assert.match(i.headers.get('content-disposition') || '', /^inline/, 'une image matricielle s’affiche');
     assert.equal(i.headers.get('content-type'), 'image/png');
   });

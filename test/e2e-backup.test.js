@@ -44,7 +44,7 @@ describe('Sauvegarde des données', () => {
     fs.mkdirSync(path.join(app.dataDir, 'clones', 'grp__app'), { recursive: true });
     fs.writeFileSync(path.join(app.dataDir, 'clones', 'grp__app', 'gros.bin'), Buffer.alloc(512 * 1024, 7));
 
-    const res = await fetch(`${app.base}/api/backup`, { method: 'POST' });
+    const res = await fetch(`${app.base}/api/backup`, { method: 'POST', headers: { Authorization: `Bearer ${app.localToken}` } });
     assert.equal(res.status, 200);
     assert.match(res.headers.get('content-type') || '', /zip/);
     assert.match(res.headers.get('content-disposition') || '', /filename="mergerie-\d{4}-\d{2}-\d{2}/,

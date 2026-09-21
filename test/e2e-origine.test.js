@@ -25,7 +25,10 @@ describe('Origine des requêtes', () => {
   // `app.api` n'envoie pas d'`Origin` : on descend d'un cran pour en poser un à la main.
   const poster = (chemin, origine, methode = 'POST') => fetch(`${app.base}${chemin}`, {
     method: methode,
-    headers: origine ? { Origin: origine, 'Content-Type': 'application/x-www-form-urlencoded' } : {},
+    headers: {
+      Authorization: `Bearer ${app.localToken}`,
+      ...(origine ? { Origin: origine, 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+    },
   });
 
   /* LE SCÉNARIO RÉEL : un formulaire auto-soumis depuis une page tierce. `Content-Type`
@@ -64,7 +67,7 @@ describe('Origine des requêtes', () => {
   });
 
   test('les lectures ne sont pas concernées', async () => {
-    const r = await fetch(`${app.base}/api/status`, { headers: { Origin: 'https://evil.example' } });
+    const r = await fetch(`${app.base}/api/status`, { headers: { Origin: 'https://evil.example', Authorization: `Bearer ${app.localToken}` } });
     assert.equal(r.status, 200, 'un GET ne change rien, et la réponse reste illisible pour la page tierce');
   });
 

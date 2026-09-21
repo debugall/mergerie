@@ -72,6 +72,7 @@ describe('agentpolicy : les saveurs d’écriture gardent le mode, perdent les c
       const interdits = r.args[r.args.indexOf('--disallowedTools') + 1];
       assert.match(interdits, /Read\(\/\/[^)]*reviewer\.db\*\)/, `${kind} : ${interdits}`);
       assert.match(interdits, /Read\(\/\/[^)]*\.env\)/, kind);
+      assert.match(interdits, /Read\(\/\/[^)]*local-token\)/, kind);
     }
   });
 

@@ -509,11 +509,18 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
        sert plus qu'à préparer les dépôts — il ne change rien à la façon de lancer. */
     /* UN RUN PARTI TOUT SEUL NE VOIT PAS LE VRAI `HOME`. Personne ne l'a lancé en connaissance de
        cause : le code de la branche ne doit trouver ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`. */
+    let sansReseau = false;
     if (v.automatic) {
       homeIsole = fs.mkdtempSync(path.join(ensureDir(path.join(DATA_DIR, 'tmp')), 'verif-home-'));
       noter(t('log.verify.home-isolated'));
+      /* MÊME LOGIQUE, POUR LE RÉSEAU (plan_secure.md, lot B, point 4) : un run automatique
+         peut exécuter le code d'une MR hostile sous vérification, sans qu'un humain ait
+         regardé quoi que ce soit. Best-effort : dit dans le journal quand l'outil manque,
+         jamais une erreur qui ferait échouer la vérification pour ça. */
+      sansReseau = !!sandboxreseau.disponible();
+      noter(sansReseau ? t('log.verify.network-isolated') : t('log.verify.network-not-isolated'));
     }
-    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole });
+    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole, sansReseau });
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
        quelqu'un d'autre serait imputé à cette branche.
