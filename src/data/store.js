@@ -201,6 +201,19 @@ function contexte() {
         () => db.prepare('SELECT id FROM repo WHERE forge = ? AND project = ?').get(forge, project));
       return r ? r.id : null;
     },
+    /** Ce qu'une liste fille n'a pas pu rattacher à l'hydratation, parce qu'elle désignait un
+        dépôt que CE poste ne suit pas : gardé tel quel sous le PARENT (`table` = la table fille —
+        `mr_link`, `verifier_repo`, `agent_repo`), et repris ici à l'export pour ne pas le retirer
+        du fichier au prochain écrit de ce poste. Voir `garderHorsPerimetre`, côté import. */
+    margeInconnue(table, refParent) {
+      if (!refParent) return [];
+      return memoise(`mi:${table}:${refParent}`, () => {
+        const r = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+          .get(String(refParent), table);
+        if (!r) return [];
+        try { const v = JSON.parse(r.value); return Array.isArray(v) ? v : []; } catch { return []; }
+      });
+    },
     /** Le slug d'un agent ou d'une page — ce qui nomme son fichier. */
     slug(table, id) {
       if (!id) return null;
@@ -629,6 +642,14 @@ function balayer(table, ctx = contexte()) {
     const nom = canonique(e, relatif);
     if (!motif.test(nom)) continue;          // un fichier d'une autre table : ce n'est pas le nôtre
     if (attendus.has(nom)) continue;
+    /* UN FICHIER QUI DÉSIGNE UN DÉPÔT QUE CE POSTE NE SUIT PAS N'EST PAS À LUI DE LE JUGER.
+       `repo` est locale depuis peu : ce poste n'hydrate plus les MR, reviews et sessions des
+       dépôts qu'il ne suit pas — leur absence d'ici ne veut donc plus dire « supprimées », mais
+       « jamais connues ». Sans ce garde, la suppression d'UNE de ses propres lignes (ou la
+       cascade d'un dépôt qu'il retire) balayait tout le reste de la racine — les MR et les
+       reviews de dépôts qu'il n'a jamais suivis — et poussait leur disparition à toute l'équipe. */
+    const depot = depotDuFichier(e, nom);
+    if (depot !== undefined && !ctx.repoId(depot)) continue;
     aRetirer.push(relatif);
   }
   /* UNE TABLE VIDE NE VIDE PAS LE DÉPÔT. Le pendant exact du garde-fou de l'hydratation, dans
@@ -839,6 +860,33 @@ function motifDe(e) {
       : bout.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     .join('');
   return new RegExp(`^${source}$`);
+}
+
+/**
+ * LE DÉPÔT QUE CE FICHIER DÉSIGNE, pour que `balayer()` sache s'il a voix au chapitre.
+ * `undefined` : la table n'est pas scopée par dépôt (ou ce document-ci ne l'est pas — une règle
+ *   de review sans dépôt limité, par exemple) — le balayage juge comme avant, sur les lignes
+ *   restantes.
+ * Une chaîne, ou `null` : la table EST scopée par dépôt. `null` — gabarit qui ne matche pas,
+ * fichier illisible — se traite comme un dépôt inconnu : PAR PRUDENCE, on ne balaie pas ce qu'on
+ * ne sait pas juger.
+ * `e.porteeRepo === 'chemin'` : le gabarit porte `{forge}` et `{project}`, on les relit du nom de
+ * fichier (`mr`, `review`, `review_version`). Une fonction : on relit le CONTENU du fichier — le
+ * dépôt n'est pas dans le chemin (`review_rule` limitée par son champ `repo`, `task` par la
+ * première cible de `targets`).
+ */
+function depotDuFichier(e, nom) {
+  if (!e.porteeRepo) return undefined;
+  if (e.porteeRepo === 'chemin') {
+    const champs = (e.chemin.match(/\{(\w+)\}/g) || []).map((x) => x.slice(1, -1));
+    const m = motifDe(e).exec(nom);
+    if (!m) return null;
+    const valeurs = Object.fromEntries(champs.map((c, i) => [c, m[i + 1]]));
+    return (valeurs.forge && valeurs.project) ? `${valeurs.forge}/${valeurs.project}` : null;
+  }
+  let doc;
+  try { doc = JSON.parse(lireFichier(nom)); } catch { return null; }
+  return e.porteeRepo(doc) || undefined;
 }
 
 /** À quelle table appartient ce fichier ? `null` s'il n'est à personne (le marqueur, un binaire). */

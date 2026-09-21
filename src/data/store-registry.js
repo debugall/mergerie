@@ -128,6 +128,29 @@ function refEntrante(kind, ref, ctx) {
 
 const numOuNull = (v) => (v ? String(v) : null);
 
+/* CE QU'UNE LISTE FILLE NE SAIT PAS RATTACHER, PARCE QU'ELLE DÉSIGNE UN DÉPÔT QUE CE POSTE NE
+ * SUIT PAS, N'EST PAS FAUX — IL EST HORS DE PORTÉE D'ICI. `verifier_repo`, `agent_repo` et
+ * `mr_link` sautaient un tel membre à l'import (`signaler(...); continue`) et le fichier
+ * repartait sans lui au prochain écrit de CE poste : la couverture d'un vérificateur ou le
+ * périmètre d'un agent, posés par un collègue sur DEUX dépôts, revenaient amputés dès qu'un
+ * poste qui n'en suit qu'un seul les modifiait — un périmètre amputé est plus dangereux qu'un
+ * périmètre absent, l'agent tournerait sur le reste en ayant l'air complet.
+ * On le garde donc tel quel — REPRIS SANS ÊTRE COMPRIS, ce poste n'a justement pas de quoi le
+ * juger — sous le PARENT (`refParent` = son uid), et `ctx.margeInconnue` le relit à l'export
+ * pour le remettre dans la liste. */
+function garderHorsPerimetre(db2, table, refParent, items) {
+  if (!refParent) return;
+  if (!items.length) {
+    db2.prepare("DELETE FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+      .run(String(refParent), table);
+    return;
+  }
+  db2.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+    VALUES ('store_hors_perimetre', ?, ?, ?, ?)
+    ON CONFLICT (kind, ref, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+    .run(String(refParent), table, JSON.stringify(items), new Date().toISOString());
+}
+
 /* Une entrée par table. Pour une table P :
      cle      — ce qui nomme le fichier : 'uid' (ULID), ou la colonne naturelle qui fait identité
      chemin   — le gabarit du fichier dans le dépôt ({…} = champ de la ligne)
@@ -177,6 +200,9 @@ const REGISTRE = [
     table: 'mr', famille: 'C', uidPropre: true, cleNaturelle: ['repo_id', 'iid'],
     chemin: 'mrs/{forge}/{project}/{iid}.json',
     fusion: 'last-writer',
+    /* LE DÉPÔT EST DANS LE CHEMIN : le balayage s'en sert pour ne jamais juger un fichier dont il
+       ne suit pas le dépôt — voir `depotDuFichier` dans le store. */
+    porteeRepo: 'chemin',
     /* `web_url` et `gitlab_created_at` PARTENT AUSSI, et ce n'est pas une entorse au « la forge
        fait foi » : ce sont les deux seules choses d'une merge request qui NE CHANGENT JAMAIS.
        Un titre se réécrit, une branche se renomme, un SHA avance — les partager ferait voyager
@@ -241,9 +267,15 @@ const REGISTRE = [
            construction » retournée contre elle-même. Il n'est d'ailleurs pas dans `partagees` :
            c'est une observation LOCALE — « quand CE poste l'a vue bouger » —, du même bois que
            `current_sha`, et elle sert ici à trier et à dater l'activité. */
-        links: ctx.enfants('mr_link', 'mr_id', r.id)
-          .map((l) => ({ repo: ctx.repoRef(l.repo_id), branch: l.branch || null }))
-          .filter((l) => l.repo),
+        links: [
+          ...ctx.enfants('mr_link', 'mr_id', r.id)
+            .map((l) => ({ repo: ctx.repoRef(l.repo_id), branch: l.branch || null }))
+            .filter((l) => l.repo),
+          /* CE QUE CE POSTE N'A PAS PU RATTACHER À L'IMPORT (dépôt inconnu ici) REPART TEL QUEL :
+             sans ça, le premier poste qui ne suit pas tous les dépôts liés amputerait la liste
+             pour toute l'équipe au prochain écrit. */
+          ...ctx.margeInconnue('mr_link', r.uid),
+        ],
         comment_log: ctx.enfants('comment_log', 'mr_id', r.id).map((c) => ({
           uid: c.uid, body: c.body, note_id: c.gitlab_note_id || null, sent_at: c.sent_at,
         })),
@@ -285,11 +317,17 @@ const REGISTRE = [
         remplace: (db2, parent, items, ctx, signaler) => {
           db2.prepare('DELETE FROM mr_link WHERE mr_id = ?').run(parent.id);
           const ins = db2.prepare('INSERT INTO mr_link (mr_id, repo_id, branch) VALUES (?,?,?)');
+          const horsPerimetre = [];
           for (const l of items) {
             const id = ctx.repoId(l.repo);
-            if (!id) { signaler(`projet lié « ${l.repo} », dépôt inconnu sur ce poste`); continue; }
+            if (!id) {
+              signaler(`projet lié « ${l.repo} », dépôt inconnu sur ce poste`);
+              horsPerimetre.push(l);
+              continue;
+            }
             ins.run(parent.id, id, l.branch || '');
           }
+          garderHorsPerimetre(db2, 'mr_link', parent.uid, horsPerimetre);
         },
       },
       {
@@ -317,6 +355,7 @@ const REGISTRE = [
     table: 'review', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['mr_id'],
     chemin: 'reviews/{forge}/{project}/{iid}/review.json',
     fusion: 'last-writer', locales: ['md_path', 'explanation_path', 'diff_path'],
+    porteeRepo: 'chemin',
     // Le fichier est nommé par sa merge request : c'est par elle qu'on retrouve la review retirée.
     ligneDuChemin: (db, v) => db.prepare(`SELECT review.rowid AS r, review.* FROM review
       JOIN mr ON mr.id = review.mr_id JOIN repo ON repo.id = mr.repo_id
@@ -357,6 +396,7 @@ const REGISTRE = [
   {
     table: 'review_version', famille: 'P', uidPropre: true, cle: 'uid',
     chemin: 'reviews/{forge}/{project}/{iid}/{uid}.md', fusion: 'append-only',
+    porteeRepo: 'chemin',
     locales: ['md_path', 'explanation_path', 'version'],
     fichiers: ['{uid}.md', '{uid}.json (note, sha, constats)'],
     note: '`version` est DÉRIVÉE : le fichier porte l’uid et la date, l’hydratation numérote dans l’ordre. '
@@ -497,6 +537,10 @@ const REGISTRE = [
   {
     table: 'review_rule', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'rules/{uid}.json',
     fusion: 'last-writer',
+    /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT : le balayage ne peut pas lire le dépôt
+       dans le chemin, il relit le champ `repo` du contenu. Une règle GÉNÉRALE (`repo` absent) n'a
+       pas de dépôt à juger : elle se balaie comme avant. */
+    porteeRepo: (doc) => doc.repo,
     note: 'ce qu’une équipe a décidé de regarder dans ses reviews : l’exemple même de ce qui gagne à être commun',
     commitMessage: (r) => `review rule ${String(r.label || r.branch_match || r.path_match || '').slice(0, 50)}`,
     toFile: (r, ctx) => ({
@@ -574,10 +618,16 @@ const REGISTRE = [
          le second est un CONSENTEMENT — « tu peux travailler dans mon dossier » — et un
          consentement donné chez un collègue ne vaut rien ici. Le laisser voyager, c'était
          permettre à un fichier poussé d'autoriser à sa place l'exécution dans son dossier. */
-      repos: ctx.enfants('verifier_repo', 'verifier_id', r.id).map((vr) => ({
-        repo: ctx.repoRef(vr.repo_id),
-        mode: vr.mode,
-      })).filter((vr) => vr.repo),
+      repos: [
+        ...ctx.enfants('verifier_repo', 'verifier_id', r.id).map((vr) => ({
+          repo: ctx.repoRef(vr.repo_id),
+          mode: vr.mode,
+        })).filter((vr) => vr.repo),
+        /* CE QUE CE POSTE N'A PAS PU RATTACHER (dépôt inconnu ici) REPART TEL QUEL : sinon le
+           premier poste qui ne suit pas tous les dépôts couverts amputerait la couverture pour
+           toute l'équipe — un périmètre amputé est plus dangereux qu'un périmètre absent. */
+        ...ctx.margeInconnue('verifier_repo', r.uid),
+      ],
     }),
     fromFile: (doc) => ({
       uid: doc.uid,
@@ -623,14 +673,21 @@ const REGISTRE = [
           db2.prepare('DELETE FROM verifier_repo WHERE verifier_id = ?').run(parent.id);
           const ins = db2.prepare(`INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed)
                                    VALUES (?,?,?,?,?)`);
+          const horsPerimetre = [];
           for (const vr of items) {
             const id = ctx.repoId(vr.repo);
-            /* Dépôt inconnu ici : on SIGNALE et on saute. Déclarer la couverture sans le dépôt
-               ferait échouer la vérification au lancement, beaucoup plus tard et loin d'ici. */
-            if (!id) { signaler(`couverture sur « ${vr.repo} », dépôt inconnu sur ce poste`); continue; }
+            /* Dépôt inconnu ici : on SIGNALE et on saute — mais on le garde, voir
+               `garderHorsPerimetre`. Déclarer la couverture sans le dépôt ferait échouer la
+               vérification au lancement, beaucoup plus tard et loin d'ici. */
+            if (!id) {
+              signaler(`couverture sur « ${vr.repo} », dépôt inconnu sur ce poste`);
+              horsPerimetre.push({ repo: vr.repo, mode: vr.mode });
+              continue;
+            }
             const local = locaux.get(id) || {};
             ins.run(parent.id, id, vr.mode || 'worktree', local.workdir || null, local.checkout_allowed ? 1 : 0);
           }
+          garderHorsPerimetre(db2, 'verifier_repo', parent.uid, horsPerimetre);
         },
       },
     ],
@@ -745,9 +802,15 @@ const REGISTRE = [
       defaults_json: r.defaults_json,
       created_at: r.created_at,
       updated_at: r.updated_at,
-      repos: ctx.enfants('agent_repo', 'agent_id', r.id).map((ar) => ({
-        repo: ctx.repoRef(ar.repo_id), branch: ar.branch || null, role: ar.role,
-      })).filter((ar) => ar.repo),
+      repos: [
+        ...ctx.enfants('agent_repo', 'agent_id', r.id).map((ar) => ({
+          repo: ctx.repoRef(ar.repo_id), branch: ar.branch || null, role: ar.role,
+        })).filter((ar) => ar.repo),
+        /* CE QUE CE POSTE N'A PAS PU RATTACHER (dépôt inconnu ici) REPART TEL QUEL — un périmètre
+           amputé au premier écrit d'un poste qui n'en suit qu'une partie serait plus dangereux
+           qu'absent : l'agent tournerait sur le reste en ayant l'air complet. */
+        ...ctx.margeInconnue('agent_repo', r.uid),
+      ],
     }),
     fromFile: (doc, ctx) => ({
       uid: doc.uid,
@@ -783,13 +846,20 @@ const REGISTRE = [
       remplace: (db2, parent, items, ctx, signaler) => {
         db2.prepare('DELETE FROM agent_repo WHERE agent_id = ?').run(parent.id);
         const ins = db2.prepare('INSERT OR IGNORE INTO agent_repo (agent_id, repo_id, branch, role) VALUES (?,?,?,?)');
+        const horsPerimetre = [];
         for (const ar of items) {
           const id = ctx.repoId(ar.repo);
           /* Un périmètre AMPUTÉ est plus dangereux qu'un périmètre absent : l'agent tournerait
-             sur les dépôts restants en ayant l'air complet. On le dit. */
-          if (!id) { signaler(`périmètre sur « ${ar.repo} », dépôt inconnu sur ce poste`); continue; }
+             sur les dépôts restants en ayant l'air complet. On le dit — et on le garde, voir
+             `garderHorsPerimetre`. */
+          if (!id) {
+            signaler(`périmètre sur « ${ar.repo} », dépôt inconnu sur ce poste`);
+            horsPerimetre.push({ repo: ar.repo, branch: ar.branch || null, role: ar.role });
+            continue;
+          }
           ins.run(parent.id, id, ar.branch || '', ar.role || 'readonly');
         }
+        garderHorsPerimetre(db2, 'agent_repo', parent.uid, horsPerimetre);
       },
     }],
   },
@@ -861,6 +931,10 @@ const REGISTRE = [
        est le texte d'une relance en cours de frappe, et `agent_draft_json` le profil qu'on
        ESSAIE — l'endroit même où l'on tente un prompt sans engager l'équipe. */
     fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json'],
+    /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT : comme `fromFile` ci-dessous, le
+       balayage lit le dépôt de la PREMIÈRE cible — c'est elle qui décide si cette session
+       s'hydrate ici. Une session sans cible connue n'a rien à juger. */
+    porteeRepo: (doc) => (doc.targets || [])[0] && doc.targets[0].repo,
     /* PRIVÉE TANT QU'ON N'A PAS COCHÉ. `shared` ne part pas dans le fichier : un fichier qui est
        là EST partagé, et un `shared: 0` dans le dépôt ne voudrait rien dire. */
     partageable: (r) => Boolean(r.shared),

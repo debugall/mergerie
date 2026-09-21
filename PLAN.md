@@ -413,6 +413,27 @@ contredit quand elle ment :
   commité dans git est définitif — l'historique est immuable, chaque clone le garde, la forge le
   garde ; il faut révoquer. La barrière vaut donc largement sa gêne.
 
+**`repo` étant locale, une table P peut désormais porter une ligne dont le POSTE ne connaît pas le
+dépôt** (une MR, une review, une session, une règle ou un périmètre limités à un dépôt qu'il ne
+suit pas) — ce n'était jamais arrivé tant que `repo` voyageait partout. Deux garde-fous en tiennent
+compte, dans `store-registry.js` et `store.js` :
+- **`porteeRepo`** (sur `mr`, `review`, `review_version`, `review_rule`, `task`) dit à
+  `depotDuFichier` comment lire le dépôt d'UN FICHIER candidat au balayage : `'chemin'` s'il est
+  dans le gabarit (`{forge}/{project}`), une fonction `(doc) => ref` sinon (le contenu du fichier —
+  `doc.repo`, ou la première cible de `task`). `balayer()` ne retire un fichier de ce genre que si
+  `ctx.repoId(ref)` résout : un dépôt hors de portée d'ici (jamais suivi, ou qu'on vient de
+  retirer) n'est pas à CE poste de juger, et son fichier reste — y compris celui qu'on vient
+  soi-même de retirer, dont l'historique d'équipe survit tant qu'un autre poste le suit encore.
+  Sans ce garde, la moindre suppression déclenchant un balayage de `mr` balayait TOUTE la racine
+  `mrs/` aux dépôts que ce poste ne suit pas, et poussait leur disparition à toute l'équipe.
+- **`garderHorsPerimetre` / `ctx.margeInconnue`** (sur les listes filles `mr_link`, `verifier_repo`,
+  `agent_repo`) gardent, dans `local_state` (`kind = 'store_hors_perimetre'`, `ref` = l'uid du
+  parent, `key` = la table fille), les membres qu'un `remplace` n'a pas su rattacher — un dépôt lié,
+  couvert ou dans le périmètre d'un agent, que ce poste ne suit pas. Sans eux, réécrire le fichier
+  depuis un poste qui n'en suit qu'une partie AMPUTAIT la liste pour toute l'équipe : un périmètre
+  amputé est plus dangereux qu'absent, l'agent ou le vérificateur tournerait sur le reste en ayant
+  l'air complet. Le `toFile` du parent les reprend TELS QUELS à côté de ce qu'il résout localement.
+
 ### Les réglages coupés en deux (`local_config`)
 
 `config` reste la table d'**équipe** — gabarits de prompt, seuils, politiques, URL de la forge,

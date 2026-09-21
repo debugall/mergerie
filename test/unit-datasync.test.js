@@ -859,4 +859,109 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.equal(r.actif, false, 'la synchro ne part pas vers cette adresse');
     assert.equal(r.dit, true, 'et le journal dit pourquoi, au lieu d’un mono-poste silencieux');
   });
+
+  /* `repo` EST LOCALE : UN POSTE QUI N'EN SUIT QU'UNE PARTIE N'HYDRATE PAS LES MR DE L'AUTRE.
+   * Avant ce garde, le balayage comparait ce qu'il PORTE (les MR des dépôts qu'il suit) à TOUT
+   * ce que la racine `mrs/` contient dans le dépôt d'équipe — MR d'autres dépôts comprises,
+   * jamais hydratées ici faute de dépôt connu. La moindre suppression déclenchant un balayage de
+   * `mr` (ici : I supprime une de SES PROPRES MR sur eq/app) balayait donc aussi les MR de
+   * dépôts que I n'a jamais suivis, et les retirait du dépôt d'équipe pour tout le monde. Le
+   * garde doit jouer dans les deux sens : protéger ce que I ne peut pas juger (eq/api), sans
+   * empêcher de balayer ce qu'il peut légitimement juger (sa propre suppression sur eq/app). */
+  test('un poste qui ne suit qu’un des deux dépôts ne balaie pas les MR de l’autre', () => {
+    const posteH = path.join(racine, 'H');
+    const posteI = path.join(racine, 'I');
+    fs.mkdirSync(posteH); fs.mkdirSync(posteI);
+    const nuH = path.join(racine, 'equipe-h.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuH], { stdio: 'ignore' });
+
+    // H suit DEUX dépôts, et pousse une MR de chacun.
+    dans(posteH, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuH)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      db.prepare("INSERT INTO mr (repo_id, iid, status, title, updated_at) VALUES (?, 1, 'to_review', 'App', ?)").run(app, now);
+      db.prepare("INSERT INTO mr (repo_id, iid, status, title, updated_at) VALUES (?, 1, 'to_review', 'Api', ?)").run(api, now);
+      await datasync.commiter('mr app + mr api');
+      await datasync.tour();
+    }`);
+
+    // I ne suit QUE eq/app, ajouté AVANT de rejoindre : la MR de eq/api ne s'hydrate pas chez
+    // lui, faute de dépôt connu — et une passe ultérieure ne la retente pas sans nouveau commit.
+    // I pousse aussi SA PROPRE MR sur eq/app (iid 5), pour avoir de quoi supprimer ensuite.
+    const chezI = dans(posteI, `async ({ db, datasync, config }) => {
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuH)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      db.prepare("INSERT INTO mr (repo_id, iid, status, title, updated_at) VALUES (?, 5, 'to_review', 'App bis', ?)").run(app, now);
+      await datasync.commiter('mr app bis');
+      await datasync.tour();
+      return db.prepare('SELECT COUNT(*) n FROM mr').get().n;
+    }`);
+    assert.equal(chezI, 2, 'les MR des dépôts suivis doivent exister chez I — pas celle d’eq/api');
+
+    // I supprime SA propre MR (iid 5) : ceci déclenche un balayage de `mr`.
+    dans(posteI, `async ({ db, datasync }) => {
+      db.prepare("DELETE FROM mr WHERE iid = 5").run();
+      await datasync.commiter('retire ma MR bis');
+      await datasync.tour();
+    }`);
+
+    const restant = execFileSync('git', ['-C', nuH, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    assert.match(restant, /mrs\/gitlab\/eq\/api\/1\.json/,
+      'la MR d’un dépôt que I n’a jamais suivi ne doit pas disparaître du dépôt d’équipe');
+    assert.match(restant, /mrs\/gitlab\/eq\/app\/1\.json/,
+      'la MR d’un dépôt encore suivi par I, elle, doit rester');
+    assert.doesNotMatch(restant, /mrs\/gitlab\/eq\/app\/5\.json/,
+      'en revanche la MR que I vient lui-même de supprimer doit bien sortir : le balayage reste actif sur ce qu’il peut juger');
+  });
+
+  /* CE QU'UNE LISTE NE SAIT PAS RATTACHER SURVIT À UN RÉÉCRIT PAR UN POSTE QUI N'EN SUIT QU'UNE
+   * PARTIE. Un vérificateur couvrant deux dépôts, réécrit par un poste qui n'en suit qu'un —
+   * modifier ses commandes, par exemple — ne doit pas revenir amputé de l'autre : un périmètre
+   * amputé est plus dangereux qu'absent, le vérificateur tournerait sur le reste en ayant l'air
+   * complet. */
+  test('un vérificateur couvrant deux dépôts garde sa couverture entière, réécrit par un poste qui n’en suit qu’un', () => {
+    const posteJ = path.join(racine, 'J');
+    const posteK = path.join(racine, 'K');
+    fs.mkdirSync(posteJ); fs.mkdirSync(posteK);
+    const nuJ = path.join(racine, 'equipe-j.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuJ], { stdio: 'ignore' });
+
+    // J suit deux dépôts et couvre les deux avec un vérificateur.
+    dans(posteJ, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuJ)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      const v = db.prepare("INSERT INTO verifier (name, command, created_at) VALUES ('Tests', '', ?)").run(now).lastInsertRowid;
+      db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(v, 'npm test');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, app, 'worktree');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, api, 'worktree');
+      await datasync.commiter('verifier sur deux depots');
+      await datasync.tour();
+    }`);
+
+    // K ne suit que eq/app, reçoit le vérificateur (couverture amputée à l'hydratation, dépôt
+    // eq/api inconnu ici), puis modifie ses commandes et repousse le fichier.
+    dans(posteK, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuJ)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now);
+      await datasync.tour();
+      db.prepare("UPDATE verifier_command SET command = 'npm ci && npm test' WHERE position = 0");
+      await datasync.commiter('modifie la commande');
+      await datasync.tour();
+    }`);
+
+    const uid = dans(posteJ, `async ({ db }) => db.prepare("SELECT uid FROM verifier WHERE name = 'Tests'").get().uid`);
+    const doc = JSON.parse(execFileSync('git', ['-C', nuJ, 'show', `main:verifiers/${uid}.json`], { encoding: 'utf8' }));
+    assert.deepEqual(doc.repos.map((r) => r.repo).sort(), ['gitlab/eq/api', 'gitlab/eq/app'],
+      'la couverture doit rester entière — K n’a pas de quoi juger eq/api, il ne doit pas la retirer');
+  });
 });
