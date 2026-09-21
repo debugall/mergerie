@@ -16,6 +16,7 @@ const glob = require('../core/glob');
 const diffnum = require('../git/diffnum');
 const demoReview = require('../demo/review');
 const agentpass = require('../agent/pass');
+const integrite = require('../git/integrite');
 const agentknowledge = require('../agent/knowledge');   // B7 : la carte du domaine touché
 const demoDiff = require('../demo/diff');
 const demoComments = require('../demo/comments');
@@ -355,7 +356,12 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
 // Enregistre une NOUVELLE version de la review au lieu d'écraser la précédente.
 // La table `review` continue de pointer la version la plus récente : le reste de
 // l'application (rapports, dashboard, footer) n'a rien à changer.
-function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStorePath, kind, noExplain, instruction }) {
+/* `compromised`/`compromisedDetail` (plan_secure.md, lot A, point 5) : la passe reste ÉCRITE —
+   l'historique ne ment pas sur ce qui s'est passé — mais elle n'est JAMAIS posée comme version
+   COURANTE (`review`) : la table que l'écran, le dashboard et la publication automatique lisent
+   continue de pointer la dernière version DIGNE DE CONFIANCE, comme si celle-ci n'avait jamais eu
+   lieu. */
+function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStorePath, kind, noExplain, instruction, compromised, compromisedDetail }) {
   const now = new Date().toISOString();
   const last = db.prepare('SELECT MAX(version) v FROM review_version WHERE mr_id = ?').get(mr.id);
   const version = (last && last.v ? last.v : 0) + 1;
@@ -377,18 +383,20 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
   const noteValue = note ? note.value : null;
 
   db.prepare(`INSERT INTO review_version
-    (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, instruction)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
+    (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, instruction, compromised, compromised_detail)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
     .run(mr.id, version, mdPath, explPath, noteValue, mr.current_sha || null, kind || 'review', now,
-      instruction ? String(instruction) : null);
+      instruction ? String(instruction) : null, compromised ? 1 : 0, compromisedDetail || null);
 
-  const existing = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mr.id);
-  if (existing) {
-    db.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, note_value = ?, updated_at = ? WHERE mr_id = ?')
-      .run(mdPath, explPath, diffStorePath, noteValue, now, mr.id);
-  } else {
-    db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-      .run(mr.id, mdPath, explPath, diffStorePath, noteValue, now, now);
+  if (!compromised) {
+    const existing = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mr.id);
+    if (existing) {
+      db.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, note_value = ?, updated_at = ? WHERE mr_id = ?')
+        .run(mdPath, explPath, diffStorePath, noteValue, now, mr.id);
+    } else {
+      db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+        .run(mr.id, mdPath, explPath, diffStorePath, noteValue, now, now);
+    }
   }
   return { version, mdPath, explPath, noteValue, now };
 }
@@ -559,6 +567,11 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
   const cfg = getConfig();
   const explain = opts.explain != null ? !!opts.explain : cfg.review_explain !== '0';
   const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
+  /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : `--restricted` et
+     `Write`/`Edit` interdits sont des FLAGS — ils ne prouvent rien sur Copilot, ni sur un bug du
+     CLI, ni sur un outil qu'on aurait oublié d'interdire. Le relevé d'AVANT sert à comparer
+     après le run ; en démo (pas de dépôt git réel), il vaut `null` et ne déclenche jamais rien. */
+  const empreinteAvant = await integrite.empreindre(cwd);
 
   try {
     // En incrémental, l'IA ne voit QUE le delta : on lui donne le rapport précédent en
@@ -587,6 +600,24 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
       explainContent = await generate(cfg.prompt_explain, 'ai-dev-tools-internal/explanation.md', 'explain');
     } else {
       onLog(t('log.review.explain-skip'));
+    }
+
+    /* LE RELEVÉ D'APRÈS, et la comparaison. Une différence ne veut pas forcément dire que
+       l'agent a triché — un `git gc` concurrent, un hook d'un AUTRE outil — mais dans le doute,
+       le rapport est écarté plutôt que présenté comme fiable : c'est la seule preuve qu'on a
+       sur un backend qui ne restreint rien lui-même (Copilot). */
+    const changements = integrite.comparer(empreinteAvant, await integrite.empreindre(cwd));
+    if (changements) {
+      const detail = changements.join(', ');
+      // L'historique garde une trace du run — mais jamais posée comme version courante (voir
+      // saveReviewVersion) — puis on lève : le job appelant (processList) sait déjà consigner
+      // une erreur de MR (last_error, journal, notification), le même chemin qu'un dépôt injoignable.
+      saveReviewVersion(mr, outDir, {
+        reviewContent, explainContent, diffStorePath, kind: 'review', noExplain: !explain,
+        compromised: true, compromisedDetail: detail,
+      });
+      onLog(t('log.review.compromised', { detail }));
+      throw new Error(t('err.review-compromised', { detail }));
     }
 
     const { version, mdPath, explPath, now, noteValue } = saveReviewVersion(mr, outDir, {

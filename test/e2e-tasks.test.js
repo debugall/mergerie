@@ -981,4 +981,42 @@ describe('Sessions de dev de bout en bout', () => {
     assert.ok(out.output && out.output.includes('dry-run'), 'le retour est lisible');
     assert.equal(out.project, 'grp/app');
   });
+
+  /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5). Une exploration promet
+   * de ne rien écrire ; rien ne le prouvait après coup. Le mock joue l'agent qui triche : il
+   * écrit dans le clone qu'il est censé seulement lire. `resetWorktree` (garantie déjà en place)
+   * efface la trace de FICHIER dans le `finally` — ce test prouve que la garde d'ici la voit
+   * quand même, puisqu'elle est prise AVANT ce nettoyage.
+   */
+  test('une exploration qui écrit dans un dépôt est mise en erreur, la synthèse n’est jamais enregistrée', async () => {
+    const copilot = require('../src/agent/copilot');
+    const git = require('../src/git/git');
+    const { getConfig } = require('../src/data/config');
+    // Le `cwd` reçu par `copilot.runPrompt` en exploration est la RACINE des clones (plusieurs
+    // dépôts en jeu) — le fichier « triche » doit atterrir DANS le clone d'un dépôt, comme le
+    // ferait un outil de fichiers pointé sur un chemin relatif à un sous-dossier.
+    const cloneDir = git.cloneDirFor(getConfig(), { project: 'grp/app', forge: 'gitlab' });
+    const ancien = copilot.runPrompt;
+    let appele = false;
+    copilot.runPrompt = async () => {
+      appele = true;
+      fs.writeFileSync(path.join(cloneDir, 'preuve-ecriture.txt'), 'je ne devrais pas être là\n');
+      return 'Réponse de synthèse.';
+    };
+    try {
+      const c = await app.api('POST', '/api/tasks', {
+        kind: 'explore', prompt: 'où est la config ?', targets: [{ repo_id: repoId }],
+      });
+      await app.api('POST', `/api/tasks/${c.body.id}/run`);
+      await waitForJobs(app.api);
+      assert.ok(appele, 'le mock a bien été appelé');
+
+      const task = (await app.api('GET', `/api/tasks/${c.body.id}`)).body.task;
+      assert.equal(task.status, 'error', 'le job refuse plutôt que de rendre une réponse compromise');
+      assert.match(task.last_error, /changé|changed/i, task.last_error);
+      assert.equal(task.md_path, null, 'aucune synthèse enregistrée comme réponse de la tâche');
+    } finally {
+      copilot.runPrompt = ancien;
+    }
+  });
 });

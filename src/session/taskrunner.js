@@ -6,6 +6,7 @@ const localsession = require('../data/localsession');
 const { getConfig } = require('../data/config');
 const { TASKS_DIR, ensureDir } = require('../core/paths');
 const git = require('../git/git');
+const integrite = require('../git/integrite');
 const configagent = require('../data/configagent');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
@@ -593,6 +594,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
 
   const root = path.resolve(cfg.clone_path);
   const dirs = [];
+  const empreintesAvant = new Map();   // cwd -> relevé (lecture seule prouvée après coup, lot A5)
   for (const tg of targets) {
     const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
     if (!repo) { setTarget(tg.id, { status: 'error', last_error: 'Dépôt introuvable.' }); continue; }
@@ -611,6 +613,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       }
       dirs.push({ dir: path.relative(root, cwd) || path.basename(cwd), project: tg.project, branch, cwd, repo_id: tg.repo_id });
       setTarget(tg.id, { base_branch: branch, status: 'done', last_error: null });
+      /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : relevé AVANT le run,
+         pour chaque dépôt visible de l'agent — une exploration en voit plusieurs à la fois. Voir
+         plus bas pourquoi le relevé D'APRÈS doit avoir lieu AVANT `git.resetWorktree` (le
+         `finally`), pas après : `resetWorktree` efface les traces de fichier, mais jamais un
+         `.git/config` ou un `.git/hooks` planté, qui vivent hors du suivi Git. */
+      empreintesAvant.set(cwd, await integrite.empreindre(cwd));
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
       onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
@@ -681,6 +689,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
   onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
   let coutUsd = null;
+  let compromis = null;   // lecture seule prouvée après coup (lot A5) : null, ou la liste des dépôts + champs changés
   try {
     if (sessionable) {
       const key = `explore-${task.id}`;
@@ -735,12 +744,30 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
     }
+    /* LE RELEVÉ D'APRÈS, ICI — AVANT le `finally` (plan_secure.md, lot A, point 5) :
+       `resetWorktree` efface les traces de FICHIER quoi qu'il arrive, mais un dépôt qui
+       « redevient propre » après coup n'a jamais existé pour la garde d'ici — et un
+       `.git/config`/`.git/hooks` planté, lui, survit à `resetWorktree` (hors suivi Git). */
+    const parDepot = [];
+    for (const d of dirs) {
+      const c = integrite.comparer(empreintesAvant.get(d.cwd), await integrite.empreindre(d.cwd));
+      if (c) parDepot.push(`${d.project} (${c.join(', ')})`);
+    }
+    if (parDepot.length) compromis = parDepot;
   } finally {
     // garantie lecture seule : quoi qu'il arrive, on annule toute modification
     for (const d of dirs) {
       await git.resetWorktree(d.cwd, () => {});
     }
     onLog(t('log.explore.reset'));
+  }
+
+  if (compromis) {
+    // Le job appelant (`runTaskJob`) sait déjà consigner une erreur de tâche (statut, last_error,
+    // notification `job_failed`) — le même chemin qu'un échec de clone ou de branche manquante.
+    const detail = compromis.join(' ; ');
+    onLog(t('log.explore.compromised', { detail }));
+    throw new Error(t('err.explore-compromised', { detail }));
   }
 
   /* L'AGENT A POSÉ DES QUESTIONS : il s'est arrêté avant de répondre, il n'y a donc pas de

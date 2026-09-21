@@ -68,6 +68,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS review_version (
 // Migration : demande de modification à l'origine d'une version de rapport (kind='modify').
 // Sans elle, l'historique des régénérations ne dit pas CE QUI avait été demandé.
 try { db.exec('ALTER TABLE review_version ADD COLUMN instruction TEXT'); } catch { /* déjà présente */ }
+/* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : `git/integrite.js`
+   compare l'état du dépôt avant et après le run. Une différence marque cette version
+   `compromised` — le rapport reste écrit (l'historique ne ment pas sur ce qui s'est passé),
+   mais `reviewMr` ne la pose jamais comme version COURANTE (`review`, `mr.reviewed_sha`) et ne
+   la publie jamais automatiquement. `compromised_detail` nomme les champs qui ont bougé
+   (`head`, `statut`, `config`, `hooks`), pour le journal et l'écran. */
+try { db.exec('ALTER TABLE review_version ADD COLUMN compromised INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE review_version ADD COLUMN compromised_detail TEXT'); } catch { /* déjà présente */ }
 db.exec('CREATE INDEX IF NOT EXISTS idx_review_version_mr ON review_version(mr_id, version)');
 
 /* Suivi de résolution entre deux passes de review (ideas.md « Suivi de résolution »).

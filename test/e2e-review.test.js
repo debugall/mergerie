@@ -385,6 +385,44 @@ describe('Review de bout en bout', () => {
     assert.equal((await app.api('GET', `/api/mrs/${mrId}`)).body.review, null);
   });
 
+  /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5). Les flags (`--restricted`,
+   * `Write`/`Edit` interdits) sont ce qu'on DEMANDE à l'agent ; rien ne prouvait qu'il ait
+   * obéi — surtout sur un backend (Copilot) qui ne sait pas se restreindre lui-même. On simule
+   * ici l'agent qui triche : son mock écrit un fichier dans le clone pendant la « review ». Le
+   * relevé d'après doit le voir, écarter le rapport, et NE PAS le poser comme version courante.
+   */
+  test('un agent de lecture qui écrit dans le clone voit son rapport écarté, jamais posé comme version courante', async () => {
+    const copilot = require('../src/agent/copilot');
+    const ancien = copilot.runPrompt;
+    let cwdVu = null;
+    copilot.runPrompt = async (prompt, cwd) => {
+      cwdVu = cwd;
+      const fs2 = require('node:fs');
+      const path2 = require('node:path');
+      // L'agent « triche » : il écrit un fichier alors que la review doit rester en lecture seule.
+      fs2.writeFileSync(path2.join(cwd, 'preuve-ecriture.txt'), 'je ne devrais pas être là\n');
+      return '# Revue\n\nRien à signaler.\n\n## Note globale\n\n9/10\n';
+    };
+    try {
+      const avantVersion = (await app.api('GET', `/api/mrs/${mrId}`)).body.review;
+      await app.api('POST', `/api/mrs/${mrId}/review`);
+      await waitForJobs(app.api);
+      assert.ok(cwdVu, 'le mock a bien été appelé avec un cwd');
+
+      const apres = (await app.api('GET', `/api/mrs/${mrId}`)).body;
+      assert.deepEqual(apres.review, avantVersion, 'la version courante n’a pas bougé : le rapport compromis n’est jamais devenu « le » rapport');
+
+      const versions = app.db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY id DESC').get(mrId);
+      assert.equal(versions.compromised, 1, 'la passe est marquée compromise');
+      assert.match(versions.compromised_detail, /statut/, `le champ qui a changé est nommé : ${versions.compromised_detail}`);
+
+      const fs3 = require('node:fs');
+      assert.ok(fs3.existsSync(path.join(cwdVu, 'preuve-ecriture.txt')), 'le fichier écrit existe bien : ce n’est pas un faux positif');
+    } finally {
+      copilot.runPrompt = ancien;
+    }
+  });
+
   test('un job qui échoue enregistre l’erreur sur la MR sans arrêter le serveur', async () => {
     // Dépôt injoignable : le clone git échoue franchement.
     await app.api('PUT', `/api/repos/${repoId}`, { url: '/chemin/inexistant/depot.git' });
