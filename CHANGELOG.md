@@ -54,11 +54,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
     network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
     checks the network works *outside* the sandbox first.
   - An automatic verifier's network isolation (`unshare` on Linux) needed real root and was
-    silently never active for a normal user; it now runs in its own user namespace instead.
-    Unchanged limitation, noted rather than fixed: on both Linux and macOS, cutting outbound
-    network for an automatic verifier also cuts its access to `localhost` — a test suite that
-    depends on a database, Redis, or a `docker-compose` service on `localhost` will need it
-    reachable another way while running under automatic verification.
+    silently never active for a normal user; it now runs in its own user namespace instead,
+    keeping the real UID (`--map-current-user`) where the installed `unshare` supports it, since
+    running as UID 0 inside that namespace made some test tooling (headless Chrome, PostgreSQL's
+    `initdb`) refuse to start or change behaviour. Unchanged limitation, noted rather than fixed:
+    on both Linux and macOS, cutting outbound network for an automatic verifier also cuts its
+    access to `localhost` — a test suite that depends on a database, Redis, or a `docker-compose`
+    service on `localhost` will need it reachable another way while running under automatic
+    verification.
+  - A second review pass caught two of its own fixes: the “verification synced mid-run” fix
+    above had left a hole where a verification whose verdict was already locked in could be
+    erased by resending it without a verdict; and narrowing the injection-marker regex to known
+    names had dropped its case-insensitive flag along the way, so `<<<findings` in lowercase
+    slipped through neutralisation. Both are closed now.
 
 ### Removed
 

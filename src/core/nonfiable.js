@@ -29,8 +29,12 @@ const MARQUE = '<<<DONNEE';
    LA LISTE EST FERMÉE (revue de add-secure-layer-2), pas « tout mot en majuscules » : un
    heredoc PHP (`<<<SQL`, `<<<EOT`, `<<<HTML`) ou un here-string shell cité dans une description
    de MR, un ticket, un rapport précédent partait déformé chez l'agent, qui y lisait alors de
-   fausses erreurs de syntaxe. Tenue à jour avec `protocol.NOMS`, `questions.js`, `resolution.js`. */
-const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE)\b/g;
+   fausses erreurs de syntaxe. Tenue à jour avec `protocol.NOMS`, `questions.js`, `resolution.js`.
+   LE `i` RESTE NÉCESSAIRE (revue de add-secure-layer-2, 2e passe) : une liste ouverte l'aurait
+   rendu dangereux pour les heredocs (`<<<sql` neutralisé pour rien) — une liste FERMÉE, elle, n'a
+   plus aucune raison de le perdre : `<<<findings`/`<<<fin donnee` doivent rester neutralisés
+   autant que leur forme en majuscules. */
+const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE)\b/gi;
 
 const neutraliser = (texte) => String(texte == null ? '' : texte).replace(IMITATION, '‹‹‹$1$2');
 

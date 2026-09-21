@@ -239,4 +239,31 @@ describe('Import du dépôt partagé : ce qui vient d’ailleurs', () => {
     assert.ok(!bilanFinal.orphelins.length, `le verdict final est accueilli : ${bilanFinal.orphelins.join(' | ')}`);
     assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_pass');
   });
+
+  /* Revue de add-secure-layer-2 (2e passe) : le trou ouvert par le correctif précédent — une
+     empreinte déjà figée doit continuer à s'appliquer même si le document entrant se présente
+     « en cours » (sans verdict ni finished_at). Sinon, un verdict déjà accueilli peut être
+     effacé en le faisant « redevenir en cours », exactement la réécriture silencieuse que le
+     lot C, S5 existe pour refuser. */
+  test('un verdict déjà figé ne peut pas être effacé en « redevenant en cours »', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('unit2', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, verdict, targets_json, created_at, finished_at)
+      VALUES (?, 'unit2', 'done', 'verified_fail', '[]', ?, ?)`).run(vid, now, now).lastInsertRowid;
+    store.rafraichir('verification', id);
+    const uid = db.prepare('SELECT uid FROM verification WHERE id = ?').get(id).uid;
+    const rel = `verifications/${uid}.json`;
+    const doc = lire(rel);
+    assert.equal(doc.verdict, 'verified_fail');
+    // La première hydratation figE l'empreinte du verdict connu.
+    store.hydraterFichiers([rel]);
+
+    // Le fichier « redevient en cours » — sans verdict ni finished_at, comme un run relancé.
+    ecrire(rel, { ...doc, status: 'running', verdict: null, finished_at: null });
+    const bilan = store.hydraterFichiers([rel]);
+    assert.ok(bilan.orphelins.some((o) => /modifié après sa création/.test(o)), `refusé et dit : ${bilan.orphelins.join(' | ')}`);
+    assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_fail',
+      'le verdict figé reste celui que l’écran et l’automatisme lisent — pas effacé');
+  });
 });

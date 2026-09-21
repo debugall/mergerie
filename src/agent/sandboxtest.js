@@ -15,7 +15,7 @@
  */
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn } = require('node:child_process');
 const proc = require('../core/proc');
 const copilot = require('./copilot');
 const agentpolicy = require('./policy');
@@ -32,10 +32,22 @@ const MARQUEUR_ECRITURE = () => `sonde-${crypto.randomBytes(3).toString('hex')}`
    `curl` qui échoue DANS le sandbox — poste hors ligne, DNS en panne, proxy d'entreprise, CLI
    sans réseau du tout — se lisait comme « le sandbox l'a coupé », et marquait le sandbox vérifié
    sans qu'il ait jamais rien bloqué. On sonde donc la même adresse, EN DEHORS du sandbox : si
-   elle-même échoue, il n'y a rien à démontrer, et on le dit plutôt que de conclure à tort. */
+   elle-même échoue, il n'y a rien à démontrer, et on le dit plutôt que de conclure à tort.
+   `spawn` ASYNCHRONE, PAS `spawnSync` (revue de add-secure-layer-2, 2e passe) : Mergerie tourne
+   en un seul processus Node — un `spawnSync` de 8 s bloquait TOUT le serveur pendant l'appel,
+   écran, jobs et flux de journaux compris, pour chaque utilisateur. */
 function reseauJoignableHorsSandbox() {
-  const r = spawnSync('curl', ['-s', '-o', '/dev/null', '--max-time', '4', TEMOIN_URL], { timeout: 8000 });
-  return r.status === 0;
+  return new Promise((resolve) => {
+    let fini = false;
+    const finir = (ok) => { if (!fini) { fini = true; resolve(ok); } };
+    let enfant;
+    try {
+      enfant = spawn('curl', ['-s', '-o', '/dev/null', '--max-time', '4', TEMOIN_URL], { stdio: 'ignore' });
+    } catch { finir(false); return; }
+    const timer = setTimeout(() => { try { enfant.kill('SIGKILL'); } catch { /* déjà mort */ } finir(false); }, 8000);
+    enfant.on('error', () => { clearTimeout(timer); finir(false); });
+    enfant.on('close', (code) => { clearTimeout(timer); finir(code === 0); });
+  });
 }
 
 function prompt(marqueur) {
@@ -86,7 +98,7 @@ async function testerSandbox(onLog = () => {}) {
     if (!cap.settings) {
       return { ok: false, detail: t('agents.sandboxtest.no-settings') };
     }
-    if (!reseauJoignableHorsSandbox()) {
+    if (!(await reseauJoignableHorsSandbox())) {
       return { ok: false, detail: t('agents.sandboxtest.no-network') };
     }
     const cwd = ensureDir(path.join(DATA_DIR, 'tmp', `sandbox-test-${Date.now()}`));

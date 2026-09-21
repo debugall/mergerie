@@ -16,6 +16,26 @@ const { spawnSync } = require('node:child_process');
 // deux valeurs étaient confondues, et une machine sans outil relançait la sonde — bloquante,
 // jusqu'à 3 s — à chaque commande enveloppée).
 let dispoCache;
+// Les options `unshare` retenues après sondage : `['--map-current-user', '-n']` ou `['-rn']`.
+let unshareArgsCache;
+
+/* `-r` MAPPE L'UTILISATEUR COURANT EN ROOT DANS LE NOUVEL ESPACE DE NOMS : sans lui, `unshare -n`
+   exige les droits root RÉELS et la sonde échoue pour n'importe quel utilisateur normal —
+   l'isolement n'était donc jamais actif sur Linux, même quand il aurait pu l'être. Mais tourner
+   en uid 0 (même dans un espace de noms qui n'a d'ailleurs plus rien de spécial) fait réagir
+   certains outils de test : Chrome/Puppeteer headless exige `--no-sandbox`, `initdb` de
+   PostgreSQL refuse de démarrer en root, pip avertit (revue de add-secure-layer-2, 2e passe).
+   `--map-current-user` (util-linux ≥ 2.38) garde l'UID RÉEL dans le nouvel espace de noms et
+   évite ces effets de bord ; on le préfère quand il existe, `-rn` reste le repli partout
+   ailleurs. */
+function argsUnshare() {
+  if (unshareArgsCache !== undefined) return unshareArgsCache;
+  try {
+    unshareArgsCache = spawnSync('unshare', ['--map-current-user', '-n', '--', 'true'], { timeout: 3000 }).status === 0
+      ? ['--map-current-user', '-n'] : ['-rn'];
+  } catch { unshareArgsCache = ['-rn']; }
+  return unshareArgsCache;
+}
 
 /** `'unshare'`, `'sandbox-exec'`, ou `null` si aucun n'est utilisable sur cette machine. */
 function disponible() {
@@ -23,19 +43,14 @@ function disponible() {
   dispoCache = null;
   try {
     if (process.platform === 'linux') {
-      /* `-r` MAPPE L'UTILISATEUR COURANT EN ROOT DANS UN NOUVEL ESPACE DE NOMS (revue de
-         add-secure-layer-2) : sans lui, `unshare -n` exige les droits root RÉELS et la sonde
-         échoue pour n'importe quel utilisateur normal — l'isolement n'était donc jamais actif
-         sur Linux, même quand il aurait pu l'être. `-rn` ne demande rien de plus qu'un noyau
-         qui autorise les espaces de noms utilisateur (le cas courant). */
-      if (spawnSync('unshare', ['-rn', '--', 'true'], { timeout: 3000 }).status === 0) dispoCache = 'unshare';
+      if (spawnSync('unshare', [...argsUnshare(), '--', 'true'], { timeout: 3000 }).status === 0) dispoCache = 'unshare';
     } else if (process.platform === 'darwin') {
       if (spawnSync('sandbox-exec', ['-p', '(version 1)(deny network*)(allow default)', 'true'], { timeout: 3000 }).status === 0) dispoCache = 'sandbox-exec';
     }
   } catch { /* binaire absent, ou refusé : repli */ }
   return dispoCache;
 }
-const oublier = () => { dispoCache = undefined; };
+const oublier = () => { dispoCache = undefined; unshareArgsCache = undefined; };
 
 /** Enveloppe `programme`/`args` pour leur couper le réseau — rend la commande TELLE QUELLE si
  *  aucun outil n'est disponible ici, jamais une erreur.
@@ -47,7 +62,7 @@ const oublier = () => { dispoCache = undefined; };
  *  run automatique là où elle réussissait avant (voir CHANGELOG). */
 function envelopper(programme, args) {
   const outil = disponible();
-  if (outil === 'unshare') return { programme: 'unshare', args: ['-rn', '--', programme, ...args] };
+  if (outil === 'unshare') return { programme: 'unshare', args: [...argsUnshare(), '--', programme, ...args] };
   if (outil === 'sandbox-exec') {
     return { programme: 'sandbox-exec', args: ['-p', '(version 1)(deny network*)(allow default)', programme, ...args] };
   }

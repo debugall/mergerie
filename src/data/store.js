@@ -1262,22 +1262,25 @@ function hydraterFichiers(relatifs) {
        `piece_jointe` ne sont pas le format à deux fichiers de `corps` — `verdictImmuable` nomme
        les champs qui FONT le document ; ce qui vient après (`comment_posted_at`…) n'y figure
        pas exprès.
-       UNE VÉRIFICATION EN COURS N'EST PAS ENCORE CE DOCUMENT (revue de add-secure-layer-2) :
-       `status` passe à `running` avant que `verdict` n'existe (`verifyrun.js`), et ce fichier-là
-       est bien exporté entre-temps. Fixer l'empreinte sur cette version SANS VERDICT, parce
-       qu'une synchro d'un collègue est tombée pile pendant le run, refusait ensuite le verdict
-       final comme « modifié après sa création » — personne ne le voyait jamais. On attend donc
-       la fin (`finished_at` posé, ou un `verdict`) avant de figer quoi que ce soit ; une
-       vérification encore en cours est importée telle quelle, sans empreinte. */
+       UNE VÉRIFICATION EN COURS N'EST PAS ENCORE CE DOCUMENT — MAIS UNE EMPREINTE DÉJÀ CONNUE
+       S'APPLIQUE TOUJOURS (revue de add-secure-layer-2, 2e passe) : `status` passe à `running`
+       avant que `verdict` n'existe (`verifyrun.js`), et ce fichier-là est bien exporté
+       entre-temps — fixer l'empreinte sur cette version SANS VERDICT refusait ensuite le verdict
+       final comme « modifié après sa création ». Mais l'inverse est un trou : si le verdict est
+       DÉJÀ figé et qu'un document « en cours » (sans verdict) revient ensuite pour le même uid —
+       une synchro désynchronisée, ou une donnée forgée —, sauter la garde entière l'aurait
+       effacé en silence, exactement la réécriture que ce mécanisme existe pour refuser. On ne
+       s'abstient donc de figer une empreinte QUE tant qu'aucune n'est encore connue ; une fois
+       connue, elle s'applique quel que soit l'état du document entrant. */
+    const connuAvant = e.verdictImmuable ? etat.lire(APPEND, relatif, 'sha') : null;
     const verificationEnCours = e.table === 'verification' && !doc.finished_at && !doc.verdict;
-    if (e.verdictImmuable && !verificationEnCours) {
+    if (e.verdictImmuable && (connuAvant || !verificationEnCours)) {
       const sha = empreinte(JSON.stringify(e.verdictImmuable.map((champ) => (doc[champ] == null ? null : doc[champ]))));
-      const connu = etat.lire(APPEND, relatif, 'sha');
-      if (connu && connu !== sha) {
+      if (connuAvant && connuAvant !== sha) {
         bilan.orphelins.push(`${relatif} : modifié après sa création — ignoré, l'original reste celui qu'on lit`);
         continue;
       }
-      if (!connu) etat.ecrire(APPEND, relatif, 'sha', sha);
+      if (!connuAvant) etat.ecrire(APPEND, relatif, 'sha', sha);
     }
     /* Une entité se reconnaît à son uid — sauf celles qui ont une clé naturelle et une seule
        ligne possible : `settings.json`, ou un ticket Jira nommé par sa clé. */
