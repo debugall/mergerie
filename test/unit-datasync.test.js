@@ -969,6 +969,58 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'et le fichier doit bien porter l’écriture de K, pas être resté celui de J');
   });
 
+  /* LA MARGE NE DOIT PAS DISPARAÎTRE DÈS QUE SON DÉPÔT DEVIENT RÉSOLUBLE, SANS QUE LA LIGNE
+   * FILLE EXISTE POUR AUTANT : celle-ci n'apparaît qu'à la PROCHAINE hydratation de CE fichier,
+   * qui ne rejoue pas sans nouveau commit. Ajouter le dépôt à ses dépôts suivis, entre l'arrivée
+   * du vérificateur et sa réécriture, ne doit donc rien changer à ce qui repart : un filtre sur
+   * la seule résolvabilité retirerait l'entrée de la marge sans qu'aucune ligne ne la remplace —
+   * recréant l'amputation que la marge devait empêcher. */
+  test('un poste qui se met à suivre un dépôt déjà dans sa marge ne perd pas la couverture entre-temps', () => {
+    const posteN = path.join(racine, 'N');
+    const posteO = path.join(racine, 'O');
+    fs.mkdirSync(posteN); fs.mkdirSync(posteO);
+    const nuN = path.join(racine, 'equipe-n.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuN], { stdio: 'ignore' });
+
+    // N suit deux dépôts et couvre les deux avec un vérificateur.
+    dans(posteN, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuN)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      const v = db.prepare("INSERT INTO verifier (name, command, created_at) VALUES ('Tests bis', '', ?)").run(now).lastInsertRowid;
+      db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(v, 'npm test');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, app, 'worktree');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, api, 'worktree');
+      await datasync.commiter('verifier bis sur deux depots');
+      await datasync.tour();
+    }`);
+
+    // O ne suit d'abord que eq/app : eq/api part dans sa marge, sans ligne verifier_repo. O
+    // ajoute ENSUITE eq/api à ses dépôts suivis — sans nouveau commit sur ce vérificateur, donc
+    // sans que la ligne verifier_repo pour eq/api soit créée — puis modifie une commande.
+    const chezO = dans(posteO, `async ({ db, datasync, config }) => {
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now);
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuN)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now);
+      db.prepare("UPDATE verifier_command SET command = 'npm ci && npm test' WHERE position = 0").run();
+      await datasync.commiter('modifie la commande, apres avoir ajoute eq/api');
+      await datasync.tour();
+      return db.prepare('SELECT COUNT(*) n FROM verifier_repo').get().n;
+    }`);
+    assert.equal(chezO, 1,
+      'eq/api est désormais résoluble chez O, mais sa ligne verifier_repo n’a pas encore été créée : une seule ligne locale');
+
+    const uid = dans(posteN, `async ({ db }) => db.prepare("SELECT uid FROM verifier WHERE name = 'Tests bis'").get().uid`);
+    const doc = JSON.parse(execFileSync('git', ['-C', nuN, 'show', `main:verifiers/${uid}.json`], { encoding: 'utf8' }));
+    assert.deepEqual(doc.repos.map((r) => r.repo).sort(), ['gitlab/eq/api', 'gitlab/eq/app'],
+      'la couverture doit rester entière : eq/api résoluble ne veut pas dire eq/api déjà émis par la ligne locale');
+    assert.equal(doc.commands[0], 'npm ci && npm test');
+  });
+
   /* LE PENDANT POUR `agent_pass` : UNE PASSE DE CODAGE SUR UN DÉPÔT NON SUIVI SURVIT À UN
    * BALAYAGE DÉCLENCHÉ AILLEURS. Le dépôt n'est même pas dans le fichier de la passe — il est
    * dans celui de sa SESSION, relu via `porteeRepo: { parent }`. */

@@ -426,26 +426,33 @@ voyageait partout. Deux garde-fous en tiennent compte, dans `store-registry.js` 
   CE fichier mais dans celui de son PARENT — une passe ou une pièce jointe de codage (`agent_pass`,
   `piece_jointe`) suit le dépôt de SA SESSION, dont `depotDuFichier` relit alors le fichier et
   applique la règle de `task`. Une table à corps Markdown (`agent_pass`) lit son `.json` jumeau,
-  jamais le texte de la passe. `balayer()` ne retire un fichier de ce genre que si `ctx.repoId(ref)`
-  résout : un dépôt hors de portée d'ici (jamais suivi, ou qu'on vient de retirer) n'est pas à CE
-  poste de juger, et son fichier reste — y compris celui qu'on vient soi-même de retirer, dont
-  l'historique d'équipe survit tant qu'un autre poste le suit encore. Sans ce garde, la moindre
-  suppression déclenchant un balayage de l'une de ces tables balayait TOUTE sa racine aux dépôts
-  que ce poste ne suit pas, et poussait leur disparition à toute l'équipe. Un cache par nom de
-  fichier, vidé à chaque `balayer()`, évite de relire et reparser le même fichier de session pour
-  chacune de ses passes.
+  jamais le texte de la passe. Un PARENT ABSENT (session supprimée) n'est pas un dépôt inconnu :
+  `depotDuFichier` rend `undefined` — rien à protéger — et distingue ce cas d'un parent présent
+  mais illisible, où la prudence s'impose (`null`) ; les confondre aurait laissé les passes et
+  pièces jointes d'une session supprimée dans le dépôt d'équipe pour toujours, orphelines et
+  signalées à chaque hydratation. `balayer()` ne retire un fichier de ce genre que si
+  `ctx.repoId(ref)` résout : un dépôt hors de portée d'ici (jamais suivi, ou qu'on vient de
+  retirer) n'est pas à CE poste de juger, et son fichier reste — y compris celui qu'on vient
+  soi-même de retirer, dont l'historique d'équipe survit tant qu'un autre poste le suit encore.
+  Sans ce garde, la moindre suppression déclenchant un balayage de l'une de ces tables balayait
+  TOUTE sa racine aux dépôts que ce poste ne suit pas, et poussait leur disparition à toute
+  l'équipe. Un cache par nom de fichier, vidé à chaque `balayer()`, évite de relire et reparser le
+  même fichier de session pour chacune de ses passes.
 - **`garderHorsPerimetre` / `ctx.margeInconnue`** (sur les listes filles `mr_link`, `verifier_repo`,
   `agent_repo`) gardent, dans `local_state` (`kind = 'store_hors_perimetre'`, `ref` = l'uid du
   parent, `key` = la table fille), les membres qu'un `remplace` n'a pas su rattacher — un dépôt lié,
   couvert ou dans le périmètre d'un agent, que ce poste ne suit pas. Sans eux, réécrire le fichier
   depuis un poste qui n'en suit qu'une partie AMPUTAIT la liste pour toute l'équipe : un périmètre
   amputé est plus dangereux qu'absent, l'agent ou le vérificateur tournerait sur le reste en ayant
-  l'air complet. Le `toFile` du parent les reprend TELS QUELS à côté de ce qu'il résout localement.
-  `margeInconnue` filtre à la lecture ce que ce poste a entre-temps appris à résoudre (un dépôt
-  ajouté depuis) et déduplique par dépôt : la marge n'est réécrite qu'à la prochaine hydratation de
-  CE fichier précis, qui ne rejoue pas sans nouveau commit — sans ce filtre, un dépôt résolu ET
-  encore présent dans la marge partirait deux fois, et l'import buterait sur la clé primaire
-  (`verifier_id, repo_id`) chez tout le monde.
+  l'air complet. Le `toFile` du parent les reprend TELS QUELS à côté de ce qu'il résout localement
+  (`dejaEmis`, les lignes filles réellement résolues en base, passées à `margeInconnue`).
+  `margeInconnue` filtre contre ce que le parent A DÉJÀ ÉMIS, PAS contre ce qui devient résoluble :
+  la marge n'est réécrite qu'à la prochaine hydratation de CE fichier précis, qui ne rejoue pas
+  sans nouveau commit — un dépôt qu'on vient d'ajouter à ses dépôts suivis devient résoluble AVANT
+  que sa ligne fille existe, et le filtrer sur la résolvabilité seule le ferait disparaître de
+  partout, recréant l'amputation que la marge devait empêcher. Ce qui casserait vraiment l'import
+  (clé primaire `verifier_id, repo_id`) est de répéter un dépôt DÉJÀ dans les lignes résolues, pas
+  qu'il soit devenu résoluble.
 
 ### Les réglages coupés en deux (`local_config`)
 

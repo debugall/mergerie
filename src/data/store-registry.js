@@ -267,15 +267,16 @@ const REGISTRE = [
            construction » retournée contre elle-même. Il n'est d'ailleurs pas dans `partagees` :
            c'est une observation LOCALE — « quand CE poste l'a vue bouger » —, du même bois que
            `current_sha`, et elle sert ici à trier et à dater l'activité. */
-        links: [
-          ...ctx.enfants('mr_link', 'mr_id', r.id)
+        links: (() => {
+          const locaux = ctx.enfants('mr_link', 'mr_id', r.id)
             .map((l) => ({ repo: ctx.repoRef(l.repo_id), branch: l.branch || null }))
-            .filter((l) => l.repo),
+            .filter((l) => l.repo);
           /* CE QUE CE POSTE N'A PAS PU RATTACHER À L'IMPORT (dépôt inconnu ici) REPART TEL QUEL :
              sans ça, le premier poste qui ne suit pas tous les dépôts liés amputerait la liste
-             pour toute l'équipe au prochain écrit. */
-          ...ctx.margeInconnue('mr_link', r.uid),
-        ],
+             pour toute l'équipe au prochain écrit. `locaux` en passager : la marge ne répète
+             jamais un dépôt déjà résolu en ligne, seul cas où le doublon casserait l'import. */
+          return [...locaux, ...ctx.margeInconnue('mr_link', r.uid, locaux)];
+        })(),
         comment_log: ctx.enfants('comment_log', 'mr_id', r.id).map((c) => ({
           uid: c.uid, body: c.body, note_id: c.gitlab_note_id || null, sent_at: c.sent_at,
         })),
@@ -621,16 +622,18 @@ const REGISTRE = [
          le second est un CONSENTEMENT — « tu peux travailler dans mon dossier » — et un
          consentement donné chez un collègue ne vaut rien ici. Le laisser voyager, c'était
          permettre à un fichier poussé d'autoriser à sa place l'exécution dans son dossier. */
-      repos: [
-        ...ctx.enfants('verifier_repo', 'verifier_id', r.id).map((vr) => ({
+      repos: (() => {
+        const locaux = ctx.enfants('verifier_repo', 'verifier_id', r.id).map((vr) => ({
           repo: ctx.repoRef(vr.repo_id),
           mode: vr.mode,
-        })).filter((vr) => vr.repo),
+        })).filter((vr) => vr.repo);
         /* CE QUE CE POSTE N'A PAS PU RATTACHER (dépôt inconnu ici) REPART TEL QUEL : sinon le
            premier poste qui ne suit pas tous les dépôts couverts amputerait la couverture pour
-           toute l'équipe — un périmètre amputé est plus dangereux qu'un périmètre absent. */
-        ...ctx.margeInconnue('verifier_repo', r.uid),
-      ],
+           toute l'équipe — un périmètre amputé est plus dangereux qu'un périmètre absent.
+           `locaux` en passager : la marge ne répète jamais un dépôt déjà résolu en ligne, seul
+           cas où le doublon casserait l'import sur la clé primaire (verifier_id, repo_id). */
+        return [...locaux, ...ctx.margeInconnue('verifier_repo', r.uid, locaux)];
+      })(),
     }),
     fromFile: (doc) => ({
       uid: doc.uid,
@@ -805,15 +808,16 @@ const REGISTRE = [
       defaults_json: r.defaults_json,
       created_at: r.created_at,
       updated_at: r.updated_at,
-      repos: [
-        ...ctx.enfants('agent_repo', 'agent_id', r.id).map((ar) => ({
+      repos: (() => {
+        const locaux = ctx.enfants('agent_repo', 'agent_id', r.id).map((ar) => ({
           repo: ctx.repoRef(ar.repo_id), branch: ar.branch || null, role: ar.role,
-        })).filter((ar) => ar.repo),
+        })).filter((ar) => ar.repo);
         /* CE QUE CE POSTE N'A PAS PU RATTACHER (dépôt inconnu ici) REPART TEL QUEL — un périmètre
            amputé au premier écrit d'un poste qui n'en suit qu'une partie serait plus dangereux
-           qu'absent : l'agent tournerait sur le reste en ayant l'air complet. */
-        ...ctx.margeInconnue('agent_repo', r.uid),
-      ],
+           qu'absent : l'agent tournerait sur le reste en ayant l'air complet. `locaux` en
+           passager : la marge ne répète jamais un dépôt déjà résolu en ligne. */
+        return [...locaux, ...ctx.margeInconnue('agent_repo', r.uid, locaux)];
+      })(),
     }),
     fromFile: (doc, ctx) => ({
       uid: doc.uid,

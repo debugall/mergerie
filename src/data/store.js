@@ -205,7 +205,7 @@ function contexte() {
         dépôt que CE poste ne suit pas : gardé tel quel sous le PARENT (`table` = la table fille —
         `mr_link`, `verifier_repo`, `agent_repo`), et repris ici à l'export pour ne pas le retirer
         du fichier au prochain écrit de ce poste. Voir `garderHorsPerimetre`, côté import. */
-    margeInconnue(table, refParent) {
+    margeInconnue(table, refParent, dejaEmis = []) {
       if (!refParent) return [];
       const brute = memoise(`mi:${table}:${refParent}`, () => {
         const r = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
@@ -214,15 +214,18 @@ function contexte() {
         try { const v = JSON.parse(r.value); return Array.isArray(v) ? v : []; } catch { return []; }
       });
       /* LA MARGE N'EST RAFRAÎCHIE QU'À LA PROCHAINE HYDRATATION DE CE FICHIER PRÉCIS — qui ne
-         rejoue pas sans nouveau commit. Entre-temps, ce poste peut avoir appris à résoudre un
-         dépôt qu'elle porte encore (l'avoir ajouté à ses dépôts suivis) : le laisser tel quel
-         doublerait l'entrée à l'export — une résolue en base, une reprise ici — et l'import d'un
-         collègue buterait sur la clé primaire (`verifier_id, repo_id`). On filtre donc ici,
-         plutôt qu'attendre le prochain passage de `remplace` : ce qui se résout déjà n'a plus sa
-         place dans la marge, et un dépôt cité deux fois dans la marge elle-même ne l'est plus. */
-      const vus = new Set();
+         rejoue pas sans nouveau commit. Entre CE poste et cette prochaine hydratation, il peut
+         apprendre à RÉSOUDRE un dépôt qu'il porte encore dans sa marge — l'avoir ajouté à ses
+         dépôts suivis — sans qu'aucune ligne fille n'existe pour autant : la résolution du dépôt
+         ne crée pas la ligne, seul `remplace` le fait, au prochain passage sur CE fichier.
+         Filtrer la marge sur la seule résolvabilité (`ctx.repoId`) retirait donc une entrée qui
+         n'était nulle part ailleurs — recréant l'amputation que la marge devait empêcher. Ce qui
+         compte est de ne jamais répéter un dépôt DÉJÀ ÉMIS par le parent (`dejaEmis`, les lignes
+         réellement résolues localement) : c'est LÀ que serait le doublon qui casse l'import sur
+         la clé primaire (`verifier_id, repo_id`) — pas dans la simple résolvabilité. */
+      const vus = new Set(dejaEmis.map((x) => x.repo));
       return brute.filter((x) => {
-        if (!x || !x.repo || this.repoId(x.repo) || vus.has(x.repo)) return false;
+        if (!x || !x.repo || vus.has(x.repo)) return false;
         vus.add(x.repo);
         return true;
       });
@@ -932,8 +935,13 @@ function depotDuFichier(e, nom, cache) {
   } else {
     const r = e.porteeRepo(doc);
     if (r && typeof r === 'object') {
-      const parentDoc = lireDoc(r.parent);
-      resultat = parentDoc ? depotDeLaSession(parentDoc) : null;
+      /* UN PARENT ABSENT N'EST PAS UN DÉPÔT INCONNU, C'EST UNE SESSION SUPPRIMÉE : rien à
+         protéger, le balayage doit juger comme avant. Le confondre avec un parent illisible
+         (fichier présent mais corrompu, où la prudence s'impose) laissait les passes et pièces
+         jointes d'une session supprimée dans le dépôt d'équipe pour toujours — orphelines et
+         signalées à chaque hydratation, alors que leur propriétaire les avait retirées. */
+      if (!existe(r.parent)) resultat = undefined;
+      else { const parentDoc = lireDoc(r.parent); resultat = parentDoc ? depotDeLaSession(parentDoc) : null; }
     } else {
       resultat = r || undefined;
     }
