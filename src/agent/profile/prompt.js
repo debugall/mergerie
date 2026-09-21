@@ -39,9 +39,10 @@ function optionsFor(task) {
   return {
     model: a.model,
     appendSystemPrompt: systemPromptFor(task, a),
-    // Vide = `acceptEdits` : `default` poserait une question à laquelle stdin, fermé, ne
-    // répond jamais — c'est pourquoi la sauvegarde le refuse.
-    permissionMode: a.permission_mode || 'acceptEdits',
+    /* Vide = `acceptEdits`, SEULEMENT POUR UN PROFIL DE CODAGE (plan_secure.md, lot A, S3) :
+       un profil d'EXPLORATION ne pose jamais de mode ici — la branche lecture de
+       `agentpolicy` s'applique toujours, quoi que porte ce champ. */
+    permissionMode: a.kind === 'code' ? (a.permission_mode || 'acceptEdits') : (a.permission_mode || undefined),
     allowedTools: allowed.length ? allowed : OUTILS_DEFAUT[a.kind] || OUTILS_DEFAUT.explore,
     disallowedTools: jsonOu(a.disallowed_tools_json, []),
     maxTurns: a.max_turns,

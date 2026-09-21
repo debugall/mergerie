@@ -67,6 +67,20 @@ describe('API de bout en bout', () => {
     assert.ok(Array.isArray(body.logs), 'les logs de progression sont renvoyés');
   });
 
+  test('POST /api/agent/sandbox-test refuse un appel réel sans backend claude, et note le résultat', async () => {
+    /* Le backend par défaut du harnais de test est « copilot » (COPILOT_BIN non posé) : le
+       banc d'essai du sandbox s'arrête donc avant tout appel réel — le chemin sûr à éprouver
+       ici, celui qui coûte de l'argent restant réservé à `test/manual/`. */
+    const { status, body } = await app.api('POST', '/api/agent/sandbox-test');
+    assert.equal(status, 200);
+    assert.equal(body.ok, false);
+    assert.match(body.detail, /claude/i);
+    const apres = app.db.prepare('SELECT agent_sandbox_verified AS v, agent_sandbox_tested_at AS t, agent_sandbox_detail AS d FROM local_config WHERE id = 1').get();
+    assert.equal(apres.v, 0);
+    assert.ok(apres.t, 'la date du test est notée');
+    assert.match(apres.d, /claude/i);
+  });
+
   test('Docker : les endpoints répondent proprement (démon dispo OU non — jamais un crash)', async () => {
     // Robuste que le démon soit joignable ou éteint : on vérifie la FORME, pas la présence
     // de containers. Le point de vigilance = un démon injoignable devient une erreur portée.

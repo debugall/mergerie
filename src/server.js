@@ -180,6 +180,14 @@ const server = app.listen(PORT, HOST, () => {
   if (HOST_EXPOSED) console.log(`  ⚠ exposé hors de localhost (HOST=${HOST}) — accès par jeton (MERGERIE_ACCESS_TOKEN), page /acces`);
   console.log(`  copilot : ${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`);
   console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
+  {
+    const LARGES_ENV = /--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--yolo|--allow-all-tools/;
+    if (LARGES_ENV.test(process.env.COPILOT_ARGS || '')) {
+      let mode = 'sandbox';
+      try { mode = getConfig().agent_write_mode || 'sandbox'; } catch { /* base pas encore prête : défaut prudent */ }
+      console.warn(`  ⚠ COPILOT_ARGS porte un mode large — ignoré sauf agent_write_mode=large (Réglages → Session IA) ; réglage actuel : ${mode}.`);
+    }
+  }
   restartAutoRefresh();
   restartJiraWatch();
   /* Les agents livrés, semés une fois. Jamais réécrits ensuite : le rôle a pu être affiné au

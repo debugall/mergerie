@@ -42,6 +42,7 @@ const ALLOWED = [
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
+  'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -161,6 +162,10 @@ function updateConfig(patch) {
     const b = parseFloat(String(patch.agent_daily_budget_usd).replace(',', '.'));
     next.agent_daily_budget_usd = Number.isFinite(b) && b >= 0 ? Math.min(100000, Math.round(b * 100) / 100) : 0;
   }
+  if (!['sandbox', 'allowlist', 'large'].includes(next.agent_write_mode)) next.agent_write_mode = 'sandbox';
+  next.agent_write_allow = String(next.agent_write_allow || '').trim();
+  next.agent_sandbox_network_domains = String(next.agent_sandbox_network_domains || '').trim();
+  next.agent_read_unrestricted = next.agent_read_unrestricted === '1' ? '1' : '0';
   /* ---------- Données partagées ----------
      L'URL est normalisée comme les autres (pas de slash final). La branche vide retombe sur
      `main` : une branche vide ferait échouer le premier `push` avec un message que personne ne
@@ -253,7 +258,11 @@ function updateConfig(patch) {
       task_default_notify_jira = @task_default_notify_jira,
       task_default_converge = @task_default_converge,
       agent_max_turns = @agent_max_turns,
-      agent_daily_budget_usd = @agent_daily_budget_usd
+      agent_daily_budget_usd = @agent_daily_budget_usd,
+      agent_write_mode = @agent_write_mode,
+      agent_write_allow = @agent_write_allow,
+      agent_sandbox_network_domains = @agent_sandbox_network_domains,
+      agent_read_unrestricted = @agent_read_unrestricted
     WHERE id = 1`).run(next);
   /* LES RÉGLAGES D'AUTOMATISME SUIVENT L'APPROBATION, SANS LA CONTOURNER. Ce que l'utilisateur
      règle ICI sur une base déjà approuvée est approuvé avec — il vient de le décider. Mais si
