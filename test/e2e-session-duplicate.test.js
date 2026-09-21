@@ -26,13 +26,24 @@ const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require(
 const { dispo } = navigateurDispo();
 
 describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let repo; let origine; let exploration; let horsDepot; let dossier;
+  let app; let navigateur; let page; let repo; let origine; let exploration; let horsDepot; let dossier; let sansVerif;
   const erreurs = [];
 
   before(async () => {
     app = await startApp();
     await app.configure();
     repo = (await app.api('POST', '/api/repos', { project: 'grp/app', url: 'https://gitlab.test/grp/app' })).body;
+    /* Un vérificateur qui couvre ce dépôt : seul, il se choisit tout seul à la création d'une
+       session neuve — mais une COPIE reprend le vérificateur de l'originale, y compris
+       « aucun » choisi exprès (§ voir le test plus bas). */
+    await app.api('POST', '/api/verifiers', {
+      name: 'tests-app', kind: 'commands', commands: ['/bin/true'], timeout_s: 60,
+      repos: [{ repo_id: repo.id, mode: 'worktree' }],
+    });
+    sansVerif = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Sans vérificateur', label: 'Solo', auto_push: 1,
+      targets: [{ repo_id: repo.id, branch: 'feature/solo' }],
+    })).body;
     origine = (await app.api('POST', '/api/tasks', {
       kind: 'code',
       prompt: 'Ajoute un timeout de 30 s sur les appels sortants',
@@ -166,6 +177,23 @@ describe('Dupliquer une session', { skip: dispo ? false : MSG_NAVIGATEUR }, () =
     const f = await lireForm();
     assert.equal(f.rows[0].branch, 'feature/timeout-3');
     assert.deepEqual(erreurs, []);
+  });
+
+  /* « AUCUN » VÉRIFICATEUR SE COPIE AUSSI. Le seul vérificateur qui couvre ce dépôt se choisit
+     tout seul à l'INITIALISATION d'une session neuve — mais ouvrir une copie EST une
+     initialisation du sélecteur, et l'originale n'en avait délibérément aucun : le reprendre
+     tout seul romprait la promesse de `dupliquerTask` (« la duplication reprend tout, y compris
+     le vérificateur »). */
+  test('« aucun » vérificateur choisi sur l’originale reste « aucun » dans la copie', async () => {
+    if (await page.locator('#taskModal:not([hidden])').count()) {
+      await page.locator('#taskCancel').click();
+      await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    }
+    await page.locator(`#taskList .card[data-task="${sansVerif.id}"] [data-tcopy]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelectorAll('#taskVerifier option').length > 1);
+    assert.equal(await page.locator('#taskVerifier').inputValue(), '',
+      'le seul vérificateur qui couvre ce dépôt ne doit pas s’imposer à une copie dont l’original n’en avait aucun');
   });
 
   /* LES AUTRES SAVEURS. Le formulaire est partagé, mais chacune a sa relecture — le hors dépôt
