@@ -411,6 +411,17 @@ describe('prompts et gabarits', () => {
     assert.equal(isDefault('prompt_review', 'Mon prompt à moi'), false);
     assert.deepEqual(promptsFor('kl', personnalise), {}, 'langue inconnue = aucun patch');
   });
+
+  /* fillTemplate (reviewer.js) ne remplace que /\{(\w+)\}/ : un défaut qui écrirait un
+     marqueur avec un espace ou de la ponctuation (« {branche source} ») partirait tel
+     quel dans le prompt envoyé à l'IA — qui le prendrait pour du contexte manquant. */
+  for (const lang of ['fr', 'en']) {
+    test(`(${lang}) le défaut de prompt_review pointe le diff et n'a que des variables réelles`, () => {
+      const p = PROMPTS[lang].prompt_review;
+      assert.match(p, /\{diff_file\}/, 'l’IA doit savoir où lire le diff');
+      assert.doesNotMatch(p, /\{[^}]*[^\w}][^}]*\}/, 'marqueur non substituable par fillTemplate');
+    });
+  }
 });
 
 describe('i18n : moteur de traduction partagé serveur / navigateur', () => {
