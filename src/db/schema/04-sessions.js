@@ -41,6 +41,24 @@ try { db.exec('ALTER TABLE task_target ADD COLUMN session_note TEXT'); } catch {
    jamais). Rempli par la passe de découverte qui interroge DÉJÀ ces merge requests une par
    une : le bouton « Mettre à jour avec … » ne coûte donc aucun appel d'API de plus. */
 try { db.exec('ALTER TABLE task_target ADD COLUMN mr_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* RATTRAPAGE D'UN LIEN PERDU AVANT CE CORRECTIF (voir discover.js, boucle des MR disparues).
+ * Une merge request mergée ailleurs qu'ici (GitLab, un merge en différé) sans que
+ * `task_target.mr_iid` ait jamais été posé perdait tout lien avec sa session dès que la
+ * découverte la marquait `closed_seen` : la carte ne savait plus qu'une MR avait existé, et
+ * « Créer la MR » réapparaissait sur une branche déjà mergée.
+ * La découverte, corrigée, ne laisse plus ce trou pour ce qui se merge À PARTIR DE MAINTENANT —
+ * mais ce qui l'a déjà creusé n'a plus d'occasion de se réparer tout seul : une MR mergée n'est
+ * plus jamais revue par `discover.js` une fois `closed_seen` posé. D'où ce repli, IDEMPOTENT
+ * (`mr_iid IS NULL` ne retrouve plus rien à corriger une fois fait) : relie chaque cible sans MR
+ * connue à la merge request déjà mergée qui existe sur son repo et sa branche. */
+db.exec(`UPDATE task_target SET mr_iid = (
+    SELECT iid FROM mr WHERE mr.repo_id = task_target.repo_id AND mr.source_branch = task_target.branch
+      AND mr.merged_at IS NOT NULL ORDER BY mr.id DESC LIMIT 1
+  ), mr_merged = 1, mr_conflicts = 0
+  WHERE mr_iid IS NULL AND branch IS NOT NULL AND branch <> '' AND EXISTS (
+    SELECT 1 FROM mr WHERE mr.repo_id = task_target.repo_id AND mr.source_branch = task_target.branch
+      AND mr.merged_at IS NOT NULL
+  )`);
 /* Ce projet a-t-il besoin d'un push FORCÉ ? Posé par le rattrapage de la branche de départ,
    qui réécrit l'historique : le push normal est alors refusé par la forge, à juste titre.
    Effacé dès qu'un push réussit — l'état est celui de la branche, pas une préférence. */
