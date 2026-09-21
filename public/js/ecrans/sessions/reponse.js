@@ -87,14 +87,17 @@ function targetLine(t, tg) {
      fichier faisait disparaître le bouton sur toute session reçue du dépôt d'équipe. */
   const showDiff = !!tg.has_diff && ['committed', 'pushed'].includes(tg.status);
   const showPush = tg.status === 'committed';
-  /* Le rattrapage ne s'offre QUE si la merge request est réellement en conflit — c'est la
-     forge qui le dit (`mr_conflicts`, relevé par la découverte sur l'appel qu'elle fait déjà).
-     Un bouton qui réécrit une branche n'a pas à être proposé en permanence : la plupart du
-     temps il n'y a rien à rattraper, et le proposer quand même invite à rebaser pour rien.
-     `null` = la forge n'a pas encore tranché (GitHub calcule `mergeable` en différé) : on
-     s'abstient plutôt que de deviner. */
-  const peutRattraper = tg.mr_conflicts === 1 && !!tg.branch
-    && ['committed', 'pushed', 'error'].includes(tg.status);
+  /* Le rattrapage s'offre dans deux cas — un bouton qui réécrit une branche n'a pas à être
+     proposé en permanence, donc ni l'un ni l'autre par défaut :
+     - la merge request est réellement en conflit, la forge le dit (`mr_conflicts`, relevé par
+       la découverte). `null` = la forge n'a pas encore tranché (GitHub calcule `mergeable` en
+       différé) : on s'abstient plutôt que de deviner.
+     - le dernier push a échoué en non-fast-forward (`pushDivergent`, transverse/erreurs.js) —
+       la branche distante a juste avancé, sans que la forge ait besoin de flaguer quoi que ce
+       soit sur la MR. Même remède (rejouer nos commits par-dessus), sinon le bouton « Rattraper
+       la base » de l'errbox promet un geste que cette carte ne propose pas encore. */
+  const peutRattraper = !!tg.branch && ['committed', 'pushed', 'error'].includes(tg.status)
+    && (tg.mr_conflicts === 1 || pushDivergent(tg.last_error));
   // une MR peut préexister sur la branche (session lancée depuis une MR) :
   // dans ce cas il ne faut pas proposer d'en créer une seconde.
   const mrIid = tg.mr_iid || tg.existing_mr_iid;

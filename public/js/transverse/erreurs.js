@@ -49,11 +49,18 @@ function errorHint(msg) {
  *
  * `null` = pas de remède connu : la boîte reste ce qu'elle était. On ne propose jamais un
  * geste « au cas où » sur une erreur qu'on n'a pas reconnue. */
+/* Même motif utilisé côté rendu de la carte (`reponse.js`, `peutRattraper`) pour décider si le
+   bouton « Mettre à jour avec {base} » s'affiche : un push rejeté non-fast-forward se rattrape
+   pareil, que la forge ait ou non déjà flagué la MR en conflit. Une seule définition évite que
+   le remède promette un geste que la carte ne propose pas encore (et inversement). */
+const RE_PUSH_DIVERGENT = /diverg|non-fast-forward|fetch first|rejected.*push/i;
+function pushDivergent(msg) { return RE_PUSH_DIVERGENT.test(String(msg || '')); }
+
 const REMEDES = [
-  { re: /diverg|non-fast-forward|fetch first|rejected.*push/i, cle: 'err.fix.diverged', act: 'rattraper' },
-  { re: /conflit|conflict/i, cle: 'err.fix.conflict', act: 'merge' },
-  { re: /session .*(introuvable|not found)|resume.*(failed|impossible)|No conversation found/i, cle: 'err.fix.session', act: 'neuve' },
-  { re: /clone (absent|introuvable)|not a git repository|\.git.*(absent|missing)/i, cle: 'err.fix.clone', act: 'recloner' },
+  { re: RE_PUSH_DIVERGENT, cle: 'err.fix.diverged', titre: 'err.fix.diverged-title', act: 'rattraper' },
+  { re: /conflit|conflict/i, cle: 'err.fix.conflict', titre: 'err.fix.conflict-title', act: 'merge' },
+  { re: /session .*(introuvable|not found)|resume.*(failed|impossible)|No conversation found/i, cle: 'err.fix.session', titre: 'err.fix.session-title', act: 'neuve' },
+  { re: /clone (absent|introuvable)|not a git repository|\.git.*(absent|missing)/i, cle: 'err.fix.clone', titre: 'err.fix.clone-title', act: 'recloner' },
 ];
 function remedeDe(texte) {
   return REMEDES.find((r) => r.re.test(String(texte || ''))) || null;
@@ -97,7 +104,7 @@ function errorBox(text, mrId, taskId, localId, askId) {
      est identifié (une session sur dépôt), pas sur une erreur de liste ou de découverte. */
   const rem = taskId ? remedeDe(text) : null;
   const remHtml = rem
-    ? `<div class="err-remede"><button class="btn btn-sm btn-primary" data-remede="${esc(rem.act)}" data-task="${taskId}">${svgIco('zap')}${esc(tr(rem.cle))}</button></div>`
+    ? `<div class="err-remede"><button class="btn btn-sm btn-primary" data-remede="${esc(rem.act)}" data-task="${taskId}" title="${esc(tr(rem.titre))}">${svgIco('zap')}${esc(tr(rem.cle))}</button></div>`
     : '';
   return `<div class="errbox" data-full="${esc(text)}"><div class="errhead"><span>${svgIco('alert')} ${tr('ui.error')}</span>`
     + `<span class="errbtns">${reessayer}<button class="btn btn-sm errcopy" title="${esc(tr('err.copy-title'))}">${tr('ui.copy')}</button>`
