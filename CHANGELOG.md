@@ -29,6 +29,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A full-screen view for a note page.** Notes → Pages: a button next to Rendered / Two
+  columns / Markdown drops the page list and expands the editor to fill the window — the three
+  view buttons stay available, so the display can still be switched while reading. Escape, or
+  the same button, exits back to the normal two-column layout.
 - **Schedule a session for a date and time.** The session modal — coding, exploration and
   off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create
   and schedule”; the session is created and waits, its card showing the date with a cross to cancel

@@ -61,6 +61,20 @@
    d'un élément flex, sans quoi un titre long élargirait la colonne au gré du contenu. */
 .notes-list-col { flex: 0 0 300px; width: 300px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .notes-editor-col { flex: 1; min-width: 0; }
+/* PLEIN ÉCRAN D'UNE PAGE : la colonne des pages n'aide pas à LIRE une page, seulement à en
+   choisir une, et le bouton pour l'ouvrir survit dans l'éditeur. `position: fixed` déborde
+   l'onglet, l'en-tête et le pied de page sans avoir à les cacher un par un ; le z-index passe
+   au-dessus de l'en-tête (10) et du pied de page (40), en restant sous une modale (110) ou la
+   vue plein écran des revues (100), qui peuvent toujours s'ouvrir par-dessus. */
+.notes-layout.note-fullscreen .notes-list-col { display: none; }
+.notes-layout.note-fullscreen .notes-editor-col {
+  position: fixed; inset: 0; z-index: 60; background: var(--bg);
+  padding: 16px 20px; overflow: auto; display: flex; flex-direction: column;
+}
+.notes-layout.note-fullscreen .notes-editor { flex: 1; min-height: 0; }
+.notes-layout.note-fullscreen .note-panes { flex: 1; min-height: 0; }
+.notes-layout.note-fullscreen .note-content,
+.notes-layout.note-fullscreen .note-preview { min-height: 0; }
 .toolbar-tight { margin: 0; }
 .notes-list { display: flex; flex-direction: column; gap: 4px; max-height: 72vh; overflow: auto; }
 /* L'arbre d'un seul étage : la sous-page est décalée et porte un filet, pour qu'on voie d'un
@@ -145,8 +159,10 @@
 /* L'indicateur d'enregistrement est DISCRET par construction : il rassure quand on le
    cherche, il ne réclame pas l'attention à chaque frappe. */
 .note-saved { font-size: 12px; color: var(--muted); min-width: 90px; }
-/* Le choix des colonnes, au-dessus d'elles : un segment de trois positions. */
-.note-panes-pick { margin: 0 0 8px; }
+/* Le choix des colonnes, au-dessus d'elles : un segment de trois positions, avec le bouton
+   plein écran à côté — pas dedans, il n'est pas une position au même titre que les trois. */
+.note-panes-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+.note-panes-pick { margin: 0; }
 .note-panes { display: flex; gap: 12px; align-items: stretch; }
 /* Ce qui reste prend toute la largeur : `flex: 1 1 50%` sur un seul enfant remplit la ligne. */
 .note-panes.panes-preview > .note-content { display: none; }
