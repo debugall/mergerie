@@ -23,15 +23,19 @@ const fs = require('fs');
 const { gardeConfigAgent, parseConvergeOpts, readFileSafe, wrap } = require('../http');
 const { basculerPartage, exigerProprietaire, passesPayload } = require('../lib/partage');
 const { savePiecesEtImages } = require('../lib/pieces');
-const { applySessionId, demoMrDe, insertTargets, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, reposPourScan, targetById, taskById, taskTargets } = require('../lib/sessions');
+const { applySessionId, demoMrDe, insertTargets, insertContextRepos, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, normalizeContextRepos, reposPourScan, targetById, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 const { targetCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
   const list = normalizeTargets(targets, k);
+  /* Projets liés en lecture seule : seule la session de CODAGE en a l'usage — l'IA modifie
+     un projet et peut avoir besoin d'en LIRE un autre pour respecter son API. Une exploration
+     lit déjà tous ses dépôts côte à côte (§ runExploration), et n'a rien à distinguer. */
+  const contextRepos = k === 'code' ? normalizeContextRepos(context_repos, list.map((x) => x.repo_id)) : [];
   const now = new Date().toISOString();
   /* « L'IA peut poser des questions » : opt-in, en codage COMME en exploration. Une exploration
      hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
@@ -73,6 +77,7 @@ app.post('/api/tasks', wrap((req, res) => {
     // B9 : idem — une review coûte un appel IA, elle se demande.
     reviewAfter: req.body && req.body.review_after ? 1 : 0,
     targets: list,
+    contextRepos,
     sessionId,
     agentId: profil ? profil.id : null,
     agentName: profil ? profil.name : (brouillon ? brouillon.name : null),
@@ -83,12 +88,12 @@ app.post('/api/tasks', wrap((req, res) => {
     shared: req.body && req.body.shared ? 1 : 0,
   });
   savePiecesEtImages('task', taskId, req.body || {});
-  res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
+  res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
 }));
 app.put('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
+  const { prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
   if (Array.isArray(targets) && targets.length) {
     const list = normalizeTargets(targets, tache.kind);
@@ -108,6 +113,14 @@ app.put('/api/tasks/:id', wrap((req, res) => {
       db.prepare('DELETE FROM task_target WHERE task_id = ?').run(tache.id);
       insertTargets(tache.id, list);
     }
+  }
+  /* Contrairement aux cibles, les projets liés n'ont pas d'état d'exécution : on remplace
+     l'ensemble à chaque enregistrement qui en envoie un, sans comparaison préalable. Absent du
+     corps, on ne touche à rien — un appelant qui ignore ce champ ne doit pas l'effacer. */
+  if (Array.isArray(context_repos)) {
+    const list2 = normalizeContextRepos(context_repos, taskTargets(tache.id).map((x) => x.repo_id));
+    db.prepare('DELETE FROM task_context_repo WHERE task_id = ?').run(tache.id);
+    insertContextRepos(tache.id, list2);
   }
   db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, review_after = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
@@ -129,7 +142,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
   savePiecesEtImages('task', tache.id, req.body || {});
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
   applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
-  res.json({ ...taskById(tache.id), targets: taskTargets(tache.id) });
+  res.json({ ...taskById(tache.id), targets: taskTargets(tache.id), context_repos: taskContextRepos(tache.id) });
 }));
 app.delete('/api/tasks/:id', wrap((req, res) => {
   /* LA SESSION D'UN COLLÈGUE NE SE SUPPRIME PAS : la supprimer ici retirerait son fichier du

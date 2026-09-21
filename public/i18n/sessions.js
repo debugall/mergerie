@@ -408,6 +408,13 @@
       "task.cost.sec": "{n} s",
       "task.cost.min": "{n} min",
       "task.cost.hour": "{n} h",
+      "task.ctx.title": "Projets liés en lecture seule (optionnel)",
+      "task.ctx.tip": "L'IA peut consulter ces projets — leur API, leur schéma, leurs contrats — sans jamais les modifier. Utile quand la tâche de codage dépend du contexte d'un autre projet.",
+      "task.ctx.add": "Ajouter un projet",
+      "task.ctx.add-title": "Ajouter un projet en lecture seule",
+      "task.ctx.branch-ph": "branche (optionnel, défaut : branche par défaut)",
+      "task.ctx.remove": "Retirer ce projet lié",
+      "task.ctx.hint": "L'IA peut lire ces projets mais ne peut modifier aucun de leurs fichiers.",
     },
     en: {
       "session.share": "Share with the team",
@@ -808,6 +815,13 @@
       "task.cost.sec": "{n}s",
       "task.cost.min": "{n} min",
       "task.cost.hour": "{n}h",
+      "task.ctx.title": "Read-only linked projects (optional)",
+      "task.ctx.tip": "The AI can consult these projects — their API, their schema, their contracts — but can never modify them. Useful when the coding task depends on the context of another project.",
+      "task.ctx.add": "Add a project",
+      "task.ctx.add-title": "Add a read-only project",
+      "task.ctx.branch-ph": "branch (optional, default: default branch)",
+      "task.ctx.remove": "Remove this linked project",
+      "task.ctx.hint": "The AI can read these projects but cannot modify any of their files.",
     },
   };
 }));
