@@ -36,6 +36,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   instead of one combined field — each opens its own native picker (a calendar, a clock), and
   both stay just as typeable by hand. Filling only one of the two is signalled under the field
   that's missing, the same way a passed date already was.
+- **The default review prompt (Settings → Review, when the field is left empty) now asks for a
+  structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score
+  calibrated on named anchors (a score ≥ 7 excludes any remaining blocker), a “what's good”
+  section and a merge checklist — instead of one free-form paragraph. A review prompt already
+  customized in Settings is untouched; installations still on the previous default pick up the
+  new one automatically, in their configured language.
 
 ### Added
 
