@@ -207,11 +207,24 @@ function contexte() {
         du fichier au prochain écrit de ce poste. Voir `garderHorsPerimetre`, côté import. */
     margeInconnue(table, refParent) {
       if (!refParent) return [];
-      return memoise(`mi:${table}:${refParent}`, () => {
+      const brute = memoise(`mi:${table}:${refParent}`, () => {
         const r = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
           .get(String(refParent), table);
         if (!r) return [];
         try { const v = JSON.parse(r.value); return Array.isArray(v) ? v : []; } catch { return []; }
+      });
+      /* LA MARGE N'EST RAFRAÎCHIE QU'À LA PROCHAINE HYDRATATION DE CE FICHIER PRÉCIS — qui ne
+         rejoue pas sans nouveau commit. Entre-temps, ce poste peut avoir appris à résoudre un
+         dépôt qu'elle porte encore (l'avoir ajouté à ses dépôts suivis) : le laisser tel quel
+         doublerait l'entrée à l'export — une résolue en base, une reprise ici — et l'import d'un
+         collègue buterait sur la clé primaire (`verifier_id, repo_id`). On filtre donc ici,
+         plutôt qu'attendre le prochain passage de `remplace` : ce qui se résout déjà n'a plus sa
+         place dans la marge, et un dépôt cité deux fois dans la marge elle-même ne l'est plus. */
+      const vus = new Set();
+      return brute.filter((x) => {
+        if (!x || !x.repo || this.repoId(x.repo) || vus.has(x.repo)) return false;
+        vus.add(x.repo);
+        return true;
       });
     },
     /** Le slug d'un agent ou d'une page — ce qui nomme son fichier. */
@@ -637,18 +650,27 @@ function balayer(table, ctx = contexte()) {
   if (racine.includes('{')) return 0;
   const motif = motifDe(e);
   const aRetirer = [];
+  /* UN CACHE PAR PASSAGE, PAS PLUS : `depotDuFichier` lit et parse un fichier candidat pour les
+     tables scopées par CONTENU (`rules/`, `sessions/`) — et depuis que ce poste n'hydrate plus
+     les dépôts qu'il ne suit pas, ce sont justement ceux-là qui restent candidats à CHAQUE
+     balayage, sans jamais être retirés. Sur un dépôt d'équipe de plusieurs milliers de sessions,
+     relire chaque passe ET sa session parente à chaque suppression aurait fait des milliers de
+     lectures disque synchrones dans le chemin d'une requête. Le cache vit le temps d'un seul
+     `balayer()` — plusieurs passes d'une même session partagent une seule lecture du parent. */
+  const cachePortee = new Map();
   for (const relatif of listerFichiers(racine)) {
     if (attendus.has(relatif)) continue;
     const nom = canonique(e, relatif);
     if (!motif.test(nom)) continue;          // un fichier d'une autre table : ce n'est pas le nôtre
     if (attendus.has(nom)) continue;
     /* UN FICHIER QUI DÉSIGNE UN DÉPÔT QUE CE POSTE NE SUIT PAS N'EST PAS À LUI DE LE JUGER.
-       `repo` est locale depuis peu : ce poste n'hydrate plus les MR, reviews et sessions des
-       dépôts qu'il ne suit pas — leur absence d'ici ne veut donc plus dire « supprimées », mais
-       « jamais connues ». Sans ce garde, la suppression d'UNE de ses propres lignes (ou la
-       cascade d'un dépôt qu'il retire) balayait tout le reste de la racine — les MR et les
-       reviews de dépôts qu'il n'a jamais suivis — et poussait leur disparition à toute l'équipe. */
-    const depot = depotDuFichier(e, nom);
+       `repo` est locale depuis peu : ce poste n'hydrate plus les MR, reviews, convergences,
+       sessions et pièces jointes des dépôts qu'il ne suit pas — leur absence d'ici ne veut donc
+       plus dire « supprimées », mais « jamais connues ». Sans ce garde, la suppression d'UNE de
+       ses propres lignes (ou la cascade d'un dépôt qu'il retire) balayait tout le reste de la
+       racine — le travail de dépôts qu'il n'a jamais suivis — et poussait sa disparition à toute
+       l'équipe. */
+    const depot = depotDuFichier(e, nom, cachePortee);
     if (depot !== undefined && !ctx.repoId(depot)) continue;
     aRetirer.push(relatif);
   }
@@ -862,20 +884,29 @@ function motifDe(e) {
   return new RegExp(`^${source}$`);
 }
 
+/** Le dépôt d'une session, par sa première cible — la même règle que `task.porteeRepo`,
+    appliquée ici au fichier de session lui-même plutôt qu'à un document qui le désigne. */
+const depotDeLaSession = (doc) => ((doc.targets || [])[0] && doc.targets[0].repo) || undefined;
+
 /**
  * LE DÉPÔT QUE CE FICHIER DÉSIGNE, pour que `balayer()` sache s'il a voix au chapitre.
  * `undefined` : la table n'est pas scopée par dépôt (ou ce document-ci ne l'est pas — une règle
- *   de review sans dépôt limité, par exemple) — le balayage juge comme avant, sur les lignes
- *   restantes.
+ *   de review sans dépôt limité, une passe hors dépôt ou de question libre, par exemple) — le
+ *   balayage juge comme avant, sur les lignes restantes.
  * Une chaîne, ou `null` : la table EST scopée par dépôt. `null` — gabarit qui ne matche pas,
  * fichier illisible — se traite comme un dépôt inconnu : PAR PRUDENCE, on ne balaie pas ce qu'on
  * ne sait pas juger.
  * `e.porteeRepo === 'chemin'` : le gabarit porte `{forge}` et `{project}`, on les relit du nom de
- * fichier (`mr`, `review`, `review_version`). Une fonction : on relit le CONTENU du fichier — le
- * dépôt n'est pas dans le chemin (`review_rule` limitée par son champ `repo`, `task` par la
- * première cible de `targets`).
+ * fichier (`mr`, `review`, `review_version`). Une fonction qui rend une CHAÎNE : on relit le
+ * CONTENU du fichier — le dépôt n'est pas dans le chemin (`review_rule` par son champ `repo`,
+ * `task` par la première cible de `targets`, `convergence_run` par le dépôt de sa référence de
+ * MR). Une fonction qui rend `{ parent }` : le dépôt n'est même pas dans CE fichier, mais dans
+ * celui de son PARENT (`agent_pass`, `piece_jointe` — une passe ou une pièce jointe d'une session
+ * de codage suit le dépôt de cette session).
+ * `cache`, PARTAGÉ PAR TOUT UN `balayer()` : plusieurs passes d'une même session ne relisent le
+ * fichier de leur parent qu'une fois.
  */
-function depotDuFichier(e, nom) {
+function depotDuFichier(e, nom, cache) {
   if (!e.porteeRepo) return undefined;
   if (e.porteeRepo === 'chemin') {
     const champs = (e.chemin.match(/\{(\w+)\}/g) || []).map((x) => x.slice(1, -1));
@@ -884,9 +915,31 @@ function depotDuFichier(e, nom) {
     const valeurs = Object.fromEntries(champs.map((c, i) => [c, m[i + 1]]));
     return (valeurs.forge && valeurs.project) ? `${valeurs.forge}/${valeurs.project}` : null;
   }
-  let doc;
-  try { doc = JSON.parse(lireFichier(nom)); } catch { return null; }
-  return e.porteeRepo(doc) || undefined;
+  if (cache && cache.has(nom)) return cache.get(nom);
+  const lireDoc = (chemin) => {
+    if (cache && cache.has(`doc:${chemin}`)) return cache.get(`doc:${chemin}`);
+    let doc = null;
+    try { doc = JSON.parse(lireFichier(chemin)); } catch { /* illisible : `doc` reste `null` */ }
+    if (cache) cache.set(`doc:${chemin}`, doc);
+    return doc;
+  };
+  /* `nom` DÉSIGNE LE CORPS (`.md`) pour une table à document Markdown (`agent_pass`) : ses
+     métadonnées — dont `session` — vivent dans le `.json` jumeau, jamais dans le texte lui-même. */
+  const doc = lireDoc(e.corps ? jumeau(nom) : nom);
+  let resultat;
+  if (!doc) {
+    resultat = null;
+  } else {
+    const r = e.porteeRepo(doc);
+    if (r && typeof r === 'object') {
+      const parentDoc = lireDoc(r.parent);
+      resultat = parentDoc ? depotDeLaSession(parentDoc) : null;
+    } else {
+      resultat = r || undefined;
+    }
+  }
+  if (cache) cache.set(nom, resultat);
+  return resultat;
 }
 
 /** À quelle table appartient ce fichier ? `null` s'il n'est à personne (le marqueur, un binaire). */

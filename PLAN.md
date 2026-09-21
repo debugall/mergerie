@@ -414,18 +414,26 @@ contredit quand elle ment :
   garde ; il faut révoquer. La barrière vaut donc largement sa gêne.
 
 **`repo` étant locale, une table P peut désormais porter une ligne dont le POSTE ne connaît pas le
-dépôt** (une MR, une review, une session, une règle ou un périmètre limités à un dépôt qu'il ne
-suit pas) — ce n'était jamais arrivé tant que `repo` voyageait partout. Deux garde-fous en tiennent
-compte, dans `store-registry.js` et `store.js` :
-- **`porteeRepo`** (sur `mr`, `review`, `review_version`, `review_rule`, `task`) dit à
-  `depotDuFichier` comment lire le dépôt d'UN FICHIER candidat au balayage : `'chemin'` s'il est
-  dans le gabarit (`{forge}/{project}`), une fonction `(doc) => ref` sinon (le contenu du fichier —
-  `doc.repo`, ou la première cible de `task`). `balayer()` ne retire un fichier de ce genre que si
-  `ctx.repoId(ref)` résout : un dépôt hors de portée d'ici (jamais suivi, ou qu'on vient de
-  retirer) n'est pas à CE poste de juger, et son fichier reste — y compris celui qu'on vient
-  soi-même de retirer, dont l'historique d'équipe survit tant qu'un autre poste le suit encore.
-  Sans ce garde, la moindre suppression déclenchant un balayage de `mr` balayait TOUTE la racine
-  `mrs/` aux dépôts que ce poste ne suit pas, et poussait leur disparition à toute l'équipe.
+dépôt** (une MR, une review, une session, une passe, une pièce jointe, une convergence, une règle
+ou un périmètre limités à un dépôt qu'il ne suit pas) — ce n'était jamais arrivé tant que `repo`
+voyageait partout. Deux garde-fous en tiennent compte, dans `store-registry.js` et `store.js` :
+- **`porteeRepo`** (sur `mr`, `review`, `review_version`, `review_rule`, `task`, `convergence_run`,
+  `agent_pass`, `piece_jointe`) dit à `depotDuFichier` comment lire le dépôt d'UN FICHIER candidat
+  au balayage : `'chemin'` s'il est dans le gabarit (`{forge}/{project}`) ; une fonction
+  `(doc) => ref` s'il est dans le CONTENU du fichier (`review_rule.repo`, la première cible de
+  `task`, le dépôt tiré de la référence de MR pour `convergence_run` — tout ce qui précède le `!`
+  dans `gitlab/eq/api!12`) ; une fonction `(doc) => { parent }` quand le dépôt n'est même pas dans
+  CE fichier mais dans celui de son PARENT — une passe ou une pièce jointe de codage (`agent_pass`,
+  `piece_jointe`) suit le dépôt de SA SESSION, dont `depotDuFichier` relit alors le fichier et
+  applique la règle de `task`. Une table à corps Markdown (`agent_pass`) lit son `.json` jumeau,
+  jamais le texte de la passe. `balayer()` ne retire un fichier de ce genre que si `ctx.repoId(ref)`
+  résout : un dépôt hors de portée d'ici (jamais suivi, ou qu'on vient de retirer) n'est pas à CE
+  poste de juger, et son fichier reste — y compris celui qu'on vient soi-même de retirer, dont
+  l'historique d'équipe survit tant qu'un autre poste le suit encore. Sans ce garde, la moindre
+  suppression déclenchant un balayage de l'une de ces tables balayait TOUTE sa racine aux dépôts
+  que ce poste ne suit pas, et poussait leur disparition à toute l'équipe. Un cache par nom de
+  fichier, vidé à chaque `balayer()`, évite de relire et reparser le même fichier de session pour
+  chacune de ses passes.
 - **`garderHorsPerimetre` / `ctx.margeInconnue`** (sur les listes filles `mr_link`, `verifier_repo`,
   `agent_repo`) gardent, dans `local_state` (`kind = 'store_hors_perimetre'`, `ref` = l'uid du
   parent, `key` = la table fille), les membres qu'un `remplace` n'a pas su rattacher — un dépôt lié,
@@ -433,6 +441,11 @@ compte, dans `store-registry.js` et `store.js` :
   depuis un poste qui n'en suit qu'une partie AMPUTAIT la liste pour toute l'équipe : un périmètre
   amputé est plus dangereux qu'absent, l'agent ou le vérificateur tournerait sur le reste en ayant
   l'air complet. Le `toFile` du parent les reprend TELS QUELS à côté de ce qu'il résout localement.
+  `margeInconnue` filtre à la lecture ce que ce poste a entre-temps appris à résoudre (un dépôt
+  ajouté depuis) et déduplique par dépôt : la marge n'est réécrite qu'à la prochaine hydratation de
+  CE fichier précis, qui ne rejoue pas sans nouveau commit — sans ce filtre, un dépôt résolu ET
+  encore présent dans la marge partirait deux fois, et l'import buterait sur la clé primaire
+  (`verifier_id, repo_id`) chez tout le monde.
 
 ### Les réglages coupés en deux (`local_config`)
 

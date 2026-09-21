@@ -501,6 +501,9 @@ const REGISTRE = [
   {
     table: 'convergence_run', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'convergences/{uid}.json',
     fusion: 'last-writer',
+    /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT — mais sa référence de MR le porte :
+       `gitlab/eq/api!12`, dont tout ce qui précède le `!` est la clé naturelle du dépôt. */
+    porteeRepo: (doc) => (doc.mr ? String(doc.mr).split('!')[0] : undefined),
     commitMessage: (r, ctx) => `convergence ${ctx ? ctx.mrRef(r.mr_id) || '' : ''} ${r.status}`.replace(/\s+/g, ' ').trim(),
     toFile: (r, ctx) => ({
       uid: r.uid,
@@ -1159,6 +1162,10 @@ const REGISTRE = [
        laisser le coût de chaque passe voyager, c'était donner par session ce que la case refuse
        de donner par jour. */
     fusion: 'append-only', locales: ['output_path', 'diff_path', 'n', 'cost_usd'],
+    /* LE DÉPÔT N'EST MÊME PAS DANS CE FICHIER : une passe de codage suit le dépôt de SA session
+       (`sessions/{session}/session.json`), relu par `depotDuFichier` via `{ parent }`. Une passe
+       hors dépôt, de question libre ou de review n'a rien à juger ici : `undefined`, comme avant. */
+    porteeRepo: (doc) => (doc.scope === 'task' && doc.session ? { parent: `sessions/${doc.session}/session.json` } : undefined),
     /* UNE PASSE SUIT SA SESSION. Elle n'a pas de case à elle : publier le retour de l'agent sans
        la demande qui l'a produit n'aurait pas de sens, et une session « à moitié » partagée non
        plus. Les passes de review, elles, appartiennent à la merge request — produit d'équipe. */
@@ -1240,6 +1247,8 @@ const REGISTRE = [
     /* Comme les passes : la capture suit sa session. Une image collée montre volontiers autre
        chose que ce qu'on croit — un autre onglet, une fenêtre voisine. */
     partageable: (r, ctx) => ctx.sessionPartagee(r.scope, r.owner_id),
+    /* COMME `agent_pass` : le dépôt est celui de la session, pas celui de la pièce jointe. */
+    porteeRepo: (doc) => (doc.scope === 'task' && doc.session ? { parent: `sessions/${doc.session}/session.json` } : undefined),
     fichiers: ['sessions/{session}/attachments/{uid}.{ext}'],
     note: 'la capture ou le document joint à une demande : le binaire part tel quel, jamais en base64',
     commitMessage: (r) => `attachment ${String(r.name || '').slice(0, 40)}`,

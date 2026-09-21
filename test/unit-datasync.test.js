@@ -946,22 +946,93 @@ describe('datasync — deux postes, un dépôt de données', () => {
       await datasync.tour();
     }`);
 
-    // K ne suit que eq/app, reçoit le vérificateur (couverture amputée à l'hydratation, dépôt
-    // eq/api inconnu ici), puis modifie ses commandes et repousse le fichier.
-    dans(posteK, `async ({ db, datasync, config }) => {
-      config.updateConfig({ data_repo_url: ${JSON.stringify(nuJ)}, data_repo_branch: 'main', data_sync_seconds: '10' });
-      await datasync.rattacher({});
+    // K ne suit que eq/app — ajouté AVANT de rejoindre, pour que la couverture sur eq/app se
+    // résolve VRAIMENT en une ligne locale, et seule celle sur eq/api parte dans la marge.
+    // K modifie ensuite ses commandes et repousse le fichier.
+    const chezK = dans(posteK, `async ({ db, datasync, config }) => {
       const now = new Date().toISOString();
       db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now);
-      await datasync.tour();
-      db.prepare("UPDATE verifier_command SET command = 'npm ci && npm test' WHERE position = 0");
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuJ)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      db.prepare("UPDATE verifier_command SET command = 'npm ci && npm test' WHERE position = 0").run();
       await datasync.commiter('modifie la commande');
       await datasync.tour();
+      return db.prepare('SELECT COUNT(*) n FROM verifier_repo').get().n;
     }`);
+    assert.equal(chezK, 1, 'seule la couverture d’eq/app doit exister en ligne chez K — eq/api reste dans la marge');
 
     const uid = dans(posteJ, `async ({ db }) => db.prepare("SELECT uid FROM verifier WHERE name = 'Tests'").get().uid`);
     const doc = JSON.parse(execFileSync('git', ['-C', nuJ, 'show', `main:verifiers/${uid}.json`], { encoding: 'utf8' }));
     assert.deepEqual(doc.repos.map((r) => r.repo).sort(), ['gitlab/eq/api', 'gitlab/eq/app'],
       'la couverture doit rester entière — K n’a pas de quoi juger eq/api, il ne doit pas la retirer');
+    assert.equal(doc.commands[0], 'npm ci && npm test',
+      'et le fichier doit bien porter l’écriture de K, pas être resté celui de J');
+  });
+
+  /* LE PENDANT POUR `agent_pass` : UNE PASSE DE CODAGE SUR UN DÉPÔT NON SUIVI SURVIT À UN
+   * BALAYAGE DÉCLENCHÉ AILLEURS. Le dépôt n'est même pas dans le fichier de la passe — il est
+   * dans celui de sa SESSION, relu via `porteeRepo: { parent }`. */
+  test('un poste qui ne suit qu’un des deux dépôts ne balaie pas les passes de codage de l’autre', () => {
+    const posteL = path.join(racine, 'L');
+    const posteM = path.join(racine, 'M');
+    fs.mkdirSync(posteL); fs.mkdirSync(posteM);
+    const nuL = path.join(racine, 'equipe-l.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuL], { stdio: 'ignore' });
+
+    // L suit deux dépôts, lance une session de codage partagée sur chacun, avec une passe.
+    dans(posteL, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuL)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      const creerSession = (repoId, iid) => {
+        const t = db.prepare(\`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, created_at, updated_at)
+          VALUES (?, 'code', 'Prompt', 'feat/x', 'pushed', 1, ?, ?)\`).run(repoId, now, now).lastInsertRowid;
+        const tg = db.prepare(\`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
+          VALUES (?, ?, 'feat/x', 'pushed', ?)\`).run(t, repoId, now).lastInsertRowid;
+        const f = require('node:path').join(process.env.MERGERIE_DATA_DIR, \`passe-\${iid}.md\`);
+        require('node:fs').writeFileSync(f, 'réponse de l’IA');
+        db.prepare(\`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+          VALUES ('task', ?, ?, 1, 'run', 'fais-le', ?, ?)\`).run(t, tg, f, now);
+      };
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      creerSession(app, 'app');
+      creerSession(api, 'api');
+      await datasync.commiter('deux sessions');
+      await datasync.tour();
+    }`);
+
+    // M ne suit que eq/app, ajouté AVANT de rejoindre : la session sur eq/api (et sa passe) ne
+    // s'hydratent pas chez lui, faute de dépôt connu. M lance ensuite SA PROPRE session sur
+    // eq/app, avec sa propre passe, pour avoir de quoi supprimer et déclencher un balayage.
+    const chezM = dans(posteM, `async ({ db, datasync, config }) => {
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuL)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+
+      const t = db.prepare(\`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, created_at, updated_at)
+        VALUES (?, 'code', 'Prompt de M', 'feat/y', 'pushed', 1, ?, ?)\`).run(app, now, now).lastInsertRowid;
+      const tg = db.prepare(\`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
+        VALUES (?, ?, 'feat/y', 'pushed', ?)\`).run(t, app, now).lastInsertRowid;
+      const f = require('node:path').join(process.env.MERGERIE_DATA_DIR, 'passe-m.md');
+      require('node:fs').writeFileSync(f, 'réponse à M');
+      db.prepare(\`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+        VALUES ('task', ?, ?, 1, 'run', 'fais-le', ?, ?)\`).run(t, tg, f, now);
+      await datasync.commiter('ma propre session');
+      await datasync.tour();
+
+      // M supprime SA propre passe : ceci déclenche un balayage de \`agent_pass\`.
+      db.prepare('DELETE FROM agent_pass WHERE task_id = ?').run(t);
+      await datasync.commiter('retire ma passe');
+      await datasync.tour();
+      return db.prepare('SELECT COUNT(*) n FROM agent_pass').get().n;
+    }`);
+    assert.equal(chezM, 1, 'seule la passe du dépôt suivi doit exister chez M — pas celle d’eq/api, ni celle qu’il vient de retirer');
+
+    const restant = execFileSync('git', ['-C', nuL, 'ls-tree', '-r', '--name-only', 'main'], { encoding: 'utf8' });
+    const passes = (restant.match(/pass-[^/]+\.md/g) || []).length;
+    assert.equal(passes, 2,
+      'la passe d’eq/api (jamais suivi par M) et celle d’eq/app (encore suivie) doivent survivre ; seule celle que M a supprimée doit sortir');
   });
 });
