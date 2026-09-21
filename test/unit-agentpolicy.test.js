@@ -210,15 +210,15 @@ describe('agentpolicy : copilot', () => {
   });
 
   test('écriture, sans --deny-tool connu : aucune restriction possible — et on le dit', () => {
-    const r = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--yolo'], kind: 'code' });
-    assert.deepEqual(r.extra, ['--yolo']);
+    const r = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--verbose'], kind: 'code' });
+    assert.deepEqual(r.extra, ['--verbose']);
     assert.equal(r.note, 'copilot-ecriture-non-restreinte');
   });
 
   test('écriture, avec --deny-tool connu : git push/curl/wget retirés', () => {
     const avecDenyTool = fauxAide('copilot', '--deny-tool <t>\n--allow-tool <t>');
-    const r = pol.argvPermissions({ backend: 'copilot', bin: avecDenyTool, extra: ['--yolo'], kind: 'code' });
-    assert.deepEqual(r.extra, ['--yolo']);
+    const r = pol.argvPermissions({ backend: 'copilot', bin: avecDenyTool, extra: ['--verbose'], kind: 'code' });
+    assert.deepEqual(r.extra, ['--verbose']);
     assert.ok(r.args.includes('shell(git push*)'), r.args.join(' '));
   });
 
@@ -226,8 +226,8 @@ describe('agentpolicy : copilot', () => {
     assert.throws(() => pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: [], kind: 'review' }),
       /COPILOT_UNRESTRICTED|restrein/i);
     updateConfig({ agent_read_unrestricted: '1' });
-    const r = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--yolo'], kind: 'review' });
-    assert.deepEqual(r.extra, ['--yolo']);
+    const r = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--verbose'], kind: 'review' });
+    assert.deepEqual(r.extra, ['--verbose']);
     assert.equal(r.note, 'copilot-lecture-non-restreinte');
   });
 
@@ -236,6 +236,17 @@ describe('agentpolicy : copilot', () => {
     const r = pol.argvPermissions({ backend: 'copilot', bin: avecDenyTool, extra: [], kind: 'review' });
     assert.deepEqual(r.args, ['--deny-tool', 'write', '--deny-tool', 'shell(*)']);
     assert.equal(r.note, null);
+  });
+
+  /* plan_secure.md, lot A, S4 : `--allow-all-tools` est l'équivalent Copilot du mode large —
+     `LARGES` le connaît nommément. COPILOT_ARGS ne doit pas pouvoir le rouvrir alors que
+     policy.js le ferme partout ailleurs. */
+  test('--allow-all-tools dans COPILOT_ARGS est retiré, en lecture comme en écriture', () => {
+    const ecriture = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--allow-all-tools'], kind: 'code' });
+    assert.deepEqual(ecriture.extra, []);
+    updateConfig({ agent_read_unrestricted: '1' });
+    const lecture = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--allow-all-tools'], kind: 'review' });
+    assert.deepEqual(lecture.extra, []);
   });
 });
 

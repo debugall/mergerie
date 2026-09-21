@@ -108,9 +108,11 @@ you with the tab closed.
 - 🇫🇷 **Version française :** **[README.fr.md](./README.fr.md)**.
 - 📜 **[Changelog](./CHANGELOG.md)** — what changed, release by release.
 - 🔒 **[Security](./SECURITY.md)** — trust model and how to report a vulnerability. In short: localhost by
-  default and a token when exposed; code that arrives through the shared repository waits for your
-  approval on this machine; reviews and explorations run the agent read-only, with a filtered environment
-  and the forge token out of the clone.
+  default, a token when exposed, and a second local-only token closing the API to any process on the
+  machine that isn't your browser; code that arrives through the shared repository waits for your approval
+  on this machine; reviews and explorations run the agent read-only, coding runs it under a CLI sandbox
+  verified by a real test call (or a command allowlist, never a broad mode), with a filtered environment,
+  the forge token out of the clone, and every agent output block tied to the nonce of its own run.
 - 🤝 **[Contributing](./CONTRIBUTING.md)** — how to report a bug or an idea, how to run it in dev, and why
   **pull requests are not accepted**: Mergerie is written by one maintainer, who stays its only rights holder.
 - 🦊 **Development happens on [GitLab](https://gitlab.com/amady/mergerie)** — merge requests are opened there

@@ -11,6 +11,33 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Security
+
+- **The API on `localhost` now belongs only to your browser.** A second, local-only session
+  token — separate from the one an exposed server already required — closes every `/api/` route
+  to any other process on the machine: an AI agent's own shell, a verifier command, a script run
+  by a dependency under test. Nothing to configure; it's issued and renewed automatically.
+- **Coding sessions no longer run the AI agent in an unrestricted (“yolo”) mode.** Settings →
+  AI session has a new **“Test the sandbox”** button: it runs a real check (a blocked write
+  outside the working folder, a blocked network call) and only turns the CLI's own sandbox on if
+  both are confirmed blocked — never a checkbox on trust. Until verified, or on a CLI that
+  doesn't support it, Mergerie falls back to a command allowlist; the old wide-open mode still
+  exists but is now an explicit, clearly-flagged opt-in, never the default. Copilot CLI's own
+  `--deny-tool`/`--allow-tool` are now used when available, and a read-only session on a CLI that
+  can't prove it's restricted is refused rather than assumed safe.
+- **The team data repository can no longer be made to silently rewrite a review verdict, push
+  on your behalf, or run with a weaker git setup than a code clone.** Verdicts and attachments
+  synced from a colleague are fingerprinted the same way reports already were; a session's
+  “push automatically” flag stays a setting of your own machine; the sync itself now runs with
+  the same hardened git invocation (no hooks, no `fsmonitor`, filtered environment) as any other
+  clone, and a `.gitmodules` file in the shared repository suspends the sync instead of being
+  checked out.
+- **Text an AI agent reads — a merge request description, a Jira ticket, a previous report — can
+  no longer forge one of the agent's own protocol blocks** (its findings, its questions, the
+  repository it names, the agent it proposes to create). Every such block now carries a nonce
+  tied to the run that asked for it, on top of the existing data-tagging; a look-alike block a
+  piece of text might contain is neutralised regardless.
+
 ### Removed
 
 - **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the

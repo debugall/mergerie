@@ -301,13 +301,18 @@ function argvEcriture({ bin, extra, profil, addDirs, cwd }) {
 function argvCopilot({ extra, kind, bin }) {
   const lecture = saveurDe(kind) === 'lecture';
   const cap = capacites(bin || 'copilot');
+  /* `extra` (COPILOT_ARGS) PASSE PAR LE MÊME FILTRE QUE CLAUDE : `LARGES` connaît
+     `--allow-all-tools`, l'équivalent Copilot du mode large, précisément pour ce backend — le
+     laisser passer intact aurait rouvert par COPILOT_ARGS ce que policy.js ferme partout
+     ailleurs (plan_secure.md, lot A, S4). */
+  const sansLarge = sansModeLarge(extra);
   if (!lecture) {
     /* Écriture : restreindre ce qui fuit, quand le binaire le sait faire — sondé une fois via
-       `--help` (lot A, point 7). Un CLI qui ne connaît pas `--deny-tool` reçoit `extra` intact :
-       c'est la limite documentée du backend Copilot (`SECURITY.md`). */
-    if (!cap.denyTool) return { extra, args: [], lecture, note: 'copilot-ecriture-non-restreinte', mode: 'copilot' };
+       `--help` (lot A, point 7). Un CLI qui ne connaît pas `--deny-tool` reçoit `extra` (mode
+       large excepté) intact : c'est la limite documentée du backend Copilot (`SECURITY.md`). */
+    if (!cap.denyTool) return { extra: sansLarge, args: [], lecture, note: 'copilot-ecriture-non-restreinte', mode: 'copilot' };
     return {
-      extra, args: ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"],
+      extra: sansLarge, args: ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"],
       lecture, note: null, mode: 'copilot',
     };
   }
@@ -323,10 +328,10 @@ function argvCopilot({ extra, kind, bin }) {
       e.code = 'COPILOT_UNRESTRICTED';
       throw e;
     }
-    return { extra, args: [], lecture, note: 'copilot-lecture-non-restreinte', mode: 'copilot' };
+    return { extra: sansLarge, args: [], lecture, note: 'copilot-lecture-non-restreinte', mode: 'copilot' };
   }
   return {
-    extra, args: ["--deny-tool", "write", "--deny-tool", "shell(*)"],
+    extra: sansLarge, args: ["--deny-tool", "write", "--deny-tool", "shell(*)"],
     lecture, note: null, mode: 'copilot',
   };
 }
