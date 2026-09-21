@@ -148,7 +148,12 @@ function runClaudeStream(args, cwd, onLog) {
         onLog(t('agents.log.denied', { n: denials.length, count: denials.length, first: d0.tool_name || d0.tool || '?' }));
       }
       if (code === 0) resolve({ text: (result != null ? result : lastText) || '', sessionId, costUsd, denials });
-      else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: stderr.slice(0, 500) })));
+      /* `stderr` est presque toujours vide ici : en mode stream-json, l'explication d'un échec
+         arrive comme un événement `result` sur STDOUT (déjà capturé dans `result`/`lastText`),
+         pas sur stderr — un flux que ce process n'utilise quasiment jamais. Sans ce repli
+         (le même qu'aux deux autres appels de `err.cmd.failed` de ce fichier), le message
+         d'erreur restait « claude a échoué (code 1) : » sans rien après les deux points. */
+      else reject(new Error(t('err.cmd.failed', { cmd: bin, code, sortie: (stderr || result || lastText).slice(0, 500) })));
     });
   });
 }

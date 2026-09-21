@@ -97,6 +97,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A coding session that fails now says why, instead of “claude failed (code 1): ” with nothing
+  after the colon.** In streaming mode, the CLI's explanation for a failed run arrives as a
+  `result` event on stdout, not on stderr — the error message only ever looked at stderr, which
+  is essentially always empty there, so the actual cause (an API error, a service outage…) was
+  visible only in the job's full log, never in the error itself.
 - **The “in conflict” badge on a merge request card had the wrong shape.** It shared its class
   name with an unrelated block on Settings → Sharing (a kept version of a data-sync conflict),
   which leaked that block's square corners, padding and background onto the badge. Renamed the
