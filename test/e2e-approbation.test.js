@@ -83,6 +83,60 @@ describe('Approbation locale : ce qui arrive changé ne tourne pas avant d’avo
     assert.notEqual(accepte.status, 409, `approuvées ici, elles partent : ${accepte.text}`);
   });
 
+  /* plan_secure.md, lot C, point 3 : l'approbation était vérifiée à la MISE EN FILE
+   * (`creerVerification`), jamais au DÉMARRAGE du job — la file peut retarder l'exécution, et la
+   * boucle de synchro tourne toutes les 30 s. Un `pull` qui change les commandes entre les deux
+   * faisait tourner, sans surveillance, ce qui n'avait jamais été vu ici. On appelle
+   * `executerVerification` directement plutôt que d'attendre un vrai job en file : c'est la seule
+   * façon de contrôler l'ordre « mise en file, PUIS changement, PUIS démarrage » sans dépendre
+   * d'une fenêtre de temps réelle (CLAUDE.md : jamais un test qui parie sur la vitesse de la
+   * machine). */
+  test('un pull qui change les commandes APRÈS la mise en file fait refuser le job au démarrage', async () => {
+    const verifyrun = require('../src/verify/verifyrun');
+    const now = new Date().toISOString();
+    const vid = app.db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('démarrage-job', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    app.db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(vid, 'true');
+    // Créé ici, par l'utilisateur : approuvé au passage, comme toute ligne écrite localement.
+    require('../src/data/approbation').approuverVerificateur(vid);
+
+    // La vérification est mise en file — approuvée à cet instant précis.
+    const verifId = app.db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, targets_json, created_at)
+      VALUES (?, 'démarrage-job', 'queued', '[]', ?)`).run(vid, now).lastInsertRowid;
+
+    // …puis, AVANT que le job ne démarre, un pull change les commandes.
+    app.db.prepare('DELETE FROM verifier_command WHERE verifier_id = ?').run(vid);
+    app.db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(vid, 'echo commande-du-collegue');
+
+    await assert.rejects(
+      () => verifyrun.executerVerification(verifId, {}, () => {}),
+      (e) => { assert.equal(e.code, 'APPROBATION', e.message); return true; },
+      'des commandes jamais vues ici ne s’exécutent pas, même approuvées à la mise en file',
+    );
+  });
+
+  /* Même trou, côté agent (plan_secure.md, lot C, point 3) : `lancer()` approuve à la CRÉATION
+   * de la tâche, mais le job peut démarrer plus tard. `runTaskJob` (`jobs/runners/task.js`)
+   * réapprouve donc aussi, juste avant de lancer l'agent — éprouvé ici en appelant le job
+   * directement, pour contrôler l'ordre sans dépendre d'une fenêtre de temps réelle. */
+  test('des permissions d’agent élargies APRÈS la création de la tâche font refuser le job au démarrage', async () => {
+    const { runTaskJob } = require('../src/jobs/runners/task');
+    const agent = (await app.api('POST', '/api/agents', { name: 'Agent démarrage-job', kind: 'explore', scope_kind: 'all_repos' })).body;
+    const now = new Date().toISOString();
+    const taskId = app.db.prepare(`INSERT INTO task (kind, prompt, branch, repo_id, agent_id, agent_name, status, created_at, updated_at)
+      VALUES ('explore', 'x', 'main', ?, ?, ?, 'new', ?, ?)`).run(repoId, agent.id, agent.name, now, now).lastInsertRowid;
+    const jobId = app.db.prepare(`INSERT INTO job (kind, status, total, done_count, started_at)
+      VALUES ('task', 'queued', 1, 0, ?)`).run(now).lastInsertRowid;
+
+    // Approuvé à la création (aucune modification depuis la création de l'agent) — puis élargi.
+    app.db.prepare("UPDATE agent SET permission_mode = 'acceptEdits', allowed_tools_json = '[\"Bash\"]' WHERE id = ?").run(agent.id);
+
+    await runTaskJob(jobId, taskId, 'run', {});
+    const apres = app.db.prepare('SELECT status, last_error FROM task WHERE id = ?').get(taskId);
+    assert.equal(apres.status, 'error', 'le job refuse plutôt que de lancer un agent aux permissions jamais vues ici');
+    assert.match(apres.last_error, /APPROBATION|attend une approbation/i, apres.last_error);
+  });
+
   test('des permissions d’agent élargies par la synchro : pas de lancement avant l’approbation', async () => {
     const agent = (await app.api('POST', '/api/agents', { name: 'Enquêteur test', kind: 'explore', scope_kind: 'all_repos' })).body;
     app.db.prepare("UPDATE agent SET permission_mode = 'acceptEdits', allowed_tools_json = '[\"Bash\"]' WHERE id = ?").run(agent.id);
