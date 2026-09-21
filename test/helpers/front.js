@@ -44,7 +44,7 @@ function manifeste(html = lireHtml()) {
 
 /* Ce qui, dans le manifeste, est LE CODE DE L'APPLICATION — ce qu'`app.js` contenait : ni les
    runtimes partagés avec Node, ni le dictionnaire, ni le thème posé dans le <head>. */
-const PAS_APP = /^(?:runtime|i18n|vendor)\/|(?:^|\/)theme-early\.js$|^(?:i18n|i18n-runtime|ansi-runtime|notes-runtime|dictation-runtime)\.js$/;
+const PAS_APP = /^(?:runtime|i18n|vendor)\/|(?:^|\/)theme-early\.js$|^(?:i18n|i18n-runtime|ansi-runtime|notes-runtime)\.js$/;
 function scriptsApp(m = manifeste()) {
   return m.scripts.filter((s) => !PAS_APP.test(s));
 }

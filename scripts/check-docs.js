@@ -118,7 +118,6 @@ else ok('Liens ancrés vers les guides : toutes les ancres existent');
    parfaitement alignés, et parfaitement muets. On nomme donc les sections dont l'absence est un
    oubli, avec le fichier qui prouve que la fonctionnalité existe. */
 const ATTENDUES = [
-  { fichier: 'public/js/transverse/dictee.js', fr: 'Dictée vocale', en: 'Voice dictation' },
   { fichier: 'src/verify/verify.js', fr: 'Vérification objective', en: 'Objective verification' },
 ];
 const manquantes = [];

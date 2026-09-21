@@ -169,9 +169,9 @@ function updateConfig(patch) {
   /* UNE ADRESSE DE DÉPÔT QUE GIT NE DOIT PAS JOINDRE est refusée À L'ENREGISTREMENT : `ext::`
      y lancerait une commande, `http://` y enverrait les identifiants en clair. Refuser ici, où
      l'écran peut le dire, plutôt qu'au premier tour de synchro, qui échouerait en silence. */
-  /* Seulement quand elle CHANGE, comme la commande de dictée : une adresse enregistrée avant cette
-     règle (un GitLab interne en `http://`) ne doit pas bloquer l'enregistrement de TOUS les autres
-     réglages avec un message sans rapport avec le champ modifié. La synchro, elle, la refuse et le dit. */
+  /* Seulement quand elle CHANGE : une adresse enregistrée avant cette règle (un GitLab interne
+     en `http://`) ne doit pas bloquer l'enregistrement de TOUS les autres réglages avec un
+     message sans rapport avec le champ modifié. La synchro, elle, la refuse et le dit. */
   if (String(next.data_repo_url || '') !== String(current.data_repo_url || '')
     && !adresseAdmise(next.data_repo_url)) throw new Error(t('err.datasync.url-scheme'));
   /* UN GABARIT DE LIEN SANS `{url}` NE PORTE PAS DE LIEN. Le commentaire partirait sur les
@@ -215,11 +215,9 @@ function updateConfig(patch) {
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
-      agent_auto_max = @agent_auto_max,
-      dictation_vocabulary = @dictation_vocabulary,
-      dictation_replacements = @dictation_replacements
+      agent_auto_max = @agent_auto_max
     WHERE id = 1`).run(next);
-  /* CE QUI APPARTIENT À CE POSTE. Les sept jetons sont ici, et nulle part ailleurs : les
+  /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
   db.prepare(`UPDATE local_config SET
       access_token = @access_token,
@@ -231,17 +229,6 @@ function updateConfig(patch) {
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,
-      dictation_provider = @dictation_provider,
-      dictation_model = @dictation_model,
-      dictation_vad_model = @dictation_vad_model,
-      dictation_command = @dictation_command,
-      dictation_url = @dictation_url,
-      dictation_api_key = @dictation_api_key,
-      dictation_remote_model = @dictation_remote_model,
-      dictation_language = @dictation_language,
-      dictation_silence_ms = @dictation_silence_ms,
-      dictation_final_pass = @dictation_final_pass,
-      dictation_idle_minutes = @dictation_idle_minutes,
       data_repo_url = @data_repo_url,
       data_repo_branch = @data_repo_branch,
       data_sync_seconds = @data_sync_seconds,

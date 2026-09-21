@@ -377,9 +377,9 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
 
   test('les jetons refusent l’autocomplétion et les champs d’une connexion sont marqués', async () => {
     await ouvrirReglages('jiracfg');
-    /* CHAQUE jeton, pas quatre : la liste s'allonge (la clé de dictée est le cinquième), et
-       figer un compte transformait l'ajout d'un secret en échec de test au lieu de rester ce
-       qu'il doit être — la même exigence appliquée à un champ de plus. */
+    /* CHAQUE jeton, pas un compte figé : la liste s'allonge, et figer un compte transformait
+       l'ajout d'un secret en échec de test au lieu de rester ce qu'il doit être — la même
+       exigence appliquée à un champ de plus. */
     const auto = await page.$$eval('[form="configForm"][type="password"]', (els) => els.map((e) => e.autocomplete));
     assert.ok(auto.length >= 4, `${auto.length} champs de jeton trouvés`);
     assert.deepEqual([...new Set(auto)], ['off'], 'aucun jeton ne s’autocomplète');

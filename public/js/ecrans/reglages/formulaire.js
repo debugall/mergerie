@@ -13,14 +13,6 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
-  /* Dictée vocale (whisper.md §6.3). `dictation_silence_ms` et `dictation_idle_minutes` sont
-     ici comme `retention_days` : envoyés par cette liste, mais BORNÉS côté serveur, où ils
-     n'appartiennent pas à `ALLOWED`. La case `dictation_final_pass`, elle, est traitée à
-     part comme les autres cases. */
-  'dictation_provider', 'dictation_model', 'dictation_vad_model', 'dictation_command',
-  'dictation_url', 'dictation_api_key', 'dictation_remote_model', 'dictation_language',
-  'dictation_vocabulary', 'dictation_replacements',
-  'dictation_silence_ms', 'dictation_idle_minutes',
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */
@@ -152,13 +144,11 @@ function corpsConfig(f) {
   if (f.auto_rereview_stale) body.auto_rereview_stale = f.auto_rereview_stale.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
   if (f.todo_close_on_merge) body.todo_close_on_merge = f.todo_close_on_merge.checked ? '1' : '0';
-  if (f.dictation_final_pass) body.dictation_final_pass = f.dictation_final_pass.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
   if (body.github_token === '***') delete body.github_token;
   if (body.jenkins_token === '***') delete body.jenkins_token;
-  if (body.dictation_api_key === '***') delete body.dictation_api_key;
   return body;
 }
 /* N'ENVOYER QUE CE QUI A CHANGÉ. Le formulaire renvoyait TOUS ses champs : resté ouvert pendant
@@ -184,7 +174,6 @@ $('#configForm').addEventListener('submit', async (e) => {
       : $('#sub-gitcfg').classList.contains('active') ? $('#configInfoGit')
       : $('#sub-jiracfg').classList.contains('active') ? $('#configInfoJira')
       : $('#sub-aisession').classList.contains('active') ? $('#configInfoAi')
-      : $('#sub-dictation').classList.contains('active') ? $('#configInfoDictation')
       : $('#configInfo');
     /* Ce qui vient de partir est la nouvelle référence : le rechargement qui suit peut s'abstenir
        (frappe en cours), et remettre ensuite un champ à sa valeur d'avant ne partirait pas. */
@@ -198,12 +187,6 @@ $('#configForm').addEventListener('submit', async (e) => {
        l'étape 1 était toujours à faire. Trois boutons sans progression ne sont pas un
        assistant. */
     rafraichirDemarrage();
-    /* Le micro vit hors d'app.js et lit son état une fois : sans ce rappel, activer la
-       dictée n'aurait fait apparaître le bouton qu'au rechargement de la page. Le verdict du
-       dernier test, lui, est PÉRIMÉ dès qu'un champ change — il parlait d'une autre
-       configuration. */
-    if (window.mergerieDictation) window.mergerieDictation.relireStatut();
-    marquerDictationPerime();
   } catch (err) { toast(err.message, true); }
 });
 

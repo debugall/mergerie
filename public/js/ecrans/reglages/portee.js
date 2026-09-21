@@ -5,8 +5,8 @@
  *
  * Les réglages ne sont plus tous de même nature. Certains décrivent ce que L'ÉQUIPE a décidé —
  * les gabarits de prompt, les seuils, l'URL de la forge — et partiront dans le dépôt de données
- * partagé ; d'autres appartiennent à CETTE machine : les sept jetons, le chemin des clones, la
- * langue, le moteur de dictée. Un écran qui ne le dit pas laisse croire qu'on règle son outil
+ * partagé ; d'autres appartiennent à CETTE machine : les six jetons, le chemin des clones, la
+ * langue. Un écran qui ne le dit pas laisse croire qu'on règle son outil
  * alors qu'on règle celui de six personnes, ou l'inverse.
  *
  * La destination vient du SERVEUR (`scopes`, produit par le registre) : recopiée ici, la liste
@@ -92,14 +92,8 @@ async function loadConfig() {
     if (f[k]) f[k].checked = String(c[k]) === '1';
   }
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
-  /* Dictée : les deux nombres s'ÉCRIVENT (700 et 15 sont les valeurs appliquées, pas des
-     suggestions), et la seconde passe est cochée par défaut — comme côté serveur. */
-  if (f.dictation_silence_ms) f.dictation_silence_ms.value = Number(c.dictation_silence_ms) || 700;
-  if (f.dictation_idle_minutes) f.dictation_idle_minutes.value = Number(c.dictation_idle_minutes) || 0;
-  if (f.dictation_final_pass) f.dictation_final_pass.checked = c.dictation_final_pass !== '0';
   // Partager sa dépense : DÉCOCHÉ par défaut, donc `=== '1'`, comme les autres réglages prudents.
   if (f.usage_share) f.usage_share.checked = c.usage_share === '1';
-  syncDictationProvider();
   /* C15 — LE DÉFAUT EFFECTIF S'ÉCRIT, il ne se devine pas dans un `placeholder`. Un champ vide
      avec « 5 » en gris se lit « rien n'est réglé », alors que 5 EST la valeur appliquée : on
      ne sait pas si l'on regarde un réglage ou une suggestion. `retention_days` et

@@ -84,7 +84,7 @@ if (DECOUPE) {
 }
 
 /* ---------- 2. Clés utilisées mais absentes ---------- */
-/* Tout le front, pas seulement `app.js` : la dictée vit dans ses propres fichiers et appelle
+/* Tout le front, pas seulement `app.js` : chaque écran vit dans ses propres fichiers et appelle
    `t()` comme les autres. Restreint à `app.js`, ce contrôle ne voyait pas une clé manquante
    appelée depuis un de ces fichiers — c'est-à-dire un libellé qui s'afficherait sous forme de
    clé à l'écran. `public/` se parcourt RÉCURSIVEMENT (`js/ecrans/…`, `html/…`), hors `vendor/`
@@ -161,9 +161,6 @@ const EXEMPT = [
   //                                    DEFAULTS.en) : c'est un i18n.js de plus, pas du français en dur.
   //                                    Ce sont des PROMPTS — ils ne s'affichent pas, ils partent à l'IA,
   //                                    et la langue choisie décide lequel des deux jeux est semé.
-  /^public\/(runtime\/)?dictation-runtime\.js$/, // les FORMES PARLÉES des commandes vocales (« annule ça ») sont
-  //                                    des données, pas des libellés : elles ne se traduisent pas,
-  //                                    elles se reconnaissent, et chaque langue a les siennes.
 ];
 const stripComments = (s) => s
   .replace(/\/\*[\s\S]*?\*\//g, '')

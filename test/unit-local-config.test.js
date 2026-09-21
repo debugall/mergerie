@@ -3,8 +3,8 @@
  *
  * `config` est ce que l'équipe a décidé (gabarits de prompt, seuils, politiques, URL de la
  * forge) : c'est cette table qui partira un jour dans le dépôt de données partagé.
- * `local_config` est ce qui appartient à CETTE machine : les sept jetons d'API, le chemin des
- * clones, la langue, le moteur de dictée.
+ * `local_config` est ce qui appartient à CETTE machine : les six jetons d'API, le chemin des
+ * clones, la langue.
  *
  * Ce que ces tests tiennent, et pourquoi : un jeton resté dans `config` serait poussé sur la
  * forge, et un secret commité dans git est DÉFINITIF — l'historique est immuable, chaque clone
@@ -55,7 +55,7 @@ describe('local_config — ce qui reste sur ce poste', () => {
 
   test('getConfig() rend UN objet : le reste de l’application ne voit pas la coupure', () => {
     const cfg = config.getConfig();
-    for (const champ of ['access_token', 'clone_path', 'language', 'dictation_provider']) {
+    for (const champ of ['access_token', 'clone_path', 'language']) {
       assert.ok(champ in cfg, `${champ} (poste) doit rester lisible depuis getConfig()`);
     }
     for (const champ of ['prompt_review', 'gitlab_url', 'converge_threshold', 'brief_on_open']) {
@@ -66,13 +66,12 @@ describe('local_config — ce qui reste sur ce poste', () => {
   test('un jeton enregistré atterrit dans local_config, et JAMAIS dans config', () => {
     config.updateConfig({
       access_token: 'glpat-SECRET', github_token: 'ghp-SECRET', jira_token: 'jira-SECRET',
-      jenkins_token: 'jk-SECRET', dictation_api_key: 'sk-SECRET',
+      jenkins_token: 'jk-SECRET',
       jira_email: 'moi@example.com', jenkins_user: 'moi',
     });
     const c = db.prepare('SELECT * FROM config WHERE id = 1').get();
     const l = db.prepare('SELECT * FROM local_config WHERE id = 1').get();
     assert.equal(l.access_token, 'glpat-SECRET');
-    assert.equal(l.dictation_api_key, 'sk-SECRET');
     assert.equal(config.getConfig().access_token, 'glpat-SECRET');
     const fuites = GELEES.filter((col) => c[col] !== null && c[col] !== undefined && c[col] !== '');
     assert.deepEqual(fuites, [], 'écrire un réglage ne doit jamais re-remplir une colonne gelée');
@@ -93,9 +92,6 @@ describe('local_config — ce qui reste sur ce poste', () => {
     assert.equal(config.destinationDe('clone_path'), 'poste');
     assert.equal(config.destinationDe('prompt_review'), 'equipe');
     assert.equal(config.destinationDe('gitlab_url'), 'equipe');
-    // Le glossaire de dictée est d'équipe (les noms propres du métier), le moteur est de poste.
-    assert.equal(config.destinationDe('dictation_vocabulary'), 'equipe');
-    assert.equal(config.destinationDe('dictation_model'), 'poste');
   });
 
   test('l’amorçage des commandes git ne se rejoue pas — son drapeau a suivi', () => {

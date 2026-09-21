@@ -17,8 +17,8 @@
    5. refuse de tourner si l'arbre git n'est pas propre : un déplacement se relit seul.
 
    Ce qu'il ne fait PAS, à relire à la main :
-   - `dictee-worklet.js` est chargé par une chaîne d'URL dans `dictee.js` (`audioWorklet.addModule`),
-     le seul littéral de chemin du JavaScript — le script le signale ;
+   - un fichier chargé par une chaîne d'URL littérale (ex. `audioWorklet.addModule`) ailleurs
+     que dans le manifeste ;
    - la documentation (`PLAN.md`, `CLAUDE.md`) et les commentaires qui citent un chemin en
      toutes lettres — `grep -rn 'ancien.js'` les trouve.
    `npm run check` (contrôle « le manifeste et le disque coïncident ») attrape ce qui aurait
@@ -109,9 +109,6 @@ if (relDe.startsWith('i18n/') && relVers.startsWith('i18n/')) {
 }
 
 /* Ce que le script ne sait pas suivre. */
-if (path.basename(de) === 'dictee-worklet.js' || path.basename(de) === 'dictee.js') {
-  aRelire.push('public/js/transverse/dictee.js  — l’URL du worklet (`audioWorklet.addModule`) est une chaîne');
-}
 for (const f of ['PLAN.md', 'CLAUDE.md', 'README.md'].filter((d) => fs.existsSync(path.join(ROOT, d)))) {
   if (fs.readFileSync(path.join(ROOT, f), 'utf8').includes(relDe)) aRelire.push(`${f}  — cite ${relDe} en toutes lettres`);
 }

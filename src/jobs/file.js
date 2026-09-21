@@ -83,10 +83,6 @@ function jobKeys(entry) {
   const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
   switch (entry.kind) {
     case 'docker': return keys;                       // aucun dépôt : jamais en conflit
-    /* L'installation du moteur de dictée ne touche aucun dépôt, mais elle REMPLACE un
-       binaire : deux à la fois écriraient dans le même dossier. Une clé à elle seule suffit
-       à les sérialiser sans bloquer quoi que ce soit d'autre. */
-    case 'install': keys.add('dictation:install'); return keys;
     /* Une question libre ne touche NI dépôt NI dossier : rien à réserver, donc elle ne
        bloque personne et personne ne la bloque. C'est la seule saveur de session dans ce
        cas — les trois autres travaillent toujours dans des fichiers. */

@@ -70,14 +70,6 @@ function reduireModale(modal, fermer) {
   });
   modal.dataset.reduite = '1';
   modal.hidden = true;
-  /* Une dictée en cours visait un champ qui vient de disparaître : elle parlerait dans le vide,
-     et son micro resterait posé sur un formulaire qui n'est plus là. (Un clic sur un bouton non
-     dictable range déjà le micro — sauf justement quand une dictée tourne, cas où il est gardé
-     exprès pour ne pas être perdu en cours de route.) */
-  if (window.mergerieDictation) {
-    window.mergerieDictation.arreter();
-    const mic = $('#dictationMic'); if (mic) mic.hidden = true;
-  }
   rendreDock();
 }
 

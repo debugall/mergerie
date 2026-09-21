@@ -29,7 +29,7 @@ const { dispo } = navigateurDispo();
 /* Valeur SAISIE → valeur attendue par l'API. Un booléen = une case à cocher. Les valeurs sont
    choisies DANS les bornes du serveur : ce fichier éprouve l'aller-retour, pas le bornage (qui a
    ses propres tests). L'ordre compte : une case qui déplie ou active un champ passe avant lui. */
-const SECRETS = ['access_token', 'github_token', 'jira_token', 'jenkins_token', 'dictation_api_key'];
+const SECRETS = ['access_token', 'github_token', 'jira_token', 'jenkins_token'];
 
 function groupes(app) {
   return [
@@ -88,27 +88,6 @@ function groupes(app) {
       ['agent_auto_max', '25'],
       ['agent_max_turns', '150'],
       ['agent_daily_budget_usd', '2.5'],
-    ] },
-    /* Deux temps pour la dictée : les champs du moteur local ne se montrent qu'avec « local »,
-       ceux du fournisseur distant qu'avec « openai ». Les deux jeux doivent survivre au passage
-       de l'un à l'autre — ils sont enregistrés, pas seulement affichés. */
-    { sub: 'dictation', champs: [
-      ['dictation_provider', 'local'],
-      ['dictation_model', '/opt/modeles/ggml-base.bin'],
-      ['dictation_vad_model', '/opt/modeles/ggml-silero.bin'],
-      ['dictation_command', 'whisper-server'],
-      ['dictation_language', 'en'],
-      ['dictation_vocabulary', 'Mergerie\nwebapp-front'],
-      ['dictation_replacements', 'Jean-Kim => Jenkins'],
-      ['dictation_silence_ms', '900'],
-      ['dictation_idle_minutes', '30'],
-      ['dictation_final_pass', false],
-    ] },
-    { sub: 'dictation', champs: [
-      ['dictation_provider', 'openai'],
-      ['dictation_url', 'https://stt.reglages.test'],
-      ['dictation_api_key', 'sk-reglages-ecran'],
-      ['dictation_remote_model', 'whisper-1'],
     ] },
     { sub: 'datasync', champs: [
       ['data_repo_url', 'https://gitlab.reglages.test/equipe/donnees.git'],
@@ -226,25 +205,15 @@ describe('Menu Réglages — chaque champ s’enregistre depuis l’écran et se
       github_token: 'ghp-reglages-ecran',
       jira_token: 'ATATT-reglages-ecran',
       jenkins_token: 'jk-reglages-ecran',
-      dictation_api_key: 'sk-reglages-ecran',
     });
     const c = await config();
     for (const s of SECRETS) assert.equal(c[s], '***', `${s} ne redescend jamais en clair`);
-    assert.equal(c.dictation_model, '/opt/modeles/ggml-base.bin', 'passer à « openai » n’efface pas le moteur local');
   });
 
   test('après rechargement, chaque champ réaffiche ce qui est en base', async () => {
     await page.reload();
     await page.waitForSelector('nav button[data-tab="admin"]');
-    /* Le premier jeu de dictée (fournisseur « local ») a été remplacé par « openai » : on relit
-       tout le reste tel quel, puis ses champs à lui, masqués mais rechargés. */
-    const tous = groupes(app);
-    const iLocal = tous.findIndex((g) => g.sub === 'dictation');
-    for (const [i, g] of tous.entries()) if (i !== iLocal) await relire(g);
-    const local = tous[iLocal].champs.filter(([n]) => n !== 'dictation_provider');
-    const noms = local.map(([n]) => n);
-    const attendu = attenduEcran(local);
-    assert.deepEqual(await lireEcran(noms), attendu, 'les champs du moteur local sont rechargés, même masqués');
+    for (const g of groupes(app)) await relire(g);
   });
 
   test('ré-enregistrer avec « *** » dans les champs de jeton ne les efface pas', async () => {
@@ -260,14 +229,11 @@ describe('Menu Réglages — chaque champ s’enregistre depuis l’écran et se
 
   /* LE CHEMIN INVERSE. Chaque case est inversée et ré-enregistrée : une case relue en
      `=== '1'` d'un côté et écrite « on » de l'autre revient décochée au rechargement, et
-     seul ce second passage le voit. Les fournisseurs de dictée repassent à « éteinte ». */
+     seul ce second passage le voit. */
   test('toutes les cases s’inversent, s’enregistrent et se relisent inversées', async () => {
     const inverses = [];
     for (const g of groupes(app)) {
       const cases = g.champs.filter(([, v]) => typeof v === 'boolean').map(([n, v]) => [n, !v]);
-      if (g.sub === 'dictation' && g.champs.some(([n]) => n === 'dictation_final_pass')) {
-        cases.unshift(['dictation_provider', 'off']);
-      }
       if (!cases.length) continue;
       inverses.push({ ...g, champs: cases });
     }

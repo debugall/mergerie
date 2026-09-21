@@ -3,9 +3,8 @@
  *
  * Les réglages ne sont plus tous de même nature. Certains décrivent ce que l'équipe a décidé
  * (gabarits de prompt, seuils, URL de la forge) : ils vivent dans `config` et partiront dans le
- * dépôt de données partagé. D'autres appartiennent à cette machine — les sept jetons d'API, le
- * chemin des clones, la langue, le moteur de dictée : ils vivent dans `local_config` et n'en
- * bougent pas.
+ * dépôt de données partagé. D'autres appartiennent à cette machine — les six jetons d'API, le
+ * chemin des clones, la langue : ils vivent dans `local_config` et n'en bougent pas.
  *
  * CE QUE CES ÉPREUVES GARDENT :
  *

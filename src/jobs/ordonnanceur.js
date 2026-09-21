@@ -37,7 +37,6 @@ function runEntry(e) {
   if (e.kind === 'task') return RUNNERS['task'](e.jobId, e.taskId, e.action, e.opts);
   if (e.kind === 'gitops') return RUNNERS['gitops'](e.jobId, e.payload);
   if (e.kind === 'docker') return RUNNERS['docker'](e.jobId, e.payload);
-  if (e.kind === 'install') return RUNNERS['install'](e.jobId, e.payload);
   if (e.kind === 'converge') return RUNNERS['converge'](e.jobId, e.mrId, e.opts);
   if (e.kind === 'converge-session') return RUNNERS['converge-session'](e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return RUNNERS['local'](e.jobId, e.taskId, e.opts);
@@ -123,22 +122,6 @@ function startGitJob(payload) {
     VALUES ('gitops', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
   queue.push({ jobId, kind: 'gitops', payload });
-  setImmediate(pump);
-  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
-}
-/* ---------- Installation du moteur de dictée (whisper.md §6.5) ----------
-   Un job comme les autres, et c'est tout l'intérêt : le journal s'affiche en direct sous le
-   bouton, « Stop » tue le script proprement (SIGTERM puis SIGKILL à +2 s, par `proc`), et un
-   téléchargement interrompu REPREND au lancement suivant — c'est le script qui le garantit.
-
-   À la fin, le script parle au serveur : sa dernière ligne est un `MERGERIE_RESULT {…}` que
-   l'on relit pour REMPLIR les réglages. Pas de ligne = erreur : un script qui ne rend pas de
-   résultat n'a pas fini son travail, et deviner les chemins à sa place les inventerait. */
-function startInstallJob(payload) {
-  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
-    VALUES ('install', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
-  const jobId = info.lastInsertRowid;
-  queue.push({ jobId, kind: 'install', payload });
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }
@@ -305,5 +288,5 @@ function isRunning() {
 }
 
 module.exports = {
-  mainRunning, retryJob, runEntry, launch, pump, startNow, startJob, startGitJob, startInstallJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, stopJob, isRunning,
+  mainRunning, retryJob, runEntry, launch, pump, startNow, startJob, startGitJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, stopJob, isRunning,
 };

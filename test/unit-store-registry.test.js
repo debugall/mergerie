@@ -210,7 +210,7 @@ describe('store-registry — la classification des tables', () => {
     // passerait sous le radar de INTERDITS, pas sous celui-ci.
     const locales = new Set(registre.localesDe('config'));
     for (const secret of ['access_token', 'github_token', 'jira_token', 'jenkins_token',
-      'jira_email', 'jenkins_user', 'dictation_api_key', 'clone_path']) {
+      'jira_email', 'jenkins_user', 'clone_path']) {
       assert.ok(locales.has(secret), `config.${secret} doit rester sur le poste`);
     }
     // Et l'inverse : les gabarits de prompt sont d'équipe (décision § 13 de la spec).
