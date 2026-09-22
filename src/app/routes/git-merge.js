@@ -34,10 +34,13 @@ app.get('/api/git/merges/:id/diff', wrap(async (req, res) => {
 /* Le contenu d'un fichier en conflit, DÉCOUPÉ. L'écran reçoit les morceaux (stables et
    conflits) plutôt que du texte brut : c'est ce qui lui permet d'offrir « garder celle-ci /
    celle-là / les deux » par conflit, sans reparser les marqueurs de son côté. */
-app.get('/api/git/merges/:id/file', wrap((req, res) => {
+app.get('/api/git/merges/:id/file', wrap(async (req, res) => {
   const fichier = String((req.query && req.query.path) || '');
   const texte = gitmerge.contenu(Number(req.params.id), fichier);
-  res.json({ path: fichier, texte, morceaux: gitmerge.decouper(texte) });
+  // Quelle version est la plus récente : la date du dernier commit touchant ce fichier, de
+  // chaque côté (`null` s'il n'a pas d'historique sur ce côté — un fichier apparu de l'autre).
+  const dates = await gitmerge.datesFichier(Number(req.params.id), fichier);
+  res.json({ path: fichier, texte, morceaux: gitmerge.decouper(texte), dates });
 }));
 app.post('/api/git/merges/:id/resolve', wrap(async (req, res) => {
   const { path: fichier, content, choices } = req.body || {};

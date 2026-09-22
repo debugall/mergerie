@@ -208,6 +208,24 @@ async function resoudre(id, fichier, { contenu = null, choix = null } = {}) {
   return etat(m.id);
 }
 
+/* QUELLE VERSION EST LA PLUS RÉCENTE ? Les deux blocs d'un conflit se lisaient à l'aveugle : rien
+   ne disait si « la nôtre » datait d'hier ou de six mois. `HEAD` est la cible (le worktree en est
+   détaché, cf. `demarrer`) et `MERGE_HEAD` la source — l'une comme l'autre ne bougent pas tant que
+   le merge n'est pas commité, donc datent bien la version montrée à l'écran. `git log -1` sur un
+   chemin sans historique à cette ref (fichier apparu de l'autre côté) ne renvoie rien : `null`,
+   pas une erreur. */
+async function datesFichier(id, fichier) {
+  const m = ligne(id);
+  const date = async (ref) => {
+    try {
+      const { stdout } = await git.run('git', ['log', '-1', '--format=%aI', ref, '--', fichier], { cwd: m.dir });
+      return stdout.trim() || null;
+    } catch { return null; }
+  };
+  const [ours, theirs] = await Promise.all([date('HEAD'), date('MERGE_HEAD')]);
+  return { ours, theirs };
+}
+
 /** Le contenu d'un fichier en conflit, tel qu'il est sur le disque (marqueurs compris). */
 function contenu(id, fichier) {
   const m = ligne(id);
@@ -314,7 +332,7 @@ function enCours() {
 }
 
 module.exports = {
-  MERGES_DIR, demarrer, etat, resoudre, contenu, commiter, pousser, abandonner, enCours, diffCommit,
+  MERGES_DIR, demarrer, etat, resoudre, contenu, datesFichier, commiter, pousser, abandonner, enCours, diffCommit,
   // Réexportés par commodité pour les routes ; ils vivent dans `conflits.js`, qui ne touche
   // NI la base NI le disque — c'est ce qui les rend testables sans démarrer l'application.
   decouper, recoller,

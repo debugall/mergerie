@@ -116,7 +116,10 @@ async function mergeOuvrir(id) {
 async function mergeOuvrirFichier(chemin) {
   const d = await api(`/git/merges/${mergeEtat.id}/file?path=${encodeURIComponent(chemin)}`);
   const nb = d.morceaux.filter((m) => m.type === 'conflit').length;
-  mergeFichier = { path: chemin, morceaux: d.morceaux, texte: d.texte, choix: Array(nb).fill('ours'), edite: false };
+  mergeFichier = {
+    path: chemin, morceaux: d.morceaux, texte: d.texte, choix: Array(nb).fill('ours'), edite: false,
+    dates: d.dates || {},
+  };
   mergeRenderWork();
 }
 
@@ -195,23 +198,82 @@ function mergePaneHtml() {
     }
     n += 1;
     const c = f.choix[n];
-    const bloc = (cote, lignes, libelle) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux') ? ' cf-keep' : ''}">
+    /* LA DATE, À CÔTÉ DE LA BRANCHE. Le même repère que partout ailleurs dans l'écran : l'absolu
+       à l'écran (il se compare), le relatif au survol. Une seule mesure par branche pour tout le
+       fichier — `git log -1` sur le chemin, pas par conflit — donc identique sur chaque bloc. */
+    const bloc = (cote, lignes, libelle, date) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux') ? ' cf-keep' : ''}">
         <div class="cf-lab"><span>${esc(libelle)}</span>
+          ${date ? `<span class="muted cf-date" title="${esc(tr('git.merge.date-title'))}">${dateHtml(date, fmtDate(date))}</span>` : ''}
           <button class="btn btn-sm${c === cote ? ' btn-primary' : ''}" data-keep="${cote}" data-h="${n}">${esc(tr('git.merge.keep'))}</button></div>
         <pre>${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre></div>`;
     return `<div class="cf-hunk" data-hunk="${n}">
       <div class="cf-num">${esc(tr('git.merge.hunk', { n: n + 1, total: f.choix.length }))}</div>
-      ${bloc('ours', m.ours, tr('git.merge.side-ours', { branch: e.target_branch }))}
-      ${bloc('theirs', m.theirs, tr('git.merge.side-theirs', { branch: e.source_branch }))}
-      <div class="cf-both"><button class="btn btn-sm${c === 'deux' ? ' btn-primary' : ''}" data-keep="deux" data-h="${n}">${esc(tr('git.merge.keep-both'))}</button></div>
+      ${bloc('ours', m.ours, tr('git.merge.side-ours', { branch: e.target_branch }), f.dates.ours)}
+      ${bloc('theirs', m.theirs, tr('git.merge.side-theirs', { branch: e.source_branch }), f.dates.theirs)}
+      <div class="cf-both"><button class="btn btn-sm${c === 'deux' ? ' btn-primary' : ''}" data-keep="deux" data-h="${n}"
+        title="${esc(tr('git.merge.keep-both-title', { target: e.target_branch, source: e.source_branch }))}">${esc(tr('git.merge.keep-both', { target: e.target_branch, source: e.source_branch }))}</button></div>
     </div>`;
   }).join('');
   return `<div class="mp-head"><code>${esc(f.path)}</code>
       <span class="spacer"></span>
+      <button class="btn btn-sm" id="mergeFullOpen" title="${esc(tr('git.merge.fullscreen-title'))}"><svg class="ico"><use href="#i-expand"/></svg>${esc(tr('git.merge.fullscreen'))}</button>
       <button class="btn btn-sm" data-medit="1">${esc(tr('git.merge.edit'))}</button>
       <button class="btn btn-sm btn-primary" id="mergeResolveChoices">${esc(tr('git.merge.resolve'))}</button></div>
     ${corps}`;
 }
+
+/* ============ Vue plein écran : les deux versions et le résultat, côte à côte ============
+ *
+ * L'écran normal montre un conflit à la fois, avec trois lignes de contexte de chaque côté —
+ * volontairement étroit, pour ne pas noyer un fichier de deux cents lignes dans les marqueurs.
+ * Mais sur un fichier où les conflits s'enchaînent, on perd le fil de ce qui vient avant et
+ * après : cette vue montre le fichier ENTIER, reconstruit trois fois — la destination, la
+ * source, et le résultat des choix actuels — l'une à côté de l'autre. Cliquer un passage à
+ * gauche ou à droite le choisit ; « garder les deux » et l'édition manuelle restent dans la vue
+ * normale, qui reste la référence pour ces deux gestes.
+ */
+function mergeFullColonne(cote) {
+  // cote: 'ours' | 'theirs' | null (résultat, selon les choix actuels)
+  const f = mergeFichier;
+  let n = -1;
+  return f.morceaux.map((m) => {
+    if (m.type === 'stable') return `<pre class="mf-ctx">${esc(m.lignes.join('\n'))}</pre>`;
+    n += 1;
+    const num = n;
+    if (cote === null) {
+      const c = f.choix[num];
+      const lignes = c === 'theirs' ? m.theirs : c === 'deux' ? [...m.ours, ...m.theirs] : m.ours;
+      return `<pre class="mf-hunk mf-result" data-h="${num}">${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>`;
+    }
+    const lignes = cote === 'ours' ? m.ours : m.theirs;
+    const choisi = f.choix[num] === cote || f.choix[num] === 'deux';
+    return `<pre class="mf-hunk mf-${cote}${choisi ? ' mf-chosen' : ''}" data-h="${num}" data-cote="${cote}"
+      title="${esc(tr('git.merge.keep'))}">${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>`;
+  }).join('');
+}
+function mergeFullRender() {
+  const e = mergeEtat; const f = mergeFichier;
+  $('#mergeFullTitle').textContent = f.path;
+  $('#mergeFullOurs').innerHTML = `<h4>${esc(tr('git.merge.full.ours', { branch: e.target_branch }))}</h4>${mergeFullColonne('ours')}`;
+  $('#mergeFullResult').innerHTML = `<h4>${esc(tr('git.merge.full.result'))}</h4>${mergeFullColonne(null)}`;
+  $('#mergeFullTheirs').innerHTML = `<h4>${esc(tr('git.merge.full.theirs', { branch: e.source_branch }))}</h4>${mergeFullColonne('theirs')}`;
+}
+function mergeFullFermer() { $('#mergeFullView').hidden = true; }
+document.addEventListener('click', (e) => {
+  if (e.target.closest && e.target.closest('#mergeFullOpen')) { mergeFullRender(); $('#mergeFullView').hidden = false; return; }
+  if (e.target.closest && e.target.closest('#mergeFullClose')) { mergeFullFermer(); return; }
+  const h = e.target.closest && e.target.closest('.mf-hunk[data-cote]');
+  if (h && mergeFichier) {
+    // Choisi ici, reflété dans les deux vues : la fermer ne doit pas faire revenir en arrière.
+    mergeFichier.choix[Number(h.dataset.h)] = h.dataset.cote;
+    mergeFullRender();
+    if ($('#mergePane')) $('#mergePane').innerHTML = mergePaneHtml();
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('#mergeFullView').hidden) mergeFullFermer();
+});
+fermerAuFond('#mergeFullView', mergeFullFermer);
 
 /* Toute l'interaction de l'écran passe par ici : le contenu est réécrit à chaque clic, des
    écouteurs posés sur les boutons seraient perdus au rendu suivant. */

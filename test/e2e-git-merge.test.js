@@ -147,6 +147,32 @@ describe('Git · Merge de branche à branche', () => {
     await solder(body.id);
   });
 
+  /* QUELLE VERSION EST LA PLUS RÉCENTE ? Rien ne le disait : les deux blocs d'un conflit se
+     lisaient à l'aveugle. `HEAD` (la destination, sur laquelle le worktree est basé) et
+     `MERGE_HEAD` (la source) sont datées séparément, avec des dates de commit choisies à la
+     main pour ne dépendre d'aucun minutage réel. */
+  test('la date de la dernière modification de chaque côté est donnée avec le fichier', async () => {
+    const src = `feature/dates`;
+    const commit = (cwd, quand, message) => execFileSync('git', ['commit', '-qm', message], {
+      cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_DATE: quand, GIT_COMMITTER_DATE: quand },
+    });
+    g(work, 'checkout', '-q', 'main'); g(work, 'fetch', '-q', 'origin'); g(work, 'reset', '-q', '--hard', 'origin/main');
+    g(work, 'checkout', '-q', '-b', src);
+    fs.writeFileSync(path.join(work, 'a.txt'), `ligne 1\nvenue de ${src}\nligne 3\n`);
+    g(work, 'add', '-A'); commit(work, '2026-01-01T10:00:00', `travail ${src}`);
+    g(work, 'push', '-q', '-u', 'origin', src);
+    g(work, 'checkout', '-q', 'main');
+    fs.writeFileSync(path.join(work, 'a.txt'), 'ligne 1\nvenue de main dates\nligne 3\n');
+    g(work, 'add', '-A'); commit(work, '2026-06-01T10:00:00', 'main avance dates');
+    g(work, 'push', '-q', 'origin', 'main');
+
+    const { body } = await demarrer(src);
+    const f = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.match(f.body.dates.ours, /^2026-06-01T10:00:00/, 'HEAD porte la destination, la plus récente ici');
+    assert.match(f.body.dates.theirs, /^2026-01-01T10:00:00/, 'MERGE_HEAD porte la source, plus ancienne ici');
+    await solder(body.id);
+  });
+
   test('ce qui part est ce qu’on a choisi, conflit par conflit', async () => {
     const src = scenarioConflit('choix');
     const { body } = await demarrer(src);
@@ -330,6 +356,36 @@ describe('Git · Merge de branche à branche', () => {
       assert.equal(await page.locator('.cf-hunk [data-keep="ours"]').count(), 1);
       assert.equal(await page.locator('.cf-hunk [data-keep="theirs"]').count(), 1);
       assert.equal(await page.locator('.cf-hunk [data-keep="deux"]').count(), 1);
+    });
+
+    test('la date de chaque version apparaît à côté de sa branche', async () => {
+      // La valeur exacte est mesurée côté API ; ici, qu'elle arrive bien jusqu'à l'écran.
+      assert.equal(await page.locator('.cf-hunk .cf-date').count(), 2, 'une date à côté de chaque branche');
+    });
+
+    test('« Garder les deux » nomme les branches, dans l’ordre où elles s’appliquent', async () => {
+      const bouton = page.locator('.cf-both button');
+      assert.match(await bouton.innerText(), /main.*feature\/ui/s, 'la cible avant la source, comme le fait recoller()');
+      assert.match(await bouton.getAttribute('title'), /main.*feature\/ui/s, 'et l’explication complète au survol');
+    });
+
+    /* LE BOUTON PLEIN ÉCRAN : le fichier ENTIER de chaque côté, plus le résultat des choix
+       actuels — plutôt que trois lignes de contexte à la fois. Choisir un passage y reste
+       possible, et se répercute dans la vue normale une fois refermé. */
+    test('le bouton plein écran montre les deux versions entières et le résultat au milieu', async () => {
+      await page.locator('#mergeFullOpen').click();
+      await page.locator('#mergeFullView:not([hidden])').waitFor();
+      assert.match(await page.locator('#mergeFullOurs').innerText(), /venue de main ui/, 'la destination, en entier');
+      assert.match(await page.locator('#mergeFullTheirs').innerText(), /venue de feature\/ui/, 'la source, en entier');
+
+      // Choisir la version de la source, à droite : le résultat au milieu suit.
+      await page.locator('#mergeFullTheirs .mf-hunk').first().click();
+      await page.waitForFunction(() => /venue de feature\/ui/.test(document.querySelector('#mergeFullResult').textContent));
+
+      await page.locator('#mergeFullClose').click();
+      await page.waitForSelector('#mergeFullView', { state: 'hidden' });
+      // Le choix fait en plein écran s’est répercuté dans la vue normale.
+      await page.locator('.cf-theirs.cf-keep').waitFor();
     });
 
     test('choisir une version se VOIT, sans relire les boutons', async () => {

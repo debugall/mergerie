@@ -50,6 +50,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Git → Merge's conflict screen says which version is newer, and gets a full-screen view.**
+  Each side of a conflict now shows the date of its last commit on that branch, so picking one
+  no longer means guessing which is more recent. “Keep both” now names the two branches and the
+  order it applies them in (it was “in this order” with no order shown). A new “Fullscreen”
+  button shows the whole file three times side by side — destination, source, and the current
+  result in the middle — instead of three lines of context per conflict; clicking a passage on
+  either side still picks it, and the choice carries back to the normal view on close.
 - **A full-screen view for a note page.** Notes → Pages: a button next to Rendered / Two
   columns / Markdown drops the page list and expands the editor to fill the window — the three
   view buttons stay available, so the display can still be switched while reading. Escape, or

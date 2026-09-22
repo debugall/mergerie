@@ -47,3 +47,19 @@
         </div>
     </div>
 </div>
+
+<!-- Vue plein écran d'un conflit : la destination et la source en entier, le résultat des
+     choix actuels au milieu — plutôt que trois lignes de contexte à la fois. -->
+<div id="mergeFullView" class="splitview" hidden>
+    <div class="split-head">
+        <code id="mergeFullTitle"></code>
+        <span class="muted" data-i18n="git.merge.full.hint">Clique un passage à gauche ou à droite pour le garder. « Garder les deux » et l'édition manuelle restent dans la vue normale.</span>
+        <span class="spacer"></span>
+        <button id="mergeFullClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
+    </div>
+    <div class="split-body merge-full-body">
+        <div class="split-pane merge-full-col" id="mergeFullOurs"></div>
+        <div class="split-pane merge-full-col merge-full-result" id="mergeFullResult"></div>
+        <div class="split-pane merge-full-col" id="mergeFullTheirs"></div>
+    </div>
+</div>
