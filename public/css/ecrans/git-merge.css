@@ -38,6 +38,12 @@
   white-space: pre-wrap; word-break: break-word; }
 .cf-ours.cf-keep pre { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .cf-theirs.cf-keep pre { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+/* La proposition de l'IA : une troisième couleur, pour ne pas se lire comme une variante de
+   « la nôtre » ou « la leur » — c'est une TROISIÈME version, pas un mélange des deux. */
+.cf-ia .cf-lab span:first-child::before { content: "✨ "; }
+.cf-ia.cf-keep pre { background: color-mix(in srgb, var(--purple) 14%, transparent); }
+.cf-reason { margin: 0; padding: 6px 10px; font-size: 12.5px; color: var(--muted);
+  border-top: 1px dashed var(--line); background: color-mix(in srgb, var(--purple) 6%, transparent); }
 .cf-both { padding: 6px 8px; border-top: 1px solid var(--line); }
 .cf-ctx { margin: 0; padding: 4px 10px; color: var(--muted); font-family: var(--ff-mono); font-size: 12px;
   white-space: pre-wrap; word-break: break-word; }
@@ -46,7 +52,19 @@
 
 /* ---------- Vue plein écran : destination / résultat / source, le fichier entier ---------- */
 .split-head .muted { font-size: 12.5px; max-width: 420px; }
+/* Le nombre de colonnes VISIBLES varie (masquer une colonne rend sa largeur aux autres) :
+   `grid-template-columns` est donc posé en ligne par `mergeFullRender()`, pas ici. Cette valeur
+   ne sert qu'avant le premier rendu. */
 .merge-full-body { grid-template-columns: 1fr 1fr 1fr; }
+.merge-full-toggles { display: flex; gap: 4px; flex-wrap: wrap; }
+.mf-toggle .ico { opacity: 0.8; }
+.merge-full-nav { display: flex; align-items: center; gap: 4px; }
+.merge-full-nav .btn { padding: 4px 6px; }
+#mergeFullNavCount { font-size: 12.5px; min-width: 3.5em; text-align: center; }
+/* Le conflit VISÉ se distingue des autres une fois le défilement fait : sur un fichier de deux
+   cents lignes, arriver au milieu d'un écran plein de blocs ne dit pas lequel est « celui-là »
+   sans un repère qui ne dépende pas de la couleur du choix déjà fait. */
+.mf-hunk.mf-nav-cible { outline: 2px dashed var(--accent); outline-offset: -2px; }
 .merge-full-col { font-family: var(--ff-mono); font-size: 12.5px; }
 .merge-full-col h4 { position: sticky; top: 0; margin: 0 0 6px; padding: 6px 4px; background: var(--bg);
   color: var(--muted); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--line); }
@@ -59,4 +77,14 @@
 .merge-full-col .mf-theirs:hover { background: color-mix(in srgb, var(--ok) 22%, transparent); }
 .merge-full-col .mf-chosen { outline: 2px solid var(--accent); outline-offset: -2px; }
 .merge-full-col .mf-result { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.merge-full-col .mf-ia { background: color-mix(in srgb, var(--purple) 10%, transparent); cursor: pointer; }
+.merge-full-col .mf-ia:hover { background: color-mix(in srgb, var(--purple) 22%, transparent); }
+/* Le `<pre>` de la proposition, imbriqué DANS `.mf-ia` (pas `.mf-hunk` lui-même comme les
+   autres colonnes) : sans ce repli de ligne, une proposition longue ouvre un défilement
+   horizontal que les trois autres colonnes n'ont pas. */
+.merge-full-col .mf-ia pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.merge-full-col .mf-ia-empty { background: transparent; cursor: default; color: var(--muted); }
+.merge-full-col .mf-ia .mf-reason-btn { display: block; margin: 2px 0 4px; font-size: 11px; }
+.merge-full-col .mf-reason { margin: 4px 0 0; padding-top: 4px; border-top: 1px dashed var(--line);
+  color: var(--muted); font-size: 11.5px; white-space: pre-wrap; }
 

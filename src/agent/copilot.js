@@ -159,6 +159,24 @@ function mockReport(prompt, cwd, meta = {}) {
   const removed = (diff.match(/^-(?!--)/gm) || []).length;
   const kind = meta.kind || 'review';
 
+  /* PROPOSITION DE MERGE (dry-run) : un bloc `<<<FiHj … FiHj>>>` et son `<<<RiHj … RiHj>>>`
+     par conflit RÉEL de chaque fichier de `meta.fichiers` (même protocole que
+     `<<<QUESTIONS … QUESTIONS>>>` : pas de `>>>` sur la balise ouvrante), pour que la file
+     complète (job → parsing → écran) s'exerce sans backend — le choix retenu (« garder la
+     source ») est arbitraire, seul compte que le format soit celui attendu, sur PLUSIEURS
+     fichiers à la fois comme le fait le vrai appel groupé. */
+  if (kind === 'merge-ai') {
+    const { decouper } = require('../git/conflits');
+    return (meta.fichiers || []).map((f, i) => {
+      const conflits = decouper(f.raw || '').filter((m) => m.type === 'conflit');
+      return conflits.map((m, j) => {
+        const texte = (m.theirs.length ? m.theirs : m.ours).join('\n');
+        return `<<<F${i + 1}H${j + 1}\n${texte}\nF${i + 1}H${j + 1}>>>\n`
+          + `<<<R${i + 1}H${j + 1}\nraison (dry-run) du conflit ${i + 1}.${j + 1}\nR${i + 1}H${j + 1}>>>`;
+      }).join('\n');
+    }).join('\n');
+  }
+
   if (kind === 'explain') {
     return [
       `# Explication (mock)`,

@@ -53,13 +53,25 @@
 <div id="mergeFullView" class="splitview" hidden>
     <div class="split-head">
         <code id="mergeFullTitle"></code>
+        <!-- Aller au conflit précédent/suivant sans scroller : le seul repère pour un long
+             fichier, où faire défiler à la main pour trouver le prochain prend du temps. -->
+        <div class="merge-full-nav" id="mergeFullNav">
+            <button id="mergeFullPrev" type="button" class="btn btn-sm" title="Conflit précédent" data-i18n-title="git.merge.full.nav-prev"><svg class="ico ico-sm"><use href="#i-up"/></svg></button>
+            <span class="muted" id="mergeFullNavCount"></span>
+            <button id="mergeFullNext" type="button" class="btn btn-sm" title="Conflit suivant" data-i18n-title="git.merge.full.nav-next"><svg class="ico ico-sm"><use href="#i-down"/></svg></button>
+        </div>
         <span class="muted" data-i18n="git.merge.full.hint">Clique un passage à gauche ou à droite pour le garder. « Garder les deux » et l'édition manuelle restent dans la vue normale.</span>
         <span class="spacer"></span>
+        <!-- Une colonne masquée rend sa largeur aux autres : voir mergeFullRender(). -->
+        <div class="merge-full-toggles" id="mergeFullToggles"></div>
         <button id="mergeFullClose" class="btn" title="Fermer (Échap)" data-i18n-title="context.title.fermer-echap"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="context.title.fermer-echap">Fermer (Échap)</span></button>
     </div>
     <div class="split-body merge-full-body">
         <div class="split-pane merge-full-col" id="mergeFullOurs"></div>
         <div class="split-pane merge-full-col merge-full-result" id="mergeFullResult"></div>
         <div class="split-pane merge-full-col" id="mergeFullTheirs"></div>
+        <!-- Colonne de la proposition de l'IA : seulement si le fichier ouvert en a au moins
+             une — un fichier sans proposition n'affiche pas de quatrième colonne vide. -->
+        <div class="split-pane merge-full-col merge-full-ia" id="mergeFullIa" hidden></div>
     </div>
 </div>

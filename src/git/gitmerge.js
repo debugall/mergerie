@@ -195,10 +195,19 @@ async function resoudre(id, fichier, { contenu = null, choix = null } = {}) {
   /* DEUX FAÇONS DE RÉSOUDRE, UN SEUL ASSEMBLEUR. Les boutons « garder celle-ci / celle-là /
      les deux » envoient des CHOIX, et c'est le serveur qui recolle : l'écran n'a pas sa propre
      version de la règle, qui finirait par diverger de celle qu'on teste. L'édition à la main,
-     elle, envoie le texte — par définition c'est celui que l'utilisateur a écrit. */
+     elle, envoie le texte — par définition c'est celui que l'utilisateur a écrit.
+     « ia » est un troisième CHOIX, pas un texte : l'écran ne renvoie que le mot, comme pour
+     « ours »/« theirs », et c'est ici qu'on le résout contre la proposition ENREGISTRÉE — la
+     même règle que pour les deux autres, où le texte vient toujours du serveur, jamais du
+     navigateur. Une proposition manquante (jamais demandée, ou fichier changé depuis) retombe
+     sur « ours », le repli le moins surprenant. */
+  const propositions = propositionsDe(id, fichier) || [];
+  const resolus = (Array.isArray(choix) ? choix : []).map((c, i) => (
+    c === 'ia' && propositions[i] != null ? { texte: propositions[i].texte } : c
+  ));
   const texte = contenu != null
     ? String(contenu)
-    : recoller(decouper(fs.readFileSync(abs, 'utf8')), Array.isArray(choix) ? choix : []);
+    : recoller(decouper(fs.readFileSync(abs, 'utf8')), resolus);
   fs.writeFileSync(abs, texte, 'utf8');
   await git.run('git', ['add', '--', fichier], { cwd: m.dir });
   const reste = await enConflit(m.dir);
@@ -236,6 +245,28 @@ function contenu(id, fichier) {
   }
   if (!fs.existsSync(abs)) throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
   return fs.readFileSync(abs, 'utf8');
+}
+
+/* LES PROPOSITIONS DE L'IA, par fichier. `git_merge.ai_json` : un objet `{ chemin: [...] }`,
+   un tableau par conflit du fichier, chaque entrée `{ texte, raison }` ou `null` là où l'agent
+   n'a rien proposé — un bloc mal formé n'est jamais une panne. Recalculées à la demande, jamais
+   synchronisées : voir la migration qui a posé la colonne pour le pourquoi. La CONSTRUCTION du
+   prompt et l'appel à l'agent vivent plus haut (`session/mergeai.js`) : ce module ne connaît que
+   git et le disque. */
+function toutesPropositions(m) {
+  try { return JSON.parse(m.ai_json || '{}'); } catch { return {}; }
+}
+function propositionsDe(id, fichier) {
+  return toutesPropositions(ligne(id))[fichier] || null;
+}
+/* UN SEUL APPEL POSE TOUS LES FICHIERS D'UN COUP — la vue globale de `session/mergeai.js`
+   répond en une fois pour tout le merge, pas fichier par fichier : un seul écrit ici évite de
+   relire/réécrire `ai_json` une fois par fichier pour rien. */
+function enregistrerPropositionsMultiples(id, parFichier) {
+  const m = ligne(id);
+  const toutes = { ...toutesPropositions(m), ...parFichier };
+  db.prepare('UPDATE git_merge SET ai_json = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(toutes), new Date().toISOString(), id);
 }
 
 /* COMMITER. On refuse tant qu'il reste un conflit : `git commit` le refuserait de toute façon,
@@ -332,7 +363,8 @@ function enCours() {
 }
 
 module.exports = {
-  MERGES_DIR, demarrer, etat, resoudre, contenu, datesFichier, commiter, pousser, abandonner, enCours, diffCommit,
+  MERGES_DIR, demarrer, etat, resoudre, contenu, datesFichier, propositionsDe, enregistrerPropositionsMultiples,
+  commiter, pousser, abandonner, enCours, diffCommit,
   // Réexportés par commodité pour les routes ; ils vivent dans `conflits.js`, qui ne touche
   // NI la base NI le disque — c'est ce qui les rend testables sans démarrer l'application.
   decouper, recoller,

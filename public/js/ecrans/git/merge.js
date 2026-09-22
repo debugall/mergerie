@@ -14,6 +14,15 @@
  */
 let mergeEtat = null;              // état du merge ouvert
 let mergeFichier = null;           // { path, morceaux, choix: [], edite: bool, texte }
+/* « Demander à l'IA » porte sur TOUT le merge (voir plus bas), pas sur le fichier ouvert : son
+   état de progression doit donc survivre au re-rendu de `merge-head`, qui arrive à chaque
+   changement de fichier ou de choix — un état LOCAL à ce bloc serait perdu à chaque fois. */
+let mergeAiEnCours = false;
+/* …ET SURVIVRE PROPREMENT À UN CHANGEMENT DE MERGE PENDANT L'ATTENTE. Abandonner le merge A
+   avec une demande encore en vol, puis ouvrir B et en lancer une autre : la réponse tardive de
+   A ne doit pas effacer le drapeau « en cours » de B. Un jeton par demande, comparé à la fin :
+   seule la DERNIÈRE lancée a le droit de toucher au drapeau global. */
+let mergeAiGen = 0;
 
 const mergeRefsCache = new Map();  // repoId -> [{ value, label }]
 /* …ET SON OUBLI. Le cache n'était jamais vidé : après un merge poussé ou une branche créée
@@ -106,6 +115,7 @@ async function mergeRenderRunning() {
 async function mergeOuvrir(id) {
   mergeEtat = await api(`/git/merges/${id}`);
   mergeFichier = null;
+  mergeAiEnCours = false; mergeAiGen += 1;   // un autre merge, sans lien avec une éventuelle demande passée
   const premier = mergeEtat.conflits[0];
   if (premier) await mergeOuvrirFichier(premier); else mergeRenderWork();
 }
@@ -119,18 +129,37 @@ async function mergeOuvrirFichier(chemin) {
   mergeFichier = {
     path: chemin, morceaux: d.morceaux, texte: d.texte, choix: Array(nb).fill('ours'), edite: false,
     dates: d.dates || {},
+    /* Une demande précédente peut déjà avoir une réponse : `propositions[n]` porte
+       `{ texte, raison }` pour le n-ième conflit, absent (`undefined`) là où l'agent n'a rien
+       proposé. `raisonsOuvertes` ne mémorise que ce qu'on a DÉPLIÉ à l'écran — jamais envoyé au
+       serveur, jamais reçu de lui. */
+    propositions: d.propositions || [],
+    raisonsOuvertes: {},
   };
   mergeRenderWork();
 }
 
+/* CE QUE CETTE PROPOSITION VAUT COMME CHOIX. Le texte ne voyage qu'une fois : l'écran le
+   reçoit avec le fichier, et le rejoue localement pour l'aperçu — c'est le SERVEUR qui
+   résout « ia » en ce même texte au moment d'enregistrer (`gitmerge.resoudre`), jamais
+   l'écran qui le lui redonnerait. */
+const mergeLignesChoisies = (m, c, n) => {
+  // `!= null` : une proposition absente revient `null` (jamais `undefined`) une fois passée
+  // par le fichier — `null.split` planterait le rendu sur le conflit suivant, pas seulement
+  // celui-là, puisque `mergeApercu`/`mergeFullColonne` s'arrêteraient à la première exception.
+  if (c === 'ia' && mergeFichier.propositions[n] != null) return mergeFichier.propositions[n].texte.split('\n');
+  return c === 'theirs' ? m.theirs : c === 'deux' ? [...m.ours, ...m.theirs] : m.ours;
+};
 const mergeApercu = () => {
   /* AFFICHAGE SEULEMENT. Ce que le serveur écrira vient de `gitmerge.recoller`, à qui l'on
      envoie les choix : deux assembleurs finiraient par ne plus dire la même chose. */
   let n = 0;
   return mergeFichier.morceaux.map((m) => {
     if (m.type === 'stable') return m.lignes.join('\n');
-    const c = mergeFichier.choix[n]; n += 1;
-    return (c === 'theirs' ? m.theirs : c === 'deux' ? [...m.ours, ...m.theirs] : m.ours).join('\n');
+    const c = mergeFichier.choix[n];
+    const lignes = mergeLignesChoisies(m, c, n);
+    n += 1;
+    return lignes.join('\n');
   }).join('\n');
 };
 
@@ -160,6 +189,13 @@ function mergeRenderWork() {
         ${e.commit_sha ? `<button type="button" class="muted git-sha git-sha-copy" data-copy-txt="${esc(e.commit_sha)}" title="${esc(tr('git.copy-sha'))}">${esc(String(e.commit_sha).slice(0, 8))}</button>` : ''}
       </div>
       <div class="spacer"></div>
+      ${/* « DEMANDER À L'IA » PORTE SUR TOUT LE MERGE, EN UN SEUL APPEL — jamais fichier par
+            fichier : proposer pour `a.txt` sans savoir que `b.txt` renomme la même fonction
+            donnerait deux résolutions cohérentes chacune pour soi, incohérentes ensemble.
+            N'apparaît que s'il reste des conflits à résoudre. */''}
+      ${reste ? (mergeAiEnCours
+    ? `<span class="muted" id="mergeAiStatus"><span class="spin"></span> ${esc(tr('git.merge.ai.running'))}</span>`
+    : `<button class="btn btn-sm" id="mergeAiPropose" title="${esc(tr('git.merge.ai.button-title'))}"><svg class="ico"><use href="#i-bot"/></svg>${esc(tr('git.merge.ai.button'))}</button>`) : ''}
       ${fini ? '' : `<button class="btn btn-danger" id="mergeAbandon">${esc(tr('git.merge.abandon'))}</button>`}
       ${e.status === 'ready' ? `<button class="btn btn-primary" id="mergeCommit"><svg class="ico"><use href="#i-save"/></svg>${esc(tr('git.merge.commit.go'))}</button>` : ''}
       ${e.status === 'committed' ? `<button class="btn btn-primary" id="mergePush"><svg class="ico"><use href="#i-upload"/></svg>${esc(tr('git.merge.push'))}</button>` : ''}
@@ -173,6 +209,22 @@ function mergeRenderWork() {
       </div>
       <div class="merge-pane" id="mergePane">${mergeFichier ? mergePaneHtml() : `<p class="muted">${esc(tr('git.merge.pick-file'))}</p>`}</div>
     </div>` : ''}`;
+}
+
+/* LA TROISIÈME COLONNE, avec sa raison DÉPLIABLE. La raison n'est jamais affichée d'office :
+   trois colonnes ET une justification en dessous de chacune noierait l'écran, alors qu'une
+   proposition sans réserve se garde ou s'ignore d'un coup d'œil. Le bouton n'apparaît QUE si
+   l'IA a rendu un `<<<RiHj>>>` pour ce conflit précis — un bloc absent n'est pas une panne
+   (voir `session/mergeai.js`), simplement rien à montrer. */
+function blocIA(proposition, retenue, n, ouverte) {
+  const lignes = proposition.texte.split('\n');
+  return `<div class="cf-side cf-ia${retenue ? ' cf-keep' : ''}">
+      <div class="cf-lab"><span>${esc(tr('git.merge.ai.side'))}</span>
+        ${proposition.raison ? `<button class="btn btn-sm btn-ghost" data-reason="${n}">${esc(tr(ouverte ? 'git.merge.ai.reason-hide' : 'git.merge.ai.reason-show'))}</button>` : ''}
+        <button class="btn btn-sm${retenue ? ' btn-primary' : ''}" data-keep="ia" data-h="${n}">${esc(tr('git.merge.keep'))}</button></div>
+      <pre>${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>
+      ${ouverte && proposition.raison ? `<p class="cf-reason">${esc(proposition.raison)}</p>` : ''}
+    </div>`;
 }
 
 function mergePaneHtml() {
@@ -201,15 +253,19 @@ function mergePaneHtml() {
     /* LA DATE, À CÔTÉ DE LA BRANCHE. Le même repère que partout ailleurs dans l'écran : l'absolu
        à l'écran (il se compare), le relatif au survol. Une seule mesure par branche pour tout le
        fichier — `git log -1` sur le chemin, pas par conflit — donc identique sur chaque bloc. */
-    const bloc = (cote, lignes, libelle, date) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux') ? ' cf-keep' : ''}">
+    const bloc = (cote, lignes, libelle, date) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux' && cote !== 'ia') ? ' cf-keep' : ''}">
         <div class="cf-lab"><span>${esc(libelle)}</span>
-          ${date ? `<span class="muted cf-date" title="${esc(tr('git.merge.date-title'))}">${dateHtml(date, fmtDate(date))}</span>` : ''}
+          ${date ? `<span class="muted cf-date" title="${esc(tr('git.merge.date-title'))}">${dateHtml(date, fmtDateTime(date))}</span>` : ''}
           <button class="btn btn-sm${c === cote ? ' btn-primary' : ''}" data-keep="${cote}" data-h="${n}">${esc(tr('git.merge.keep'))}</button></div>
         <pre>${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre></div>`;
+    // Une troisième colonne, SEULEMENT si l'IA a une proposition pour CE conflit précis — un
+    // conflit qu'elle a ignoré n'en affiche aucune plutôt qu'une case vide sans raison donnée.
+    const proposition = f.propositions[n];
     return `<div class="cf-hunk" data-hunk="${n}">
       <div class="cf-num">${esc(tr('git.merge.hunk', { n: n + 1, total: f.choix.length }))}</div>
       ${bloc('ours', m.ours, tr('git.merge.side-ours', { branch: e.target_branch }), f.dates.ours)}
       ${bloc('theirs', m.theirs, tr('git.merge.side-theirs', { branch: e.source_branch }), f.dates.theirs)}
+      ${proposition != null ? blocIA(proposition, c === 'ia', n, !!f.raisonsOuvertes[n]) : ''}
       <div class="cf-both"><button class="btn btn-sm${c === 'deux' ? ' btn-primary' : ''}" data-keep="deux" data-h="${n}"
         title="${esc(tr('git.merge.keep-both-title', { target: e.target_branch, source: e.source_branch }))}">${esc(tr('git.merge.keep-both', { target: e.target_branch, source: e.source_branch }))}</button></div>
     </div>`;
@@ -240,16 +296,87 @@ function mergeFullColonne(cote) {
     if (m.type === 'stable') return `<pre class="mf-ctx">${esc(m.lignes.join('\n'))}</pre>`;
     n += 1;
     const num = n;
+    const cible = num === mergeFullIndex ? ' mf-nav-cible' : '';
     if (cote === null) {
-      const c = f.choix[num];
-      const lignes = c === 'theirs' ? m.theirs : c === 'deux' ? [...m.ours, ...m.theirs] : m.ours;
-      return `<pre class="mf-hunk mf-result" data-h="${num}">${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>`;
+      const lignes = mergeLignesChoisies(m, f.choix[num], num);
+      return `<pre class="mf-hunk mf-result${cible}" data-h="${num}">${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>`;
     }
     const lignes = cote === 'ours' ? m.ours : m.theirs;
     const choisi = f.choix[num] === cote || f.choix[num] === 'deux';
-    return `<pre class="mf-hunk mf-${cote}${choisi ? ' mf-chosen' : ''}" data-h="${num}" data-cote="${cote}"
+    return `<pre class="mf-hunk mf-${cote}${choisi ? ' mf-chosen' : ''}${cible}" data-h="${num}" data-cote="${cote}"
       title="${esc(tr('git.merge.keep'))}">${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>`;
   }).join('');
+}
+/* LA QUATRIÈME COLONNE, la proposition de l'IA — SEULEMENT si le fichier en a au moins une
+   (voir `mergeFullRender`, qui démasque la colonne). Un conflit que l'agent a ignoré montre un
+   bloc neutre plutôt qu'un trou : les lignes restent alignées avec les trois autres colonnes.
+   Cliquer une proposition la choisit, exactement comme un passage à gauche ou à droite —
+   « garder la proposition » n'a pas de raison de rester réservé à la vue normale. */
+function mergeFullColonneIA() {
+  const f = mergeFichier;
+  let n = -1;
+  return f.morceaux.map((m) => {
+    if (m.type === 'stable') return `<pre class="mf-ctx">${esc(m.lignes.join('\n'))}</pre>`;
+    n += 1;
+    const num = n;
+    const cible = num === mergeFullIndex ? ' mf-nav-cible' : '';
+    const proposition = f.propositions[num];
+    if (proposition == null) {
+      return `<pre class="mf-hunk mf-ia-empty${cible}" data-h="${num}"><span class="muted">${esc(tr('git.merge.ai.side-empty'))}</span></pre>`;
+    }
+    const choisi = f.choix[num] === 'ia';
+    const ouverte = !!f.raisonsOuvertes[num];
+    return `<div class="mf-hunk mf-ia${choisi ? ' mf-chosen' : ''}${cible}" data-h="${num}" data-cote="ia"
+        title="${esc(tr('git.merge.keep'))}">
+      ${proposition.raison ? `<button class="btn btn-sm btn-ghost mf-reason-btn" data-reason="${num}">${esc(tr(ouverte ? 'git.merge.ai.reason-hide' : 'git.merge.ai.reason-show'))}</button>` : ''}
+      <pre>${esc(proposition.texte)}</pre>
+      ${ouverte && proposition.raison ? `<p class="mf-reason">${esc(proposition.raison)}</p>` : ''}
+    </div>`;
+  }).join('');
+}
+/* NAVIGUER SANS SCROLLER, conflit par conflit : sur un long fichier, trouver le prochain à la
+   main coûte plus cher que le clic lui-même. `mergeFullIndex` vaut pour TOUTES les colonnes à la
+   fois (les panneaux défilent chacun le leur), et se marque dans le rendu (`mf-nav-cible`) pour
+   qu'on voie lequel c'est une fois arrivé — pas seulement le compteur en haut.
+   LES BOUTONS NE SE DÉSACTIVENT JAMAIS, même à un seul conflit ou à une borne : cliquer
+   « suivant » sur le dernier ne désactive rien, il RÉAFFIRME juste le conflit courant (retour
+   en vue, remarqué) plutôt que de rester un bouton mort qu'on clique sans effet visible. */
+let mergeFullIndex = 0;
+function mergeFullNavRender() {
+  const total = (mergeFichier.choix || []).length;
+  $('#mergeFullNav').hidden = !total;
+  if (!total) return;
+  mergeFullIndex = Math.max(0, Math.min(mergeFullIndex, total - 1));
+  $('#mergeFullNavCount').textContent = tr('git.merge.full.nav-count', { n: mergeFullIndex + 1, total });
+}
+function mergeFullAllerA(n) {
+  const total = (mergeFichier.choix || []).length;
+  if (!total) return;
+  mergeFullIndex = Math.max(0, Math.min(n, total - 1));
+  mergeFullRender();
+  $$('.merge-full-col:not([hidden]) [data-h="' + mergeFullIndex + '"]')
+    .forEach((el) => el.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+}
+/* CHAQUE COLONNE SE MASQUE INDÉPENDAMMENT, et les autres se partagent la largeur libérée — la
+   grille passe de `repeat(N, 1fr)` à `repeat(N-1, 1fr)`, jamais figée à trois ou quatre. L'état
+   survit au changement de fichier (une préférence d'affichage, pas une donnée du fichier), mais
+   au moins une colonne reste visible : la masquer toutes rendrait la vue vide sans bouton pour
+   en rouvrir une, puisque les boutons vivent dans la barre du haut, pas dans les colonnes. */
+const mergeFullMasquees = new Set();
+const MERGE_FULL_EL = { ours: 'mergeFullOurs', result: 'mergeFullResult', theirs: 'mergeFullTheirs', ia: 'mergeFullIa' };
+function mergeFullColonnes() {
+  const e = mergeEtat; const f = mergeFichier;
+  const cols = [
+    { cle: 'ours', titre: tr('git.merge.full.ours', { branch: e.target_branch }), court: tr('git.merge.full.toggle.ours') },
+    { cle: 'result', titre: tr('git.merge.full.result'), court: tr('git.merge.full.toggle.result') },
+    { cle: 'theirs', titre: tr('git.merge.full.theirs', { branch: e.source_branch }), court: tr('git.merge.full.toggle.theirs') },
+  ];
+  // La proposition n'existe QUE si le fichier a au moins une proposition — sinon pas de bouton
+  // pour une colonne qui n'aurait jamais rien à montrer.
+  if ((f.propositions || []).some((p) => p != null)) {
+    cols.push({ cle: 'ia', titre: tr('git.merge.ai.side'), court: tr('git.merge.full.toggle.ia') });
+  }
+  return cols;
 }
 function mergeFullRender() {
   const e = mergeEtat; const f = mergeFichier;
@@ -257,11 +384,56 @@ function mergeFullRender() {
   $('#mergeFullOurs').innerHTML = `<h4>${esc(tr('git.merge.full.ours', { branch: e.target_branch }))}</h4>${mergeFullColonne('ours')}`;
   $('#mergeFullResult').innerHTML = `<h4>${esc(tr('git.merge.full.result'))}</h4>${mergeFullColonne(null)}`;
   $('#mergeFullTheirs').innerHTML = `<h4>${esc(tr('git.merge.full.theirs', { branch: e.source_branch }))}</h4>${mergeFullColonne('theirs')}`;
+  const cols = mergeFullColonnes();
+  const aUneProposition = cols.some((c) => c.cle === 'ia');
+  if (aUneProposition) $('#mergeFullIa').innerHTML = `<h4>${esc(tr('git.merge.ai.side'))}</h4>${mergeFullColonneIA()}`;
+
+  let visibles = 0;
+  cols.forEach((c) => { if (!mergeFullMasquees.has(c.cle)) visibles += 1; });
+  cols.forEach((c) => { $(`#${MERGE_FULL_EL[c.cle]}`).hidden = mergeFullMasquees.has(c.cle); });
+  if (!aUneProposition) $('#mergeFullIa').hidden = true;
+  $('.merge-full-body').style.gridTemplateColumns = `repeat(${Math.max(visibles, 1)}, 1fr)`;
+  $('#mergeFullToggles').innerHTML = cols.map((c) => {
+    const cache = mergeFullMasquees.has(c.cle);
+    return `<button type="button" class="btn btn-sm mf-toggle${cache ? '' : ' btn-primary'}" data-toggle-col="${c.cle}"
+      title="${esc(c.titre)} — ${esc(tr('git.merge.full.toggle-title'))}">
+      <svg class="ico ico-sm"><use href="#${cache ? 'i-eye-off' : 'i-eye'}"/></svg>${esc(c.court)}</button>`;
+  }).join('');
+  mergeFullNavRender();
 }
 function mergeFullFermer() { $('#mergeFullView').hidden = true; }
 document.addEventListener('click', (e) => {
-  if (e.target.closest && e.target.closest('#mergeFullOpen')) { mergeFullRender(); $('#mergeFullView').hidden = false; return; }
+  if (e.target.closest && e.target.closest('#mergeFullOpen')) {
+    mergeFullIndex = 0;   // on rouvre toujours au premier conflit, pas où on l'avait laissé
+    mergeFullRender();
+    $('#mergeFullView').hidden = false;
+    return;
+  }
   if (e.target.closest && e.target.closest('#mergeFullClose')) { mergeFullFermer(); return; }
+  if (e.target.closest && e.target.closest('#mergeFullPrev')) { mergeFullAllerA(mergeFullIndex - 1); return; }
+  if (e.target.closest && e.target.closest('#mergeFullNext')) { mergeFullAllerA(mergeFullIndex + 1); return; }
+  const toggle = e.target.closest && e.target.closest('#mergeFullView [data-toggle-col]');
+  if (toggle && mergeFichier) {
+    const cle = toggle.dataset.toggleCol;
+    if (mergeFullMasquees.has(cle)) {
+      mergeFullMasquees.delete(cle);
+    } else {
+      const visibles = mergeFullColonnes().filter((c) => !mergeFullMasquees.has(c.cle));
+      if (visibles.length > 1) mergeFullMasquees.add(cle);   // jamais la dernière colonne visible
+    }
+    mergeFullRender();
+    return;
+  }
+  const fullReason = e.target.closest && e.target.closest('#mergeFullView [data-reason]');
+  if (fullReason && mergeFichier) {
+    // Avant le choix du bloc ci-dessous : le bouton vit DANS le bloc cliquable, et ne doit pas
+    // en déclencher la sélection en plus de son propre effet.
+    const n = Number(fullReason.dataset.reason);
+    mergeFichier.raisonsOuvertes[n] = !mergeFichier.raisonsOuvertes[n];
+    mergeFullRender();
+    if ($('#mergePane')) $('#mergePane').innerHTML = mergePaneHtml();
+    return;
+  }
   const h = e.target.closest && e.target.closest('.mf-hunk[data-cote]');
   if (h && mergeFichier) {
     // Choisi ici, reflété dans les deux vues : la fermer ne doit pas faire revenir en arrière.
@@ -294,9 +466,20 @@ document.addEventListener('click', async (e) => {
   if (!mergeEtat) return;
   const fich = dans('[data-mfile]');
   if (fich) { try { await mergeOuvrirFichier(fich.dataset.mfile); } catch (err) { toast(explainError(err.message), true); } return; }
+  if (dans('#mergeAiPropose')) { await mergeDemanderIA(); return; }
   const keep = dans('[data-keep]');
   if (keep && mergeFichier) {
     mergeFichier.choix[Number(keep.dataset.h)] = keep.dataset.keep;
+    $('#mergePane').innerHTML = mergePaneHtml();
+    return;
+  }
+  // `#mergePane` seulement : la vue plein écran a son propre `data-reason`, avec son propre
+  // écouteur (voir plus haut) — sans cette portée, un clic là-bas basculerait ici AUSSI, et les
+  // deux togglent la même case dans le même mouvement, ce qui l'annule.
+  const reason = dans('#mergePane [data-reason]');
+  if (reason && mergeFichier) {
+    const n = Number(reason.dataset.reason);
+    mergeFichier.raisonsOuvertes[n] = !mergeFichier.raisonsOuvertes[n];
     $('#mergePane').innerHTML = mergePaneHtml();
     return;
   }
@@ -329,6 +512,62 @@ document.addEventListener('click', async (e) => {
     } catch (err) { toast(explainError(err.message), true); }
   }
 });
+
+/* Relit les propositions d'UN fichier et les applique EN PLACE (sans toucher aux choix déjà
+   faits sur ses conflits) si c'est toujours lui qui est ouvert — utilisé après une demande à
+   l'IA, qui répond pour tous les fichiers mais ne concerne visiblement que celui qu'on regarde. */
+async function mergeRafraichirPropositions(mergeId, chemin) {
+  const d = await api(`/git/merges/${mergeId}/file?path=${encodeURIComponent(chemin)}`);
+  if (mergeFichier && mergeFichier.path === chemin) {
+    mergeFichier.propositions = d.propositions || [];
+    if ($('#mergePane')) $('#mergePane').innerHTML = mergePaneHtml();
+  }
+  return d.propositions || [];
+}
+/* DEMANDER À L'IA porte sur TOUT LE MERGE, en un seul appel — jamais fichier par fichier : voir
+   `session/mergeai.js` pour le pourquoi (la cohérence entre fichiers se perd si chacun est
+   proposé sans connaître les autres). Un job de fond, comme tout appel d'agent — ça peut
+   prendre une minute, et on ne bloque pas l'écran pendant ce temps : on continue de pouvoir
+   changer de fichier, de choisir « ours »/« theirs » ailleurs, etc. */
+async function mergeDemanderIA() {
+  // Un appel d'agent envoie le contenu des fichiers en conflit à l'IA : une confirmation avant
+  // de partir, comme pour pousser — pas parce que c'est destructeur, mais parce que c'est un
+  // envoi qui vaut la peine d'être conscient plutôt que déclenché par un clic distrait.
+  const ok = await confirmDialog({
+    title: tr('git.merge.ai.confirm.title'),
+    text: tr('git.merge.ai.confirm.text'),
+    confirmLabel: tr('git.merge.ai.button'), danger: false,
+  });
+  if (!ok) return;
+  const mergeId = mergeEtat.id;
+  const gen = (mergeAiGen += 1);
+  mergeAiEnCours = true;
+  mergeRenderWork();
+  try {
+    const job = await api(`/git/merges/${mergeId}/ai-propose`, { method: 'POST', body: {} });
+    for (let i = 0; i < 800; i += 1) {
+      let d;
+      try { d = await api(`/jobs/${job.id}/log?after=0`); } catch { break; }
+      if (d.finished_at) {
+        if (d.status === 'error') { toast(explainError(d.message), true); break; }
+        // Le fichier qu'on regarde a pu recevoir une proposition : on le relit pour l'afficher.
+        if (mergeFichier) await mergeRafraichirPropositions(mergeId, mergeFichier.path);
+        toast(tr('git.merge.ai.done'));
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  } catch (err) { toast(explainError(err.message), true); }
+  finally {
+    /* SEULE LA DERNIÈRE DEMANDE LANCÉE a le droit de toucher au drapeau global : entre-temps,
+       ce merge a pu être abandonné et un autre ouvert, avec sa PROPRE demande déjà en cours —
+       la réponse tardive de celle-ci ne doit alors ni l'effacer ni redessiner à sa place. */
+    if (gen === mergeAiGen) {
+      mergeAiEnCours = false;
+      if (mergeEtat && mergeEtat.id === mergeId) mergeRenderWork();
+    }
+  }
+}
 
 async function mergeResoudre(body) {
   try {
@@ -376,6 +615,7 @@ async function mergeDemarrer({ sansAncetre = false } = {}) {
     }));
     $('#mergeUnrelated').hidden = true;
     mergeFichier = null;
+    mergeAiEnCours = false; mergeAiGen += 1;   // un nouveau merge démarre, sans lien avec un ancien
     const premier = mergeEtat.conflits[0];
     if (premier) await mergeOuvrirFichier(premier); else mergeRenderWork();
     await mergeRenderRunning();

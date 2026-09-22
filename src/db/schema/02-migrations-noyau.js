@@ -179,6 +179,14 @@ try { db.exec('ALTER TABLE config ADD COLUMN jira_watch_minutes INTEGER DEFAULT 
    mois, assez court pour que la base ne double pas chaque année. Voir `retention.js` pour ce
    qui n'est PAS purgé, et pourquoi. */
 try { db.exec('ALTER TABLE config ADD COLUMN retention_days INTEGER DEFAULT 90'); } catch { /* déjà présente */ }
+/* LES PROPOSITIONS DE L'IA POUR UN MERGE, par fichier : `{ "<chemin>": [{ "n": 0, "texte":
+   "…" }, …] }`, un tableau par conflit RÉELLEMENT résolu par l'agent (un conflit qu'il a
+   ignoré n'y figure pas — un bloc mal formé n'est jamais une panne, voir `agent/protocol.js`).
+   Recalculées à la demande, jamais synchronisées : `git_merge` ne se partage pas, son
+   worktree n'existe que sur ce poste, et une proposition vaut pour l'état du fichier au
+   moment où elle a été demandée — la redemander après une résolution partielle est le geste
+   normal, pas un rattrapage. */
+try { db.exec('ALTER TABLE git_merge ADD COLUMN ai_json TEXT'); } catch { /* déjà présente */ }
 /* Tickets Jira surveillés. `status` est le DERNIER état connu : c'est lui qu'on compare au
    prochain passage pour décider s'il y a eu changement. Un ticket ajouté part donc avec
    l'état courant, sinon la première vérification notifierait un faux changement. */

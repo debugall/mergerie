@@ -5,6 +5,7 @@ const { app } = require('../app');
 const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
 const gitmerge = require('../../git/gitmerge');
+const jobs = require('../../jobs');
 const path = require('path');
 const { wrap } = require('../http');
 
@@ -40,7 +41,17 @@ app.get('/api/git/merges/:id/file', wrap(async (req, res) => {
   // Quelle version est la plus récente : la date du dernier commit touchant ce fichier, de
   // chaque côté (`null` s'il n'a pas d'historique sur ce côté — un fichier apparu de l'autre).
   const dates = await gitmerge.datesFichier(Number(req.params.id), fichier);
-  res.json({ path: fichier, texte, morceaux: gitmerge.decouper(texte), dates });
+  // Une proposition déjà obtenue (une demande précédente) revient avec le fichier : rouvrir
+  // un fichier ne doit pas faire perdre ce que l'IA avait déjà proposé.
+  const propositions = gitmerge.propositionsDe(Number(req.params.id), fichier);
+  res.json({ path: fichier, texte, morceaux: gitmerge.decouper(texte), dates, propositions });
+}));
+/* DEMANDER À L'IA une proposition de résolution pour TOUS les fichiers encore en conflit du
+   merge, EN UN SEUL APPEL — jamais un par fichier, pour que l'agent voie l'ensemble avant de
+   proposer (voir `session/mergeai.js`). Un job de fond, comme tout appel d'agent : ça peut
+   prendre une minute, et l'écran doit pouvoir continuer d'afficher les fichiers pendant ce temps. */
+app.post('/api/git/merges/:id/ai-propose', wrap((req, res) => {
+  res.json(jobs.startMergeAiJob(Number(req.params.id)));
 }));
 app.post('/api/git/merges/:id/resolve', wrap(async (req, res) => {
   const { path: fichier, content, choices } = req.body || {};

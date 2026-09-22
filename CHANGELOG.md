@@ -50,9 +50,32 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **“Ask the AI” proposes a resolution for every conflict of every file in one go — you still
+  validate each one individually.** One button on Git → Merge's conflict screen, not one per
+  file: it sends the whole merge to the agent as a single background job, so it sees every
+  conflicted file together before proposing anything — a fix that only makes sense read
+  alongside a change happening in another file isn't lost by asking file-by-file. Each proposal
+  shows up as a third version next to “ours” and “theirs”, with its own “Keep” button — nothing
+  is applied on its own, and a conflict the agent skipped simply shows no third version rather
+  than a guess. Proposals are kept with the merge, so reopening a file doesn't lose what was
+  already asked for. Each proposal also carries the reason behind it, hidden by default behind
+  a “See reason” button — the request asks the agent for a short explanation per conflict, not
+  just the resolved text. The button asks for confirmation before sending anything, since it
+  means the content of every conflicted file leaves for the agent. The full-screen view (below)
+  gets a fourth column for the AI proposal and its reason, shown only on a file that has one —
+  clicking a proposal there selects it, exactly like a passage on the destination or source side,
+  and its text wraps instead of opening a horizontal scrollbar. Each of the four full-screen
+  columns can be hidden and shown back on its own — the remaining ones share the freed-up width
+  instead of leaving it blank — with at least one always left visible. The full-screen view also
+  gets previous/next arrows to jump straight to the next conflict, with a “conflict N/M” counter
+  — scrolling by hand through a long file to find the next one was slower than the click itself.
+  They stay active even on a file with a single conflict or at either end of the list: clicking
+  past the last one, or the only one there is, just re-centers and re-marks it instead of doing
+  nothing, so the arrows never look broken.
 - **Git → Merge's conflict screen says which version is newer, and gets a full-screen view.**
-  Each side of a conflict now shows the date of its last commit on that branch, so picking one
-  no longer means guessing which is more recent. “Keep both” now names the two branches and the
+  Each side of a conflict now shows the date AND time of its last commit on that branch, so
+  picking one no longer means guessing which is more recent — two commits made the same day
+  would otherwise have looked identical. “Keep both” now names the two branches and the
   order it applies them in (it was “in this order” with no order shown). A new “Fullscreen”
   button shows the whole file three times side by side — destination, source, and the current
   result in the middle — instead of three lines of context per conflict; clicking a passage on

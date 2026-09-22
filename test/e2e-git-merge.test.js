@@ -21,7 +21,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
   startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
-  afficherMenusOptionnels,
+  afficherMenusOptionnels, waitForJobs,
 } = require('./helpers/app');
 /* On importe le module PUR, jamais `src/gitmerge` : celui-ci require `src/db`, qui OUVRE la
    base au chargement — et à cet instant le harnais n'a pas encore posé `MERGERIE_DATA_DIR`.
@@ -29,6 +29,15 @@ const {
 const conflits = require('../src/git/conflits');
 
 const { dispo } = navigateurDispo();
+
+/* « DEMANDER À L'IA » DEMANDE CONFIRMATION avant de partir (l'appel envoie le contenu des
+   fichiers en conflit à l'agent) : cliquer le bouton, puis valider la modale, comme pour
+   pousser — jamais un clic direct. */
+async function demanderIaEtConfirmer(page) {
+  await page.locator('#mergeAiPropose').click();
+  await page.locator('#confirmModal:not([hidden])').waitFor();
+  await page.locator('#confirmOk').click();
+}
 
 /* ------------------------------------------------- les marqueurs, sans dépôt ---- */
 
@@ -59,6 +68,14 @@ describe('Découper un fichier en conflit', () => {
     assert.equal(conflits.recoller(m, ['theirs']), 'debut\nde la feature\nfin');
     assert.equal(conflits.recoller(m, ['deux']), 'debut\nde main\nde la feature\nfin');
     assert.equal(conflits.recoller(m, []), 'debut\nde main\nfin', 'sans choix, on garde la destination');
+  });
+
+  /* UN CHOIX PEUT PORTER SON PROPRE TEXTE, pas seulement désigner un côté — c'est ce qui
+     permet à une proposition de l'IA (ou une correction posée sur CE conflit précis) de
+     remplacer le bloc sans passer par « ours »/« theirs »/« deux ». */
+  test('un choix peut porter son propre texte, pour une proposition acceptée', () => {
+    const m = conflits.decouper(AVEC);
+    assert.equal(conflits.recoller(m, [{ texte: 'fusion proposée par l’IA' }]), 'debut\nfusion proposée par l’IA\nfin');
   });
 
   test('un fichier sans conflit se recolle à l’identique', () => {
@@ -113,6 +130,30 @@ describe('Git · Merge de branche à branche', () => {
     g(work, 'checkout', '-q', 'main');
     fs.writeFileSync(path.join(work, 'a.txt'), `ligne 1\nvenue de main ${suffixe}\nligne 3\n`);
     g(work, 'add', '-A'); g(work, 'commit', '-qm', `main avance ${suffixe}`); g(work, 'push', '-q', 'origin', 'main');
+    return src;
+  }
+
+  /** Comme `scenarioConflit`, mais avec DEUX conflits bien séparés dans le MÊME fichier —
+      assez de lignes stables entre les deux pour que git les garde en deux morceaux distincts
+      plutôt que de les fondre en un seul. */
+  function scenarioMulti(suffixe) {
+    const src = `feature/${suffixe}`;
+    const base = Array.from({ length: 13 }, (_, i) => `ligne ${i + 1}`);
+    g(work, 'checkout', '-q', 'main'); g(work, 'fetch', '-q', 'origin'); g(work, 'reset', '-q', '--hard', 'origin/main');
+    fs.writeFileSync(path.join(work, 'multi.txt'), `${base.join('\n')}\n`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', `base multi ${suffixe}`); g(work, 'push', '-q', 'origin', 'main');
+
+    g(work, 'checkout', '-q', '-b', src);
+    const surSrc = [...base];
+    surSrc[1] = 'deux — venue de la source'; surSrc[11] = 'douze — venue de la source';
+    fs.writeFileSync(path.join(work, 'multi.txt'), `${surSrc.join('\n')}\n`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', `travail multi ${suffixe}`); g(work, 'push', '-q', '-u', 'origin', src);
+
+    g(work, 'checkout', '-q', 'main');
+    const surMain = [...base];
+    surMain[1] = 'deux — venue de la cible'; surMain[11] = 'douze — venue de la cible';
+    fs.writeFileSync(path.join(work, 'multi.txt'), `${surMain.join('\n')}\n`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', `main avance multi ${suffixe}`); g(work, 'push', '-q', 'origin', 'main');
     return src;
   }
   const demarrer = (source, target = 'main') =>
@@ -170,6 +211,215 @@ describe('Git · Merge de branche à branche', () => {
     const f = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
     assert.match(f.body.dates.ours, /^2026-06-01T10:00:00/, 'HEAD porte la destination, la plus récente ici');
     assert.match(f.body.dates.theirs, /^2026-01-01T10:00:00/, 'MERGE_HEAD porte la source, plus ancienne ici');
+    await solder(body.id);
+  });
+
+  /* DEMANDER À L'IA : une proposition par conflit, EN JOB DE FOND, jamais appliquée toute
+     seule — il faut encore choisir « ia » pour ce conflit précis, exactement comme pour
+     « ours »/« theirs »/« deux ». En dry-run (décor de test), le mock déterministe de
+     `copilot.js` propose la version « theirs » de chaque conflit : ce n'est pas ce qui compte
+     ici, seulement que le format délimité fasse l'aller-retour jusqu'à l'écran et jusqu'au
+     fichier final. */
+  test('« Demander à l’IA » propose une résolution, à choisir conflit par conflit', async () => {
+    const src = scenarioConflit('ia');
+    const { body } = await demarrer(src);
+
+    const avant = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.equal(avant.body.propositions, null, 'rien tant que rien n’a été demandé');
+
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+
+    const apres = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.equal(apres.body.propositions.length, 1, 'une proposition pour l’unique conflit');
+    assert.match(apres.body.propositions[0].texte, new RegExp(`venue de ${src}`), 'le mock propose « theirs »');
+    assert.match(apres.body.propositions[0].raison, /raison \(dry-run\)/, 'chaque proposition porte aussi sa raison');
+
+    // La choisir, comme « ours »/« theirs »/« deux » — un choix parmi d'autres, pas un geste à part.
+    const r = await app.api('POST', `/api/git/merges/${body.id}/resolve`, { path: 'a.txt', choices: ['ia'] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.status, 'ready');
+    const c = await app.api('POST', `/api/git/merges/${body.id}/commit`, { message: r.body.message });
+    assert.equal(c.status, 200, JSON.stringify(c.body));
+    await app.api('POST', `/api/git/merges/${body.id}/push`, {});
+    assert.equal(execFileSync('git', ['show', 'main:a.txt'], { cwd: bare }).toString(),
+      `ligne 1\nvenue de ${src}\nligne 3\n`, 'le texte parti sur la destination est celui de la proposition acceptée');
+  });
+
+  /* UNE PROPOSITION MANQUANTE (jamais demandée, ou l'agent a ignoré ce conflit précis) retombe
+     sur « ours » — le repli le moins surprenant, jamais une erreur serveur. */
+  test('choisir « ia » sans proposition retombe sur « ours »', async () => {
+    const src = scenarioConflit('ia-absente');
+    const { body } = await demarrer(src);
+    const r = await app.api('POST', `/api/git/merges/${body.id}/resolve`, { path: 'a.txt', choices: ['ia'] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await app.api('POST', `/api/git/merges/${body.id}/commit`, { message: r.body.message });
+    await app.api('POST', `/api/git/merges/${body.id}/push`, {});
+    assert.equal(execFileSync('git', ['show', 'main:a.txt'], { cwd: bare }).toString(),
+      'ligne 1\nvenue de main ia-absente\nligne 3\n', 'la destination, comme un « ours » ordinaire');
+  });
+
+  /* PLUSIEURS CONFLITS DANS UN MÊME FICHIER : une proposition par conflit, numérotée dans
+     l'ORDRE d'apparition — et choisie indépendamment (un « ia » pour le premier n'entraîne
+     pas les autres). */
+  test('plusieurs conflits dans un même fichier : une proposition par conflit, choisie indépendamment', async () => {
+    const src = scenarioMulti('multi');
+    const { body } = await demarrer(src);
+    const avant = await app.api('GET', `/api/git/merges/${body.id}/file?path=multi.txt`);
+    assert.equal(avant.body.morceaux.filter((m) => m.type === 'conflit').length, 2,
+      'les deux modifications restent deux conflits distincts');
+
+    await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    await waitForJobs(app.api);
+    const apres = await app.api('GET', `/api/git/merges/${body.id}/file?path=multi.txt`);
+    assert.equal(apres.body.propositions.length, 2);
+    assert.match(apres.body.propositions[0].texte, /deux — venue de la source/, 'la proposition n°1 porte le premier conflit');
+    assert.match(apres.body.propositions[1].texte, /douze — venue de la source/, 'la proposition n°2 porte le second');
+    assert.match(apres.body.propositions[0].raison, /raison \(dry-run\) du conflit 1\.1/, 'sa raison porte le même i.j que le texte');
+    assert.match(apres.body.propositions[1].raison, /raison \(dry-run\) du conflit 1\.2/, 'et le second conflit a la sienne, distincte');
+
+    // Choix MÉLANGÉS : la proposition de l'IA pour le premier conflit, « theirs » pour le second.
+    const r = await app.api('POST', `/api/git/merges/${body.id}/resolve`, { path: 'multi.txt', choices: ['ia', 'theirs'] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await app.api('POST', `/api/git/merges/${body.id}/commit`, { message: r.body.message });
+    await app.api('POST', `/api/git/merges/${body.id}/push`, {});
+    const final = execFileSync('git', ['show', 'main:multi.txt'], { cwd: bare }).toString().split('\n');
+    assert.equal(final[1], 'deux — venue de la source', 'premier conflit : la proposition acceptée');
+    assert.equal(final[11], 'douze — venue de la source', 'second conflit : « theirs », un choix indépendant du premier');
+  });
+
+  /* UNE PROPOSITION MANQUANTE POUR UN SEUL CONFLIT PARMI PLUSIEURS (l'agent a répondu pour
+     l'un, pas pour l'autre) ne doit ni planter l'écran ni bloquer la résolution du reste :
+     seul CE conflit-là retombe sur « ours ». On simule la réponse partielle directement en
+     base — le mock de test, lui, répond toujours pour tous les conflits ; c'est un vrai agent
+     qui peut en sauter un. */
+  test('une proposition manquante pour un conflit parmi plusieurs retombe sur « ours », pour lui seul', async () => {
+    const src = scenarioMulti('partiel');
+    const { body } = await demarrer(src);
+    await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    await waitForJobs(app.api);
+
+    const ligne = app.db.prepare('SELECT ai_json FROM git_merge WHERE id = ?').get(body.id);
+    const toutes = JSON.parse(ligne.ai_json);
+    toutes['multi.txt'][1] = null;    // l'agent a « oublié » le second conflit
+    app.db.prepare('UPDATE git_merge SET ai_json = ? WHERE id = ?').run(JSON.stringify(toutes), body.id);
+
+    // Le fichier revient sans planter, et le dit : `null`, pas une chaîne vide qui laisserait
+    // croire à une proposition « vide » plutôt qu'absente.
+    const relu = await app.api('GET', `/api/git/merges/${body.id}/file?path=multi.txt`);
+    assert.notEqual(relu.body.propositions[0], null, 'le premier conflit garde sa proposition');
+    assert.equal(relu.body.propositions[1], null, 'le second n’en a plus');
+
+    const r = await app.api('POST', `/api/git/merges/${body.id}/resolve`, { path: 'multi.txt', choices: ['ia', 'ia'] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await app.api('POST', `/api/git/merges/${body.id}/commit`, { message: r.body.message });
+    await app.api('POST', `/api/git/merges/${body.id}/push`, {});
+    const final = execFileSync('git', ['show', 'main:multi.txt'], { cwd: bare }).toString().split('\n');
+    assert.equal(final[1], 'deux — venue de la source', 'la proposition existante s’applique');
+    assert.equal(final[11], 'douze — venue de la cible', '« ia » sans proposition retombe sur « ours », jamais une erreur');
+  });
+
+  /* UN BLOC `R` ABSENT N'EST PAS UNE PANNE : le texte proposé reste utilisable même sans raison
+     à montrer — c'est ce qu'un vrai agent produit s'il n'a pas suivi le format demandé pour le
+     second bloc. On simule ce cas directement en base, comme pour la proposition manquante. */
+  test('une proposition sans raison reste utilisable : elle s’applique, simplement rien à montrer', async () => {
+    const src = scenarioConflit('sans-raison');
+    const { body } = await demarrer(src);
+    await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    await waitForJobs(app.api);
+
+    const ligne = app.db.prepare('SELECT ai_json FROM git_merge WHERE id = ?').get(body.id);
+    const toutes = JSON.parse(ligne.ai_json);
+    toutes['a.txt'][0].raison = null;    // l'agent n'a rendu que le bloc F, pas le bloc R
+    app.db.prepare('UPDATE git_merge SET ai_json = ? WHERE id = ?').run(JSON.stringify(toutes), body.id);
+
+    const relu = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.notEqual(relu.body.propositions[0].texte, null, 'le texte reste là');
+    assert.equal(relu.body.propositions[0].raison, null, 'la raison, elle, est absente');
+
+    const r = await app.api('POST', `/api/git/merges/${body.id}/resolve`, { path: 'a.txt', choices: ['ia'] });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    await app.api('POST', `/api/git/merges/${body.id}/commit`, { message: r.body.message });
+    await app.api('POST', `/api/git/merges/${body.id}/push`, {});
+    assert.equal(execFileSync('git', ['show', 'main:a.txt'], { cwd: bare }).toString(),
+      `ligne 1\nvenue de ${src}\nligne 3\n`, 'une raison absente n’empêche pas d’accepter la proposition');
+  });
+
+  /* UN SEUL APPEL, TOUS LES FICHIERS. « Demander à l'IA » ne se fait PAS fichier par fichier :
+     un seul appel résout tous les fichiers encore en conflit du merge — c'est tout le sens de
+     la vue globale (voir `session/mergeai.js`). */
+  test('une seule demande couvre tous les fichiers en conflit du merge, pas un à la fois', async () => {
+    const src = 'feature/deuxfichiers';
+    g(work, 'checkout', '-q', 'main'); g(work, 'fetch', '-q', 'origin'); g(work, 'reset', '-q', '--hard', 'origin/main');
+    g(work, 'checkout', '-q', '-b', src);
+    fs.writeFileSync(path.join(work, 'a.txt'), `ligne 1\nvenue de ${src} sur a\nligne 3\n`);
+    fs.writeFileSync(path.join(work, 'b2.txt'), `ligne 1\nvenue de ${src} sur b2\nligne 3\n`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'travail deux fichiers'); g(work, 'push', '-q', '-u', 'origin', src);
+    g(work, 'checkout', '-q', 'main');
+    fs.writeFileSync(path.join(work, 'a.txt'), 'ligne 1\nvenue de main sur a\nligne 3\n');
+    fs.writeFileSync(path.join(work, 'b2.txt'), 'ligne 1\nvenue de main sur b2\nligne 3\n');
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'main avance deux fichiers'); g(work, 'push', '-q', 'origin', 'main');
+
+    const { body } = await demarrer(src);
+    assert.deepEqual(body.conflits.sort(), ['a.txt', 'b2.txt']);
+
+    // UN SEUL appel — aucun chemin dans le corps de la requête, il n'y a pas de fichier à désigner.
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+
+    const fA = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    const fB = await app.api('GET', `/api/git/merges/${body.id}/file?path=b2.txt`);
+    assert.equal(fA.body.propositions.length, 1, 'a.txt a reçu sa proposition');
+    assert.equal(fB.body.propositions.length, 1, 'b2.txt AUSSI, dans le même appel');
+    assert.match(fA.body.propositions[0].texte, /venue de feature\/deuxfichiers sur a/);
+    assert.match(fB.body.propositions[0].texte, /venue de feature\/deuxfichiers sur b2/);
+    await solder(body.id);
+  });
+
+  test('redemander une proposition la remplace, elle ne s’ajoute pas à la précédente', async () => {
+    const src = scenarioConflit('reask');
+    const { body } = await demarrer(src);
+    await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    await waitForJobs(app.api);
+    await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    await waitForJobs(app.api);
+    const relu = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.equal(relu.body.propositions.length, 1, 'toujours une seule proposition pour l’unique conflit — jamais deux');
+    await solder(body.id);
+  });
+
+  /* UN MERGE SANS CONFLIT RESTANT (tout a déjà été résolu) ne coûte aucun appel inutile —
+     `proposer()` s'arrête avant même de solliciter l'agent dès que `etat.conflits` est vide —
+     et ne fait pas échouer le job pour autant : rien à proposer n'est pas une panne. */
+  test('demander une proposition quand plus rien n’est en conflit ne fait rien, sans erreur', async () => {
+    const src = scenarioConflit('sanscflt');
+    const { body } = await demarrer(src);
+    await app.api('POST', `/api/git/merges/${body.id}/resolve`, { path: 'a.txt', choices: ['ours'] });
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+    const log = await app.api('GET', `/api/jobs/${job.body.id}/log`);
+    assert.equal(log.body.status, 'done', 'aucun conflit restant n’est pas une panne, juste rien à proposer');
+    await solder(body.id);
+  });
+
+  /* L'APPEL NE PREND PLUS DE CHEMIN DU TOUT — un effet de bord bienvenu de la vue globale :
+     l'ancienne route acceptait un `path` choisi par le navigateur, ce qui ouvrait la porte à
+     une tentative de traversée (`../../../etc/passwd`) que `contenu()` devait refuser à la
+     main. Un `path` envoyé quand même (un client ancien, par exemple) est simplement ignoré :
+     la liste des fichiers à traiter vient TOUJOURS de `git`, jamais du corps de la requête. */
+  test('un `path` envoyé dans le corps de la requête est ignoré : la liste vient de git', async () => {
+    const src = scenarioConflit('securite');
+    const { body } = await demarrer(src);
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, { path: '../../../etc/passwd' });
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+    const log = await app.api('GET', `/api/jobs/${job.body.id}/log`);
+    assert.equal(log.body.status, 'done', 'le `path` fourni n’a aucun effet : le vrai conflit (a.txt) est traité normalement');
+    const f = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.equal(f.body.propositions.length, 1);
     await solder(body.id);
   });
 
@@ -358,9 +608,47 @@ describe('Git · Merge de branche à branche', () => {
       assert.equal(await page.locator('.cf-hunk [data-keep="deux"]').count(), 1);
     });
 
-    test('la date de chaque version apparaît à côté de sa branche', async () => {
-      // La valeur exacte est mesurée côté API ; ici, qu'elle arrive bien jusqu'à l'écran.
-      assert.equal(await page.locator('.cf-hunk .cf-date').count(), 2, 'une date à côté de chaque branche');
+    test('la date de chaque version apparaît à côté de sa branche, avec l’heure', async () => {
+      // La valeur exacte est mesurée côté API ; ici, qu'elle arrive bien jusqu'à l'écran —
+      // et que ce soit bien une DATE ET UNE HEURE, pas seulement le jour : deux commits du
+      // même jour, sans heure, se distingueraient uniquement à leur ordre dans la liste.
+      const dates = await page.locator('.cf-hunk .cf-date').allTextContents();
+      assert.equal(dates.length, 2, 'une date à côté de chaque branche');
+      for (const texte of dates) assert.match(texte, /\d{1,2}:\d{2}/, `l’heure doit être visible : « ${texte} »`);
+    });
+
+    /* « DEMANDER À L'IA » : une proposition de plus, à côté de « ours » et « theirs » — jamais
+       appliquée toute seule. En dry-run, le mock déterministe de `copilot.js` propose la
+       version de la source. */
+    test('« Demander à l’IA » ajoute une troisième version, à choisir comme les deux autres', async () => {
+      assert.equal(await page.locator('.cf-hunk .cf-ia').count(), 0, 'rien tant que rien n’a été demandé');
+      await demanderIaEtConfirmer(page);
+      await page.waitForSelector('#mergeAiStatus');
+      await page.locator('.cf-hunk .cf-ia').first().waitFor({ timeout: 20000 });
+      await page.waitForSelector('#mergeAiPropose');   // l’indicateur a laissé la place au bouton
+      assert.match(await page.locator('.cf-hunk .cf-ia pre').innerText(), /venue de feature\/ui/);
+
+      await page.locator('.cf-hunk .cf-ia [data-keep="ia"]').click();
+      await page.waitForSelector('.cf-hunk .cf-ia.cf-keep');
+      assert.equal(await page.locator('.cf-hunk .cf-ours.cf-keep, .cf-hunk .cf-theirs.cf-keep').count(), 0,
+        'les deux autres versions ne doivent plus paraître retenues');
+    });
+
+    /* « VOIR LA RAISON » : repliée par défaut — trois colonnes ET une justification dépliée
+       d'office noierait l'écran — et son texte n'apparaît qu'après le clic. */
+    test('« Voir la raison » affiche, puis masque, le pourquoi de la proposition', async () => {
+      assert.equal(await page.locator('.cf-hunk .cf-ia [data-reason]').count(), 1,
+        'un bouton par proposition qui porte une raison');
+      assert.equal(await page.locator('.cf-hunk .cf-reason').count(), 0, 'repliée par défaut');
+
+      await page.locator('.cf-hunk .cf-ia [data-reason]').click();
+      await page.locator('.cf-hunk .cf-reason').waitFor();
+      assert.match(await page.locator('.cf-hunk .cf-reason').innerText(), /raison \(dry-run\)/, 'la raison du mock apparaît');
+      // Le choix « ia » fait juste avant survit à l'ouverture de la raison — deux états séparés.
+      assert.equal(await page.locator('.cf-hunk .cf-ia.cf-keep').count(), 1);
+
+      await page.locator('.cf-hunk .cf-ia [data-reason]').click();
+      await page.waitForSelector('.cf-hunk .cf-reason', { state: 'hidden' });
     });
 
     test('« Garder les deux » nomme les branches, dans l’ordre où elles s’appliquent', async () => {
@@ -386,6 +674,87 @@ describe('Git · Merge de branche à branche', () => {
       await page.waitForSelector('#mergeFullView', { state: 'hidden' });
       // Le choix fait en plein écran s’est répercuté dans la vue normale.
       await page.locator('.cf-theirs.cf-keep').waitFor();
+    });
+
+    /* UN SEUL CONFLIT : la navigation se montre quand même, et cliquer y « navigue » bel et
+       bien — même s'il n'y a nulle part ailleurs à aller, ça recentre et remarque le conflit,
+       plutôt que d'être un bouton désactivé qui ne fait rien au clic. */
+    test('un seul conflit dans le fichier : le bouton reste là, et cliquer navigue vers lui', async () => {
+      await page.locator('#mergeFullOpen').click();
+      await page.locator('#mergeFullView:not([hidden])').waitFor();
+      assert.equal(await page.locator('#mergeFullNav:not([hidden])').count(), 1, 'la navigation se montre même à un seul conflit');
+      assert.match(await page.locator('#mergeFullNavCount').innerText(), /1\s*\/\s*1/);
+      // Marqué dès l'ouverture — c'est le seul conflit du fichier, forcément le courant.
+      assert.notEqual(await page.locator('[data-h="0"].mf-nav-cible').count(), 0, 'le seul conflit est déjà le conflit courant');
+
+      // Cliquer « suivant » n'a nulle part ailleurs où aller, mais reste actif : ça recentre
+      // et remarque le même conflit plutôt que de rester un bouton mort.
+      await page.locator('#mergeFullNext').click();
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#mergeFullOurs [data-h="0"]');
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.top <= window.innerHeight;
+      });
+      assert.match(await page.locator('#mergeFullNavCount').innerText(), /1\s*\/\s*1/, 'toujours 1/1 : il n’y a que lui');
+
+      await page.locator('#mergeFullClose').click();
+      await page.waitForSelector('#mergeFullView', { state: 'hidden' });
+    });
+
+    /* LA QUATRIÈME COLONNE, en plein écran : la proposition de l'IA (déjà demandée dans un test
+       précédent) et sa raison, dépliable comme dans la vue normale — et cliquer la proposition
+       la choisit, exactement comme un passage à gauche ou à droite. */
+    test('la vue plein écran montre aussi la proposition de l’IA, et sa raison', async () => {
+      await page.locator('#mergeFullOpen').click();
+      await page.locator('#mergeFullView:not([hidden])').waitFor();
+      assert.equal(await page.locator('#mergeFullIa:not([hidden])').count(), 1, 'une quatrième colonne apparaît');
+      assert.equal(await page.locator('#mergeFullToggles [data-toggle-col]').count(), 4, 'un bouton par colonne, IA comprise');
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('.merge-full-body'))
+        .gridTemplateColumns.split(' ').length === 4, null, { timeout: 5000 });
+      assert.match(await page.locator('#mergeFullIa').innerText(), /venue de feature\/ui/, 'la proposition, en entier');
+      // Repli de ligne, pas de défilement horizontal : le `<pre>` de la proposition n'est pas un
+      // `.mf-hunk` comme les trois autres colonnes, il lui faut donc sa propre règle de repli.
+      assert.equal(await page.locator('#mergeFullIa .mf-ia pre').evaluate((el) => getComputedStyle(el).whiteSpace), 'pre-wrap');
+
+      await page.locator('#mergeFullIa [data-reason]').click();
+      await page.locator('#mergeFullIa .mf-reason').waitFor();
+      assert.match(await page.locator('#mergeFullIa .mf-reason').innerText(), /raison \(dry-run\)/, 'la même raison qu’à l’écran normal');
+
+      // La choisir ici la reflète dans la vue normale, comme pour « ours »/« theirs ».
+      await page.locator('#mergeFullIa .mf-ia').first().click();
+      await page.waitForFunction(() => /venue de feature\/ui/.test(document.querySelector('#mergeFullResult').textContent));
+
+      // Masquer cette colonne rend sa largeur aux trois autres.
+      await page.locator('#mergeFullToggles [data-toggle-col="ia"]').click();
+      await page.waitForSelector('#mergeFullIa', { state: 'hidden' });
+      await page.waitForFunction(() => getComputedStyle(document.querySelector('.merge-full-body'))
+        .gridTemplateColumns.split(' ').length === 3, null, { timeout: 5000 });
+      // … et la redemander la fait revenir.
+      await page.locator('#mergeFullToggles [data-toggle-col="ia"]').click();
+      await page.waitForSelector('#mergeFullIa:not([hidden])');
+
+      await page.locator('#mergeFullClose').click();
+      await page.waitForSelector('#mergeFullView', { state: 'hidden' });
+      await page.locator('.cf-hunk .cf-ia.cf-keep').waitFor();
+    });
+
+    /* MASQUER LA DERNIÈRE COLONNE VISIBLE EST REFUSÉ : sans elle, la vue serait vide et les
+       boutons pour en rouvrir une resteraient hors d'atteinte de nulle part. */
+    test('masquer les quatre colonnes n’est pas possible : au moins une reste', async () => {
+      await page.locator('#mergeFullOpen').click();
+      await page.locator('#mergeFullView:not([hidden])').waitFor();
+      for (const cle of ['ours', 'theirs', 'ia']) await page.locator(`#mergeFullToggles [data-toggle-col="${cle}"]`).click();
+      await page.waitForSelector('#mergeFullOurs', { state: 'hidden' });
+      // Trois masquées, une seule reste : la tenter quand même ne doit rien changer.
+      await page.locator('#mergeFullToggles [data-toggle-col="result"]').click();
+      assert.equal(await page.locator('#mergeFullResult:not([hidden])').count(), 1, 'la dernière colonne visible résiste');
+
+      // On rouvre tout pour ne pas laisser cet état aux tests suivants.
+      for (const cle of ['ours', 'theirs', 'ia']) await page.locator(`#mergeFullToggles [data-toggle-col="${cle}"]`).click();
+      await page.waitForSelector('#mergeFullOurs:not([hidden])');
+      await page.locator('#mergeFullClose').click();
+      await page.waitForSelector('#mergeFullView', { state: 'hidden' });
     });
 
     test('choisir une version se VOIT, sans relire les boutons', async () => {
@@ -427,6 +796,168 @@ describe('Git · Merge de branche à branche', () => {
         `le merge est arrivé sur la destination — journal : ${g(bare, 'log', '--oneline', '-3', 'main')}`);
       assert.equal(execFileSync('git', ['show', 'main:a.txt'], { cwd: bare }).toString(),
         'ligne 1\nvenue de feature/ui\nligne 3\n', 'et c’est bien ce qui était choisi à l’écran');
+    });
+  });
+
+  /* « DEMANDER À L'IA », CAS LIMITES : changer de fichier avant la fin d'une demande, et un
+     échec de la demande elle-même. Un merge à DEUX fichiers en conflit, pour pouvoir en garder
+     un ouvert pendant que l'autre travaille encore. */
+  describe('« Demander à l’IA » — cas limites à l’écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+    let navigateur; let page; let mergeId;
+    const erreurs = [];
+
+    before(async () => {
+      const src = scenarioConflit('ia-ecran');
+      // Un second fichier en conflit, dans le MÊME merge que celui de `scenarioConflit`.
+      g(work, 'checkout', '-q', src);
+      fs.writeFileSync(path.join(work, 'b3.txt'), `ligne 1\nvenue de ${src} sur b3\nligne 3\n`);
+      g(work, 'add', '-A'); g(work, 'commit', '-qm', 'second fichier'); g(work, 'push', '-q', 'origin', src);
+      g(work, 'checkout', '-q', 'main');
+      fs.writeFileSync(path.join(work, 'b3.txt'), 'ligne 1\nvenue de main sur b3\nligne 3\n');
+      g(work, 'add', '-A'); g(work, 'commit', '-qm', 'main avance b3'); g(work, 'push', '-q', 'origin', 'main');
+
+      mergeId = (await demarrer(src)).body.id;
+      navigateur = await lancerNavigateur();
+      page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
+      page.on('pageerror', (e) => erreurs.push(e.message));
+      await afficherMenusOptionnels(page);
+      await page.goto(app.base);
+      await page.locator('nav button[data-tab="git"]').click();
+      await page.locator('#tab-git .subnav [data-gsub="merge"]').click();
+      await page.locator(`[data-mopen="${mergeId}"]`).click();
+      await page.locator('#mergeWork .cf-hunk').first().waitFor({ timeout: 20000 });
+    });
+    // Sans ceci, le merge reste « en conflit » en base : un describe ajouté après celui-ci ne
+    // pourrait plus en démarrer un seul sur le même dépôt (`err.merge.already-running`).
+    after(async () => { if (navigateur) await navigateur.close(); await solder(mergeId); });
+
+    /* UN SEUL BOUTON, POUR TOUT LE MERGE. Il n'y a plus de bouton par fichier : celui qui
+       lance la demande couvre a.txt ET b3.txt en un seul appel, et se transforme en indicateur
+       « l'IA réfléchit… » PARTOUT dans l'écran pendant ce temps — y compris si on change de
+       fichier en cours de route. */
+    test('un seul bouton pour tout le merge : changer de fichier pendant la demande n’interrompt rien', async () => {
+      await page.waitForFunction(() => document.querySelector('#mergePane .mp-head code')?.textContent === 'a.txt');
+      await demanderIaEtConfirmer(page);
+      await page.waitForSelector('#mergeAiStatus');
+      assert.equal(await page.locator('#mergeAiPropose').count(), 0, 'le bouton devient un indicateur pendant la demande');
+
+      // On change de fichier PENDANT que la demande (globale, pas « pour a.txt ») tourne encore.
+      await page.locator('[data-mfile="b3.txt"]').click();
+      await page.waitForFunction(() => document.querySelector('#mergePane .mp-head code')?.textContent === 'b3.txt');
+      assert.equal(await page.locator('#mergeAiStatus').count(), 1,
+        'l’indicateur reste affiché : la demande couvre tout le merge, y compris le fichier qu’on regarde maintenant');
+
+      // Elle finit par aboutir pour LES DEUX fichiers, y compris celui ouvert EN DERNIER.
+      await attendreServeur(async () => {
+        const f = await app.api('GET', `/api/git/merges/${mergeId}/file?path=b3.txt`);
+        return Array.isArray(f.body.propositions) && f.body.propositions.length === 1;
+      }, 'la proposition de b3.txt finit par arriver côté serveur');
+      await page.locator('.cf-hunk .cf-ia').first().waitFor();
+      assert.equal(await page.locator('#mergeAiPropose').count(), 1, 'le bouton redevient disponible une fois la demande terminée');
+
+      // a.txt, qu'on ne regardait plus, a aussi reçu la sienne — sans avoir eu à la redemander.
+      await page.locator('[data-mfile="a.txt"]').click();
+      await page.waitForFunction(() => document.querySelector('#mergePane .mp-head code')?.textContent === 'a.txt');
+      await page.locator('.cf-hunk .cf-ia').first().waitFor();
+    });
+
+    test('un échec de la demande à l’IA se signale, et le bouton redevient disponible', async () => {
+      await page.route('**/api/git/merges/*/ai-propose', (route) => route.fulfill({
+        status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'panne simulée' }),
+      }));
+      try {
+        await demanderIaEtConfirmer(page);
+        // Un toast de succès du test précédent peut encore traîner (il se retire tout seul après
+        // 3,5 s) : chercher LE toast qui porte « panne simulée », pas « le dernier arrivé »,
+        // évite de lire celui d'avant si les deux coexistent un instant.
+        await page.waitForFunction(() => [...document.querySelectorAll('#toasts .toast-msg')]
+          .some((el) => /panne simulée/.test(el.textContent)));
+        await page.waitForSelector('#mergeAiPropose', { state: 'visible' });
+        assert.equal(await page.locator('#mergeAiStatus').count(), 0, 'l’indicateur ne reste pas affiché après un échec');
+      } finally {
+        await page.unroute('**/api/git/merges/*/ai-propose').catch(() => {});
+      }
+    });
+
+    test('aucune erreur JavaScript pendant ce parcours', () => {
+      assert.deepEqual(erreurs, []);
+    });
+  });
+
+  /* NAVIGUER SANS SCROLLER, EN PLEIN ÉCRAN : sur un fichier à plusieurs conflits, trouver le
+     suivant à la main coûte plus cher que le clic. Un fichier à DEUX conflits bien séparés
+     (`scenarioMulti`) suffit à couvrir les deux bornes : au premier, « précédent » est
+     inutilisable ; au dernier, « suivant » l'est. */
+  describe('Naviguer au conflit suivant/précédent en plein écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+    let navigateur; let page;
+
+    before(async () => {
+      const src = scenarioMulti('nav');
+      const mergeId = (await demarrer(src)).body.id;
+      navigateur = await lancerNavigateur();
+      page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
+      await afficherMenusOptionnels(page);
+      await page.goto(app.base);
+      await page.locator('nav button[data-tab="git"]').click();
+      await page.locator('#tab-git .subnav [data-gsub="merge"]').click();
+      await page.locator(`[data-mopen="${mergeId}"]`).click();
+      await page.locator('#mergeWork .cf-hunk').first().waitFor({ timeout: 20000 });
+      await page.locator('#mergeFullOpen').click();
+      await page.locator('#mergeFullView:not([hidden])').waitFor();
+    });
+    after(async () => { if (navigateur) await navigateur.close(); });
+
+    test('au premier conflit, le compteur affiche 1/2', async () => {
+      assert.equal(await page.locator('#mergeFullNav:not([hidden])').count(), 1, 'deux conflits : la navigation se montre');
+      assert.match(await page.locator('#mergeFullNavCount').innerText(), /1\s*\/\s*2/);
+    });
+
+    /* CLIQUER « PRÉCÉDENT » AU PREMIER CONFLIT NE LE DÉSACTIVE PAS : le bouton reste cliquable,
+       et cliquer réaffirme juste le conflit courant (recentré, remarqué) plutôt que de rester
+       sans effet — le même principe qu'à un seul conflit. */
+    test('« précédent » au premier conflit reste cliquable, et réaffirme le même conflit', async () => {
+      await page.locator('#mergeFullPrev').click();
+      await page.waitForFunction(() => document.querySelectorAll('[data-h="0"].mf-nav-cible').length > 0);
+      assert.match(await page.locator('#mergeFullNavCount').innerText(), /1\s*\/\s*2/, 'toujours le premier, pas de débordement');
+    });
+
+    test('« suivant » avance au conflit suivant, et le marque', async () => {
+      assert.equal(await page.locator('[data-h="1"].mf-nav-cible').count(), 0, 'pas encore le conflit visé');
+      await page.locator('#mergeFullNext').click();
+      await page.waitForFunction(() => document.querySelector('#mergeFullNavCount')?.textContent.includes('2'));
+      assert.notEqual(await page.locator('[data-h="1"].mf-nav-cible').count(), 0, 'le second conflit se marque comme visé');
+      // Il est bien amené dans la partie visible de l'écran, pas seulement marqué.
+      await page.waitForFunction(() => {
+        const el = document.querySelector('#mergeFullOurs [data-h="1"]');
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        return r.top >= 0 && r.top <= window.innerHeight;
+      });
+    });
+
+    test('au dernier conflit, « suivant » reste cliquable mais ne dépasse pas', async () => {
+      await page.locator('#mergeFullNext').click();
+      await page.waitForFunction(() => document.querySelectorAll('[data-h="1"].mf-nav-cible').length > 0);
+      assert.match(await page.locator('#mergeFullNavCount').innerText(), /2\s*\/\s*2/, 'toujours le dernier, pas de débordement');
+    });
+
+    test('« précédent » ramène en arrière depuis le dernier conflit', async () => {
+      await page.locator('#mergeFullPrev').click();
+      await page.waitForFunction(() => document.querySelector('#mergeFullNavCount')?.textContent.includes('1'));
+      assert.notEqual(await page.locator('[data-h="0"].mf-nav-cible').count(), 0, 'de retour sur le premier');
+    });
+
+    test('rouvrir la vue plein écran repart du premier conflit', async () => {
+      await page.locator('#mergeFullNext').click();
+      await page.waitForFunction(() => document.querySelector('#mergeFullNavCount')?.textContent.includes('2'));
+      await page.locator('#mergeFullClose').click();
+      await page.waitForSelector('#mergeFullView', { state: 'hidden' });
+
+      await page.locator('#mergeFullOpen').click();
+      await page.locator('#mergeFullView:not([hidden])').waitFor();
+      assert.match(await page.locator('#mergeFullNavCount').innerText(), /1\s*\/\s*2/);
+      await page.locator('#mergeFullClose').click();
+      await page.waitForSelector('#mergeFullView', { state: 'hidden' });
     });
   });
 });

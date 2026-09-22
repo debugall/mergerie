@@ -54,7 +54,10 @@ function decouper(texte) {
   return out;
 }
 
-/** Recolle les morceaux : `choix[n]` vaut 'ours' | 'theirs' | 'deux' pour le nième conflit. */
+/** Recolle les morceaux : `choix[n]` vaut 'ours' | 'theirs' | 'deux', ou `{ texte }` pour un
+    texte propre au conflit — une proposition de l'IA acceptée, ou une correction écrite à la
+    main sur CE conflit précis (par opposition à l'édition libre, qui porte sur le fichier
+    entier). */
 function recoller(morceaux, choix = []) {
   const lignes = [];
   let n = 0;
@@ -62,6 +65,7 @@ function recoller(morceaux, choix = []) {
     if (m.type === 'stable') { lignes.push(...m.lignes); continue; }
     const c = choix[n] || 'ours';
     n += 1;
+    if (c && typeof c === 'object' && typeof c.texte === 'string') { lignes.push(...c.texte.split('\n')); continue; }
     if (c === 'theirs') lignes.push(...m.theirs);
     else if (c === 'deux') lignes.push(...m.ours, ...m.theirs);
     else lignes.push(...m.ours);

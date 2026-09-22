@@ -8,7 +8,7 @@
    — `runners/<sorte>.js` : l'exécutant d'une sorte de job, inscrit dans le registre au chargement.
    Charger les exécutants ICI est ce qui les inscrit : un exécutant absent de cette liste ne
    tournerait jamais, et `startJob` échouerait sur « RUNNERS[kind] is not a function ». */
-const { exigerDossierCompose, startVerifyJob, startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob, startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, isRunning, retryJob } = require('./ordonnanceur');
+const { exigerDossierCompose, startVerifyJob, startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob, startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startNow, stopJob, isRunning, retryJob } = require('./ordonnanceur');
 const { verifyBloquePar, currentJob, activeJob, runningJobs, queuedJobs, queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, canRetry, jobTargets, runningTargets } = require('./file');
 const { preparerVerificationApres } = require('./apres-session');
 /* Lancer plus tard : la date d'une session ou d'un suivi, et le tick qui l'honore. */
@@ -23,11 +23,12 @@ require('./runners/gitops');
 require('./runners/docker');
 require('./runners/reconcile');
 require('./runners/verify');
+require('./runners/merge-ai');
 
 module.exports = { exigerDossierCompose,
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
   startJob, startTaskJob, startGitJob, startDockerJob, startConvergeJob, startConvergeSessionJob,
-  startLocalJob, startAskJob, startReconcileJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
+  startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
   jobTargets, runningTargets, programmation,
 };

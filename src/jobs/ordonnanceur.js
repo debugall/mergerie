@@ -28,6 +28,7 @@ function retryJob(jobId) {
   if (sp.fn === 'ask') return startAskJob(sp.taskId, sp.opts);
   if (sp.fn === 'converge') return startConvergeJob(sp.mrId, sp.opts);
   if (sp.fn === 'converge-session') return startConvergeSessionJob(sp.taskId, sp.opts);
+  if (sp.fn === 'merge-ai') return startMergeAiJob(sp.mergeId);
   return startJob(sp.kind, sp.mrIds, sp.opts);
 }
 /* Aiguillage : quel exécutant pour quelle sorte de job. Chaque exécutant s'est INSCRIT dans
@@ -43,6 +44,7 @@ function runEntry(e) {
   if (e.kind === 'ask') return RUNNERS['ask'](e.jobId, e.taskId, e.opts);
   if (e.kind === 'reconcile') return RUNNERS['reconcile'](e.jobId, e.taskId, e.opts);
   if (e.kind === 'verify') return RUNNERS['verify'](e.jobId, e.verificationId);
+  if (e.kind === 'merge-ai') return RUNNERS['merge-ai'](e.jobId, e.mergeId);
   return RUNNERS.review(e.jobId, e.rows, e.kind, e.opts);
 }
 /* Exécute un job dans SON contexte d'annulation. `lane` distingue la voie séquentielle de
@@ -229,6 +231,19 @@ function startAskJob(questionId, opts = {}) {
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }
+/* « Demander à l'IA » une proposition de résolution pour TOUS les fichiers encore en conflit
+   du merge, EN UN SEUL JOB — jamais un par fichier : l'agent doit voir l'ensemble avant de
+   proposer quoi que ce soit (voir `session/mergeai.js`). */
+function startMergeAiJob(mergeId) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('merge-ai', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'git_merge', mergeId);
+  rememberRetry(jobId, { fn: 'merge-ai', mergeId });
+  queue.push({ jobId, kind: 'merge-ai', mergeId });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
 // Lance une boucle de convergence pour une MR (« Converger »).
 function startConvergeJob(mrId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
@@ -288,5 +303,5 @@ function isRunning() {
 }
 
 module.exports = {
-  mainRunning, retryJob, runEntry, launch, pump, startNow, startJob, startGitJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, stopJob, isRunning,
+  mainRunning, retryJob, runEntry, launch, pump, startNow, startJob, startGitJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
 };
