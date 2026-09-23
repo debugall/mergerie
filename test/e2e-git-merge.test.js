@@ -425,6 +425,75 @@ describe('Git · Merge de branche à branche', () => {
     await app.api('DELETE', `/api/git/merges/${body.id}`);
   });
 
+  /* LE VRAI CAS D'ORIGINE, PAS UNE SIMULATION : un SOUS-MODULE dont le pointeur diverge entre
+     les deux branches. Git le résout tout seul quand l'une des deux valeurs est un ancêtre de
+     l'autre (rien à voir), donc les deux valeurs viennent ici de DEUX BRANCHES DIVERGENTES du
+     sous-module, jamais l'une ancêtre de l'autre — ce qui force un vrai `CONFLICT (submodule)`.
+     Le worktree du merge ne clone JAMAIS le contenu du sous-module (`git worktree add` ne
+     l'initialise pas) : le chemin en conflit est donc un DOSSIER VIDE sur le disque, exactement
+     le cas que `gitmerge.contenu()`/`mergeai.proposer()` doivent encaisser. */
+  test('un sous-module dont le pointeur diverge entre les deux branches n’interrompt pas les autres', async () => {
+    const racineSous = fs.mkdtempSync(path.join(os.tmpdir(), 'sousmodule-'));
+    const subBare = path.join(racineSous, 'sub.git');
+    const subWork = path.join(racineSous, 'sub-work');
+    fs.mkdirSync(subBare); fs.mkdirSync(subWork);
+    g(subBare, 'init', '-q', '--bare', '-b', 'main', '.');
+    g(subWork, 'init', '-q', '-b', 'main', '.'); poserIdentiteGit(subWork);
+    g(subWork, 'remote', 'add', 'origin', subBare);
+    fs.writeFileSync(path.join(subWork, 'f.txt'), 'base\n');
+    g(subWork, 'add', '-A'); g(subWork, 'commit', '-qm', 'base'); g(subWork, 'push', '-q', 'origin', 'main');
+
+    // DEUX BRANCHES DIVERGENTES du sous-module — ni l'une ni l'autre ancêtre de l'autre.
+    g(subWork, 'checkout', '-q', '-b', 'subA');
+    fs.writeFileSync(path.join(subWork, 'f.txt'), 'depuis subA\n');
+    g(subWork, 'add', '-A'); g(subWork, 'commit', '-qm', 'subA'); g(subWork, 'push', '-q', 'origin', 'subA');
+    const subA = g(subWork, 'rev-parse', 'subA');
+    g(subWork, 'checkout', '-q', 'main'); g(subWork, 'checkout', '-q', '-b', 'subB');
+    fs.writeFileSync(path.join(subWork, 'f.txt'), 'depuis subB\n');
+    g(subWork, 'add', '-A'); g(subWork, 'commit', '-qm', 'subB'); g(subWork, 'push', '-q', 'origin', 'subB');
+    const subB = g(subWork, 'rev-parse', 'subB');
+
+    const src = 'feature/sousmodule';
+    g(work, 'checkout', '-q', 'main'); g(work, 'fetch', '-q', 'origin'); g(work, 'reset', '-q', '--hard', 'origin/main');
+    g(work, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', subBare, 'libs/sub');
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'ajoute le sous-module');
+    g(work, 'push', '-q', 'origin', 'main');
+
+    g(work, 'checkout', '-q', '-b', src);
+    g(work, '-C', 'libs/sub', 'checkout', '-q', subA);
+    fs.writeFileSync(path.join(work, 'a.txt'), `ligne 1\nvenue de ${src} sur a\nligne 3\n`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'feature pointe le sous-module sur subA');
+    g(work, 'push', '-q', '-u', 'origin', src);
+
+    g(work, 'checkout', '-q', 'main');
+    g(work, '-C', 'libs/sub', 'checkout', '-q', subB);
+    fs.writeFileSync(path.join(work, 'a.txt'), 'ligne 1\nvenue de main sur a, cas sous-module\nligne 3\n');
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'main pointe le sous-module sur subB');
+    g(work, 'push', '-q', 'origin', 'main');
+
+    const { body } = await demarrer(src);
+    assert.deepEqual(body.conflits.sort(), ['a.txt', 'libs/sub'], 'git range le sous-module parmi les conflits, comme un fichier');
+
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+    const log = await app.api('GET', `/api/jobs/${job.body.id}/log`);
+    assert.equal(log.body.status, 'done', `le sous-module ne doit pas faire échouer tout le lot : ${log.body.message}`);
+    assert.doesNotMatch(log.body.message || '', /EISDIR/, 'jamais le message brut de Node dans le journal du job');
+
+    const fA = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.equal(fA.body.propositions.length, 1, 'a.txt reçoit quand même sa proposition');
+    assert.match(fA.body.propositions[0].texte, /venue de feature\/sousmodule sur a/);
+
+    // Ouvrir le sous-module à la main répond une erreur claire, jamais l'« EISDIR » brut de Node.
+    const fSub = await app.api('GET', `/api/git/merges/${body.id}/file?path=libs/sub`);
+    assert.equal(fSub.status, 400, JSON.stringify(fSub.body));
+    assert.doesNotMatch(fSub.body.error || '', /EISDIR/, 'jamais un message d’erreur brut de Node');
+
+    // On ne peut pas « solder » normalement (le sous-module reste un dossier) : abandon direct.
+    await app.api('DELETE', `/api/git/merges/${body.id}`);
+  });
+
   test('redemander une proposition la remplace, elle ne s’ajoute pas à la précédente', async () => {
     const src = scenarioConflit('reask');
     const { body } = await demarrer(src);
