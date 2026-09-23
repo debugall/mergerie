@@ -23,9 +23,14 @@ function coutCarte(t) {
   if (t && t.tokens_est) bouts.push(esc(tr('task.cost.tokens', { n: fmtMilliers(t.tokens_est) })));
   /* QUAND ÇA S'EST TERMINÉ. `finished_at` était stocké, servait au TRI de la liste, et
      n'apparaissait nulle part : on lisait « terminée » sans savoir si c'était il y a trois
-     minutes ou trois semaines. Relatif, avec la date exacte au survol comme partout. */
+     minutes ou trois semaines — puis, un temps, un relatif façon « hier »/« avant-hier » que
+     `Intl.RelativeTimeFormat` invente pour -1 et -2 jours, tout aussi vague pour qui compare
+     plusieurs sessions à l'œil. L'absolu (date ET heure, comme sur l'écran de merge) est ce
+     qu'on lit d'un coup d'œil ; le relatif reste disponible au survol, comme partout ailleurs
+     (`dateHtml` pose le `data-when` que `infobulle.js` sait lire). */
   if (t && t.finished_at && t.status !== 'running') {
-    bouts.push(`<span data-when="${esc(t.finished_at)}">${esc(tr('task.finished-ago', { when: depuis(t.finished_at) }))}</span>`);
+    const phrase = tr('task.finished-on', { date: fmtDate(t.finished_at), time: fmtHour(t.finished_at) });
+    bouts.push(dateHtml(t.finished_at, phrase));
   }
   return bouts.length ? `<span class="task-cout muted">${bouts.join(' · ')}</span>` : '';
 }

@@ -47,6 +47,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   section and a merge checklist — instead of one free-form paragraph. A review prompt already
   customized in Settings is untouched; installations still on the previous default pick up the
   new one automatically, in their configured language.
+- **A session card in Dev IA says exactly when it finished** — date and time, e.g. “finished on
+  09/23/2026 at 08:34” — instead of a relative “yesterday”/“the day before yesterday” that only
+  told you it was recent, not which of several same-week sessions came first. The relative wording
+  still shows up on hover, like every other date in the app.
 
 ### Added
 
@@ -266,6 +270,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   form now sends only the fields you changed.
 - **Sync: a review report deleted by a teammate is deleted here too**; it survived, still
   openable, next to a merge request back in “To review”.
+- **“Ask the AI” on Git → Merge no longer fails the whole request over one unreadable path** —
+  a submodule whose commit pointer diverges between the two branches, for instance, is a
+  directory on disk, and reading it as text used to throw Node's raw `EISDIR`, failing every
+  file's proposal along with it, not just that one. That path is now skipped like any conflict
+  the agent can't resolve, and opening it by hand reports a clear message instead of the raw error.
 
 ### Security
 

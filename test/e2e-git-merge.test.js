@@ -378,6 +378,53 @@ describe('Git · Merge de branche à branche', () => {
     await solder(body.id);
   });
 
+  /* UN CHEMIN EN CONFLIT QUI N'EST PAS UN FICHIER LISIBLE (un sous-module dont le pointeur
+     diverge, par exemple, pointe vers un DOSSIER sur le disque) ne doit pas faire échouer la
+     demande pour TOUS les fichiers — seulement rester sans proposition pour lui-même. On simule
+     ce cas directement sur le disque : git ne sait rien de la substitution (le conflit vit dans
+     son INDEX, indépendant de ce qui se trouve physiquement sur le chemin), donc `enConflit()`
+     rapporte toujours les deux fichiers comme avant. */
+  test('un chemin en conflit qui est un dossier sur le disque n’interrompt pas les autres', async () => {
+    const src = 'feature/dossierenconflit';
+    g(work, 'checkout', '-q', 'main'); g(work, 'fetch', '-q', 'origin'); g(work, 'reset', '-q', '--hard', 'origin/main');
+    g(work, 'checkout', '-q', '-b', src);
+    fs.writeFileSync(path.join(work, 'a.txt'), `ligne 1\nvenue de ${src} sur a\nligne 3\n`);
+    fs.writeFileSync(path.join(work, 'b2.txt'), `ligne 1\nvenue de ${src} sur b2\nligne 3\n`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'travail dossier en conflit'); g(work, 'push', '-q', '-u', 'origin', src);
+    g(work, 'checkout', '-q', 'main');
+    fs.writeFileSync(path.join(work, 'a.txt'), 'ligne 1\nvenue de main sur a, cas dossier\nligne 3\n');
+    fs.writeFileSync(path.join(work, 'b2.txt'), 'ligne 1\nvenue de main sur b2, cas dossier\nligne 3\n');
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'main avance dossier en conflit'); g(work, 'push', '-q', 'origin', 'main');
+
+    const { body } = await demarrer(src);
+    assert.deepEqual(body.conflits.sort(), ['a.txt', 'b2.txt']);
+
+    // « b2.txt » devient un DOSSIER sur le disque — un sous-module dont le pointeur diverge en
+    // laisserait un à cet endroit précis, sans que git en dise rien de plus dans son index.
+    const dir = app.db.prepare('SELECT dir FROM git_merge WHERE id = ?').get(body.id).dir;
+    fs.rmSync(path.join(dir, 'b2.txt'));
+    fs.mkdirSync(path.join(dir, 'b2.txt'));
+    fs.writeFileSync(path.join(dir, 'b2.txt', 'interieur.txt'), 'peu importe\n');
+
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+    const log = await app.api('GET', `/api/jobs/${job.body.id}/log`);
+    assert.equal(log.body.status, 'done', `le dossier ne doit pas faire échouer tout le lot : ${log.body.message}`);
+
+    const fA = await app.api('GET', `/api/git/merges/${body.id}/file?path=a.txt`);
+    assert.equal(fA.body.propositions.length, 1, 'a.txt reçoit quand même sa proposition');
+    assert.match(fA.body.propositions[0].texte, /venue de feature\/dossierenconflit sur a/);
+
+    // Ouvrir b2.txt à la main répond une erreur claire, jamais l'« EISDIR » brut de Node.
+    const fB = await app.api('GET', `/api/git/merges/${body.id}/file?path=b2.txt`);
+    assert.equal(fB.status, 400, JSON.stringify(fB.body));
+    assert.doesNotMatch(fB.body.error || '', /EISDIR/, 'jamais un message d’erreur brut de Node');
+
+    // On ne peut pas « solder » normalement (b2.txt reste un dossier) : abandon direct.
+    await app.api('DELETE', `/api/git/merges/${body.id}`);
+  });
+
   test('redemander une proposition la remplace, elle ne s’ajoute pas à la précédente', async () => {
     const src = scenarioConflit('reask');
     const { body } = await demarrer(src);

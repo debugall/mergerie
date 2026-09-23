@@ -292,6 +292,28 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
     assert.ok(!/\$/.test(cout), `la carte ne montre aucun coût en dollars, même quand le backend en annonce un : « ${cout} »`);
   });
 
+  /* LA DATE ET L'HEURE DE FIN, PAS « HIER »/« AVANT-HIER ». Un relatif que `Intl` invente pour
+     -1 et -2 jours ne dit pas QUAND, seulement « il y a peu » — comparer plusieurs sessions à
+     l'œil demandait de rouvrir chacune. L'absolu se lit d'un coup d'œil, comme la date de
+     création juste au-dessus (`task-date`) ; le relatif reste au survol (`data-when` + la
+     bulle du core), pas remplacé, seulement plus discret. */
+  test('la carte montre la date ET l’heure de fin, jamais un relatif du genre « hier »', async () => {
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    await page.reload();
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector('#localList .card');
+
+    const cout = await page.locator(`#localList .card[data-local="${multi.id}"] .task-cout`).innerText();
+    assert.match(cout, /\d{1,2}:\d{2}/, `une heure doit être visible : « ${cout} »`);
+    assert.doesNotMatch(cout, /hier|aujourd.hui|maintenant|à l.instant/i,
+      `plus de formule relative sur la carte : « ${cout} »`);
+
+    // L'attribut qui nourrit la bulle au survol (relatif) est toujours là : rien n'est perdu.
+    const when = await page.locator(`#localList .card[data-local="${multi.id}"] .task-cout [data-when]`).getAttribute('data-when');
+    assert.ok(when, 'la date exacte reste disponible pour le survol');
+  });
+
   /* LE NOMBRE D'ITÉRATIONS DÉJÀ FAITES, DANS LE LIBELLÉ du bouton lui-même (« Envoyer un
      suivi (3) ») — avant de demander un énième suivi, sans avoir à ouvrir « Retour de l'IA »
      pour le savoir. */

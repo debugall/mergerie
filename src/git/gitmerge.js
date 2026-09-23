@@ -244,6 +244,12 @@ function contenu(id, fichier) {
     throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
   }
   if (!fs.existsSync(abs)) throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
+  /* GIT PEUT LISTER UN CHEMIN EN CONFLIT QUI N'EST PAS UN FICHIER : un sous-module dont le
+     pointeur diverge entre les deux côtés (le chemin est alors le DOSSIER du sous-module sur le
+     disque), ou un conflit d'ADD/ADD fichier-contre-dossier. `fs.readFileSync` sur un dossier
+     lève `EISDIR`, un message Node brut plutôt qu'une explication — on le rend clair et
+     traduit ici, une fois, plutôt que de laisser chaque appelant deviner le code d'erreur. */
+  if (!fs.statSync(abs).isFile()) throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
   return fs.readFileSync(abs, 'utf8');
 }
 

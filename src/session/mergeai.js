@@ -32,6 +32,12 @@
  * elle, valider une proposition à l'aveugle vaut à peine mieux que trancher au hasard. Un bloc
  * `R` absent n'est pas une panne non plus : la proposition reste utilisable, simplement sans
  * raison à montrer.
+ *
+ * UN CHEMIN EN CONFLIT N'EST PAS TOUJOURS UN FICHIER LISIBLE : un sous-module dont le pointeur
+ * diverge entre les deux côtés pointe vers un DOSSIER sur le disque, et `gitmerge.contenu()` y
+ * refuse la lecture plutôt que de laisser `fs.readFileSync` lever `EISDIR` (un message Node brut,
+ * pas une explication). Un seul chemin de ce genre ne doit pas faire échouer TOUT le lot — il est
+ * simplement ignoré, comme un conflit que l'agent aurait choisi de ne pas résoudre.
  */
 
 const copilot = require('../agent/copilot');
@@ -49,11 +55,14 @@ async function proposer(mergeId, onLog = () => {}) {
 
   const fichiers = chemins
     .map((chemin) => {
-      const raw = gitmerge.contenu(mergeId, chemin);
+      // Un sous-module en conflit, par exemple, n'est pas un fichier texte : on l'ignore plutôt
+      // que de laisser sa lecture faire échouer la demande pour TOUS les autres fichiers.
+      let raw;
+      try { raw = gitmerge.contenu(mergeId, chemin); } catch { return null; }
       const nb = gitmerge.decouper(raw).filter((m) => m.type === 'conflit').length;
       return { chemin, raw, nb };
     })
-    .filter((f) => f.nb > 0);
+    .filter((f) => f && f.nb > 0);
   if (!fichiers.length) return { fichiers: 0, conflits: 0, resolus: 0 };
 
   const totalConflits = fichiers.reduce((s, f) => s + f.nb, 0);
