@@ -1021,6 +1021,51 @@ describe('datasync — deux postes, un dépôt de données', () => {
     assert.equal(doc.commands[0], 'npm ci && npm test');
   });
 
+  /* UNE COUVERTURE REPRISE PAR UNE LIGNE LOCALE PUIS RETIRÉE NE REVIENT PAS PAR LA MARGE : le
+   * choix de l'utilisateur de la décocher ne doit pas être annulé au prochain export. */
+  test('une couverture ajoutée puis retirée chez un poste ne revient pas par la marge', () => {
+    const posteP = path.join(racine, 'P');
+    const posteQ = path.join(racine, 'Q');
+    fs.mkdirSync(posteP); fs.mkdirSync(posteQ);
+    const nuP = path.join(racine, 'equipe-p.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuP], { stdio: 'ignore' });
+
+    dans(posteP, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuP)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      const v = db.prepare("INSERT INTO verifier (name, command, created_at) VALUES ('Tests ter', '', ?)").run(now).lastInsertRowid;
+      db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(v, 'npm test');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, app, 'worktree');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, api, 'worktree');
+      await datasync.commiter('verifier ter');
+      await datasync.tour();
+    }`);
+
+    dans(posteQ, `async ({ db, datasync, config }) => {
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now);
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuP)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      const v = db.prepare("SELECT id FROM verifier WHERE name = 'Tests ter'").get().id;
+      // Q coche la couverture d'eq/api : une ligne locale reprend l'entrée de la marge…
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, api, 'worktree');
+      await datasync.commiter('couvre eq/api');
+      // …puis la décoche : elle ne doit pas revenir.
+      db.prepare('DELETE FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?').run(v, api);
+      await datasync.commiter('ne couvre plus eq/api');
+      await datasync.tour();
+    }`);
+
+    const uid = dans(posteP, `async ({ db }) => db.prepare("SELECT uid FROM verifier WHERE name = 'Tests ter'").get().uid`);
+    const doc = JSON.parse(execFileSync('git', ['-C', nuP, 'show', `main:verifiers/${uid}.json`], { encoding: 'utf8' }));
+    assert.deepEqual(doc.repos.map((r) => r.repo), ['gitlab/eq/app'],
+      'la couverture retirée par Q ne doit pas être réémise par la marge');
+  });
+
   /* LE PENDANT POUR `agent_pass` : UNE PASSE DE CODAGE SUR UN DÉPÔT NON SUIVI SURVIT À UN
    * BALAYAGE DÉCLENCHÉ AILLEURS. Le dépôt n'est même pas dans le fichier de la passe — il est
    * dans celui de sa SESSION, relu via `porteeRepo: { parent }`. */

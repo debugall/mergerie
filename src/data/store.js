@@ -223,12 +223,27 @@ function contexte() {
          compte est de ne jamais répéter un dépôt DÉJÀ ÉMIS par le parent (`dejaEmis`, les lignes
          réellement résolues localement) : c'est LÀ que serait le doublon qui casse l'import sur
          la clé primaire (`verifier_id, repo_id`) — pas dans la simple résolvabilité. */
-      const vus = new Set(dejaEmis.map((x) => x.repo));
-      return brute.filter((x) => {
-        if (!x || !x.repo || vus.has(x.repo)) return false;
+      const emis = new Set(dejaEmis.map((x) => x.repo));
+      const vus = new Set();
+      const reste = brute.filter((x) => {
+        if (!x || !x.repo || emis.has(x.repo) || vus.has(x.repo)) return false;
         vus.add(x.repo);
         return true;
       });
+      /* UNE ENTRÉE QU'UNE LIGNE LOCALE A REPRISE N'APPARTIENT PLUS À LA MARGE. Sans cette purge,
+         décocher la couverture ensuite retirait la ligne mais pas la marge, qui la réémettait au
+         prochain export : un choix de l'utilisateur annulé sans qu'il le sache. */
+      if (reste.length !== brute.length) {
+        const cle = [String(refParent), table];
+        if (reste.length) {
+          db.prepare("UPDATE local_state SET value = ?, updated_at = ? WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+            .run(JSON.stringify(reste), new Date().toISOString(), ...cle);
+        } else {
+          db.prepare("DELETE FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?").run(...cle);
+        }
+        memo.set(`mi:${table}:${refParent}`, reste);
+      }
+      return reste;
     },
     /** Le slug d'un agent ou d'une page — ce qui nomme son fichier. */
     slug(table, id) {
