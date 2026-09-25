@@ -277,6 +277,31 @@ describe('Review de bout en bout', () => {
     assert.equal(stats.body.resolution.resolved, 1);
   });
 
+  /* UN CONSTAT « RÉSOLU » NE DOIT PLUS JAMAIS BOUGER. Sans garde-fou, `db/migration.sql`,
+     résolu (vérifié) à la 2e passe, retombait à la 3e en « disparu, non vérifié » : la passe
+     suivante ne touche plus jamais cette ligne-là (elle est déjà corrigée), donc le diff
+     git de CETTE passe ne la retrouve dans aucune plage changée. La carte de la liste des
+     reviews comptait alors un constat bloquant qu'aucune version du rapport n'affichait plus —
+     exactement le bug remonté sur une vraie instance. */
+  test('3e passe : un constat déjà résolu ne repasse jamais « disparu »', async () => {
+    const sha3 = pushChange(repo, 'src/app.js', 'const a = 1;\nconst b = 4;\nmodule.exports = { a, b };\n', 'fix: b = 4');
+    app.state.mrs['grp/app'][0].sha = sha3;
+    await app.api('POST', '/api/discover');
+    await app.api('POST', `/api/mrs/${mrId}/rereview`);
+    await waitForJobs(app.api);
+
+    const versions = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
+    const v3 = versions.find((v) => v.version === 3);
+    assert.ok(v3.resolution, 'le delta se calcule aussi à la 3e passe');
+    assert.equal(v3.resolution.persistent, 2, 'src/app.js et src/apres.js sont toujours signalés');
+    assert.equal(v3.resolution.disappeared, 0, 'la migration, déjà résolue, ne redevient pas « disparue »');
+
+    const findings = (await app.api('GET', `/api/mrs/${mrId}/findings`)).body;
+    assert.equal(findings.version, 3);
+    assert.ok(!findings.findings.some((f) => f.file === 'db/migration.sql'),
+      'un constat résolu sort du suivi : il ne revient plus du tout à la passe suivante');
+  });
+
   test('review seule puis explication générée à la demande', async () => {
     await app.api('PUT', '/api/config', { review_explain: '0' });
     await app.api('POST', `/api/mrs/${mrId}/rereview`);
@@ -291,7 +316,7 @@ describe('Review de bout en bout', () => {
 
     detail = await app.api('GET', `/api/mrs/${mrId}`);
     assert.match(detail.body.review.explanation, /Explication/);
-    assert.equal((await app.api('GET', `/api/mrs/${mrId}/versions`)).body.length, 3, 'l’explication ne crée pas de version');
+    assert.equal((await app.api('GET', `/api/mrs/${mrId}/versions`)).body.length, 4, 'l’explication ne crée pas de version');
     await app.api('PUT', '/api/config', { review_explain: '1' });
   });
 
@@ -302,7 +327,7 @@ describe('Review de bout en bout', () => {
     await waitForJobs(app.api);
 
     const versions = (await app.api('GET', `/api/mrs/${mrId}/versions`)).body;
-    assert.equal(versions[0].version, 4);
+    assert.equal(versions[0].version, 5);
     assert.equal(versions[0].kind, 'modify');
     // La DEMANDE est conservée avec la version qu'elle a produite : sans elle, l'historique
     // ne dit pas ce qui avait été demandé pour arriver à ce rapport.

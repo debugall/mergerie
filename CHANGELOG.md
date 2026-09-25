@@ -275,6 +275,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   directory on disk, and reading it as text used to throw Node's raw `EISDIR`, failing every
   file's proposal along with it, not just that one. That path is now skipped like any conflict
   the agent can't resolve, and opening it by hand reports a clear message instead of the raw error.
+- **A finding git had confirmed fixed no longer flips back to “gone, unverified” on the next
+  pass, and the review card no longer counts it as still blocking.** Once resolved, it stayed in
+  the comparison pool for every future pass; the next one, having nothing left to change at that
+  already-fixed line, found no trace of it in its own diff and downgraded it to “disappeared” —
+  forever after, since each pass carried the same stale finding into the next. A resolved finding
+  now leaves the pool for good, the way a merged branch leaves a to-do list.
 
 ### Security
 

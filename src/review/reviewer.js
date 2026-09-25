@@ -656,8 +656,13 @@ async function trackResolution({ cwd, mr, version, findings, newSha, onLog }) {
     const prevV = db.prepare(
       'SELECT version, reviewed_sha FROM review_version WHERE mr_id = ? AND version < ? ORDER BY version DESC LIMIT 1',
     ).get(mr.id, version);
+    /* UN CONSTAT « RÉSOLU » (git-vérifié) NE REVIENT PLUS DANS LA BOUCLE. Sans ce filtre, il
+       restait dans `previous` pour la passe suivante, et le nouveau diff — qui ne touche plus
+       une ligne déjà corrigée — ne le retrouvait dans aucune plage changée : il retombait donc
+       en « disparu, non vérifié », pour toujours, à chaque passe suivante. Un constat « disparu »,
+       lui, reste dans la boucle : c'est justement ce qu'on n'a pas encore pu vérifier. */
     const previous = prevV
-      ? db.prepare('SELECT fingerprint, file, line, severity, title FROM finding WHERE mr_id = ? AND version = ?').all(mr.id, prevV.version)
+      ? db.prepare("SELECT fingerprint, file, line, severity, title FROM finding WHERE mr_id = ? AND version = ? AND status != 'resolved'").all(mr.id, prevV.version)
       : [];
 
     const { rows, counts } = await resolution.diffFindings({
