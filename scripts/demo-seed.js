@@ -499,6 +499,10 @@ const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, s
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
+// Projet lié EN LECTURE SEULE, pour que la modale de session ait un exemple à montrer :
+// le front consomme `/metrics` que cette session ajoute, d'où le besoin de son contexte.
+db.prepare('INSERT INTO task_context_repo (task_id, repo_id, branch) VALUES (?,?,?)')
+  .run(t1.lastInsertRowid, repoIds['groupe/webapp-front'], 'main');
 /* LES ITÉRATIONS DE CETTE SESSION, avec le diff de CHACUNE. C'est ce qui rend démontrable la
    relecture d'un seul suivi : le lancement pose l'endpoint, le premier suivi ajoute un label
    par route, le second n'écrit qu'un paragraphe de README. Sans diffs séparés, relire ce

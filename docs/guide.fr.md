@@ -643,6 +643,14 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   En revanche, si la branche **porte déjà le travail** — cas d'une relance après un échec survenu
   *après* le commit, un push refusé par exemple —, l'absence de nouveau changement n'est **pas** une
   erreur : la session reprend son état « commit prêt », avec le diff et le bouton de création de MR.
+- **Projets liés en lecture seule (Avancé).** En codage, la modale de session propose d'ajouter
+  d'autres dépôts comme **contexte** : l'IA les consulte — leur API, leur schéma, leurs contrats —
+  pour respecter ce qu'ils exposent, sans **jamais** les modifier. Un dépôt (recherche incluse,
+  comme partout où l'on choisit un projet) et une branche facultative (vide = branche par défaut du
+  dépôt). Montés en symlink sous `ai-dev-tools-internal/context/` le temps de la passe, remis à zéro
+  après — même dispositif que les *projets liés* d'une review. Un dépôt déjà cible du codage dans
+  cette même session ne peut pas être aussi lié en lecture seule. Facultatif — l'exploration n'en a
+  pas l'usage, elle voit déjà tous ses dépôts côte à côte.
 - **Activité — ce que tu as lancé, et ce qui s'est terminé.** Le panneau de log expose une vue
   **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini. Chaque ligne
   **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé**. Ce qui

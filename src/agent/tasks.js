@@ -50,6 +50,30 @@ function normalizeTargets(targets, kind) {
   });
 }
 
+/* Projets liés en LECTURE SEULE (contexte), distincts des cibles : une cible reçoit une
+   branche de travail obligatoire et un cycle de vie (commit, push, MR) ; un projet lié n'a
+   qu'un dépôt et, en option, la branche à lire — vide, c'est sa branche par défaut. Refuser
+   un dépôt déjà cible évite un contresens (le lier en lecture alors qu'on le code déjà) et
+   une confusion dans le prompt (le même dossier cité deux fois, avec deux statuts). */
+function normalizeContextRepos(list, targetRepoIds) {
+  if (!Array.isArray(list) || !list.length) return [];
+  const seen = new Set();
+  const cibles = new Set((targetRepoIds || []).map(Number));
+  return list.map((c) => {
+    const repoId = Number(c.repo_id);
+    if (!repoId || !repoById(repoId)) throw new Error(t('err.projet-inconnu'));
+    if (cibles.has(repoId)) throw new Error(t('err.projet-lecture-seule-deja-cible'));
+    if (seen.has(repoId)) throw new Error(t('err.un-meme-projet-est-selectionne'));
+    seen.add(repoId);
+    const branch = (c.branch || '').trim();
+    return { repo_id: repoId, branch: branch ? assertValidBranch(branch) : null };
+  });
+}
+function insertContextRepos(taskId, list) {
+  const ins = db.prepare('INSERT INTO task_context_repo (task_id, repo_id, branch) VALUES (?, ?, ?)');
+  for (const c of list) ins.run(taskId, c.repo_id, c.branch);
+}
+
 function insertTargets(taskId, list, sessionId) {
   /* `sessionId` : session d'agent EXISTANTE fournie à la création. On la range comme si la
      première passe l'avait créée — les exécutants reprennent déjà une session dès qu'un
@@ -76,7 +100,7 @@ function insertTargets(taskId, list, sessionId) {
 function creerTask(champs) {
   const {
     kind, prompt, branch, commitMessage, autoPush, askQuestions, verifierId, label,
-    notifyJira, reviewAfter, targets, sessionId, agentId, agentName, triggeredBy, agentQuestion,
+    notifyJira, reviewAfter, targets, contextRepos, sessionId, agentId, agentName, triggeredBy, agentQuestion,
     agentDraft, shared,
   } = champs;
   const now = new Date().toISOString();
@@ -97,7 +121,10 @@ function creerTask(champs) {
     now, now);
   const taskId = info.lastInsertRowid;
   insertTargets(taskId, targets, sessionId);
+  if (contextRepos && contextRepos.length) insertContextRepos(taskId, contextRepos);
   return taskId;
 }
 
-module.exports = { creerTask, normalizeTargets, insertTargets, assertValidBranch, repoById };
+module.exports = {
+  creerTask, normalizeTargets, insertTargets, normalizeContextRepos, insertContextRepos, assertValidBranch, repoById,
+};

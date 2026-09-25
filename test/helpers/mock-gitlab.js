@@ -18,6 +18,7 @@ function freshState() {
     branches: {},            // project -> [{ name, default, protected, merged, commit:{ id, committed_date, author_name } }]
     commits: {},             // project -> [{ id, short_id, title, author_name, committed_date, web_url }] (le plus récent d'abord)
     tags: {},                // project -> [{ name, target, message, commit:{ id, committed_date } }]
+    compare: {},             // project -> [commit] rendus par /repository/compare (commits depuis la review)
     protectedBranches: {},   // project -> [name]
     protectedTags: {},       // project -> [name]
     discussions: {},         // `${project}!${iid}` -> [discussion]
@@ -166,6 +167,11 @@ function handleGitlab(req, res, pathname, query, body) {
 
   // --- Commits (dernier commit d'un projet) ---
   if (rest === '/repository/commits' && req.method === 'GET') return json(res, 200, paged(commitsOf()));
+  /* Comparaison entre deux SHA (commits arrivés depuis la review) : la liste est posée par le
+     test dans `state.compare[project]` ; sans elle, GitLab répond une comparaison vide. */
+  if (rest === '/repository/compare' && req.method === 'GET') {
+    return json(res, 200, { commits: (state.compare && state.compare[project]) || [] });
+  }
 
   // --- Refs (branches / tags) ---
   if (rest === '/repository/branches' && req.method === 'GET') return json(res, 200, paged(branchesOf()));

@@ -23,15 +23,19 @@ const fs = require('fs');
 const { gardeConfigAgent, parseConvergeOpts, readFileSafe, wrap } = require('../http');
 const { basculerPartage, exigerProprietaire, passesPayload } = require('../lib/partage');
 const { savePiecesEtImages } = require('../lib/pieces');
-const { applySessionId, demoMrDe, insertTargets, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, reposPourScan, targetById, taskById, taskTargets } = require('../lib/sessions');
+const { applySessionId, demoMrDe, insertTargets, insertContextRepos, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, normalizeContextRepos, reposPourScan, targetById, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 const { targetCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   const sessionId = normalizeSessionId(session_id);
   const list = normalizeTargets(targets, k);
+  /* Projets liés en lecture seule : seule la session de CODAGE en a l'usage — l'IA modifie
+     un projet et peut avoir besoin d'en LIRE un autre pour respecter son API. Une exploration
+     lit déjà tous ses dépôts côte à côte (§ runExploration), et n'a rien à distinguer. */
+  const contextRepos = k === 'code' ? normalizeContextRepos(context_repos, list.map((x) => x.repo_id)) : [];
   const now = new Date().toISOString();
   /* « L'IA peut poser des questions » : opt-in, en codage COMME en exploration. Une exploration
      hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
@@ -73,6 +77,7 @@ app.post('/api/tasks', wrap((req, res) => {
     // B9 : idem — une review coûte un appel IA, elle se demande.
     reviewAfter: req.body && req.body.review_after ? 1 : 0,
     targets: list,
+    contextRepos,
     sessionId,
     agentId: profil ? profil.id : null,
     agentName: profil ? profil.name : (brouillon ? brouillon.name : null),
@@ -83,32 +88,52 @@ app.post('/api/tasks', wrap((req, res) => {
     shared: req.body && req.body.shared ? 1 : 0,
   });
   savePiecesEtImages('task', taskId, req.body || {});
-  res.json({ ...taskById(taskId), targets: taskTargets(taskId) });
+  res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
 }));
 app.put('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
-  const { prompt, commit_message, auto_push, images, targets, ask_questions, session_id, verifier_id, label } = req.body || {};
+  const { prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
   const sessionId = normalizeSessionId(session_id);
-  if (Array.isArray(targets) && targets.length) {
-    const list = normalizeTargets(targets, tache.kind);
-    /* On ne recrée les cibles que si la COMPOSITION change : sinon on perdrait leur état
-       d'exécution (commit, diff, MR, handle de session).
+  /* LES DEUX RECRÉATIONS DANS UNE SEULE TRANSACTION. La revalidation des projets liés (plus
+     bas) peut refuser la composition — un dépôt qu'on vient d'ajouter comme cible était déjà
+     lié en lecture seule — et elle doit alors annuler la recréation des cibles qui la précède :
+     sans transaction, une requête refusée laissait les cibles déjà réécrites en base, avec
+     l'erreur pour seule trace du refus. */
+  db.transaction(() => {
+    if (Array.isArray(targets) && targets.length) {
+      const list = normalizeTargets(targets, tache.kind);
+      /* On ne recrée les cibles que si la COMPOSITION change : sinon on perdrait leur état
+         d'exécution (commit, diff, MR, handle de session).
 
-       La comparaison ne porte donc que sur ce que l'utilisateur a CHOISI. Pour une
-       exploration, `base_branch` n'est pas un choix : c'est la branche que le run a
-       RÉSOLUE et réécrite sur chaque cible. Elle la faisait donc différer du formulaire —
-       qui n'en envoie aucune — et rouvrir une exploration terminée pour l'enregistrer sans
-       rien changer remettait tous ses dépôts « à exécuter », sous une session « terminée ».
-       `|| ''` sur la branche pour la même raison : `null` et `''` désignent ici la même
-       absence de choix, mais ne s'écrivent pas pareil dans une clé. */
-    const key = (x) => [x.repo_id, x.branch || '', tache.kind === 'explore' ? '' : (x.base_branch || '')].join(':');
-    const cur = taskTargets(tache.id).map(key).join('|');
-    if (cur !== list.map(key).join('|')) {
-      db.prepare('DELETE FROM task_target WHERE task_id = ?').run(tache.id);
-      insertTargets(tache.id, list);
+         La comparaison ne porte donc que sur ce que l'utilisateur a CHOISI. Pour une
+         exploration, `base_branch` n'est pas un choix : c'est la branche que le run a
+         RÉSOLUE et réécrite sur chaque cible. Elle la faisait donc différer du formulaire —
+         qui n'en envoie aucune — et rouvrir une exploration terminée pour l'enregistrer sans
+         rien changer remettait tous ses dépôts « à exécuter », sous une session « terminée ».
+         `|| ''` sur la branche pour la même raison : `null` et `''` désignent ici la même
+         absence de choix, mais ne s'écrivent pas pareil dans une clé. */
+      const key = (x) => [x.repo_id, x.branch || '', tache.kind === 'explore' ? '' : (x.base_branch || '')].join(':');
+      const cur = taskTargets(tache.id).map(key).join('|');
+      if (cur !== list.map(key).join('|')) {
+        db.prepare('DELETE FROM task_target WHERE task_id = ?').run(tache.id);
+        insertTargets(tache.id, list);
+      }
     }
-  }
+    /* Contrairement aux cibles, les projets liés n'ont pas d'état d'exécution : on remplace
+       l'ensemble sans comparaison préalable. Codage seulement — comme à la création, une
+       exploration n'en a pas l'usage. Absent des DEUX corps, on ne touche à rien — un appelant
+       qui ignore ce champ ne doit pas l'effacer.
+       On revalide aussi quand seules les CIBLES ont changé, contre les projets liés EXISTANTS :
+       sans ça, ajouter comme cible un dépôt déjà lié en lecture seule laissait le même dossier
+       avec deux statuts, exactement ce que `normalizeContextRepos` refuse à la création. */
+    if (tache.kind === 'code' && (Array.isArray(context_repos) || (Array.isArray(targets) && targets.length))) {
+      const brut = Array.isArray(context_repos) ? context_repos : taskContextRepos(tache.id);
+      const list2 = normalizeContextRepos(brut, taskTargets(tache.id).map((x) => x.repo_id));
+      db.prepare('DELETE FROM task_context_repo WHERE task_id = ?').run(tache.id);
+      insertContextRepos(tache.id, list2);
+    }
+  })();
   db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, review_after = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
@@ -129,7 +154,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
   savePiecesEtImages('task', tache.id, req.body || {});
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
   applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
-  res.json({ ...taskById(tache.id), targets: taskTargets(tache.id) });
+  res.json({ ...taskById(tache.id), targets: taskTargets(tache.id), context_repos: taskContextRepos(tache.id) });
 }));
 app.delete('/api/tasks/:id', wrap((req, res) => {
   /* LA SESSION D'UN COLLÈGUE NE SE SUPPRIME PAS : la supprimer ici retirerait son fichier du

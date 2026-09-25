@@ -630,6 +630,14 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   the case of a re-run after a failure that happened *after* the commit, a rejected push say — the absence
   of new changes is **not** an error: the session goes back to its “commit ready” state, with the diff and
   the MR creation button.
+- **Read-only linked projects (Advanced).** In coding, the session dialog lets you add other
+  repositories as **context**: the AI reads them — their API, their schema, their contracts — to
+  respect what they expose, without **ever** modifying them. A repository (with search, as
+  everywhere a project is picked) and an optional branch (empty = the repository's default branch).
+  Mounted as a symlink under `ai-dev-tools-internal/context/` for the duration of the pass, reset
+  afterwards — the same mechanism as a review's *linked projects*. A repository that is already a
+  coding target of this same session cannot also be linked read-only. Optional — exploration has no
+  use for it, it already sees all its repositories side by side.
 - **Activity — what you launched, and what finished.** The log panel exposes an **Activity** view: what ran,
   on what, for how long, and how it ended. Each row **names its object** and takes you there in one click; a
   button reopens the **log of a past job**. What has finished since your last visit is marked, and the count

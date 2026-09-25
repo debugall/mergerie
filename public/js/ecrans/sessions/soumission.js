@@ -314,6 +314,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
     shared: f.shared ? f.shared.checked : false,
     files: taskNewImages,
     targets,
+    // Projets liés en lecture seule : codage seulement — une exploration n'en a pas l'usage.
+    context_repos: taskKind === 'code' ? readCtxRepoRows() : undefined,
   };
   // B10 : les captures du ticket cochées viennent s'ajouter aux pièces déjà choisies.
   if (cleJiraDeLaSession) {

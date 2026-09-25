@@ -151,6 +151,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   columns / Markdown drops the page list and expands the editor to fill the window — the three
   view buttons stay available, so the display can still be switched while reading. Escape, or
   the same button, exits back to the normal two-column layout.
+- **Read-only linked projects for a coding session.** The session dialog's Advanced section
+  lets you add other repositories as context — the AI reads their API, schema and contracts to
+  code correctly in the projects it modifies, without ever being allowed to change them. A
+  repository (with search) and an optional branch, mounted read-only for the duration of the
+  pass and reset afterwards, the same mechanism as a review's linked projects. Coding only; a
+  repository already a coding target of the same session cannot also be linked read-only.
 - **Schedule a session for a date and time.** The session modal — coding, exploration and
   off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create
   and schedule”; the session is created and waits, its card showing the date with a cross to cancel
