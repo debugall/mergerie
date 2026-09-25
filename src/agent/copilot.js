@@ -103,7 +103,7 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   const agentpolicy = require('./policy');
   const backend = agentpolicy.backendDe(COPILOT_BIN);
   const pol = agentpolicy.argvPermissions({
-    backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs,
+    backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs, cwd,
   });
   if (pol.note) onLog(t('agents.log.copilot-not-restricted'));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser

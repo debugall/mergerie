@@ -28,7 +28,7 @@ jetonlocal.regenerer();
    rester joignable sans lui. */
 const PAGES = new Set(['/', '/index.html', '/acces']);
 app.use((req, res, next) => {
-  if (req.method === 'GET' && PAGES.has(req.path)) jetonlocal.poserCookie(res);
+  if (req.method === 'GET' && PAGES.has(req.path)) jetonlocal.poserCookie(req, res);
   next();
 });
 

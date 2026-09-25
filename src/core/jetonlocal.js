@@ -23,6 +23,10 @@ const { DATA_DIR } = require('./paths');
 const garde = require('./garde');
 
 const COOKIE = 'mergerie_local';
+/* Un cookie n'est PAS scopé par port : deux instances sur localhost (4319 et une autre `PORT=`)
+   s'écraseraient le leur, et chacune, ne reconnaissant plus le sien, ferait recharger l'onglet de
+   l'autre en boucle. Le port d'écoute fait donc partie du nom. */
+const nomCookie = (req) => `${COOKIE}_${(req.socket && req.socket.localPort) || 0}`;
 const FICHIER = path.join(DATA_DIR, 'local-token');
 
 let actuel = '';
@@ -40,12 +44,12 @@ const jeton = () => actuel;
 
 /** La requête porte-t-elle le jeton courant, par cookie ou par `Authorization: Bearer` ? */
 function valide(req) {
-  return !!actuel && garde.memeJeton(garde.jetonPresente(req, COOKIE), actuel);
+  return !!actuel && garde.memeJeton(garde.jetonPresente(req, nomCookie(req)), actuel);
 }
 
 /** Pose le cookie du jeton local sur la réponse — `GET /`, `/index.html`, `/acces`. */
-function poserCookie(res) {
-  res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(actuel)}; HttpOnly; SameSite=Strict; Path=/`);
+function poserCookie(req, res) {
+  res.setHeader('Set-Cookie', `${nomCookie(req)}=${encodeURIComponent(actuel)}; HttpOnly; SameSite=Strict; Path=/`);
 }
 
-module.exports = { COOKIE, FICHIER, regenerer, jeton, valide, poserCookie };
+module.exports = { COOKIE, nomCookie, FICHIER, regenerer, jeton, valide, poserCookie };

@@ -49,7 +49,8 @@ describe('Le jeton de session local', () => {
   test('GET / pose le cookie du jeton local', async () => {
     const r = await fetch(`${app.base}/`, { redirect: 'manual' });
     const cookies = r.headers.get('set-cookie') || '';
-    assert.match(cookies, /mergerie_local=/);
+    const port = new URL(app.base).port;
+    assert.match(cookies, new RegExp(`mergerie_local_${port}=`), 'le port fait partie du nom : deux instances ne s’écrasent pas');
     assert.match(cookies, /HttpOnly/i);
     assert.match(cookies, /SameSite=Strict/i);
   });
