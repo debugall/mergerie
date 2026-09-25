@@ -3,6 +3,7 @@
    Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const { app } = require('../app');
 const db = require('../../db');
+const store = require('../../data/store');
 const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
@@ -128,6 +129,7 @@ app.put('/api/repos/:id', wrap((req, res) => {
   res.json(repoById(cur.id));
 }));
 app.delete('/api/repos/:id', wrap((req, res) => {
+  store.verserEnMarge(req.params.id);
   db.prepare('DELETE FROM repo WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
 }));

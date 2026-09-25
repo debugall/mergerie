@@ -1066,6 +1066,47 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'la couverture retirée par Q ne doit pas être réémise par la marge');
   });
 
+  /* RETIRER UN DÉPÔT DE SES DÉPÔTS SUIVIS N'AMPUTE PAS LA COUVERTURE DES COLLÈGUES : la cascade
+   * SQL emporte la ligne `verifier_repo`, et sans `verserEnMarge` le fichier repartait sans lui. */
+  test('un poste qui retire un dépôt de sa liste ne retire pas sa couverture chez les autres', () => {
+    const posteR = path.join(racine, 'R');
+    const posteS = path.join(racine, 'S');
+    fs.mkdirSync(posteR); fs.mkdirSync(posteS);
+    const nuR = path.join(racine, 'equipe-r.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuR], { stdio: 'ignore' });
+    const mise = `
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;`;
+
+    dans(posteR, `async ({ db, datasync, config }) => {
+      ${mise}
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuR)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const v = db.prepare("INSERT INTO verifier (name, command, created_at) VALUES ('Tests quater', '', ?)").run(now).lastInsertRowid;
+      db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(v, 'npm test');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, app, 'worktree');
+      db.prepare('INSERT INTO verifier_repo (verifier_id, repo_id, mode) VALUES (?, ?, ?)').run(v, api, 'worktree');
+      await datasync.commiter('verifier quater');
+      await datasync.tour();
+    }`);
+
+    dans(posteS, `async ({ db, store, datasync, config }) => {
+      ${mise}
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuR)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      store.verserEnMarge(api);
+      db.prepare('DELETE FROM repo WHERE id = ?').run(api);
+      await datasync.commiter('retire eq/api de mes dépôts');
+      await datasync.tour();
+    }`);
+
+    const uid = dans(posteR, `async ({ db }) => db.prepare("SELECT uid FROM verifier WHERE name = 'Tests quater'").get().uid`);
+    const doc = JSON.parse(execFileSync('git', ['-C', nuR, 'show', `main:verifiers/${uid}.json`], { encoding: 'utf8' }));
+    assert.deepEqual(doc.repos.map((r) => r.repo).sort(), ['gitlab/eq/api', 'gitlab/eq/app'],
+      'S ne suit plus eq/api : c’est sa décision de poste, pas celle de R');
+  });
+
   /* LE PENDANT POUR `agent_pass` : UNE PASSE DE CODAGE SUR UN DÉPÔT NON SUIVI SURVIT À UN
    * BALAYAGE DÉCLENCHÉ AILLEURS. Le dépôt n'est même pas dans le fichier de la passe — il est
    * dans celui de sa SESSION, relu via `porteeRepo: { parent }`. */

@@ -706,6 +706,45 @@ function balayer(table, ctx = contexte()) {
   return aRetirer.length;
 }
 
+/**
+ * RETIRER UN DÉPÔT DE SES DÉPÔTS SUIVIS NE LE RETIRE PAS DES LISTES DE L'ÉQUIPE. La cascade SQL
+ * emporte les lignes `verifier_repo` et `agent_repo` de ce dépôt (et `mr_link` n'en garde qu'un
+ * `repo_id` orphelin, que `repoRef` ne sait plus nommer) : réécrits, le vérificateur, l'agent et
+ * la MR repartiraient SANS lui, chez des collègues qui le suivent encore — la couverture ou le
+ * périmètre amputé que la marge empêche déjà à l'import. À appeler AVANT `DELETE FROM repo` :
+ * les membres passent dans la marge de leur parent (voir `margeInconnue`), et les `mr_link`
+ * sont retirés pour qu'un `repo_id` réattribué ne les rattache pas à un autre dépôt.
+ */
+function verserEnMarge(repoId) {
+  const repo = db.prepare('SELECT id, forge, project FROM repo WHERE id = ?').get(Number(repoId));
+  if (!repo) return;
+  const ref = `${repo.forge || 'gitlab'}/${repo.project}`;
+  const specs = [
+    ['verifier_repo', 'verifier', 'verifier_id', (r) => ({ repo: ref, mode: r.mode })],
+    ['agent_repo', 'agent', 'agent_id', (r) => ({ repo: ref, branch: r.branch || null, role: r.role })],
+    ['mr_link', 'mr', 'mr_id', (r) => ({ repo: ref, branch: r.branch || null })],
+  ];
+  const lire = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?");
+  const ecrire = db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+    VALUES ('store_hors_perimetre', ?, ?, ?, ?)
+    ON CONFLICT (kind, ref, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`);
+  db.transaction(() => {
+    for (const [fille, parent, colonne, item] of specs) {
+      for (const r of db.prepare(`SELECT * FROM ${fille} WHERE repo_id = ?`).all(repo.id)) {
+        const p = db.prepare(`SELECT uid FROM ${parent} WHERE id = ?`).get(r[colonne]);
+        if (!p || !p.uid) continue;
+        const brut = lire.get(p.uid, fille);
+        let marge = [];
+        try { marge = brut ? JSON.parse(brut.value) : []; } catch { marge = []; }
+        if (!Array.isArray(marge)) marge = [];
+        if (!marge.some((x) => x && x.repo === ref)) marge.push(item(r));
+        ecrire.run(p.uid, fille, JSON.stringify(marge), new Date().toISOString());
+      }
+    }
+    db.prepare('DELETE FROM mr_link WHERE repo_id = ?').run(repo.id);
+  })();
+}
+
 /* ---------- 6. Export complet ---------- */
 
 /* Les tables qui portent leur propre fichier, parents avant enfants. `mr` en fait partie bien
@@ -847,6 +886,7 @@ function exporterTout() {
 
 module.exports = {
   SCHEMA,
+  verserEnMarge,
   surEcriture,
   ecouler,
   enRetard,

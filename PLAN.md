@@ -453,6 +453,11 @@ voyageait partout. Deux garde-fous en tiennent compte, dans `store-registry.js` 
   partout, recréant l'amputation que la marge devait empêcher. Ce qui casserait vraiment l'import
   (clé primaire `verifier_id, repo_id`) est de répéter un dépôt DÉJÀ dans les lignes résolues, pas
   qu'il soit devenu résoluble.
+  Le geste inverse est couvert aussi : `store.verserEnMarge(repoId)`, appelée par
+  `DELETE /api/repos/:id` AVANT le `DELETE FROM repo`, verse les membres `verifier_repo`,
+  `agent_repo` et `mr_link` de ce dépôt dans la marge de leur parent (la cascade SQL les aurait
+  emportés, et le fichier serait reparti sans eux chez des collègues qui suivent encore ce dépôt) ;
+  retirer un dépôt de SA liste est une décision de poste, jamais celle de l'équipe.
 
 ### Les réglages coupés en deux (`local_config`)
 
