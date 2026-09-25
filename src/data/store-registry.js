@@ -973,7 +973,8 @@ const REGISTRE = [
       created_at: r.created_at,
       updated_at: r.updated_at,
       finished_at: r.finished_at || null,
-      targets: ctx.enfants('task_target', 'task_id', r.id).map((tg) => ({
+      targets: (() => {
+        const locaux = ctx.enfants('task_target', 'task_id', r.id).map((tg) => ({
         uid: tg.uid,
         repo: ctx.repoRef(tg.repo_id),
         /* LE RETOUR D'UNE SESSION D'AVANT L'HISTORIQUE DES PASSES. Depuis, chaque itération est
@@ -997,7 +998,12 @@ const REGISTRE = [
         last_error: ctx.masquer(tg.last_error) || null,
         questions_json: tg.questions_json || null,
         updated_at: tg.updated_at,
-      })).filter((tg) => tg.repo),
+        })).filter((tg) => tg.repo);
+        /* UNE CIBLE SUR UN DÉPÔT QUE CE POSTE NE SUIT PAS REPART TELLE QUELLE (marge de la
+           session) : une session multi-dépôts réécrite d'ici perdrait sinon branche, MR et sortie
+           de l'agent pour ce dépôt, chez tous les collègues qui le suivent. */
+        return [...locaux, ...ctx.margeInconnue('task_target', r.uid, locaux)];
+      })(),
     }),
     fromFile: (doc, ctx) => ({
       uid: doc.uid,
@@ -1037,6 +1043,9 @@ const REGISTRE = [
       table: 'task_target',
       liste: 'targets',
       colonneParent: 'task_id',
+      /* Une cible dont le dépôt est inconnu ici n'a pas de ligne, mais elle est gardée dans la
+         marge de la session (`hydraterListes`) et reprise à l'export. */
+      horsPerimetre: (item, ctx) => Boolean(item && item.uid && item.repo && !ctx.repoId(item.repo)),
       fromItem: (item, ctx, task) => {
         if (!item || !item.uid) return null;
         const repoId = ctx.repoId(item.repo);

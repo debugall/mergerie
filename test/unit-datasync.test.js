@@ -1107,6 +1107,67 @@ describe('datasync — deux postes, un dépôt de données', () => {
       'S ne suit plus eq/api : c’est sa décision de poste, pas celle de R');
   });
 
+  /* UNE SESSION MULTI-DÉPÔTS RÉÉCRITE PAR UN POSTE QUI N'EN SUIT QU'UN GARDE SES DEUX CIBLES :
+   * la cible d'eq/api n'a pas de ligne chez U (dépôt inconnu), mais elle reste dans la marge de la
+   * session et repart telle quelle — branche, MR et sortie de l'agent comprises. Et retirer un
+   * dépôt de sa liste verse ses cibles dans la marge avant la cascade. */
+  test('une session multi-dépôts réécrite par un poste qui n’en suit qu’un garde ses deux cibles', () => {
+    const posteT = path.join(racine, 'T');
+    const posteU = path.join(racine, 'U');
+    fs.mkdirSync(posteT); fs.mkdirSync(posteU);
+    const nuT = path.join(racine, 'equipe-t.git');
+    execFileSync('git', ['init', '--bare', '--initial-branch=main', nuT], { stdio: 'ignore' });
+
+    dans(posteT, `async ({ db, datasync, config }) => {
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuT)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      const now = new Date().toISOString();
+      const app = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now).lastInsertRowid;
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      const t = db.prepare(\`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, created_at, updated_at)
+        VALUES (?, 'code', 'Multi', 'feat/x', 'pushed', 1, ?, ?)\`).run(app, now, now).lastInsertRowid;
+      for (const r of [app, api]) {
+        db.prepare("INSERT INTO task_target (task_id, repo_id, branch, status, mr_iid, updated_at) VALUES (?, ?, 'feat/x', 'pushed', 7, ?)").run(t, r, now);
+      }
+      await datasync.commiter('session multi-depots');
+      await datasync.tour();
+    }`);
+
+    const chezU = dans(posteU, `async ({ db, datasync, config }) => {
+      const now = new Date().toISOString();
+      db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/app', 'https://x/eq/app.git', 1, ?)").run(now);
+      config.updateConfig({ data_repo_url: ${JSON.stringify(nuT)}, data_repo_branch: 'main', data_sync_seconds: '10' });
+      await datasync.rattacher({});
+      db.prepare("UPDATE task SET status = 'done', updated_at = ? WHERE prompt = 'Multi'").run(new Date().toISOString());
+      await datasync.commiter('change le statut');
+      await datasync.tour();
+      return db.prepare('SELECT COUNT(*) n FROM task_target').get().n;
+    }`);
+    assert.equal(chezU, 1, 'une seule cible en ligne chez U : eq/api reste dans la marge');
+
+    const uid = dans(posteT, `async ({ db }) => db.prepare("SELECT uid FROM task WHERE prompt = 'Multi'").get().uid`);
+    const doc = JSON.parse(execFileSync('git', ['-C', nuT, 'show', `main:sessions/${uid}/session.json`], { encoding: 'utf8' }));
+    assert.equal(doc.status, 'done', 'le fichier porte bien l’écriture de U');
+    assert.deepEqual(doc.targets.map((x) => x.repo).sort(), ['gitlab/eq/api', 'gitlab/eq/app']);
+    assert.equal(doc.targets.find((x) => x.repo === 'gitlab/eq/api').mr_iid, 7, 'la cible d’eq/api repart intacte');
+
+    // Retirer eq/api de SA liste, chez T (qui la suit) : sa cible passe dans la marge, pas à la trappe.
+    dans(posteU, `async ({ db, store, datasync }) => {
+      const now = new Date().toISOString();
+      const api = db.prepare("INSERT INTO repo (forge, project, url, enabled, created_at) VALUES ('gitlab', 'eq/api', 'https://x/eq/api.git', 1, ?)").run(now).lastInsertRowid;
+      const t = db.prepare("SELECT id FROM task WHERE prompt = 'Multi'").get().id;
+      db.prepare("INSERT INTO task_target (task_id, repo_id, branch, status, mr_iid, updated_at) VALUES (?, ?, 'feat/x', 'pushed', 7, ?)").run(t, api, now);
+      await datasync.commiter('suit eq/api');
+      store.verserEnMarge(api);
+      db.prepare('DELETE FROM repo WHERE id = ?').run(api);
+      await datasync.commiter('ne suit plus eq/api');
+      await datasync.tour();
+    }`);
+    const apres = JSON.parse(execFileSync('git', ['-C', nuT, 'show', `main:sessions/${uid}/session.json`], { encoding: 'utf8' }));
+    assert.deepEqual(apres.targets.map((x) => x.repo).sort(), ['gitlab/eq/api', 'gitlab/eq/app'],
+      'retirer un dépôt de sa liste ne retire pas sa cible de la session d’équipe');
+  });
+
   /* LE PENDANT POUR `agent_pass` : UNE PASSE DE CODAGE SUR UN DÉPÔT NON SUIVI SURVIT À UN
    * BALAYAGE DÉCLENCHÉ AILLEURS. Le dépôt n'est même pas dans le fichier de la passe — il est
    * dans celui de sa SESSION, relu via `porteeRepo: { parent }`. */

@@ -723,7 +723,12 @@ function verserEnMarge(repoId) {
     ['verifier_repo', 'verifier', 'verifier_id', (r) => ({ repo: ref, mode: r.mode })],
     ['agent_repo', 'agent', 'agent_id', (r) => ({ repo: ref, branch: r.branch || null, role: r.role })],
     ['mr_link', 'mr', 'mr_id', (r) => ({ repo: ref, branch: r.branch || null })],
+    /* La cible telle que la session l'écrit dans son fichier : on demande son `toFile` à la
+       session plutôt que de recopier ses champs ici. */
+    ['task_target', 'task', 'task_id', (r, p) => (registre.pour('task').toFile(p, ctx).targets || [])
+      .find((t) => t.uid === r.uid)],
   ];
+  const ctx = contexte();
   const lire = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?");
   const ecrire = db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
     VALUES ('store_hors_perimetre', ?, ?, ?, ?)
@@ -731,13 +736,15 @@ function verserEnMarge(repoId) {
   db.transaction(() => {
     for (const [fille, parent, colonne, item] of specs) {
       for (const r of db.prepare(`SELECT * FROM ${fille} WHERE repo_id = ?`).all(repo.id)) {
-        const p = db.prepare(`SELECT uid FROM ${parent} WHERE id = ?`).get(r[colonne]);
+        const p = db.prepare(`SELECT * FROM ${parent} WHERE id = ?`).get(r[colonne]);
         if (!p || !p.uid) continue;
+        const membre = item(r, p);
+        if (!membre) continue;
         const brut = lire.get(p.uid, fille);
         let marge = [];
         try { marge = brut ? JSON.parse(brut.value) : []; } catch { marge = []; }
         if (!Array.isArray(marge)) marge = [];
-        if (!marge.some((x) => x && x.repo === ref)) marge.push(item(r));
+        if (!marge.some((x) => x && x.repo === ref && x.uid === membre.uid)) marge.push(membre);
         ecrire.run(p.uid, fille, JSON.stringify(marge), new Date().toISOString());
       }
     }
@@ -1429,7 +1436,9 @@ function hydraterListes(e, parent, doc, ctx, signaler = () => {}) {
        uid et seules les disparues sont retirées. */
     if (l.remplace) { l.remplace(db, parent, items, ctx, signaler); continue; }
     const gardes = new Set();
+    const horsPerimetre = [];
     for (const item of items) {
+      if (l.horsPerimetre && l.horsPerimetre(item, ctx)) { horsPerimetre.push(item); continue; }
       const row = l.fromItem(item, ctx, parent);
       if (!row) continue;
       upsert(l.table, row);
@@ -1440,7 +1449,22 @@ function hydraterListes(e, parent, doc, ctx, signaler = () => {}) {
     for (const r of db.prepare(`SELECT id, uid FROM ${l.table} WHERE ${l.colonneParent} = ?`).all(parent.id)) {
       if (!gardes.has(r.uid)) db.prepare(`DELETE FROM ${l.table} WHERE id = ?`).run(r.id);
     }
+    if (l.horsPerimetre) garderMarge(l.table, parent.uid, horsPerimetre);
   }
+}
+
+/** Remplace la marge d'une liste fille (voir `margeInconnue`) ; vide, elle disparaît. */
+function garderMarge(table, refParent, items) {
+  if (!refParent) return;
+  if (!items.length) {
+    db.prepare("DELETE FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+      .run(String(refParent), table);
+    return;
+  }
+  db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+    VALUES ('store_hors_perimetre', ?, ?, ?, ?)
+    ON CONFLICT (kind, ref, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+    .run(String(refParent), table, JSON.stringify(items), new Date().toISOString());
 }
 
 /** Hydrate TOUT le dépôt — au premier démarrage, après un clone, ou quand la base a disparu. */

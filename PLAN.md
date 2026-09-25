@@ -458,6 +458,10 @@ voyageait partout. Deux garde-fous en tiennent compte, dans `store-registry.js` 
   `agent_repo` et `mr_link` de ce dépôt dans la marge de leur parent (la cascade SQL les aurait
   emportés, et le fichier serait reparti sans eux chez des collègues qui suivent encore ce dépôt) ;
   retirer un dépôt de SA liste est une décision de poste, jamais celle de l'équipe.
+  `task_target` suit le même modèle bien que sa liste passe par `fromItem` : un `horsPerimetre`
+  déclaré sur son entrée fait garder à `hydraterListes` la cible brute d'un dépôt inconnu (marge de
+  la session, `garderMarge`), reprise par `task.toFile`, et `verserEnMarge` demande à `task.toFile`
+  la forme exacte de la cible à verser au retrait d'un dépôt.
 
 ### Les réglages coupés en deux (`local_config`)
 
