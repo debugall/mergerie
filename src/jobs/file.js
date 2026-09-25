@@ -127,6 +127,12 @@ function jobKeys(entry) {
           .all(entry.taskId, ...ids.map(Number))
         : targetsOf(entry.taskId);
       for (const t2 of cibles) repo(t2.repo_id);
+      /* Les projets liés en LECTURE SEULE sont montés dans leur PROPRE clone (checkout, remise
+         à zéro) à CHAQUE passe de la session — même une passe ciblée sur un seul projet touche
+         donc TOUS les projets liés de la session, quel que soit `targetIds`. Sans cette clé,
+         une autre session qui code dans l'un de ces dépôts tournerait en parallèle pendant que
+         celui-ci se fait remettre à zéro sous elle. */
+      for (const c of db.prepare('SELECT repo_id FROM task_context_repo WHERE task_id = ?').all(entry.taskId)) repo(c.repo_id);
       return keys;
     }
     case 'converge': {

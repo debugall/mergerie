@@ -144,6 +144,20 @@
                     <span id="taskSessionHint" class="field-note" hidden></span>
                 </label>
                 </div>
+                <!-- PROJETS LIÉS EN LECTURE SEULE : l'IA a parfois besoin du contexte d'un autre
+                     projet (son API, son schéma) pour coder correctement dans les projets ci-dessus,
+                     sans avoir le droit d'y toucher. Codage seulement — une exploration voit déjà
+                     tous ses dépôts côte à côte, sans distinction lecture/écriture. -->
+                <div id="taskContextRepos" class="targets-editor">
+                    <div class="targets-head">
+                        <span data-i18n="task.ctx.title">Projets liés en lecture seule (optionnel)</span>
+                        <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.ctx.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <span class="spacer"></span>
+                        <button type="button" id="taskContextRepoAdd" class="btn btn-sm" data-i18n-title="task.ctx.add-title"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="task.ctx.add">Ajouter un projet</span></button>
+                    </div>
+                    <div id="taskContextRepoRows"></div>
+                    <p class="muted" style="margin:6px 0 0" data-i18n="task.ctx.hint">L'IA peut lire ces projets mais ne peut modifier aucun de leurs fichiers.</p>
+                </div>
                 <!-- CE QUE LA SESSION EMPORTE. Retrouver le nom exact d'un skill dans
                      ~/.claude/skills/ se faisait au `ls` ; ici il se coche, et la ligne
                      `/nom` part en tête du prompt. Les sous-agents de fichier cochés sont

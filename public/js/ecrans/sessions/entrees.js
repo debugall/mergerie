@@ -22,6 +22,7 @@ async function coderDepuisExploration(id) {
   /* Mêmes dépôts, branche de travail à nommer : une exploration lit une branche existante,
      un codage en crée une — proposer celle qu'on vient de LIRE ferait écrire dessus. */
   renderTargetRows((t.targets || []).map((tg) => ({ repo_id: tg.repo_id, base_branch: tg.branch || '' })));
+  renderCtxRepoRows([]);
   proposerBranche();
   f.prompt.value = `${tr('task.explore-to-code.header')}\n\n> ${String(t.prompt || '').trim().replace(/\n/g, '\n> ')}\n\n${String(reponse).trim()}\n\n---\n\n`;
   /* La session d'agent de l'exploration : c'est TOUTE la valeur du geste. Les cibles d'une
@@ -126,6 +127,7 @@ async function openTaskForNote(page) {
   await loadRepoOptions();
   applyKindToModal('code');
   renderTargetRows(lignesProposees('code'));
+  renderCtxRepoRows([]);
   setupTaskJira('');
   f.prompt.value = `${tr('task.note.context-header', { title: page.title || '' })}\n\n${(page.content || '').trim()}\n\n---\n\n`;
   await proposerPiecesNote(page.id);
@@ -198,6 +200,7 @@ async function openTaskForJira(key) {
   const memo = memoDepotJira()[projetJira];
   const connu = memo && repoOptions.some((r) => r.id === Number(memo));
   renderTargetRows([connu ? { branch, repo_id: Number(memo) } : { branch }]);
+  renderCtxRepoRows([]);
   setupTaskJira(branch);
 
   if (issue) {
@@ -234,6 +237,7 @@ async function openTaskEdit(id) {
     await loadRepoOptions();
     applyKindToModal(taskKind);
     renderTargetRows((t.targets || []).map((x) => ({ repo_id: x.repo_id, branch: x.branch, base_branch: x.base_branch })));
+    if (taskKind === 'code') renderCtxRepoRows((t.context_repos || []).map((x) => ({ repo_id: x.repo_id, branch: x.branch })));
     setupTaskJira((t.targets && t.targets[0] && t.targets[0].branch) || '');
     f.prompt.value = t.prompt || '';
     if (f.label) f.label.value = t.label || '';
@@ -302,6 +306,7 @@ async function dupliquerTask(id) {
     branch: decale ? brancheLibreSession(x.repo_id, x.branch) : x.branch,
     base_branch: x.base_branch,
   })));
+  if (decale) renderCtxRepoRows((t.context_repos || []).map((x) => ({ repo_id: x.repo_id, branch: x.branch })));
   setupTaskJira((t.targets && t.targets[0] && t.targets[0].branch) || '');
   f.prompt.value = t.prompt || '';
   if (f.label) f.label.value = t.label || '';

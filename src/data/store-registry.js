@@ -1005,6 +1005,12 @@ const REGISTRE = [
            de l'agent pour ce dépôt, chez tous les collègues qui le suivent. */
         return [...locaux, ...ctx.margeInconnue('task_target', r.uid, locaux)];
       })(),
+      /* Projets liés en LECTURE SEULE (contexte) : même forme que `mr_link` — pas d'état
+         d'exécution à préserver ligne par ligne, donc pas d'`uid` dans le document, et un
+         remplacement complet à l'hydratation plutôt qu'une fusion par item. */
+      context_repos: ctx.enfants('task_context_repo', 'task_id', r.id)
+        .map((l) => ({ repo: ctx.repoRef(l.repo_id), branch: l.branch || null }))
+        .filter((l) => l.repo),
     }),
     fromFile: (doc, ctx) => ({
       uid: doc.uid,
@@ -1066,6 +1072,19 @@ const REGISTRE = [
           updated_at: item.updated_at,
         };
       },
+    }, {
+      table: 'task_context_repo',
+      liste: 'context_repos',
+      colonneParent: 'task_id',
+      remplace: (db2, parent, items, ctx, signaler) => {
+        db2.prepare('DELETE FROM task_context_repo WHERE task_id = ?').run(parent.id);
+        const ins = db2.prepare('INSERT INTO task_context_repo (task_id, repo_id, branch) VALUES (?,?,?)');
+        for (const l of items) {
+          const id = ctx.repoId(l.repo);
+          if (!id) { signaler(`projet en lecture seule « ${l.repo} », dépôt inconnu sur ce poste`); continue; }
+          ins.run(parent.id, id, l.branch || '');
+        }
+      },
     }],
   },
   {
@@ -1074,6 +1093,7 @@ const REGISTRE = [
     note: '`session_*` a déménagé dans `local_session` ; `diff_path` et `output_path` désignent '
       + 'des fichiers du clone local, que chaque poste refait lui-même',
   },
+  { table: 'task_context_repo', famille: 'P', uidPropre: true, parent: 'task', liste: 'context_repos', fusion: 'parent' },
   {
     table: 'question', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{uid}/question.json',
     fusion: 'last-writer',

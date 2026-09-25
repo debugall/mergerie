@@ -4,7 +4,7 @@ const path = require('path');
 const db = require('../db');
 const localsession = require('../data/localsession');
 const { getConfig } = require('../data/config');
-const { TASKS_DIR, ensureDir } = require('../core/paths');
+const { TASKS_DIR, ensureDir, slugify } = require('../core/paths');
 const git = require('../git/git');
 const configagent = require('../data/configagent');
 const copilot = require('../agent/copilot');
@@ -378,6 +378,70 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   let shaDepart = null;
   try { shaDepart = await git.headSha(cwd); } catch { shaDepart = null; }
 
+  /* Projets liés en LECTURE SEULE : l'IA a parfois besoin du contexte d'un autre projet (l'API
+     qu'il expose, le schéma qu'il respecte) sans avoir le droit d'y toucher. Même dispositif
+     que les « projets liés » d'une review (src/review/reviewer.js) : montés en symlink sous
+     ai-dev-tools-internal/context/<projet> (déjà git-exclu), remis à zéro après. */
+  const ctxRoot = path.join(cwd, WORK_REL, 'context');
+  const ctxDirs = []; // { cwd, sha } des clones liés, à remettre à zéro après (sha = avant toute écriture de l'agent)
+  let ctxBlock = '';
+  const ctxLinks = db.prepare('SELECT * FROM task_context_repo WHERE task_id = ?').all(task.id);
+  if (ctxLinks.length) {
+    try { fs.rmSync(ctxRoot, { recursive: true, force: true }); } catch { /* rien à nettoyer */ }
+    ensureDir(ctxRoot);
+    const mounted = [];
+    for (const link of ctxLinks) {
+      const lrepo = db.prepare('SELECT * FROM repo WHERE id = ?').get(link.repo_id);
+      if (!lrepo) continue;
+      try {
+        const lcwd = await git.ensureRepo(cfg, lrepo, onLog);
+        await git.ensureCleanWorktree(lcwd, onLog);
+        const branch = (link.branch || '').trim() || await git.defaultBranch(lcwd);
+        if (await git.refExists(lcwd, `origin/${branch}`)) await git.createBranchFrom(lcwd, branch, `origin/${branch}`, onLog);
+        else if (await git.refExists(lcwd, `refs/heads/${branch}`)) await git.checkoutBranch(lcwd, branch, onLog);
+        else { onLog(t('log.task.context-missing', { project: lrepo.project, branch })); continue; }
+        const slug = slugify(lrepo.project);
+        const linkPath = path.join(ctxRoot, slug);
+        try { fs.symlinkSync(lcwd, linkPath); } catch { fs.rmSync(linkPath, { recursive: true, force: true }); fs.symlinkSync(lcwd, linkPath); }
+        // Capturé juste après le checkout, AVANT que l'agent n'y touche : c'est l'état auquel
+        // le cleanup ramène le clone, plutôt qu'un simple `checkout -- .` qui laisse passer les
+        // fichiers ignorés et un éventuel commit fait par l'agent malgré la consigne.
+        ctxDirs.push({ cwd: lcwd, sha: await git.headSha(lcwd) });
+        mounted.push({ rel: `${WORK_REL}/context/${slug}`, project: lrepo.project, branch });
+        onLog(t('log.task.context-ok', { project: lrepo.project, branch }));
+      } catch (e) { onLog(t('log.task.context-error', { project: lrepo.project, message: e.message.split('\n')[0] })); }
+    }
+    if (mounted.length) {
+      ctxBlock = `\n\nD'AUTRES PROJETS sont fournis EN LECTURE SEULE, comme contexte, dans les dossiers `
+        + `suivants (relatifs au dépôt courant) :`;
+      for (const m of mounted) ctxBlock += `\n- \`${m.rel}\` — projet ${m.project}, branche ${m.branch}`;
+      ctxBlock += `\n\nConsulte-les si nécessaire pour comprendre une API, un schéma ou un contrat qu'ils `
+        + `exposent. Ne modifie AUCUN fichier de ces projets — ils sont fournis en lecture seule.`;
+    }
+  }
+  // Remet à zéro les worktrees des projets liés (garantie lecture seule) et retire les liens.
+  // `reset --hard` + `clean -fdx` plutôt que le `resetWorktree` habituel : celui-ci laisse
+  // passer les fichiers ignorés (pas de `-x`) et un commit que l'agent aurait fait malgré la
+  // consigne — deux façons de laisser une trace dans un clone qui doit rester lecture seule.
+  async function cleanupContext() {
+    for (const d of ctxDirs) {
+      try {
+        await git.run('git', ['reset', '--hard', d.sha], { cwd: d.cwd });
+        await git.run('git', ['clean', '-fdx'], { cwd: d.cwd });
+      } catch { /* best-effort */ }
+    }
+    try { fs.rmSync(ctxRoot, { recursive: true, force: true }); } catch { /* déjà parti */ }
+    if (ctxDirs.length) onLog(t('log.task.context-reset'));
+  }
+  /* Ajouté aussi à `promptRepli` : à la toute première passe (pas de handle de session), c'est
+     LUI que `reinjecte()` envoie, pas `promptText` — sans ça l'IA n'apprenait jamais l'existence
+     des projets montés, alors qu'ils venaient d'être clonés pour rien. */
+  if (ctxBlock) {
+    promptText += ctxBlock;
+    if (promptRepli != null) promptRepli += ctxBlock;
+  }
+
+  try {
   const imgBlock = attachImages(task, cwd, onLog, { imageIds });
 
   onLog(t('log.task.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
@@ -525,6 +589,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   } else {
     onLog(t('log.task.commit-ready'));
   }
+  } finally { await cleanupContext(); }
 }
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec

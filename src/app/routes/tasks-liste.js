@@ -9,7 +9,7 @@ const { wrap } = require('../http');
 const agentpass = require('../../agent/pass');
 const { auteurs, avecRangement, programmations, rangement } = require('../lib/partage');
 const { piecesExposees } = require('../lib/pieces');
-const { chapeauReponse, coutParSession, dureeParSession, taskById, taskTargets } = require('../lib/sessions');
+const { chapeauReponse, coutParSession, dureeParSession, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 
 /* LES SESSIONS D'AGENT REPRENABLES. Le champ « reprendre une session » attendait un UUID
    qu'on allait extraire à la main de la commande de reprise : on ouvrait un terminal pour
@@ -85,7 +85,7 @@ app.get('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
   res.json({
-    task: { ...tache, targets: taskTargets(tache.id) },
+    task: { ...tache, targets: taskTargets(tache.id), context_repos: taskContextRepos(tache.id) },
     images: piecesExposees('task', tache.id),
   });
 }));

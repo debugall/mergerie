@@ -42,6 +42,9 @@ function applyKindToModal(kind) {
   const aq = $('#taskAskQuestionsRow'); if (aq) aq.hidden = isAsk;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
+  /* Projets liés en lecture seule : CODAGE seulement. Une exploration voit déjà tous ses
+     dépôts côte à côte (§ runExploration) et n'a rien à distinguer lecture/écriture. */
+  const ctxRow = $('#taskContextRepos'); if (ctxRow) ctxRow.hidden = kind !== 'code';
   $('#taskLocalWrap').hidden = !isLocal;
   $('#taskLocalWarn').hidden = !isLocal;
   if (isLocal) { $('#taskJiraRow').hidden = true; renderLocalRootPicker(); renderLocalDirRows(); }
@@ -258,6 +261,7 @@ async function openTaskModal(kind = taskKind) {
   if (kind === 'local') { localPicks = ['']; await loadLocalRoots(); }
   applyKindToModal(kind);
   if (kind !== 'local' && kind !== 'ask') { renderTargetRows(lignesProposees(kind)); setupTaskJira(''); }
+  if (kind === 'code') renderCtxRepoRows([]);
   if (kind !== 'ask') await majVerificateursSession('');
   await appliquerDefautsSession(f);
   remplirSessionsAgent();
@@ -291,6 +295,7 @@ async function openTaskForMr(m, opts = {}) {
   applyKindToModal('code');
   // branche de travail = la branche de la MR ; départ = sa branche cible
   renderTargetRows([{ repo_id: m.repo_id, branch: m.source_branch, base_branch: m.target_branch }]);
+  renderCtxRepoRows([]);
   setupTaskJira(m.source_branch);
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
