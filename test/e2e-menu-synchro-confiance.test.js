@@ -188,6 +188,10 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
   });
 
   test('chez Claire, le vérificateur arrive avec le nom de sa variable, sans valeur — et attend son approbation', async () => {
+    /* La liste des dépôts suivis est locale à chacun : Claire ne verra la CIBLE de la session
+       (qui désigne son dépôt par sa clé naturelle) que si elle suit elle-même ce dépôt — elle
+       l'ajoute donc ici, comme elle le ferait en vrai avant de reprendre une session d'équipe. */
+    await claire.api('POST', '/api/repos', { url: 'https://gitlab.equipe.test/eq/app.git', project: 'eq/app' });
     await claire.synchroniser();
     const liste = (await claire.api('GET', '/api/verifiers')).body;
     const recu = liste.find((x) => x.name === 'Vérif du poste');

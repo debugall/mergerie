@@ -34,7 +34,7 @@ app.get('/api/data-sync', wrap((req, res) => {
  * Le sens du geste (initialiser un dépôt vide / rejoindre un dépôt pourvu) vient d'un
  * `ls-remote` : pas de clone, pas d'écriture, rien d'irréversible avant le « oui ». */
 const GROUPES_APERCU = {
-  repo: 'repos', mr: 'mrs', review: 'reviews', review_version: 'reviews', finding: 'reviews',
+  mr: 'mrs', review: 'reviews', review_version: 'reviews', finding: 'reviews',
   convergence_run: 'reviews', review_rule: 'rules', verifier: 'verifiers', verification: 'verifiers',
   agent: 'agents', agent_knowledge: 'agents', task: 'sessions', local_task: 'sessions',
   question: 'sessions', agent_pass: 'sessions', piece_jointe: 'sessions',

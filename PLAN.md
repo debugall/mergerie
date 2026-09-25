@@ -365,18 +365,22 @@ le socle sur lequel tout le reste s'appuie.
 **La décision de fond n'est pas technique, elle est de classement** : chaque table appartient à
 une famille, et à une seule, déclarée dans `src/data/store-registry.js`.
 
-- **P — partagé** (36 tables) : le travail accumulé. Une ligne = un fichier du dépôt
+- **P — partagé** (28 tables) : le travail accumulé. Une ligne = un fichier du dépôt
   (`todos/<uid>.json`, `notes/<slug>.md`, `reviews/<forge>/<projet>/<iid>/<uid>.md`), ou une
-  **liste dans le fichier de son parent** quand elle ne se modifie qu'avec lui (`repo_link`,
-  `verifier_command`, `finding`, `service_url`…). Chaque entrée dit aussi comment deux postes se
+  **liste dans le fichier de son parent** quand elle ne se modifie qu'avec lui
+  (`verifier_command`, `finding`, `service_url`…). Chaque entrée dit aussi comment deux postes se
   départagent : `append-only` (le fichier est nommé par un ULID, deux postes ne touchent jamais le
   même — aucun conflit possible) ou `last-writer` (le plus récent gagne, l'autre est prévenu et
   récupère sa version d'un clic).
-- **L — local** (10 tables) : secret, ou propre à un poste. N'entre jamais dans le dépôt. **Tout
+- **L — local** (24 tables) : secret, ou propre à un poste. N'entre jamais dans le dépôt. **Tout
   l'onglet Liens en fait partie** — la grille « services × environnements », les gabarits d'URL de
   contexte et les liens libres décrivent où l'on va travailler, pas ce qu'on a produit. Les
   partager imposerait à l'équipe la façon dont une personne range ses raccourcis, et ferait entrer
-  dans un dépôt des adresses d'infrastructure que rien n'oblige à écrire quelque part.
+  dans un dépôt des adresses d'infrastructure que rien n'oblige à écrire quelque part. **Les
+  dépôts suivis (`repo`, `repo_link`) en font partie eux aussi**, aux côtés de Docker, Jenkins,
+  Git et Jira : quels dépôts CE poste synchronise, avec quel jeton, est une décision de machine,
+  pas un travail accumulé — partagée, elle aurait imposé à chacun les dépôts ajoutés par un seul,
+  avec leur clonage et la découverte de leurs merge requests au démarrage suivant.
 - **C — cache** (8 tables) : relu de la forge, de Jenkins, de Docker ou du disque. Le partager
   serait partager du périmé. `job_log` pèse à lui seul 58 % de la base : de la console
   d'exécution locale, précisément ce qui n'a aucune raison de voyager.
@@ -406,6 +410,56 @@ contredit quand elle ment :
   ajoutée l'an prochain et oubliée fait rougir les tests au lieu de partir sur la forge. Un secret
   commité dans git est définitif — l'historique est immuable, chaque clone le garde, la forge le
   garde ; il faut révoquer. La barrière vaut donc largement sa gêne.
+
+**`repo` étant locale, une table P peut désormais porter une ligne dont le POSTE ne connaît pas le
+dépôt** (une MR, une review, une session, une passe, une pièce jointe, une convergence, une règle
+ou un périmètre limités à un dépôt qu'il ne suit pas) — ce n'était jamais arrivé tant que `repo`
+voyageait partout. Deux garde-fous en tiennent compte, dans `store-registry.js` et `store.js` :
+- **`porteeRepo`** (sur `mr`, `review`, `review_version`, `review_rule`, `task`, `convergence_run`,
+  `agent_pass`, `piece_jointe`) dit à `depotDuFichier` comment lire le dépôt d'UN FICHIER candidat
+  au balayage : `'chemin'` s'il est dans le gabarit (`{forge}/{project}`) ; une fonction
+  `(doc) => ref` s'il est dans le CONTENU du fichier (`review_rule.repo`, la première cible de
+  `task`, le dépôt tiré de la référence de MR pour `convergence_run` — tout ce qui précède le `!`
+  dans `gitlab/eq/api!12`) ; une fonction `(doc) => { parent }` quand le dépôt n'est même pas dans
+  CE fichier mais dans celui de son PARENT — une passe ou une pièce jointe de codage (`agent_pass`,
+  `piece_jointe`) suit le dépôt de SA SESSION, dont `depotDuFichier` relit alors le fichier et
+  applique la règle de `task`. Une table à corps Markdown (`agent_pass`) lit son `.json` jumeau,
+  jamais le texte de la passe. Un PARENT ABSENT (session supprimée) n'est pas un dépôt inconnu :
+  `depotDuFichier` rend `undefined` — rien à protéger — et distingue ce cas d'un parent présent
+  mais illisible, où la prudence s'impose (`null`) ; les confondre aurait laissé les passes et
+  pièces jointes d'une session supprimée dans le dépôt d'équipe pour toujours, orphelines et
+  signalées à chaque hydratation. `balayer()` ne retire un fichier de ce genre que si
+  `ctx.repoId(ref)` résout : un dépôt hors de portée d'ici (jamais suivi, ou qu'on vient de
+  retirer) n'est pas à CE poste de juger, et son fichier reste — y compris celui qu'on vient
+  soi-même de retirer, dont l'historique d'équipe survit tant qu'un autre poste le suit encore.
+  Sans ce garde, la moindre suppression déclenchant un balayage de l'une de ces tables balayait
+  TOUTE sa racine aux dépôts que ce poste ne suit pas, et poussait leur disparition à toute
+  l'équipe. Un cache par nom de fichier, vidé à chaque `balayer()`, évite de relire et reparser le
+  même fichier de session pour chacune de ses passes.
+- **`garderHorsPerimetre` / `ctx.margeInconnue`** (sur les listes filles `mr_link`, `verifier_repo`,
+  `agent_repo`) gardent, dans `local_state` (`kind = 'store_hors_perimetre'`, `ref` = l'uid du
+  parent, `key` = la table fille), les membres qu'un `remplace` n'a pas su rattacher — un dépôt lié,
+  couvert ou dans le périmètre d'un agent, que ce poste ne suit pas. Sans eux, réécrire le fichier
+  depuis un poste qui n'en suit qu'une partie AMPUTAIT la liste pour toute l'équipe : un périmètre
+  amputé est plus dangereux qu'absent, l'agent ou le vérificateur tournerait sur le reste en ayant
+  l'air complet. Le `toFile` du parent les reprend TELS QUELS à côté de ce qu'il résout localement
+  (`dejaEmis`, les lignes filles réellement résolues en base, passées à `margeInconnue`).
+  `margeInconnue` filtre contre ce que le parent A DÉJÀ ÉMIS, PAS contre ce qui devient résoluble :
+  la marge n'est réécrite qu'à la prochaine hydratation de CE fichier précis, qui ne rejoue pas
+  sans nouveau commit — un dépôt qu'on vient d'ajouter à ses dépôts suivis devient résoluble AVANT
+  que sa ligne fille existe, et le filtrer sur la résolvabilité seule le ferait disparaître de
+  partout, recréant l'amputation que la marge devait empêcher. Ce qui casserait vraiment l'import
+  (clé primaire `verifier_id, repo_id`) est de répéter un dépôt DÉJÀ dans les lignes résolues, pas
+  qu'il soit devenu résoluble.
+  Le geste inverse est couvert aussi : `store.verserEnMarge(repoId)`, appelée par
+  `DELETE /api/repos/:id` AVANT le `DELETE FROM repo`, verse les membres `verifier_repo`,
+  `agent_repo` et `mr_link` de ce dépôt dans la marge de leur parent (la cascade SQL les aurait
+  emportés, et le fichier serait reparti sans eux chez des collègues qui suivent encore ce dépôt) ;
+  retirer un dépôt de SA liste est une décision de poste, jamais celle de l'équipe.
+  `task_target` suit le même modèle bien que sa liste passe par `fromItem` : un `horsPerimetre`
+  déclaré sur son entrée fait garder à `hydraterListes` la cible brute d'un dépôt inconnu (marge de
+  la session, `garderMarge`), reprise par `task.toFile`, et `verserEnMarge` demande à `task.toFile`
+  la forme exacte de la cible à verser au retrait d'un dépôt.
 
 ### Les réglages coupés en deux (`local_config`)
 

@@ -303,7 +303,7 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
 
   /* ------------------------------------------------------------ ce qui ne part jamais ---- */
 
-  test('Jira, Git, Liens : la veille, la palette, la grille et les liens libres restent sur ce poste', async () => {
+  test('Jira, Git, Liens, Dépôts : la veille, la palette, la grille, les liens libres et les dépôts suivis restent sur ce poste', async () => {
     assert.equal((await app.api('POST', '/api/jira/watch', { key: 'OPS-77' })).status, 200);
     assert.equal((await app.api('POST', '/api/git-commands', { label: 'Palette privée', command: 'fetch --prune' })).status, 200);
     assert.equal((await app.api('POST', '/api/services', { name: 'Service-du-poste' })).status, 200);
@@ -318,10 +318,15 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
       'Lien-libre-du-poste', 'interne.exemple.test']) {
       assert.ok(!tout.includes(prive), `« ${prive} » ne devait pas quitter ce poste`);
     }
-    assert.ok(!fichiers().some((f) => /^(jira|git|links|services|free)/.test(f)), fichiers().join(', '));
+    /* `grp/app`, LUI, VOYAGE — mais jamais comme fichier à lui : c'est la clé naturelle par
+       laquelle une MR, un vérificateur ou une règle désignent le dépôt auquel ils se rattachent
+       (`mrs/gitlab/grp/app/7.json`, `repo: "gitlab/grp/app"`). Seul un fichier SOUS `repos/`
+       serait la liste des dépôts suivis elle-même, et c'est celui-là qui ne doit pas exister. */
+    assert.ok(!fichiers().some((f) => /^(jira|git|links|services|free|repos)/.test(f)), fichiers().join(', '));
 
     // …et ils sont bien là, chez moi : ne pas partir n'est pas disparaître.
     assert.ok((await app.api('GET', '/api/jira/watch')).body.watched.some((w) => w.key === 'OPS-77'));
+    assert.ok((await app.api('GET', '/api/repos')).body.some((r) => r.project === 'grp/app'));
     await ouvrirReglages('gitcfg');
     await page.evaluate(() => (typeof loadGitCommands === 'function' ? loadGitCommands() : null));
     await page.waitForFunction(() => /Palette privée/.test((document.querySelector('#gitCmdList') || {}).textContent || ''));
