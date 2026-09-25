@@ -12,6 +12,9 @@
 /* Éditeur de projets dans la modale */
 .targets-editor { border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s-3); background: var(--panel2); }
 .targets-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--fs-sm); color: var(--muted); }
+/* Tête à trois éléments (libellé + ⓘ + bouton) : le libellé seul ne suffit plus à occuper
+   l'espace que `justify-content: space-between` laissait au bouton, côté projets liés. */
+.targets-head .spacer { flex: 1; }
 .target-row { display: flex; gap: var(--s-2); align-items: center; margin-bottom: var(--s-2); }
 .target-row:last-child { margin-bottom: 0; }
 .target-row { flex-wrap: wrap; align-items: flex-start; }

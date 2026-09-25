@@ -23,6 +23,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS task_target (
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_task_target_task ON task_target(task_id)');
 
+/* Projets liés à une session de codage, en LECTURE SEULE : l'IA a parfois besoin du contexte
+   d'un autre projet (l'API qu'il expose, le schéma qu'il respecte) sans avoir le droit d'y
+   toucher — elle code dans les `task_target`, pas ici. Même dispositif que `mr_link` côté
+   review (même forme de table, même montage en symlink read-only à l'exécution), mais
+   rattaché à la SESSION plutôt qu'à la merge request : une session de codage n'en a pas encore
+   quand elle démarre. */
+db.exec(`CREATE TABLE IF NOT EXISTS task_context_repo (
+  id INTEGER PRIMARY KEY,
+  task_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  branch TEXT
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_task_context_repo_task ON task_context_repo(task_id)');
+
 // « L'IA pose une question » (ask → stop → resume). Opt-in par session : quand activé, on
 // injecte dans le prompt la consigne d'émettre un bloc <<<QUESTIONS>>> plutôt que de trancher
 // dans le flou. Le statut de session/cible peut alors devenir `needs_input` (état d'ATTENTE,

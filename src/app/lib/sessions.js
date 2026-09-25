@@ -133,6 +133,14 @@ function targetById(taskId, targetId) {
 // Vérification et normalisation des projets d'une session — partagée avec les runs d'agent.
 const normalizeTargets = tasks.normalizeTargets;
 const insertTargets = tasks.insertTargets;
+const normalizeContextRepos = tasks.normalizeContextRepos;
+const insertContextRepos = tasks.insertContextRepos;
+// Les projets liés en lecture seule d'une session de codage — voir `task_context_repo`.
+function taskContextRepos(taskId) {
+  return db.prepare(`SELECT tcr.*, repo.project AS project, repo.forge AS forge
+    FROM task_context_repo tcr JOIN repo ON repo.id = tcr.repo_id
+    WHERE tcr.task_id = ? ORDER BY tcr.id`).all(taskId);
+}
 /* Un identifiant de session est passé TEL QUEL à l'agent : `--resume <id>` pour claude,
    `COPILOT_HOME=<chemin>` pour copilot. Il ne doit donc jamais pouvoir passer pour un flag,
    et pour claude il a une forme connue — autant refuser tout de suite plutôt que d'échouer
@@ -367,5 +375,5 @@ function normalizeDirIds(taskId, brut) {
 }
 
 module.exports = {
-  taskById, taskTargets, effectiveMr, targetById, normalizeTargets, insertTargets, applySessionId, normalizeSessionId, assertValidBranch, sansMarquage, chapeauReponse, coutParSession, dureeParSession, lireLibelle, lireSuivi, poserSuivi, lireVerifierSession, reposPourScan, demoMrDe, diffDePasse, normalizeTargetIds, localDirsFor, localTaskById, envoyerSuivi, normalizeDirIds,
+  taskById, taskTargets, effectiveMr, targetById, normalizeTargets, insertTargets, taskContextRepos, normalizeContextRepos, insertContextRepos, applySessionId, normalizeSessionId, assertValidBranch, sansMarquage, chapeauReponse, coutParSession, dureeParSession, lireLibelle, lireSuivi, poserSuivi, lireVerifierSession, reposPourScan, demoMrDe, diffDePasse, normalizeTargetIds, localDirsFor, localTaskById, envoyerSuivi, normalizeDirIds,
 };
