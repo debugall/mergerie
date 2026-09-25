@@ -201,6 +201,50 @@ function contexte() {
         () => db.prepare('SELECT id FROM repo WHERE forge = ? AND project = ?').get(forge, project));
       return r ? r.id : null;
     },
+    /** Ce qu'une liste fille n'a pas pu rattacher à l'hydratation, parce qu'elle désignait un
+        dépôt que CE poste ne suit pas : gardé tel quel sous le PARENT (`table` = la table fille —
+        `mr_link`, `verifier_repo`, `agent_repo`), et repris ici à l'export pour ne pas le retirer
+        du fichier au prochain écrit de ce poste. Voir `garderHorsPerimetre`, côté import. */
+    margeInconnue(table, refParent, dejaEmis = []) {
+      if (!refParent) return [];
+      const brute = memoise(`mi:${table}:${refParent}`, () => {
+        const r = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+          .get(String(refParent), table);
+        if (!r) return [];
+        try { const v = JSON.parse(r.value); return Array.isArray(v) ? v : []; } catch { return []; }
+      });
+      /* LA MARGE N'EST RAFRAÎCHIE QU'À LA PROCHAINE HYDRATATION DE CE FICHIER PRÉCIS — qui ne
+         rejoue pas sans nouveau commit. Entre CE poste et cette prochaine hydratation, il peut
+         apprendre à RÉSOUDRE un dépôt qu'il porte encore dans sa marge — l'avoir ajouté à ses
+         dépôts suivis — sans qu'aucune ligne fille n'existe pour autant : la résolution du dépôt
+         ne crée pas la ligne, seul `remplace` le fait, au prochain passage sur CE fichier.
+         Filtrer la marge sur la seule résolvabilité (`ctx.repoId`) retirait donc une entrée qui
+         n'était nulle part ailleurs — recréant l'amputation que la marge devait empêcher. Ce qui
+         compte est de ne jamais répéter un dépôt DÉJÀ ÉMIS par le parent (`dejaEmis`, les lignes
+         réellement résolues localement) : c'est LÀ que serait le doublon qui casse l'import sur
+         la clé primaire (`verifier_id, repo_id`) — pas dans la simple résolvabilité. */
+      const emis = new Set(dejaEmis.map((x) => x.repo));
+      const vus = new Set();
+      const reste = brute.filter((x) => {
+        if (!x || !x.repo || emis.has(x.repo) || vus.has(x.repo)) return false;
+        vus.add(x.repo);
+        return true;
+      });
+      /* UNE ENTRÉE QU'UNE LIGNE LOCALE A REPRISE N'APPARTIENT PLUS À LA MARGE. Sans cette purge,
+         décocher la couverture ensuite retirait la ligne mais pas la marge, qui la réémettait au
+         prochain export : un choix de l'utilisateur annulé sans qu'il le sache. */
+      if (reste.length !== brute.length) {
+        const cle = [String(refParent), table];
+        if (reste.length) {
+          db.prepare("UPDATE local_state SET value = ?, updated_at = ? WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+            .run(JSON.stringify(reste), new Date().toISOString(), ...cle);
+        } else {
+          db.prepare("DELETE FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?").run(...cle);
+        }
+        memo.set(`mi:${table}:${refParent}`, reste);
+      }
+      return reste;
+    },
     /** Le slug d'un agent ou d'une page — ce qui nomme son fichier. */
     slug(table, id) {
       if (!id) return null;
@@ -626,11 +670,28 @@ function balayer(table, ctx = contexte()) {
   if (racine.includes('{')) return 0;
   const motif = motifDe(e);
   const aRetirer = [];
+  /* UN CACHE PAR PASSAGE, PAS PLUS : `depotDuFichier` lit et parse un fichier candidat pour les
+     tables scopées par CONTENU (`rules/`, `sessions/`) — et depuis que ce poste n'hydrate plus
+     les dépôts qu'il ne suit pas, ce sont justement ceux-là qui restent candidats à CHAQUE
+     balayage, sans jamais être retirés. Sur un dépôt d'équipe de plusieurs milliers de sessions,
+     relire chaque passe ET sa session parente à chaque suppression aurait fait des milliers de
+     lectures disque synchrones dans le chemin d'une requête. Le cache vit le temps d'un seul
+     `balayer()` — plusieurs passes d'une même session partagent une seule lecture du parent. */
+  const cachePortee = new Map();
   for (const relatif of listerFichiers(racine)) {
     if (attendus.has(relatif)) continue;
     const nom = canonique(e, relatif);
     if (!motif.test(nom)) continue;          // un fichier d'une autre table : ce n'est pas le nôtre
     if (attendus.has(nom)) continue;
+    /* UN FICHIER QUI DÉSIGNE UN DÉPÔT QUE CE POSTE NE SUIT PAS N'EST PAS À LUI DE LE JUGER.
+       `repo` est locale depuis peu : ce poste n'hydrate plus les MR, reviews, convergences,
+       sessions et pièces jointes des dépôts qu'il ne suit pas — leur absence d'ici ne veut donc
+       plus dire « supprimées », mais « jamais connues ». Sans ce garde, la suppression d'UNE de
+       ses propres lignes (ou la cascade d'un dépôt qu'il retire) balayait tout le reste de la
+       racine — le travail de dépôts qu'il n'a jamais suivis — et poussait sa disparition à toute
+       l'équipe. */
+    const depot = depotDuFichier(e, nom, cachePortee);
+    if (depot !== undefined && !ctx.repoId(depot)) continue;
     aRetirer.push(relatif);
   }
   /* UNE TABLE VIDE NE VIDE PAS LE DÉPÔT. Le pendant exact du garde-fou de l'hydratation, dans
@@ -645,6 +706,52 @@ function balayer(table, ctx = contexte()) {
   }
   for (const relatif of aRetirer) supprimerFichier(relatif);
   return aRetirer.length;
+}
+
+/**
+ * RETIRER UN DÉPÔT DE SES DÉPÔTS SUIVIS NE LE RETIRE PAS DES LISTES DE L'ÉQUIPE. La cascade SQL
+ * emporte les lignes `verifier_repo` et `agent_repo` de ce dépôt (et `mr_link` n'en garde qu'un
+ * `repo_id` orphelin, que `repoRef` ne sait plus nommer) : réécrits, le vérificateur, l'agent et
+ * la MR repartiraient SANS lui, chez des collègues qui le suivent encore — la couverture ou le
+ * périmètre amputé que la marge empêche déjà à l'import. À appeler AVANT `DELETE FROM repo` :
+ * les membres passent dans la marge de leur parent (voir `margeInconnue`), et les `mr_link`
+ * sont retirés pour qu'un `repo_id` réattribué ne les rattache pas à un autre dépôt.
+ */
+function verserEnMarge(repoId) {
+  const repo = db.prepare('SELECT id, forge, project FROM repo WHERE id = ?').get(Number(repoId));
+  if (!repo) return;
+  const ref = `${repo.forge || 'gitlab'}/${repo.project}`;
+  const specs = [
+    ['verifier_repo', 'verifier', 'verifier_id', (r) => ({ repo: ref, mode: r.mode })],
+    ['agent_repo', 'agent', 'agent_id', (r) => ({ repo: ref, branch: r.branch || null, role: r.role })],
+    ['mr_link', 'mr', 'mr_id', (r) => ({ repo: ref, branch: r.branch || null })],
+    /* La cible telle que la session l'écrit dans son fichier : on demande son `toFile` à la
+       session plutôt que de recopier ses champs ici. */
+    ['task_target', 'task', 'task_id', (r, p) => (registre.pour('task').toFile(p, ctx).targets || [])
+      .find((t) => t.uid === r.uid)],
+  ];
+  const ctx = contexte();
+  const lire = db.prepare("SELECT value FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?");
+  const ecrire = db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+    VALUES ('store_hors_perimetre', ?, ?, ?, ?)
+    ON CONFLICT (kind, ref, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`);
+  db.transaction(() => {
+    for (const [fille, parent, colonne, item] of specs) {
+      for (const r of db.prepare(`SELECT * FROM ${fille} WHERE repo_id = ?`).all(repo.id)) {
+        const p = db.prepare(`SELECT * FROM ${parent} WHERE id = ?`).get(r[colonne]);
+        if (!p || !p.uid) continue;
+        const membre = item(r, p);
+        if (!membre) continue;
+        const brut = lire.get(p.uid, fille);
+        let marge = [];
+        try { marge = brut ? JSON.parse(brut.value) : []; } catch { marge = []; }
+        if (!Array.isArray(marge)) marge = [];
+        if (!marge.some((x) => x && x.repo === ref && x.uid === membre.uid)) marge.push(membre);
+        ecrire.run(p.uid, fille, JSON.stringify(marge), new Date().toISOString());
+      }
+    }
+    db.prepare('DELETE FROM mr_link WHERE repo_id = ?').run(repo.id);
+  })();
 }
 
 /* ---------- 6. Export complet ---------- */
@@ -712,6 +819,30 @@ const RACINES_RETIREES = ['git-commands', 'git-ops', 'docker-backups', 'jira'];
   }
 }
 
+/* LA LISTE DES DÉPÔTS SUIVIS REJOINT LA MÊME FAMILLE, PLUS TARD, DONC À PART.
+ *
+ * `repo` (et `repo_link`, sa liste de projets liés) partait dans le dépôt d'équipe, nommée par
+ * sa clé naturelle : ajouter un dépôt sur un poste le faisait apparaître chez tout le monde, avec
+ * son clonage et la découverte de ses merge requests au démarrage suivant, sans case à cocher pour
+ * le refuser. Ce que chacun suit est une décision de poste, pas un travail accumulé — le même
+ * raisonnement que pour Docker, Jenkins, Git et Jira ci-dessus, sur un calendrier différent, d'où
+ * un second passage plutôt qu'une entrée de plus dans `RACINES_RETIREES` : un poste déjà à jour du
+ * premier ne doit pas sauter le second. Les fichiers déjà poussés restent dans le dépôt jusqu'à ce
+ * retrait, sans quoi ils reviendraient chez un collègue à sa prochaine synchronisation ; ce que ce
+ * poste suit, lui, ne bouge pas — retiré du dépôt d'équipe, `repo` continue d'exister en local. */
+{
+  const fait = db.prepare(
+    "SELECT 1 FROM local_state WHERE kind = 'data' AND ref = 'depot' AND key = 'repos_locaux'",
+  ).get();
+  if (!fait) {
+    let n = 0;
+    for (const relatif of listerFichiers('repos')) { supprimerFichier(relatif); n += 1; }
+    if (n) console.log(`[store] ${n} fichier(s) de dépôts suivis, redevenus locaux, retirés du dépôt`);
+    db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+      VALUES ('data', 'depot', 'repos_locaux', '1', ?)`).run(new Date().toISOString());
+  }
+}
+
 /* CE QUE L'EXPORT FERAIT, SANS LE FAIRE.
  *
  * On compose en mémoire exactement ce que `exporterTout` écrirait, et on le compare à ce que le
@@ -764,6 +895,7 @@ function exporterTout() {
 
 module.exports = {
   SCHEMA,
+  verserEnMarge,
   surEcriture,
   ecouler,
   enRetard,
@@ -817,6 +949,69 @@ function motifDe(e) {
       : bout.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
     .join('');
   return new RegExp(`^${source}$`);
+}
+
+/** Le dépôt d'une session, par sa première cible — la même règle que `task.porteeRepo`,
+    appliquée ici au fichier de session lui-même plutôt qu'à un document qui le désigne. */
+const depotDeLaSession = (doc) => ((doc.targets || [])[0] && doc.targets[0].repo) || undefined;
+
+/**
+ * LE DÉPÔT QUE CE FICHIER DÉSIGNE, pour que `balayer()` sache s'il a voix au chapitre.
+ * `undefined` : la table n'est pas scopée par dépôt (ou ce document-ci ne l'est pas — une règle
+ *   de review sans dépôt limité, une passe hors dépôt ou de question libre, par exemple) — le
+ *   balayage juge comme avant, sur les lignes restantes.
+ * Une chaîne, ou `null` : la table EST scopée par dépôt. `null` — gabarit qui ne matche pas,
+ * fichier illisible — se traite comme un dépôt inconnu : PAR PRUDENCE, on ne balaie pas ce qu'on
+ * ne sait pas juger.
+ * `e.porteeRepo === 'chemin'` : le gabarit porte `{forge}` et `{project}`, on les relit du nom de
+ * fichier (`mr`, `review`, `review_version`). Une fonction qui rend une CHAÎNE : on relit le
+ * CONTENU du fichier — le dépôt n'est pas dans le chemin (`review_rule` par son champ `repo`,
+ * `task` par la première cible de `targets`, `convergence_run` par le dépôt de sa référence de
+ * MR). Une fonction qui rend `{ parent }` : le dépôt n'est même pas dans CE fichier, mais dans
+ * celui de son PARENT (`agent_pass`, `piece_jointe` — une passe ou une pièce jointe d'une session
+ * de codage suit le dépôt de cette session).
+ * `cache`, PARTAGÉ PAR TOUT UN `balayer()` : plusieurs passes d'une même session ne relisent le
+ * fichier de leur parent qu'une fois.
+ */
+function depotDuFichier(e, nom, cache) {
+  if (!e.porteeRepo) return undefined;
+  if (e.porteeRepo === 'chemin') {
+    const champs = (e.chemin.match(/\{(\w+)\}/g) || []).map((x) => x.slice(1, -1));
+    const m = motifDe(e).exec(nom);
+    if (!m) return null;
+    const valeurs = Object.fromEntries(champs.map((c, i) => [c, m[i + 1]]));
+    return (valeurs.forge && valeurs.project) ? `${valeurs.forge}/${valeurs.project}` : null;
+  }
+  if (cache && cache.has(nom)) return cache.get(nom);
+  const lireDoc = (chemin) => {
+    if (cache && cache.has(`doc:${chemin}`)) return cache.get(`doc:${chemin}`);
+    let doc = null;
+    try { doc = JSON.parse(lireFichier(chemin)); } catch { /* illisible : `doc` reste `null` */ }
+    if (cache) cache.set(`doc:${chemin}`, doc);
+    return doc;
+  };
+  /* `nom` DÉSIGNE LE CORPS (`.md`) pour une table à document Markdown (`agent_pass`) : ses
+     métadonnées — dont `session` — vivent dans le `.json` jumeau, jamais dans le texte lui-même. */
+  const doc = lireDoc(e.corps ? jumeau(nom) : nom);
+  let resultat;
+  if (!doc) {
+    resultat = null;
+  } else {
+    const r = e.porteeRepo(doc);
+    if (r && typeof r === 'object') {
+      /* UN PARENT ABSENT N'EST PAS UN DÉPÔT INCONNU, C'EST UNE SESSION SUPPRIMÉE : rien à
+         protéger, le balayage doit juger comme avant. Le confondre avec un parent illisible
+         (fichier présent mais corrompu, où la prudence s'impose) laissait les passes et pièces
+         jointes d'une session supprimée dans le dépôt d'équipe pour toujours — orphelines et
+         signalées à chaque hydratation, alors que leur propriétaire les avait retirées. */
+      if (!existe(r.parent)) resultat = undefined;
+      else { const parentDoc = lireDoc(r.parent); resultat = parentDoc ? depotDeLaSession(parentDoc) : null; }
+    } else {
+      resultat = r || undefined;
+    }
+  }
+  if (cache) cache.set(nom, resultat);
+  return resultat;
 }
 
 /** À quelle table appartient ce fichier ? `null` s'il n'est à personne (le marqueur, un binaire). */
@@ -1243,7 +1438,9 @@ function hydraterListes(e, parent, doc, ctx, signaler = () => {}) {
        uid et seules les disparues sont retirées. */
     if (l.remplace) { l.remplace(db, parent, items, ctx, signaler); continue; }
     const gardes = new Set();
+    const horsPerimetre = [];
     for (const item of items) {
+      if (l.horsPerimetre && l.horsPerimetre(item, ctx)) { horsPerimetre.push(item); continue; }
       const row = l.fromItem(item, ctx, parent);
       if (!row) continue;
       upsert(l.table, row);
@@ -1254,7 +1451,22 @@ function hydraterListes(e, parent, doc, ctx, signaler = () => {}) {
     for (const r of db.prepare(`SELECT id, uid FROM ${l.table} WHERE ${l.colonneParent} = ?`).all(parent.id)) {
       if (!gardes.has(r.uid)) db.prepare(`DELETE FROM ${l.table} WHERE id = ?`).run(r.id);
     }
+    if (l.horsPerimetre) garderMarge(l.table, parent.uid, horsPerimetre);
   }
+}
+
+/** Remplace la marge d'une liste fille (voir `margeInconnue`) ; vide, elle disparaît. */
+function garderMarge(table, refParent, items) {
+  if (!refParent) return;
+  if (!items.length) {
+    db.prepare("DELETE FROM local_state WHERE kind = 'store_hors_perimetre' AND ref = ? AND key = ?")
+      .run(String(refParent), table);
+    return;
+  }
+  db.prepare(`INSERT INTO local_state (kind, ref, key, value, updated_at)
+    VALUES ('store_hors_perimetre', ?, ?, ?, ?)
+    ON CONFLICT (kind, ref, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`)
+    .run(String(refParent), table, JSON.stringify(items), new Date().toISOString());
 }
 
 /** Hydrate TOUT le dépôt — au premier démarrage, après un clone, ou quand la base a disparu. */
