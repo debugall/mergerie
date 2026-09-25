@@ -171,12 +171,13 @@ function mockReport(prompt, cwd, meta = {}) {
      fichiers à la fois comme le fait le vrai appel groupé. */
   if (kind === 'merge-ai') {
     const { decouper } = require('../git/conflits');
+    const nonce = (String(prompt || '').match(/<<<F\d+H\d+ (\S+)/) || [])[1] || 'dry-run';
     return (meta.fichiers || []).map((f, i) => {
       const conflits = decouper(f.raw || '').filter((m) => m.type === 'conflit');
       return conflits.map((m, j) => {
         const texte = (m.theirs.length ? m.theirs : m.ours).join('\n');
-        return `<<<F${i + 1}H${j + 1}\n${texte}\nF${i + 1}H${j + 1}>>>\n`
-          + `<<<R${i + 1}H${j + 1}\nraison (dry-run) du conflit ${i + 1}.${j + 1}\nR${i + 1}H${j + 1}>>>`;
+        return `<<<F${i + 1}H${j + 1} ${nonce}\n${texte}\nF${i + 1}H${j + 1} ${nonce}>>>\n`
+          + `<<<R${i + 1}H${j + 1} ${nonce}\nraison (dry-run) du conflit ${i + 1}.${j + 1}\nR${i + 1}H${j + 1} ${nonce}>>>`;
       }).join('\n');
     }).join('\n');
   }
