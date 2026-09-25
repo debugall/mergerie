@@ -782,6 +782,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     // notification `job_failed`) — le même chemin qu'un échec de clone ou de branche manquante.
     const detail = compromis.join(' ; ');
     onLog(t('log.explore.compromised', { detail }));
+    try { agentpass.record('task', task.id, 0, { kind: 'explore', prompt, text: stdout, compromised: 1, compromisedDetail: detail }); } catch { /* trace best-effort */ }
     throw new Error(t('err.explore-compromised', { detail }));
   }
 

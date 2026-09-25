@@ -350,7 +350,20 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   // `incremental` = true seulement si le diff delta a réellement été produit (permet à
   // reviewMr d'injecter le rapport précédent en contexte, et de savoir qu'il ne voit
   // qu'une partie de la MR).
-  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental, nonceFindings };
+  /* LA GARDE D'INTÉGRITÉ COUVRE TOUS LES CLONES QUE L'AGENT VOIT : le principal ET les projets
+     liés (`addDirs`) — un `.git/hooks` planté dans un projet lié survivrait sinon au reset. */
+  const depotsVus = [{ nom: repo.project, cwd }, ...linkedDirs.map((d) => ({ nom: d.cwd, cwd: d.cwd }))];
+  const releve = async () => Promise.all(depotsVus.map((d) => integrite.empreindre(d.cwd)));
+  const derive = async (avant) => {
+    const apres = await releve();
+    const diffs = [];
+    for (let i = 0; i < depotsVus.length; i += 1) {
+      const c = integrite.comparer(avant[i], apres[i]);
+      if (c) diffs.push(i === 0 ? c.join(', ') : `${depotsVus[i].nom}: ${c.join(', ')}`);
+    }
+    return diffs.length ? diffs.join(' ; ') : null;
+  };
+  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental, nonceFindings, releve, derive };
 }
 
 // Enregistre une NOUVELLE version de la review au lieu d'écraser la précédente.
@@ -566,12 +579,12 @@ async function publierLienRapport(mr, cfg, { onLog = () => {} } = {}) {
 async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
   const cfg = getConfig();
   const explain = opts.explain != null ? !!opts.explain : cfg.review_explain !== '0';
-  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
+  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings, releve, derive } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
   /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : `--restricted` et
      `Write`/`Edit` interdits sont des FLAGS — ils ne prouvent rien sur Copilot, ni sur un bug du
      CLI, ni sur un outil qu'on aurait oublié d'interdire. Le relevé d'AVANT sert à comparer
      après le run ; en démo (pas de dépôt git réel), il vaut `null` et ne déclenche jamais rien. */
-  const empreinteAvant = await integrite.empreindre(cwd);
+  const empreinteAvant = await releve();
 
   try {
     // En incrémental, l'IA ne voit QUE le delta : on lui donne le rapport précédent en
@@ -606,9 +619,8 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        l'agent a triché — un `git gc` concurrent, un hook d'un AUTRE outil — mais dans le doute,
        le rapport est écarté plutôt que présenté comme fiable : c'est la seule preuve qu'on a
        sur un backend qui ne restreint rien lui-même (Copilot). */
-    const changements = integrite.comparer(empreinteAvant, await integrite.empreindre(cwd));
-    if (changements) {
-      const detail = changements.join(', ');
+    const detail = await derive(empreinteAvant);
+    if (detail) {
       // L'historique garde une trace du run — mais jamais posée comme version courante (voir
       // saveReviewVersion) — puis on lève : le job appelant (processList) sait déjà consigner
       // une erreur de MR (last_error, journal, notification), le même chemin qu'un dépôt injoignable.
@@ -734,7 +746,8 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
   const previous = (rev && rev.md_path && fs.existsSync(rev.md_path))
     ? fs.readFileSync(rev.md_path, 'utf8') : '';
 
-  const { outDir, diffStorePath, generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
+  const { outDir, diffStorePath, generate, cleanupLinked, releve, derive } = await prepareContext(cfg, repo, mr, onLog);
+  const empreinteAvant = await releve();
 
   try {
     const extra =
@@ -744,6 +757,17 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
 
     onLog(`modification IA (${copilot.isDryRun() ? 'dry-run' : 'copilot'})`);
     const content = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
+
+    /* Même garde que `reviewMr` : ce run produit une version COURANTE du rapport. */
+    const detail = await derive(empreinteAvant);
+    if (detail) {
+      saveReviewVersion(mr, outDir, {
+        reviewContent: content, explainContent: null, diffStorePath, kind: 'modify', instruction,
+        compromised: true, compromisedDetail: detail,
+      });
+      onLog(t('log.review.compromised', { detail }));
+      throw new Error(t('err.review-compromised', { detail }));
+    }
 
     // une régénération est une nouvelle version : l'ancienne reste consultable
     const { version, mdPath } = saveReviewVersion(mr, outDir, {
@@ -776,7 +800,8 @@ async function askReview(repo, mr, question, onLog = () => {}) {
   const rapport = (rev && rev.md_path && fs.existsSync(rev.md_path))
     ? fs.readFileSync(rev.md_path, 'utf8') : '';
 
-  const { generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
+  const { generate, cleanupLinked, releve, derive } = await prepareContext(cfg, repo, mr, onLog);
+  const empreinteAvant = await releve();
   try {
     /* LE RAPPORT PRÉCÉDENT EST UNE DONNÉE (plan_secure.md, lot D, point 2) : il vient d'un
        fichier que l'IA a elle-même écrit une passe plus tôt, mais qui peut recopier — voire
@@ -792,6 +817,12 @@ ${rapport ? nonFiable('rapport de revue actuel', rapport) : t('review.ask.no-rep
 ${t('review.ask.question', { question })}`;
     onLog(t('log.review.ask', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
     const reponse = await generate(t('review.ask.prompt'), 'ai-dev-tools-internal/question.md', 'question', extra, { question });
+    const detail = await derive(empreinteAvant);
+    if (detail) {
+      agentpass.record('review', mr.id, 0, { kind: 'question', prompt: question, text: reponse, compromised: 1, compromisedDetail: detail });
+      onLog(t('log.review.compromised', { detail }));
+      throw new Error(t('err.review-compromised', { detail }));
+    }
     /* La question et sa réponse rejoignent l'historique des échanges. `unit_id = 0` : une MR
        n'a qu'un fil, là où une session a une unité par projet. */
     const { n } = agentpass.record('review', mr.id, 0, { kind: 'question', prompt: question, text: reponse });

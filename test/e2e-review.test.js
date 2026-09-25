@@ -423,6 +423,26 @@ describe('Review de bout en bout', () => {
     }
   });
 
+  test('une modification qui écrit dans le clone est écartée, jamais posée comme version courante', async () => {
+    const copilot = require('../src/agent/copilot');
+    const ancien = copilot.runPrompt;
+    copilot.runPrompt = async (prompt, cwd) => {
+      require('node:fs').writeFileSync(path.join(cwd, 'preuve-modify.txt'), 'non\n');
+      return '# Revue modifiée\n\n## Note globale\n\n9/10\n';
+    };
+    try {
+      const avant = (await app.api('GET', `/api/mrs/${mrId}`)).body.review;
+      await app.api('POST', `/api/mrs/${mrId}/modify`, { instruction: 'Insiste sur la sécurité' });
+      await waitForJobs(app.api);
+      const apres = (await app.api('GET', `/api/mrs/${mrId}`)).body;
+      assert.deepEqual(apres.review, avant, 'la version courante n’a pas bougé');
+      const v = app.db.prepare("SELECT * FROM review_version WHERE mr_id = ? AND kind = 'modify' ORDER BY id DESC").get(mrId);
+      assert.equal(v.compromised, 1);
+    } finally {
+      copilot.runPrompt = ancien;
+    }
+  });
+
   test('un job qui échoue enregistre l’erreur sur la MR sans arrêter le serveur', async () => {
     // Dépôt injoignable : le clone git échoue franchement.
     await app.api('PUT', `/api/repos/${repoId}`, { url: '/chemin/inexistant/depot.git' });
