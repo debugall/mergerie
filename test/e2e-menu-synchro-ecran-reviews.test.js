@@ -116,6 +116,12 @@ describe('Reviews · l’écran suit ce que la collègue a fait, après une sync
         gitlab_url: app.gitlabUrl, access_token: app.state.token, clone_path: path.join(c.dataDir, 'clones'), brief_on_open: '0',
       }),
     }));
+    /* La liste des dépôts suivis est locale à chacun (elle ne voyage plus dans les données
+       partagées) : Claire ne voit les MR de `grp/app` que si elle suit elle-même ce dépôt,
+       comme elle le ferait en vrai avant de reprendre le travail de l'équipe. */
+    const rc = await claire.api('POST', '/api/repos', { url: depot.url, project: 'grp/app' });
+    assert.equal(rc.status, 200, rc.text);
+    await claire.api('POST', '/api/discover', {});
     await attendreServeur(async () => (await claire.api('GET', '/api/mrs')).body.length === 4, 'les 4 MR arrivées chez Claire');
     for (const m of (await claire.api('GET', '/api/mrs')).body) idClaire[m.iid] = m.id;
 
