@@ -346,6 +346,53 @@ async function postMrDiscussion(cfg, project, iid, body, position) {
 }
 
 
+/* ---------- Le verdict que la forge comprend : approuver, résoudre un fil, l'état de la CI ----------
+   Le rapport se publie en commentaire ; ce qui manquait, c'est ce que GitLab appelle une review.
+   Aucun commentaire inline n'est posté par ces trois gestes. */
+async function approveMergeRequest(cfg, project, iid) {
+  const enc = encodeProject(project);
+  await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/approve`, { method: 'POST', body: '{}' });
+  return { ok: true };
+}
+async function unapproveMergeRequest(cfg, project, iid) {
+  const enc = encodeProject(project);
+  await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/unapprove`, { method: 'POST', body: '{}' });
+  return { ok: true };
+}
+/* Qui a approuvé, et moi ? Même forme sur les deux forges : `{ approvedBy: [usernames], byMe }`. */
+async function approvalState(cfg, project, iid, me) {
+  const enc = encodeProject(project);
+  const a = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/approvals`);
+  const approvedBy = ((a && a.approved_by) || []).map((x) => (x.user && x.user.username) || '').filter(Boolean);
+  return { approvedBy, byMe: !!(me && approvedBy.includes(me)), required: Number((a && a.approvals_required) || 0), left: Number((a && a.approvals_left) || 0) };
+}
+// Résoudre (ou rouvrir) un fil : `PUT …/discussions/:id` avec `resolved`.
+async function resolveDiscussion(cfg, project, iid, discussionId, resolved) {
+  const enc = encodeProject(project);
+  await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/discussions/${encodeURIComponent(discussionId)}`, {
+    method: 'PUT', body: JSON.stringify({ resolved: !!resolved }),
+  });
+  return { ok: true, resolved: !!resolved };
+}
+/* Le dernier pipeline de la merge request, normalisé : `success` / `failed` / `running` /
+   `pending` / `canceled` / `none`, avec l'adresse du pipeline. Un seul appel, une seule page. */
+function normaliserPipeline(status) {
+  const s = String(status || '').toLowerCase();
+  if (s === 'success') return 'success';
+  if (s === 'failed') return 'failed';
+  if (s === 'running' || s === 'preparing') return 'running';
+  if (s === 'pending' || s === 'created' || s === 'waiting_for_resource' || s === 'scheduled' || s === 'manual') return 'pending';
+  if (s === 'canceled' || s === 'canceling' || s === 'skipped') return 'canceled';
+  return s ? 'pending' : 'none';
+}
+async function pipelineStatus(cfg, project, iid) {
+  const enc = encodeProject(project);
+  const items = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/pipelines?per_page=1`);
+  const p = Array.isArray(items) && items[0];
+  if (!p) return { state: 'none', url: null, label: '' };
+  return { state: normaliserPipeline(p.status), url: p.web_url || null, label: `#${p.id || ''}`.trim(), raw: p.status || '' };
+}
+
 /* ---------- Opérations sur les refs (onglet Git) ----------
    Les ÉCRITURES passent par l'API et non par le clone local : elles sont atomiques,
    il n'y a pas d'état local à synchroniser, et une ref protégée est refusée
@@ -475,6 +522,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
+module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

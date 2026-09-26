@@ -73,4 +73,23 @@ function update(mrId, noteId, body) {
   throw new Error('Commentaire introuvable (démo).');
 }
 
-module.exports = { ME, list, reply, post, update };
+/* Résoudre un fil, approuver : en mémoire, comme le reste. Une démo qui refuse le geste que
+   l'écran propose ment autant qu'une démo qui en autorise trop. */
+function resolve(mrId, discussionId, resolved) {
+  const d = list(mrId).find((x) => String(x.id) === String(discussionId));
+  if (!d) throw new Error('Discussion introuvable (démo).');
+  for (const n of d.notes) n.resolved = !!resolved;
+  return { ok: true, resolved: !!resolved };
+}
+const approbations = new Map();   // mrId -> Set(usernames)
+function approve(mrId, unapprove) {
+  const s = approbations.get(mrId) || new Set(['lina']);
+  if (unapprove) s.delete(ME); else s.add(ME);
+  approbations.set(mrId, s);
+  return { ok: true };
+}
+function approvals(mrId) {
+  const s = approbations.get(mrId) || new Set(['lina']);
+  return { approvedBy: [...s], byMe: s.has(ME), required: 1, left: s.size ? 0 : 1 };
+}
+module.exports = { ME, list, reply, post, update, resolve, approve, approvals };

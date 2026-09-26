@@ -92,10 +92,37 @@ document.addEventListener('click', (e) => {
     } catch (err) { toast(explainError(err.message), true); }
   });
 });
-// Bloc « Répondre » d'un fil de discussion.
-function replyBtnHtml(discId, mrId) {
-  return `<div class="cmt-reply"><button class="cmt-reply-btn" type="button" data-disc="${esc(discId)}" data-mr="${mrId}" title="${tr('cmt.reply-thread.title', { forge: forgeLabel(split.forge) })}">↩ ${tr('cmt.reply.btn')}</button></div>`;
+/* Bloc « Répondre » d'un fil de discussion — et « Résoudre » / « Rouvrir » : ce qu'une re-review a
+   vu disparaître se clôt d'ici, sans aller sur la forge. `resolved` est l'état du fil (celui de
+   sa première note) ; `general` : un commentaire général n'a pas de fil à résoudre sur GitHub. */
+function replyBtnHtml(discId, mrId, { resolved = false, general = false } = {}) {
+  const resoudre = general ? '' : `<button class="cmt-resolve-btn" type="button" data-disc="${esc(discId)}" data-mr="${mrId}" data-resolved="${resolved ? 1 : 0}" title="${esc(tr(resolved ? 'cmt.unresolve.title' : 'cmt.resolve.title'))}">${resolved ? tr('cmt.unresolve.btn') : `✓ ${tr('cmt.resolve.btn')}`}</button>`;
+  return `<div class="cmt-reply"><button class="cmt-reply-btn" type="button" data-disc="${esc(discId)}" data-mr="${mrId}" title="${tr('cmt.reply-thread.title', { forge: forgeLabel(split.forge) })}">↩ ${tr('cmt.reply.btn')}</button>${resoudre}</div>`;
 }
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.cmt-resolve-btn');
+  if (!btn) return;
+  const vers = btn.dataset.resolved !== '1';
+  try {
+    const d = await busy(btn, () => api(`/mrs/${btn.dataset.mr}/discussions/${encodeURIComponent(btn.dataset.disc)}/resolve`, { method: 'POST', body: { resolved: vers } }));
+    const fil = btn.closest('.cmt-thread, .inline-thread');
+    // On réaffiche ce que la forge a ENREGISTRÉ, pas ce qu'on a demandé.
+    const etat = !!(d && d.resolved);
+    btn.dataset.resolved = etat ? '1' : '0';
+    btn.textContent = etat ? tr('cmt.unresolve.btn') : `✓ ${tr('cmt.resolve.btn')}`;
+    btn.title = tr(etat ? 'cmt.unresolve.title' : 'cmt.resolve.title');
+    if (fil) {
+      fil.classList.toggle('is-resolved', etat);
+      const tete = fil.querySelector('.cmt-head');
+      if (tete) {
+        const tag = tete.querySelector('.tag.done');
+        if (etat && !tag) tete.insertAdjacentHTML('beforeend', ` <span class="tag done">${tr('cmt.resolved')}</span>`);
+        if (!etat && tag) tag.remove();
+      }
+    }
+    toast(tr(etat ? 'cmt.resolve.done' : 'cmt.unresolve.done'));
+  } catch (err) { toast(explainError(err.message), true); }
+});
 
 // Commentaires généraux (non-inline) de la MR, dans le détail du rapport.
 async function loadMrComments(id) {
@@ -106,7 +133,7 @@ async function loadMrComments(id) {
     const general = (dd.discussions || []).filter((d) => d.notes[0] && !d.notes[0].position);
     if (!general.length) { el.innerHTML = `<p class="muted">${tr('cmt.none')}</p>`; return; }
     el.innerHTML = general.map((d) => `<div class="cmt-thread" data-disc="${esc(d.id)}">`
-      + d.notes.map((n) => noteHtml(n, id)).join('') + replyBtnHtml(d.id, id) + '</div>').join('');
+      + d.notes.map((n) => noteHtml(n, id)).join('') + replyBtnHtml(d.id, id, { resolved: !!(d.notes[0] && d.notes[0].resolved), general: String(d.id).startsWith('issue-') }) + '</div>').join('');
   } catch (e) { el.innerHTML = `<p class="muted">Commentaires indisponibles (${esc(e.message)})</p>`; }
 }
 

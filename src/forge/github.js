@@ -279,7 +279,7 @@ function toNote(c, position) {
     body: c.body,
     system: false,                       // pas d'équivalent des notes système GitLab
     created_at: c.created_at,
-    resolved: false,                     // l'état « résolu » n'existe qu'en GraphQL
+    resolved: false,                     // posé ensuite par `reviewThreads` (GraphQL), quand il répond
     // `username` autant que `name` : c'est sur lui que se compare l'auteur d'un
     // commentaire au compte du jeton, comme côté GitLab.
     author: { name: login, username: login },
@@ -300,18 +300,115 @@ function toPosition(c) {
   };
 }
 
+/* ---------- GraphQL, pour ce que REST ne sait pas : l'état « résolu » d'un fil ----------
+   Résoudre une conversation n'existe qu'en GraphQL (`resolveReviewThread`), et REST ne dit pas
+   non plus si un fil l'est. On interroge les fils de la PR une fois, et on retrouve chaque fil
+   par le `databaseId` de son premier commentaire — c'est l'id de racine que le reste du code
+   manipule. Best-effort : sans GraphQL (jeton fine-grained sans droit, GHE ancien), les fils
+   s'affichent sans état, comme avant. */
+async function graphql(cfg, query, variables) {
+  const base = apiBase(cfg).replace(/\/api\/v3$/, '/api');
+  const url = /api\.github\.com$/.test(apiBase(cfg)) ? 'https://api.github.com/graphql' : `${base}/graphql`;
+  const d = await githubFetch(cfg, url, { method: 'POST', body: JSON.stringify({ query, variables }) });
+  if (d && d.errors && d.errors.length) throw new Error(d.errors.map((e) => e.message).join(' ; '));
+  return d && d.data;
+}
+async function reviewThreads(cfg, project, iid) {
+  const [owner, name] = encodeProject(project).split('/');
+  const d = await graphql(cfg, `query($owner:String!,$name:String!,$n:Int!){ repository(owner:$owner,name:$name){ pullRequest(number:$n){
+      reviewThreads(first:100){ nodes { id isResolved comments(first:1){ nodes { databaseId } } } } } } }`,
+  { owner, name, n: Number(iid) });
+  const nodes = (((d || {}).repository || {}).pullRequest || {}).reviewThreads;
+  const out = new Map();   // rootId (databaseId) -> { threadId, resolved }
+  for (const th of (nodes && nodes.nodes) || []) {
+    const c = th.comments && th.comments.nodes && th.comments.nodes[0];
+    if (c && c.databaseId != null) out.set(String(c.databaseId), { threadId: th.id, resolved: !!th.isResolved });
+  }
+  return out;
+}
+async function resolveDiscussion(cfg, project, iid, discussionId, resolved) {
+  const id = String(discussionId || '');
+  if (id.startsWith('issue-')) throw new Error(t('err.github-resolve-general'));
+  const fils = await reviewThreads(cfg, project, iid);
+  const fil = fils.get(id);
+  if (!fil) throw new Error(t('err.github-thread-introuvable'));
+  const mutation = resolved ? 'resolveReviewThread' : 'unresolveReviewThread';
+  await graphql(cfg, `mutation($id:ID!){ ${mutation}(input:{threadId:$id}){ thread { isResolved } } }`, { id: fil.threadId });
+  return { ok: true, resolved: !!resolved };
+}
+
+/* Approuver : UNE review `APPROVE`, sans commentaire — jamais N commentaires inline. */
+async function approveMergeRequest(cfg, project, iid) {
+  const enc = encodeProject(project);
+  await githubFetch(cfg, `/repos/${enc}/pulls/${iid}/reviews`, { method: 'POST', body: JSON.stringify({ event: 'APPROVE' }) });
+  return { ok: true };
+}
+async function unapproveMergeRequest(cfg, project, iid) {
+  const enc = encodeProject(project);
+  const me = (await currentUser(cfg)).username;
+  const reviews = await fetchAllPages(cfg, `/repos/${enc}/pulls/${iid}/reviews`);
+  const mienne = reviews.filter((r) => r.user && r.user.login === me && r.state === 'APPROVED').pop();
+  if (!mienne) return { ok: true, noop: true };
+  await githubFetch(cfg, `/repos/${enc}/pulls/${iid}/reviews/${mienne.id}/dismissals`, {
+    method: 'PUT', body: JSON.stringify({ message: 'Approval withdrawn from Mergerie' }),
+  });
+  return { ok: true };
+}
+/* Qui a approuvé : la DERNIÈRE review de chaque compte fait foi (une demande de changements
+   après une approbation l'annule). */
+async function approvalState(cfg, project, iid, me) {
+  const enc = encodeProject(project);
+  const reviews = await fetchAllPages(cfg, `/repos/${enc}/pulls/${iid}/reviews`);
+  const derniere = new Map();
+  for (const r of reviews) {
+    if (!r.user || !r.user.login || r.state === 'COMMENTED' || r.state === 'PENDING') continue;
+    derniere.set(r.user.login, r.state);
+  }
+  const approvedBy = [...derniere.entries()].filter(([, st]) => st === 'APPROVED').map(([login]) => login);
+  return { approvedBy, byMe: !!(me && approvedBy.includes(me)), required: 0, left: 0 };
+}
+/* L'état de la CI sur la tête de la PR : check-runs (Actions, apps) ET le statut combiné (les
+   « statuses » historiques), agrégés en un seul mot. */
+async function pipelineStatus(cfg, project, iid, sha) {
+  const enc = encodeProject(project);
+  let head = sha;
+  if (!head) { const pr = await githubFetch(cfg, `/repos/${enc}/pulls/${iid}`); head = pr && pr.head && pr.head.sha; }
+  if (!head) return { state: 'none', url: null, label: '' };
+  const [runs, combined] = await Promise.all([
+    githubFetch(cfg, `/repos/${enc}/commits/${head}/check-runs?per_page=100`).catch(() => null),
+    githubFetch(cfg, `/repos/${enc}/commits/${head}/status`).catch(() => null),
+  ]);
+  const items = ((runs && runs.check_runs) || []).map((r) => ({
+    etat: r.status !== 'completed' ? 'running' : ({ success: 'success', neutral: 'success', skipped: 'canceled', cancelled: 'canceled', failure: 'failed', timed_out: 'failed', action_required: 'failed', stale: 'pending' }[r.conclusion] || 'pending'),
+    url: r.html_url || r.details_url || null,
+  }));
+  for (const st of (combined && combined.statuses) || []) {
+    items.push({ etat: st.state === 'success' ? 'success' : st.state === 'pending' ? 'running' : 'failed', url: st.target_url || null });
+  }
+  if (!items.length) return { state: 'none', url: null, label: '' };
+  const url = (items.find((i) => i.etat === 'failed') || items[0]).url || `${webBase(cfg)}/${enc}/pull/${iid}/checks`;
+  const state = items.some((i) => i.etat === 'failed') ? 'failed'
+    : items.some((i) => i.etat === 'running') ? 'running'
+      : items.every((i) => i.etat === 'success' || i.etat === 'canceled') ? (items.some((i) => i.etat === 'success') ? 'success' : 'canceled') : 'pending';
+  return { state, url, label: `${items.length}` };
+}
+
 async function listMrDiscussions(cfg, project, iid) {
   const enc = encodeProject(project);
-  const [review, general] = await Promise.all([
+  const [review, general, fils] = await Promise.all([
     fetchAllPages(cfg, `/repos/${enc}/pulls/${iid}/comments`),
     fetchAllPages(cfg, `/repos/${enc}/issues/${iid}/comments`),
+    reviewThreads(cfg, project, iid).catch(() => new Map()),
   ]);
   const threads = new Map();            // id de racine -> discussion
   const order = [];
   for (const c of review) {
     const rootId = c.in_reply_to_id || c.id;
     if (!threads.has(rootId)) { threads.set(rootId, { id: String(rootId), notes: [] }); order.push(rootId); }
-    threads.get(rootId).notes.push(toNote(c, toPosition(c)));
+    const note = toNote(c, toPosition(c));
+    const fil = fils.get(String(rootId));
+    if (fil) note.resolved = fil.resolved;
+    threads.get(rootId).notes.push(note);
   }
   const out = order.map((id) => threads.get(id));
   for (const c of general) out.push({ id: `issue-${c.id}`, notes: [toNote(c, null)] });
@@ -655,6 +752,7 @@ module.exports = {
   updateNote, currentUser,
   latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
+  approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus,
   listProtectedTags, listMrChangedPaths, listMrChanges, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,
   // propres à GitHub
   isConfigured, testConnection, apiBase, webBase, refWebUrl,

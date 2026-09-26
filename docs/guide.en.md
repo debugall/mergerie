@@ -194,6 +194,17 @@ than sorting on a guessed identity.
   to its author without copying it over. A confirmation spells it out: what goes out is read by the whole
   team. Once published, the button becomes **`Publish again`** and carries the date of the first send, so
   you do not post the same text twice believing the first one failed.
+- **Approve, resolve, and the forge's CI.** The report gets published; what was missing is what the
+  forge calls a review. **`Approve`**, in the report's actions, posts a GitLab approval or a GitHub
+  `APPROVE` review — with no comment at all, never a burst of inline remarks. The confirmation says
+  what you are committing to (the score against the threshold, the verification verdict) without
+  forbidding anything; the button then reads **`Approved ✓`**, read back from the forge, and is
+  withdrawn in one click. On every discussion thread, **`Resolve`** / **`Reopen`** closes what a
+  re-review saw disappear (GitLab: the discussion; GitHub: the review thread, through GraphQL — a
+  general comment cannot be resolved there, and the tool says so). And every card carries the
+  **forge CI badge** — GitLab pipeline, GitHub check-runs and statuses, aggregated into one word:
+  green, red, running — with the link to what broke. It is not Mergerie's verdict, which stays a
+  separate badge with a separate word.
 - **Publish the report LINK rather than the report** — only when the team shares a **data
   repository**. Six hundred lines copied into a comment, nobody reads them, and the next pass posts
   six hundred more. The report is already in the team's repository, in Markdown rendered by the

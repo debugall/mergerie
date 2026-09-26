@@ -249,6 +249,7 @@ function renderToReview() {
   }
   assurerJenkinsPourCI();          // une fois par page : le badge CI a besoin de la liste
   const rows = ordonnerFile(filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows));
+  assurerCIForge(rows);            // l'état de la CI de la forge, pour les cartes affichées
   if (!rows.length) {
     /* Filtrer sur « les autres » quand tout est à soi donne une liste vide qui n'est pas une
        recherche infructueuse : on dit laquelle des deux, sinon on croit avoir tout traité. */
@@ -432,6 +433,7 @@ function mrCard(m) {
         ${badgeConflit(m)}
         ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
         ${badgeCI(m.source_branch)}
+        ${badgeCIForge(m)}
         ${verifyBadge(m.verification)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
         ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}

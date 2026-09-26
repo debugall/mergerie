@@ -242,7 +242,7 @@ function renderInlineThreads() {
     const el = document.createElement('div');
     el.className = 'cmt-thread';
     el.dataset.disc = d.id;
-    el.innerHTML = d.notes.map((n) => noteHtml(n, split.mrId)).join('') + replyBtnHtml(d.id, split.mrId);
+    el.innerHTML = d.notes.map((n) => noteHtml(n, split.mrId)).join('') + replyBtnHtml(d.id, split.mrId, { resolved: !!(d.notes[0] && d.notes[0].resolved) });
     row.after(el);
   }
 }

@@ -76,6 +76,7 @@ function renderReports() {
     return;
   }
   const cherchees = ordonnerFile(filtrerPret(filtrerAuteur(q ? reportRows.filter((m) => matchMr(m, q)) : reportRows)));
+  assurerCIForge(cherchees);       // l'état de la CI de la forge, pour les cartes affichées
   if (!cherchees.length) {
     rendreVide(el, emptyState({
       icon: 'search',
@@ -126,6 +127,7 @@ function renderReports() {
           ${badgeTicket(m)}
           ${badgeConflit(m)}
           ${badgeCI(m.source_branch)}
+          ${badgeCIForge(m)}
           ${verifyBadge(m.verification)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
           ${m.verifiable ? `<button class="btn btn-sm" data-verify-report="${m.id}" title="${tr('verify.btn.verify-title')}">${svgIco('check')}${tr('verify.btn.verify')}</button>` : ''}
@@ -324,6 +326,37 @@ function badgeCI(branche) {
   const signe = ci.enCours ? '⋯' : (ok ? '✓' : (rouge ? '✗' : '~'));
   return `<button type="button" class="tag ${cls}" data-ci-job="${esc(ci.path)}" title="${esc(tr('mr.ci.title', { job: ci.path }))}">CI #${ci.number} ${signe}</button>`;
 }
+/* ---------- L'état de la CI DE LA FORGE (pipelines GitLab, check-runs GitHub) ----------
+   Le badge Jenkins ci-dessus ne vaut que pour qui a Jenkins. Tout le monde a une CI sur sa forge,
+   et rien ne la lisait : un point vert / rouge / en cours sur la carte, avec le lien. Demandé en
+   un lot pour les cartes affichées, gardé une minute, jamais dans le polling. */
+const CI_FORGE = new Map();   // mrId -> { state, url, label, at }
+let ciForgeEnVol = null;
+async function assurerCIForge(rows) {
+  const ids = (rows || []).map((m) => m.id).filter((id) => {
+    const c = CI_FORGE.get(id);
+    return !c || Date.now() - c.at > 60000;
+  }).slice(0, 60);
+  if (!ids.length || ciForgeEnVol) return;
+  ciForgeEnVol = api(`/mrs-ci?ids=${ids.join(',')}`).then((d) => {
+    for (const id of ids) CI_FORGE.set(id, { ...((d && d[id]) || { state: 'none' }), at: Date.now() });
+    for (const id of ids) {
+      const slot = $(`[data-ci-forge-slot="${id}"]`);
+      if (slot) slot.outerHTML = badgeCIForge({ id });
+    }
+  }).catch(() => {}).finally(() => { ciForgeEnVol = null; });
+}
+function badgeCIForge(m) {
+  const c = CI_FORGE.get(m.id);
+  if (!c) return `<span data-ci-forge-slot="${m.id}"></span>`;
+  if (!c.state || c.state === 'none') return '';
+  const cls = { success: 'done', failed: 'stale', running: 'to_review', pending: 'to_review', canceled: '' }[c.state] || '';
+  const signe = { success: '✓', failed: '✗', running: '⋯', pending: '⋯', canceled: '–' }[c.state] || '?';
+  const titre = tr(`mr.ci-forge.${c.state}`);
+  const html = `<span class="tag ${cls}" data-ci-forge="${m.id}" title="${esc(titre)}">${tr('mr.ci-forge.label')} ${signe}</span>`;
+  return c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" class="tag-link">${html}</a>` : html;
+}
+
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-ci-job]');
   if (!b) return;

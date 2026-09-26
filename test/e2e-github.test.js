@@ -429,4 +429,51 @@ describe('GitHub de bout en bout', () => {
     assert.ok(mrs.some((m) => m.project === 'grp/mixte' && m.forge === 'gitlab'), 'MR GitLab découverte');
     assert.ok(mrs.some((m) => m.project === PROJECT && m.forge === 'github'), 'PR GitHub découverte');
   });
+
+  /* ---------- Le verdict que la forge lit : approuver, résoudre, la CI ---------- */
+
+  test('approuver = UNE review APPROVE, sans commentaire ; retirer = un dismissal de la sienne', async () => {
+    const commentsAvant = (app.ghState.reviewComments[`${PROJECT}#42`] || []).length + (app.ghState.issueComments[`${PROJECT}#42`] || []).length;
+    const r = await app.api('POST', `/api/mrs/${mrId}/approve`);
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.body.approvals.byMe, true);
+    const reviews = app.ghState.reviews[`${PROJECT}#42`];
+    assert.equal(reviews.length, 1); assert.equal(reviews[0].state, 'APPROVED');
+    const commentsApres = (app.ghState.reviewComments[`${PROJECT}#42`] || []).length + (app.ghState.issueComments[`${PROJECT}#42`] || []).length;
+    assert.equal(commentsApres, commentsAvant, 'aucun commentaire inline ni général n’est posté');
+    const u = await app.api('POST', `/api/mrs/${mrId}/approve`, { unapprove: true });
+    assert.equal(u.status, 200); assert.equal(u.body.approvals.byMe, false);
+    assert.equal(reviews[0].state, 'DISMISSED');
+  });
+
+  test('résoudre un fil inline passe par GraphQL, et l’état revient dans les discussions', async () => {
+    let discs = (await app.api('GET', `/api/mrs/${mrId}/discussions`)).body.discussions;
+    const fil = discs.find((d) => d.notes[0].position);
+    assert.equal(fil.notes[0].resolved, false);
+    const r = await app.api('POST', `/api/mrs/${mrId}/discussions/${fil.id}/resolve`, { resolved: true });
+    assert.equal(r.status, 200, r.text); assert.equal(r.body.resolved, true);
+    assert.ok(app.ghState.calls.some((c) => /\/graphql$/.test(c.path) && /resolveReviewThread/.test(String(c.body && c.body.query))), 'la mutation GraphQL');
+    discs = (await app.api('GET', `/api/mrs/${mrId}/discussions`)).body.discussions;
+    assert.equal(discs.find((d) => d.id === fil.id).notes[0].resolved, true);
+    const general = discs.find((d) => String(d.id).startsWith('issue-'));
+    const refus = await app.api('POST', `/api/mrs/${mrId}/discussions/${general.id}/resolve`, { resolved: true });
+    assert.equal(refus.status, 400, 'un commentaire général ne se résout pas sur GitHub, et on le dit');
+  });
+
+  test('la CI de la PR agrège check-runs et statuts : un échec l’emporte, sinon en cours, sinon vert', async () => {
+    const sha = repo.branchSha;
+    app.ghState.checkRuns[sha] = [
+      { status: 'completed', conclusion: 'success', html_url: 'http://gh/run/1' },
+      { status: 'in_progress', conclusion: null, html_url: 'http://gh/run/2' },
+    ];
+    let ci = (await app.api('GET', `/api/mrs-ci?ids=${mrId}`)).body[mrId];
+    assert.equal(ci.state, 'running');
+    app.ghState.statuses[sha] = [{ state: 'failure', target_url: 'http://gh/status/x' }];
+    ci = (await app.api('GET', `/api/mrs-ci?ids=${mrId}`)).body[mrId];
+    assert.equal(ci.state, 'failed'); assert.equal(ci.url, 'http://gh/status/x', 'le lien mène à ce qui a cassé');
+    app.ghState.statuses[sha] = [];
+    app.ghState.checkRuns[sha] = [{ status: 'completed', conclusion: 'success', html_url: 'http://gh/run/1' }];
+    ci = (await app.api('GET', `/api/mrs-ci?ids=${mrId}`)).body[mrId];
+    assert.equal(ci.state, 'success');
+  });
 });

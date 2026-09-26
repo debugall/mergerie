@@ -30,6 +30,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the install commands for Claude Code and Copilot CLI, and a **Retry** that redoes the detection
   on the spot. The detection used to be cached for the life of the process: installing the agent
   after starting changed nothing until a restart, and the only sign was a mute “dry-run” badge.
+- **Approve from the report.** An **Approve** button next to Publish posts the verdict the forge
+  reads — a GitLab approval, a GitHub `APPROVE` review — with no comment, never a burst of inline
+  remarks. The confirmation states the score against the threshold and the verification verdict
+  without forbidding anything; the button then reads “Approved ✓”, read back from the forge, and
+  is withdrawn in one click.
+- **Resolve or reopen a discussion thread** from the report or the diff viewer, without going to
+  the forge. On GitHub the resolved state, which only GraphQL knows, is now read back too.
+- **The forge's CI on every card.** A CI badge reads the latest GitLab pipeline or the GitHub
+  check-runs and statuses of the merge request — green, red, running — with a link to what broke.
+  It is not Mergerie's verdict, which keeps its own badge.
 - **Reviews refreshes on its own.** A new database starts with automatic refresh every
   **5 minutes** (it was off, so nothing ever arrived without a click), and opening the Reviews tab
   runs a discovery when the last one is older than that interval.

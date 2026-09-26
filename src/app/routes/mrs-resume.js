@@ -330,6 +330,60 @@ app.post('/api/mrs/:id/discussions/:discussionId/reply', wrap(async (req, res) =
   const note = await forge.clientFor(mr).replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
   res.json({ ok: true, id: note && note.id });
 }));
+/* RÉSOUDRE UN FIL, OU LE ROUVRIR. Ce qu'une re-review a vu disparaître se clôt ici, sans aller
+   sur la forge. GitLab : une propriété de la discussion ; GitHub : une mutation GraphQL sur le
+   fil de review (un commentaire général ne se résout pas). */
+app.post('/api/mrs/:id/discussions/:discussionId/resolve', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const resolved = !(req.body && (req.body.resolved === false || req.body.resolved === '0' || req.body.resolved === 0));
+  if (demoDocker.isDemo()) return res.json(demoComments.resolve(mr.id, req.params.discussionId, resolved));
+  res.json(await forge.clientFor(mr).resolveDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, resolved));
+}));
+/* APPROUVER — le verdict que la forge lit. Un seul geste, sans commentaire inline : `approve`
+   sur GitLab, une review `APPROVE` sur GitHub. `unapprove` retire la sienne. Aucune condition
+   n'est imposée ici : le score et le verdict sont dits à l'écran avant de cliquer, et c'est
+   l'utilisateur qui approuve sous son nom. */
+app.post('/api/mrs/:id/approve', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const retirer = !!(req.body && req.body.unapprove);
+  if (demoDocker.isDemo()) { demoComments.approve(mr.id, retirer); return res.json({ ok: true, approvals: demoComments.approvals(mr.id) }); }
+  const cfg = getConfig();
+  const client = forge.clientFor(mr);
+  if (retirer) await client.unapproveMergeRequest(cfg, mr.project, mr.iid);
+  else await client.approveMergeRequest(cfg, mr.project, mr.iid);
+  const me = await forgeUsername(mr);
+  res.json({ ok: true, approvals: await client.approvalState(cfg, mr.project, mr.iid, me) });
+}));
+app.get('/api/mrs/:id/approvals', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  if (demoDocker.isDemo()) return res.json(demoComments.approvals(mr.id));
+  const me = await forgeUsername(mr);
+  res.json(await forge.clientFor(mr).approvalState(getConfig(), mr.project, mr.iid, me));
+}));
+/* L'ÉTAT DE LA CI SUR LA CARTE, lu sur la forge (pipelines GitLab, check-runs GitHub) pour un
+   lot de merge requests — la liste en affiche onze, un appel par carte ferait onze
+   allers-retours à chaque rendu. Best-effort : une forge qui refuse rend `null` pour cette
+   MR, jamais une erreur pour toute la liste. Six appels de front au plus. */
+app.get('/api/mrs-ci', wrap(async (req, res) => {
+  const ids = String(req.query.ids || '').split(',').map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0).slice(0, 60);
+  const out = {};
+  if (demoDocker.isDemo()) {
+    ids.forEach((id, i) => { out[id] = { state: ['success', 'failed', 'running', 'success'][i % 4], url: null, label: '' }; });
+    return res.json(out);
+  }
+  const cfg = getConfig();
+  const { pMap } = require('../../core/pmap');
+  await pMap(ids, 6, async (id) => {
+    const mr = mrById(id);
+    if (!mr) { out[id] = null; return; }
+    try { out[id] = await forge.clientFor(mr).pipelineStatus(cfg, mr.project, mr.iid, mr.current_sha); }
+    catch { out[id] = null; }
+  });
+  res.json(out);
+}));
 // Commentaire inline sur une ligne précise d'un fichier de la MR.
 app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));

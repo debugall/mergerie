@@ -82,7 +82,7 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
 **Onze onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section.
 **Git, Docker, Jenkins et Liens démarrent repliés** : ce sont des commodités, et la barre porte d'abord le travail de tous les jours — une case dans Réglages → Général → Menus les ramène pour de bon.
 
-- **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
+- **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée, Et le verdict que la forge lit elle-même : un bouton **Approuver** (approbation GitLab, review `APPROVE` GitHub — jamais une rafale de commentaires inline), **Résoudre / Rouvrir** sur chaque fil de discussion, et la **CI de la forge** (pipeline GitLab, checks GitHub) en badge sur chaque carte.
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
   Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
   pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport

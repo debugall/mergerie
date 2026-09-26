@@ -102,6 +102,11 @@ async function openReport(id, opts = {}) {
             ${m.status !== 'done' ? `<button id="aRe" role="menuitem" title="${tr('report.btn.rerun-title')}">${tr('report.btn.rerun')}</button>` : ''}
             ${m.status !== 'done' && d.stale ? `<button id="aReInc" role="menuitem" title="${tr('report.btn.rerun-inc-title')}">${tr('report.btn.rerun-inc')}</button>` : ''}
             ${m.status !== 'done' ? `<button id="aDone" role="menuitem" title="${tr('report.btn.done-title')}">${tr('report.btn.done')}</button>` : `<button id="aReopen" role="menuitem" title="${tr('report.btn.reopen-title')}">${tr('report.btn.reopen')}</button>`}
+            ${/* APPROUVER — le verdict que la forge lit, juste au-dessus de « Publier » : `approve`
+                  sur GitLab, une review APPROVE sur GitHub, sans aucun commentaire inline. Dans le
+                  menu, comme Publier : la barre garde ses trois actions. L'état (qui a déjà
+                  approuvé, moi compris) arrive à part, après le rendu — c'est un appel à la forge. */''}
+            ${m.closed_seen ? '' : `<button id="aApprove" role="menuitem" data-mine="0" title="${esc(tr('report.btn.approve-title', { forge: forgeLabel(m.forge) }))}">${tr('report.btn.approve')}</button>`}
             ${d.review ? (() => {
               /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
                  parti : republier n'est pas une correction, ça pose une SECONDE copie sous les
@@ -340,6 +345,48 @@ async function openReport(id, opts = {}) {
   /* On DEMANDE avant d'écrire chez les autres. Le rapport part sous le nom de l'utilisateur
      sur la merge request d'un collègue : c'est le même niveau d'engagement que l'envoi des
      brouillons de commentaires, qui se confirme déjà. */
+  /* APPROUVER. Le bouton dit d'abord l'état (« Approuvé ✓ » quand c'est déjà moi), puis la
+     confirmation dit ce sur quoi on s'engage : la note face au seuil, le verdict de vérification —
+     sans rien interdire. C'est l'utilisateur qui approuve, sous son nom. */
+  const aApprove = $('#aApprove');
+  const peindreApprobation = (a) => {
+    if (!aApprove || !a) return;
+    aApprove.dataset.mine = a.byMe ? '1' : '0';
+    aApprove.textContent = a.byMe ? tr('report.btn.approved') : tr('report.btn.approve');
+    aApprove.classList.toggle('is-ok', a.byMe);
+    const autres = (a.approvedBy || []).filter(Boolean);
+    aApprove.title = autres.length ? tr('report.btn.approved-by', { who: autres.join(', ') }) : tr('report.btn.approve-title', { forge: forgeLabel(m.forge) });
+  };
+  if (aApprove) {
+    api(`/mrs/${id}/approvals`).then(peindreApprobation).catch(() => { /* forge muette : le bouton reste « Approuver » */ });
+    aApprove.addEventListener('click', async () => {
+      const forge = forgeLabel(m.forge);
+      const retirer = aApprove.dataset.mine === '1';
+      /* La note et le verdict viennent de la LIGNE DE LISTE (`mLigne`), qui les porte déjà ;
+         `note.value` est sur [0,1], comme partout en base — on l'affiche sur 10. */
+      const note = mLigne.note && mLigne.note.value != null ? Number(mLigne.note.value) * 10 : null;
+      const seuil = Number(seuilPret) || 8;   // le seuil « prêt à merger » de la liste (variable, pas fonction)
+      const verdict = mLigne.verification && mLigne.verification.verdict;
+      const points = [];
+      if (note != null) points.push(note >= seuil ? tr('report.approve.note-ok', { note: note.toFixed(1), seuil }) : tr('report.approve.note-low', { note: note.toFixed(1), seuil }));
+      else points.push(tr('report.approve.no-note'));
+      points.push(verdict === 'verified_pass' && !(mLigne.verification && mLigne.verification.stale) ? tr('report.approve.verified')
+        : verdict ? tr('report.approve.verdict', { verdict: tr(`mr.ref.verdict.${verdict}`) }) : tr('report.approve.unverified'));
+      const ok = await confirmDialog({
+        title: tr(retirer ? 'report.unapprove.confirm.title' : 'report.approve.confirm.title', { forge }),
+        text: tr(retirer ? 'report.unapprove.confirm.text' : 'report.approve.confirm.text', { forge, mr: `${m.project} !${m.iid}` }),
+        detail: retirer ? '' : points.join(' · '),
+        confirmLabel: tr(retirer ? 'report.btn.unapprove' : 'report.btn.approve'),
+        danger: false,
+      });
+      if (!ok) return;
+      try {
+        const r = await busy(aApprove, () => api(`/mrs/${id}/approve`, { method: 'POST', body: { unapprove: retirer } }));
+        peindreApprobation(r.approvals);
+        toast(tr(retirer ? 'toast.review.unapproved' : 'toast.review.approved', { forge }));
+      } catch (e) { toast(e.message, true); }
+    });
+  }
   const aPublish = $('#aPublish');   // absent tant qu'aucun rapport n'existe
   if (aPublish) aPublish.addEventListener('click', async () => {
     const forge = forgeLabel(m.forge);

@@ -197,6 +197,16 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   façon de rendre la review à l'auteur sans la recopier. Une confirmation le rappelle : ce qui part est
   lu par toute l'équipe. Une fois publié, le bouton devient **`Republier`** et porte la date du premier
   envoi, pour qu'on ne poste pas deux fois le même texte en croyant à un échec.
+- **Approuver, résoudre, et la CI de la forge.** Le rapport se publie ; ce qui manquait, c'est ce que
+  la forge appelle une review. **`Approuver`**, dans les actions du rapport, pose une approbation GitLab
+  ou une review `APPROVE` GitHub — sans aucun commentaire, jamais une rafale de remarques inline. La
+  confirmation dit sur quoi on s'engage (la note face au seuil, le verdict de vérification) sans rien
+  interdire ; le bouton passe ensuite à **`Approuvé ✓`**, relu depuis la forge, et se retire d'un clic.
+  Sur chaque fil de discussion, **`Résoudre`** / **`Rouvrir`** clôt ce qu'une re-review a vu disparaître
+  (GitLab : la discussion ; GitHub : le fil de review, par GraphQL — un commentaire général ne se résout
+  pas là-bas, et l'outil le dit). Et chaque carte porte le **badge CI de la forge** — pipeline GitLab,
+  check-runs et statuts GitHub, agrégés en un mot : vert, rouge, en cours — avec le lien vers ce qui a
+  cassé. Ce n'est pas le verdict de Mergerie, qui reste un autre badge, d'un autre mot.
 - **Publier le LIEN du rapport, plutôt que le rapport** — seulement quand l'équipe partage un
   **dépôt de données**. Six cents lignes recopiées en commentaire, personne ne les lit, et la passe
   suivante en repose six cents. Le rapport est déjà dans le dépôt de l'équipe, en Markdown rendu par

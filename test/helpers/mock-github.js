@@ -19,6 +19,10 @@ function freshState() {
     events: {},              // project -> [event] : les pushes de TOUTES les branches
     files: {},               // `${project}#${n}` -> [{ filename, previous_filename }]
     reviewComments: {},      // `${project}#${n}` -> [comment]
+    reviews: {},             // `${project}#${n}` -> [{ id, user:{login}, state }]
+    resolvedThreads: {},     // `${project}#${n}` -> Set(rootId) — l'état « résolu », GraphQL seulement
+    checkRuns: {},           // sha -> [{ status, conclusion, html_url }]
+    statuses: {},            // sha -> [{ state, target_url }]
     issueComments: {},       // `${project}#${n}` -> [comment]
     rulesets: {},            // project -> [ruleset]
     calls: [],               // journal { method, path, body }
@@ -74,6 +78,30 @@ function handle(req, res, pathname, query, body) {
   }
 
   if (pathname === '/user') return json(res, 200, { login: 'testeur', id: 1 });
+  /* GraphQL, réduit à ce que le client demande : les fils de review d'une PR (id, résolu,
+     premier commentaire) et les deux mutations de résolution. L'id de fil est `T<rootId>`. */
+  if (pathname === '/graphql' && req.method === 'POST') {
+    const q = String(body.query || '');
+    const v = body.variables || {};
+    if (/reviewThreads/.test(q)) {
+      const key = `${v.owner}/${v.name}#${v.n}`;
+      const roots = (state.reviewComments[key] || []).filter((c) => !c.in_reply_to_id);
+      const done = state.resolvedThreads[key] || new Set();
+      return json(res, 200, { data: { repository: { pullRequest: { reviewThreads: { nodes: roots.map((c) => ({ id: `T${c.id}`, isResolved: done.has(c.id), comments: { nodes: [{ databaseId: c.id }] } })) } } } } });
+    }
+    const mm2 = /(resolveReviewThread|unresolveReviewThread)/.exec(q);
+    if (mm2) {
+      const rootId = Number(String(v.id || '').replace(/^T/, ''));
+      for (const [key, list] of Object.entries(state.reviewComments)) {
+        if (!list.some((c) => c.id === rootId)) continue;
+        const done = (state.resolvedThreads[key] = state.resolvedThreads[key] || new Set());
+        if (mm2[1] === 'resolveReviewThread') done.add(rootId); else done.delete(rootId);
+        return json(res, 200, { data: { [mm2[1]]: { thread: { isResolved: done.has(rootId) } } } });
+      }
+      return json(res, 200, { errors: [{ message: 'Could not resolve to a node' }] });
+    }
+    return json(res, 200, { errors: [{ message: 'unsupported query (mock)' }] });
+  }
   if (pathname === '/user/repos') return paged(res, req, query, state.repos);
 
   const m = /^\/repos\/([^/]+)\/([^/]+)(\/.*)?$/.exec(pathname);
@@ -127,6 +155,19 @@ function handle(req, res, pathname, query, body) {
       return json(res, 200, { merged: !state.mergeRefuses, message: 'ok' });
     }
     if (sub === '/files' && req.method === 'GET') return paged(res, req, query, state.files[key] || []);
+    if (sub === '/reviews' && req.method === 'GET') return paged(res, req, query, state.reviews[key] || []);
+    if (sub === '/reviews' && req.method === 'POST') {
+      const r = { id: state.nextId++, user: { login: 'testeur' }, state: body.event === 'APPROVE' ? 'APPROVED' : body.event === 'REQUEST_CHANGES' ? 'CHANGES_REQUESTED' : 'COMMENTED', body: body.body || '' };
+      (state.reviews[key] = state.reviews[key] || []).push(r);
+      return json(res, 200, r);
+    }
+    mm = /^\/reviews\/(\d+)\/dismissals$/.exec(sub);
+    if (mm && req.method === 'PUT') {
+      const r = (state.reviews[key] || []).find((x) => x.id === Number(mm[1]));
+      if (!r) return json(res, 404, { message: 'Not Found' });
+      r.state = 'DISMISSED';
+      return json(res, 200, r);
+    }
     if (sub === '/comments' && req.method === 'GET') return paged(res, req, query, state.reviewComments[key] || []);
     if (sub === '/comments' && req.method === 'POST') {
       const c = {
@@ -184,6 +225,12 @@ function handle(req, res, pathname, query, body) {
     (state.issueComments[key] = state.issueComments[key] || []).push(c);
     return json(res, 201, c);
   }
+
+  // --- CI d'un commit : check-runs et statut combiné ---
+  mm = /^\/commits\/([^/]+)\/check-runs$/.exec(rest);
+  if (mm && req.method === 'GET') return json(res, 200, { total_count: (state.checkRuns[mm[1]] || []).length, check_runs: state.checkRuns[mm[1]] || [] });
+  mm = /^\/commits\/([^/]+)\/status$/.exec(rest);
+  if (mm && req.method === 'GET') return json(res, 200, { state: 'pending', statuses: state.statuses[mm[1]] || [] });
 
   // --- Branches ---
   if (rest === '/branches' && req.method === 'GET') {
@@ -275,7 +322,8 @@ function start() {
       state.calls.push({ method: req.method, path: u.pathname + u.search, body });
       // GitHub Enterprise sert l'API sous /api/v3 : c'est ce que construit le client
       // quand une URL d'instance est configurée (cas des tests).
-      const pathname = u.pathname.replace(/^\/api\/v3/, '');
+      // GraphQL vit à `/api/graphql` (GitHub Enterprise), à côté de `/api/v3` : même serveur ici.
+      const pathname = u.pathname.replace(/^\/api\/v3/, '').replace(/^\/api\/graphql$/, '/graphql');
       try { return handle(req, res, pathname, u.searchParams, body); }
       catch (e) { return json(res, 500, { message: e.message }); }
     });
