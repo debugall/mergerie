@@ -8,20 +8,25 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
-  startApp, attendreServeur, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+  startApp, makeRemoteRepo, waitForJobs, attendreServeur, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 
 describe('Binaires d’agent — réglages, modale de session, carte', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let nav; let page; let repoId; let profil;
+  let app; let nav; let page; let repoId; let profil; let localTask;
   const erreurs = [];
 
   before(async () => {
     app = await startApp();
+    // Un vrai dépôt distant : la session de codage « créer et lancer » doit pouvoir cloner et committer.
+    const r = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'app-')));
+    app.state.branches['grp/app'] = [{ name: 'main', default: true, protected: false, merged: false, commit: { id: r.mainSha } }];
     await app.configure();
-    repoId = (await app.api('POST', '/api/repos', { url: 'https://gitlab.test/grp/app', project: 'grp/app' })).body.id;
+    repoId = (await app.api('POST', '/api/repos', { url: r.url, project: 'grp/app' })).body.id;
     nav = await lancerNavigateur();
     page = await nav.newPage({ viewport: { width: 1400, height: 1000 } });
     page.on('pageerror', (e) => erreurs.push(e.message));
@@ -176,12 +181,12 @@ describe('Binaires d’agent — réglages, modale de session, carte', { skip: d
 
   test('hors dépôt : le même sélecteur, câblé à part — la carte et l’édition le relisent', async () => {
     // Une racine déclarée, un dossier dessous : la modale hors dépôt résout ses dossiers par racine.
-    const fs = require('node:fs'); const path = require('node:path');
     const racine = fs.mkdtempSync(path.join(app.dataDir, 'racine-'));
     const dir = path.join(racine, 'projet-x'); fs.mkdirSync(dir);
     await app.api('POST', '/api/local-roots', { path: racine, label: 'racine' });
     // Créée par l'API, éditée à l'écran.
     const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Range', dirs: [dir], cli_id: profil.id })).body;
+    localTask = lt;
     await fermerModales();
     await page.locator('nav button[data-tab="task"]').click();
     await page.locator('#tab-task .subnav [data-kind="local"]').click();
@@ -193,6 +198,61 @@ describe('Binaires d’agent — réglages, modale de session, carte', { skip: d
     await fermer();
     // Une question libre part toujours sur le défaut : pas de sélecteur.
     await ouvrirModale('ask');
+    assert.equal(await page.locator('#taskCliRow').isVisible(), false);
+    await fermer();
+    assert.deepEqual(erreurs, []);
+  });
+
+  test('codage, « créer et lancer » avec le binaire choisi : le job part dessus, le journal le nomme, la carte le porte', async () => {
+    await ouvrirModale('code');
+    await page.waitForSelector('#taskCliRow:not([hidden])');
+    await choisirDepot('grp/app');
+    await page.locator('#targetRows .target-row .t-branch').first().fill('ai/cli-ecran');
+    await page.locator('#taskForm [name="prompt"]').fill('Ajoute un cache sur le panier');
+    await page.locator('#taskCli').selectOption(String(profil.id));
+    const avant = app.db.prepare('SELECT COUNT(*) c FROM task').get().c;
+    await page.locator('#taskSubmit').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    await attendreServeur(async () => app.db.prepare('SELECT COUNT(*) c FROM task').get().c === avant + 1, 'la session est créée');
+    const t = app.db.prepare('SELECT * FROM task ORDER BY id DESC LIMIT 1').get();
+    assert.equal(t.cli_id, profil.id);
+    await waitForJobs(app.api);
+    const journal = app.db.prepare('SELECT text FROM job_log ORDER BY id').all().map((l) => l.text);
+    assert.ok(journal.some((l) => l.includes('Ollama qwen') && l.includes('/opt/agents/claude-ollama')), `le journal nomme le binaire de la session :\n${journal.join('\n')}`);
+    await page.waitForSelector(`#taskList [data-task="${t.id}"] .task-cli`);
+    // Dupliquer reprend le binaire : la copie propose le même choix.
+    await page.locator(`#taskList [data-task="${t.id}"] [data-tcopy]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction((id) => document.querySelector('#taskCli').value === String(id), profil.id);
+    await fermer();
+    // …hors dépôt aussi, par son propre envoi.
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector(`#localList [data-local="${localTask.id}"] [data-lcopy]`);
+    await page.locator(`#localList [data-local="${localTask.id}"] [data-lcopy]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction((id) => document.querySelector('#taskCli').value === String(id), profil.id);
+    await fermer();
+  });
+
+  test('supprimer un binaire depuis la liste : confirmation, la ligne disparaît, les cartes gardent son nom, le sélecteur se replie', async () => {
+    await fermerModales();
+    await page.locator('nav button[data-tab="admin"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="aisession"]').click();
+    await page.waitForSelector(`#cliList [data-clidel="${profil.id}"]`);
+    await page.locator(`#cliList [data-clidel="${profil.id}"]`).click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    assert.match(await page.locator('#confirmText').textContent(), /Ollama qwen/);
+    await page.locator('#confirmOk').click();
+    await page.waitForFunction((id) => !document.querySelector(`#cliList [data-cli="${id}"]`), profil.id);
+    await attendreServeur(async () => (await app.api('GET', '/api/agent-clis')).body.items.length === 0, 'le binaire est supprimé');
+    // Les sessions qui l'avaient choisi retombent sur le défaut ; leur carte garde le nom (photo).
+    const t = app.db.prepare("SELECT cli_id, cli_name FROM task WHERE cli_name = 'Ollama qwen' ORDER BY id DESC LIMIT 1").get();
+    assert.equal(t.cli_id, null); assert.equal(t.cli_name, 'Ollama qwen');
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="code"]').click();
+    await page.waitForSelector('#taskList .task-cli');
+    // Sans autre binaire, une session neuve ne montre plus de sélecteur.
+    await ouvrirModale('explore');
     assert.equal(await page.locator('#taskCliRow').isVisible(), false);
     await fermer();
     assert.deepEqual(erreurs, []);

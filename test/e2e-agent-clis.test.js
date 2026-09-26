@@ -93,6 +93,10 @@ describe('Binaires d’agent : plusieurs, un par défaut, choisi par session', (
     })).body;
     assert.match(surCop.targets[0].resume_cmd || '', /COPILOT_HOME|--continue/, `reprise copilot : ${surCop.targets[0].resume_cmd}`);
     assert.equal(app.db.prepare("SELECT session_backend b FROM local_session WHERE session_key = '/tmp/home-copilot'").get().b, 'copilot');
+    // À l'ÉDITION aussi : un handle copilot (un chemin) passe sous ce profil, pas sous le défaut claude.
+    const edite = await app.api('PUT', `/api/tasks/${surCop.id}`, { session_id: '/tmp/home-copilot-2' });
+    assert.equal(edite.status, 200, edite.text);
+    assert.equal((await app.api('PUT', `/api/tasks/${avecHandle.id}`, { session_id: '/tmp/pas-un-uuid' })).status, 400, 'sous un profil claude, un handle doit être un UUID');
     await app.api('DELETE', `/api/agent-clis/${cop.id}`);
     // Renommer le profil renomme les sessions qui le pointent ; l'échange, lui, se fait plus bas.
     await app.api('PUT', `/api/agent-clis/${prof.id}`, { name: 'Ollama local' });

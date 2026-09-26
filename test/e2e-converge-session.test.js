@@ -10,10 +10,13 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, makeRemoteRepo, waitForJobs, git } = require('./helpers/app');
+const {
+  startApp, makeRemoteRepo, waitForJobs, git, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+} = require('./helpers/app');
 
 describe('Converger depuis une session de dev IA', () => {
   let app;
+  let mrVerdict;   // la MR convergée avec un vérificateur : son verdict se lit à l'écran, plus bas
 
   async function addRepo(key, project) {
     const repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, `remote-${key}-`)), { branch: `feature/${key}` });
@@ -90,6 +93,29 @@ describe('Converger depuis une session de dev IA', () => {
     assert.ok(detail.verification && detail.verification.verdict, 'le panneau lit le dernier verdict');
     const log = app.db.prepare('SELECT GROUP_CONCAT(text, char(10)) AS t FROM job_log WHERE job_id = ?').get(job.body.id).t || '';
     assert.match(log, /verdict-passe/, 'le journal nomme le vérificateur et son verdict');
+    mrVerdict = mrRow;
+  });
+
+  test('depuis l’écran : le panneau de la MR montre le verdict à côté de la convergence, en vert', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    assert.ok(mrVerdict, 'la MR convergée avec vérificateur existe (test précédent)');
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    try {
+      await page.goto(app.base);
+      await page.locator('nav button[data-tab="review"]').click();
+      // La liste est segmentée par état : une MR convergée est relue, elle vit sous « reviewed ».
+      const seg = (await app.api('GET', `/api/mrs/${mrVerdict.id}`)).body.mr.status === 'to_review' ? 'to_review' : 'reviewed';
+      await page.locator(`[data-seg="${seg}"]`).click();
+      await page.locator(`#reportList .card[data-id="${mrVerdict.id}"]`).click();
+      await page.waitForSelector('#reportDetail .converge-box');
+      await page.waitForSelector('#reportDetail .converge-verdict-pass');
+      assert.match(await page.locator('#reportDetail .converge-verdict-pass').textContent(), /tests verts|tests green/i);
+      assert.match(await page.locator('#reportDetail .converge-verdict-pass').getAttribute('title'), /verdict-passe/, 'le badge nomme le vérificateur');
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
+    } finally { await nav.close(); }
   });
 
   test('converge avec questions : le dev pose une question → en attente, pas de MR ; réponses → reprise', async () => {
