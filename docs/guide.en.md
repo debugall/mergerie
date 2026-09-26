@@ -9,6 +9,38 @@ security model. For a quick start, stay on the [README](../README.md).
 > a GitLab *merge request* or a GitHub *pull request*: the screens, the actions and the guarantees
 > described are the same. The rare forge-specific differences are called out explicitly.
 
+## Contents
+
+- [First real review in 5 minutes](#first-real-review-in-5-minutes)
+- [The tabs in detail](#the-tabs-in-detail) — Reviews, AI Dev, Agents, Notes, Jira, Git, Docker, Jenkins, Links, Stats, Settings
+- [Objective verification (verifiers)](#objective-verification-verifiers)
+- [Configuration (.env)](#configuration-env)
+- [Self-hosted GitLab / GitHub Enterprise / internal Jenkins / corporate certificate](#self-hosted-gitlab--github-enterprise--internal-jenkins--corporate-certificate)
+- [Dry-run mode (no AI)](#dry-run-mode-no-ai)
+- [Local clones](#local-clones)
+- [Sharing with a team (data repository)](#sharing-with-a-team-data-repository)
+- [Data & backup](#data--backup)
+- [Security](#security)
+
+## First real review in 5 minutes
+
+1. **An agent CLI, logged in.** Claude Code (`npm i -g @anthropic-ai/claude-code`, then `claude` once
+   to sign in) or Copilot CLI (`npm i -g @github/copilot`, then `copilot`). Your subscription pays:
+   Mergerie has no key and no quota of its own.
+2. **`npx mergerie`** — http://localhost:4319. The Reviews tab opens on the five-step assistant. The
+   first step says whether the agent was found; if not, Settings → AI session → *Binary*, then
+   **Test the agent**.
+3. **Connect the forge** — GitLab (URL + token, scopes `api` and `read_repository`) **or** GitHub
+   (token, scope `repo`). One *Test* button per forge.
+4. **Pick your repositories** — Settings → Repositories, in bulk from the forge or one address at a time.
+5. **What your team uses** — Jira, Jenkins, Docker, environments: what is ticked unfolds its menu,
+   the rest stays folded. Nothing is lost: Settings → General → Menus.
+6. **Fetch MRs** — the queue fills up (and refreshes every 5 minutes by default). On a card,
+   **Review**: the report lands in the right-hand panel, with its score.
+
+To know it is not simulated: no *dry-run* badge in the header, no banner, and the report does not
+start with “(mock)”.
+
 ## The tabs in detail
 
 Eleven tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
@@ -2547,39 +2579,33 @@ In both cases the refusal is immediate and says which of the two reasons applies
 
 ## Configuration (.env)
 
-**`npx mergerie` writes one on its first launch**, in the folder you run it from: it looks for
-`claude` then `copilot` on the machine (on the `PATH`, then where the installers put them) and
-points `COPILOT_BIN` at the one it finds, with that agent's arguments — `--dangerously-skip-permissions`
-for claude, `--yolo --model claude-sonnet-5` for copilot. Without that file `COPILOT_BIN` is
-“copilot”: whoever installed Claude Code does not have that binary, the tool falls back to
-**dry-run**, and every review returns a fake report — it “works” and is useless. The file is
-written once, mode `600`, never rewritten afterwards (it will end up carrying tokens), and the
-command says what it created. `npx mergerie demo` writes none: it promises to leave nothing behind.
+**`npx mergerie` writes one on its first launch**, in `~/.mergerie/.env` — next to the data, so it
+is read back wherever the command is run from: it looks for `claude` then `copilot` on the machine
+(on the `PATH`, then where the installers put them) and points `AGENT_BIN` at the one it finds. It is
+**short** (a dozen lines), written once, mode `600`, never rewritten afterwards, and the command
+says what it created. `npx mergerie demo` writes none: it promises to leave nothing behind.
 
-The file also **explains the option that lets the agent act without asking**
-(`--dangerously-skip-permissions` for claude, `--yolo` for copilot). It is necessary: the agent is
-called **non-interactively**, so nobody is there to answer a permission prompt — without it the work
-hangs, or everything that would prompt is denied **without a word** and the report comes back poorer
-for no visible reason. The file also says what it does **not** protect: the agent runs with your
-rights, it works in the clone of the repository under review and it is Mergerie that runs git, but
-the option builds no wall around that folder — and what it reads (a diff, a ticket) is not written by
-you. A narrower variant is offered as a commented line, `--permission-mode acceptEdits`: file edits
-are accepted, everything else is refused — and refused **silently** under `-p`, which is the price to
-know before choosing it.
+**The agent is also set on screen, without a restart** — Settings → AI session: the binary, its base
+arguments, the timeout of one call, and a **Test the agent** button (one real, short, read-only call
+whose expected answer is “OK”). What is filled in there wins over the `.env`. No agent found? A
+banner says so at the top of the screen, with the path looked for and the install commands, and
+“Retry” redoes the detection without restarting the server — until then reports are **simulated**
+and say so. What the agent is allowed to do is no longer set in the `.env`: see *Agent sandbox* in
+the same sub-tab, and the Security section.
 
-A `.env` file is loaded automatically at startup: **the one in the folder the command is run
-from** — the root of the clone with `npm start`, the current directory with `npx mergerie`
-(come back to that folder next time, or the file is ignored without a word). What the shell
-exports wins over the file.
+Two `.env` files are read at startup, weakest first: `~/.mergerie/.env`, then **the one in the
+folder the command is run from** (the root of the clone with `npm start`, the current directory
+with `npx mergerie`) — the local override. What the shell exports wins over both. The old names
+`COPILOT_BIN`, `COPILOT_ARGS`, `COPILOT_TIMEOUT_MS` are still read.
 
 | Variable | Default | Role |
 |---|---|---|
 | `PORT` | 4319 | server port |
 | `HOST` | `127.0.0.1` | listening interface; `0.0.0.0` to expose on the network — see the **Security** section |
-| `COPILOT_BIN` | `copilot` | the AI agent's binary (e.g. `claude`) |
-| `COPILOT_ARGS` | — | args passed BEFORE `-p` (e.g. `--yolo`, `--dangerously-skip-permissions`) |
+| `AGENT_BIN` | `copilot` | the AI agent's binary (e.g. `claude`) — overridden by the on-screen setting when filled (`COPILOT_BIN` still read) |
+| `AGENT_ARGS` | — | args passed BEFORE `-p` (e.g. `--model …`) — same (`COPILOT_ARGS` still read) |
 | `COPILOT_DRY_RUN` | 0 | `1` = force mock mode (no AI) |
-| `COPILOT_TIMEOUT_MS` | 900000 | timeout of an AI call (15 min) |
+| `AGENT_TIMEOUT_MS` | 900000 | timeout of an AI call (15 min) — same (`COPILOT_TIMEOUT_MS` still read) |
 | `GITLAB_CA_CERT` | — | path to a CA to pin (self-hosted GitLab) — **recommended** |
 | `GITLAB_INSECURE_TLS` | 0 | `1` = skip the TLS check **for GitLab only** (troubleshooting) |
 | `GITHUB_CA_CERT` | — | same for a **GitHub Enterprise** instance with an internal CA |
@@ -2986,8 +3012,8 @@ machine-only table that never travels, under a data folder created as `0700`. Th
 return them in clear (`***`), and sending `***` **does not overwrite** them. A **“Test”** button whose
 address changed requires **retyping** the token: the saved token is only ever sent to its own address.
 The **backup** carries the database, hence **your tokens**: its README says so, keep it like a password.
-At startup, a warning flags a `.env` in the current folder that picks the agent binary (`COPILOT_BIN`,
-`COPILOT_ARGS`).
+At startup, a warning flags a `.env` in the current folder that picks the agent binary (`AGENT_BIN`,
+`AGENT_ARGS`, or their old `COPILOT_*` names).
 
 **No shell, and hardened git.** git, Docker and the agent are launched via `spawn` with an **argument
 array**, never a shell. Every git command Mergerie runs goes **without hooks**, without `fsmonitor`,

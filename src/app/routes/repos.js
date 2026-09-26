@@ -92,13 +92,30 @@ app.post('/api/repos/:id/reclone', wrap(async (req, res) => {
    marche, c'est ce que fait le décor de démo, et c'est ce que font les tests. La première
    version de cette garde ne connaissait que http(s) et ssh : elle refusait un dépôt local. */
 const RE_URL_DEPOT = /^(https?:\/\/\S+|file:\/\/\S+|\/\S+|(ssh:\/\/)?[\w.-]+@[\w.-]+[:/]\S+)$/i;
+/* LA FORGE D'UNE ADRESSE. « github » dans l'URL classait GitHub ; tout le reste tombait en GitLab —
+   un GitHub Enterprise sur `git.entreprise.com` était donc suivi comme un GitLab, et son premier
+   appel d'API échouait. On compare d'abord l'hôte de l'adresse à ceux des forges CONFIGURÉES
+   (Réglages → Git), et le nom ne sert plus que de repli. */
+function hoteDe(u) {
+  const s = String(u || '').trim();
+  const m = /^(?:https?:\/\/|ssh:\/\/)?(?:[^@\/]+@)?([\w.-]+)/i.exec(s);
+  return m ? m[1].toLowerCase() : '';
+}
+function forgeDepuisUrl(url) {
+  const cfg = getConfig();
+  const h = hoteDe(url);
+  if (h) {
+    if (forge.isConfigured(cfg, 'github') && h === hoteDe(cfg.github_url || 'https://github.com')) return 'github';
+    if (forge.isConfigured(cfg, 'gitlab') && h === hoteDe(cfg.gitlab_url)) return 'gitlab';
+  }
+  return /github/i.test(String(url)) ? 'github' : 'gitlab';
+}
 app.post('/api/repos', wrap((req, res) => {
   const { url, branch_pattern } = req.body || {};
   if (!url) throw new Error(t('err.l-url-du-depot-est'));
   if (!RE_URL_DEPOT.test(String(url).trim())) throw new Error(t('err.repo-url-invalide'));
-  // Forge du dépôt : explicite, sinon déduite de l'URL (github.com → github).
-  const forgeName = req.body.forge ? forge.normalizeForge(req.body.forge)
-    : (/github/i.test(String(url)) ? 'github' : 'gitlab');
+  // Forge du dépôt : explicite, sinon déduite de l'URL — par l'HÔTE configuré d'abord.
+  const forgeName = req.body.forge ? forge.normalizeForge(req.body.forge) : forgeDepuisUrl(url);
   // project optionnel : déduit de l'URL si non fourni, avec le normalizer de la forge
   const project = (req.body.project || '').trim() || forge.clientFor({ forge: forgeName }).normalizeProject(url);
   if (!project) throw new Error(t('err.impossible-de-deduire-le-chemin'));

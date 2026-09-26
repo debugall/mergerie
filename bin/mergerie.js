@@ -41,16 +41,20 @@ if (arg === 'token') {
 
 /* ---------------------------------------------------------------- le `.env` du premier jour
  *
- * SANS `.env`, L'OUTIL DÉMARRE MAIS NE SAIT PAS APPELER L'IA. `COPILOT_BIN` vaut « copilot »
- * par défaut ; qui a installé Claude Code n'a pas ce binaire, l'outil bascule en dry-run (des
+ * SANS `.env`, L'OUTIL DÉMARRE MAIS NE SAIT PAS APPELER L'IA. Le binaire vaut « copilot » par
+ * défaut ; qui a installé Claude Code n'a pas ce binaire, l'outil bascule en dry-run (des
  * rapports simulés) et chaque review rend un texte factice. Depuis un clone on copie
- * `.env.example` — sous `npx` il n'y a pas de clone, donc rien à copier, et rien ne dit où le
- * fichier devrait aller. Node 20 ajoute même une ligne déroutante au démarrage :
- * « .env not found. Continuing without it. »
+ * `.env.example` — sous `npx` il n'y a pas de clone, donc rien à copier.
  *
- * On en écrit donc un, une seule fois, DANS LE DOSSIER COURANT — là où la commande le relira
- * au prochain lancement —, et on dit ce qu'on a créé : un fichier qui apparaît en silence dans
- * le dossier de quelqu'un est une surprise, pas un service.
+ * On en écrit donc un, une seule fois, À CÔTÉ DES DONNÉES (`~/.mergerie/.env`) — et non dans le
+ * dossier courant, qui change d'un lancement à l'autre : le fichier écrit un jour dans
+ * `~/projets/x` était ignoré sans un mot dès qu'on relançait la commande depuis `~/projets/y`.
+ * Le `.env` du dossier courant reste lu, et passe DEVANT : c'est la surcharge locale.
+ *
+ * Il est COURT. L'agent, ses arguments et son délai se règlent désormais à l'écran (Réglages →
+ * Session IA) et s'appliquent sans redémarrage ; ce qui est écrit ici n'est que le point de
+ * départ. Les explications (permissions, TLS, proxy) sont dans le guide, pas dans un fichier
+ * de configuration de cinquante lignes qu'on ouvre avec appréhension.
  *
  * PAS EN MODE DÉMO : « npx mergerie demo » promet de ne rien installer et de ne rien laisser.
  */
@@ -81,67 +85,33 @@ function trouverAgent() {
 }
 
 function contenuEnv(agent) {
-  const autre = CANDIDATS.find((c) => !agent || c.bin !== agent.bin) || CANDIDATS[1];
-  return `# Réglages de Mergerie pour CE DOSSIER, écrits au premier lancement.
-# La commande relit ce fichier à chaque démarrage depuis ici : reviens dans ce dossier, ou
-# emporte le fichier avec toi. La liste complète des variables est dans le guide.
-
-# ─────────────────────────────────────────────────────────────────────────────────────────
-#  L'AGENT IA, ET CE QU'IL A LE DROIT DE FAIRE — à lire une fois.
-#
-#  Mergerie l'appelle en NON-INTERACTIF (\`<bin> [args] -p "<prompt>"\`, sortie capturée) :
-#  personne n'est là pour répondre à une demande de permission. C'est Mergerie elle-même qui
-#  décide alors ce qu'il a le droit de faire (Réglages → Session IA) — plus \`COPILOT_ARGS\` à
-#  écrire ici pour ça :
-#    - EN LECTURE (review, exploration, question…) : toujours restreint, sans écriture ni
-#      commande qui exécute.
-#    - EN ÉCRITURE (codage, correction…) : sandboxé par le CLI quand « Tester le sandbox »
-#      (Réglages → Session IA) l'a vérifié sur CETTE machine ; sinon une liste blanche de
-#      commandes (tests, git courant — jamais push/remote/config).
-#    - L'ANCIEN COMPORTEMENT (\`--dangerously-skip-permissions\`) reste possible, mais seulement
-#      en le CHOISISSANT dans Réglages → Session IA (\`agent_write_mode=large\`) — jamais par
-#      défaut, jamais depuis ce fichier.
-# ─────────────────────────────────────────────────────────────────────────────────────────
-
-${agent ? `# L'agent IA trouvé sur cette machine au moment de la création.
-COPILOT_BIN=${agent.chemin}
-COPILOT_ARGS=${agent.args}`
-    : `# AUCUN AGENT TROUVÉ sur cette machine (ni claude, ni copilot). Tant que ce chemin est
-# faux, Mergerie tourne en dry-run : les rapports sont simulés, aucun appel n'est fait.
-COPILOT_BIN=claude
-COPILOT_ARGS=`}
-# Pour l'autre agent, remplacer les deux lignes ci-dessus par :
-# COPILOT_BIN=${autre.bin}
-# COPILOT_ARGS=${autre.args}
-
-# 0 = l'IA est vraiment appelée. 1 = rapports simulés, aucun appel (essais, démonstration).
+  return `# Mergerie — réglages de départ, écrits au premier lancement (relus à chaque démarrage).
+# Un .env dans le dossier d'où tu lances la commande passe devant ; le shell passe devant tout.
+# L'agent, ses arguments et son délai se règlent aussi à l'écran : Réglages → Session IA.
+# Toutes les variables : voir le guide (docs/guide.*.md, § Configuration).
+${agent ? `AGENT_BIN=${agent.chemin}
+AGENT_ARGS=${agent.args}`
+    : `# Aucun agent trouvé (ni claude, ni copilot) : l'écran le dira, et tourne en simulé d'ici là.
+AGENT_BIN=claude
+AGENT_ARGS=`}
+# 1 = rapports simulés, aucun appel à l'IA (essais, démonstration).
 COPILOT_DRY_RUN=0
-# Durée maximale d'UN appel à l'agent, en millisecondes. 3600000 = une heure.
-COPILOT_TIMEOUT_MS=3600000
-
 PORT=4319
-
-# Cloner en SSH (avec ta clé) au lieu d'HTTPS avec le jeton. À décommenter si ta forge
-# n'accepte que SSH.
+# Cloner en SSH (avec ta clé) plutôt qu'en HTTPS avec le jeton :
 # GIT_CLONE_SSH=1
-
-# ⚠ CERTIFICATS. Ces deux lignes DÉSACTIVENT la vérification TLS du service concerné : à ne
-# décommenter que derrière un proxy d'entreprise qui remplace les certificats, et de préférence
-# après avoir essayé NODE_EXTRA_CA_CERTS avec le certificat de l'entreprise, qui garde la
-# vérification. Livrées commentées : personne ne doit désactiver TLS sans l'avoir voulu.
-# GITLAB_INSECURE_TLS=1
-# JENKINS_INSECURE_TLS=1
 `;
 }
 
 /** Écrit le `.env` s'il n'y en a pas. Rend ce qu'il faut annoncer, ou `null` s'il existait. */
+const FICHIER_ENV_UTILISATEUR = path.join(os.homedir(), '.mergerie', '.env');
 function creerEnvSiAbsent() {
-  const cible = path.resolve('.env');
+  const cible = FICHIER_ENV_UTILISATEUR;
   if (fs.existsSync(cible)) return null;
   const agent = trouverAgent();
   try {
+    fs.mkdirSync(path.dirname(cible), { recursive: true });
     /* `wx` : on n'écrase JAMAIS. Entre le test ci-dessus et l'écriture il peut s'être passé
-       quelque chose, et un `.env` contient des jetons. */
+       quelque chose, et un `.env` peut contenir des jetons. */
     fs.writeFileSync(cible, contenuEnv(agent), { flag: 'wx', mode: 0o600 });
   } catch (e) {
     /* Dossier en lecture seule, droits, course : on ne bloque pas le démarrage pour ça. */
@@ -150,12 +120,11 @@ function creerEnvSiAbsent() {
   return { cible, agent };
 }
 
-/* LE `.env` DU DOSSIER COURANT SE LIT ICI AUSSI. Le serveur le charge lui-même
+/* LES DEUX `.env` SE LISENT ICI. Le serveur charge celui du dossier courant lui-même
    (`--env-file-if-exists`), mais trop tard pour MERGERIE_DATA_DIR : la ligne d'après a déjà posé
    son défaut dans l'environnement de l'enfant, et `--env-file` ne réécrit pas une variable déjà
-   présente. Un `.env` demandant un autre dossier de données était donc lu — et ignoré, en
-   silence, pendant que la base partait dans ~/.mergerie. On garde la règle de priorité de Node :
-   ce que le shell exporte l'emporte sur le fichier. */
+   présente. Priorité, de la plus forte à la plus faible : le shell, le `.env` du dossier
+   courant, `~/.mergerie/.env`. */
 /* On l'écrit AVANT de le lire — c'est tout l'objet de l'opération : le premier lancement doit
    partir avec les bons réglages, pas au lancement suivant. */
 const neuf = demo ? null : creerEnvSiAbsent();
@@ -163,13 +132,15 @@ if (neuf && neuf.erreur) {
   console.warn(`⚠ .env non créé (${neuf.cible}) : ${neuf.erreur} — l'outil démarre avec les valeurs par défaut.`);
 } else if (neuf) {
   console.log(neuf.agent
-    ? `.env créé dans ce dossier : agent « ${neuf.agent.bin} » (${neuf.agent.chemin}), port 4319. À relire avant de commencer.`
-    : '.env créé dans ce dossier — mais NI claude NI copilot n\'ont été trouvés : ouvre-le et corrige COPILOT_BIN, sinon les rapports seront simulés.');
+    ? `.env créé (${neuf.cible}) : agent « ${neuf.agent.bin} » (${neuf.agent.chemin}), port 4319.`
+    : `.env créé (${neuf.cible}) — mais NI claude NI copilot n'ont été trouvés : l'écran le dira, et les rapports seront simulés d'ici là.`);
 }
 
 const duShell = { ...process.env };
 try { process.loadEnvFile(); } catch { /* pas de `.env` dans ce dossier : le cas courant */ }
-Object.assign(process.env, duShell);
+const duDossier = { ...process.env };
+try { process.loadEnvFile(FICHIER_ENV_UTILISATEUR); } catch { /* pas encore écrit (démo), ou illisible */ }
+Object.assign(process.env, duDossier, duShell);
 
 const env = { ...process.env };
 env.MERGERIE_DATA_DIR = env.MERGERIE_DATA_DIR || path.join(os.homedir(), '.mergerie', demo ? 'demo' : 'data');

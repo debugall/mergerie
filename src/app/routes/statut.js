@@ -27,10 +27,19 @@ app.get('/api/status', wrap((req, res) => {
   res.json({
     demo: process.env.MERGERIE_DEMO === '1', // mode démo : données fictives, bannière affichée
     dryRun: copilot.isDryRun(),
+    /* DRY-RUN VOULU OU SUBI. `dryRunForced` est le `COPILOT_DRY_RUN=1` de la démo et des tests ;
+       `copilotAvailable` à faux sans lui, c'est un binaire introuvable — et l'écran le dit en
+       bannière, avec le chemin cherché, au lieu d'un badge muet. */
+    dryRunForced: copilot.dryRunForce(),
     copilotAvailable: copilot.binaryAvailable(),
-    copilotBin: copilot.COPILOT_BIN,
-    copilotArgs: copilot.EXTRA_ARGS,
-    copilotCmdPreview: `${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`,
+    copilotBin: copilot.binActuel(),
+    copilotArgs: copilot.argsActuels(),
+    agentBackend: require('../../agent/policy').backendDe(copilot.binActuel()),
+    agentTimeoutMs: copilot.timeoutActuel(),
+    copilotCmdPreview: `${copilot.binActuel()} ${[...copilot.argsActuels(), '-p', '"<prompt>"'].join(' ')}`,
+    /* La dernière découverte de MR de ce processus : l'onglet Reviews relance une découverte à
+       l'ouverture quand elle date de plus d'un intervalle — sans attendre le prochain tour. */
+    lastDiscoveryAt: require('../lib/decouverte').derniereDecouverteA(),
     job: jobs.currentJob(),
     running: jobs.isRunning(),
     // Objets en cours de traitement : le front marque la carte concernée (cf. P9).

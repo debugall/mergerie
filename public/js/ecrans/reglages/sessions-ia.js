@@ -4,6 +4,41 @@
 function renderAiSessionSettings() {
   const btn = $('#aiSessionTest');
   if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', runAiSessionTest); }
+  const bt = $('#agentTest');
+  if (bt && !bt.dataset.bound) { bt.dataset.bound = '1'; bt.addEventListener('click', runAgentTest); }
+  afficherEtatAgent();
+}
+/* L'ÉTAT DU BINAIRE, relu à chaque ouverture : trouvé, introuvable, ou simulé exprès. */
+async function afficherEtatAgent() {
+  const p = $('#agentEtat');
+  if (!p) return;
+  try {
+    const s = await api('/status');
+    const etat = s.dryRunForced ? tr('settings.agent.etat.dryrun') : s.copilotAvailable ? tr('settings.agent.etat.ok') : tr('settings.agent.etat.missing');
+    p.textContent = tr('settings.agent.etat', { bin: s.copilotBin || '—', backend: s.agentBackend || '?', etat });
+    p.classList.toggle('is-invalid-text', !s.copilotAvailable && !s.dryRunForced);
+  } catch { p.textContent = ''; }
+}
+async function runAgentTest() {
+  const btn = $('#agentTest');
+  const box = $('#agentTestResult');
+  $('#agentTestInfo').textContent = tr('settings.agent.running');
+  box.innerHTML = skeleton(1);
+  try {
+    const d = await busy(btn, () => api('/agent/test', { method: 'POST' }));
+    const verdict = d.ok
+      ? `<div class="ai-verdict ok">${svgIco('check')} ${esc(tr('settings.agent.ok', { ms: d.ms }))}</div>`
+      : `<div class="ai-verdict bad">${svgIco('close')} ${esc(tr('settings.agent.ko'))}</div>`;
+    box.innerHTML = `${verdict}
+      <p class="muted ai-meta">${esc(`${d.bin} ${(d.args || []).join(' ')}`)} ${d.dryRun ? `<span class="tag">${esc(tr('settings.agent.dryrun-note'))}</span>` : ''}</p>
+      <pre class="ai-output">${esc(d.error || d.output || '—')}</pre>`;
+    afficherEtatAgent();
+    if (typeof refreshStatus === 'function') refreshStatus();
+  } catch (e) {
+    box.innerHTML = errorBox(e.message);
+  } finally {
+    $('#agentTestInfo').textContent = '';
+  }
 }
 async function runAiSessionTest() {
   const btn = $('#aiSessionTest');

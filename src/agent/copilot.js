@@ -66,25 +66,57 @@ function addOutputToLastUsage(text) {
   } catch { /* best-effort */ }
 }
 
-const COPILOT_BIN = process.env.COPILOT_BIN || 'copilot';
-const TIMEOUT_MS = Number(process.env.COPILOT_TIMEOUT_MS || 900000);
-// Args additionnels passés à copilot (ex: --allow-all-tools). Séparés par des espaces.
-const EXTRA_ARGS = (process.env.COPILOT_ARGS || '').split(' ').filter(Boolean);
-
-let _binAvailable = null;
-function binaryAvailable() {
-  if (_binAvailable !== null) return _binAvailable;
+/* L'AGENT SE RÈGLE DANS LES RÉGLAGES, SANS REDÉMARRER. Le binaire, ses arguments de base et le
+   délai d'un appel vivent dans `local_config` (`agent_bin`, `agent_args`, `agent_timeout_ms`,
+   Réglages → Session IA) ; le `.env` (`AGENT_BIN`/`AGENT_ARGS`/`AGENT_TIMEOUT_MS`, ou leurs
+   anciens noms `COPILOT_*`) n'est plus qu'un DÉFAUT pour une base qui ne dit rien. Trois
+   lectures à chaque appel plutôt qu'une constante figée au chargement : c'est ce qui permet de
+   corriger un chemin faux depuis l'écran et de relancer la review tout de suite. La base est
+   requise à la demande — ce module reste chargeable par un script sans MERGERIE_DATA_DIR. */
+const DEFAUT_TIMEOUT_MS = 900000;
+const ENV_BIN = () => process.env.AGENT_BIN || process.env.COPILOT_BIN || '';
+const ENV_ARGS = () => process.env.AGENT_ARGS ?? process.env.COPILOT_ARGS ?? '';
+const ENV_TIMEOUT = () => Number(process.env.AGENT_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 0);
+function reglagesAgent() {
   try {
-    const r = spawnSync(COPILOT_BIN, ['--version'], { timeout: 5000 });
-    _binAvailable = !r.error;
-  } catch {
-    _binAvailable = false;
-  }
-  return _binAvailable;
+    const { getConfig } = require('../data/config');
+    const c = getConfig();
+    return { bin: String(c.agent_bin || '').trim(), args: c.agent_args, timeout: Number(c.agent_timeout_ms) || 0 };
+  } catch { return { bin: '', args: null, timeout: 0 }; }
 }
+function binActuel() { return reglagesAgent().bin || ENV_BIN() || 'copilot'; }
+function argsActuels() {
+  const r = reglagesAgent();
+  const brut = (r.args !== null && r.args !== undefined && String(r.args).trim() !== '') ? String(r.args) : ENV_ARGS();
+  return String(brut).split(/\s+/).filter(Boolean);
+}
+function timeoutActuel() { return reglagesAgent().timeout || ENV_TIMEOUT() || DEFAUT_TIMEOUT_MS; }
 
+/* LA DÉTECTION SE REFAIT. Elle était mise en cache pour toute la vie du processus : installer
+   `claude` après le démarrage, ou corriger le chemin, ne changeait rien avant un redémarrage —
+   et l'écran continuait de produire des rapports simulés. Le cache est par binaire et expire au
+   bout d'une minute ; `redetecter()` (bouton « Réessayer » de la bannière, enregistrement des
+   réglages) l'efface tout de suite. */
+const _dispo = new Map();   // bin → { ok, a }
+const CACHE_DETECTION_MS = 60000;
+function binaryAvailable(bin = binActuel()) {
+  const c = _dispo.get(bin);
+  if (c && Date.now() - c.a < CACHE_DETECTION_MS) return c.ok;
+  let ok = false;
+  try {
+    const r = spawnSync(bin, ['--version'], { timeout: 5000 });
+    ok = !r.error;
+  } catch { ok = false; }
+  _dispo.set(bin, { ok, a: Date.now() });
+  return ok;
+}
+function redetecter() { _dispo.clear(); return binaryAvailable(); }
+
+/* Le dry-run VOULU (`COPILOT_DRY_RUN=1` : démo, tests) et le dry-run SUBI (binaire introuvable)
+   ne se lisent plus pareil : l'écran dit le second, avec le chemin cherché. */
+const dryRunForce = () => process.env.COPILOT_DRY_RUN === '1';
 function isDryRun() {
-  return process.env.COPILOT_DRY_RUN === '1' || !binaryAvailable();
+  return dryRunForce() || !binaryAvailable();
 }
 
 function emitLines(buf, onLog) {
@@ -101,6 +133,9 @@ function emitLines(buf, onLog) {
    ne dépend de rien, mais on garde ce module chargeable tel quel par les scripts. */
 function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   const agentpolicy = require('./policy');
+  const COPILOT_BIN = binActuel();
+  const EXTRA_ARGS = argsActuels();
+  const TIMEOUT_MS = timeoutActuel();
   const backend = agentpolicy.backendDe(COPILOT_BIN);
   const pol = agentpolicy.argvPermissions({
     backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs, cwd,
@@ -251,7 +286,7 @@ function mockFindingLines(diff) {
 async function runPrompt(prompt, cwd, meta = {}, onLog = () => {}) {
   let output;
   if (isDryRun()) {
-    const parts = [COPILOT_BIN, ...EXTRA_ARGS, '-p', JSON.stringify(prompt)];
+    const parts = [binActuel(), ...argsActuels(), '-p', JSON.stringify(prompt)];
     onLog(`$ ${parts.join(' ')}  (DRY-RUN — copilot indisponible)`);
     onLog(t('log.copilot.mock'));
     // petit délai simulé pour rendre la progression visible
@@ -268,4 +303,12 @@ async function runPrompt(prompt, cwd, meta = {}, onLog = () => {}) {
   return output;
 }
 
-module.exports = { runPrompt, recordUsage, addOutputToLastUsage, isDryRun, binaryAvailable, countTokens, COPILOT_BIN, EXTRA_ARGS };
+module.exports = {
+  runPrompt, recordUsage, addOutputToLastUsage, isDryRun, dryRunForce, binaryAvailable, redetecter, countTokens,
+  binActuel, argsActuels, timeoutActuel, DEFAUT_TIMEOUT_MS,
+};
+/* `COPILOT_BIN` et `EXTRA_ARGS` restent lisibles sous leur ancien nom — mais RELUS à chaque
+   accès : un `copilot.COPILOT_BIN` écrit avant que l'agent se règle à l'écran voit la valeur du
+   moment, pas celle du chargement. Ne pas les destructurer au `require`. */
+Object.defineProperty(module.exports, 'COPILOT_BIN', { enumerable: true, get: binActuel });
+Object.defineProperty(module.exports, 'EXTRA_ARGS', { enumerable: true, get: argsActuels });

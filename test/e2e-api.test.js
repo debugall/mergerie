@@ -48,6 +48,37 @@ describe('API de bout en bout', () => {
 
   /* ---------- Statut & configuration ---------- */
 
+  /* L'AGENT SE RÈGLE À L'ÉCRAN ET SE REDÉTECTE SANS REDÉMARRER. Le statut distingue le dry-run
+     VOULU (COPILOT_DRY_RUN=1, ici) du binaire introuvable ; « redetect » refait la détection ;
+     « test » fait un appel — simulé ici — et dit qu'il l'a été. */
+  test('l’agent : réglé par /api/config, relu par /api/status, redétecté et testé sans redémarrage', async () => {
+    const avant = (await app.api('GET', '/api/status')).body;
+    assert.equal(avant.dryRunForced, true, 'les tests forcent le dry-run : ce n’est pas un binaire absent');
+    assert.ok('lastDiscoveryAt' in avant);
+    const r = await app.api('PUT', '/api/config', { agent_bin: '/nulle/part/claude-test', agent_args: '--model x', agent_timeout_ms: '120000' });
+    assert.equal(r.status, 200);
+    const apres = (await app.api('GET', '/api/status')).body;
+    assert.equal(apres.copilotBin, '/nulle/part/claude-test', 'le binaire réglé à l’écran est celui que le statut montre, tout de suite');
+    assert.deepEqual(apres.copilotArgs, ['--model', 'x']);
+    assert.equal(apres.agentTimeoutMs, 120000);
+    assert.equal(apres.copilotAvailable, false, 'un chemin qui n’existe pas : introuvable');
+    const red = await app.api('POST', '/api/agent/redetect');
+    assert.equal(red.status, 200); assert.equal(red.body.ok, false); assert.equal(red.body.dryRunForced, true);
+    const t = await app.api('POST', '/api/agent/test');
+    assert.equal(t.status, 200);
+    assert.equal(t.body.dryRun, true, 'en dry-run, l’appel est simulé et le dit');
+    assert.equal(t.body.ok, true);
+    // Un délai trop court est ramené au plancher, 0 rend le défaut.
+    const c = (await app.api('PUT', '/api/config', { agent_timeout_ms: '5' })).body;
+    assert.equal(c.agent_timeout_ms, 10000);
+    const c0 = (await app.api('PUT', '/api/config', { agent_timeout_ms: '0', agent_bin: '', agent_args: '' })).body;
+    assert.equal(c0.agent_timeout_ms, 0);
+    /* Le défaut vient de l'environnement du serveur quand il en a un (le `.env` du clone, chargé
+       en repli), sinon 15 minutes : on calcule l'attendu de la même source. */
+    const defaut = Number(process.env.AGENT_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS) || 900000;
+    assert.equal((await app.api('GET', '/api/status')).body.agentTimeoutMs, defaut, 'sans réglage, le délai revient au défaut');
+  });
+
   test('GET /api/status expose le mode dry-run et l’état des jobs', async () => {
     const { status, body } = await app.api('GET', '/api/status');
     assert.equal(status, 200);
@@ -74,11 +105,14 @@ describe('API de bout en bout', () => {
     const { status, body } = await app.api('POST', '/api/agent/sandbox-test');
     assert.equal(status, 200);
     assert.equal(body.ok, false);
-    assert.match(body.detail, /claude/i);
+    /* Deux refus possibles selon la machine : « pas claude » (CI, aucun `.env`) ou « dry-run »
+       (un poste dont le `.env` désigne claude — les tests forcent COPILOT_DRY_RUN=1). Dans les
+       deux cas, aucun appel réel n'est parti, et c'est ce qu'on éprouve. */
+    assert.match(body.detail, /claude|dry-run/i);
     const apres = app.db.prepare('SELECT agent_sandbox_verified AS v, agent_sandbox_tested_at AS t, agent_sandbox_detail AS d FROM local_config WHERE id = 1').get();
     assert.equal(apres.v, 0);
     assert.ok(apres.t, 'la date du test est notée');
-    assert.match(apres.d, /claude/i);
+    assert.match(apres.d, /claude|dry-run/i);
   });
 
   test('Docker : les endpoints répondent proprement (démon dispo OU non — jamais un crash)', async () => {

@@ -50,7 +50,7 @@ loadEnv(path.join(__dirname, '..', '.env'));
   if (ici !== path.join(__dirname, '..', '.env') && fs.existsSync(ici)) {
     try {
       const lignes = fs.readFileSync(ici, 'utf8').split('\n').map((l) => l.trim())
-        .filter((l) => /^(COPILOT_BIN|COPILOT_ARGS)\s*=/.test(l));
+        .filter((l) => /^(AGENT_BIN|AGENT_ARGS|COPILOT_BIN|COPILOT_ARGS)\s*=/.test(l));
       if (lignes.length) {
         console.warn(`⚠ le .env du dossier courant (${ici}) choisit l'agent lancé par Mergerie : ${lignes.join(' ; ')}`);
         console.warn('  Vérifiez que ce .env est bien le vôtre et non celui d’un dépôt cloné.');
@@ -178,14 +178,14 @@ if (HOST_EXPOSED && !JETON_ACCES) {
 const server = app.listen(PORT, HOST, () => {
   console.log(`Mergerie sur http://${HOST_SHOWN}:${server.address().port}`);
   if (HOST_EXPOSED) console.log(`  ⚠ exposé hors de localhost (HOST=${HOST}) — accès par jeton (MERGERIE_ACCESS_TOKEN), page /acces`);
-  console.log(`  copilot : ${copilot.COPILOT_BIN} ${[...copilot.EXTRA_ARGS, '-p', '"<prompt>"'].join(' ')}`);
-  console.log(`  dry-run : ${copilot.isDryRun()}  |  COPILOT_ARGS=${JSON.stringify(process.env.COPILOT_ARGS || '')}`);
+  console.log(`  agent   : ${copilot.binActuel()} ${[...copilot.argsActuels(), '-p', '"<prompt>"'].join(' ')}  (${require('./agent/policy').backendDe(copilot.binActuel())}${getConfig().agent_bin ? ', réglé à l’écran' : ', du .env'})`);
+  console.log(`  dry-run : ${copilot.isDryRun()}${copilot.isDryRun() && !copilot.dryRunForce() ? '  ⚠ binaire introuvable — les rapports seront simulés' : ''}`);
   {
     const LARGES_ENV = /--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--yolo|--allow-all-tools/;
-    if (LARGES_ENV.test(process.env.COPILOT_ARGS || '')) {
+    if (LARGES_ENV.test(copilot.argsActuels().join(' '))) {
       let mode = 'sandbox';
       try { mode = getConfig().agent_write_mode || 'sandbox'; } catch { /* base pas encore prête : défaut prudent */ }
-      console.warn(`  ⚠ COPILOT_ARGS porte un mode large — ignoré sauf agent_write_mode=large (Réglages → Session IA) ; réglage actuel : ${mode}.`);
+      console.warn(`  ⚠ les arguments de l'agent portent un mode large — ignoré sauf agent_write_mode=large (Réglages → Session IA) ; réglage actuel : ${mode}.`);
     }
   }
   restartAutoRefresh();

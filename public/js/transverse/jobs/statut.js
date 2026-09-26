@@ -104,6 +104,45 @@ function marquerVerifEnCours(ids) {
 document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
 
 let copilotBinCourant = '';
+/* ---------- L'agent introuvable ----------
+   Le badge « dry-run » disait qu'on simulait, pas pourquoi ni quoi faire. Quand le dry-run est
+   SUBI (binaire absent, sans COPILOT_DRY_RUN=1), une bannière le dit avec le chemin cherché, les
+   commandes d'installation, et deux portes : les réglages de l'agent, « Réessayer » (qui refait
+   la détection sans redémarrer). Le dernier état reçu sert aussi à l'assistant de démarrage. */
+let statutAgent = { ok: true, force: false, bin: '', lastDiscoveryAt: null, autoRefreshMinutes: 0 };
+function afficherBanniereAgent(s) {
+  const b = $('#agentBanner');
+  if (!b) return;
+  const subi = !s.copilotAvailable && !s.dryRunForced && !s.demo;
+  b.hidden = !subi;
+  if (!subi) return;
+  $('#agentBannerText').textContent = tr('ui.agent-banner.text', { bin: s.copilotBin || 'claude' });
+  $('#agentBannerInstall').textContent = tr('ui.agent-banner.install');
+}
+onEl($('#agentBannerSettings'), 'click', () => { navTab('admin'); showAdminSub('aisession'); const c = $('[name="agent_bin"]'); if (c) c.focus({ preventScroll: true }); });
+onEl($('#agentBannerRetry'), 'click', async () => {
+  try { await api('/agent/redetect', { method: 'POST' }); } catch { /* le statut suivant dira */ }
+  await refreshStatus();
+  if (typeof rafraichirDemarrage === 'function') rafraichirDemarrage();
+});
+/* ---------- Une découverte à l'ouverture de Reviews, quand la dernière est vieille ----------
+   Le rafraîchissement tourne à intervalle ; entre deux tours, ouvrir l'onglet ne montrait que ce
+   que le dernier avait rapporté. Si le dernier tour date de plus d'un intervalle (ou n'a jamais
+   eu lieu depuis le démarrage), on en lance un — une fois, sans se superposer à un job. */
+let decouverteEnVol = false;
+async function decouvrirSiPerime() {
+  const min = Number(statutAgent.autoRefreshMinutes) || 0;
+  if (min <= 0 || decouverteEnVol) return;
+  const last = statutAgent.lastDiscoveryAt ? Date.parse(statutAgent.lastDiscoveryAt) : 0;
+  if (Date.now() - last < min * 60000) return;
+  if (typeof setupState !== 'undefined' && setupState.checked && !setupState.hasRepos) return;
+  decouverteEnVol = true;
+  try {
+    await api('/discover', { method: 'POST' });
+    statutAgent.lastDiscoveryAt = new Date().toISOString();
+    if (typeof loadToReview === 'function') loadToReview().catch(() => {});
+  } catch { /* la prochaine ouverture réessaiera */ } finally { decouverteEnVol = false; }
+}
 /* ---------- Ce qu'un collègue a changé, à l'écran ----------
    La synchro met la base à jour ; la page, elle, n'en savait rien. Une merge request reviewée par
    un collègue restait « à traiter » ici jusqu'au rechargement, ses compteurs avec. Le serveur
@@ -171,6 +210,8 @@ async function refreshStatus() {
     // Le binaire configuré : c'est lui qui décide si un profil d'agent s'applique en entier
     // (claude) ou seulement par son modèle (copilot). L'éditeur le dit avant la sauvegarde.
     copilotBinCourant = s.copilotBin || '';
+    statutAgent = { ok: !!s.copilotAvailable, force: !!s.dryRunForced, bin: s.copilotBin || '', lastDiscoveryAt: s.lastDiscoveryAt || null, autoRefreshMinutes: s.autoRefreshMinutes };
+    afficherBanniereAgent(s);
     marquerEnCours(s.running ? s.targets : null);
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin

@@ -304,8 +304,11 @@ async function lancerRereviewsAuto(mrIds) {
 }
 /* Le SEUL chemin de découverte côté serveur : la route et le rafraîchissement automatique
    passent par lui, donc les vérifications automatiques ne peuvent pas être oubliées d'un côté. */
+let derniereDecouverte = null;
+const derniereDecouverteA = () => derniereDecouverte;
 async function decouvrir() {
   const result = await discoverAll();
+  derniereDecouverte = new Date().toISOString();
   result.auto_verify = await lancerVerificationsAuto(result.new_mr_ids);
   result.auto_review = await lancerReviewsAuto(result.new_mr_ids);
   result.auto_rereview = await lancerRereviewsAuto(result.stale_mr_ids);
@@ -317,5 +320,5 @@ async function decouvrir() {
 }
 
 module.exports = {
-  plafondVerifAuto, servicesPretsPour, lancerVerificationsAuto, plafondReviewAuto, lancerLotReview, AUTEUR_AUTO, executantAuto, dernierRefusAuto, direRefusAuto, mrDeMoi, mrsAMoi, lancerReviewsAuto, lancerRereviewsAuto, decouvrir,
+  plafondVerifAuto, servicesPretsPour, lancerVerificationsAuto, plafondReviewAuto, lancerLotReview, AUTEUR_AUTO, executantAuto, dernierRefusAuto, direRefusAuto, mrDeMoi, mrsAMoi, lancerReviewsAuto, lancerRereviewsAuto, decouvrir, derniereDecouverteA,
 };

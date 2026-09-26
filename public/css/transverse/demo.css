@@ -4,3 +4,9 @@
    perçu, lisible. */
 #demoBanner { background: var(--accent-btn); color: var(--on-accent); text-align: center; padding: 6px 12px; font-size: var(--fs-sm); font-weight: 600; }
 
+
+/* La bannière « aucun agent trouvé » : même place que la démo, couleur d'alerte, une phrase, deux
+   boutons. Elle disparaît d'elle-même dès que le binaire répond. */
+#agentBanner { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--s-2) var(--s-3); background: var(--panel2); color: var(--amber-text); border-bottom: 2px solid var(--amber); padding: 6px 12px; font-size: var(--fs-sm); }
+#agentBanner[hidden] { display: none; }
+#agentBanner .agent-banner-install { font-family: var(--mono, monospace); font-size: var(--fs-xs); color: var(--muted); }

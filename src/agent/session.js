@@ -22,7 +22,9 @@ const { avecPreambule } = require('../core/nonfiable');
 const { DATA_DIR, ensureDir } = require('../core/paths');
 const { t } = require('../core/i18n');
 
-const TIMEOUT_MS = Number(process.env.AGENT_SESSION_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 900000);
+/* Le délai d'un appel : `AGENT_SESSION_TIMEOUT_MS` (env) l'emporte, sinon le réglage de l'agent
+   (Réglages → Session IA, ou `AGENT_TIMEOUT_MS`/`COPILOT_TIMEOUT_MS`), relu à chaque lancement. */
+const timeoutMs = () => Number(process.env.AGENT_SESSION_TIMEOUT_MS) || copilot.timeoutActuel();
 const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé
 
 const backendName = () => agentpolicy.backendDe(copilot.COPILOT_BIN);
@@ -52,6 +54,7 @@ function spawnAgent({ args, cwd, env }, onLog = () => {}) {
     proc.setActive(child);                    // sans ça, « Stop » ne tue pas l'agent (cf. en-tête)
     let stdout = ''; let stderr = ''; let obuf = '';
     // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
+    const TIMEOUT_MS = timeoutMs();
     const timer = setTimeout(() => { proc.tuerGroupe(child, 'SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     // Streame la sortie ligne par ligne : on voit l'agent avancer (copilot n'a pas de mode événements).
     child.stdout.on('data', (d) => { stdout += d; obuf = emitLines(obuf + d, onLog); });
@@ -111,6 +114,7 @@ function runClaudeStream(args, cwd, onLog) {
     let stderr = ''; let buf = ''; let result = null; let sessionId = null; let lastText = '';
     let costUsd = null; let denials = [];
     // Au délai, le GROUPE entier : un serveur ou des tests lancés par l'agent lui survivraient sinon.
+    const TIMEOUT_MS = timeoutMs();
     const timer = setTimeout(() => { proc.tuerGroupe(child, 'SIGKILL'); reject(new Error(t('err.cmd.timeout', { cmd: bin, ms: TIMEOUT_MS }))); }, TIMEOUT_MS);
     const handleLine = (line) => {
       const s = line.trim();

@@ -106,6 +106,19 @@ describe('local_config — ce qui reste sur ce poste', () => {
      c'est le NOMBRE 1, jamais la CHAÎNE '1'. Un `=== '1'` le ratait donc à chaque tour et
      remettait ce choix explicite à 0 dès la moindre mise à jour partielle qui ne le touchait
      pas — silencieusement, sans message. */
+  /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX : « Tester le sandbox » a constaté ce qu'UN
+     programme faisait ; un autre chemin est un autre programme. */
+  test('changer agent_bin remet la preuve de sandbox à zéro, un autre réglage la garde', () => {
+    db.prepare("UPDATE local_config SET agent_sandbox_verified = 1, agent_sandbox_tested_at = '2026-09-01T00:00:00Z', agent_sandbox_detail = 'ok' WHERE id = 1").run();
+    config.updateConfig({ agent_args: '--model x' });
+    assert.equal(db.prepare('SELECT agent_sandbox_verified v FROM local_config WHERE id = 1').get().v, 1, 'les arguments ne changent pas le programme');
+    config.updateConfig({ agent_bin: '/autre/claude' });
+    const l = db.prepare('SELECT agent_sandbox_verified v, agent_sandbox_tested_at t FROM local_config WHERE id = 1').get();
+    assert.equal(l.v, 0); assert.equal(l.t, '');
+    assert.equal(config.getConfig().agent_bin, '/autre/claude');
+    assert.equal(config.destinationDe('agent_bin'), 'poste', 'un chemin de binaire est un réglage de CE poste');
+  });
+
   test('agent_read_unrestricted survit à une mise à jour partielle qui ne le touche pas', () => {
     config.updateConfig({ agent_read_unrestricted: '1' });
     assert.equal(config.getConfig().agent_read_unrestricted, 1);

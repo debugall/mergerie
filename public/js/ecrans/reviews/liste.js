@@ -234,7 +234,7 @@ function renderToReview() {
   if (fileJamaisChargee) return;
   if (!toReviewRows.length) {
     // pas encore configuré → onboarding ; configuré et vide → file à jour
-    el.innerHTML = (setupState.checked && (!setupState.configured || !setupState.hasRepos || !setupState.hasMrs))
+    el.innerHTML = demarrageIncomplet()
       ? onboardingHtml()
       : emptyState({
         icon: 'check',

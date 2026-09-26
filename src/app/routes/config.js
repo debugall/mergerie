@@ -208,6 +208,9 @@ app.put('/api/config', wrap((req, res) => {
   /* La cadence de synchro s'applique tout de suite, comme celle du rafraîchissement : la boucle
      gardait l'ancienne jusqu'au redémarrage, pendant que l'écran annonçait la nouvelle. */
   if (String(avant.data_sync_seconds) !== String(c.data_sync_seconds)) datasync.demarrer();
+  /* Le binaire de l'agent a changé : on refait la détection tout de suite, pour que le badge
+     dry-run et la bannière « agent introuvable » disent l'état du NOUVEAU chemin. */
+  if (String(avant.agent_bin || '') !== String(c.agent_bin || '')) require('../../agent/copilot').redetecter();
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   oublierChampSprint(); // l'instance Jira visée a pu changer : on re-cherchera le champ sprint

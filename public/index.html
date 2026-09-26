@@ -74,6 +74,16 @@
 </head>
 <body>
 <div id="demoBanner" hidden><span data-i18n="demo.banner">Mode démo — données fictives, aucune connexion GitLab. Explore librement.</span></div>
+<!-- L'AGENT INTROUVABLE SE DIT EN BANNIÈRE, pas en badge. Sans binaire, chaque review rend un
+     rapport factice ; un badge « dry-run » dans l'en-tête ne disait ni pourquoi ni quoi faire.
+     Rempli par `refreshStatus` quand le dry-run est SUBI (binaire absent), jamais quand il est
+     voulu (COPILOT_DRY_RUN=1 : démo, tests). -->
+<div id="agentBanner" hidden>
+    <span id="agentBannerText"></span>
+    <span id="agentBannerInstall" class="agent-banner-install"></span>
+    <button type="button" class="btn btn-sm" id="agentBannerSettings" data-i18n="ui.agent-banner.settings">Régler l'agent</button>
+    <button type="button" class="btn btn-sm btn-ghost" id="agentBannerRetry" data-i18n="ui.agent-banner.retry">Réessayer</button>
+</div>
 <!--@include html/sprite.html-->
 
 <!--@include html/entete.html-->

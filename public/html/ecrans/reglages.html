@@ -569,6 +569,29 @@
         </div><!-- /sub-mr -->
 
         <div id="sub-aisession" class="subtab">
+            <!-- L'AGENT SE RÈGLE ICI, SANS REDÉMARRER. Il n'existait que dans le .env, lu au
+                 chargement : corriger un chemin faux voulait dire éditer un fichier et relancer.
+                 Trois champs de poste, un bouton qui fait un vrai appel court, et l'état du
+                 binaire relu à chaque affichage. -->
+            <h2 data-i18n="settings.agent.title">L'agent IA</h2>
+            <p class="muted" data-i18n="settings.agent.intro">Le CLI que Mergerie lance pour relire et coder — pris en compte tout de suite, sans redémarrage. Vide, c'est le .env qui décide (AGENT_BIN / AGENT_ARGS).</p>
+            <div class="form">
+                <p id="agentEtat" class="muted"></p>
+                <label><span data-i18n="settings.agent.bin-lbl">Binaire (nom dans le PATH, ou chemin complet)</span>
+                    <input form="configForm" name="agent_bin" type="text" placeholder="claude — ou /usr/local/bin/copilot" data-i18n-placeholder="settings.agent.bin-ph" autocomplete="off" spellcheck="false" /></label>
+                <label><span data-i18n="settings.agent.args-lbl">Arguments de base (ajoutés avant -p)</span>
+                    <input form="configForm" name="agent_args" type="text" placeholder="--model claude-sonnet-5" data-i18n-placeholder="settings.agent.args-ph" autocomplete="off" spellcheck="false" /></label>
+                <label><span data-i18n="settings.agent.timeout-lbl">Délai maximal d'un appel, en millisecondes (0 = 15 min)</span>
+                    <input form="configForm" name="agent_timeout_ms" type="number" min="0" step="1000" placeholder="900000" /></label>
+                <p class="muted" data-i18n="settings.agent.change-note">Changer de binaire retire la preuve de sandbox : la politique d'écriture retombe sur la liste blanche jusqu'au prochain test.</p>
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <button id="agentTest" type="button" class="btn" title="Un appel réel, court, en lecture seule : la réponse attendue est « OK »" data-i18n-title="settings.agent.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.agent.test">Tester l'agent</span></button>
+                    <span id="agentTestInfo" class="muted"></span>
+                </p>
+                <div id="agentTestResult"></div>
+            </div>
+
             <!-- CE QU'ON REDIT À CHAQUE SESSION SANS VOULOIR LE RETAPER. Le champ vit ici parce
                  qu'il s'applique aux sessions de codage — dépôt ET hors dépôt —, au même endroit
                  que ce qui concerne les sessions d'agent. -->

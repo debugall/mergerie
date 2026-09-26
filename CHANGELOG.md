@@ -11,6 +11,41 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **The first quarter of an hour.** The Reviews tab's start-up assistant has five steps instead
+  of three, and works for GitHub as well as GitLab: the **AI agent** (found, simulated on purpose,
+  or missing — with a button to set it up and one to retry), the **forge** (GitLab *or* GitHub,
+  each with its own button), the repositories, **what your team uses** (Jira, Jenkins, Docker,
+  environments: what is ticked unfolds its menu, the rest stays folded — the same preference as
+  Settings → General → Menus) and the first fetch. An installation that already had merge requests
+  skips the new step by itself.
+- **The AI agent is set on screen, and applies without a restart.** Settings → AI session gets
+  the agent's binary, its base arguments and the timeout of one call, plus a **Test the agent**
+  button: one real, short, read-only call whose expected answer is “OK”. The `.env` (`AGENT_BIN`,
+  `AGENT_ARGS`, `AGENT_TIMEOUT_MS`; the old `COPILOT_*` names are still read) is only the default
+  for an installation that never touched that screen. Changing the binary drops the sandbox proof
+  until the next sandbox test, exactly as for a CLI never verified.
+- **No agent found? A banner says so** — at the top of every screen, with the path looked for,
+  the install commands for Claude Code and Copilot CLI, and a **Retry** that redoes the detection
+  on the spot. The detection used to be cached for the life of the process: installing the agent
+  after starting changed nothing until a restart, and the only sign was a mute “dry-run” badge.
+- **Reviews refreshes on its own.** A new database starts with automatic refresh every
+  **5 minutes** (it was off, so nothing ever arrived without a click), and opening the Reviews tab
+  runs a discovery when the last one is older than that interval.
+
+### Changed
+
+- **`npx mergerie` writes its `.env` in `~/.mergerie/`, next to the data**, not in the folder the
+  command happens to be run from — a file written in one project folder was silently ignored when
+  the command was run from another. It is now a dozen lines: the agent found, the port, the
+  dry-run switch. A `.env` in the current folder still overrides it, and the shell wins over both.
+- **A repository's forge is recognised by its host.** Pasting a GitHub Enterprise address on a
+  host without “github” in its name used to add it as a GitLab repository; the address is now
+  compared with the hosts configured in Settings → Git first.
+- The guide opens with a **table of contents** and a **“First real review in 5 minutes”** section;
+  the npm description says GitHub too.
+
 ### Security
 
 - **The API on `localhost` now belongs only to your browser.** A second, local-only session

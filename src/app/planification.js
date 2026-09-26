@@ -23,6 +23,9 @@ function restartAutoRefresh() {
       console.error(`[auto-refresh] échec : ${e.message}`);
     } finally { autoRefreshBusy = false; }
   }, min * 60 * 1000);
+  /* Le timer ne retient pas le processus : le serveur HTTP s'en charge, et un arrêt (tests,
+     Ctrl-C) ne doit pas attendre le prochain tour. */
+  if (autoRefreshTimer.unref) autoRefreshTimer.unref();
   console.log(`[auto-refresh] activé : toutes les ${min} min`);
 }
 

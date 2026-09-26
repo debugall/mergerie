@@ -11,6 +11,38 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 > les garanties décrites sont les mêmes. Les rares différences propres à une forge sont signalées
 > explicitement.
 
+## Sommaire
+
+- [Première review réelle en 5 minutes](#première-review-réelle-en-5-minutes)
+- [Les onglets en détail](#les-onglets-en-détail) — Reviews, Dev IA, Agents, Notes, Jira, Git, Docker, Jenkins, Liens, Stats, Réglages
+- [Vérification objective (vérificateurs)](#vérification-objective-vérificateurs)
+- [Configuration (.env)](#configuration-env)
+- [GitLab auto-hébergé / GitHub Enterprise / Jenkins interne / certificat d'entreprise](#gitlab-auto-hébergé--github-enterprise--jenkins-interne--certificat-dentreprise)
+- [Mode dry-run (sans IA)](#mode-dry-run-sans-ia)
+- [Clones locaux](#clones-locaux)
+- [Partager avec une équipe (dépôt de données)](#partager-avec-une-équipe-dépôt-de-données)
+- [Données & sauvegarde](#données--sauvegarde)
+- [Sécurité](#sécurité)
+
+## Première review réelle en 5 minutes
+
+1. **Un agent CLI, connecté.** Claude Code (`npm i -g @anthropic-ai/claude-code`, puis `claude` une
+   fois pour se connecter) ou Copilot CLI (`npm i -g @github/copilot`, puis `copilot`). C'est ta
+   souscription qui paie : Mergerie n'a ni clé ni quota à elle.
+2. **`npx mergerie`** — http://localhost:4319. L'onglet Reviews s'ouvre sur l'assistant en cinq
+   étapes. La première dit si l'agent est trouvé ; sinon, Réglages → Session IA → *Binaire*, puis
+   **Tester l'agent**.
+3. **Connecter la forge** — GitLab (URL + jeton, scopes `api` et `read_repository`) **ou** GitHub
+   (jeton, scope `repo`). Un bouton *Tester* par forge.
+4. **Choisir tes dépôts** — Réglages → Dépôts, en masse depuis la forge ou une adresse à la fois.
+5. **Ce que ton équipe utilise** — Jira, Jenkins, Docker, des environnements : ce qui est coché
+   déplie son menu, le reste reste replié. Rien n'est perdu : Réglages → Général → Menus.
+6. **Chercher les MR** — la file se remplit (et se rafraîchit toutes les 5 minutes d'office).
+   Sur une carte, **Reviewer** : le rapport arrive dans le panneau de droite, avec sa note.
+
+Pour savoir que ce n'est pas simulé : pas de badge *dry-run* dans l'en-tête, pas de bannière, et
+le rapport ne commence pas par « (mock) ».
+
 ## Les onglets en détail
 
 Onze onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
@@ -2633,39 +2665,34 @@ configurée. En **mode démo**, en revanche, aucune commande n'est lancée : le 
 
 ## Configuration (.env)
 
-**`npx mergerie` en écrit un au premier lancement**, dans le dossier d'où on le lance : il cherche
-`claude` puis `copilot` sur la machine (dans le `PATH`, puis là où les installateurs les posent) et
-pointe `COPILOT_BIN` sur celui qu'il trouve, avec les arguments de cet agent — `--dangerously-skip-permissions`
-pour claude, `--yolo --model claude-sonnet-5` pour copilot. Sans ce fichier, `COPILOT_BIN` vaut
-« copilot » : qui a installé Claude Code n'a pas ce binaire, l'outil bascule en **dry-run** et
-chaque review rend un rapport factice — il « marche » et ne sert à rien. Le fichier est écrit une
-seule fois, en `600`, jamais réécrit ensuite (il finira par porter des jetons), et la commande dit
-ce qu'elle a créé. `npx mergerie demo` n'en pose pas : elle promet de ne rien laisser derrière elle.
+**`npx mergerie` en écrit un au premier lancement**, dans `~/.mergerie/.env` — à côté des
+données, pour qu'il soit relu d'où que la commande parte : il cherche `claude` puis `copilot` sur la
+machine (dans le `PATH`, puis là où les installateurs les posent) et pointe `AGENT_BIN` sur celui
+qu'il trouve. Il est **court** (une dizaine de lignes), écrit une seule fois, en `600`, jamais
+réécrit ensuite, et la commande dit ce qu'elle a créé. `npx mergerie demo` n'en pose pas : elle
+promet de ne rien laisser derrière elle.
 
-Le fichier **explique l'option qui laisse l'agent agir sans rien demander**
-(`--dangerously-skip-permissions` pour claude, `--yolo` pour copilot). Elle est nécessaire : l'agent
-est appelé en **non-interactif**, personne n'est là pour répondre à une demande de permission — sans
-elle, le travail se bloque, ou tout ce qui demanderait est refusé **sans un mot** et le rapport revient
-plus pauvre sans raison visible. Le fichier dit aussi ce qu'elle **ne** protège **pas** : l'agent
-tourne avec tes droits, il travaille dans le clone du dépôt relu et c'est Mergerie qui fait le git,
-mais l'option ne construit aucun mur autour de ce dossier — et ce qu'il lit (un diff, un ticket) n'est
-pas écrit par toi. Une variante plus étroite est proposée en commentaire,
-`--permission-mode acceptEdits` : les éditions de fichiers sont acceptées, le reste est refusé — et
-refusé **en silence** sous `-p`, ce qui est le prix à connaître avant de la choisir.
+**L'agent se règle aussi à l'écran, sans redémarrage** — Réglages → Session IA : le binaire, ses
+arguments de base, le délai d'un appel, et un bouton **Tester l'agent** (un appel réel, court, en
+lecture seule, dont la réponse attendue est « OK »). Ce qui est renseigné là passe devant le `.env`.
+Aucun agent trouvé ? Une bannière le dit en haut de l'écran, avec le chemin cherché et les commandes
+d'installation, et « Réessayer » refait la détection sans relancer le serveur — jusque-là les
+rapports sont **simulés** et dits tels. Ce que l'agent a le droit de faire ne se règle plus dans le
+`.env` : voir *Sandbox de l'agent* dans le même sous-onglet, et la section Sécurité.
 
-Un fichier `.env` est chargé automatiquement au démarrage : **celui du dossier d'où la commande
-est lancée** — la racine du clone avec `npm start`, le répertoire courant avec `npx mergerie`
-(reviens-y la fois suivante, sinon le fichier est ignoré sans un mot). Ce que le shell exporte
-passe devant le fichier.
+Deux fichiers `.env` sont lus au démarrage, du plus faible au plus fort : `~/.mergerie/.env`, puis
+**celui du dossier d'où la commande est lancée** (la racine du clone avec `npm start`, le répertoire
+courant avec `npx mergerie`) — c'est la surcharge locale. Ce que le shell exporte passe devant les
+deux. Les anciens noms `COPILOT_BIN`, `COPILOT_ARGS`, `COPILOT_TIMEOUT_MS` restent lus.
 
 | Variable | Défaut | Rôle |
 |---|---|---|
 | `PORT` | 4319 | port du serveur |
 | `HOST` | `127.0.0.1` | interface d'écoute ; `0.0.0.0` pour exposer sur le réseau — voir section **Sécurité** |
-| `COPILOT_BIN` | `copilot` | binaire de l'agent IA (ex. `claude`) |
-| `COPILOT_ARGS` | — | args passés AVANT `-p` (ex. `--yolo`, `--dangerously-skip-permissions`) |
+| `AGENT_BIN` | `copilot` | binaire de l'agent IA (ex. `claude`) — remplacé par le réglage à l'écran s'il est renseigné (`COPILOT_BIN` reste lu) |
+| `AGENT_ARGS` | — | args passés AVANT `-p` (ex. `--model …`) — idem (`COPILOT_ARGS` reste lu) |
 | `COPILOT_DRY_RUN` | 0 | `1` = force le mode mock (sans IA) |
-| `COPILOT_TIMEOUT_MS` | 900000 | timeout d'un appel IA (15 min) |
+| `AGENT_TIMEOUT_MS` | 900000 | délai d'un appel IA (15 min) — idem (`COPILOT_TIMEOUT_MS` reste lu) |
 | `GITLAB_CA_CERT` | — | chemin d'un CA à épingler (GitLab self-hosted) — **recommandé** |
 | `GITLAB_INSECURE_TLS` | 0 | `1` = ignore la vérif TLS **pour GitLab uniquement** (dépannage) |
 | `GITHUB_CA_CERT` | — | idem pour une instance **GitHub Enterprise** à CA interne |
@@ -3089,7 +3116,7 @@ renvoient **jamais en clair** (`***`), et envoyer `***` **ne les écrase pas**. 
 dont l'adresse a changé exige de **retaper** le jeton : le jeton enregistré n'est jamais envoyé qu'à son
 adresse. La **sauvegarde** emporte la base, donc **tes jetons** : son LISEZ-MOI le dit, garde-la comme un
 mot de passe. Au démarrage, un avertissement signale un `.env` du dossier courant qui choisit le binaire de
-l'agent (`COPILOT_BIN`, `COPILOT_ARGS`).
+l'agent (`AGENT_BIN`, `AGENT_ARGS`, ou leurs anciens noms `COPILOT_*`).
 
 **Exécution sans shell, et git durci.** git, Docker et l'agent sont lancés via `spawn` avec un **tableau
 d'arguments**, jamais un shell. Chaque commande git de Mergerie part **sans hooks**, sans `fsmonitor`,

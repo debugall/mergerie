@@ -186,6 +186,19 @@ function renderNavPrefs() {
   }).join('');
 }
 
+/* DÉVOILER DES MENUS DEPUIS AILLEURS — l'assistant de démarrage (« ce que ton équipe utilise »)
+   et les portes contextuelles (une MR en conflit → Git, un compose découvert → Docker) : le menu
+   sort des masqués, l'ordre ne bouge pas, et la préférence est écrite comme si la case des
+   Réglages avait été cochée. Idempotent. */
+function devoilerMenus(tabs) {
+  const nav = lireNav();
+  const masques = nav.masques.filter((t) => !tabs.includes(t));
+  if (masques.length === nav.masques.length && localStorage.getItem(NAV_KEY) != null) return;
+  ecrireNav({ ordre: nav.ordre, masques });
+  appliquerNav();
+  renderNavPrefs();
+}
+
 // Enregistre l'ordre tel qu'il est À L'ÉCRAN, applique, et redessine (flèches des bords).
 function enregistrerNav(ordre, masques) {
   ecrireNav({ ordre, masques });

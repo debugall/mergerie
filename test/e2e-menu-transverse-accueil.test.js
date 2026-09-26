@@ -105,7 +105,7 @@ describe('Transverse — accueil, états vides, bandeau, notifications, langue',
     await reviews();
     await page.waitForSelector('#toReviewList .steps');
     await page.waitForSelector('#toReviewList .step.done');
-    assert.equal(await page.locator('#toReviewList .step.done').count(), 1, 'seule la connexion est faite');
+    assert.equal(await page.locator('#toReviewList .step.done').count(), 2, 'l’agent (simulé exprès) et la connexion sont faits');
     await page.locator('#toReviewList [data-empty-act="go-repos"]').click();
     await page.waitForSelector('#tab-admin.active #sub-repos.active');
     await page.waitForFunction(() => document.activeElement === document.querySelector('#repoForm [name="url"]'));
@@ -116,7 +116,10 @@ describe('Transverse — accueil, états vides, bandeau, notifications, langue',
     await recharger();
     await reviews();
     await page.waitForSelector('#toReviewList [data-empty-act="discover"]');
-    assert.equal(await page.locator('#toReviewList .step.done').count(), 2);
+    /* L'étape « ton équipe utilise » se valide ici sans rien cocher : on veut la file, pas la barre. */
+    await page.locator('#toReviewList [data-empty-act="outils-ok"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#toReviewList .step.done').length === 4);
+    assert.equal(await page.locator('#toReviewList .step.done').count(), 4);
     await page.locator('#toReviewList [data-empty-act="discover"]').click();
     await attendreServeur(async () => (await mrs()).some((m) => m.iid === 61), '!61 découverte');
     await page.waitForSelector('#toReviewList .card[data-id]');

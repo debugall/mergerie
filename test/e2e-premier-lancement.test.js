@@ -58,8 +58,13 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
       'le brief du matin est le bon écran d’accueil à partir du deuxième jour, pas à la première seconde');
 
     await page.waitForSelector('#toReviewList .steps', { timeout: ATTENTE });
-    assert.equal(await page.locator('#toReviewList .step').count(), 3, 'les trois étapes de démarrage');
-    assert.equal(await page.locator('#toReviewList .step.done').count(), 0, 'rien n’est fait, rien n’est coché');
+    assert.equal(await page.locator('#toReviewList .step').count(), 5, 'les cinq étapes de démarrage');
+    /* L'AGENT compte pour fait : les tests tournent en dry-run VOULU (COPILOT_DRY_RUN=1), et
+       l'étape le dit — c'est l'agent INTROUVABLE, sans l'avoir voulu, qui la laisse ouverte. */
+    assert.equal(await page.locator('#toReviewList .step.done').count(), 1, 'seul l’agent (simulé exprès) est coché');
+    assert.match(await page.locator('#toReviewList .step[data-step="0"]').textContent(), /simul|COPILOT_DRY_RUN/i);
+    /* LA FORGE, L'UNE OU L'AUTRE : l'étape propose GitLab ET GitHub, elle ne se cochait qu'avec GitLab. */
+    assert.equal(await page.locator('#toReviewList .step[data-step="1"] [data-empty-act="go-config-github"]').count(), 1);
   });
 
   /* TROIS CARTES GRISES PLUTÔT QU'UN BLANC MUET. Le squelette était posé par le JavaScript,
@@ -250,10 +255,10 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     /* On attend le RÉSULTAT, pas un délai : l'assistant se redessine après une relecture de
        l'état, qui est une requête. */
     await page.waitForFunction(
-      () => document.querySelectorAll('#toReviewList .step.done').length === 1,
+      () => document.querySelectorAll('#toReviewList .step.done').length === 2,
       null, { timeout: ATTENTE },
     );
-    const premiere = page.locator('#toReviewList .step').first();
+    const premiere = page.locator('#toReviewList .step[data-step="1"]');
     assert.equal(await premiere.evaluate((e) => e.classList.contains('done')), true,
       'trois boutons sans progression ne sont pas un assistant');
     assert.equal(await premiere.locator('button').count(), 0,
@@ -286,10 +291,36 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     await page.waitForSelector('#repoList .repo-row', { timeout: ATTENTE });
     await page.locator('nav button[data-tab="review"]').click();
     await page.waitForFunction(
-      () => document.querySelectorAll('#toReviewList .step.done').length === 2,
+      () => document.querySelectorAll('#toReviewList .step.done').length === 3,
       null, { timeout: ATTENTE },
     );
-    assert.equal(await page.locator('#toReviewList .step.done').count(), 2);
+    assert.equal(await page.locator('#toReviewList .step.done').count(), 3);
+  });
+
+  /* « CE QUE TON ÉQUIPE UTILISE » : cocher Jira et Docker déplie ces deux menus — repliés d'office —
+     et la préférence est celle des Réglages → Général → Menus, écrite comme si on y avait coché. */
+  test('l’étape « ton équipe utilise » déplie les menus cochés et se coche', async () => {
+    /* Le harnais avait déplié tous les menus (pour les épreuves de l'onglet Git) : on remet
+       l'état du DÉPART — les quatre commodités repliées — sans recharger, par la fonction
+       qu'applique l'écran lui-même. */
+    await page.evaluate(() => {
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['git', 'docker', 'jenkins', 'links'] }));
+      appliquerNav();
+    });
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.waitForSelector('#toReviewList .step[data-step="3"] [data-outil="docker"]', { timeout: ATTENTE });
+    await page.locator('#toReviewList [data-outil="docker"]').check();
+    await page.locator('#toReviewList [data-outil="jira"]').check();
+    await page.locator('#toReviewList [data-empty-act="outils-ok"]').click();
+    await page.waitForFunction(
+      () => document.querySelectorAll('#toReviewList .step.done').length === 4,
+      null, { timeout: ATTENTE },
+    );
+    assert.equal(await page.locator('nav button[data-tab="docker"]').evaluate((b) => b.hidden), false, 'Docker sort des menus repliés');
+    assert.equal(await page.locator('nav button[data-tab="jenkins"]').evaluate((b) => b.hidden), true, 'Jenkins, non coché, reste replié');
+    const pref = await page.evaluate(() => JSON.parse(localStorage.getItem('mergerie_nav') || '{}'));
+    assert.ok(Array.isArray(pref.masques) && !pref.masques.includes('docker') && pref.masques.includes('jenkins'),
+      'la préférence est celle des Réglages, pas un état d’écran');
   });
 
   test('aucune erreur JavaScript pendant tout le parcours', () => {

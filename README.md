@@ -33,16 +33,21 @@ npx mergerie         # the real thing: http://localhost:4319, your data in ~/.me
 From a clone, the same two things are `npm install` then `npm run demo` or `npm start`, with the
 data next to the code (`data-demo/`, `data/`).
 
-On its **first launch**, `npx mergerie` writes a `.env` in the folder you run it from: it looks
-for `claude` then `copilot` on the machine and points `COPILOT_BIN` at the one it finds, with
-that agent's arguments. Without it the tool would start on the default `copilot` binary, find
-nothing, and quietly produce **simulated** reports. The two TLS escape hatches are written
-commented out — nobody should turn off certificate checking without meaning to.
+On its **first launch**, `npx mergerie` looks for `claude` then `copilot` on the machine and writes a
+short `.env` in `~/.mergerie/` pointing `AGENT_BIN` at the one it finds. **The agent is then set on
+screen** — Settings → AI session: binary, arguments, timeout, and a *Test the agent* button — with no
+restart. If no agent is found, a banner says so, with the install commands; reports are **simulated**
+and say so until it is fixed.
+
+The **Reviews** tab opens on a five-step assistant: the agent, the forge (GitLab **or** GitHub), your
+repositories, what your team uses (Jira, Jenkins, Docker, environments — ticked menus unfold, the
+others stay folded), and the first fetch of merge requests, which then refreshes every 5 minutes by
+default. **[First real review in 5 minutes](./docs/guide.en.md#first-real-review-in-5-minutes)** in
+the guide walks through it.
 
 `PORT`, `HOST`, `MERGERIE_DATA_DIR` and the settings of [`.env.example`](./.env.example) are
-honoured either way. The `.env` is read **from the folder the command is run in** — for `npx`,
-wherever you are when you type it, so come back to that folder next time. What the shell exports
-wins over the file, as everywhere with Node.
+honoured either way. A `.env` **in the folder the command is run from** overrides `~/.mergerie/.env`,
+and what the shell exports wins over both, as everywhere with Node.
 
 **`npm run demo` — see it live in 30 seconds, no config, no tokens.** It seeds a realistic fake database
 (reviews, scores, resolution tracking, token cost, AI sessions, and a browsable fictional repository behind

@@ -18,7 +18,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'admin') showAdminSub();
   if (b.dataset.tab === 'task') loadTasks();
   if (b.dataset.tab === 'agents') loadAgents();
-  if (b.dataset.tab === 'review') loadSegment();
+  if (b.dataset.tab === 'review') { loadSegment(); decouvrirSiPerime(); }
   if (b.dataset.tab === 'dashboard') loadDashboard();
   if (b.dataset.tab === 'git') loadGit();
   if (b.dataset.tab === 'docker') { marquerDockerVu(); loadDocker(); }

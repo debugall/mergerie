@@ -43,6 +43,7 @@ const ALLOWED = [
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
+  'agent_bin', 'agent_args', 'agent_timeout_ms',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -163,6 +164,14 @@ function updateConfig(patch) {
     next.agent_daily_budget_usd = Number.isFinite(b) && b >= 0 ? Math.min(100000, Math.round(b * 100) / 100) : 0;
   }
   if (!['sandbox', 'allowlist', 'large'].includes(next.agent_write_mode)) next.agent_write_mode = 'sandbox';
+  /* L'AGENT RÉGLÉ À L'ÉCRAN. Le binaire et ses arguments sont pris tels quels (un chemin, une
+     ligne d'options) ; le délai est un entier en millisecondes, 0 = le défaut du code. */
+  next.agent_bin = String(next.agent_bin || '').trim();
+  next.agent_args = String(next.agent_args || '').trim();
+  {
+    const ms = parseInt(next.agent_timeout_ms, 10);
+    next.agent_timeout_ms = (!Number.isFinite(ms) || ms <= 0) ? 0 : Math.min(24 * 3600000, Math.max(10000, ms));
+  }
   next.agent_write_allow = String(next.agent_write_allow || '').trim();
   next.agent_sandbox_network_domains = String(next.agent_sandbox_network_domains || '').trim();
   /* COLONNE INTEGER, PAS TEXT COMME SES VOISINES (revue de add-secure-layer-2) : relue depuis
@@ -267,8 +276,18 @@ function updateConfig(patch) {
       agent_write_mode = @agent_write_mode,
       agent_write_allow = @agent_write_allow,
       agent_sandbox_network_domains = @agent_sandbox_network_domains,
-      agent_read_unrestricted = @agent_read_unrestricted
+      agent_read_unrestricted = @agent_read_unrestricted,
+      agent_bin = @agent_bin,
+      agent_args = @agent_args,
+      agent_timeout_ms = @agent_timeout_ms
     WHERE id = 1`).run(next);
+  /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX. « Tester le sandbox » a constaté ce qu'un
+     CLI précis faisait sur cette machine ; un autre chemin est un autre programme, et la
+     politique d'écriture retombe sur la liste blanche jusqu'au prochain test — exactement ce
+     qu'elle fait pour un CLI jamais vérifié. Écrit hors d'`ALLOWED`, comme le banc d'essai. */
+  if (String(current.agent_bin || '') !== String(next.agent_bin || '')) {
+    db.prepare(`UPDATE local_config SET agent_sandbox_verified = 0, agent_sandbox_tested_at = '', agent_sandbox_detail = '' WHERE id = 1`).run();
+  }
   /* LES RÉGLAGES D'AUTOMATISME SUIVENT L'APPROBATION, SANS LA CONTOURNER. Ce que l'utilisateur
      règle ICI sur une base déjà approuvée est approuvé avec — il vient de le décider. Mais si
      l'équipe a changé ces réglages et qu'ils attendent, enregistrer n'importe quel AUTRE réglage

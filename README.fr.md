@@ -38,23 +38,24 @@ npx mergerie         # pour de vrai : http://localhost:4319, tes données dans ~
 Depuis un clone, ce sont `npm install` puis `npm run demo` ou `npm start`, avec les données à côté
 du code (`data-demo/`, `data/`).
 
-Au **premier lancement**, `npx mergerie` écrit un `.env` dans le dossier d'où tu le lances : il
-cherche `claude` puis `copilot` sur la machine et pointe `COPILOT_BIN` sur celui qu'il trouve,
-avec les arguments de cet agent. Sans lui, l'outil démarrerait sur le binaire `copilot` par
-défaut, ne trouverait rien, et produirait des rapports **simulés** sans le dire. Les deux
-coupe-circuit TLS sont écrits commentés — personne ne doit désactiver la vérification des
-certificats sans l'avoir voulu.
+Au **premier lancement**, `npx mergerie` cherche `claude` puis `copilot` sur la machine et écrit un
+`.env` court dans `~/.mergerie/` qui pointe `AGENT_BIN` sur celui qu'il trouve. **L'agent se règle
+ensuite à l'écran** — Réglages → Session IA : binaire, arguments, délai, et un bouton *Tester
+l'agent* — sans redémarrage. Aucun agent trouvé ? Une bannière le dit, avec les commandes
+d'installation ; les rapports sont **simulés** et dits tels jusqu'à ce que ce soit réglé.
 
 `PORT`, `HOST`, `MERGERIE_DATA_DIR` et les réglages de [`.env.example`](./.env.example) sont honorés
-dans les deux cas. Le `.env` est lu **dans le dossier d'où la commande est lancée** — sous `npx`,
-là où tu te trouves au moment de la taper, donc reviens-y la fois suivante. Ce que le shell exporte
-passe devant le fichier, comme partout avec Node.
+dans les deux cas. Un `.env` **dans le dossier d'où la commande est lancée** passe devant
+`~/.mergerie/.env`, et ce que le shell exporte passe devant les deux, comme partout avec Node.
 
-Au premier lancement, l'onglet **Reviews** affiche les trois étapes de démarrage, chacune avec son
-bouton. Elles correspondent à l'onglet **Réglages** :
-1. **Git** — URL GitLab + **access token** (PAT scopes `api` + `read_repository`) et/ou **token GitHub** (scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge valide le tout. *(URL Jira et connexion Jira optionnelles : onglet **Jira**.)*
-2. **Dépôts** — ajoute-les un par un, ou en masse **depuis GitLab** ou **depuis GitHub** (coche tes projets). Laisse le **pattern vide** pour prendre **toutes** les MR, ou mets un fragment (`PROJ-`) pour ne garder que ces branches. La case **récupérer les MR**, cochée par défaut, se décoche pour les dépôts dont tu ne relis pas les merge requests : ils restent utilisables pour le reste (git, sessions de codage), et les MR déjà récupérées restent dans la file.
-3. De retour sur **Reviews**, `Chercher les nouvelles MR` remplit la liste.
+Au premier lancement, l'onglet **Reviews** affiche un assistant en **cinq étapes**, chacune avec son
+bouton — **[Première review réelle en 5 minutes](./docs/guide.fr.md#première-review-réelle-en-5-minutes)**
+dans le guide les déroule :
+1. **L'agent IA** — trouvé, ou à régler (Réglages → Session IA, *Tester l'agent*).
+2. **La forge** — GitLab (URL + **access token**, scopes `api` + `read_repository`) **ou** GitHub (**token**, scope `repo`), dossier de clonage. Un bouton **Tester la connexion** par forge. *(Jira : onglet **Jira**, optionnel.)*
+3. **Dépôts** — un par un, ou en masse **depuis GitLab** ou **depuis GitHub**. Laisse le **pattern vide** pour prendre **toutes** les MR, ou mets un fragment (`PROJ-`) pour ne garder que ces branches. La case **récupérer les MR**, cochée par défaut, se décoche pour les dépôts dont tu ne relis pas les merge requests.
+4. **Ce que ton équipe utilise** — Jira, Jenkins, Docker, des environnements : ce qui est coché déplie son menu, le reste reste replié (Réglages → Général → Menus pour changer d'avis).
+5. De retour sur **Reviews**, `Chercher les nouvelles MR` remplit la liste — puis elle se rafraîchit toutes les 5 minutes d'office.
 
 ## Mode démo (voir l'outil en 30 s, sans rien configurer)
 

@@ -55,7 +55,10 @@ const COLONNES_LOCALES = [
      une. Les DÉFAUTS sont repris à l'identique de `config`, sinon un réglage non renseigné
      changerait de sens en déménageant. */
   ["brief_on_open", "TEXT DEFAULT '1'"],
-  ['auto_refresh_minutes', 'INTEGER DEFAULT 0'],
+  /* CINQ MINUTES D'OFFICE. À zéro, rien n'arrivait jamais sans un clic sur « Chercher les MR »,
+     et l'auto-review attendait ce clic : la file d'un nouvel utilisateur restait vide sans qu'il
+     sache pourquoi. Une base existante garde sa valeur — c'est un défaut de CRÉATION. */
+  ['auto_refresh_minutes', 'INTEGER DEFAULT 5'],
   ['jira_watch_minutes', 'INTEGER DEFAULT 5'],
   ["todo_close_on_merge", "TEXT DEFAULT '1'"],
   ['task_default_auto_push', 'INTEGER DEFAULT 0'],
@@ -78,6 +81,13 @@ const COLONNES_LOCALES = [
   ["agent_sandbox_detail", "TEXT DEFAULT ''"],
   // Copilot ne sait pas toujours se restreindre : jamais coché par défaut.
   ['agent_read_unrestricted', 'INTEGER NOT NULL DEFAULT 0'],
+  /* L'AGENT LUI-MÊME, réglé à l'écran (Réglages → Session IA) et pris en compte SANS
+     redémarrage : le binaire, ses arguments de base, le délai d'un appel. Vides, le `.env`
+     (`AGENT_BIN`/`AGENT_ARGS`, ou les anciens `COPILOT_*`) reste le défaut — une installation
+     qui n'a rien touché tourne comme avant. De poste : c'est un chemin sur CETTE machine. */
+  ["agent_bin", "TEXT DEFAULT ''"],
+  ["agent_args", "TEXT DEFAULT ''"],
+  ['agent_timeout_ms', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),
