@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Matching glob minimal pour les regles de review par chemin de fichier.
    Zero dependance (coherent avec le projet). Semantique proche de gitignore :
 

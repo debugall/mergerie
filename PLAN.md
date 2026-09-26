@@ -19,7 +19,7 @@ Application locale mono-utilisateur (Node + Express + SQLite + front vanilla) po
 
 ## Modules (`src/`)
 
-Rangés par **couche** depuis la réorganisation de septembre 2026 : une couche n’importe que ce qui est en dessous d’elle, et `npm run check` (`scripts/check-deps.js`) refuse un import qui remonte, un cycle, ou `gitlab.js` importé hors de `forge/`.
+Rangés par **couche** depuis la réorganisation de septembre 2026 : une couche n’importe que ce qui est en dessous d’elle, et `npm run check` (`scripts/check-deps.js`) refuse un import qui remonte, un cycle, ou `gitlab.js` importé hors de `forge/`. Les trois couches pures — `core/`, `forge/`, `verify/` — portent **`// @ts-check` + JSDoc** : `scripts/check-types.js` (`npm run check:types`, dans `npm run check`) lance `tsc --noEmit` (`tsconfig.check.json`, TypeScript en dépendance de développement seulement, aucun build) et ne retient que les erreurs de ces couches — les autres s'y mettront quand elles porteront le pragme.
 
 ```
 app  →  jobs  →  session · review · verify · agent · notes · integrations

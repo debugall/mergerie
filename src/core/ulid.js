@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* UN ULID — l'identité d'une ligne qui doit survivre au partage.
  *
  * Les entiers auto-incrémentés sont LOCAUX par nature : deux postes créent chacun le dépôt

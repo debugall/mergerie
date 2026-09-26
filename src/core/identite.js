@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* QUI EST-CE ? — l'identité git du poste, et rien d'autre.
  *
  * Mergerie n'a pas de compte, pas de mot de passe, pas d'annuaire, et n'en aura pas : le jour

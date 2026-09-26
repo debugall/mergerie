@@ -13,6 +13,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Types on the pure layers, without a build.** `src/core`, `src/forge` and `src/verify` carry
+  `// @ts-check` and JSDoc; `npm run check` now runs `tsc --noEmit` on them (TypeScript is a
+  development dependency only). Editors get completion and error detection on those modules.
 - **What grows without limit is kept in check.** Closed merge requests slim down after a delay of
   their own (Settings → General, 180 days by default): the last report stays, previous versions,
   the stored diff, the questions asked on the report and the working folder go. Clones nobody has

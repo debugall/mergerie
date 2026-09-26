@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* LE JETON DE SESSION LOCAL (plan_secure.md, lot B, constat S1).
  *
  * `garde.js` ferme l'API à un NAVIGATEUR étranger (Host, Sec-Fetch-Site, origine) et, quand le

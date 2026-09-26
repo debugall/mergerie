@@ -93,7 +93,8 @@ The same gates the maintainer runs before every merge. Useful on a fork, and to 
 you report is not already caught by the suite:
 
 ```bash
-npm run check        # front-end + server guardrails, and i18n consistency
+npm run check        # front-end + server guardrails, types of the pure layers, and i18n consistency
+npm run check:types  # `tsc --noEmit` on `src/core`, `src/forge`, `src/verify` (they carry `// @ts-check` + JSDoc; also part of `npm run check`)
 npm run i18n:check   # translation dictionary consistency (also part of `npm run check`)
 ```
 

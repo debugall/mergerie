@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Vérification objective — exécution (plan_add_verify.md §4, §5, §7).
  *
  * Ce module fait le git et lance le script. La logique qui DÉCIDE (validation du contrat,
@@ -56,6 +57,8 @@ function envMinimal() {
    vérificateur s'y ajoutent. Sans cette porte, un `npm` installé par nvm reste introuvable
    dès que Mergerie tourne comme service et non depuis un terminal — et l'échec dirait
    « commande introuvable » sans rien laisser faire. */
+/** @param {{ timeout_s?: number, env_keys?: string, uid?: string }} verifier
+ * @param {{ home?: string|null }} [options] */
 function envVerifier(verifier, { home } = {}) {
   const base = envMinimal();
   if (home) base.HOME = home;
@@ -176,6 +179,8 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis 
  *     cassent plutôt qu'un seul vaut mieux que de s'arrêter au premier.
  * Le verdict est le ET : tout doit passer.
  */
+/** @param {any} verifier @param {string[]} commandes @param {any[]} repos
+ * @param {(ligne: string) => void} [onLog] @param {{ home?: string|null }} [options] */
 async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home } = {}) {
   if (!repos.length) return { erreur: 'aucun dépôt préparé' };
   if (!commandes.length) return { erreur: 'aucune commande déclarée' };
@@ -260,6 +265,7 @@ async function retirerWorktree(clone, dir, onLog = () => {}) {
 
 /* Worktrees restés d'un run interrompu (coupure de courant, kill -9 du serveur). On les
    ramasse au démarrage plutôt que de laisser le dataDir grossir en silence. */
+/** @param {(ligne: string) => void} [onLog] */
 function gcWorktrees(onLog = () => {}) {
   if (!fs.existsSync(WORKTREES_DIR)) return 0;
   let n = 0;
@@ -393,6 +399,7 @@ const nowIso = () => new Date().toISOString();
  *
  * Renvoie le verdict pour le journal ; les détails sont en base.
  */
+/** @param {number} verificationId @param {any} cfg @param {(ligne: string) => void} [onLog] */
 async function executerVerification(verificationId, cfg, onLog = () => {}) {
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) throw new Error(t('err.verify.not-found'));
@@ -405,7 +412,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
      relit donc l'empreinte au moment où les commandes vont RÉELLEMENT s'exécuter, pas à celui où
      elles ont été demandées. */
   if (!approbation.verificateurApprouve(verifier.id)) {
-    const e = new Error(t('err.verify.not-approved', { name: verifier.name }));
+    const e = /** @type {Error & { code?: string, status?: number }} */ (new Error(t('err.verify.not-approved', { name: verifier.name })));
     e.code = 'APPROBATION';
     e.status = 409;
     throw e;
@@ -729,6 +736,8 @@ function corpsCommentaire(verificationId, maintenant = new Date()) {
 
 /* Publie un corps sur les merge requests de la vérification, et GARDE LA TRACE de l'envoi.
    `body` fourni = texte relu et modifié par l'utilisateur ; absent = le corps composé. */
+/** @param {number} verificationId @param {any} cfg
+ * @param {{ body?: string|null, onLog?: (ligne: string) => void }} [options] */
 async function publierCommentaire(verificationId, cfg, { body = null, onLog } = {}) {
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(verificationId);
   if (!v) return null;

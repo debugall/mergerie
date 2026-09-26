@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* L'EMPREINTE D'UN CHEMIN LOCAL — pur, sans base, et c'est le point.
  *
  * `src/db.js` en a besoin PENDANT ses migrations, c'est-à-dire avant d'avoir fini de s'exporter :

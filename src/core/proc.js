@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Suivi du process enfant courant + drapeau d'annulation, pour pouvoir stopper un job en
    cours (tue git/copilot et interrompt la boucle).
 

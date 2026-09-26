@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Gabarits de prompt par défaut, dans les deux langues (i18n.md lot 5, option 1 :
    « les rapports suivent la langue de l'interface »).
 

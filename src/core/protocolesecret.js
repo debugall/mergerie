@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* LE SECRET DES NONCES DE PROTOCOLE (plan_secure.md, lot D — durci après revue de add-secure-layer-2).
  *
  * `protocol.nonceAgentRun` et `taskrunner.nonceQuestionsTache` doivent rendre le MÊME nonce d'un

@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Flux d'événements « notifiables » (notifications bureau).
 
    Le serveur émet des FAITS bruts dans un buffer en mémoire ; le CLIENT décide

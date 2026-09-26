@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* LES GARDES DE LA PORTE — ce qui décide, AVANT toute route, si une requête a le droit d'entrer.
  *
  * Mergerie écoute sur 127.0.0.1 et se croyait donc à l'abri : seul l'utilisateur lui parle.

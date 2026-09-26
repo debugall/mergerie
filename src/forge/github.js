@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Client de l'API GitHub (REST v3) — MÊME INTERFACE que src/gitlab.js.
 
    Tout le reste de l'application consomme une forme NORMALISÉE (celle historiquement

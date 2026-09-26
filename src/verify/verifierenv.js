@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* LES VARIABLES D'ENVIRONNEMENT D'UN VÉRIFICATEUR : LES NOMS SONT D'ÉQUIPE, LES VALEURS NON.
  *
  * Une variable de commande de test est le lieu naturel d'un `DATABASE_URL`, d'un `NPM_TOKEN`, de

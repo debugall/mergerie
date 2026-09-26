@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Vérification objective — logique PURE (plan_add_verify.md §4, §6, §7).
  *
  * Tout ce qui décide du verdict vit ici, sans git, sans réseau, sans base : c'est la partie

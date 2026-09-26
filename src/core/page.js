@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* LA PAGE, ASSEMBLÉE PAR MORCEAUX — l'unique exception au « pas de build » du front.
 
    Un `<script src>` découpe le JavaScript et un `<link>` la feuille de style ; le HTML, lui,

@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* LE DICTIONNAIRE DU SERVEUR, à une profondeur près. Le serveur traduit avec le même
    `public/runtime/i18n-runtime.js` que le navigateur ; un module de `src/app/routes/` l'atteindrait par
    `../../../public/…`, un module de `src/` par `../public/…`, et chaque déplacement changerait

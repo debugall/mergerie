@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* DÉCOUPER UNE LIGNE DE COMMANDE EN MOTS, sans shell. C'est ce qui sépare « une commande » de
    « ce qu'un shell en ferait » : ni tube, ni redirection, ni variable — un programme et ses
    arguments, les guillemets respectés. Les vérificateurs en ont besoin, d'où core/. */

@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* CE QUI EST UNE DONNÉE, DIT COMME TEL À L'AGENT.
  *
  * La description d'une merge request, le texte d'un ticket Jira, un rapport de revue relu du

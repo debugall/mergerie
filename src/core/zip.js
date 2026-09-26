@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Écriture d'archives ZIP, sans dépendance.
  *
  * Node sait déjà compresser (`zlib`) ; il ne sait pas empaqueter. Ces quelque cent lignes

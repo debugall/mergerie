@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Parallélisme BORNÉ : `limit` tâches en vol, pas une de plus.
  *
  * `Promise.all` sur une liste entière part en rafale — vingt dépôts × plusieurs pages, c'est

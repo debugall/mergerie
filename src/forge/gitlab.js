@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 // Client minimal de l'API GitLab v4 (module natif https/http).
 // La configuration TLS est SCOPÉE à ces requêtes via un agent dédié :
 // on ne touche jamais au TLS global du process.

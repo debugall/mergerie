@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Requête HTTP(S) bas niveau, partagée par les clients de forge (gitlab.js, github.js).
 
    L'agent TLS est fourni par l'appelant : chaque forge a le sien, calculé depuis ses
@@ -36,7 +37,12 @@ function makeAgentFactory(caEnv, insecureEnv) {
   };
 }
 
-// Renvoie { status, statusText, body, headers }. `agent` s'applique au HTTPS seulement.
+/**
+ * Renvoie { status, statusText, body, headers }. `agent` s'applique au HTTPS seulement.
+ * @param {string} url
+ * @param {{ method?: string, headers?: Record<string, string>, body?: string|Buffer|null, agent?: import('node:https').Agent|undefined }} [options]
+ * @returns {Promise<{ status: number, statusText: string, body: string, headers: import('node:http').IncomingHttpHeaders }>}
+ */
 function request(url, { method = 'GET', headers = {}, body, agent } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
@@ -61,7 +67,7 @@ function request(url, { method = 'GET', headers = {}, body, agent } = {}) {
     });
     req.on('error', reject);
     req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      const err = new Error(t('err.http.timeout', { s: REQUEST_TIMEOUT_MS / 1000 }));
+      const err = /** @type {NodeJS.ErrnoException} */ (new Error(t('err.http.timeout', { s: REQUEST_TIMEOUT_MS / 1000 })));
       err.code = 'ETIMEDOUT';
       req.destroy(err);
     });

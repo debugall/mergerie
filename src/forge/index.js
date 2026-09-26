@@ -1,4 +1,5 @@
 'use strict';
+// @ts-check
 /* Aiguillage de forge : GitLab ou GitHub, dépôt par dépôt.
 
    RÈGLE DU PROJET : aucun module n'appelle `gitlab.js` ou `github.js` en direct.
