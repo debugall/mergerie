@@ -144,7 +144,15 @@ app.get('/api/mrs', wrap((req, res) => {
     ...db.prepare('SELECT DISTINCT m.repo_id FROM verifier_group vg JOIN repo_group_member m ON m.group_id = vg.group_id').all().map((r) => r.repo_id),
   ]);
   res.json(rows.map((r) => {
-    const key = jira.ticketKey(r.title, r.source_branch);
+    /* LA CLÉ NE COMPTE QUE SI ELLE N'A PAS DÉJÀ ÉCHOUÉ. `ticket_jira_key` est posé au discover
+       aussi bien sur succès QUE sur échec (404, accès refusé…) — c'est `ticket_jira_error` qui
+       fait la différence. Sans ce garde-fou, une branche « feature/blog-1-refonte » propose de
+       « passer BLOG-1 à l'état suivant » à la merge alors que ce ticket n'existe pas : la
+       modale ne sait pas qu'un fetch a déjà été tenté et a échoué. Jamais tentée, la clé reste
+       la devinette (regex titre/branche), seule information dispo avant le premier discover. */
+    const key = r.ticket_jira_key
+      ? (r.ticket_jira_error ? null : r.ticket_jira_key)
+      : jira.ticketKey(r.title, r.source_branch);
     return {
       ...r,
       verification: verifs.has(r.id) ? resumeVerification(detailVerification(verifs.get(r.id))) : null,
@@ -178,11 +186,8 @@ app.get('/api/mrs', wrap((req, res) => {
          propre expression régulière — qui ne suivait pas la même règle que `jira.ticketKey`
          (crochets du titre d'abord, branche ensuite) : un titre citant deux clés donnait une
          réponse côté serveur et une autre à l'écran. Une règle, un endroit. */
-      ticket_key: r.ticket_jira_key || jira.ticketKey(r.title, r.source_branch) || '',
-      ticket_status: (etatsTickets[String(r.ticket_jira_key || jira.ticketKey(r.title, r.source_branch) || '').toUpperCase()] || {}).status
-        || r.ticket_jira_status || null,
-      ticket_category: (etatsTickets[String(r.ticket_jira_key || jira.ticketKey(r.title, r.source_branch) || '').toUpperCase()] || {}).cat
-        || r.ticket_jira_category || null,
+      ticket_status: (etatsTickets[String(key).toUpperCase()] || {}).status || r.ticket_jira_status || null,
+      ticket_category: (etatsTickets[String(key).toUpperCase()] || {}).cat || r.ticket_jira_category || null,
       /* TAILLE ET FRAÎCHEUR : de quoi choisir par quoi commencer sans ouvrir la carte. Le
          nombre de fichiers se déduit des chemins quand le relevé date d'avant la mesure. */
       size: {
@@ -231,7 +236,11 @@ app.get('/api/mrs/:id', wrap((req, res) => {
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const rev = db.prepare('SELECT * FROM review WHERE mr_id = ?').get(mr.id);
   const comments = db.prepare('SELECT * FROM comment_log WHERE mr_id = ? ORDER BY id DESC').all(mr.id);
-  const tkey = jira.ticketKey(mr.title, mr.source_branch);
+  // Même garde-fou que la liste : une clé déjà tentée et en échec (404, accès refusé…) ne
+  // doit pas revenir comme si elle valait quelque chose (cf. commentaire dans la liste).
+  const tkey = mr.ticket_jira_key
+    ? (mr.ticket_jira_error ? null : mr.ticket_jira_key)
+    : jira.ticketKey(mr.title, mr.source_branch);
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -301,8 +310,11 @@ app.get('/api/mrs/:id', wrap((req, res) => {
       text: mr.ticket_text || '',
       has_image: !!(mr.ticket_image && fs.existsSync(mr.ticket_image)),
       jira_text: mr.ticket_jira_text || '',
-      // Clé stockée (après un fetch) ou, à défaut, déduite du titre/branche — pour
-      // qu'une MR jamais fetchée sache tout de même qu'un ticket est récupérable.
+      // Clé stockée (après un fetch, réussi OU EN ÉCHEC) ou, à défaut, déduite du titre/branche —
+      // pour qu'une MR jamais fetchée sache tout de même qu'un ticket est récupérable. Cette
+      // clé-ci reste affichée même en échec : c'est elle que la section « Contexte Jira » montre
+      // à côté du message d'erreur, pour dire QUELLE clé n'a pas été trouvée. `tkey` (au-dessus,
+      // pour le lien d'en-tête et la modale de merge) exclut au contraire une clé en échec.
       jira_key: mr.ticket_jira_key || jira.ticketKey(mr.title, mr.source_branch) || '',
       jira_at: mr.ticket_jira_at || '',
       jira_error: mr.ticket_jira_error || '',

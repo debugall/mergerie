@@ -440,7 +440,7 @@ async function openReport(id, opts = {}) {
     openMergeModal({
       url: `/mrs/${id}/merge`, label: `!${m.iid}`, target: m.target_branch, forge: m.forge,
       project: m.project,
-      mrId: id, ticketKey: m.ticket_key || jiraCleDe(m),
+      mrId: id, ticketKey: d.ticket_key,
       squash: m.squash, removeSourceBranch: m.remove_source_branch,
       /* Pas de rattrapage ici : cette merge request n'est pas forcément issue d'une session,
          il n'y a donc pas de branche à rejouer. Le conflit, lui, se dit quand même. */

@@ -489,6 +489,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   already-fixed line, found no trace of it in its own diff and downgraded it to “disappeared” —
   forever after, since each pass carried the same stale finding into the next. A resolved finding
   now leaves the pool for good, the way a merged branch leaves a to-do list.
+- **The merge dialog no longer offers to advance a Jira ticket that doesn't exist.** The ticket
+  key is guessed from the title or branch (e.g. a branch named after a word that happens to look
+  like a ticket key), and when a fetch of that key had already failed — wrong guess, deleted
+  ticket, no access — the dialog still proposed “move TICKET-1 to its next state and drop the
+  merge request's link on it” for a ticket that was never there. A key already known to fail no
+  longer counts.
 
 ### Security
 

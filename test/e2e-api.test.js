@@ -1060,6 +1060,15 @@ describe('API de bout en bout', () => {
     assert.equal(echec.status, 400);
     const detail = await app.api('GET', `/api/mrs/${mrId}`);
     assert.match(detail.body.ticket.jira_error, /404/, 'la cause est stockée, pas seulement affichée une fois');
+    /* UNE CLÉ EN ÉCHEC NE DOIT PLUS PROPOSER « passer le ticket à l'état suivant » À LA MERGE :
+       la modale de merge se fiait à `ticket_key`, calculé sans regarder si le fetch avait déjà
+       échoué — un titre/branche évoquant un ticket inexistant proposait quand même de le faire
+       avancer. Le champ affiché dans « Contexte Jira » (`ticket.jira_key`), lui, garde la clé
+       tentée : c'est elle qu'on montre à côté du message d'erreur. */
+    assert.equal(detail.body.ticket_key, null, 'la modale de merge ne doit plus proposer un ticket dont le fetch a échoué');
+    assert.equal(detail.body.ticket.jira_key, 'PROJ-21977', 'la section contexte garde la clé tentée, pour dire laquelle a échoué');
+    const liste = (await app.api('GET', '/api/mrs')).body.find((m) => m.id === mrId);
+    assert.equal(liste.ticket_key, null, 'même règle depuis la liste, d’où part aussi le bouton de merge');
   });
 
   /* ---------- Projets liés ---------- */
