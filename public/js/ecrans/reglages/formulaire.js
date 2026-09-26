@@ -7,7 +7,7 @@
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
   'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
-  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
+  'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days', 'mr_retention_days', 'clone_blobless',
   'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains',

@@ -102,7 +102,9 @@ opened that way stays in the bar.
 
 Everywhere: `Ctrl`/`Cmd` + `K` opens a command palette (jump to a tab, a merge request, a session by
 name — `!217` or `PROJ-1408` typed alone go straight there), `j` / `k` walk the current list,
-`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. **Any window you type into
+`v` / `c` / `m` / `x` act on the focused card, `?` lists every shortcut. **What grows without limit is kept in check.** Job journals beyond the retention you set are purged; a merge request merged or closed for longer than a second delay keeps its last report and loses the previous versions, the stored diff and its working folder; clones nobody has fetched for a month get a `git gc`; a clone can be made **without blobs** (`--filter=blob:none`) for the next repositories; and Settings → General shows **what the data weighs, by category**, with a “Clean up now” button.
+
+**Any window you type into
 minimises** to the bottom of the menu with a `—`, so you can go and check a branch name or a ticket
 without losing what you had written, and come back to it — fields, cursor and tab included. The
 tool reopens on the tab and review stage you left, and the report panel opens on what changed since

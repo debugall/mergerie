@@ -270,7 +270,10 @@ async function ensureRepo(cfg, repo, onLog = () => {}) {
   } else {
     onLog(`clone ${repo.project}`);
     ensureDir(path.dirname(dir));
-    await run('git', [...tls, 'clone', url, dir], { onLog, redactSecrets: secrets });
+    /* CLONE SANS LES BLOBS (Réglages → Git, ce poste) : l'historique entier, le contenu des fichiers
+       à la demande. Pour les clones À VENIR seulement — un clone existant garde sa forme. */
+    const partiel = String(cfg.clone_blobless || '') === '1' ? ['--filter=blob:none'] : [];
+    await run('git', [...tls, 'clone', ...partiel, url, dir], { onLog, redactSecrets: secrets });
   }
   ensureInternalIgnore(dir); // ne jamais committer les dossiers de travail internes
   await updateSubmodules(dir, tls, secrets, onLog);

@@ -1632,7 +1632,7 @@ const REGISTRE = [
       'agent_sandbox_verified', 'agent_sandbox_tested_at', 'agent_sandbox_detail',
       'agent_read_unrestricted',
       // L'agent de CE poste : un chemin de binaire n'a de sens que sur la machine qui le porte.
-      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode'],
+      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'clone_blobless'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',
@@ -1652,7 +1652,7 @@ const REGISTRE = [
       /* `retention_days` RESTE D'ÉQUIPE, et c'est délibéré : une purge passe par le store, donc
          elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
          réglé à sept jours efface l'historique des autres. */
-      'retention_days', 'review_explain', 'verify_jira_comment',
+      'retention_days', 'mr_retention_days', 'review_explain', 'verify_jira_comment',
       'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`

@@ -2966,6 +2966,18 @@ Two things are **never** purged, deliberately: the **token cost** (`usage`), bec
 total that must not go down by itself, and the **agent iterations** (`agent_pass`), which already disappear
 with their session and which the cards offer to re-read.
 
+**Closed merge requests slim down.** “Slim down closed merge requests after” (default **180 days**, `0` =
+never, minimum 30): a merge request merged, closed or filed as “done” for longer keeps its **last report**
+— what you re-read to understand what went to production — and loses the previous versions, the stored
+diff, the questions asked on the report and its working folder. The MR's row stays: the brief and the
+statistics still count what was handled. **Inactive clones get compacted**: a repository nobody has fetched
+for thirty days gets a `git gc`, at most once a month. **Clone without blobs** (Settings → Git, *this
+workstation*) applies `--filter=blob:none` to the **next** clones: the whole history, file contents on
+demand — off by default, because an agent that reads many files pays a round trip for each content. And
+**the gauge**: Settings → General → “Measure disk usage” says what the database, the clones, the reports,
+the sessions, the verification worktrees, the tickets, the notes, the data repository and the temporary
+folder weigh; “Clean up now” runs the daily pass right away and says what left.
+
 To run tests without touching your database: `MERGERIE_DATA_DIR=/tmp/my-test npm start`.
 
 ## Security

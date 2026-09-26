@@ -43,7 +43,8 @@ const ALLOWED = [
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
-  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode',
+  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'clone_blobless',
+  'mr_retention_days',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -94,6 +95,14 @@ function updateConfig(patch) {
     const d = parseInt(patch.retention_days, 10);
     next.retention_days = (!Number.isFinite(d) || d <= 0) ? 0 : Math.max(7, d);
   }
+  /* Rétention des merge requests fermées : 0 = jamais, sinon au moins 30 jours — une MR mergée
+     hier a encore un rapport qu'on relit pour comprendre ce qui est parti en production. */
+  if ('mr_retention_days' in patch) {
+    const d = parseInt(patch.mr_retention_days, 10);
+    next.mr_retention_days = (!Number.isFinite(d) || d <= 0) ? 0 : Math.max(30, d);
+  }
+  // Clone sans blobs : booléen de CE poste, '0'/'1'.
+  next.clone_blobless = String(next.clone_blobless) === '1' ? '1' : '0';
   /* MR dormante : au bout de combien de jours une MR reviewée et toujours ouverte remonte
      dans le brief. Au moins 1 jour — à 0, toute MR reviewée ce matin serait « dormante »,
      et une section qui contient tout ne signale plus rien. */
@@ -247,6 +256,7 @@ function updateConfig(patch) {
       converge_threshold = @converge_threshold,
       converge_max_passes = @converge_max_passes,
       retention_days = @retention_days,
+      mr_retention_days = @mr_retention_days,
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
@@ -288,7 +298,8 @@ function updateConfig(patch) {
       agent_args = @agent_args,
       agent_timeout_ms = @agent_timeout_ms,
       agent_backend = @agent_backend,
-      agent_mode = @agent_mode
+      agent_mode = @agent_mode,
+      clone_blobless = @clone_blobless
     WHERE id = 1`).run(next);
 
   /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX. « Tester le sandbox » a constaté ce qu'un

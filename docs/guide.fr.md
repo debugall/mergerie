@@ -3069,6 +3069,20 @@ Deux choses ne sont **jamais** purgées, à dessein : le **coût en tokens** (`u
 total cumulé qui ne doit pas baisser tout seul, et les **itérations d'agent** (`agent_pass`), qui
 disparaissent déjà avec leur session et dont les cartes proposent la relecture.
 
+**Les merge requests fermées s'allègent.** « Alléger les merge requests fermées après » (défaut **180
+jours**, `0` = jamais, minimum 30) : une merge request mergée, close ou rangée « traitée » depuis plus
+longtemps garde son **dernier rapport** — c'est ce qu'on relit pour comprendre ce qui est parti en
+production — et perd les versions précédentes, le diff stocké, les questions posées sur le rapport et son
+dossier de travail. La ligne de la MR reste : le brief et les statistiques comptent toujours ce qui a été
+traité. **Les clones inactifs se compactent** : un dépôt que personne n'a fetché depuis trente jours passe
+au `git gc`, une fois par mois au plus. **Cloner sans les blobs** (Réglages → Git, *ce poste*) applique
+`--filter=blob:none` aux **prochains** clones : tout l'historique, le contenu des fichiers à la demande —
+décoché par défaut, parce qu'un agent qui lit beaucoup de fichiers paie chaque contenu d'un aller-retour.
+Et **la jauge** : Réglages → Général → « Mesurer l'occupation disque » dit ce que pèsent la base, les
+clones, les rapports, les sessions, les worktrees de vérification, les tickets, les notes, le dépôt de
+données et le temporaire ; « Nettoyer maintenant » lance la passe quotidienne tout de suite et dit ce qui
+est parti.
+
 Pour lancer des tests sans toucher ta base : `MERGERIE_DATA_DIR=/tmp/mon-test npm start`.
 
 ## Sécurité

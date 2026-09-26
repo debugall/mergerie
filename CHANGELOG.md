@@ -13,6 +13,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **What grows without limit is kept in check.** Closed merge requests slim down after a delay of
+  their own (Settings → General, 180 days by default): the last report stays, previous versions,
+  the stored diff, the questions asked on the report and the working folder go. Clones nobody has
+  fetched for a month get a `git gc`. A clone can be made without blobs (`--filter=blob:none`,
+  Settings → Git, this workstation, next clones only). And a **disk usage gauge** by category, with
+  a “Clean up now” button that runs the daily pass at once and reports what left.
 - **Verifier suggestions for every ecosystem.** The verifier form proposes exact lines from what
   the clone declares — npm, pnpm or yarn scripts, composer and phpunit, Makefile targets, pytest,
   tox and ruff, `go test ./...`, `cargo test`, Maven, Gradle, `dotnet test` — and, when a compose

@@ -93,6 +93,8 @@ demandent de traverser des dossiers.
 ## Les onglets
 
 **Onze onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section.
+**Ce qui grossit sans limite est tenu.** Les journaux de jobs au-delà de la rétention réglée sont purgés ; une merge request mergée ou close depuis plus d'un second délai garde son dernier rapport et perd les versions précédentes, le diff stocké et son dossier de travail ; les clones que personne n'a fetchés depuis un mois passent au `git gc` ; un clone peut se faire **sans les blobs** (`--filter=blob:none`) pour les prochains dépôts ; et Réglages → Général montre **ce que les données pèsent, par catégorie**, avec un bouton « Nettoyer maintenant ».
+
 **Git, Docker, Jenkins et Liens démarrent repliés** : ce sont des commodités, et la barre porte d'abord le travail de tous les jours — une case dans Réglages → Général → Menus les ramène pour de bon, et **une porte contextuelle aussi** : « Résoudre dans Git → Merge » sur une merge request en conflit, « Voir les logs » depuis le brief, « ce dépôt a un compose : afficher Docker » sur la ligne d'un dépôt — le menu ainsi ouvert reste dans la barre.
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,

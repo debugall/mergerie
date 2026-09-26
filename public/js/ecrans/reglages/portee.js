@@ -57,6 +57,7 @@ async function loadConfig() {
   f.auto_refresh_minutes.value = Number(c.auto_refresh_minutes) || 0; // 0 affiché explicitement
   // Idem : 0 signifie « sans limite », il doit s'écrire plutôt que rester vide.
   if (f.retention_days) f.retention_days.value = Number(c.retention_days) || 0;
+  if (f.mr_retention_days) f.mr_retention_days.value = Number(c.mr_retention_days) || 0;
   if (f.review_explain) f.review_explain.checked = c.review_explain !== '0'; // défaut : activé
   // Publication automatique : défaut DÉSACTIVÉ — le test est donc `=== '1'`, pas `!== '0'`.
   if (f.auto_post_review) f.auto_post_review.checked = c.auto_post_review === '1';
@@ -88,7 +89,7 @@ async function loadConfig() {
   // tant qu'on n'y a pas touché.
   /* `String(...)` : ces colonnes-là sont des INTEGER, SQLite rend donc 1 et non '1'. Comparer
      strictement laissait la case décochée au rechargement — voir `defautsSession`. */
-  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment']) {
+  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment', 'clone_blobless']) {
     if (f[k]) f[k].checked = String(c[k]) === '1';
   }
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;

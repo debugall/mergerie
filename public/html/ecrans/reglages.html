@@ -322,6 +322,19 @@
             <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="retention_days" type="number" min="0" step="1" placeholder="90" />
             </label>
+            <label><span data-i18n="settings.lbl.mr-retention">Alléger les merge requests fermées après (jours, 0 = jamais)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="mr_retention_days" type="number" min="0" step="1" placeholder="180" />
+            </label>
+            <!-- LA JAUGE. Ce que les données pèsent, par catégorie, mesuré au clic — et le ménage
+                 tout de suite, sans attendre la passe quotidienne. -->
+            <div class="disk-box">
+                <div class="disk-actions">
+                    <button type="button" class="btn" id="btnDiskMeasure"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="settings.disk.measure">Mesurer l'occupation disque</span></button>
+                    <button type="button" class="btn" id="btnRetentionRun" title="" data-i18n-title="settings.disk.clean-title"><svg class="ico"><use href="#i-archive"/></svg><span data-i18n="settings.disk.clean">Nettoyer maintenant</span></button>
+                </div>
+                <div id="diskUsage" hidden></div>
+                <p id="retentionBilan" class="field-note" hidden></p>
+            </div>
             <!-- Brief du matin : l'atterrissage est un réglage de l'OUTIL (comme la langue),
                  pas du navigateur — d'où la base et non le localStorage. -->
             <label class="inline-check"><input form="configForm" name="brief_on_open" type="checkbox" /> <span data-i18n="settings.lbl.brief-on-open">Brief du matin à la première ouverture</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.brief-on-open" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
@@ -415,6 +428,7 @@
             <label><span class="req" data-i18n="settings.lbl.url-gitlab">URL GitLab</span> <button type="button" class="hint" tabindex="-1" aria-label="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-tip="L'adresse racine de ton GitLab, sans chemin de projet. Ex. https://gitlab.com ou https://gitlab.mon-entreprise.fr" data-i18n-tip="settings.tip.l-adresse-racine-de-ton"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="gitlab_url" placeholder="https://gitlab.com" /></label>
             <label><span class="req" data-i18n="settings.lbl.access-token-pat">Access token (PAT)</span> <button type="button" class="hint" tabindex="-1" aria-label="Jeton d'accès personnel GitLab, avec les scopes api et read_repository. Il sert à lire les MR et à cloner les dépôts. Stocké en local uniquement." data-tip="Jeton d'accès personnel GitLab, avec les scopes api et read_repository. Il sert à lire les MR et à cloner les dépôts. Stocké en local uniquement." data-i18n-tip="settings.tip.jeton-d-acces-personnel-gitlab"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="access_token" type="password" autocomplete="off" placeholder="glpat-…" data-i18n-placeholder="settings.ph.glpat" /></label>
             <label><span data-i18n="settings.lbl.dossier-de-clonage">Dossier de clonage</span> <button type="button" class="hint" tabindex="-1" aria-label="Répertoire où l'outil clone les dépôts et où l'agent IA travaille. Un sous-dossier par projet y est créé." data-tip="Répertoire où l'outil clone les dépôts et où l'agent IA travaille. Un sous-dossier par projet y est créé." data-i18n-tip="settings.tip.repertoire-ou-l-outil-clone"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="clone_path" /></label>
+            <label class="inline-check"><input form="configForm" name="clone_blobless" type="checkbox" /> <span data-i18n="settings.lbl.clone-blobless">Cloner sans les blobs (--filter=blob:none) — les prochains clones seulement</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.clone-blobless" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
             <div class="form-actions">
                 <button class="btn btn-primary" type="button" id="btnTestGitlab" title="Vérifier que l'URL et le token permettent bien d'accéder à GitLab" data-i18n-title="settings.title.verifier-que-l-url-et"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.save-test">Enregistrer et tester</span></button>

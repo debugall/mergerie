@@ -179,6 +179,10 @@ try { db.exec('ALTER TABLE config ADD COLUMN jira_watch_minutes INTEGER DEFAULT 
    mois, assez court pour que la base ne double pas chaque année. Voir `retention.js` pour ce
    qui n'est PAS purgé, et pourquoi. */
 try { db.exec('ALTER TABLE config ADD COLUMN retention_days INTEGER DEFAULT 90'); } catch { /* déjà présente */ }
+/* LES MERGE REQUESTS FERMÉES DEPUIS N JOURS (mergées, closes, ou rangées « traitées ») : le rapport est
+   ARCHIVÉ — la dernière version reste lisible —, les versions précédentes, le diff, les questions
+   posées sur le rapport et le dossier de travail sont purgés. 180 jours par défaut, 0 = jamais. */
+try { db.exec('ALTER TABLE config ADD COLUMN mr_retention_days INTEGER DEFAULT 180'); } catch { /* déjà présente */ }
 /* LES PROPOSITIONS DE L'IA POUR UN MERGE, par fichier : `{ "<chemin>": [{ "n": 0, "texte":
    "…" }, …] }`, un tableau par conflit RÉELLEMENT résolu par l'agent (un conflit qu'il a
    ignoré n'y figure pas — un bloc mal formé n'est jamais une panne, voir `agent/protocol.js`).

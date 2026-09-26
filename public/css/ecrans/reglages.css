@@ -10,4 +10,13 @@
 .subtab { display: none; }
 .subtab.active { display: block; }
 .subtab > h2:first-child { margin-top: 0; }
-
+/* La jauge d'occupation disque : une table courte, une barre par catégorie. */
+.disk-box { margin: 10px 0; }
+.disk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.disk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.disk-table td { padding: 3px 8px 3px 0; vertical-align: middle; }
+.disk-table .disk-size { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.disk-table .disk-files { white-space: nowrap; }
+.disk-table .disk-bar { width: 40%; }
+.disk-table .disk-bar span { display: block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .7; }
+.disk-table tfoot td { border-top: 1px solid var(--line); font-weight: 600; }

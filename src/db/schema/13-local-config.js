@@ -65,6 +65,11 @@ const COLONNES_LOCALES = [
   ['task_default_ask_questions', 'INTEGER DEFAULT 0'],
   ['task_default_notify_jira', 'INTEGER DEFAULT 0'],
   ['task_default_converge', 'INTEGER DEFAULT 0'],
+  /* CLONE SANS LES BLOBS (`--filter=blob:none`) : un dépôt de dix ans se clone en secondes, git va
+     chercher le contenu d'un fichier au moment où on le lit. Le choix de CE poste, pour ses clones
+     À VENIR — un clone existant ne change pas. Décoché par défaut : un agent qui lit beaucoup de
+     fichiers paie chaque blob d'un aller-retour, et c'est un compromis qui se décide. */
+  ['clone_blobless', 'INTEGER DEFAULT 0'],
   /* LES BORNES D'UN AGENT SONT CELLES DE CE POSTE. La dépense du jour se compte ici, et un réglage
      d'équipe aurait permis à un seul push de retirer les deux bornes chez tout le monde, sans porte. */
   ['agent_max_turns', 'INTEGER NOT NULL DEFAULT 200'],

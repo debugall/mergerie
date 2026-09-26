@@ -109,6 +109,7 @@ require('./app/routes/git');
 require('./app/routes/git-compare');
 require('./app/routes/git-merge');
 require('./app/routes/groupes');
+require('./app/routes/maintenance');
 require('./app/routes/jenkins');
 require('./app/routes/jira');
 require('./app/routes/jobs');
@@ -250,6 +251,7 @@ const server = app.listen(PORT, HOST, () => {
   retentionTimer = retention.demarrer(
     () => getConfig().retention_days,
     (m) => console.log(`[retention] ${m}`),
+    () => getConfig().mr_retention_days,
   );
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));

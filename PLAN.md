@@ -885,7 +885,16 @@ fois par jour (`setInterval` **unref**, sinon le processus refuserait de s'arrê
 `feed` au-delà du délai. Les journaux sont supprimés AVANT leurs jobs — l'inverse laisserait des lignes
 orphelines que plus rien ne référence (pas de cascade). Un job `queued`/`running` n'est **jamais** purgé,
 si ancien soit-il. `usage` (coût cumulé en tokens, un total qui ne doit pas baisser) et `agent_pass`
-(disparaît déjà avec sa session) sont épargnés à dessein.
+(disparaît déjà avec sa session) sont épargnés à dessein. **`menage()`** enchaîne toute la passe : `purger`,
+**`purgerMrs`** (`config.mr_retention_days`, défaut 180, 0 = jamais, plancher 30 : MR `done` / `closed_seen`
+/ `merged_at` plus vieille que le délai → versions de rapport sauf la dernière, `review.diff_path`,
+`agent_pass` de scope `review` et `tasks/review/<id>` supprimés ; la ligne `mr` et le dernier rapport
+restent), `purgerDiffsAnciens`, `localsnapshot.menage`, **`gcClones`** (`git gc --prune=now` sur un clone
+sans fetch depuis 30 j — `FETCH_HEAD`, sinon `HEAD` —, marqueur `.git/mergerie-gc`, jamais deux fois en 30 j).
+`occupationDisque()` mesure par catégorie (base, clones, reviews, sessions, worktrees, tickets, notes, shared,
+tmp) ; servi par `GET /api/stats/disk` (cache 60 s, `?force=1`) et `POST /api/retention/run` (le ménage tout
+de suite, avec son bilan) — `src/app/routes/maintenance.js`. `local_config.clone_blobless` ('1' → `git clone
+--filter=blob:none` pour les clones à venir, `git.ensureRepo`).
 
 `notes.js` a son propre ménage, distinct : les todos **faites** depuis plus de **7 jours** reçoivent
 `archived_at` (au boot puis une fois par jour). Ce n'est pas une purge — rien n'est supprimé, la todo
