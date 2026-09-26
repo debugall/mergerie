@@ -132,6 +132,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **No more “yolo” badge in the header.** The agent mode is read and changed in Settings → AI
+  session only; every run's journal still opens with it.
 - **`npx mergerie` writes its `.env` in `~/.mergerie/`, next to the data**, not in the folder the
   command happens to be run from — a file written in one project folder was silently ignored when
   the command was run from another. It is now a dozen lines: the agent found, the port, the

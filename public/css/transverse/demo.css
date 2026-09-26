@@ -11,7 +11,5 @@
 #agentBanner[hidden] { display: none; }
 #agentBanner .agent-banner-install { font-family: var(--mono, monospace); font-size: var(--fs-xs); color: var(--muted); }
 
-/* Le badge « yolo » de l'en-tête est un BOUTON (il mène au réglage) habillé comme un badge. */
-#yoloBadge { cursor: pointer; border: 1px solid var(--amber); background: transparent; color: var(--amber-text); font: inherit; font-size: var(--fs-xs); font-weight: 600; }
 .onboard-mode { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--fs-xs); color: var(--muted); }
 .onboard-mode select { font-size: var(--fs-xs); }

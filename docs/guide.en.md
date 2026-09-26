@@ -3063,9 +3063,8 @@ review rule shows who set it.
 **Secured or yolo — one switch, per machine** (Settings → AI session). In **yolo**, the default of an
 installation that touched nothing, the agent runs **with no restriction from the launcher**, every
 flavour and every backend alike: `AGENT_ARGS` intact (wide-open mode included), no `--disallowedTools`,
-no sandbox, no allowlist, no after-the-fact integrity check — the old behaviour, as it was; a “yolo”
-badge in the header says so, and every run's journal opens with it. In **secured** mode, everything this
-paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
+no sandbox, no allowlist, no after-the-fact integrity check — the old behaviour, as it was; every run's
+journal opens with it. In **secured** mode, everything this paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
 limits and not the agent's: the local token on `/api/`, the `Host` allowlist, the nonce on protocol
 blocks, the per-machine approval of what arrives through the sync, and the agent's allowlisted
 environment.

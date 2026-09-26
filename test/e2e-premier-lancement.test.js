@@ -316,7 +316,8 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     await page.locator('#toReviewList [data-agent-mode]').selectOption('yolo');
     await page.locator('#toReviewList [data-empty-act="outils-ok"]').click();
     await attendreServeur(async () => (await app.api('GET', '/api/config')).body.agent_mode === 'yolo', 'le mode yolo choisi dans l’assistant est enregistré');
-    await page.waitForSelector('#yoloBadge:not([hidden])', { timeout: ATTENTE });
+    // Pas de badge « yolo » dans l'en-tête : le mode se lit dans Réglages → Sessions IA, et nulle part ailleurs.
+    assert.equal(await page.locator('#yoloBadge').count(), 0);
     await page.waitForFunction(
       () => document.querySelectorAll('#toReviewList .step.done').length === 4,
       null, { timeout: ATTENTE },
