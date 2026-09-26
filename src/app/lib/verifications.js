@@ -2,6 +2,7 @@
 /* Une vérification vue par la couche HTTP : ses cibles, la créer, la détailler, la résumer, et la dernière connue de chaque MR (mémorisée le temps d’une requête).
    Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
+const store = require('../../data/store');
 const approbation = require('../../data/approbation');
 const i18n = require('../../core/i18n');
 const { t } = i18n;
@@ -73,7 +74,7 @@ function appliquerModes(verifier, cibles) {
    Les mettre en file est SÛR : la file de jobs sérialise déjà par dépôt (`keysClash` sur
    `repo:<id>`), donc deux vérifications d'un même dépôt ne tourneront jamais ensemble — le
    refus ci-dessous n'est qu'un garde-fou d'ergonomie, pas la protection du clone. */
-function creerVerification({ verifier, cibles, lotId = null, enFile = false, automatique = false }) {
+function creerVerification({ verifier, cibles, lotId = null, enFile = false, automatique = false, homeJetable = null }) {
   /* UN VÉRIFICATEUR HÉRITÉ DE LA FAMILLE « SCRIPT » NE TOURNE PLUS. Sa ligne est conservée
      — on ne supprime pas la configuration de quelqu'un sans le lui demander — mais le lancer
      n'aurait aucun sens : plus rien ne sait exécuter son contrat. On refuse ici, une fois pour
@@ -99,10 +100,18 @@ function creerVerification({ verifier, cibles, lotId = null, enFile = false, aut
   const lot = lotId ? db.prepare('SELECT name FROM lot WHERE id = ?').get(lotId) : null;
   /* On recopie les noms : le rapport doit rester lisible après suppression du vérificateur
      ou du lot, et sa suppression ne doit jamais être bloquée par un vieux verdict. */
+  /* LE `HOME` DE CE RUN : jetable d'office pour un run automatique ; pour un run à la main, la case
+     de la fenêtre de lancement (mémorisée sur le vérificateur) — absente du corps, le réglage du
+     vérificateur. Un choix fait au clic est retenu pour la prochaine fois : c'est ce qu'on entend
+     par « mémorisée par vérificateur ». */
+  const jetable = automatique ? 1 : (homeJetable == null ? (verifier.isolated_home ? 1 : 0) : (homeJetable ? 1 : 0));
+  if (!automatique && homeJetable != null && jetable !== (verifier.isolated_home ? 1 : 0)) {
+    store.ecrire('verifier', () => { db.prepare('UPDATE verifier SET isolated_home = ? WHERE id = ?').run(jetable, verifier.id); return verifier.id; });
+  }
   const info = db.prepare(`INSERT INTO verification
-    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at, automatic)
-    VALUES (?, ?, ?, ?, 'queued', ?, ?, ?)`).run(verifier.id, verifier.name, lotId,
-    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString(), automatique ? 1 : 0);
+    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at, automatic, isolated_home)
+    VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`).run(verifier.id, verifier.name, lotId,
+    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString(), automatique ? 1 : 0, jetable);
   const id = info.lastInsertRowid;
   const job = jobs.startVerifyJob(id);
   return { verification: db.prepare('SELECT * FROM verification WHERE id = ?').get(id), job };

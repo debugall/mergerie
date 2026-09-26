@@ -134,3 +134,7 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 /* Le plan à approuver : le même bloc qu'un suivi, avec sa remarque facultative. */
 .plan-approve { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .plan-approve .plan-remark { flex: 1 1 100%; min-height: 48px; }
+/* Le verdict objectif sur le panneau de convergence : vert, rouge, périmé. */
+.converge-verdict-pass { color: var(--green); }
+.converge-verdict-fail { color: var(--red); }
+.converge-verdict-stale { color: var(--muted); }

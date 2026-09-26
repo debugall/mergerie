@@ -142,20 +142,108 @@ app.post('/api/verifications/:id/comment', wrap(async (req, res) => {
    les siens, et le Makefile ses cibles. On lit ce qui est SUR LE DISQUE (le clone déjà fait),
    sans réseau et sans rien exécuter — ce sont des suggestions à cliquer, rien de plus.
    Un dépôt jamais cloné n'a rien à proposer : ce n'est pas une erreur, c'est un silence. */
+/* CHAQUE SUGGESTION EST UNE LIGNE EXACTE : c'est la ligne approuvée, telle quelle, qui tournera
+   (`policy.commandesVerificateursApprouves`). Les écosystèmes reconnus, par ce qu'ils déclarent sur
+   le disque : npm / pnpm / yarn (le lockfile dit lequel), composer, Makefile, Python (pytest, tox),
+   Go, Rust, Maven, Gradle, .NET. Et quand un fichier compose est dans le clone, chaque commande de
+   test a sa variante `docker compose run --rm <service> …` — les commandes tournent SUR L'HÔTE, et
+   c'est dans la ligne qu'on dit qu'elles doivent entrer dans un conteneur. */
+const existe = (dir, nom) => { try { return fs.statSync(path.join(dir, nom)).isFile(); } catch { return false; } };
+function servicesCompose(dir) {
+  for (const f of ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml']) {
+    if (!existe(dir, f)) continue;
+    let texte = '';
+    try { texte = fs.readFileSync(path.join(dir, f), 'utf8'); } catch { return []; }
+    /* Les clés directement sous `services:` — lues sans exécuter `docker compose config` :
+       une suggestion ne lance rien, et le démon n'est peut-être pas là. */
+    const lignes = texte.split('\n');
+    const debut = lignes.findIndex((l) => /^services:\s*$/.test(l));
+    if (debut === -1) return [];
+    const noms = [];
+    let indent = null;
+    for (const l of lignes.slice(debut + 1)) {
+      if (!l.trim() || l.trim().startsWith('#')) continue;
+      if (/^\S/.test(l)) break;                       // une autre clé de premier niveau : fin des services
+      const m = /^(\s+)([A-Za-z0-9][A-Za-z0-9._-]*):/.exec(l);
+      if (!m) continue;
+      if (indent == null) indent = m[1];
+      if (m[1] === indent) noms.push(m[2]);
+    }
+    return noms;
+  }
+  return [];
+}
 function suggestionsDeDepot(cfg, repo) {
   const dir = git.cloneDirFor(cfg, repo);
   const out = [];
+  const tests = [];   // les lignes qui valent une variante « dans un conteneur »
   const lireJson = (nom) => {
     try { return JSON.parse(fs.readFileSync(path.join(dir, nom), 'utf8')); } catch { return null; }
   };
+  const lire = (nom) => { try { return fs.readFileSync(path.join(dir, nom), 'utf8'); } catch { return ''; } };
   const pkg = lireJson('package.json');
-  for (const nom of Object.keys((pkg && pkg.scripts) || {})) out.push({ command: `npm run ${nom}`, source: 'package.json' });
-  if (pkg) out.unshift({ command: 'npm ci', source: 'package.json' });
+  if (pkg) {
+    const gest = existe(dir, 'pnpm-lock.yaml') ? 'pnpm' : existe(dir, 'yarn.lock') ? 'yarn' : 'npm';
+    const install = { npm: 'npm ci', pnpm: 'pnpm install --frozen-lockfile', yarn: 'yarn install --frozen-lockfile' }[gest];
+    const run = (nom) => ({ npm: `npm run ${nom}`, pnpm: `pnpm run ${nom}`, yarn: `yarn ${nom}` }[gest]);
+    out.push({ command: install, source: 'package.json' });
+    for (const nom of Object.keys(pkg.scripts || {})) {
+      out.push({ command: run(nom), source: 'package.json' });
+      if (/test|lint|check|typecheck|build/.test(nom)) tests.push(run(nom));
+    }
+  }
   const comp = lireJson('composer.json');
-  for (const nom of Object.keys((comp && comp.scripts) || {})) out.push({ command: `composer run ${nom}`, source: 'composer.json' });
-  if (comp) out.unshift({ command: 'composer install --no-interaction', source: 'composer.json' });
+  if (comp) {
+    out.push({ command: 'composer install --no-interaction', source: 'composer.json' });
+    for (const nom of Object.keys(comp.scripts || {})) out.push({ command: `composer run ${nom}`, source: 'composer.json' });
+    if (existe(dir, 'phpunit.xml') || existe(dir, 'phpunit.xml.dist')) { out.push({ command: 'vendor/bin/phpunit', source: 'phpunit.xml' }); tests.push('vendor/bin/phpunit'); }
+  }
+  // Python : pytest dès qu'il est déclaré (pyproject, pytest.ini, setup.cfg, tox.ini, conftest), tox s'il est là.
+  const pyproject = lire('pyproject.toml');
+  if (pyproject || existe(dir, 'setup.py') || existe(dir, 'requirements.txt') || existe(dir, 'pytest.ini') || existe(dir, 'tox.ini')) {
+    if (existe(dir, 'requirements.txt')) out.push({ command: 'pip install -r requirements.txt', source: 'requirements.txt' });
+    if (existe(dir, 'requirements-dev.txt')) out.push({ command: 'pip install -r requirements-dev.txt', source: 'requirements-dev.txt' });
+    if (/\[tool\.poetry\]/.test(pyproject)) out.push({ command: 'poetry install', source: 'pyproject.toml' });
+    if (existe(dir, 'uv.lock')) out.push({ command: 'uv sync', source: 'uv.lock' });
+    if (/pytest/.test(pyproject) || existe(dir, 'pytest.ini') || /pytest/.test(lire('setup.cfg')) || /pytest/.test(lire('tox.ini')) || existe(dir, 'conftest.py')) {
+      out.push({ command: 'pytest', source: 'pytest' }); tests.push('pytest');
+    }
+    if (existe(dir, 'tox.ini')) { out.push({ command: 'tox', source: 'tox.ini' }); tests.push('tox'); }
+    if (/\[tool\.ruff\]/.test(pyproject) || existe(dir, 'ruff.toml')) out.push({ command: 'ruff check .', source: 'ruff' });
+  }
+  if (existe(dir, 'go.mod')) {
+    out.push({ command: 'go build ./...', source: 'go.mod' }, { command: 'go vet ./...', source: 'go.mod' }, { command: 'go test ./...', source: 'go.mod' });
+    tests.push('go test ./...');
+  }
+  if (existe(dir, 'Cargo.toml')) {
+    out.push({ command: 'cargo build', source: 'Cargo.toml' }, { command: 'cargo test', source: 'Cargo.toml' }, { command: 'cargo clippy', source: 'Cargo.toml' });
+    tests.push('cargo test');
+  }
+  if (existe(dir, 'pom.xml')) {
+    const mvn = existe(dir, 'mvnw') ? './mvnw' : 'mvn';
+    out.push({ command: `${mvn} -B test`, source: 'pom.xml' }, { command: `${mvn} -B verify`, source: 'pom.xml' });
+    tests.push(`${mvn} -B test`);
+  }
+  if (existe(dir, 'build.gradle') || existe(dir, 'build.gradle.kts')) {
+    const gradle = existe(dir, 'gradlew') ? './gradlew' : 'gradle';
+    out.push({ command: `${gradle} test`, source: 'build.gradle' }, { command: `${gradle} check`, source: 'build.gradle' });
+    tests.push(`${gradle} test`);
+  }
+  let racine = [];
+  try { racine = fs.readdirSync(dir); } catch { racine = []; }
+  if (racine.some((f) => /\.(sln|csproj|fsproj)$/.test(f))) {
+    out.push({ command: 'dotnet build', source: '.NET' }, { command: 'dotnet test', source: '.NET' });
+    tests.push('dotnet test');
+  }
   const mk = docker.makefileFor(dir);
   for (const cible of (mk && mk.targets) || []) out.push({ command: `make ${cible.name}`, source: 'Makefile', desc: cible.desc || '' });
+  /* Un compose dans le clone : la variante « dans le conteneur » de chaque commande de test, pour
+     le premier service — c'est la forme à copier, le nom du service se corrige d'un mot. */
+  const services = servicesCompose(dir);
+  if (services.length) {
+    out.push({ command: 'docker compose up -d --wait', source: 'compose' });
+    for (const cmd of tests) out.push({ command: `docker compose run --rm ${services[0]} ${cmd}`, source: 'compose', desc: services.length > 1 ? `services : ${services.join(', ')}` : '' });
+  }
   return out;
 }
 app.get('/api/verifiers/command-suggestions', wrap((req, res) => {
@@ -226,7 +314,8 @@ app.post('/api/verify/mrs', wrap((req, res) => {
   if (!ids.length) throw new Error(t('err.lot.empty'));
   const cibles = ciblesDepuisMrs(ids);
   const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
-  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+  const homeJetable = req.body && req.body.isolated_home != null ? !!req.body.isolated_home : null;
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles), homeJetable }));
 }));
 /* ---------- Vérifier une BRANCHE, sans merge request ----------
    Au retour de congés, plusieurs MR ont été mergées : la question n'est plus « qu'est-ce que
@@ -272,7 +361,7 @@ app.post('/api/verify/branches', wrap(async (req, res) => {
   const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
   /* Le run base s'éteint tout seul à l'exécution : `executerVerification` le déduit de
      l'absence de merge request dans les cibles. Rien à forcer ici, donc rien à désynchroniser. */
-  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles) }));
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles), homeJetable: req.body && req.body.isolated_home != null ? !!req.body.isolated_home : null }));
 }));
 app.post('/api/lots/:id/verify', wrap((req, res) => {
   const lot = lotAvecMembres(Number(req.params.id));
@@ -281,7 +370,7 @@ app.post('/api/lots/:id/verify', wrap((req, res) => {
   if (!ids.length) throw new Error(t('err.lot.empty'));
   const cibles = ciblesDepuisMrs(ids);
   const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
-  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles), lotId: lot.id }));
+  res.json(creerVerification({ verifier, cibles: appliquerModes(verifier, cibles), lotId: lot.id, homeJetable: req.body && req.body.isolated_home != null ? !!req.body.isolated_home : null }));
 }));
 app.post('/api/verifications/:id/fix', wrap((req, res) => {
   const v = db.prepare('SELECT * FROM verification WHERE id = ?').get(Number(req.params.id));

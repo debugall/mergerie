@@ -64,6 +64,11 @@ try { db.exec('ALTER TABLE verifier ADD COLUMN report_path TEXT'); } catch { /* 
 // Interpréter le TAP trouvé dans la sortie. Activé par défaut ; l'interrupteur existe pour
 // le jour où une sortie exotique déclenche la détection à tort.
 try { db.exec('ALTER TABLE verifier ADD COLUMN parse_tap INTEGER NOT NULL DEFAULT 1'); } catch { /* déjà présente */ }
+/* « HOME jetable » AUSSI SUR UN RUN LANCÉ À LA MAIN. Un run automatique n'a jamais vu le vrai `HOME` ;
+   un run manuel le garde (caches npm/maven, clés) — en connaissance de cause : la fenêtre de
+   lancement le dit, et cette case, mémorisée par vérificateur, le retire. Défaut 0 : rien ne change
+   pour qui n'y touche pas. */
+try { db.exec('ALTER TABLE verifier ADD COLUMN isolated_home INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 
 /* Les commandes d'un vérificateur 'commands', DANS L'ORDRE. Une table plutôt qu'une colonne
    JSON : l'ordre est porteur de sens (`npm ci` avant `npm test`) et l'interface les édite
@@ -128,6 +133,8 @@ try { db.exec('ALTER TABLE verification ADD COLUMN restore_error TEXT'); } catch
    alors avec un `HOME` jetable — ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws` à portée du code de la
    branche. Locale : un poste qui relit l'archive n'a rien à en faire. */
 try { db.exec('ALTER TABLE verification ADD COLUMN automatic INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+// Le choix effectif de CE run (case « HOME jetable » de la fenêtre de lancement), relu par le journal.
+try { db.exec('ALTER TABLE verification ADD COLUMN isolated_home INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 /* Ce qui a été PUBLIÉ, et quand. Sans cette trace, l'écran repropose « Publier » comme si de
    rien n'était et on poste deux fois le même verdict sur la merge request de quelqu'un. */
 try { db.exec('ALTER TABLE verification ADD COLUMN comment_posted_at TEXT'); } catch { /* déjà présente */ }

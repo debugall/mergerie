@@ -13,6 +13,18 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Verifier suggestions for every ecosystem.** The verifier form proposes exact lines from what
+  the clone declares — npm, pnpm or yarn scripts, composer and phpunit, Makefile targets, pytest,
+  tox and ruff, `go test ./...`, `cargo test`, Maven, Gradle, `dotnet test` — and, when a compose
+  file is there, the `docker compose run --rm <service> …` variant of each test command: the
+  commands run on the host, and the container goes in the line.
+- **“This run sees your HOME.”** The launch dialogs say it at the moment you click, with a
+  **throwaway HOME** box remembered per verifier (also in Settings → Verifiers); the journal says
+  which HOME a run saw.
+- **The verifier's verdict beside the convergence loop.** After each pass, the verifier carrying the
+  merge request runs inside the job and the convergence panel shows its verdict — green, red or
+  stale; a verdict that turns red is called out in the journal without stopping the loop. Never an
+  exit condition: the score threshold keeps the last word (the roadmap now says so).
 - **Plan first, then approve.** A coding session can start with a reading pass that returns a
   plan (files, steps, risks, open questions) instead of code; the project line says *plan to
   approve*, offers to read it, a remark, and **Approve and code**, which resumes the same agent

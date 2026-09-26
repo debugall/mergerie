@@ -527,9 +527,12 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
        Redis ou un `docker-compose` sur `localhost` échouait alors en run automatique, sans
        échappatoire. Le jeton de session local (lot B) ferme déjà l'API à ce processus ; c'est la
        protection qui reste ici. */
-    if (v.automatic) {
+    if (v.automatic || v.isolated_home) {
       homeIsole = fs.mkdtempSync(path.join(ensureDir(path.join(DATA_DIR, 'tmp')), 'verif-home-'));
-      noter(t('log.verify.home-isolated'));
+      noter(t(v.automatic ? 'log.verify.home-isolated' : 'log.verify.home-isolated-manual'));
+    } else {
+      // Un run à la main voit le vrai HOME — dit ici, pour qu'un verdict surprenant se relise avec ça.
+      noter(t('log.verify.home-real'));
     }
     const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole });
 

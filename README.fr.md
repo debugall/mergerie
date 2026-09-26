@@ -123,6 +123,13 @@ demandent de traverser des dossiers.
   correction qui les couvre toutes. Un vérificateur peut aussi **partir tout seul sur chaque nouvelle merge
   request** des dépôts qu'il couvre : le verdict attend alors sur la carte, et « Voir le résultat des
   vérificateurs » ouvre ce qui a tourné, sur quels commits, et ce que les commandes ont répondu.
+  Les commandes tournent **sur l'hôte** : qui veut un conteneur écrit `docker compose run --rm app npm test`
+  dans la ligne elle-même, et le formulaire **propose des lignes exactes** d'après ce que le clone déclare —
+  scripts npm, pnpm ou yarn, composer, cibles du Makefile, pytest et tox, `go test ./...`, `cargo test`,
+  Maven, Gradle, `dotnet test` — avec leur variante `docker compose run` quand un fichier compose est là.
+  Un run lancé à la main voit ton `HOME` **et le dit** au moment du clic, avec une case **HOME jetable**
+  mémorisée par vérificateur. Pendant une boucle de convergence, le vérificateur tourne après chaque passe
+  et son verdict s'affiche sur le panneau — une information à côté de la note, jamais une condition de sortie.
   Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
 - **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, avec un **mode plein
   écran** qui retire la colonne des pages pour lire sans distraction, en gardant Rendu / Deux colonnes /

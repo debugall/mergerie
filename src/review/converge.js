@@ -28,6 +28,9 @@ const { reviewMr, fillTemplate } = require('./reviewer');
 const { nonFiable, nonceRun } = require('../core/nonfiable');
 const prompts = require('../core/prompts');
 const { t } = require('../core/i18n');
+const verifyrun = require('../verify/verifyrun');
+const approbation = require('../data/approbation');
+const groupes = require('../data/groupes');
 
 function latestVersion(mrId) {
   return db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mrId);
@@ -173,6 +176,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
 
     let passes = 0;
     let status = 'running';
+    let dernierVerdict = null;
     for (;;) {
       if (note != null && note >= threshold) { status = 'converged'; break; }
       if (passes >= maxPasses) { status = 'capped'; break; }
@@ -213,6 +217,8 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
       const nv = latestVersion(mrId);
       const newNote = note10Of(nv);
       onLog(t('log.converge.pass-note', { n: passes, note: newNote == null ? '—' : `${newNote}/10` }));
+      // Le verdict objectif de cette passe, à côté de la note — il informe, il ne décide pas.
+      if (!proc.isCancelled()) dernierVerdict = (await verdictDePasse(ctx, repo, mr, newSha, onLog, dernierVerdict)) || dernierVerdict;
       if (newNote == null) { status = 'error'; setRun({ message: t('log.converge.bad-note') }); break; }
       if (best.note == null || newNote > best.note) best = { note: newNote, version: nv.version };
       setRun({ best_note: best.note, best_version: best.version });
@@ -230,6 +236,46 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
   } catch (e) {
     setRun({ status: 'error', message: String(e.message).slice(0, 300), finished_at: new Date().toISOString() });
     throw e;
+  }
+}
+
+/* LE VERDICT DU VÉRIFICATEUR, À CÔTÉ DE LA BOUCLE — JAMAIS UNE CONDITION DE SORTIE. Des tests
+   verts ne disent pas que tout est bon, et le seuil de note garde la main. Ce qu'on fait ici : après
+   chaque passe, si un vérificateur porte cette MR — celui de la session, ou un vérificateur
+   « relancer quand le verdict se périme » qui couvre le dépôt —, il tourne DANS le job (le clone est
+   à nous : aucun job de vérification ne pourrait s'y glisser), avec un HOME jetable comme tout run
+   parti seul, et le journal dit le verdict. Un verdict qui passe au rouge se dit, et la boucle
+   continue. Best-effort : un vérificateur qui échoue ne fait pas échouer une convergence. */
+function verificateurDePasse(ctx, repoId) {
+  const lire = (id) => db.prepare('SELECT * FROM verifier WHERE id = ?').get(Number(id));
+  if (ctx.task && ctx.task.verifier_id) {
+    const v = lire(ctx.task.verifier_id);
+    if (v && v.kind === 'commands' && groupes.couvertureVerifier(v.id).has(Number(repoId))) return v;
+  }
+  return db.prepare("SELECT * FROM verifier WHERE kind = 'commands' AND auto_on_stale = 1 ORDER BY name").all()
+    .find((v) => groupes.couvertureVerifier(v.id).has(Number(repoId))) || null;
+}
+async function verdictDePasse(ctx, repo, mr, sha, onLog, precedent) {
+  const verifier = verificateurDePasse(ctx, repo.id);
+  if (!verifier) return null;
+  if (!approbation.verificateurApprouve(verifier.id)) { onLog(t('log.converge.verdict-skipped', { name: verifier.name })); return null; }
+  const couverture = groupes.couvertureVerifier(verifier.id).get(Number(repo.id)) || {};
+  const cibles = [{
+    repo_id: repo.id, mr_id: mr.id, head_sha: sha, base_sha: mr.base_sha || `origin/${mr.target_branch || 'main'}`,
+    branch: mr.source_branch, mode: couverture.mode || 'worktree', workdir: couverture.workdir || null,
+  }];
+  const id = db.prepare(`INSERT INTO verification
+    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at, automatic, isolated_home)
+    VALUES (?, ?, NULL, NULL, 'queued', ?, ?, 1, 1)`).run(verifier.id, verifier.name, JSON.stringify(cibles), new Date().toISOString()).lastInsertRowid;
+  try {
+    const verdict = await verifyrun.executerVerification(id, getConfig(), onLog);
+    onLog(t('log.converge.verdict', { name: verifier.name, verdict: t(`verify.verdict.${verdict}`) }));
+    if (precedent && precedent !== 'verified_fail' && verdict === 'verified_fail') onLog(t('log.converge.verdict-red'));
+    return verdict;
+  } catch (e) {
+    db.prepare("UPDATE verification SET status = 'error', verdict = 'verify_error', finished_at = ? WHERE id = ? AND status <> 'done'").run(new Date().toISOString(), id);
+    onLog(t('log.converge.verdict-error', { message: String(e.message).split('\n')[0] }));
+    return null;
   }
 }
 

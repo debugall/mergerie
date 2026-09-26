@@ -312,6 +312,12 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   validée par un humain). Seuil et plafond sont réglables globalement (Réglages → Merge Request → *Convergence*)
   et **surchargeables au lancement**. Une **notification** t'avertit à la fin (« Convergence terminée : 8,4/10 en 3 passes »).
   Si l'option « l'IA peut poser des questions » est active et que l'IA hésite pendant une passe, la boucle
+  **Le verdict du vérificateur, à côté de la boucle — jamais une condition de sortie** : après chaque passe,
+  le vérificateur qui porte la merge request (celui de la session, ou un vérificateur « relancer quand le
+  verdict se périme » qui couvre le dépôt) tourne dans le job, avec un `HOME` jetable, et le panneau de
+  convergence affiche son dernier verdict — vert, rouge, ou périmé quand la branche a bougé depuis. Un
+  verdict qui passe au rouge se dit dans le journal, et la boucle continue : des tests verts ne disent pas
+  que tout est bon, et le seuil de note garde la main.
   **se met en attente** (notification) au lieu de deviner : tu réponds, puis tu relances Converger — qui
   **reprend la même session**.
 - **Les demandes de modification sont conservées.** La section `Demander une modification à l'IA` liste
@@ -2216,9 +2222,14 @@ objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ou
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
 les noms étant uniques) et le champ sélectionné : renommer est le premier geste ; le formulaire
-**propose les commandes que les dépôts couverts savent déjà lancer** — scripts `package.json`, scripts
-`composer.json`, cibles du Makefile, lus dans le clone sur disque, **rien n'est exécuté** — à ajouter
-d'un clic) ·
+**propose les commandes que les dépôts couverts savent déjà lancer** — scripts `package.json` (avec
+`npm`, `pnpm` ou `yarn` selon le lockfile), scripts `composer.json` et `phpunit`, cibles du Makefile,
+`pytest` / `tox` / `ruff`, `go build|vet|test ./...`, `cargo build|test|clippy`, `mvn`/`./mvnw -B test`,
+`gradle`/`./gradlew test`, `dotnet test`, lus dans le clone sur disque, **rien n'est exécuté** — et, quand
+un fichier compose est dans le clone, la variante **`docker compose run --rm <service> <commande>`** de
+chaque commande de test : les commandes tournent **sur l'hôte**, c'est dans la ligne qu'on dit d'entrer
+dans un conteneur. Chaque suggestion est une **ligne exacte**, celle qui sera approuvée telle quelle — à
+ajouter d'un clic) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
 **Général** (avec son propre bouton **Enregistrer** — les champs de tous les sous-onglets
 appartiennent au même formulaire, et celui-ci n'en avait aucun : on cochait une case et rien ne
@@ -3189,7 +3200,11 @@ lancée **sans shell**, avec un environnement minimal sans jeton, et « Stop » 
 processus. La **vérification automatique** ne part ni sur un **brouillon**, ni sur une MR venue d'un
 **fork**, et par défaut seulement sur **tes** merge requests (reconnues par l'identifiant de forge, pas
 par le nom affiché) — « tous les auteurs » est un choix explicite (Réglages → Vérificateurs). Un run
-automatique tourne avec un **`HOME` jetable** : ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`.
+automatique tourne avec un **`HOME` jetable** : ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`. Un run lancé **à la
+main** garde le vrai `HOME` (caches npm/maven, clés) — **en connaissance de cause** : la fenêtre de lancement
+le dit au moment du clic (« ce run voit ton HOME »), et une case **HOME jetable**, mémorisée par
+vérificateur (Réglages → Vérificateurs, « HOME jetable aussi pour un run lancé à la main »), le retire
+pour que vérifier la merge request d'un inconnu ne soit pas un choix par défaut.
 
 **Secrets.** Les jetons (GitLab, GitHub, Jira, Jenkins) sont stockés **en local**, dans une
 table de poste qui ne voyage jamais, sous un dossier de données créé en `0700`. L'API et l'UI ne les

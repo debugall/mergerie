@@ -3,7 +3,7 @@
 // @expose convergeBoxHtml
 /* ---------- Converger : panneau de run + modale de lancement ---------- */
 // Bandeau d'état de la dernière boucle de convergence d'une MR.
-function convergeBoxHtml(run) {
+function convergeBoxHtml(run, verif = null) {
   if (!run) return '';
   const n = (v) => fmtNote10(v);
   /* `needs_input` : la boucle s'arrête parce que l'IA a posé des questions. Il manquait des
@@ -23,9 +23,19 @@ function convergeBoxHtml(run) {
     ? `<button type="button" class="lien-reglage converge-best" data-converge-version="${run.best_version}" title="${esc(tr('converge.best.title'))}">${esc(tr('converge.best', { v: run.best_version }))}</button>` : '';
   const attente = run.status === 'needs_input'
     ? `<div class="converge-wait muted">${esc(tr('converge.waiting'))}</div>` : '';
+  /* LE VERDICT OBJECTIF, À CÔTÉ DE LA NOTE. Vert, rouge, ou périmé quand la branche a bougé
+     depuis. Une information, jamais une condition de sortie : des tests verts ne disent pas que
+     tout est bon, et le seuil garde la main. */
+  let verdict = '';
+  if (verif && verif.verdict) {
+    const rouge = verif.verdict !== 'verified_pass';
+    const etat = verif.stale ? 'stale' : (rouge ? 'fail' : 'pass');
+    verdict = `<span class="tag converge-verdict converge-verdict-${etat}" title="${esc(tr('converge.verdict.title', { name: verif.verifier_name || '' }))}">`
+      + `${svgIco(etat === 'pass' ? 'check' : etat === 'fail' ? 'close' : 'clock')} ${esc(tr(`converge.verdict.${etat}`, { n: verif.failed_count || 0, count: verif.failed_count || 0 }))}</span>`;
+  }
   return `<div class="converge-box converge-${cls}">
       <svg class="ico"><use href="#${icon}"/></svg>
-      <div><strong>${tr('converge.title')}</strong> — ${esc(label)} ${delta} ${meilleure}${attente}</div>
+      <div><strong>${tr('converge.title')}</strong> — ${esc(label)} ${delta} ${meilleure} ${verdict}${attente}</div>
     </div>`;
 }
 

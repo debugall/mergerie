@@ -310,6 +310,11 @@ overridden at launch**. A
   **notification** tells you when it ends (“Convergence finished: 8.4/10 in 3 passes”). If the “the AI may
   ask questions” option is on and the AI hesitates during a pass, the loop **pauses** (notification) instead
   of guessing: you answer, then you start Converge again — which **resumes the same session**.
+  **The verifier's verdict beside the loop — never an exit condition**: after every pass, the verifier that
+  carries the merge request (the session's, or one set to re-run when its verdict goes stale and covering the
+  repository) runs inside the job, with a throwaway `HOME`, and the convergence panel shows its latest verdict
+  — green, red, or stale when the branch moved since. A verdict that turns red is written in the journal and
+  the loop goes on: green tests do not mean everything is right, and the score threshold keeps the last word.
 - **Modification requests are kept.** The `Ask the AI for a change` section lists the requests already made
   on this report, **with their date**, and a button opens **the report each one produced** (the matching
   version). You can therefore find what was asked to arrive at a given report, instead of reconstructing it
@@ -2145,7 +2150,9 @@ below; the page shows **the list** first, and the form opens on *Add a verifier*
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
 field selected: renaming is the first gesture; the form **suggests the commands the covered repositories
-already declare** — `package.json` scripts, `composer.json` scripts, Makefile targets, read from the clone
+already declare** — `package.json` scripts (with `npm`, `pnpm` or `yarn` after the lockfile), `composer.json`
+scripts and `phpunit`, Makefile targets, `pytest` / `tox` / `ruff`, `go build|vet|test ./...`,
+`cargo build|test|clippy`, `mvn`/`./mvnw -B test`, `gradle`/`./gradlew test`, `dotnet test`, read from the clone
 on disk, **nothing is executed** — to add in one click) ·
 **Notifications** (a dedicated sub-tab, see below) ·
 **General** (with its own **Save** button — the fields of every sub-tab belong to the same form,
@@ -2161,7 +2168,7 @@ without the usual confirmation) ·
 **AI sessions** (the **standing instructions**, see below, and a technical test: two passes inside the
 same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
-context continuity between review, fixes and convergence).
+context continuity between review, fixes and convergence). And when a compose file is in the clone, the **`docker compose run --rm <service> <command>`** variant of every test command: the commands run **on the host**, and it is in the line that you say to enter a container. Every suggestion is an **exact line**, the one that will be approved as is.
 
 The first three are what you fill in to get started; **Rules** and **Verifiers** complete the review; the
 rest is tuned when the need arises. The **last sub-tab you visited is remembered** — you come back to
@@ -3085,7 +3092,10 @@ run **without a shell**, with a minimal environment carrying no token, and “St
 group. **Automatic verification** starts neither on a **draft**, nor on an MR from a **fork**, and by
 default only on **your** merge requests (recognised by the forge username, not the display name) — “all
 authors” is an explicit choice (Settings → Verifiers). An automatic run gets a **throwaway `HOME`**: no
-`~/.ssh`, no `~/.npmrc`, no `~/.aws`.
+`~/.ssh`, no `~/.npmrc`, no `~/.aws`. A run launched **by hand** keeps the real `HOME` (npm/maven caches,
+keys) — **knowingly**: the launch dialog says so at the moment you click (“this run sees your HOME”), and a
+**throwaway HOME** box, remembered per verifier (Settings → Verifiers, “Throwaway HOME for hand-launched
+runs too”), removes it so that verifying a stranger's merge request is not a default choice.
 
 **Secrets.** Tokens (GitLab, GitHub, Jira, Jenkins) are stored **locally**, in a
 machine-only table that never travels, under a data folder created as `0700`. The API and UI **never**

@@ -363,6 +363,7 @@ function renderVerifierList() {
     v.auto_on_stale ? esc(tr('verify.verifier.auto-stale')) : '',
     v.report_path ? esc(tr('verify.verifier.report-path', { path: v.report_path })) : '',
     v.parse_tap ? esc(tr('verify.verifier.parse-tap')) : '',
+    v.isolated_home ? esc(tr('verify.verifier.isolated-home')) : '',
     v.mentions ? esc(tr('verify.verifier.mentions', { who: v.mentions })) : '',
   ].filter(Boolean).join(' · ')}</div>`}
     </div>
@@ -436,6 +437,7 @@ function remplirFormVerifier(v, info) {
   f.name.value = v.name;
   f.report_path.value = v.report_path || '';
   f.parse_tap.checked = v.parse_tap == null ? true : !!v.parse_tap;
+  f.isolated_home.checked = !!v.isolated_home;
   /* Les valeurs viennent du POSTE : le serveur les recompose en « CLE=valeur » à partir des
      noms d'équipe et de ce qui est renseigné ici. Un vérificateur reçu d'un collègue arrive
      donc avec ses noms et des valeurs vides — à remplir. */
@@ -490,7 +492,7 @@ function ouvrirFormVerifier(ouvert) {
 
 function viderFormVerifier() {
   const f = $('#verifierForm');
-  f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true;
+  f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true; f.isolated_home.checked = false;
   /* C15 — le délai effectif s'ÉCRIT. Vide, avec « 900 » en gris, on ne sait pas si le
      vérificateur n'a pas de limite ou s'il en a une qu'on ne voit pas. */
   if (f.timeout_s) f.timeout_s.value = 900;
@@ -543,6 +545,7 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     report_path: f.report_path.value.trim(),
     env: f.env.value,
     parse_tap: f.parse_tap.checked ? 1 : 0,
+    isolated_home: f.isolated_home.checked ? 1 : 0,
     timeout_s: Number(f.timeout_s.value) || undefined,
     run_base: f.run_base.checked ? 1 : 0,
     comment_on_forge: f.comment_on_forge.checked ? 1 : 0,

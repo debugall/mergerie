@@ -38,6 +38,9 @@
         <p id="verifyPickWhat" class="muted"></p>
         <div id="verifyPickList" class="modal-fields"></div>
         <div id="verifyPickDetail" class="verify-pick-detail"></div>
+        <!-- CE RUN VOIT TON HOME, ou pas : dit au moment du clic, mémorisé par vérificateur. -->
+        <label class="inline-check" id="verifyPickHomeRow"><input type="checkbox" id="verifyPickHome" /> <span data-i18n="verify.pick.home">HOME jetable pour ce run (ni ~/.ssh, ni ~/.npmrc, ni caches)</span></label>
+        <p id="verifyPickHomeNote" class="field-note"></p>
         <div class="modal-actions">
             <button id="verifyPickCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
             <button id="verifyPickGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="verify.pick.go">Lancer</span></button>

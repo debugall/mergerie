@@ -667,6 +667,7 @@ const REGISTRE = [
       env_keys: (() => { try { return JSON.parse(r.env_keys || '[]'); } catch { return []; } })(),
       report_path: r.report_path || null,
       parse_tap: r.parse_tap ? 1 : 0,
+      isolated_home: r.isolated_home ? 1 : 0,
       created_at: r.created_at,
       /* L'ORDRE DES COMMANDES PORTE DU SENS : `npm ci` avant `npm test`. Le tableau le garde,
          et la sérialisation ne trie jamais un tableau. */
@@ -714,6 +715,7 @@ const REGISTRE = [
       env_keys: JSON.stringify(Array.isArray(doc.env_keys) ? doc.env_keys : []),
       report_path: doc.report_path || null,
       parse_tap: doc.parse_tap ? 1 : 0,
+      isolated_home: doc.isolated_home ? 1 : 0,
       created_at: doc.created_at,
     }),
     listes: [

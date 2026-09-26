@@ -173,7 +173,7 @@ async function openReport(id, opts = {}) {
     <div id="mrLinksBox"></div>
 
     ${m.last_error ? errorBox(m.last_error, m.id) : ''}
-    ${convergeBoxHtml(d.convergence)}
+    ${convergeBoxHtml(d.convergence, d.verification)}
 
     <div class="tabbar">
       <button class="active" data-view="review" title="${tr('report.tab.review-title')}">${tr('report.tab.review')}</button>

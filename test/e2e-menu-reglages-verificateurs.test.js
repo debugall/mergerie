@@ -181,6 +181,7 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
     await form('[name="env"]').fill('NODE_ENV=test');
     await form('[name="parse_tap"]').click();
     await form('[name="run_base"]').click();
+    await form('[name="isolated_home"]').click();
     await form('button[type="submit"]').evaluate((b) => b.scrollIntoView({ block: 'center' }));
     await form('button[type="submit"]').click();
     await formOuvert(false);
@@ -200,6 +201,7 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
     assert.equal(valeurEnv(v.uid, 'NODE_ENV'), 'test');
     assert.equal(Boolean(v.parse_tap), false);
     assert.equal(Boolean(v.run_base), false);
+    assert.equal(Boolean(v.isolated_home), true, '« HOME jetable aussi à la main » arrive en base');
     const couverture = Object.fromEntries(v.repos.map((r) => [r.repo_id, r]));
     assert.equal(couverture[ids.front].mode, 'worktree');
     assert.equal(couverture[ids.back].mode, 'in_place');
@@ -222,6 +224,7 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
     assert.equal(await form('[name="report_path"]').inputValue(), 'reports/junit.xml');
     assert.equal(await form('[name="parse_tap"]').isChecked(), false);
     assert.equal(await form('[name="run_base"]').isChecked(), false);
+    assert.equal(await form('[name="isolated_home"]').isChecked(), true);
     assert.equal(await ligneDepot(ids.front).locator('.vr-pick').isChecked(), true);
     assert.equal(await ligneDepot(ids.back).locator('.vr-mode').inputValue(), 'in_place');
     assert.equal(await ligneDepot(ids.back).locator('.vr-workdir').inputValue(), workdir);

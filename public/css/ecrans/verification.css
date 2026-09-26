@@ -91,4 +91,5 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
 .followup-imgs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
 .followup-imgs .muted { font-size: 12px; }
 .followup-prev { display: flex; gap: 6px; flex-wrap: wrap; }
-
+/* « Ce run voit votre HOME » : la note sous la case, en garde quand la case est décochée. */
+.verify-home-warn { color: var(--amber); }

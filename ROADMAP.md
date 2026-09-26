@@ -34,9 +34,13 @@ operation instead of a manual repo-by-repo chore.
 
 ## Objective convergence anchors
 
-Make the autonomous convergence loop exit on **objective signals**, not only the AI's own score: wire
-**lint / typecheck / tests** in as loop exit criteria, so a session converges when the code actually passes
-the project's own gates — not merely when the model is satisfied with it.
+~~Make the autonomous convergence loop exit on **objective signals**, not only the AI's own score.~~
+**Decided otherwise.** The verifier's verdict is shown **beside** the loop, never used as an exit
+condition: green tests do not mean the change is right, and the score threshold keeps the last word.
+What ships instead: after every pass, the verifier that carries the merge request (the session's, or
+one set to re-run when its verdict goes stale) runs inside the convergence job, its verdict is written in
+the journal and on the convergence panel (green, red, stale), and a verdict that turns red is called out
+without stopping the loop.
 
 Half of the ground is now covered: **verifiers** run the project's own commands and give a verdict that
 owes nothing to the model, a coding session can carry one and run it when it is done, and a verifier can

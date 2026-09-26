@@ -143,6 +143,8 @@ function lireVerifier(body, courant) {
     comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
     auto_on_mr: bool(b.auto_on_mr, courant ? courant.auto_on_mr : 0),
     auto_on_stale: bool(b.auto_on_stale, courant ? courant.auto_on_stale : 0),
+    // « HOME jetable » sur un run manuel aussi : mémorisé ici, proposé coché dans la fenêtre de lancement.
+    isolated_home: bool(b.isolated_home, courant ? courant.isolated_home : 0),
     /* Gabarit VIDE = le défaut, qui vit dans `verify.js`. On ne recopie pas le défaut en base :
        recopié, il se fige, et l'améliorer n'atteindrait plus personne. */
     comment_template: b.comment_template != null
@@ -245,10 +247,10 @@ app.post('/api/verifiers', wrap((req, res) => {
   const cree = store.ecrire('verifier', () => {
     const id = db.prepare(`INSERT INTO verifier
       (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
-       comment_template, mentions, env_keys, report_path, parse_tap, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+       comment_template, mentions, env_keys, report_path, parse_tap, isolated_home, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
       v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template, v.mentions,
-      '[]', v.report_path, v.parse_tap, new Date().toISOString()).lastInsertRowid;
+      '[]', v.report_path, v.parse_tap, v.isolated_home, new Date().toISOString()).lastInsertRowid;
     /* Les VALEURS restent ici ; seuls les noms partent avec le vérificateur. L'uid est posé par
        le déclencheur à l'insertion : on le relit. */
     if (v.envPaires) {
@@ -273,9 +275,9 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
     const cles = v.envPaires ? verifierenv.poser(cur.uid, v.envPaires) : (cur.env_keys || '[]');
     db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
       comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?, mentions = ?,
-      env_keys = ?, report_path = ?, parse_tap = ? WHERE id = ?`)
+      env_keys = ?, report_path = ?, parse_tap = ?, isolated_home = ? WHERE id = ?`)
       .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
-        v.auto_on_stale, v.comment_template, v.mentions, cles, v.report_path, v.parse_tap, cur.id);
+        v.auto_on_stale, v.comment_template, v.mentions, cles, v.report_path, v.parse_tap, v.isolated_home, cur.id);
     ecrireRepos(cur.id, v.repos);
     ecrireGroupes(cur.id, v.groups);
     ecrireCommandes(cur.id, v.commands);

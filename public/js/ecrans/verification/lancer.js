@@ -53,6 +53,8 @@ async function ouvrirVerifBranche(verifierId = null) {
 
 async function renderVerifBrancheRows() {
   const v = branchVerifVerifiers.find((x) => String(x.id) === $('#branchVerifySelect').value);
+  const homeB = $('#branchVerifyHome');
+  if (homeB && v) { homeB.checked = !!v.isolated_home; majNoteHome(homeB, $('#branchVerifyHomeNote')); }
   const el = $('#branchVerifyRows');
   if (!v) { el.innerHTML = ''; return; }
   const memo = memoBranches();
@@ -145,7 +147,7 @@ $('#branchVerifyGo') && $('#branchVerifyGo').addEventListener('click', async (e)
   if (targets.some((t) => !t.branch)) { toast(tr('verify.branch.missing'), true); return; }
   try {
     await busy(e.currentTarget, () => api('/verify/branches', {
-      method: 'POST', body: { verifier_id: verifierId, targets },
+      method: 'POST', body: { verifier_id: verifierId, targets, ...($('#branchVerifyHome') ? { isolated_home: $('#branchVerifyHome').checked } : {}) },
     }));
     for (const t of targets) memoriserBranche(t.repo_id, t.branch);
     memoriserDepots(verifierId, targets.map((t) => t.repo_id));
@@ -199,9 +201,9 @@ async function lancerVerification(mrIds, { lotId = null, repoIds = null } = {}) 
     choix = await choisirVerifier(r.verifiers, mrIds, lotId);
     if (!choix) return;
   } catch (e) { toast(explainError(e.message), true); return; }
-  memoriserVerifLot(lotId, choix);   // le même lot repartira sur le même vérificateur
+  memoriserVerifLot(lotId, choix.id);   // le même lot repartira sur le même vérificateur
   try {
-    const body = { verifier_id: choix };
+    const body = { verifier_id: choix.id, ...(choix.isolated_home === undefined ? {} : { isolated_home: choix.isolated_home }) };
     if (lotId) await api(`/lots/${lotId}/verify`, { method: 'POST', body });
     else await api('/verify/mrs', { method: 'POST', body: { ...body, mr_ids: mrIds } });
     toast(tr('verify.toast.started'));
@@ -304,7 +306,19 @@ function majDetailChoix() {
     ${(v.repos || []).some((r) => r.mode === 'in_place') ? `<div id="verifyDockerEtat"></div><p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
   // L'état des services du répertoire « in place », demandé maintenant (cf. B6).
   majEtatDockerDuChoix(v);
+  // Le HOME de ce run : la case suit ce que le vérificateur a mémorisé, et la note dit ce que ça change.
+  const home = $('#verifyPickHome');
+  if (home) { home.checked = !!v.isolated_home; majNoteHome(home, $('#verifyPickHomeNote')); }
 }
+/* « Ce run voit votre HOME » — ou pas. Une phrase sous la case, qui change avec elle : un run
+   manuel sur la merge request d'un inconnu ne doit pas voir ~/.ssh par défaut sans qu'on le sache. */
+function majNoteHome(cb, note) {
+  if (!cb || !note) return;
+  note.textContent = tr(cb.checked ? 'verify.pick.home-isolated' : 'verify.pick.home-real');
+  note.classList.toggle('verify-home-warn', !cb.checked);
+}
+onEl($('#verifyPickHome'), 'change', () => majNoteHome($('#verifyPickHome'), $('#verifyPickHomeNote')));
+onEl($('#branchVerifyHome'), 'change', () => majNoteHome($('#branchVerifyHome'), $('#branchVerifyHomeNote')));
 
 function fermerChoixVerifier(v) {
   $('#verifyPickModal').hidden = true;
@@ -315,6 +329,7 @@ $('#verifyPickCancel') && $('#verifyPickCancel').addEventListener('click', () =>
 $('#verifyPickList') && $('#verifyPickList').addEventListener('change', majDetailChoix);
 $('#verifyPickGo') && $('#verifyPickGo').addEventListener('click', () => {
   const sel = $('#verifyPickList input:checked');
-  fermerChoixVerifier(sel ? Number(sel.value) : null);
+  // Le choix rend le vérificateur ET le HOME de ce run : les deux partent ensemble.
+  fermerChoixVerifier(sel ? { id: Number(sel.value), isolated_home: $('#verifyPickHome') ? $('#verifyPickHome').checked : undefined } : null);
 });
 
