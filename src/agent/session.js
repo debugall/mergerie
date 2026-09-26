@@ -28,6 +28,12 @@ const timeoutMs = () => Number(process.env.AGENT_SESSION_TIMEOUT_MS) || copilot.
 const SESSIONS_ROOT = path.join(DATA_DIR, 'agent-sessions'); // homes Copilot isolés par clé
 
 const backendName = () => agentpolicy.backendDe(copilot.COPILOT_BIN);
+/* Le backend courant SAIT-IL reprendre une session ? C'est la question que posaient jusqu'ici
+   les appelants sous la forme `backendName() !== 'unknown'` — fausse depuis que codex et gemini
+   sont connus sans être reprenables : on la pose au registre. Non reprenable = repli one-shot
+   (`copilot.runPrompt`), le comportement historique. */
+const reprenable = () => !!require('./backends').pour(backendName()).resume;
+const backendCourant = () => require('./backends').pour(backendName());
 
 const slug = (key) => String(key).replace(/[^\w.-]/g, '_').slice(0, 120);
 
@@ -240,7 +246,7 @@ function enrichCopilotError(e, bootstrap, home) {
  */
 async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = false, onLog = () => {}, options, saveur, addDirs }) {
   const backend = backendName();
-  if (backend === 'unknown') throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN }));
+  if (!reprenable()) throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN, backend: backendCourant().label }));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
   const pol = argvSaveur(backend, saveur, options, addDirs, cwd, onLog);
   const prompt = avecPreambule(promptRecu);  // ce qui est balisé comme donnée est dit tel
@@ -292,6 +298,7 @@ async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = fal
 const NOTES = {
   'copilot-lecture-non-restreinte': 'agents.log.copilot-not-restricted',
   'copilot-ecriture-non-restreinte': 'agents.log.copilot-write-not-restricted',
+  'backend-non-restreint': 'agents.log.backend-not-restricted',
 };
 /* Les options de permission d'un lancement, et ce qu'on en dit au journal : ce que copilot ne
    peut pas restreindre, et le MODE retenu pour une écriture (lot A, point 2). */
@@ -302,6 +309,9 @@ function argvSaveur(backend, saveur, options, addDirs, cwd, onLog = () => {}) {
     allowedToolsProfil: (options && options.allowedTools) || [],
   });
   if (pol.note && NOTES[pol.note]) onLog(t(NOTES[pol.note]));
+  /* LE NIVEAU DE GARANTIE EN PREMIÈRE LIGNE : ce que ce lancement peut promettre, avant qu'il
+     ne dise quoi que ce soit d'autre. */
+  onLog(t(`agents.log.level.${agentpolicy.niveauDe(copilot.COPILOT_BIN)}`, { backend: backendCourant().label }));
   if (pol.mode === 'large') onLog(t('agents.log.write-mode-large'));
   else if (pol.mode === 'allowlist') {
     onLog(pol.sandboxDemandeNonVerifie ? t('agents.log.write-mode-sandbox-unverified') : t('agents.log.write-mode-allowlist'));
@@ -325,9 +335,7 @@ function resumeCommand(backend, handle, cwd, options) {
      vaut une commande à lancer depuis le bon dossier soi-même que pas de commande du tout —
      sans quoi le bouton disparaîtrait précisément dans le cas où l'on cherche cette session. */
   const cd = cwd ? `cd ${shQuote(cwd)} && ` : '';
-  if (backend === 'claude') return `${cd}${bin}${extra} --resume ${handle}`;
-  if (backend === 'copilot') return `${cd}COPILOT_HOME=${shQuote(handle)} ${bin}${extra} --continue`;
-  return null;
+  return require('./backends').pour(backend).resumeCommand({ bin, suffixe: extra, handle, cd, shQuote });
 }
 
-module.exports = { backendName, argvSaveur, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT };
+module.exports = { backendName, reprenable, backendCourant, argvSaveur, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT };

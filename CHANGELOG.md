@@ -40,6 +40,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **The forge's CI on every card.** A CI badge reads the latest GitLab pipeline or the GitHub
   check-runs and statuses of the merge request — green, red, running — with a link to what broke.
   It is not Mergerie's verdict, which keeps its own badge.
+- **Four agent backends, and a guarantee level said in plain words.** Next to Claude Code and
+  Copilot CLI, **Codex CLI** and **Gemini CLI** are wired — from their documentation, without a
+  binary to try them on, and Settings say so (“unverified”) — and any other CLI is **run as is**
+  instead of being refused. The backend is detected from `--version`, then from the binary's
+  name, and can be chosen in Settings → AI session (or `AGENT_BACKEND`). Every run's journal now
+  opens with the level of what its backend can promise — **proven** (sandbox verified here),
+  **declared** (the CLI can restrict itself, nothing proved it), **lightened** (no restriction,
+  the after-the-fact integrity check is the only net) — and so does Settings. A Copilot that
+  cannot restrict a read-only run is no longer refused: it runs at the lightened level, said as
+  such; the “leave Copilot unrestricted” checkbox is gone with the refusal it excused.
 - **Reviews refreshes on its own.** A new database starts with automatic refresh every
   **5 minutes** (it was off, so nothing ever arrived without a click), and opening the Reviews tab
   runs a discovery when the last one is older than that interval.

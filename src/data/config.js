@@ -43,7 +43,7 @@ const ALLOWED = [
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
-  'agent_bin', 'agent_args', 'agent_timeout_ms',
+  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -172,6 +172,8 @@ function updateConfig(patch) {
     const ms = parseInt(next.agent_timeout_ms, 10);
     next.agent_timeout_ms = (!Number.isFinite(ms) || ms <= 0) ? 0 : Math.min(24 * 3600000, Math.max(10000, ms));
   }
+  // Le backend explicite : un identifiant du registre, `generic`, ou `auto` (la détection).
+  if (!['auto', 'claude', 'copilot', 'codex', 'gemini', 'generic'].includes(String(next.agent_backend || ''))) next.agent_backend = 'auto';
   next.agent_write_allow = String(next.agent_write_allow || '').trim();
   next.agent_sandbox_network_domains = String(next.agent_sandbox_network_domains || '').trim();
   /* COLONNE INTEGER, PAS TEXT COMME SES VOISINES (revue de add-secure-layer-2) : relue depuis
@@ -279,8 +281,10 @@ function updateConfig(patch) {
       agent_read_unrestricted = @agent_read_unrestricted,
       agent_bin = @agent_bin,
       agent_args = @agent_args,
-      agent_timeout_ms = @agent_timeout_ms
+      agent_timeout_ms = @agent_timeout_ms,
+      agent_backend = @agent_backend
     WHERE id = 1`).run(next);
+
   /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX. « Tester le sandbox » a constaté ce qu'un
      CLI précis faisait sur cette machine ; un autre chemin est un autre programme, et la
      politique d'écriture retombe sur la liste blanche jusqu'au prochain test — exactement ce

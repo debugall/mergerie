@@ -87,6 +87,7 @@ function groupes(app) {
       ['agent_bin', '/opt/agents/claude-ecran'],
       ['agent_args', '--model claude-sonnet-5'],
       ['agent_timeout_ms', '600000'],
+      ['agent_backend', 'gemini'],
       ['ai_extra_instructions', 'Commente en français ; lance les tests avant de committer.'],
       ['agent_auto_max', '25'],
       ['agent_max_turns', '150'],

@@ -274,7 +274,7 @@ async function ouvrirAgentModal(a) {
   await majSkillsAgent(a);
   majErreurSubagents();
   const warn = $('#agentCopilotWarn');
-  if (warn) warn.hidden = !/copilot/i.test(copilotBinCourant);
+  if (warn) warn.hidden = !agentBackendCourant || agentBackendCourant === 'claude';
   $('#agentFormErr').hidden = true;
   $('#agentModal').hidden = false;
   majApercuArgv();

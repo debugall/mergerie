@@ -140,21 +140,23 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   const pol = agentpolicy.argvPermissions({
     backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs, cwd,
   });
-  if (pol.note) onLog(t('agents.log.copilot-not-restricted'));
+  const be = require('./backends').pour(backend);
+  if (pol.note) onLog(t(pol.note === 'backend-non-restreint' ? 'agents.log.backend-not-restricted' : 'agents.log.copilot-not-restricted'));
+  onLog(t(`agents.log.level.${agentpolicy.niveauDe(COPILOT_BIN)}`, { backend: be.label }));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
   const flags = [...pol.extra, ...pol.args];
   flags.push(...agentpolicy.argsMaxTurns(backend, flags));
   prompt = require('../core/nonfiable').avecPreambule(prompt);   // ce qui est balisé comme donnée est dit tel
   return new Promise((resolve, reject) => {
-    // flags additionnels (ex: --yolo) placés AVANT -p
-    const args = [...flags, '-p', prompt];
+    // flags additionnels placés AVANT le prompt ; la forme du prompt (`-p`, `exec`) est celle du backend
+    const args = [...flags, ...be.promptArgs(prompt)];
     // commande COMPLÈTE (non tronquée) : prompt encodé en une ligne lisible
-    const parts = [COPILOT_BIN, ...flags, '-p', JSON.stringify(prompt)];
+    const parts = [COPILOT_BIN, ...flags, ...be.promptArgs(JSON.stringify(prompt))];
     if (proc.isCancelled()) return reject(new Error(t('err.job.stopped')));
     onLog(`$ ${parts.join(' ')}  (cwd=${cwd})`);
     /* stdin fermée : sinon le CLI attend des données sur un tube que personne n'alimente,
        avertit au bout de trois secondes et l'avertissement masque la vraie erreur. */
-    const env = agentpolicy.envAgent(backend === 'unknown' ? null : backend);
+    const env = agentpolicy.envAgent(backend);
     const child = spawn(COPILOT_BIN, args, proc.options({ cwd, env, stdio: ['ignore', 'pipe', 'pipe'] }));
     proc.setActive(child);
     let stdout = '';

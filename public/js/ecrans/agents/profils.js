@@ -192,7 +192,7 @@ async function loadAgentList() {
   box.innerHTML = skeleton(3);
   await Promise.all([chargerAgents(), loadRepoOptions()]);
   const warn = $('#agentListCopilotWarn');
-  if (warn) warn.hidden = !/copilot/i.test(copilotBinCourant);
+  if (warn) warn.hidden = !agentBackendCourant || agentBackendCourant === 'claude';
   if (!agents.length) {
     box.innerHTML = emptyState({
       icon: 'zap', title: esc(tr('agents.empty')), text: esc(tr('agents.empty-hint')),

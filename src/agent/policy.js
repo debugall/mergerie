@@ -28,25 +28,12 @@
  *   l'environnement (en liste blanche).
  */
 const { spawnSync } = require('node:child_process');
+/* Le filtre du mode large vit dans `modelarge.js`, partagé avec chaque backend (`backends/`)
+   sans qu'aucun des deux n'importe l'autre. */
+const { sansModeLarge } = require('./modelarge');
 
 const LECTURE = new Set(['review', 'explain', 'question', 'modify', 'explore', 'ask', 'test']);
 const ECRITURE = new Set(['code', 'fix', 'converge', 'local', 'task', 'rebase']);
-
-/* Les options qui ÉLARGISSENT : retirées d'une saveur de lecture, et d'un profil qui porte sa
-   propre liste (sans quoi sa liste ne vaut rien). `--permission-mode` prend une valeur. */
-const LARGES = new Set(['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--yolo', '--allow-all-tools']);
-function sansModeLarge(extra) {
-  const out = [];
-  const a = extra || [];
-  for (let i = 0; i < a.length; i++) {
-    const x = String(a[i]);
-    if (LARGES.has(x)) continue;
-    if (x === '--permission-mode') { i += 1; continue; }
-    if (x.startsWith('--permission-mode=')) continue;
-    out.push(a[i]);
-  }
-  return out;
-}
 
 const OUTILS_LECTURE = ['Read', 'Glob', 'Grep', 'Bash(git log:*)', 'Bash(git show:*)', 'Bash(git diff:*)', 'Bash(git blame:*)'];
 const INTERDITS_LECTURE = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'WebFetch', 'WebSearch'];
@@ -100,6 +87,12 @@ function capacites(bin) {
     settings: /--settings\b/.test(aide),
     denyTool: /--deny-tool\b/.test(aide),
     allowTool: /--allow-tool\b/.test(aide),
+    /* Ce que les AUTRES CLI savent dire (backends/codex.js, backends/gemini.js). */
+    sandboxOpt: /--sandbox\b/.test(aide),
+    fullAuto: /--full-auto\b/.test(aide),
+    skipGitRepoCheck: /--skip-git-repo-check\b/.test(aide),
+    cdOpt: /(^|\s)-C\b|--cd\b/.test(aide),
+    approvalMode: /--approval-mode\b/.test(aide),
   };
   return capaciteCache;
 }
@@ -114,21 +107,22 @@ let backendCache = null;
 function backendDe(bin) {
   const b = String(bin || '');
   if (backendCache && backendCache.bin === b) return backendCache.val;
-  let val = 'unknown';
-  try {
-    const sortie = String(spawnSync(b, ['--version'], { encoding: 'utf8', timeout: 5000 }).stdout || '');
-    if (/claude code/i.test(sortie)) val = 'claude';
-    else if (/github copilot/i.test(sortie)) val = 'copilot';
-  } catch { /* binaire absent, ou --version inconnu : repli sur le nom */ }
-  if (val === 'unknown') {
-    const low = b.toLowerCase();
-    if (low.includes('claude')) val = 'claude';
-    else if (low.includes('copilot')) val = 'copilot';
-  }
+  /* La détection est dans le registre des backends (`backends/index.js`) : `--version`, puis le
+     nom, `unknown` sinon — ou le choix explicite des Réglages. Requis ici, pas en tête : les
+     backends n'importent jamais la politique, et la politique ne les charge qu'au besoin. */
+  const val = require('./backends').detecter(b);
   backendCache = { bin: b, val };
   return val;
 }
 const oublierBackend = () => { backendCache = null; };
+
+/** Le niveau de garantie (`prouve` / `declare` / `allege`) du backend qui désigne `bin`. */
+function niveauDe(bin) {
+  const { getConfig } = require('../data/config');
+  let cfg = {};
+  try { cfg = getConfig(); } catch { /* base absente : niveau lu sans réglage */ }
+  return require('./backends').niveau(backendDe(bin), capacites(bin), cfg);
+}
 
 /* FAIL-CLOSED (plan_secure.md, lot A, point 8) : une saveur qu'on ne sait pas NOMMER est traitée
    en LECTURE, jamais en écriture. L'inverse (l'ancien défaut) élargissait sans un mot dès qu'un
@@ -327,19 +321,11 @@ function argvCopilot({ extra, kind, bin }) {
       lecture, note: null, mode: 'copilot',
     };
   }
-  /* Lecture : sans `--deny-tool`, ce backend ne sait pas se restreindre — REFUSER plutôt que de
-     laisser croire à une lecture seule (point 7). `agent_read_unrestricted=1` est l'échappatoire
-     assumée, jamais le défaut. */
+  /* Lecture : sans `--deny-tool`, ce backend ne sait pas se restreindre. On ne REFUSE plus (la
+     sonde ne bloque aucun CLI) : niveau `allege`, dit au journal, et le contrôle d'intégrité
+     après coup (`git/integrite.js`) fait foi — une lecture qui a écrit est marquée compromise. */
   if (!cap.denyTool) {
-    const { getConfig } = require('../data/config');
-    const cfg = getConfig();
-    if (String(cfg.agent_read_unrestricted) !== '1') {
-      const { t } = require('../core/i18n');
-      const e = new Error(t('err.agent.copilot-lecture-non-restreinte'));
-      e.code = 'COPILOT_UNRESTRICTED';
-      throw e;
-    }
-    return { extra: sansLarge, args: [], lecture, note: 'copilot-lecture-non-restreinte', mode: 'copilot' };
+    return { extra: sansLarge, args: [], lecture, note: 'copilot-lecture-non-restreinte', mode: 'allege' };
   }
   return {
     extra: sansLarge, args: ["--deny-tool", "write", "--deny-tool", "shell(*)"],
@@ -364,14 +350,20 @@ function argvCopilot({ extra, kind, bin }) {
  * @returns {{ extra: string[], args: string[], lecture: boolean, note: string|null, mode: string }}
  */
 function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDirs = [], allowedToolsProfil = [], cwd }) {
-  if (backend !== 'claude') return argvCopilot({ extra, kind, bin });
+  if (backend === 'copilot') return argvCopilot({ extra, kind, bin });
+  if (backend !== 'claude') {
+    /* codex, gemini, un CLI inconnu : c'est le backend qui dit comment se borne sa lecture et
+       son écriture (`backends/<id>.js`), avec les capacités lues dans son `--help`. */
+    const be = require('./backends').pour(backend);
+    return be.argv({ lecture: saveurDe(kind) === 'lecture', extra, cap: capacites(bin), cwd, kind });
+  }
   if (saveurDe(kind) === 'lecture') return argvLecture({ bin, extra, addDirs, allowedToolsProfil, kind });
   return argvEcriture({ bin, extra, profil, addDirs, cwd });
 }
 
 /** Vrai quand ce lancement ne pourra PAS écrire son document : saveur de lecture sur claude. Le
     prompt demande alors la réponse finale comme résultat, au lieu d'un fichier refusé d'avance. */
-const sortieSurStdout = (kind, bin) => saveurDe(kind) === 'lecture' && backendDe(bin) === 'claude';
+const sortieSurStdout = (kind, bin) => saveurDe(kind) === 'lecture' && ['claude', 'codex', 'gemini'].includes(backendDe(bin));
 
 /* ---------------------------------------------------------------- les bornes */
 
@@ -440,13 +432,15 @@ const PREFIXES_COMMUNS = ['LC_', 'XDG_'];
 const PREFIXES = {
   claude: ['ANTHROPIC_', 'CLAUDE_', 'AWS_', 'VERTEX_'],
   copilot: ['COPILOT_', 'GH_', 'GITHUB_'],
+  codex: ['OPENAI_', 'CODEX_'],
+  gemini: ['GEMINI_', 'GOOGLE_'],
 };
 
 /* `MERGERIE_AGENT_ENV=NOM1,NOM2` ajoute des noms à la liste — le besoin d'un projet qu'on ne
    devine pas (`DATABASE_URL` de test, `KUBECONFIG`…). C'est un choix de l'utilisateur, fait dans
    SON `.env` : il sait ce qu'il donne. */
 function envAgent(backend, source = process.env) {
-  const prefixes = [...PREFIXES_COMMUNS, ...(PREFIXES[backend] || [...PREFIXES.claude, ...PREFIXES.copilot])];
+  const prefixes = [...PREFIXES_COMMUNS, ...(PREFIXES[backend] || Object.values(PREFIXES).flat())];
   const enPlus = new Set(String(source.MERGERIE_AGENT_ENV || '').split(',').map((x) => x.trim()).filter(Boolean));
   const env = {};
   for (const [k, v] of Object.entries(source)) {
@@ -460,7 +454,7 @@ function envAgent(backend, source = process.env) {
 }
 
 module.exports = {
-  LECTURE, ECRITURE, backendDe, oublierBackend, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
+  LECTURE, ECRITURE, backendDe, oublierBackend, niveauDe, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
   OUTILS_LECTURE, INTERDITS_LECTURE, INTERDITS_ECRITURE, interditsDonnees,
   allowlistEcriture, sandboxSettings, BARE_KINDS,
 };

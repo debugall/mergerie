@@ -2690,6 +2690,20 @@ d'installation, et « Réessayer » refait la détection sans relancer le serveu
 rapports sont **simulés** et dits tels. Ce que l'agent a le droit de faire ne se règle plus dans le
 `.env` : voir *Sandbox de l'agent* dans le même sous-onglet, et la section Sécurité.
 
+**Quatre backends, et un niveau de garantie dit en clair.** Claude Code et Copilot CLI sont
+éprouvés ; **Codex CLI** et **Gemini CLI** sont écrits d'après leur documentation, sans avoir été
+essayés par le mainteneur (les Réglages les disent « non vérifiés » : le premier run réel dira) ;
+un CLI inconnu est **lancé tel quel**. Le backend se détecte à ce que le binaire répond à
+`--version`, puis à son nom, et se **choisit** dans Réglages → Session IA (ou `AGENT_BACKEND`)
+quand la détection se trompe. À côté du nom, le niveau de ce que ce backend peut promettre :
+**prouvé** (la sandbox du CLI a été vue bloquer une écriture hors dossier et un appel réseau sur
+ce poste — « Tester le sandbox »), **déclaré** (le CLI sait se restreindre — `--restricted`,
+`--sandbox read-only`, `--deny-tool` — mais rien ne l'a prouvé ici : le contrôle d'intégrité
+après coup fait foi), **allégé** (rien de tout cela : le contrôle après coup est le seul filet,
+et le journal de chaque run l'écrit en première ligne). Aucun niveau ne bloque un CLI ; ce qui
+n'est jamais allégé : le jeton de forge hors du clone, l'API fermée par le jeton local,
+l'environnement en liste blanche, le mode large retiré des arguments.
+
 Deux fichiers `.env` sont lus au démarrage, du plus faible au plus fort : `~/.mergerie/.env`, puis
 **celui du dossier d'où la commande est lancée** (la racine du clone avec `npm start`, le répertoire
 courant avec `npx mergerie`) — c'est la surcharge locale. Ce que le shell exporte passe devant les

@@ -15,7 +15,9 @@ async function afficherEtatAgent() {
   try {
     const s = await api('/status');
     const etat = s.dryRunForced ? tr('settings.agent.etat.dryrun') : s.copilotAvailable ? tr('settings.agent.etat.ok') : tr('settings.agent.etat.missing');
-    p.textContent = tr('settings.agent.etat', { bin: s.copilotBin || '—', backend: s.agentBackend || '?', etat });
+    /* Le niveau de garantie, en clair, à côté du nom : ce que ce backend peut promettre. */
+    const niveau = s.agentLevel ? ` · ${tr(`settings.agent.level.${s.agentLevel}`)}` : '';
+    p.textContent = tr('settings.agent.etat', { bin: s.copilotBin || '—', backend: s.agentBackendLabel || s.agentBackend || '?', etat }) + niveau;
     p.classList.toggle('is-invalid-text', !s.copilotAvailable && !s.dryRunForced);
   } catch { p.textContent = ''; }
 }

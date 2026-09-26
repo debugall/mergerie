@@ -2604,6 +2604,20 @@ banner says so at the top of the screen, with the path looked for and the instal
 and say so. What the agent is allowed to do is no longer set in the `.env`: see *Agent sandbox* in
 the same sub-tab, and the Security section.
 
+**Four backends, and a guarantee level said in plain words.** Claude Code and Copilot CLI are
+proven; **Codex CLI** and **Gemini CLI** are written from their documentation, never tried by the
+maintainer (Settings say “unverified”: the first real run will tell); an unknown CLI is **run as
+is**. The backend is detected from what the binary answers to `--version`, then from its name,
+and can be **chosen** in Settings → AI session (or `AGENT_BACKEND`) when detection gets it wrong.
+Next to its name, the level of what that backend can promise: **proven** (the CLI's sandbox was
+seen blocking a write outside the folder and a network call on this machine — “Test the
+sandbox”), **declared** (the CLI can restrict itself — `--restricted`, `--sandbox read-only`,
+`--deny-tool` — but nothing proved it here: the after-the-fact integrity check is what counts),
+**lightened** (none of that: the after-the-fact check is the only net, and every run's journal
+says so on its first line). No level blocks a CLI; what is never lightened: the forge token out
+of the clone, the API closed by the local token, the allowlisted environment, the wide-open mode
+stripped from the arguments.
+
 Two `.env` files are read at startup, weakest first: `~/.mergerie/.env`, then **the one in the
 folder the command is run from** (the root of the clone with `npm start`, the current directory
 with `npx mergerie`) — the local override. What the shell exports wins over both. The old names

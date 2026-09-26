@@ -425,17 +425,27 @@ if (registre) {
      `sansModeLarge`, qui retire `--dangerously-skip-permissions` et consorts. `LARGES`, la liste
      de ce qui élargit, n'a de sens QUE dans cette fonction : si son nom apparaît ailleurs, une
      branche a pu se mettre à la lire — ou à la contourner — sans passer par le filtre. */
-  const F_POLICY = fichierUnique(/^const LARGES = new Set\(/m, 'La politique de l’agent (`const LARGES = new Set(`)');
-  if (F_POLICY) {
-    const pol = lire(F_POLICY);
+  const F_LARGE = fichierUnique(/^const LARGES = new Set\(/m, 'Le filtre du mode large (`const LARGES = new Set(`)');
+  if (F_LARGE) {
+    const large = lire(F_LARGE);
     const estCommentaire = (ligne) => /^\s*(\/\/|\*|\/\*)/.test(ligne);
-    const declLARGES = (pol.match(/^const LARGES = new Set\([\s\S]*?\);\n/m) || [''])[0];
-    const fnSansModeLarge = (pol.match(/function sansModeLarge\([\s\S]*?\n\}\n/) || [''])[0];
-    const horsFonction = pol.replace(declLARGES, '').replace(fnSansModeLarge, '')
+    const declLARGES = (large.match(/^const LARGES = new Set\([\s\S]*?\);\n/m) || [''])[0];
+    const fnSansModeLarge = (large.match(/function sansModeLarge\([\s\S]*?\n\}\n/) || [''])[0];
+    const horsFonction = large.replace(declLARGES, '').replace(fnSansModeLarge, '')
       .split('\n').filter((l) => !estCommentaire(l)).join('\n');
     if ((horsFonction.match(/\bLARGES\b/g) || []).length > 0) {
-      soucis.push(`${nomDe(F_POLICY)}  LARGES référencé hors de sansModeLarge — le filtre a pu être contourné`);
+      soucis.push(`${nomDe(F_LARGE)}  LARGES référencé hors de sansModeLarge — le filtre a pu être contourné`);
     }
+  }
+  /* Le même contrôle sur CHAQUE fichier qui fabrique un argv : la politique (claude, copilot)
+     et chaque backend du registre (codex, gemini, générique). Un backend ajouté demain qui
+     rendrait `extra` cru serait vu ici. */
+  const FICHIERS_ARGV = [
+    'agent/policy.js',
+    ...(() => { try { return fs.readdirSync(path.join(SRC, 'agent', 'backends')).filter((f) => f.endsWith('.js')).map((f) => `agent/backends/${f}`); } catch { return []; } })(),
+  ].filter((f) => fs.existsSync(path.join(SRC, f)));
+  for (const F_POLICY of FICHIERS_ARGV) {
+    const pol = lire(F_POLICY);
     /* Chaque FONCTION qui reçoit `extra` et le rend doit appeler `sansModeLarge(extra)` au moins
        une fois dans son corps — peu importe si c'est inline (`extra: sansModeLarge(extra)`) ou
        via une variable intermédiaire, ce qui compte est qu'aucun chemin ne rende `extra` cru.
@@ -444,7 +454,7 @@ if (registre) {
     // `argvPermissions` ne fait QUE distribuer vers argvLecture/argvEcriture/argvCopilot — le
     // filtre s'applique dans chacune d'elles, pas dans le répartiteur qui ne fait pas de `return {`.
     const PASSTHROUGH = ['argvPermissions'];
-    for (const m of pol.matchAll(/^function (\w+)\(\{[^)]*\bextra\b[^)]*\}\)\s*\{/gm)) {
+    for (const m of pol.matchAll(/^\s*(?:function\s+)?(\w+)\(\{[^)]*\bextra\b[^)]*\}\)\s*\{/gm)) {
       if (PASSTHROUGH.includes(m[1])) continue;
       const debut = m.index + m[0].length;
       let profondeur = 1;

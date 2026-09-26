@@ -59,6 +59,13 @@ describe('API de bout en bout', () => {
     assert.equal(r.status, 200);
     const apres = (await app.api('GET', '/api/status')).body;
     assert.equal(apres.copilotBin, '/nulle/part/claude-test', 'le binaire réglé à l’écran est celui que le statut montre, tout de suite');
+    assert.ok(['prouve', 'declare', 'allege'].includes(apres.agentLevel), `un niveau de garantie nommé : ${apres.agentLevel}`);
+    assert.equal(apres.agentBackendSetting, 'auto');
+    /* Le backend se CHOISIT : un CLI inconnu dit « codex » est traité en codex, et le statut le montre. */
+    await app.api('PUT', '/api/config', { agent_backend: 'codex' });
+    const choisi = (await app.api('GET', '/api/status')).body;
+    assert.equal(choisi.agentBackend, 'codex'); assert.equal(choisi.agentBackendLabel, 'OpenAI Codex CLI');
+    assert.equal((await app.api('PUT', '/api/config', { agent_backend: 'plop' })).body.agent_backend, 'auto', 'une valeur inconnue retombe sur auto');
     assert.deepEqual(apres.copilotArgs, ['--model', 'x']);
     assert.equal(apres.agentTimeoutMs, 120000);
     assert.equal(apres.copilotAvailable, false, 'un chemin qui n’existe pas : introuvable');

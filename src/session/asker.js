@@ -104,7 +104,7 @@ async function runQuestion(id, onLog = () => {}, opts = {}) {
   /* Le `cwd` fait partie de l'identité d'une session : si celle qu'on a enregistrée vient
      d'ailleurs (session fournie à la main, dossier de données déplacé), on ne la reprend pas
      — l'agent répondrait « session inconnue » et on perdrait la passe. */
-  const reprenable = !copilot.isDryRun() && agentsession.backendName() !== 'unknown';
+  const reprenable = !copilot.isDryRun() && agentsession.reprenable();
   let reprise = reprenable && !!q.session_key;
   if (reprise && q.session_cwd && path.resolve(q.session_cwd) !== path.resolve(cwd)) {
     onLog(t('log.ask.cwd-mismatch'));

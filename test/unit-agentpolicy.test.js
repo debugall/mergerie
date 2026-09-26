@@ -260,13 +260,15 @@ describe('agentpolicy : copilot', () => {
     assert.ok(r.args.includes('shell(git push*)'), r.args.join(' '));
   });
 
-  test('lecture, sans --deny-tool connu : REFUSÉE, sauf agent_read_unrestricted=1', () => {
-    assert.throws(() => pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: [], kind: 'review' }),
-      /COPILOT_UNRESTRICTED|restrein/i);
-    updateConfig({ agent_read_unrestricted: '1' });
-    const r = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--verbose'], kind: 'review' });
+  /* La sonde ne bloque plus aucun CLI : une lecture sur un Copilot sans `--deny-tool` part au
+     niveau « allégé », dite telle au journal — le contrôle d'intégrité après coup fait foi. Le
+     mode large de COPILOT_ARGS, lui, reste retiré. */
+  test('lecture, sans --deny-tool connu : niveau allégé, dit au journal — jamais refusée, jamais large', () => {
+    const r = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--verbose', '--allow-all-tools'], kind: 'review' });
     assert.deepEqual(r.extra, ['--verbose']);
     assert.equal(r.note, 'copilot-lecture-non-restreinte');
+    assert.equal(r.mode, 'allege');
+    assert.equal(r.lecture, true);
   });
 
   test('lecture, avec --deny-tool connu : write et shell refusés, pas d’exception', () => {
@@ -282,7 +284,6 @@ describe('agentpolicy : copilot', () => {
   test('--allow-all-tools dans COPILOT_ARGS est retiré, en lecture comme en écriture', () => {
     const ecriture = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--allow-all-tools'], kind: 'code' });
     assert.deepEqual(ecriture.extra, []);
-    updateConfig({ agent_read_unrestricted: '1' });
     const lecture = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--allow-all-tools'], kind: 'review' });
     assert.deepEqual(lecture.extra, []);
   });

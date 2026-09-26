@@ -210,7 +210,13 @@ app.put('/api/config', wrap((req, res) => {
   if (String(avant.data_sync_seconds) !== String(c.data_sync_seconds)) datasync.demarrer();
   /* Le binaire de l'agent a changé : on refait la détection tout de suite, pour que le badge
      dry-run et la bannière « agent introuvable » disent l'état du NOUVEAU chemin. */
-  if (String(avant.agent_bin || '') !== String(c.agent_bin || '')) require('../../agent/copilot').redetecter();
+  if (String(avant.agent_bin || '') !== String(c.agent_bin || '') || String(avant.agent_backend || 'auto') !== String(c.agent_backend || 'auto')) {
+    require('../../agent/copilot').redetecter();
+    /* Un autre binaire, ou un backend choisi à la main : la détection et les capacités en cache
+       ne valent plus — la politique doit relire `--version` et `--help`. */
+    const policy = require('../../agent/policy');
+    policy.oublierBackend(); policy.oublierCapacites();
+  }
   restartAutoRefresh(); // prend en compte le nouvel intervalle
   restartJiraWatch(); // idem pour la surveillance Jira (et le compteur du menu)
   oublierChampSprint(); // l'instance Jira visée a pu changer : on re-cherchera le champ sprint

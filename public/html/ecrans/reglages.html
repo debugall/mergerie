@@ -583,6 +583,17 @@
                     <input form="configForm" name="agent_args" type="text" placeholder="--model claude-sonnet-5" data-i18n-placeholder="settings.agent.args-ph" autocomplete="off" spellcheck="false" /></label>
                 <label><span data-i18n="settings.agent.timeout-lbl">Délai maximal d'un appel, en millisecondes (0 = 15 min)</span>
                     <input form="configForm" name="agent_timeout_ms" type="number" min="0" step="1000" placeholder="900000" /></label>
+                <!-- LE BACKEND, quand on veut le dire plutôt que le laisser deviner : un wrapper
+                     maison autour de claude, un CLI dont le --version ne dit rien. -->
+                <label><span data-i18n="settings.agent.backend-lbl">Backend (auto = détecté par --version, puis par le nom)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.agent.backend-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="agent_backend">
+                        <option value="auto" data-i18n="settings.agent.backend.auto">Détection automatique</option>
+                        <option value="claude">Claude Code</option>
+                        <option value="copilot">GitHub Copilot CLI</option>
+                        <option value="codex" data-i18n="settings.agent.backend.codex">OpenAI Codex CLI (non vérifié)</option>
+                        <option value="gemini" data-i18n="settings.agent.backend.gemini">Gemini CLI (non vérifié)</option>
+                        <option value="generic" data-i18n="settings.agent.backend.generic">Autre CLI (lancé tel quel, niveau allégé)</option>
+                    </select></label>
                 <p class="muted" data-i18n="settings.agent.change-note">Changer de binaire retire la preuve de sandbox : la politique d'écriture retombe sur la liste blanche jusqu'au prochain test.</p>
                 <p>
                     <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -636,7 +647,6 @@
                     <span id="sandboxTestInfo" class="muted"></span>
                 </p>
                 <div id="sandboxTestResult"></div>
-                <label class="inline-check"><input form="configForm" name="agent_read_unrestricted" type="checkbox" /> <span data-i18n="settings.sandbox.unrestricted-lbl">Copilot : laisser une lecture non restreinte si ce CLI ne sait pas se restreindre (--deny-tool absent)</span></label>
             </div>
 
             <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>

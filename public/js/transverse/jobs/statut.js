@@ -104,6 +104,9 @@ function marquerVerifEnCours(ids) {
 document.addEventListener('visibilitychange', () => document.body.classList.toggle('tab-cachee', document.hidden));
 
 let copilotBinCourant = '';
+/* Le backend DÉTECTÉ (claude, copilot, codex, gemini, unknown) : l'éditeur d'agent dit avant la
+   sauvegarde qu'un profil ne s'applique en entier que sur claude. */
+let agentBackendCourant = '';
 /* ---------- L'agent introuvable ----------
    Le badge « dry-run » disait qu'on simulait, pas pourquoi ni quoi faire. Quand le dry-run est
    SUBI (binaire absent, sans COPILOT_DRY_RUN=1), une bannière le dit avec le chemin cherché, les
@@ -210,6 +213,7 @@ async function refreshStatus() {
     // Le binaire configuré : c'est lui qui décide si un profil d'agent s'applique en entier
     // (claude) ou seulement par son modèle (copilot). L'éditeur le dit avant la sauvegarde.
     copilotBinCourant = s.copilotBin || '';
+    agentBackendCourant = s.agentBackend || '';
     statutAgent = { ok: !!s.copilotAvailable, force: !!s.dryRunForced, bin: s.copilotBin || '', lastDiscoveryAt: s.lastDiscoveryAt || null, autoRefreshMinutes: s.autoRefreshMinutes };
     afficherBanniereAgent(s);
     marquerEnCours(s.running ? s.targets : null);

@@ -305,7 +305,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     // Continuité : la review/modif tourne dans une session reprenable par MR (« Relancer la
     // review » reprend le contexte de la review précédente). Session seulement si un backend
     // reprenable est reconnu et hors dry-run ; sinon appel one-shot (comportement historique).
-    const useSession = !copilot.isDryRun() && (kind === 'review' || kind === 'modify' || kind === 'question') && agentsession.backendName() !== 'unknown';
+    const useSession = !copilot.isDryRun() && (kind === 'review' || kind === 'modify' || kind === 'question') && agentsession.reprenable();
     let stdout = '';
     if (useSession) {
       const key = `review-mr-${mr.id}`;

@@ -16,7 +16,9 @@ accumulated work through a git repository it owns, with no server in between.
 
 Everything runs **on your machine** — a Node + SQLite server and a web UI, nothing sent anywhere except the
 services **you** configure. It drives your **existing Claude or Copilot subscription** through their own CLI
-(`claude` / `copilot`), so there are no extra API keys or tokens to buy. The AI **prepares** the work — review,
+(`claude` / `copilot`) — Codex CLI and Gemini CLI are wired from their documentation, and any
+other CLI runs as is, with the guarantee level said in plain words — so there are no extra API
+keys or tokens to buy. The AI **prepares** the work — review,
 corrections, autonomous convergence — and **you** merge.
 
 ![demo](docs/demo.gif)

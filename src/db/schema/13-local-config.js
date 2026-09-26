@@ -88,6 +88,10 @@ const COLONNES_LOCALES = [
   ["agent_bin", "TEXT DEFAULT ''"],
   ["agent_args", "TEXT DEFAULT ''"],
   ['agent_timeout_ms', 'INTEGER NOT NULL DEFAULT 0'],
+  /* Le backend, quand on veut le DIRE plutôt que le laisser deviner (`auto`) : un wrapper maison
+     autour de claude, un CLI dont le `--version` ne dit rien. Les identifiants sont ceux du
+     registre `agent/backends/`, plus `generic`. */
+  ["agent_backend", "TEXT NOT NULL DEFAULT 'auto'"],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),

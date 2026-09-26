@@ -35,6 +35,11 @@ app.get('/api/status', wrap((req, res) => {
     copilotBin: copilot.binActuel(),
     copilotArgs: copilot.argsActuels(),
     agentBackend: require('../../agent/policy').backendDe(copilot.binActuel()),
+    /* Le NIVEAU DE GARANTIE du backend courant (`prouve` / `declare` / `allege`) et son nom
+       lisible : ce que Réglages → Session IA affiche à côté du binaire. */
+    agentLevel: require('../../agent/policy').niveauDe(copilot.binActuel()),
+    agentBackendLabel: require('../../agent/backends').pour(require('../../agent/policy').backendDe(copilot.binActuel())).label,
+    agentBackendSetting: getConfig().agent_backend || 'auto',
     agentTimeoutMs: copilot.timeoutActuel(),
     copilotCmdPreview: `${copilot.binActuel()} ${[...copilot.argsActuels(), '-p', '"<prompt>"'].join(' ')}`,
     /* La dernière découverte de MR de ce processus : l'onglet Reviews relance une découverte à

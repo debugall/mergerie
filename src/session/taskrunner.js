@@ -470,7 +470,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
       // Retour d'agent simulé, pour que « Retour de l'IA » soit consultable en dry-run/démo.
       agentText = `# Retour de l'IA (dry-run)\n\nJ'ai traité la demande « ${message} » dans ce projet.\n\n> Simulation dry-run : aucune vraie modification. Configure l'agent et relance pour un vrai retour.`;
     }
-  } else if (agentsession.backendName() !== 'unknown') {
+  } else if (agentsession.reprenable()) {
     // Session reprenable : 1re passe = création, reprise = --resume / --continue. Le cwd fait
     // partie de l'identité de session : on refuse une reprise depuis un autre cwd (§4.4).
     const key = `task-${task.id}-target-${tg.id}`;
@@ -727,7 +727,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
      Le handle est celui déjà enregistré sur les cibles (créé au premier run, ou fourni à la
      création), toutes les cibles d'une exploration partageant la MÊME session : le cwd est
      la racine des clones, pas un dépôt en particulier. */
-  const sessionable = !copilot.isDryRun() && agentsession.backendName() !== 'unknown';
+  const sessionable = !copilot.isDryRun() && agentsession.reprenable();
   const known = targets.find((tg) => tg.session_key) || {};
   let doResume = sessionable && !!known.session_key;
   if (doResume && known.session_cwd && path.resolve(known.session_cwd) !== path.resolve(root)) {

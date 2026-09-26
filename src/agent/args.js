@@ -60,8 +60,11 @@ function argsFor(backend, options) {
   const agents = subagentsPropres(o.agents);
   const dirs = liste(o.addDirs).filter((d) => !d.startsWith('-'));
 
-  if (backend === 'copilot') {
-    if (model) args.push('--model', model);
+  if (backend !== 'claude') {
+    /* copilot, codex, gemini, inconnu : le MODÈLE seul passe (sous le drapeau propre à chaque
+       CLI), tout le reste est propre à claude et se dit au journal du run. */
+    const MODEL_FLAG = { copilot: '--model', codex: '-m', gemini: '-m' };   // le même que `backends/<id>.js`
+    if (model) args.push(MODEL_FLAG[backend] || '--model', model);
     if (sys) ignored.push('--append-system-prompt');
     if (mode) ignored.push('--permission-mode');
     if (allowed.length) ignored.push('--allowedTools');
