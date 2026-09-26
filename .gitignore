@@ -1,6 +1,6 @@
 # Dépendances
 node_modules/
-data/
+/data/
 data-demo/
 demo-recordings/
 .env
