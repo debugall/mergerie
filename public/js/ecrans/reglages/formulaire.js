@@ -10,6 +10,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days',
   'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
+  'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
@@ -144,6 +145,7 @@ function corpsConfig(f) {
   if (f.auto_rereview_stale) body.auto_rereview_stale = f.auto_rereview_stale.checked ? '1' : '0';
   if (f.brief_on_open) body.brief_on_open = f.brief_on_open.checked ? '1' : '0';
   if (f.todo_close_on_merge) body.todo_close_on_merge = f.todo_close_on_merge.checked ? '1' : '0';
+  if (f.agent_read_unrestricted) body.agent_read_unrestricted = f.agent_read_unrestricted.checked ? '1' : '0';
   // '***' = champ non touché (on n'écrase pas le secret) ; '' = effacement volontaire.
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;

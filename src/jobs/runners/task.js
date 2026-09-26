@@ -4,6 +4,7 @@
 const db = require('../../db');
 const taskrunner = require('../../session/taskrunner');
 const { apresRun } = require('../../agent/profile/apres');
+const { exigerApprobation } = require('../../agent/profile/modele');
 const proc = require('../../core/proc');
 const notify = require('../../core/notify');
 const { t } = require('../../core/i18n');
@@ -19,6 +20,16 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
   try {
+    /* RÉ-APPROBATION AU DÉMARRAGE DU JOB, PAS SEULEMENT AU LANCEMENT (plan_secure.md, lot C,
+       point 3) : `lancer()` (`agent/profile/lancer.js`) vérifie l'approbation en créant la
+       tâche, mais la file peut retarder l'exécution — la boucle de synchro tourne toutes les
+       30 s. Un `pull` qui change les permissions ou l'horaire de l'agent entre les deux ferait
+       tourner, sans surveillance, ce qui n'a jamais été vu ici. `push`/`push-all` ne lancent
+       aucun agent — rien à réapprouver, ils déplacent du code déjà produit. */
+    if (task.agent_id && action !== 'push' && action !== 'push-all') {
+      const agent = db.prepare('SELECT * FROM agent WHERE id = ?').get(task.agent_id);
+      if (agent) exigerApprobation(agent);
+    }
     if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog, { force: opts.force });
     else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });

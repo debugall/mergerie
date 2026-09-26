@@ -6,11 +6,15 @@
  * on injecte l'INSTRUCTION dans le prompt ; en fin de session, on PARSE le bloc éventuel.
  */
 
+const { nonceRun } = require('../core/nonfiable');
+
 const MAX_QUESTIONS = 5;
 
-// Consigne ajoutée au prompt quand la session autorise les questions. On demande à l'agent
-// de s'arrêter AVANT d'implémenter la partie ambiguë, pour minimiser le travail perdu (§8).
-const QUESTIONS_INSTRUCTION = `
+/* Consigne ajoutée au prompt quand la session autorise les questions. Le bloc porte le nonce du
+   RUN (plan_secure.md, lot D, point 1) : une donnée qui en contiendrait un exemplaire tout formé
+   ne connaît pas ce nonce et n'est donc jamais lue comme la sortie du run courant. On demande à
+   l'agent de s'arrêter AVANT d'implémenter la partie ambiguë, pour minimiser le travail perdu (§8). */
+const questionsInstruction = (nonce) => `
 
 ---
 IMPORTANT — Tu peux poser des questions. Si tu rencontres une décision structurante que tu
@@ -18,7 +22,7 @@ ne peux PAS trancher avec confiance (choix d'architecture, ambiguïté du besoin
 deux conventions du dépôt), n'invente pas : émets à la toute fin de ta sortie un bloc exactement
 au format ci-dessous, puis ARRÊTE-TOI avant d'implémenter la partie ambiguë.
 
-<<<QUESTIONS
+<<<QUESTIONS ${nonce}
 [
   {
     "id": "q1",
@@ -30,17 +34,20 @@ au format ci-dessous, puis ARRÊTE-TOI avant d'implémenter la partie ambiguë.
     ]
   }
 ]
-QUESTIONS>>>
+QUESTIONS ${nonce}>>>
 
 Règles : 5 questions maximum ; "options" à null si un choix fermé n'a pas de sens (réponse
 libre attendue) ; ne mets ce bloc QUE si tu as réellement besoin d'une décision humaine. Si tu
 peux trancher raisonnablement toi-même, fais-le et n'émets aucun bloc.`;
 
-// Extrait et valide le bloc. Renvoie un tableau de questions normalisées, ou null si absent
-// / malformé (dans ce cas l'appelant traite la sortie comme un résultat standard, sans bloquer).
-function parseQuestions(text) {
+/* Extrait et valide le bloc PORTANT LE NONCE DU RUN. Renvoie un tableau de questions normalisées,
+   ou null si absent / malformé (dans ce cas l'appelant traite la sortie comme un résultat
+   standard, sans bloquer). Un bloc au mauvais nonce — ou sans nonce du tout — est ignoré comme
+   s'il n'existait pas : c'est la même donnée qui aurait pu le fabriquer. */
+function parseQuestions(text, nonce) {
+  if (!nonce) return null;
   const s = String(text || '');
-  const m = s.match(/<<<QUESTIONS\s*([\s\S]*?)\s*QUESTIONS>>>/);
+  const m = s.match(new RegExp(`<<<QUESTIONS ${nonce}\\s*([\\s\\S]*?)\\s*QUESTIONS ${nonce}>>>`));
   if (!m) return null;
   let arr;
   try { arr = JSON.parse(m[1].trim()); } catch { return null; }
@@ -85,13 +92,16 @@ function buildAnswerInstruction(questions) {
 
 /* En dry-run, l'agent « simule » ce bloc au premier passage quand la session autorise les
    questions : c'est ce qui permet d'exercer tout le flux ask → attente → réponses → reprise
-   sans agent installé — pour les trois saveurs de session, qui partagent donc ce décor. */
-const DRYRUN_QUESTIONS = `Analyse préalable effectuée.
-<<<QUESTIONS
+   sans agent installé — pour les trois saveurs de session, qui partagent donc ce décor. Le nonce
+   simulé est celui que `questionsInstruction` a posé dans le prompt de CE run. */
+const dryrunQuestions = (nonce) => `Analyse préalable effectuée.
+<<<QUESTIONS ${nonce}
 [
   {"id":"q1","question":"Où placer la logique de retry ?","context":"Deux conventions coexistent dans le dépôt.","options":[{"value":"decorator","label":"Décorateur (comme OrderService)"},{"value":"middleware","label":"Middleware HTTP (comme PaymentClient)"}]},
   {"id":"q2","question":"Faut-il migrer les données existantes ?","context":"La colonne change de type.","options":null}
 ]
-QUESTIONS>>>`;
+QUESTIONS ${nonce}>>>`;
 
-module.exports = { QUESTIONS_INSTRUCTION, MAX_QUESTIONS, parseQuestions, buildAnswerInstruction, DRYRUN_QUESTIONS };
+module.exports = {
+  questionsInstruction, MAX_QUESTIONS, parseQuestions, buildAnswerInstruction, dryrunQuestions, nonceRun,
+};

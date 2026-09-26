@@ -84,6 +84,7 @@ async function loadConfig() {
   if (f.brief_on_open) f.brief_on_open.checked = c.brief_on_open !== '0';
   // Coché par défaut, comme côté serveur : le test est donc `!== '0'`.
   if (f.todo_close_on_merge) f.todo_close_on_merge.checked = c.todo_close_on_merge !== '0';
+  if (f.agent_read_unrestricted) f.agent_read_unrestricted.checked = c.agent_read_unrestricted === '1';
   // A/Réglages 1 : décochés par défaut, donc `=== '1'` — poser le réglage ne change rien
   // tant qu'on n'y a pas touché.
   /* `String(...)` : ces colonnes-là sont des INTEGER, SQLite rend donc 1 et non '1'. Comparer

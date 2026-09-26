@@ -72,8 +72,8 @@ function versionDe(agentId, numero) {
 /* Le cartographe commence sa réponse par un bloc qui NOMME ce qu'il a trouvé. Sans lui, il
    faudrait déduire le périmètre en relisant le Markdown — et une phrase reformulée changerait
    silencieusement les dépôts de l'agent créé. */
-function parseHeader(text) {
-  const { block, rest } = protocol.extraire(text, 'AGENT');
+function parseHeader(text, nonce) {
+  const { block, rest } = protocol.extraire(text, 'AGENT', nonce);
   if (!block) return null;
   const out = { name: '', repos: [], paths: [], rest };
   for (const brut of String(block).split('\n')) {
@@ -218,7 +218,7 @@ async function reposJsonDe(cfg, repos, verified, unverified) {
    n'entre jamais en service sans un clic (décision 6). */
 async function ingest(task, agentCarto, texte, onLog = () => {}) {
   const cfg = getConfig();
-  const tete = parseHeader(texte);
+  const tete = parseHeader(texte, protocol.nonceAgentRun(agentCarto.id));
   if (!tete || !tete.name) {
     onLog(t('agents.err.no-agent-header'));
     return null;

@@ -415,6 +415,97 @@ if (registre) {
     : ok('GET sans effet, env des processus filtré, fichiers servis par la porte prudente, import validé');
 }
 
+/* LES VERROUS DE plan_secure.md (lots A, B, C), au même titre que ceux de guard.md ci-dessus :
+   chacun fige une décision de durcissement pour qu'un refactor ultérieur ne la retire pas sans
+   qu'on le voie. */
+{
+  const soucis = [];
+
+  /* LOT A, S2 — AUCUNE SAVEUR NE REND `extra` (les arguments du CLI) SANS ÊTRE PASSÉE PAR
+     `sansModeLarge`, qui retire `--dangerously-skip-permissions` et consorts. `LARGES`, la liste
+     de ce qui élargit, n'a de sens QUE dans cette fonction : si son nom apparaît ailleurs, une
+     branche a pu se mettre à la lire — ou à la contourner — sans passer par le filtre. */
+  const F_POLICY = fichierUnique(/^const LARGES = new Set\(/m, 'La politique de l’agent (`const LARGES = new Set(`)');
+  if (F_POLICY) {
+    const pol = lire(F_POLICY);
+    const estCommentaire = (ligne) => /^\s*(\/\/|\*|\/\*)/.test(ligne);
+    const declLARGES = (pol.match(/^const LARGES = new Set\([\s\S]*?\);\n/m) || [''])[0];
+    const fnSansModeLarge = (pol.match(/function sansModeLarge\([\s\S]*?\n\}\n/) || [''])[0];
+    const horsFonction = pol.replace(declLARGES, '').replace(fnSansModeLarge, '')
+      .split('\n').filter((l) => !estCommentaire(l)).join('\n');
+    if ((horsFonction.match(/\bLARGES\b/g) || []).length > 0) {
+      soucis.push(`${nomDe(F_POLICY)}  LARGES référencé hors de sansModeLarge — le filtre a pu être contourné`);
+    }
+    /* Chaque FONCTION qui reçoit `extra` et le rend doit appeler `sansModeLarge(extra)` au moins
+       une fois dans son corps — peu importe si c'est inline (`extra: sansModeLarge(extra)`) ou
+       via une variable intermédiaire, ce qui compte est qu'aucun chemin ne rende `extra` cru.
+       SEULE EXCEPTION NOMMÉE : `mode: 'large'`, l'échappatoire ASSUMÉE de l'ancien comportement
+       (`agent_write_mode` réglé sur `large`) — la retirer romprait le mode lui-même. */
+    // `argvPermissions` ne fait QUE distribuer vers argvLecture/argvEcriture/argvCopilot — le
+    // filtre s'applique dans chacune d'elles, pas dans le répartiteur qui ne fait pas de `return {`.
+    const PASSTHROUGH = ['argvPermissions'];
+    for (const m of pol.matchAll(/^function (\w+)\(\{[^)]*\bextra\b[^)]*\}\)\s*\{/gm)) {
+      if (PASSTHROUGH.includes(m[1])) continue;
+      const debut = m.index + m[0].length;
+      let profondeur = 1;
+      let fin = debut;
+      while (fin < pol.length && profondeur > 0) {
+        if (pol[fin] === '{') profondeur += 1;
+        else if (pol[fin] === '}') profondeur -= 1;
+        fin += 1;
+      }
+      const corps = pol.slice(debut, fin);
+      if (!/\bextra\b\s*[:,}]/.test(corps)) continue;              // ne RENVOIE pas extra : rien à filtrer ici
+      if (/mode:\s*'large'/.test(corps)) continue;                  // échappatoire nommée
+      if (!/sansModeLarge\(extra\)/.test(corps)) {
+        const ligne = pol.slice(0, m.index).split('\n').length;
+        soucis.push(`${nomDe(F_POLICY)}:${ligne}  ${m[1]}() rend extra sans jamais appeler sansModeLarge(extra)`);
+      }
+    }
+  }
+
+  /* LOT B, S1 — LE JETON LOCAL FERME `/api/` AVANT QU'AUCUNE ROUTE NE SOIT MONTÉE. Un
+     réordonnancement de `server.js` (le seul fichier où l'ordre des `require` est l'ordre de la
+     chaîne de middleware) qui glisserait une route avant lui la rouvrirait à tout processus du
+     poste, en silence : rien dans le chemin nominal ne le remarquerait. */
+  if (fichiers.includes('server.js')) {
+    const lignesServer = lire('server.js').split('\n');
+    const numJetonLocal = lignesServer.findIndex((l) => /require\(['"]\.\/app\/middleware\/jeton-local['"]\)/.test(l));
+    const numOrigine = lignesServer.findIndex((l) => /require\(['"]\.\/app\/middleware\/origine['"]\)/.test(l));
+    const numsRoutes = lignesServer
+      .map((l, i) => ((/require\(['"]\.\/app\/routes\//.test(l)) ? i : -1))
+      .filter((i) => i !== -1);
+    if (numJetonLocal === -1) {
+      soucis.push('server.js  aucun require(\'./app/middleware/jeton-local\') — l’API n’est plus fermée aux processus sans navigateur');
+    } else {
+      if (numOrigine !== -1 && numJetonLocal < numOrigine) {
+        soucis.push(`server.js:${numJetonLocal + 1}  jeton-local avant origine — ses gardes (Host, Origin) doivent s’appliquer d’abord`);
+      }
+      const avant = numsRoutes.filter((i) => i < numJetonLocal);
+      if (avant.length) soucis.push(`server.js:${avant[0] + 1}  une route montée avant jeton-local — elle échapperait au jeton`);
+    }
+  }
+
+  /* LOT C, S5 — LE DÉPÔT DE DONNÉES PARTAGÉ SE MANIPULE AVEC LES MÊMES GARDES QU'UN CLONE DE
+     CODE : hooks désactivés, `core.symlinks` fermé, env filtré (`git.js:durcissement/envGit`).
+     Une version ad hoc, réécrite dans `datasync.js`, serait plus faible sans que rien ne le
+     dise — c'est déjà arrivé une fois (S5). */
+  const F_DATASYNC = fichiers.includes('data/datasync.js') ? 'data/datasync.js' : null;
+  if (F_DATASYNC) {
+    const sync = lire(F_DATASYNC);
+    if (!/\bargsDurcis\(|\bdurcissement\(/.test(sync)) {
+      soucis.push(`${nomDe(F_DATASYNC)}  aucun appel à argsDurcis()/durcissement() — les commandes git tournent sans le durcissement commun`);
+    }
+    if (!/\benvGit\(/.test(sync)) {
+      soucis.push(`${nomDe(F_DATASYNC)}  aucun appel à envGit() — l’environnement passé à git n’est pas filtré`);
+    }
+  }
+
+  soucis.length
+    ? fail('Verrous de plan_secure.md (lots A, B, C)', soucis)
+    : ok('Mode large filtré, API fermée avant les routes, synchro du dépôt de données durcie');
+}
+
 /* LA TAILLE D'UN FICHIER SE SURVEILLE. Un fichier de huit mille lignes ne
    naît pas en un jour : il grossit de cinquante lignes par fonctionnalité, et personne ne
    décide jamais de le couper. Ce contrôle décide à sa place — avertissement passé 600 lignes,

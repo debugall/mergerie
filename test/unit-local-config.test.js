@@ -101,4 +101,16 @@ describe('local_config — ce qui reste sur ce poste', () => {
     const avant = db.prepare('SELECT COUNT(*) n FROM git_command').get().n;
     assert.equal(avant, 5);
   });
+
+  /* Revue de add-secure-layer-2 : `agent_read_unrestricted` est une colonne INTEGER — relue,
+     c'est le NOMBRE 1, jamais la CHAÎNE '1'. Un `=== '1'` le ratait donc à chaque tour et
+     remettait ce choix explicite à 0 dès la moindre mise à jour partielle qui ne le touchait
+     pas — silencieusement, sans message. */
+  test('agent_read_unrestricted survit à une mise à jour partielle qui ne le touche pas', () => {
+    config.updateConfig({ agent_read_unrestricted: '1' });
+    assert.equal(config.getConfig().agent_read_unrestricted, 1);
+    config.updateConfig({ gitlab_url: 'https://gl-autre.example.com/' });
+    assert.equal(config.getConfig().agent_read_unrestricted, 1,
+      'un réglage sans rapport ne doit pas effacer ce choix explicite');
+  });
 });

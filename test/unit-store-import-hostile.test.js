@@ -162,4 +162,108 @@ describe('Import du dépôt partagé : ce qui vient d’ailleurs', () => {
     assert.match(fs.readFileSync(courant, 'utf8'), /Rapport d’origine/,
       'le rapport courant — celui que « Faire corriger » colle dans le prompt — est toujours l’original');
   });
+
+  /* plan_secure.md, lot C, S5 : `task.auto_push` ne voyage plus. */
+  test('une session importée avec auto_push: 1 arrive à 0 — jamais coché ici', () => {
+    const now = new Date().toISOString();
+    const id = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, shared, auto_push, created_at, updated_at)
+      VALUES (?, 'code', 'ajoute un cache', 'ai/cache', 'new', 1, 1, ?, ?)`).run(repoId, now, now).lastInsertRowid;
+    db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, status, updated_at)
+      VALUES (?, ?, 'ai/cache', 'new', ?)`).run(id, repoId, now);
+    store.rafraichir('task', id);
+    const uid = db.prepare('SELECT uid FROM task WHERE id = ?').get(id).uid;
+    const rel = `sessions/${uid}/session.json`;
+    const doc = lire(rel);
+    assert.ok(!('auto_push' in doc), 'et déjà à l’export : le champ ne part pas dans le fichier');
+
+    db.prepare('DELETE FROM task_target WHERE task_id = ?').run(id);
+    db.prepare('DELETE FROM task WHERE id = ?').run(id);
+    ecrire(rel, { ...doc, auto_push: 1 });
+    store.hydraterFichiers([rel]);
+    const relue = db.prepare('SELECT auto_push FROM task WHERE uid = ?').get(uid);
+    assert.ok(relue, 'la session est bien arrivée');
+    assert.equal(relue.auto_push, 0, 'auto_push reste à 0 : une session importée ne pousse jamais');
+  });
+
+  /* plan_secure.md, lot C, S5 : un verdict de vérification est append-only pour de vrai. */
+  test('un verdict de vérification réécrit dans le dépôt est refusé, l’original reste', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('lint', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, verdict, targets_json, created_at, finished_at)
+      VALUES (?, 'lint', 'done', 'verified_fail', '[]', ?, ?)`).run(vid, now, now).lastInsertRowid;
+    store.rafraichir('verification', id);
+    const uid = db.prepare('SELECT uid FROM verification WHERE id = ?').get(id).uid;
+    const rel = `verifications/${uid}.json`;
+    const doc = lire(rel);
+    assert.equal(doc.verdict, 'verified_fail');
+    // La première hydratation enregistre l'empreinte d'origine.
+    store.hydraterFichiers([rel]);
+
+    ecrire(rel, { ...doc, verdict: 'verified_pass' });
+    const bilan = store.hydraterFichiers([rel]);
+    assert.ok(bilan.orphelins.some((o) => /modifié après sa création/.test(o)), `refusé et dit : ${bilan.orphelins.join(' | ')}`);
+    assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_fail',
+      'le verdict d’origine reste celui que l’écran et l’automatisme lisent');
+  });
+
+  /* Revue de add-secure-layer-2 : une synchro tombée PENDANT le run (avant que `verdict` et
+     `finished_at` n'existent) ne doit pas figer l'empreinte sur la version sans verdict — sinon
+     le verdict final, arrivé ensuite, se fait refuser comme « modifié après sa création » et
+     personne ne le voit jamais. */
+  test('une vérification vue EN COURS n’empêche pas d’accueillir son verdict final', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('unit', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, targets_json, created_at)
+      VALUES (?, 'unit', 'running', '[]', ?)`).run(vid, now).lastInsertRowid;
+    store.rafraichir('verification', id);
+    const uid = db.prepare('SELECT uid FROM verification WHERE id = ?').get(id).uid;
+    const rel = `verifications/${uid}.json`;
+
+    // Un collègue synchronise PENDANT le run : le fichier n'a ni verdict ni finished_at.
+    const enCours = lire(rel);
+    assert.ok(!enCours.verdict, 'pas encore de verdict');
+    assert.ok(!enCours.finished_at, 'pas encore fini');
+    const bilanEnCours = store.hydraterFichiers([rel]);
+    assert.ok(!bilanEnCours.orphelins.length, `rien à refuser sur une vérification en cours : ${bilanEnCours.orphelins.join(' | ')}`);
+
+    // Le run se termine, le verdict et finished_at arrivent, ré-exportés dans le même fichier.
+    db.prepare("UPDATE verification SET status = 'done', verdict = 'verified_pass', finished_at = ? WHERE id = ?").run(now, id);
+    store.rafraichir('verification', id);
+    const termine = lire(rel);
+    assert.equal(termine.verdict, 'verified_pass');
+
+    // La synchro suivante, chez ce même collègue, doit accueillir ce verdict — pas le refuser.
+    const bilanFinal = store.hydraterFichiers([rel]);
+    assert.ok(!bilanFinal.orphelins.length, `le verdict final est accueilli : ${bilanFinal.orphelins.join(' | ')}`);
+    assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_pass');
+  });
+
+  /* Revue de add-secure-layer-2 (2e passe) : le trou ouvert par le correctif précédent — une
+     empreinte déjà figée doit continuer à s'appliquer même si le document entrant se présente
+     « en cours » (sans verdict ni finished_at). Sinon, un verdict déjà accueilli peut être
+     effacé en le faisant « redevenir en cours », exactement la réécriture silencieuse que le
+     lot C, S5 existe pour refuser. */
+  test('un verdict déjà figé ne peut pas être effacé en « redevenant en cours »', () => {
+    const now = new Date().toISOString();
+    const vid = db.prepare(`INSERT INTO verifier (name, command, timeout_s, run_base, comment_on_forge, created_at)
+      VALUES ('unit2', '', 60, 0, 0, ?)`).run(now).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, verdict, targets_json, created_at, finished_at)
+      VALUES (?, 'unit2', 'done', 'verified_fail', '[]', ?, ?)`).run(vid, now, now).lastInsertRowid;
+    store.rafraichir('verification', id);
+    const uid = db.prepare('SELECT uid FROM verification WHERE id = ?').get(id).uid;
+    const rel = `verifications/${uid}.json`;
+    const doc = lire(rel);
+    assert.equal(doc.verdict, 'verified_fail');
+    // La première hydratation figE l'empreinte du verdict connu.
+    store.hydraterFichiers([rel]);
+
+    // Le fichier « redevient en cours » — sans verdict ni finished_at, comme un run relancé.
+    ecrire(rel, { ...doc, status: 'running', verdict: null, finished_at: null });
+    const bilan = store.hydraterFichiers([rel]);
+    assert.ok(bilan.orphelins.some((o) => /modifié après sa création/.test(o)), `refusé et dit : ${bilan.orphelins.join(' | ')}`);
+    assert.equal(db.prepare('SELECT verdict FROM verification WHERE id = ?').get(id).verdict, 'verified_fail',
+      'le verdict figé reste celui que l’écran et l’automatisme lisent — pas effacé');
+  });
 });

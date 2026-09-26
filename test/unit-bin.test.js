@@ -18,8 +18,14 @@ const net = require('node:net');
 
 const BIN = path.join(__dirname, '..', 'bin', 'mergerie.js');
 const portLibre = () => new Promise((ok) => { const s = net.createServer(); s.listen(0, () => { const { port } = s.address(); s.close(() => ok(port)); }); });
-const get = (url) => fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))).catch(() => null);
+const get = (url, headers) => fetch(url, headers ? { headers } : undefined)
+  .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status))))).catch(() => null);
 const attendre = async (fn, essais = 300) => { for (let i = 0; i < essais; i += 1) { const v = await fn(); if (v) return v; await new Promise((r) => setTimeout(r, 200)); } return null; };
+const attendreJeton = async (dataDir) => {
+  const fichier = path.join(dataDir, 'local-token');
+  await attendre(() => (fs.existsSync(fichier) ? true : null));
+  return { Authorization: `Bearer ${fs.readFileSync(fichier, 'utf8').trim()}` };
+};
 
 test('`mergerie demo` sème dans ~/.mergerie/demo, répond en mode démo, et meurt avec la commande', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-home-'));
@@ -36,13 +42,14 @@ test('`mergerie demo` sème dans ~/.mergerie/demo, répond en mode démo, et meu
     assert.ok(fs.existsSync(path.join(home, '.mergerie', 'demo', 'reviewer.db')), 'la base est dans ~/.mergerie/demo');
     // La démo EFFACE son dossier avant de le resemer : elle doit le nommer, pas l'effacer en silence.
     assert.match(sortie, /démo : .*\.mergerie.*demo est effacé/, 'la commande dit quel dossier elle efface');
-    assert.ok(await get(`http://127.0.0.1:${port}/api/config`), "l'API répond");
+    const jeton = await attendreJeton(path.join(home, '.mergerie', 'demo'));
+    assert.ok(await get(`http://127.0.0.1:${port}/api/config`, jeton), "l'API répond");
   } finally {
     child.kill('SIGTERM');
     await new Promise((r) => child.on('exit', r));
   }
   // Le serveur a suivi : le port est libre à nouveau (on attend l'effet, pas un délai).
-  assert.equal(await attendre(async () => ((await get(`http://127.0.0.1:${port}/api/config`)) ? null : true), 100), true, 'le serveur est mort avec la commande');
+  assert.equal(await attendre(async () => ((await get(`http://127.0.0.1:${port}/`)) ? null : true), 100), true, 'le serveur est mort avec la commande');
   fs.rmSync(home, { recursive: true, force: true });
 });
 
@@ -68,7 +75,9 @@ test('un `.env` du dossier courant choisit le dossier de données, et le shell g
     Object.assign(env, supplement);
     const child = spawn(process.execPath, [BIN], { env, cwd: projet, stdio: ['ignore', 'pipe', 'pipe'] });
     let sortie = ''; child.stdout.on('data', (d) => { sortie += d; }); child.stderr.on('data', (d) => { sortie += d; });
-    const vivant = await attendre(() => get(`http://127.0.0.1:${port}/api/config`));
+    const dataDir = supplement.MERGERIE_DATA_DIR || parLeFichier;
+    const jeton = await attendreJeton(dataDir);
+    const vivant = await attendre(() => get(`http://127.0.0.1:${port}/api/config`, jeton));
     const arret = async () => { child.kill('SIGTERM'); await new Promise((r) => child.on('exit', r)); };
     return { port, sortie: () => sortie, vivant, arret };
   };
@@ -143,18 +152,13 @@ describe('Le `.env` écrit au premier lancement', () => {
     const texte = fs.readFileSync(cible, 'utf8');
     assert.match(texte, new RegExp(`^COPILOT_BIN=${path.join(faux, 'claude')}$`, 'm'),
       'il pointe le binaire trouvé sur cette machine, pas « copilot » au hasard');
-    assert.match(texte, /^COPILOT_ARGS=--dangerously-skip-permissions$/m,
-      'et les arguments de CET agent : « --yolo » ferait échouer claude');
-    /* UNE OPTION QUI LAISSE UN AGENT AGIR SANS RIEN DEMANDER NE S'ÉCRIT PAS EN SILENCE. Elle est
-       nécessaire — en mode `-p`, personne ne peut répondre à une demande de permission —, et
-       c'est bien pour ça qu'elle doit être EXPLIQUÉE là où on la découvre : un fichier qu'on n'a
-       pas écrit qui porte « dangerously » sans un mot, c'est ce qui fait peur à raison. */
+    assert.match(texte, /^COPILOT_ARGS=$/m, 'aucun mode large écrit par défaut');
+    assert.doesNotMatch(texte, /^COPILOT_ARGS=.*(dangerously-skip-permissions|--yolo)/m,
+      'le fichier n’écrit plus jamais le mode large lui-même comme VALEUR (l’expliquer en commentaire reste légitime)');
     assert.match(texte, /NON-INTERACTIF/,
-      'le fichier dit POURQUOI l’agent agit sans demander');
-    assert.match(texte, /AUCUN MUR/,
-      'et il dit aussi ce que ça ne protège pas : l’agent tourne avec les droits de l’utilisateur');
-    assert.match(texte, /^# COPILOT_ARGS=--permission-mode acceptEdits$/m,
-      'la variante plus étroite est offerte, commentée, avec son prix écrit');
+      'le fichier dit toujours pourquoi l’agent agit sans demander une permission au clavier');
+    assert.match(texte, /agent_write_mode=large/,
+      'l’échappatoire existe, mais se choisit dans Réglages → Session IA, jamais ici');
     assert.match(texte, /^COPILOT_DRY_RUN=0$/m, 'l’IA est vraiment appelée — c’est le nom exact de la variable');
     assert.match(texte, /^# GITLAB_INSECURE_TLS=1$/m,
       'les coupe-circuit TLS sont livrés COMMENTÉS : personne ne désactive TLS sans l’avoir voulu');
@@ -181,5 +185,5 @@ test('`mergerie` refuse un argument inconnu et explique', async () => {
   let err = ''; child.stderr.on('data', (d) => { err += d; });
   const code = await new Promise((r) => child.on('exit', r));
   assert.equal(code, 2);
-  assert.match(err, /usage : mergerie \[demo\]/);
+  assert.match(err, /usage : mergerie \[demo\|token\]/);
 });

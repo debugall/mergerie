@@ -183,3 +183,16 @@ app.post('/api/skills/rescan', wrap((req, res) => {
   skillscan.invalidate();
   res.json({ ok: true });
 }));
+/* « TESTER LE SANDBOX » (plan_secure.md, lot A) — Réglages → Session IA. Un appel RÉEL, payant,
+   déclenché seulement par ce clic. Le résultat écrit directement les TROIS colonnes
+   `agent_sandbox_*` — hors de `ALLOWED`/`updateConfig` : un `PUT /api/config` ne peut PAS se
+   faire passer pour « vérifié », seul ce banc d'essai le peut. */
+app.post('/api/agent/sandbox-test', wrap(async (req, res) => {
+  const sandboxtest = require('../../agent/sandboxtest');
+  const db = require('../../db');
+  const logs = [];
+  const r = await sandboxtest.testerSandbox((m) => logs.push(m));
+  db.prepare(`UPDATE local_config SET agent_sandbox_verified = ?, agent_sandbox_tested_at = ?, agent_sandbox_detail = ? WHERE id = 1`)
+    .run(r.ok ? 1 : 0, new Date().toISOString(), String(r.detail || '').slice(0, 500));
+  res.json({ ...r, logs });
+}));

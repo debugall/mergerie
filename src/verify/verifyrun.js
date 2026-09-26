@@ -20,6 +20,7 @@ const db = require('../db');
 const git = require('../git/git');
 const forge = require('../forge');
 const proc = require('../core/proc');
+const approbation = require('../data/approbation');
 const verify = require('./verify');
 const demoVerify = require('../demo/verify');
 const { DATA_DIR, ensureDir } = require('../core/paths');
@@ -397,6 +398,18 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
   if (!v) throw new Error(t('err.verify.not-found'));
   const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(v.verifier_id);
   if (!verifier) throw new Error(t('err.verify.verifier-gone'));
+  /* RÉ-APPROBATION AU DÉMARRAGE DU JOB, PAS SEULEMENT À LA MISE EN FILE (plan_secure.md, lot C,
+     point 3) : `creerVerification` vérifie l'approbation en créant la ligne, mais la file peut
+     retarder l'exécution — la boucle de synchro tourne toutes les 30 s. Un `pull` qui change les
+     commandes entre les deux ferait tourner sans surveillance ce qui n'a jamais été vu ici. On
+     relit donc l'empreinte au moment où les commandes vont RÉELLEMENT s'exécuter, pas à celui où
+     elles ont été demandées. */
+  if (!approbation.verificateurApprouve(verifier.id)) {
+    const e = new Error(t('err.verify.not-approved', { name: verifier.name }));
+    e.code = 'APPROBATION';
+    e.status = 409;
+    throw e;
+  }
   const cibles = JSON.parse(v.targets_json || '[]');
   const commandes = db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
     .all(verifier.id).map((c) => c.command);
@@ -508,7 +521,12 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
     /* Une seule famille depuis la 2.0 : la liste de commandes. Le `role` ('base' | 'head') ne
        sert plus qu'à préparer les dépôts — il ne change rien à la façon de lancer. */
     /* UN RUN PARTI TOUT SEUL NE VOIT PAS LE VRAI `HOME`. Personne ne l'a lancé en connaissance de
-       cause : le code de la branche ne doit trouver ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`. */
+       cause : le code de la branche ne doit trouver ni `~/.ssh`, ni `~/.npmrc`, ni `~/.aws`.
+       LE RÉSEAU, LUI, RESTE OUVERT (retiré sur demande explicite, après le lot B) : le couper
+       (`unshare`/`sandbox-exec`) coupait aussi la boucle locale — une commande qui vise une base,
+       Redis ou un `docker-compose` sur `localhost` échouait alors en run automatique, sans
+       échappatoire. Le jeton de session local (lot B) ferme déjà l'API à ce processus ; c'est la
+       protection qui reste ici. */
     if (v.automatic) {
       homeIsole = fs.mkdtempSync(path.join(ensureDir(path.join(DATA_DIR, 'tmp')), 'verif-home-'));
       noter(t('log.verify.home-isolated'));

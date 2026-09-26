@@ -103,7 +103,7 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
   const agentpolicy = require('./policy');
   const backend = agentpolicy.backendDe(COPILOT_BIN);
   const pol = agentpolicy.argvPermissions({
-    backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs,
+    backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs, cwd,
   });
   if (pol.note) onLog(t('agents.log.copilot-not-restricted'));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
@@ -158,6 +158,10 @@ function mockReport(prompt, cwd, meta = {}) {
   const added = (diff.match(/^\+(?!\+\+)/gm) || []).length;
   const removed = (diff.match(/^-(?!--)/gm) || []).length;
   const kind = meta.kind || 'review';
+  /* LE MOCK JOUE L'AGENT BIEN LUNÉ (plan_secure.md, lot D, point 1) : il lit dans le PROMPT le
+     nonce que `findingsInstruction` a demandé, et l'utilise dans son propre bloc — sans ça,
+     `resolution.splitFindings` ne reconnaîtrait jamais un bloc à nonce fixe en dry-run. */
+  const nonceFindings = (String(prompt || '').match(/<<<FINDINGS (\S+)/) || [])[1] || 'dry-run';
 
   /* PROPOSITION DE MERGE (dry-run) : un bloc `<<<FiHj … FiHj>>>` et son `<<<RiHj … RiHj>>>`
      par conflit RÉEL de chaque fichier de `meta.fichiers` (même protocole que
@@ -167,12 +171,13 @@ function mockReport(prompt, cwd, meta = {}) {
      fichiers à la fois comme le fait le vrai appel groupé. */
   if (kind === 'merge-ai') {
     const { decouper } = require('../git/conflits');
+    const nonce = (String(prompt || '').match(/<<<F\d+H\d+ (\S+)/) || [])[1] || 'dry-run';
     return (meta.fichiers || []).map((f, i) => {
       const conflits = decouper(f.raw || '').filter((m) => m.type === 'conflit');
       return conflits.map((m, j) => {
         const texte = (m.theirs.length ? m.theirs : m.ours).join('\n');
-        return `<<<F${i + 1}H${j + 1}\n${texte}\nF${i + 1}H${j + 1}>>>\n`
-          + `<<<R${i + 1}H${j + 1}\nraison (dry-run) du conflit ${i + 1}.${j + 1}\nR${i + 1}H${j + 1}>>>`;
+        return `<<<F${i + 1}H${j + 1} ${nonce}\n${texte}\nF${i + 1}H${j + 1} ${nonce}>>>\n`
+          + `<<<R${i + 1}H${j + 1} ${nonce}\nraison (dry-run) du conflit ${i + 1}.${j + 1}\nR${i + 1}H${j + 1} ${nonce}>>>`;
       }).join('\n');
     }).join('\n');
   }
@@ -218,9 +223,9 @@ function mockReport(prompt, cwd, meta = {}) {
     // garde-fou git du suivi de résolution soit réellement exercé en dry-run.
     // TITRE stable par fichier → un même fichier reste « persistant » d'une passe à
     // l'autre ; un fichier qui sort du diff devient « résolu ».
-    '<<<FINDINGS',
+    `<<<FINDINGS ${nonceFindings}`,
     ...mockFindingLines(diff).map((x, i) => `${['blocker', 'major', 'minor', 'info'][i % 4]} | ${x.file} | ${x.line} | Point de revue sur ${x.file}`),
-    'FINDINGS>>>',
+    `FINDINGS ${nonceFindings}>>>`,
   ].join('\n');
 }
 

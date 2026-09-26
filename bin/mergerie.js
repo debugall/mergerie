@@ -21,11 +21,23 @@ const { spawn, spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 const arg = process.argv[2];
-if (arg && arg !== 'demo') {
-  console.error(`usage : mergerie [demo]\n  demo   base fictive, IA simulée, aucun jeton\n  (rien) l'outil sur ~/.mergerie/data — MERGERIE_DATA_DIR pour choisir ailleurs`);
+if (arg && !['demo', 'token'].includes(arg)) {
+  console.error(`usage : mergerie [demo|token]\n  demo   base fictive, IA simulée, aucun jeton\n  token  affiche le jeton de session local (pour un curl à la main)\n  (rien) l'outil sur ~/.mergerie/data — MERGERIE_DATA_DIR pour choisir ailleurs`);
   process.exit(arg === '--help' || arg === '-h' ? 0 : 2);
 }
 const demo = arg === 'demo';
+
+if (arg === 'token') {
+  const dataDir = process.env.MERGERIE_DATA_DIR || path.join(os.homedir(), '.mergerie', 'data');
+  const fichier = path.join(dataDir, 'local-token');
+  try {
+    process.stdout.write(`${fs.readFileSync(fichier, 'utf8').trim()}\n`);
+    process.exit(0);
+  } catch {
+    console.error(`Jeton introuvable (${fichier}) — lance d'abord \`mergerie\`, ou pose MERGERIE_DATA_DIR sur le bon dossier.`);
+    process.exit(1);
+  }
+}
 
 /* ---------------------------------------------------------------- le `.env` du premier jour
  *
@@ -43,8 +55,8 @@ const demo = arg === 'demo';
  * PAS EN MODE DÉMO : « npx mergerie demo » promet de ne rien installer et de ne rien laisser.
  */
 const CANDIDATS = [
-  { bin: 'claude', args: '--dangerously-skip-permissions' },
-  { bin: 'copilot', args: '--yolo --model claude-sonnet-5' },
+  { bin: 'claude', args: '' },
+  { bin: 'copilot', args: '--model claude-sonnet-5' },
 ];
 /* Le PATH d'un shell non interactif n'a pas toujours `~/.local/bin` : on regarde aussi là où
    les installateurs posent ces binaires, sinon on écrirait « introuvable » sur une machine qui
@@ -77,17 +89,18 @@ function contenuEnv(agent) {
 # ─────────────────────────────────────────────────────────────────────────────────────────
 #  L'AGENT IA, ET CE QU'IL A LE DROIT DE FAIRE — à lire une fois.
 #
-#  \`--dangerously-skip-permissions\` (claude) et \`--yolo\` (copilot) laissent l'agent agir sans
-#  rien demander. Ce n'est pas du confort : Mergerie l'appelle en NON-INTERACTIF
-#  (\`<bin> [args] -p "<prompt>"\`, sortie capturée), et personne n'est là pour répondre à une
-#  demande de permission. Sans ces options, le travail se bloque — ou, pire, tout ce qui
-#  demanderait est refusé SANS UN MOT et le rapport revient plus pauvre sans qu'on sache
-#  pourquoi.
-#
-#  CE QUE ÇA VEUT DIRE QUAND MÊME. L'agent tourne avec TES droits. Il travaille dans le clone
-#  du dépôt relu, et c'est Mergerie qui fait le git — commit, push —, pas lui ; mais l'option
-#  ne construit AUCUN MUR autour de ce dossier. Et ce qu'il lit — un diff, un ticket — n'est
-#  pas écrit par toi.
+#  Mergerie l'appelle en NON-INTERACTIF (\`<bin> [args] -p "<prompt>"\`, sortie capturée) :
+#  personne n'est là pour répondre à une demande de permission. C'est Mergerie elle-même qui
+#  décide alors ce qu'il a le droit de faire (Réglages → Session IA) — plus \`COPILOT_ARGS\` à
+#  écrire ici pour ça :
+#    - EN LECTURE (review, exploration, question…) : toujours restreint, sans écriture ni
+#      commande qui exécute.
+#    - EN ÉCRITURE (codage, correction…) : sandboxé par le CLI quand « Tester le sandbox »
+#      (Réglages → Session IA) l'a vérifié sur CETTE machine ; sinon une liste blanche de
+#      commandes (tests, git courant — jamais push/remote/config).
+#    - L'ANCIEN COMPORTEMENT (\`--dangerously-skip-permissions\`) reste possible, mais seulement
+#      en le CHOISISSANT dans Réglages → Session IA (\`agent_write_mode=large\`) — jamais par
+#      défaut, jamais depuis ce fichier.
 # ─────────────────────────────────────────────────────────────────────────────────────────
 
 ${agent ? `# L'agent IA trouvé sur cette machine au moment de la création.
@@ -96,15 +109,7 @@ COPILOT_ARGS=${agent.args}`
     : `# AUCUN AGENT TROUVÉ sur cette machine (ni claude, ni copilot). Tant que ce chemin est
 # faux, Mergerie tourne en dry-run : les rapports sont simulés, aucun appel n'est fait.
 COPILOT_BIN=claude
-COPILOT_ARGS=--dangerously-skip-permissions`}
-${(!agent || agent.bin === 'claude') ? `
-# PLUS ÉTROIT, SI TU PRÉFÈRES : REMPLACE la ligne ci-dessus par celle-ci (n'en laisse qu'une,
-# sinon la dernière lue gagne en silence). Les éditions de fichiers sont acceptées, le reste
-# est refusé.
-# Le prix est écrit plus haut : sous \`-p\`, un refus est MUET. Une review qui ne peut plus
-# lire l'historique git rend un rapport plus faible, et rien ne le signale.
-# COPILOT_ARGS=--permission-mode acceptEdits
-` : ''}
+COPILOT_ARGS=`}
 # Pour l'autre agent, remplacer les deux lignes ci-dessus par :
 # COPILOT_BIN=${autre.bin}
 # COPILOT_ARGS=${autre.args}

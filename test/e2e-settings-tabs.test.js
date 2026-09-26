@@ -100,7 +100,9 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
       () => document.querySelector('#sub-aisession [name="ai_extra_instructions"]').value === 'Commente en français.',
       null, { timeout: 5000 },
     );
-    await page.locator('#sub-aisession button[type="submit"]').click();
+    // Deux boutons « Enregistrer » vivent maintenant dans ce sous-onglet (consignes + sandbox
+    // de l'agent en écriture) : les deux soumettent le MÊME #configForm en entier — on prend le premier.
+    await page.locator('#sub-aisession button[type="submit"]').first().click();
     await page.waitForFunction(() => document.querySelector('#configInfoAi').textContent.trim() !== '');
 
     // Rechargement complet : ce qui compte est ce que la BASE a retenu, pas le champ resté à l'écran.

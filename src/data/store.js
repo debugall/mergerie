@@ -1258,6 +1258,30 @@ function hydraterFichiers(relatifs) {
       }
       if (!connu) etat.ecrire(APPEND, md, 'sha', sha);
     }
+    /* MÊME GARDE, POUR UN DOCUMENT JSON ENTIER (plan_secure.md, lot C, S5) : `verification` et
+       `piece_jointe` ne sont pas le format à deux fichiers de `corps` — `verdictImmuable` nomme
+       les champs qui FONT le document ; ce qui vient après (`comment_posted_at`…) n'y figure
+       pas exprès.
+       UNE VÉRIFICATION EN COURS N'EST PAS ENCORE CE DOCUMENT — MAIS UNE EMPREINTE DÉJÀ CONNUE
+       S'APPLIQUE TOUJOURS (revue de add-secure-layer-2, 2e passe) : `status` passe à `running`
+       avant que `verdict` n'existe (`verifyrun.js`), et ce fichier-là est bien exporté
+       entre-temps — fixer l'empreinte sur cette version SANS VERDICT refusait ensuite le verdict
+       final comme « modifié après sa création ». Mais l'inverse est un trou : si le verdict est
+       DÉJÀ figé et qu'un document « en cours » (sans verdict) revient ensuite pour le même uid —
+       une synchro désynchronisée, ou une donnée forgée —, sauter la garde entière l'aurait
+       effacé en silence, exactement la réécriture que ce mécanisme existe pour refuser. On ne
+       s'abstient donc de figer une empreinte QUE tant qu'aucune n'est encore connue ; une fois
+       connue, elle s'applique quel que soit l'état du document entrant. */
+    const connuAvant = e.verdictImmuable ? etat.lire(APPEND, relatif, 'sha') : null;
+    const verificationEnCours = e.table === 'verification' && !doc.finished_at && !doc.verdict;
+    if (e.verdictImmuable && (connuAvant || !verificationEnCours)) {
+      const sha = empreinte(JSON.stringify(e.verdictImmuable.map((champ) => (doc[champ] == null ? null : doc[champ]))));
+      if (connuAvant && connuAvant !== sha) {
+        bilan.orphelins.push(`${relatif} : modifié après sa création — ignoré, l'original reste celui qu'on lit`);
+        continue;
+      }
+      if (!connuAvant) etat.ecrire(APPEND, relatif, 'sha', sha);
+    }
     /* Une entité se reconnaît à son uid — sauf celles qui ont une clé naturelle et une seule
        ligne possible : `settings.json`, ou un ticket Jira nommé par sa clé. */
     if (!doc.uid && e.cle !== 'id' && !doc[e.cle]) { bilan.orphelins.push(`${relatif} : sans identité`); continue; }

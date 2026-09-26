@@ -56,11 +56,15 @@ async function lancerCollegue({ nom = 'Claire', racine = os.tmpdir() } = {}) {
     enfant.once('exit', (code) => { clearTimeout(minuterie); reject(new Error(`la collègue s’est arrêtée (${code}) :\n${journal.join('')}`)); });
   });
   enfant.removeAllListeners('exit');
+  const localToken = fs.readFileSync(path.join(dataDir, 'local-token'), 'utf8').trim();
 
   async function api(method, p, body) {
     const res = await fetch(base + p, {
       method,
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${localToken}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();

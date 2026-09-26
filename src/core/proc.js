@@ -41,10 +41,23 @@ const POSIX = process.platform !== 'win32';
 const options = (opts = {}) => (POSIX ? { ...opts, detached: true } : { ...opts });
 const vivants = new Set();
 
+/* SOUS WINDOWS, `child.kill()` NE TUE QUE L'ENFANT DIRECT (plan_secure.md, lot A, point 9) :
+   `taskkill /T /F` tue l'arbre entier par PID, au Stop comme au délai. */
 function tuerGroupe(child, signal = 'SIGTERM') {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (POSIX && child.pid) {
     try { process.kill(-child.pid, signal); return; } catch { /* groupe déjà parti : on vise l'enfant */ }
+  }
+  if (!POSIX && child.pid) {
+    try {
+      /* `spawnSync` NE LÈVE PAS quand `taskkill` échoue (binaire absent, PID déjà mort) — il
+         rend seulement un `status` non nul, ou un `.error` (revue de add-secure-layer-2) : un
+         `try/catch` seul ne le voyait jamais, et le repli ci-dessous n'était donc JAMAIS
+         atteint après une tentative de `taskkill`, réussie ou pas. */
+      const { spawnSync } = require('node:child_process');
+      const r = spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+      if (!r.error && r.status === 0) return;
+    } catch { /* repli sur l'enfant seul */ }
   }
   try { child.kill(signal); } catch { /* déjà mort */ }
 }

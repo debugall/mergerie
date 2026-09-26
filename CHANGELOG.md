@@ -11,6 +11,60 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Security
+
+- **The API on `localhost` now belongs only to your browser.** A second, local-only session
+  token — separate from the one an exposed server already required — closes every `/api/` route
+  to any other process on the machine: an AI agent's own shell, a verifier command, a script run
+  by a dependency under test. Nothing to configure; it's issued and renewed automatically.
+- **Coding sessions no longer run the AI agent in an unrestricted (“yolo”) mode.** Settings →
+  AI session has a new **“Test the sandbox”** button: it runs a real check (a blocked write
+  outside the working folder, a blocked network call) and only turns the CLI's own sandbox on if
+  both are confirmed blocked — never a checkbox on trust. Until verified, or on a CLI that
+  doesn't support it, Mergerie falls back to a command allowlist; the old wide-open mode still
+  exists but is now an explicit, clearly-flagged opt-in, never the default. Copilot CLI's own
+  `--deny-tool`/`--allow-tool` are now used when available, and a read-only session on a CLI that
+  can't prove it's restricted is refused rather than assumed safe.
+- **The team data repository can no longer be made to silently rewrite a review verdict, push
+  on your behalf, or run with a weaker git setup than a code clone.** Verdicts and attachments
+  synced from a colleague are fingerprinted the same way reports already were; a session's
+  “push automatically” flag stays a setting of your own machine; the sync itself now runs with
+  the same hardened git invocation (no hooks, no `fsmonitor`, filtered environment) as any other
+  clone, and a `.gitmodules` file in the shared repository suspends the sync instead of being
+  checked out.
+- **Text an AI agent reads — a merge request description, a Jira ticket, a previous report — can
+  no longer forge one of the agent's own protocol blocks** (its findings, its questions, the
+  repository it names, the agent it proposes to create). Every such block now carries a nonce
+  tied to the run that asked for it, on top of the existing data-tagging; a look-alike block a
+  piece of text might contain is neutralised regardless.
+- **Follow-up hardening, from an internal review of the changes above:**
+  - The local session token closed `/api/` requests case-sensitively; `GET /API/config` slipped
+    through unrouted case-insensitively by Express itself. Both the local token and the
+    cross-origin guard now compare paths without regard to case.
+  - The nonce carried by an agent's protocol blocks was derived from a plain hash of a
+    sequential database id — guessable in advance for every plausible id. It's now an HMAC keyed
+    by a per-installation secret that never leaves this machine and is closed to the agent itself.
+  - A verifier command approved for the unsandboxed write allowlist granted the whole program
+    (`npm test` opened all of `npm`, including `npm publish`; `node script.js` opened `node -e`).
+    Only the exact approved command line is granted now.
+  - A verification synced while still running (before it has a verdict) no longer has its
+    fingerprint locked in — syncing mid-run used to make the real, later verdict look like a
+    silent rewrite and get rejected.
+  - “Test the sandbox” could mark the sandbox verified from an offline machine, since any failed
+    network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
+    checks the network works *outside* the sandbox first.
+  - An automatic verifier's outbound network was briefly cut off (`unshare` on Linux,
+    `sandbox-exec` on macOS) for the duration of this work, then removed again: cutting the
+    network also cut access to `localhost`, breaking any verifier whose commands reach a
+    database, Redis, or a `docker-compose` service there — with no way to opt back in. Automatic
+    verifiers keep the network open; what still closes this path is the local session token
+    above and the throwaway `HOME` they already ran under.
+  - A second review pass caught two of its own fixes: the “verification synced mid-run” fix
+    above had left a hole where a verification whose verdict was already locked in could be
+    erased by resending it without a verdict; and narrowing the injection-marker regex to known
+    names had dropped its case-insensitive flag along the way, so `<<<findings` in lowercase
+    slipped through neutralisation. Both are closed now.
+
 ### Removed
 
 - **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the

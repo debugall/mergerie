@@ -54,10 +54,14 @@ describe('Transverse — le mode démo, parcouru au navigateur', { skip: dispo ?
     enfant.stdout.on('data', (d) => { sortie += d; });
     enfant.stderr.on('data', (d) => { sortie += d; });
     base = `http://127.0.0.1:${port}`;
+    const jetonFichier = path.join(home, '.mergerie', 'demo', 'local-token');
+    await attendreServeur(async () => fs.existsSync(jetonFichier), `le jeton local existe :${port}\n${sortie}`, 120000);
+    const jeton = fs.readFileSync(jetonFichier, 'utf8').trim();
+    const avecJeton = { headers: { Authorization: `Bearer ${jeton}` } };
     await attendreServeur(async () => {
-      try { return (await fetch(`${base}/api/status`)).ok; } catch { return false; }
+      try { return (await fetch(`${base}/api/status`, avecJeton)).ok; } catch { return false; }
     }, `la démo répond sur :${port}\n${sortie}`, 120000);
-    assert.equal((await (await fetch(`${base}/api/status`)).json()).demo, true, 'le serveur tourne en mode démo');
+    assert.equal((await (await fetch(`${base}/api/status`, avecJeton)).json()).demo, true, 'le serveur tourne en mode démo');
     assert.ok(fs.existsSync(path.join(home, '.mergerie', 'demo')), 'la démo est semée dans le HOME jetable');
 
     navigateur = await lancerNavigateur();
