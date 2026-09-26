@@ -141,9 +141,13 @@ function targetLine(t, tg) {
     ${badgeCI(tg.branch)}
     ${/* B5 — PRÉVENIR JIRA. La merge request est ouverte et la branche porte une clé : un
           commentaire avec le lien, et la transition « en revue » si Jira la propose. Derrière
-          confirmation — c'est écrire chez les autres. */''}
-    ${mrIid && jiraConfigured && /[A-Z][A-Z0-9]+-\d+/i.test(tg.branch || '')
-    ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc((String(tg.branch || '').match(/[A-Z][A-Z0-9]+-\d+/i) || [''])[0].toUpperCase())}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
+          confirmation — c'est écrire chez les autres. La clé vient du SERVEUR (`tg.ticket_key`,
+          même champ que le badge de ticket) plutôt que d'une regex relue ici sur la branche :
+          celle du serveur sait qu'un fetch tenté à la découverte a déjà échoué (404, accès
+          refusé…) et rend alors null — sinon le bouton se proposait pour une branche dont le nom
+          ressemble à une clé mais qui ne correspond à aucun ticket. */''}
+    ${mrIid && jiraConfigured && tg.ticket_key
+    ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc(tg.ticket_key)}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
     ${/* LES BOUTONS CONTEXTUELS, ICI AUSSI. La ligne a un dépôt et une branche : `{env}` et
           `{branch}` s'y résolvent exactement comme sur une carte de merge request. Le bloc
           arrive vide et se remplit — un projet sans service lié n'affiche rien. */''}

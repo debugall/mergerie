@@ -18,6 +18,7 @@ const { readFileSafe } = require('../http');
 const { avecRangement, unitesAvecRetour } = require('./partage');
 const { programmation } = require('../../jobs');
 const { verifsParMrDuTour } = require('./verifications');
+const jira = require('../../integrations/jira');
 
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
 function taskById(id) {
@@ -42,7 +43,7 @@ function taskTargets(taskId) {
   const rows = db.prepare(`SELECT tt.*, repo.project AS project, repo.forge AS forge,
       mr.iid AS existing_mr_iid, mr.web_url AS existing_mr_url,
       mr.ticket_jira_key AS mr_ticket_key, mr.ticket_jira_status AS mr_ticket_status,
-      mr.ticket_jira_category AS mr_ticket_category,
+      mr.ticket_jira_category AS mr_ticket_category, mr.ticket_jira_error AS mr_ticket_error,
       (SELECT 1 FROM review r2 JOIN mr m2 ON m2.id = r2.mr_id
         WHERE m2.repo_id = tt.repo_id AND (m2.iid = tt.mr_iid OR m2.source_branch = tt.branch)
         LIMIT 1) AS has_review,
@@ -110,8 +111,17 @@ function taskTargets(taskId) {
       /* B5 — L'ÉTAT DU TICKET, sur la ligne de projet. La ligne dit la note, le verdict et les
          brouillons ; elle taisait le ticket, alors que `taskTargets` joint déjà la merge
          request et que `mr.ticket_jira_*` est rempli à la découverte. « Le ticket est repassé
-         en cours » change ce qu'on fait de la branche autant qu'un test rouge. */
-      ticket_key: r.mr_ticket_key || null,
+         en cours » change ce qu'on fait de la branche autant qu'un test rouge.
+         UNE CLÉ DÉJÀ EN ÉCHEC (404, accès refusé…) NE COMPTE PAS : `mr.ticket_jira_key` est posé
+         aussi bien sur succès que sur échec du fetch fait à la découverte (cf. `fetchJiraContext`).
+         Sans ce garde-fou, « Prévenir Jira » restait proposé — et le badge de ticket affiché —
+         pour une branche dont le nom ressemble à une clé mais dont le fetch a déjà échoué :
+         même bug, même règle que `GET /api/mrs` (cf. `mrs.js`). Jamais tentée (MR pas encore
+         découverte, ou Jira pas encore configuré), la clé reste la devinette regex — seule
+         information dispo avant le premier discover. */
+      ticket_key: r.mr_ticket_key
+        ? (r.mr_ticket_error ? null : r.mr_ticket_key)
+        : jira.ticketKey('', r.branch),
       ticket_status: r.mr_ticket_status || null,
       ticket_category: r.mr_ticket_category || null,
       resume_cmd: cli.avec(profilCli, () => agentsession.resumeCommand(ligne.session_backend, ligne.session_key, ligne.session_cwd, optionsAgent)),

@@ -497,6 +497,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   ticket, no access — the dialog still proposed “move TICKET-1 to its next state and drop the
   merge request's link on it” for a ticket that was never there. A key already known to fail no
   longer counts.
+- **A coding session's card no longer offers “Tell Jira” for a ticket that doesn't exist**, same
+  root cause as the merge dialog above: the button used to test the branch name against a bare
+  “looks like a ticket key” pattern, with no idea that a fetch of that very key had already failed
+  at discovery. It now reads the same, error-aware ticket key the ticket badge already used.
 
 ### Security
 

@@ -64,6 +64,27 @@ describe('Qualité de vie · 4ᵉ passe', () => {
     assert.equal(m.ticket_key, 'ABC-12');
   });
 
+  /* B5 — même règle sur la carte de session : « Prévenir Jira » ne doit plus se proposer pour
+     une branche dont le nom ressemble à une clé de ticket mais dont le fetch, tenté à la
+     découverte, a déjà échoué (404, accès refusé…). `ticket_jira_key` est posé dans les deux
+     cas (succès et échec) ; c'est `ticket_jira_error` qui fait la différence. */
+  test('la carte de session ne propose plus « Prévenir Jira » pour un ticket déjà en échec', async () => {
+    const d = app.db;
+    const repoId = d.prepare("INSERT INTO repo (project, url, created_at) VALUES ('grp/tk2','http://x',datetime('now'))").run().lastInsertRowid;
+    d.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status,
+        ticket_jira_key, ticket_jira_error, updated_at)
+      VALUES (?, 7011, 'Refonte du blog', 'feature/blog-1-refonte', 'main', 'to_review',
+        'BLOG-1', 'Issue BLOG-1 does not exist', datetime('now'))`).run(repoId);
+    const taskId = d.prepare(`INSERT INTO task (repo_id, prompt, branch, status, created_at, updated_at)
+      VALUES (?, 'Refonte du blog', 'feature/blog-1-refonte', 'pushed', datetime('now'), datetime('now'))`)
+      .run(repoId).lastInsertRowid;
+    d.prepare(`INSERT INTO task_target (task_id, repo_id, branch, status, mr_iid, updated_at)
+      VALUES (?, ?, 'feature/blog-1-refonte', 'pushed', 7011, datetime('now'))`).run(taskId, repoId);
+    const { body } = await app.api('GET', `/api/tasks/${taskId}`);
+    assert.equal(body.task.targets[0].ticket_key, null,
+      'une clé déjà en échec ne doit plus déclencher le bouton « Prévenir Jira »');
+  });
+
   /* C23 — le badge de l'onglet Agents existait dans le menu et n'était jamais rempli. */
   test('le badge des agents compte les cartes de connaissance à valider', async () => {
     const avant = (await app.api('GET', '/api/status')).body.agentsPending;
