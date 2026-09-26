@@ -93,6 +93,10 @@ const COLONNES_LOCALES = [
   ["agent_bin", "TEXT DEFAULT ''"],
   ["agent_args", "TEXT DEFAULT ''"],
   ['agent_timeout_ms', 'INTEGER NOT NULL DEFAULT 0'],
+  /* LES VARIABLES D'ENVIRONNEMENT DE L'AGENT, une par ligne (`ANTHROPIC_BASE_URL=http://localhost:11434`) :
+     ce que le CLI lit et que Mergerie ne connaît pas — un Ollama derrière Claude Code, un proxy, une clé.
+     De CE poste, jamais partagées : ce sont souvent des secrets, et une adresse locale ne vaut qu'ici. */
+  ["agent_env", "TEXT DEFAULT ''"],
   /* Le backend, quand on veut le DIRE plutôt que le laisser deviner (`auto`) : un wrapper maison
      autour de claude, un CLI dont le `--version` ne dit rien. Les identifiants sont ceux du
      registre `agent/backends/`, plus `generic`. */

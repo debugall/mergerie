@@ -466,6 +466,16 @@ const PREFIXES = {
 /* `MERGERIE_AGENT_ENV=NOM1,NOM2` ajoute des noms à la liste — le besoin d'un projet qu'on ne
    devine pas (`DATABASE_URL` de test, `KUBECONFIG`…). C'est un choix de l'utilisateur, fait dans
    SON `.env` : il sait ce qu'il donne. */
+function agentEnvRegle() {
+  const out = {};
+  let brut = '';
+  try { brut = String(require('../data/config').getConfig().agent_env || ''); } catch { return out; }
+  for (const l of brut.split('\n')) {
+    const i = l.indexOf('=');
+    if (i > 0 && !/^MERGERIE_/i.test(l.slice(0, i))) out[l.slice(0, i).trim()] = l.slice(i + 1);
+  }
+  return out;
+}
 function envAgent(backend, source = process.env) {
   const prefixes = [...PREFIXES_COMMUNS, ...(PREFIXES[backend] || Object.values(PREFIXES).flat())];
   const enPlus = new Set(String(source.MERGERIE_AGENT_ENV || '').split(',').map((x) => x.trim()).filter(Boolean));
@@ -473,6 +483,10 @@ function envAgent(backend, source = process.env) {
   for (const [k, v] of Object.entries(source)) {
     if (NOMS.has(k) || enPlus.has(k) || prefixes.some((p) => k.startsWith(p))) env[k] = v;
   }
+  /* LES VARIABLES RÉGLÉES À L'ÉCRAN (Réglages → Session IA) passent TOUJOURS, et priment sur le
+     shell : l'utilisateur les a écrites pour cet agent. `source` explicite = un test sur la règle
+     nue, sans base : on n'y ajoute rien. */
+  if (source === process.env) Object.assign(env, agentEnvRegle());
   // Ce que Mergerie lui-même porte ne va jamais à l'agent, quel que soit son préfixe.
   delete env.MERGERIE_ACCESS_TOKEN;
   // `COPILOT_BIN`/`COPILOT_ARGS` sont les réglages de Mergerie, pas ceux de l'agent.

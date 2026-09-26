@@ -645,6 +645,10 @@
                     <input form="configForm" name="agent_args" type="text" placeholder="--model claude-sonnet-5" data-i18n-placeholder="settings.agent.args-ph" autocomplete="off" spellcheck="false" /></label>
                 <label><span data-i18n="settings.agent.timeout-lbl">Délai maximal d'un appel, en millisecondes (0 = 15 min)</span>
                     <input form="configForm" name="agent_timeout_ms" type="number" min="0" step="1000" placeholder="900000" /></label>
+                <!-- CE QUE LE CLI LIT ET QUE MERGERIE NE CONNAÎT PAS : un Ollama derrière Claude Code, un
+                     proxy, une clé. De ce poste, jamais partagé, transmis au seul agent que Mergerie lance. -->
+                <label><span data-i18n="settings.agent.env-lbl">Variables d'environnement de l'agent (une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.agent.env-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="agent_env" rows="3" placeholder="ANTHROPIC_BASE_URL=http://localhost:11434&#10;ANTHROPIC_AUTH_TOKEN=ollama" spellcheck="false"></textarea></label>
                 <!-- LE BACKEND, quand on veut le dire plutôt que le laisser deviner : un wrapper
                      maison autour de claude, un CLI dont le --version ne dit rien. -->
                 <label><span data-i18n="settings.agent.backend-lbl">Backend (auto = détecté par --version, puis par le nom)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.agent.backend-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>

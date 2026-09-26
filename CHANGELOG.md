@@ -13,6 +13,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Agent environment variables, on screen.** Settings → AI session takes `NAME=value` lines — an
+  Ollama behind Claude Code (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`), a proxy, a key — passed
+  to the agent Mergerie launches only, never to your terminal, overriding the shell; this
+  workstation only, never shared, applied on the next launch.
 - **Types on the pure layers, without a build.** `src/core`, `src/forge` and `src/verify` carry
   `// @ts-check` and JSDoc; `npm run check` now runs `tsc --noEmit` on them (TypeScript is a
   development dependency only). Editors get completion and error detection on those modules.

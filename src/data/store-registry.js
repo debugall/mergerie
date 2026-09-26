@@ -1632,7 +1632,7 @@ const REGISTRE = [
       'agent_sandbox_verified', 'agent_sandbox_tested_at', 'agent_sandbox_detail',
       'agent_read_unrestricted',
       // L'agent de CE poste : un chemin de binaire n'a de sens que sur la machine qui le porte.
-      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'clone_blobless'],
+      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'clone_blobless'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',

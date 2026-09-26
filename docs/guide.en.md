@@ -2693,6 +2693,13 @@ with `npx mergerie`) — the local override. What the shell exports wins over bo
 | `GIT_CLONE_SSH` | 0 | `1` = clone over SSH (your key) instead of HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | isolated data folder (useful for tests) |
 
+**The variables the CLI reads and Mergerie does not know** — an Ollama behind Claude Code
+(`ANTHROPIC_BASE_URL=http://localhost:11434`, `ANTHROPIC_AUTH_TOKEN=ollama`), a proxy, a key — can also be
+set **on screen**: Settings → AI session → “Agent environment variables”, `NAME=value` per line. They are
+passed to the agent Mergerie launches only, never to your terminal (your everyday `claude` keeps its
+subscription), override the shell, and count on the next agent launch without a restart. This workstation
+only, never shared; `MERGERIE_*` is refused.
+
 The AI agent must be able to **modify files** (“yolo” mode) for the coding sessions. Explorations, on the
 other hand, are read-only: the repositories are reset after each pass.
 

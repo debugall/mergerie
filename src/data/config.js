@@ -43,7 +43,7 @@ const ALLOWED = [
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
-  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'clone_blobless',
+  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'clone_blobless',
   'mr_retention_days',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
@@ -181,6 +181,16 @@ function updateConfig(patch) {
     const ms = parseInt(next.agent_timeout_ms, 10);
     next.agent_timeout_ms = (!Number.isFinite(ms) || ms <= 0) ? 0 : Math.min(24 * 3600000, Math.max(10000, ms));
   }
+  /* LES VARIABLES D'ENVIRONNEMENT DE L'AGENT : `NOM=valeur`, une par ligne, lignes vides et `#` ignorés.
+     Un nom se valide MAINTENANT (une ligne sans `=` finirait en variable vide au premier lancement), et
+     ce que Mergerie porte lui-même (`MERGERIE_*`) est refusé : l'agent ne reçoit jamais le jeton d'accès. */
+  next.agent_env = String(next.agent_env || '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => {
+    const i = l.indexOf('=');
+    const nom = i > 0 ? l.slice(0, i).trim() : '';
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nom)) throw new Error(t('err.agent-env-line', { line: l }));
+    if (/^MERGERIE_/i.test(nom)) throw new Error(t('err.agent-env-reserved', { name: nom }));
+    return `${nom}=${l.slice(i + 1).trim()}`;
+  }).join('\n');
   // Le backend explicite : un identifiant du registre, `generic`, ou `auto` (la détection).
   if (!['auto', 'claude', 'copilot', 'codex', 'gemini', 'generic'].includes(String(next.agent_backend || ''))) next.agent_backend = 'auto';
   /* SÉCURISÉ OU YOLO. Le défaut est yolo, et une valeur illisible y retombe : c'est le sens du
@@ -299,6 +309,7 @@ function updateConfig(patch) {
       agent_timeout_ms = @agent_timeout_ms,
       agent_backend = @agent_backend,
       agent_mode = @agent_mode,
+      agent_env = @agent_env,
       clone_blobless = @clone_blobless
     WHERE id = 1`).run(next);
 

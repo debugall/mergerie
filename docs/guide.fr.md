@@ -2785,6 +2785,13 @@ deux. Les anciens noms `COPILOT_BIN`, `COPILOT_ARGS`, `COPILOT_TIMEOUT_MS` reste
 | `GIT_CLONE_SSH` | 0 | `1` = clone via SSH (ta clé) au lieu de HTTPS+token |
 | `MERGERIE_DATA_DIR` | `data/` | dossier de données isolé (utile pour les tests) |
 
+**Les variables que le CLI lit et que Mergerie ne connaît pas** — un Ollama derrière Claude Code
+(`ANTHROPIC_BASE_URL=http://localhost:11434`, `ANTHROPIC_AUTH_TOKEN=ollama`), un proxy, une clé — se posent
+aussi **à l'écran** : Réglages → Session IA → « Variables d'environnement de l'agent », `NOM=valeur` par
+ligne. Elles sont transmises au seul agent que Mergerie lance, jamais à ton terminal (ton `claude` de tous
+les jours garde son abonnement), priment sur le shell, et comptent au prochain lancement d'agent sans
+redémarrer. De ce poste, jamais partagées ; `MERGERIE_*` y est refusé.
+
 L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 
 ## GitLab self-hosted / GitHub Enterprise / Jenkins interne / certificat d'entreprise

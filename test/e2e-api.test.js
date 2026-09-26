@@ -85,6 +85,21 @@ describe('API de bout en bout', () => {
     // Un délai trop court est ramené au plancher, 0 rend le défaut.
     const c = (await app.api('PUT', '/api/config', { agent_timeout_ms: '5' })).body;
     assert.equal(c.agent_timeout_ms, 10000);
+    /* LES VARIABLES DE L'AGENT : normalisées, validées, refusées si elles sont à Mergerie — et passées
+       à l'agent par-dessus le shell, sans jamais atteindre le jeton d'accès. */
+    const env = (await app.api('PUT', '/api/config', { agent_env: '  ANTHROPIC_BASE_URL = http://localhost:11434 \n\n# commentaire\nANTHROPIC_AUTH_TOKEN=ollama' })).body;
+    assert.equal(env.agent_env, 'ANTHROPIC_BASE_URL=http://localhost:11434\nANTHROPIC_AUTH_TOKEN=ollama');
+    assert.equal((await app.api('GET', '/api/config')).body.scopes.agent_env, 'poste');
+    assert.equal((await app.api('PUT', '/api/config', { agent_env: 'pas-un-nom' })).status, 400);
+    assert.equal((await app.api('PUT', '/api/config', { agent_env: 'MERGERIE_ACCESS_TOKEN=x' })).status, 400);
+    const pol = require('../src/agent/policy');
+    process.env.ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
+    const e = pol.envAgent('claude');
+    delete process.env.ANTHROPIC_BASE_URL;
+    assert.equal(e.ANTHROPIC_BASE_URL, 'http://localhost:11434', 'le réglage prime sur le shell');
+    assert.equal(e.ANTHROPIC_AUTH_TOKEN, 'ollama');
+    assert.ok(!('MERGERIE_ACCESS_TOKEN' in e));
+    await app.api('PUT', '/api/config', { agent_env: '' });
     const c0 = (await app.api('PUT', '/api/config', { agent_timeout_ms: '0', agent_bin: '', agent_args: '' })).body;
     assert.equal(c0.agent_timeout_ms, 0);
     /* Le défaut vient de l'environnement du serveur quand il en a un (le `.env` du clone, chargé

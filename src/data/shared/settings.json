@@ -1,0 +1,22 @@
+{
+  "agent_auto_max": 10,
+  "auto_post_blocking_only": "0",
+  "auto_post_review": "0",
+  "auto_post_review_link": "0",
+  "auto_rereview_stale": "0",
+  "auto_review_new": "0",
+  "converge_max_passes": "3",
+  "converge_threshold": "8",
+  "prompt_explain": "Explique de façon pédagogique ce que fait la merge request représentée par le diff du fichier {diff_file} (branche {source} vers {target}). Objectif : que je comprenne et que je progresse techniquement. En Markdown (français) : résumé de l'intention, mécanismes/patterns utilisés, points à retenir, et ce que je pourrais approfondir.",
+  "prompt_modify": "Voici un rapport de revue existant :\n\n{previous}\n\nApplique la demande suivante et renvoie le rapport complet mis à jour en Markdown (français) :\n{instruction}",
+  "prompt_review": "Fais la revue de code UNIQUEMENT des changements de la branche {source} par rapport à {target} (le diff est dans le fichier {diff_file}). Ne parse pas tout le dépôt, concentre-toi sur ces changements. Produis un rapport de revue clair en Markdown (français) : problèmes, risques, suggestions concrètes avec fichier et ligne quand c'est possible, et une note globale.",
+  "retention_days": 90,
+  "review_auto_max": 5,
+  "review_explain": "1",
+  "review_skill": "git-review",
+  "stale_mr_days": 5,
+  "uid": "settings",
+  "verif_auto_authors": "mine",
+  "verif_auto_max": 5,
+  "verify_jira_comment": 0
+}
