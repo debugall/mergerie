@@ -86,12 +86,9 @@ function groupes(app) {
       ['jenkins_refresh_minutes', '5'],
     ] },
     { sub: 'aisession', champs: [
+      // Le binaire par défaut (bin, args, env, délai, backend, nom) s'édite dans la liste des
+      // binaires, par son propre formulaire : e2e-agent-clis-ui.test.js.
       ['agent_mode', 'yolo'],
-      ['agent_bin', '/opt/agents/claude-ecran'],
-      ['agent_args', '--model claude-sonnet-5'],
-      ['agent_timeout_ms', '600000'],
-      ['agent_env', 'ANTHROPIC_BASE_URL=http://localhost:11434\nANTHROPIC_AUTH_TOKEN=ollama'],
-      ['agent_backend', 'gemini'],
       ['ai_extra_instructions', 'Commente en français ; lance les tests avant de committer.'],
       ['agent_auto_max', '25'],
       ['agent_max_turns', '150'],

@@ -43,13 +43,33 @@ const ALLOWED = [
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
-  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'clone_blobless',
+  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless',
   'mr_retention_days',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
+
+/* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
+   la même pour le défaut (`agent_env`) et pour un autre binaire (`agent_cli.env`). Un nom se
+   valide MAINTENANT (une ligne sans `=` finirait en variable vide au premier lancement), et ce
+   que Mergerie porte lui-même (`MERGERIE_*`) est refusé : l'agent ne reçoit jamais le jeton. */
+function normaliserEnvAgent(texte) {
+  return String(texte || '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => {
+    const i = l.indexOf('=');
+    const nom = i > 0 ? l.slice(0, i).trim() : '';
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nom)) throw new Error(t('err.agent-env-line', { line: l }));
+    if (/^MERGERIE_/i.test(nom)) throw new Error(t('err.agent-env-reserved', { name: nom }));
+    return `${nom}=${l.slice(i + 1).trim()}`;
+  }).join('\n');
+}
+/* Un délai d'appel : un entier en millisecondes borné [10 s, 24 h], 0 = le défaut du code. */
+function normaliserDelaiAgent(v) {
+  const ms = parseInt(v, 10);
+  return (!Number.isFinite(ms) || ms <= 0) ? 0 : Math.min(24 * 3600000, Math.max(10000, ms));
+}
+const BACKENDS_AGENT = ['auto', 'claude', 'copilot', 'codex', 'gemini', 'generic'];
 
 function updateConfig(patch) {
   const current = getConfig();
@@ -177,22 +197,14 @@ function updateConfig(patch) {
      ligne d'options) ; le délai est un entier en millisecondes, 0 = le défaut du code. */
   next.agent_bin = String(next.agent_bin || '').trim();
   next.agent_args = String(next.agent_args || '').trim();
-  {
-    const ms = parseInt(next.agent_timeout_ms, 10);
-    next.agent_timeout_ms = (!Number.isFinite(ms) || ms <= 0) ? 0 : Math.min(24 * 3600000, Math.max(10000, ms));
-  }
+  next.agent_name = String(next.agent_name || '').trim().slice(0, 60);
+  next.agent_timeout_ms = normaliserDelaiAgent(next.agent_timeout_ms);
   /* LES VARIABLES D'ENVIRONNEMENT DE L'AGENT : `NOM=valeur`, une par ligne, lignes vides et `#` ignorés.
      Un nom se valide MAINTENANT (une ligne sans `=` finirait en variable vide au premier lancement), et
      ce que Mergerie porte lui-même (`MERGERIE_*`) est refusé : l'agent ne reçoit jamais le jeton d'accès. */
-  next.agent_env = String(next.agent_env || '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => {
-    const i = l.indexOf('=');
-    const nom = i > 0 ? l.slice(0, i).trim() : '';
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(nom)) throw new Error(t('err.agent-env-line', { line: l }));
-    if (/^MERGERIE_/i.test(nom)) throw new Error(t('err.agent-env-reserved', { name: nom }));
-    return `${nom}=${l.slice(i + 1).trim()}`;
-  }).join('\n');
+  next.agent_env = normaliserEnvAgent(next.agent_env);
   // Le backend explicite : un identifiant du registre, `generic`, ou `auto` (la détection).
-  if (!['auto', 'claude', 'copilot', 'codex', 'gemini', 'generic'].includes(String(next.agent_backend || ''))) next.agent_backend = 'auto';
+  if (!BACKENDS_AGENT.includes(String(next.agent_backend || ''))) next.agent_backend = 'auto';
   /* SÉCURISÉ OU YOLO. Le défaut est yolo, et une valeur illisible y retombe : c'est le sens du
      réglage — « sans restriction, sauf si j'ai dit sécurisé ». Posé aux DEUX endroits (ici et dans
      la tranche de schéma), jamais dans un seul : un défaut lu à un endroit et écrit à un autre
@@ -310,6 +322,7 @@ function updateConfig(patch) {
       agent_backend = @agent_backend,
       agent_mode = @agent_mode,
       agent_env = @agent_env,
+      agent_name = @agent_name,
       clone_blobless = @clone_blobless
     WHERE id = 1`).run(next);
 
@@ -329,4 +342,4 @@ function updateConfig(patch) {
   return getConfig();
 }
 
-module.exports = { getConfig, updateConfig, destinationDe, CHAMPS_POSTE };
+module.exports = { getConfig, updateConfig, destinationDe, CHAMPS_POSTE, normaliserEnvAgent, normaliserDelaiAgent, BACKENDS_AGENT };

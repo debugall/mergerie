@@ -44,7 +44,10 @@ function pour(id) { return REGISTRE[id] || generic; }
    dire « claude ». `auto` (le défaut) laisse la détection décider. */
 function choixExplicite() {
   let v = '';
-  try { const { getConfig } = require('../../data/config'); v = String(getConfig().agent_backend || '').trim(); } catch { /* base pas encore là */ }
+  // Le profil du lancement en cours (`agent/cli.js`) dit le sien ; `auto` laisse deviner.
+  const profil = require('../cli').courant();
+  if (profil) v = String(profil.backend || '').trim();
+  else { try { const { getConfig } = require('../../data/config'); v = String(getConfig().agent_backend || '').trim(); } catch { /* base pas encore là */ } }
   if (!v || v === 'auto') v = String(process.env.AGENT_BACKEND || '').trim();
   return IDS.includes(v) ? v : (v === 'generic' ? 'unknown' : '');
 }

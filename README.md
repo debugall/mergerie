@@ -37,8 +37,9 @@ data next to the code (`data-demo/`, `data/`).
 
 On its **first launch**, `npx mergerie` looks for `claude` then `copilot` on the machine and writes a
 short `.env` in `~/.mergerie/` pointing `AGENT_BIN` at the one it finds. **The agent is then set on
-screen** — Settings → AI session: binary, arguments, timeout, and a *Test the agent* button — with no
-restart. If no agent is found, a banner says so, with the install commands; reports are **simulated**
+screen** — Settings → AI session: a list of **binaries** (binary, arguments, timeout, environment
+variables, a *Test* button each), one being the default, as many others as you like (a Claude Code on
+a local Ollama next to your Claude Max), and a session picks its own — with no restart. If no agent is found, a banner says so, with the install commands; reports are **simulated**
 and say so until it is fixed.
 
 The **Reviews** tab opens on a five-step assistant: the agent, the forge (GitLab **or** GitHub), your

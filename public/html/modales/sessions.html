@@ -115,6 +115,10 @@
                  une cible (une question libre n'hésite sur rien). -->
             <label id="taskAskQuestionsRow" class="inline-check"><input type="checkbox" name="ask_questions" /> <span data-i18n="task.lbl.ask-questions">L'IA peut me poser des questions quand elle hésite</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-tip="Coché, si l'IA rencontre une décision structurante qu'elle ne peut pas trancher, elle s'arrête et pose la question au lieu de deviner. Tu réponds depuis la carte de session, puis elle reprend là où elle s'était arrêtée." data-i18n-tip="task.tip.ask-questions"><svg class="ico"><use href="#i-info"/></svg></button></label>
             <label id="taskPlanFirstRow" class="inline-check"><input type="checkbox" name="plan_first" /> <span data-i18n="task.lbl.plan-first">Planifier d'abord : l'IA propose un plan, je l'approuve, puis elle code</span> <button type="button" class="hint" tabindex="-1" aria-label="" data-tip="" data-i18n-tip="task.tip.plan-first"><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LE BINAIRE DE CETTE SESSION : n'apparaît que si d'autres binaires existent
+                 (Réglages → Session IA). Vide = le défaut, exactement comme avant. -->
+            <label id="taskCliRow" hidden><span data-i18n="task.lbl.cli">Binaire</span> <button type="button" class="hint" tabindex="-1" aria-label="" data-tip="" data-i18n-tip="task.tip.cli"><svg class="ico"><use href="#i-info"/></svg></button>
+                <select name="cli_id" id="taskCli"></select></label>
             <!-- LANCER PLUS TARD. Une date, pas un horaire : la session part toute seule à ce
                  moment-là, depuis ce poste. Vide, « Créer et lancer » la lance tout de suite.
                  Hors de l'accordéon : décider QUAND part une session n'est pas un réglage avancé. -->

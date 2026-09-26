@@ -278,6 +278,8 @@ describe('Menu Réglages — apparence, langue, notifications, sauvegarde, tests
 
   test('« Tester la reprise de session » rend un verdict et dit qu’il est simulé', async () => {
     await ouvrir('aisession');
+    // Le test technique est replié sous « Reprise de session IA » : on le déplie comme l'utilisateur.
+    await page.locator('#sub-aisession details:has(#aiSessionTest) > summary').click();
     await page.locator('#aiSessionTest').click();
     await page.waitForSelector('#aiSessionResult .ai-verdict');
     const texte = await page.locator('#aiSessionResult').textContent();

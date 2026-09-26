@@ -2165,7 +2165,8 @@ from a ticket) ·
 linked to repositories**: a job declared for a repository is offered on its **verified green** merge
 requests, with the branch prefilled into the parameter you name — the job page opens, nothing is launched
 without the usual confirmation) ·
-**AI sessions** (the **standing instructions**, see below, and a technical test: two passes inside the
+**AI sessions** (the **agent binaries** — the default and the others, see *Configuration* —, the **standing
+instructions**, see below, the daily limits, secure or yolo mode, and a technical test: two passes inside the
 same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
 context continuity between review, fixes and convergence). And when a compose file is in the clone, the **`docker compose run --rm <service> <command>`** variant of every test command: the commands run **on the host**, and it is in the line that you say to enter a container. Every suggestion is an **exact line**, the one that will be approved as is.
@@ -2699,6 +2700,21 @@ set **on screen**: Settings → AI session → “Agent environment variables”
 passed to the agent Mergerie launches only, never to your terminal (your everyday `claude` keeps its
 subscription), override the shell, and count on the next agent launch without a restart. This workstation
 only, never shared; `MERGERIE_*` is refused.
+
+**Several binaries, one default.** Settings → AI session → **Agent binaries** is a list: the **default**
+first, marked — the one used by reviews, convergence, free questions and any session that picked nothing —,
+then the others, as many as you like. Each line says its state (found, not found), **tests** with a button
+and **edits** through the same form (name, binary, arguments, environment variables; timeout and backend
+under “Advanced”). A profile is **complete**: it does not complete the default (its variables replace the
+default's, its empty arguments stay empty). A Claude Code wired to a local Ollama next to your Claude Max, a
+Copilot to compare. In a session's modal (coding, exploration,
+out of repository), a **“Binary”** picker appears as soon as there is one besides the default; the choice
+holds for **every pass** of the session — follow-up, answers, approved plan, convergence — and its card shows
+it. **“Use as default”** swaps a line with the default: the former default takes its place in the list,
+sessions that had picked it keep it (an explicit choice stays explicit), and the sandbox proof drops, as
+with any change of binary. This workstation only, never shared: these are paths of this machine, often
+secrets — on a teammate's workstation, the card of a shared session says the **name** of the chosen binary,
+and rerunning it uses their own default.
 
 The AI agent must be able to **modify files** (“yolo” mode) for the coding sessions. Explorations, on the
 other hand, are read-only: the repositories are reset after each pass.

@@ -121,7 +121,7 @@ document.addEventListener('click', (e) => {
      viser à la souris le premier champ d'un formulaire qu'on vient de demander. */
   const viser = (sel) => { const c = $(sel); if (c) c.focus({ preventScroll: true }); };
   switch (b.dataset.emptyAct) {
-    case 'go-agent': go('admin'); showAdminSub('aisession'); viser('[name="agent_bin"]'); break;
+    case 'go-agent': go('admin'); showAdminSub('aisession'); viser('#cliAdd'); break;
     case 'agent-retry': api('/agent/redetect', { method: 'POST' }).then(() => rafraichirDemarrage()).catch(() => {}); break;
     case 'outils-ok': validerOutils(b.closest('.step')); break;
     case 'go-config': closeBulk(); go('admin'); showAdminSub('gitcfg'); viser('[name="gitlab_url"]'); break;

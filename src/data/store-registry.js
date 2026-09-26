@@ -1026,7 +1026,7 @@ const REGISTRE = [
        ESSAIE — l'endroit même où l'on tente un prompt sans engager l'équipe. */
     /* `auto_push` NE VOYAGE PAS (plan_secure.md, lot C, S5) : une session reçue du dépôt
        partagé avec `auto_push: 1` poussait, lue brute à l'exécution. */
-    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push'],
+    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push', 'cli_id'],
     /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT : comme `fromFile` ci-dessous, le
        balayage lit le dépôt de la PREMIÈRE cible — c'est elle qui décide si cette session
        s'hydrate ici. Une session sans cible connue n'a rien à juger. */
@@ -1056,6 +1056,8 @@ const REGISTRE = [
       last_error: ctx.masquer(r.last_error) || null,
       agent: r.agent_id ? ctx.slug('agent', r.agent_id) : null,
       agent_name: r.agent_name || null,
+      // Le binaire choisi, par son NOM : l'id est de poste, le collègue n'a pas ce profil.
+      cli_name: r.cli_name || null,
       triggered_by: r.triggered_by || 'manual',
       verifier: r.verifier_id ? ctx.uid('verifier', r.verifier_id) : null,
       followup_auto: r.followup_auto ? 1 : 0,
@@ -1127,6 +1129,7 @@ const REGISTRE = [
       last_error: doc.last_error || null,
       agent_id: doc.agent ? ctx.idParSlug('agent', doc.agent) : null,
       agent_name: doc.agent_name || null,
+      cli_name: doc.cli_name || null,
       triggered_by: doc.triggered_by || 'manual',
       verifier_id: doc.verifier ? ctx.id('verifier', doc.verifier) : null,
       followup_auto: doc.followup_auto ? 1 : 0,
@@ -1221,7 +1224,7 @@ const REGISTRE = [
   },
   {
     table: 'local_task', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'sessions/{uid}/local.json',
-    fusion: 'last-writer', locales: ['hidden', 'shared', 'followup_draft'],
+    fusion: 'last-writer', locales: ['hidden', 'shared', 'followup_draft', 'cli_id'],
     note: 'du codage hors dépôt : le dossier ne voyage pas, et la session ne part que si on l’a '
       + 'cochée — hors dépôt, c’est souvent un projet personnel',
     partageable: (r) => Boolean(r.shared),
@@ -1233,6 +1236,7 @@ const REGISTRE = [
       label: r.label || null,
       status: r.status,
       ask_questions: r.ask_questions ? 1 : 0,
+      cli_name: r.cli_name || null,
       last_error: ctx.masquer(r.last_error) || null,
       followup_auto: r.followup_auto ? 1 : 0,
       created_at: r.created_at,
@@ -1254,6 +1258,7 @@ const REGISTRE = [
       label: doc.label || null,
       status: doc.status || 'new',
       ask_questions: doc.ask_questions ? 1 : 0,
+      cli_name: doc.cli_name || null,
       last_error: doc.last_error || null,
       followup_auto: doc.followup_auto ? 1 : 0,
       created_at: doc.created_at,
@@ -1632,7 +1637,7 @@ const REGISTRE = [
       'agent_sandbox_verified', 'agent_sandbox_tested_at', 'agent_sandbox_detail',
       'agent_read_unrestricted',
       // L'agent de CE poste : un chemin de binaire n'a de sens que sur la machine qui le porte.
-      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'clone_blobless'],
+      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',
@@ -1686,6 +1691,7 @@ const REGISTRE = [
   { table: 'service_url', famille: 'L', note: 'les cases de la grille : une URL par service et par environnement' },
   { table: 'context_link', famille: 'L', note: 'les gabarits d’URL de contexte d’un service' },
   { table: 'free_link', famille: 'L', note: 'les liens libres, avec leurs étiquettes et leurs dossiers' },
+  { table: 'agent_cli', famille: 'L', note: 'les autres binaires d’agent de CE poste (chemins, secrets) ; le défaut est dans `local_config`' },
   {
     table: 'local_config', famille: 'L',
     note: 'les réglages de CE poste : les six jetons, le chemin des clones, la langue. '

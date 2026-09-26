@@ -78,16 +78,20 @@ const ENV_BIN = () => process.env.AGENT_BIN || process.env.COPILOT_BIN || '';
 const ENV_ARGS = () => process.env.AGENT_ARGS ?? process.env.COPILOT_ARGS ?? '';
 const ENV_TIMEOUT = () => Number(process.env.AGENT_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS || 0);
 function reglagesAgent() {
+  /* LE PROFIL DU LANCEMENT EN COURS (`agent/cli.js`) l'emporte, en bloc : une session qui a
+     choisi un autre binaire prend SES arguments, même vides — le `.env` ne les complète pas. */
+  const profil = require('./cli').courant();
+  if (profil) return { bin: String(profil.bin || '').trim(), args: String(profil.args || ''), timeout: Number(profil.timeout_ms) || 0, profil: true };
   try {
     const { getConfig } = require('../data/config');
     const c = getConfig();
-    return { bin: String(c.agent_bin || '').trim(), args: c.agent_args, timeout: Number(c.agent_timeout_ms) || 0 };
-  } catch { return { bin: '', args: null, timeout: 0 }; }
+    return { bin: String(c.agent_bin || '').trim(), args: c.agent_args, timeout: Number(c.agent_timeout_ms) || 0, profil: false };
+  } catch { return { bin: '', args: null, timeout: 0, profil: false }; }
 }
 function binActuel() { return reglagesAgent().bin || ENV_BIN() || 'copilot'; }
 function argsActuels() {
   const r = reglagesAgent();
-  const brut = (r.args !== null && r.args !== undefined && String(r.args).trim() !== '') ? String(r.args) : ENV_ARGS();
+  const brut = r.profil ? r.args : ((r.args !== null && r.args !== undefined && String(r.args).trim() !== '') ? String(r.args) : ENV_ARGS());
   return String(brut).split(/\s+/).filter(Boolean);
 }
 function timeoutActuel() { return reglagesAgent().timeout || ENV_TIMEOUT() || DEFAUT_TIMEOUT_MS; }

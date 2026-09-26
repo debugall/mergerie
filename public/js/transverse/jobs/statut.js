@@ -123,7 +123,7 @@ function afficherBanniereAgent(s) {
   $('#agentBannerInstall').textContent = tr('ui.agent-banner.install');
 }
 onEl($('#yoloBadge'), 'click', () => { navTab('admin'); showAdminSub('aisession'); const c = $('[name="agent_mode"]'); if (c) c.focus({ preventScroll: true }); });
-onEl($('#agentBannerSettings'), 'click', () => { navTab('admin'); showAdminSub('aisession'); const c = $('[name="agent_bin"]'); if (c) c.focus({ preventScroll: true }); });
+onEl($('#agentBannerSettings'), 'click', () => { navTab('admin'); showAdminSub('aisession'); const c = $('#cliAdd'); if (c) c.focus({ preventScroll: true }); });
 onEl($('#agentBannerRetry'), 'click', async () => {
   try { await api('/agent/redetect', { method: 'POST' }); } catch { /* le statut suivant dira */ }
   await refreshStatus();

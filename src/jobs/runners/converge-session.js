@@ -8,6 +8,7 @@ const converge = require('../../review/converge');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestion, verifierApresSession } = require('../apres-session');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
+const cli = require('../../agent/cli');
 
 // Converge une SESSION de dev IA : dev → push → crée la MR → boucle de convergence,
 // pour chaque projet de la session en série. Un seul job de fond.
@@ -18,7 +19,8 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
   const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (task) db.prepare("UPDATE task SET status = 'running', last_error = NULL, updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
   try {
-    const results = await converge.convergeSession(taskId, opts, onLog);
+    // Le binaire choisi par la session (`task.cli_id`) : le dev ET la boucle de convergence.
+    const results = await cli.avecSession(task, onLog, () => converge.convergeSession(taskId, opts, onLog));
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     // Pas de notification ici : convergeRun en pousse DÉJÀ une par MR convergée. En
     // rajouter une pour le premier projet doublonnerait le projet 1 sans rien dire des

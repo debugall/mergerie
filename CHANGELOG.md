@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Several agent binaries, one default, chosen per session.** Settings → AI session → “Agent
+  binaries” is now a list — the default first, marked, then as many others as you like (a Claude Code
+  on a local Ollama next to your Claude Max, a Copilot to compare), each complete (binary, arguments,
+  environment variables, timeout, backend), with its state, a *Test* button and one shared edit form.
+  The session modal then offers a “Binary” picker; the choice holds for every pass of the session and
+  shows on its card. “Use as default” swaps a profile with the default. This workstation only, never
+  shared.
 - **Agent environment variables, on screen.** Settings → AI session takes `NAME=value` lines — an
   Ollama behind Claude Code (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`), a proxy, a key — passed
   to the agent Mergerie launches only, never to your terminal, overriding the shell; this

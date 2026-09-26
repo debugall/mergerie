@@ -23,14 +23,16 @@ const fs = require('fs');
 const { gardeConfigAgent, parseConvergeOpts, readFileSafe, wrap } = require('../http');
 const { basculerPartage, exigerProprietaire, passesPayload } = require('../lib/partage');
 const { savePiecesEtImages } = require('../lib/pieces');
-const { applySessionId, demoMrDe, insertTargets, insertContextRepos, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, normalizeContextRepos, reposPourScan, targetById, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
+const { applySessionId, demoMrDe, insertTargets, insertContextRepos, lireCliSession, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, normalizeContextRepos, reposPourScan, targetById, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 const { targetCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 app.post('/api/tasks', wrap((req, res) => {
   const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
-  const sessionId = normalizeSessionId(session_id);
+  // Le binaire choisi pour cette session (`agent_cli`) ; vide = le défaut, sans rien écrire.
+  const cliChoisi = lireCliSession(req.body);
+  const sessionId = normalizeSessionId(session_id, cliChoisi.cliId);
   const list = normalizeTargets(targets, k);
   /* Projets liés en lecture seule : seule la session de CODAGE en a l'usage — l'IA modifie
      un projet et peut avoir besoin d'en LIRE un autre pour respecter son API. Une exploration
@@ -89,6 +91,7 @@ app.post('/api/tasks', wrap((req, res) => {
     /* « Planifier d'abord » : une passe de lecture rend un plan, la carte attend « Approuver
        et coder ». Pas pour un agent programmé : personne n'est là pour approuver. */
     planFirst: !profil && req.body && req.body.plan_first ? 1 : 0,
+    ...cliChoisi,
   });
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
@@ -97,7 +100,9 @@ app.put('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
   const { prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
-  const sessionId = normalizeSessionId(session_id);
+  // Le binaire : absent du corps, on garde ; `''`/null, on revient au défaut ; un id, on le photographie.
+  const cliEdit = (req.body && req.body.cli_id) !== undefined ? lireCliSession(req.body) : { cliId: tache.cli_id, cliName: tache.cli_name };
+  const sessionId = normalizeSessionId(session_id, cliEdit.cliId);
   /* LES DEUX RECRÉATIONS DANS UNE SEULE TRANSACTION. La revalidation des projets liés (plus
      bas) peut refuser la composition — un dépôt qu'on vient d'ajouter comme cible était déjà
      lié en lecture seule — et elle doit alors annuler la recréation des cibles qui la précède :
@@ -137,7 +142,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
       insertContextRepos(tache.id, list2);
     }
   })();
-  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, review_after = ?, plan_first = ?, updated_at = ? WHERE id = ?').run(
+  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, review_after = ?, plan_first = ?, cli_id = ?, cli_name = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
     auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
@@ -153,6 +158,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     (req.body && req.body.notify_jira) === undefined ? tache.notify_jira : (req.body.notify_jira ? 1 : 0),
     (req.body && req.body.review_after) === undefined ? tache.review_after : (req.body.review_after ? 1 : 0),
     (req.body && req.body.plan_first) === undefined ? tache.plan_first : (req.body.plan_first && tache.kind === 'code' ? 1 : 0),
+    cliEdit.cliId || null, cliEdit.cliName || null,
     new Date().toISOString(), tache.id,
   );
   savePiecesEtImages('task', tache.id, req.body || {});

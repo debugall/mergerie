@@ -2240,7 +2240,8 @@ partait ; les **quatre cases cochées d'office** d'une nouvelle session — auto
 rafraîchissement** des jobs, et les **jobs liés aux dépôts** : un job déclaré pour un dépôt est proposé
 sur ses merge requests **vérifiées vertes**, avec la branche pré-remplie dans le paramètre que tu
 désignes — la page du job s'ouvre, rien n'est lancé sans la confirmation habituelle) ·
-**AI sessions** (les **consignes permanentes**, voir ci-dessous, et un test technique : deux passes
+**AI sessions** (les **binaires de l'agent** — le défaut et les autres, voir *Configuration* —, les
+**consignes permanentes**, voir ci-dessous, les bornes du jour, le mode sécurisé ou yolo, et un test technique : deux passes
 dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).
@@ -2791,6 +2792,21 @@ aussi **à l'écran** : Réglages → Session IA → « Variables d'environnemen
 ligne. Elles sont transmises au seul agent que Mergerie lance, jamais à ton terminal (ton `claude` de tous
 les jours garde son abonnement), priment sur le shell, et comptent au prochain lancement d'agent sans
 redémarrer. De ce poste, jamais partagées ; `MERGERIE_*` y est refusé.
+
+**Plusieurs binaires, un par défaut.** Réglages → Session IA → **Binaires de l'agent** est une liste : le
+**défaut** en première ligne, marqué — celui de la review, de la convergence, de la question libre et de toute
+session qui n'a rien choisi —, puis les autres, autant qu'on veut. Chaque ligne dit son état (trouvé,
+introuvable) et se **teste**, se **modifie** par le même formulaire (nom, binaire, arguments, variables
+d'environnement ; délai et backend sous « Avancé »). Un profil est **complet** : il ne complète pas le défaut
+(ses variables remplacent celles du défaut, ses arguments vides restent vides). Un Claude Code branché sur un
+Ollama local à côté de ton Claude Max, un Copilot pour comparer.
+Dans la modale d'une session (codage, exploration, hors dépôt), un sélecteur **« Binaire »** apparaît dès
+qu'il y en a un autre que le défaut ; le choix vaut pour **toutes les passes** de la session — suivi,
+réponses, plan approuvé, convergence — et sa carte l'affiche. **« Utiliser par défaut »** échange une ligne
+avec le défaut : l'ancien défaut prend sa place dans la liste, les sessions qui l'avaient choisi le gardent
+(un choix explicite reste explicite), et la preuve de sandbox tombe, comme à tout changement de binaire.
+De ce poste, jamais partagés : ce sont des chemins de cette machine, souvent des secrets — chez un collègue,
+la carte d'une session partagée dit le **nom** du binaire choisi, et sa relance part sur son défaut à lui.
 
 L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 

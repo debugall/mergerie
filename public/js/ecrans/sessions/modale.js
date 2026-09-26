@@ -42,6 +42,8 @@ function applyKindToModal(kind) {
   const aq = $('#taskAskQuestionsRow'); if (aq) aq.hidden = isAsk;
   // « Planifier d'abord » : codage sur dépôt seulement — une exploration ne code pas, le hors dépôt a son propre envoi.
   const pf = $('#taskPlanFirstRow'); if (pf) pf.hidden = kind !== 'code';
+  // Le binaire : les trois saveurs à cible — une question libre part toujours sur le défaut.
+  const cr = $('#taskCliRow'); if (cr && isAsk) cr.hidden = true;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
   /* Projets liés en lecture seule : CODAGE seulement. Une exploration voit déjà tous ses
@@ -283,6 +285,8 @@ function showTaskModal() {
   // Ce que le disque offre dépend des dépôts choisis : on le relit à chaque ouverture.
   majSkillsSession();
   rendreComboAgentSession();
+  // Le binaire : le choix relu d'une session éditée ou dupliquée, sinon le défaut.
+  majChoixCli(cliPreselection); cliPreselection = '';
   const hint = $('#taskSessionHint');
   if (hint && !hint.dataset.keep) { hint.textContent = ''; hint.hidden = true; }
   if (hint) delete hint.dataset.keep;

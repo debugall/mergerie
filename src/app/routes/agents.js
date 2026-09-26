@@ -198,7 +198,7 @@ app.post('/api/agent/redetect', wrap((req, res) => {
    court, en lecture seule — la réponse attendue est un mot. C'est la preuve que le chemin, les
    arguments et l'authentification du CLI tiennent ensemble, avant la première review. En
    dry-run, la réponse est simulée et dite telle. */
-app.post('/api/agent/test', wrap(async (req, res) => {
+async function testerAgent() {
   const copilot = require('../../agent/copilot');
   const { TMP_DIR, ensureDir } = require('../../core/paths');
   const fs = require('fs');
@@ -209,19 +209,22 @@ app.post('/api/agent/test', wrap(async (req, res) => {
   try {
     const output = await copilot.runPrompt('Réponds exactement le mot OK, sans rien d\'autre.', cwd,
       { kind: 'ask', saveur: 'ask' }, (m) => logs.push(String(m)));
-    res.json({
+    return {
       ok: /\bOK\b/i.test(String(output || '')) || copilot.isDryRun(),
       dryRun: copilot.isDryRun(), dryRunForced: copilot.dryRunForce(),
       bin: copilot.binActuel(), args: copilot.argsActuels(),
       backend: require('../../agent/policy').backendDe(copilot.binActuel()),
       ms: Date.now() - debut, output: String(output || '').slice(0, 400), logs: logs.slice(-20),
-    });
+    };
   } catch (e) {
-    res.json({ ok: false, dryRun: copilot.isDryRun(), dryRunForced: copilot.dryRunForce(), bin: copilot.binActuel(), args: copilot.argsActuels(), ms: Date.now() - debut, error: e.message, logs: logs.slice(-20) });
+    return { ok: false, dryRun: copilot.isDryRun(), dryRunForced: copilot.dryRunForce(), bin: copilot.binActuel(), args: copilot.argsActuels(), ms: Date.now() - debut, error: e.message, logs: logs.slice(-20) };
   } finally {
     try { fs.rmSync(cwd, { recursive: true, force: true }); } catch { /* best-effort */ }
   }
-}));
+}
+// Le même essai, posé sur un autre binaire : `POST /api/agent-clis/:id/test` (routes/agent-clis.js).
+module.exports.testerAgent = testerAgent;
+app.post('/api/agent/test', wrap(async (req, res) => { res.json(await testerAgent()); }));
 app.post('/api/agent/sandbox-test', wrap(async (req, res) => {
   const sandboxtest = require('../../agent/sandboxtest');
   const db = require('../../db');

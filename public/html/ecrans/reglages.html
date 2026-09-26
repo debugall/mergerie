@@ -631,43 +631,46 @@
         </div><!-- /sub-mr -->
 
         <div id="sub-aisession" class="subtab">
-            <!-- L'AGENT SE RÈGLE ICI, SANS REDÉMARRER. Il n'existait que dans le .env, lu au
-                 chargement : corriger un chemin faux voulait dire éditer un fichier et relancer.
-                 Trois champs de poste, un bouton qui fait un vrai appel court, et l'état du
-                 binaire relu à chaque affichage. -->
-            <h2 data-i18n="settings.agent.title">L'agent IA</h2>
-            <p class="muted" data-i18n="settings.agent.intro">Le CLI que Mergerie lance pour relire et coder — pris en compte tout de suite, sans redémarrage. Vide, c'est le .env qui décide (AGENT_BIN / AGENT_ARGS).</p>
-            <div class="form">
-                <p id="agentEtat" class="muted"></p>
-                <label><span data-i18n="settings.agent.bin-lbl">Binaire (nom dans le PATH, ou chemin complet)</span>
-                    <input form="configForm" name="agent_bin" type="text" placeholder="claude — ou /usr/local/bin/copilot" data-i18n-placeholder="settings.agent.bin-ph" autocomplete="off" spellcheck="false" /></label>
-                <label><span data-i18n="settings.agent.args-lbl">Arguments de base (ajoutés avant -p)</span>
-                    <input form="configForm" name="agent_args" type="text" placeholder="--model claude-sonnet-5" data-i18n-placeholder="settings.agent.args-ph" autocomplete="off" spellcheck="false" /></label>
-                <label><span data-i18n="settings.agent.timeout-lbl">Délai maximal d'un appel, en millisecondes (0 = 15 min)</span>
-                    <input form="configForm" name="agent_timeout_ms" type="number" min="0" step="1000" placeholder="900000" /></label>
-                <!-- CE QUE LE CLI LIT ET QUE MERGERIE NE CONNAÎT PAS : un Ollama derrière Claude Code, un
-                     proxy, une clé. De ce poste, jamais partagé, transmis au seul agent que Mergerie lance. -->
+            <!-- LES BINAIRES : UNE LISTE, LE DÉFAUT EN PREMIÈRE LIGNE. Le défaut (`local_config`)
+                 et les autres (`agent_cli`) se lisent, se testent et se modifient au même
+                 endroit, avec le même formulaire — replié tant qu'on n'ajoute ni ne modifie
+                 rien. Ce que le défaut a de plus : la review, la convergence et toute session
+                 sans choix partent sur lui. Le formulaire écrit dans `/api/config` pour le
+                 défaut, dans `/api/agent-clis` pour les autres. De poste, sans redémarrage. -->
+            <h2 data-i18n="settings.cli.title">Binaires de l'agent</h2>
+            <p class="muted" style="max-width:640px" data-i18n="settings.cli.intro">Le CLI que Mergerie lance pour relire et coder, pris en compte tout de suite. Le binaire par défaut sert à la review, à la convergence et à toute session qui n'a rien choisi ; ajoutes-en d'autres (un Claude Code sur un Ollama local, un Copilot pour comparer) et chaque session choisit le sien. Réglages de ce poste, jamais partagés.</p>
+            <div id="cliList" class="agentcli-list"></div>
+            <p class="agentcli-toolbar">
+                <button id="cliAdd" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.cli.add">Ajouter un binaire</span></button>
+                <span id="cliInfo" class="muted"></span>
+            </p>
+            <form id="cliForm" class="form agentcli-form" style="max-width:640px" autocomplete="off" hidden>
+                <h3 id="cliFormTitle" data-i18n="settings.cli.form-add">Nouveau binaire</h3>
+                <label><span data-i18n="settings.cli.name">Nom (celui que la modale d'une session affiche)</span> <input id="cliName" placeholder="Ollama qwen" data-i18n-placeholder="settings.cli.name-ph" maxlength="60" /></label>
+                <label><span data-i18n="settings.agent.bin-lbl">Binaire (nom dans le PATH, ou chemin complet)</span> <input id="cliBin" placeholder="claude — ou /usr/local/bin/copilot" data-i18n-placeholder="settings.agent.bin-ph" spellcheck="false" /></label>
+                <label><span data-i18n="settings.agent.args-lbl">Arguments de base (ajoutés avant -p)</span> <input id="cliArgs" placeholder="--model qwen3.6:35b-a3b-coding" data-i18n-placeholder="settings.cli.args-ph" spellcheck="false" /></label>
                 <label><span data-i18n="settings.agent.env-lbl">Variables d'environnement de l'agent (une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.agent.env-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <textarea form="configForm" name="agent_env" rows="3" placeholder="ANTHROPIC_BASE_URL=http://localhost:11434&#10;ANTHROPIC_AUTH_TOKEN=ollama" spellcheck="false"></textarea></label>
-                <!-- LE BACKEND, quand on veut le dire plutôt que le laisser deviner : un wrapper
-                     maison autour de claude, un CLI dont le --version ne dit rien. -->
-                <label><span data-i18n="settings.agent.backend-lbl">Backend (auto = détecté par --version, puis par le nom)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.agent.backend-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                    <select form="configForm" name="agent_backend">
-                        <option value="auto" data-i18n="settings.agent.backend.auto">Détection automatique</option>
-                        <option value="claude">Claude Code</option>
-                        <option value="copilot">GitHub Copilot CLI</option>
-                        <option value="codex" data-i18n="settings.agent.backend.codex">OpenAI Codex CLI (non vérifié)</option>
-                        <option value="gemini" data-i18n="settings.agent.backend.gemini">Gemini CLI (non vérifié)</option>
-                        <option value="generic" data-i18n="settings.agent.backend.generic">Autre CLI (lancé tel quel, niveau allégé)</option>
-                    </select></label>
-                <p class="muted" data-i18n="settings.agent.change-note">Changer de binaire retire la preuve de sandbox : la politique d'écriture retombe sur la liste blanche jusqu'au prochain test.</p>
-                <p>
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                    <button id="agentTest" type="button" class="btn" title="Un appel réel, court, en lecture seule : la réponse attendue est « OK »" data-i18n-title="settings.agent.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.agent.test">Tester l'agent</span></button>
-                    <span id="agentTestInfo" class="muted"></span>
-                </p>
-                <div id="agentTestResult"></div>
-            </div>
+                    <textarea id="cliEnv" rows="3" placeholder="ANTHROPIC_BASE_URL=http://localhost:11434&#10;ANTHROPIC_AUTH_TOKEN=ollama" spellcheck="false"></textarea></label>
+                <details class="agentcli-avance">
+                    <summary data-i18n="settings.cli.advanced">Avancé : délai, backend</summary>
+                    <label><span data-i18n="settings.agent.timeout-lbl">Délai maximal d'un appel, en millisecondes (0 = 15 min)</span> <input id="cliTimeout" type="number" min="0" step="1000" placeholder="900000" /></label>
+                    <label><span data-i18n="settings.agent.backend-lbl">Backend (auto = détecté par --version, puis par le nom)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.agent.backend-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <select id="cliBackend">
+                            <option value="auto" data-i18n="settings.agent.backend.auto">Détection automatique</option>
+                            <option value="claude">Claude Code</option>
+                            <option value="copilot">GitHub Copilot CLI</option>
+                            <option value="codex" data-i18n="settings.agent.backend.codex">OpenAI Codex CLI (non vérifié)</option>
+                            <option value="gemini" data-i18n="settings.agent.backend.gemini">Gemini CLI (non vérifié)</option>
+                            <option value="generic" data-i18n="settings.agent.backend.generic">Autre CLI (lancé tel quel, niveau allégé)</option>
+                        </select></label>
+                </details>
+                <p id="cliDefaultNote" class="muted" data-i18n="settings.agent.change-note" hidden>Changer de binaire retire la preuve de sandbox : la politique d'écriture retombe sur la liste blanche jusqu'au prochain test.</p>
+                <div class="form-actions">
+                    <button class="btn" type="button" id="cliCancel" data-i18n="settings.gitcmd.cancel">Annuler</button>
+                    <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-save"/></svg><span id="cliSubmitLabel" data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                </div>
+            </form>
+            <div id="cliTestResult"></div>
 
             <!-- CE QU'ON REDIT À CHAQUE SESSION SANS VOULOIR LE RETAPER. Le champ vit ici parce
                  qu'il s'applique aux sessions de codage — dépôt ET hors dépôt —, au même endroit
@@ -677,9 +680,17 @@
             <div class="form">
                 <label><span data-i18n="settings.extra.lbl">Consignes ajoutées à chaque session</span>
                     <textarea form="configForm" name="ai_extra_instructions" rows="5" placeholder="Ex. : commente en français ; lance `npm run check` avant de committer." data-i18n-placeholder="settings.extra.ph"></textarea></label>
-                <!-- LE PLAFOND DES AGENTS AUTOMATIQUES, à côté de ce qui règle les sessions IA.
-                     Un horaire fait partir un agent sans qu'on soit là : ce chiffre est la
-                     limite qu'on met à ce qui peut se déclencher tout seul dans la journée. -->
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                </p>
+            </div>
+
+            <!-- LES BORNES DU JOUR : ce qui peut partir tout seul, tourner longtemps, dépenser.
+                 Un horaire fait partir un agent sans qu'on soit là ; ces trois chiffres sont la
+                 limite qu'on met à ce qui se déclenche, s'entête ou coûte dans la journée. -->
+            <h2 data-i18n="settings.limits.title">Bornes du jour</h2>
+            <p class="muted" data-i18n="settings.limits.intro">Ce qu'un agent peut déclencher tout seul (d'équipe), le nombre de tours d'une session et la dépense de la journée (de ce poste : une borne d'équipe se relâcherait chez tout le monde d'un seul push).</p>
+            <div class="form">
                 <label><span data-i18n="ui.config.agent-auto-max">Runs d'agent automatiques par jour (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-auto-max-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input form="configForm" name="agent_auto_max" id="cfgAgentAutoMax" type="number" min="0" max="1000" step="1" placeholder="10" /></label>
                 <label><span data-i18n="ui.config.agent-max-turns">Tours au plus par session d’agent (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-max-turns-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
@@ -732,12 +743,14 @@
             </div>
             </div><!-- /sandboxDetails -->
 
-            <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>
+            <details class="agentcli-avance">
+            <summary data-i18n="settings.aisession.title">Reprise de session IA</summary>
             <p class="muted" data-i18n="settings.aisession.intro">Test technique : l'agent mémorise un marqueur secret lors d'une première passe, puis on reprend la <strong>même</strong> session et on lui redemande ce marqueur. S'il le restitue, on sait qu'on peut reprendre une session — socle de la future fonctionnalité « l'IA pose une question ».</p>
             <p>
                 <button id="aiSessionTest" class="btn btn-primary" title="Lance deux passes dans la même session d'agent" data-i18n-title="settings.aisession.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.aisession.test">Tester la reprise de session</span></button>
                 <span id="aiSessionInfo" class="muted"></span>
             </p>
             <div id="aiSessionResult"></div>
+            </details>
         </div><!-- /sub-aisession -->
     </section>

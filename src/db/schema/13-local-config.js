@@ -97,6 +97,10 @@ const COLONNES_LOCALES = [
      ce que le CLI lit et que Mergerie ne connaît pas — un Ollama derrière Claude Code, un proxy, une clé.
      De CE poste, jamais partagées : ce sont souvent des secrets, et une adresse locale ne vaut qu'ici. */
   ["agent_env", "TEXT DEFAULT ''"],
+  /* LE NOM DU BINAIRE PAR DÉFAUT, tel qu'il s'affiche dans le sélecteur d'une session quand
+     d'autres binaires existent (`agent_cli`) : « Claude Max », « Copilot ». Vide, c'est le
+     nom du binaire qui sert. */
+  ["agent_name", "TEXT DEFAULT ''"],
   /* Le backend, quand on veut le DIRE plutôt que le laisser deviner (`auto`) : un wrapper maison
      autour de claude, un CLI dont le `--version` ne dit rien. Les identifiants sont ceux du
      registre `agent/backends/`, plus `generic`. */
@@ -120,6 +124,33 @@ if (!db.prepare('SELECT 1 FROM local_config WHERE id = 1').get()) {
 for (const [nom, decl] of COLONNES_LOCALES) {
   try { db.exec(`ALTER TABLE local_config ADD COLUMN ${nom} ${decl}`); } catch { /* déjà présente */ }
 }
+
+/* ---------- PLUSIEURS BINAIRES, UN PAR DÉFAUT ----------
+   Le binaire par défaut reste celui de `local_config` (ci-dessus) : c'est lui que lancent la
+   review, la convergence, la question libre et toute session qui n'a rien choisi. `agent_cli`
+   porte les AUTRES — un Claude Code branché sur un Ollama local, un Copilot pour comparer —
+   chacun complet (binaire, arguments, variables d'environnement, délai, backend) : un profil se
+   suffit, il ne complète pas le défaut. Une session le choisit à la création (`task.cli_id`),
+   et « Utiliser par défaut » ÉCHANGE une ligne avec `local_config`. De poste, jamais partagé :
+   ce sont des chemins de cette machine et souvent des secrets. */
+db.exec(`CREATE TABLE IF NOT EXISTS agent_cli (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  bin TEXT NOT NULL,
+  args TEXT NOT NULL DEFAULT '',
+  env TEXT NOT NULL DEFAULT '',
+  timeout_ms INTEGER NOT NULL DEFAULT 0,
+  backend TEXT NOT NULL DEFAULT 'auto',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`);
+/* Quel binaire une session a choisi : l'id (de poste, vidé si le profil disparaît) et son NOM
+   au moment du choix — la carte reste lisible chez un collègue, qui n'a pas ce profil.
+   Migrations APRÈS `CREATE TABLE task` (01) et `CREATE TABLE local_task` (04). */
+try { db.exec('ALTER TABLE task ADD COLUMN cli_id INTEGER REFERENCES agent_cli(id) ON DELETE SET NULL'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE task ADD COLUMN cli_name TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task ADD COLUMN cli_id INTEGER REFERENCES agent_cli(id) ON DELETE SET NULL'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE local_task ADD COLUMN cli_name TEXT'); } catch { /* déjà présente */ }
 
 /* LE DRAIN. Rejouable : la seconde exécution ne trouve plus rien à déplacer. On ne recopie que
    si la colonne de `config` porte encore quelque chose — sinon on écraserait ce que

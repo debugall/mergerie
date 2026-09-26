@@ -170,6 +170,10 @@ db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, a
     // Des consignes permanentes remplies : un champ vide ne montrerait pas à quoi il sert.
     'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.');
 
+// Un autre binaire que le défaut : la modale de session montre alors son sélecteur « Binaire ».
+const cliOllama = db.prepare(`INSERT INTO agent_cli (name, bin, args, env, timeout_ms, backend, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 'claude', ?, ?)`)
+  .run('Ollama local', 'claude', '--model qwen3.6:35b-a3b-coding', 'ANTHROPIC_BASE_URL=http://localhost:11434\nANTHROPIC_AUTH_TOKEN=ollama', iso(20), iso(20)).lastInsertRowid;
+
 // ---------- dépôts ----------
 const repoIds = {};
 for (const p of PROJECTS) {
@@ -503,8 +507,9 @@ db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (
 // ---------- sessions Dev IA ----------
 // task.branch / base_branch sont NOT NULL (schéma mono-projet historique) : on les
 // renseigne même si l'état réel vit désormais dans task_target.
-const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)')
-  .run(repoIds['groupe/api-core'], 'Ajouter un endpoint /metrics au format Prometheus', 'ai/metrics-endpoint', 'main', 'pushed', 'code', at(4), at(4));
+// Cette session a choisi l'autre binaire : sa carte porte le badge, son édition le relit.
+const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, cli_id, cli_name, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Ajouter un endpoint /metrics au format Prometheus', 'ai/metrics-endpoint', 'main', 'pushed', 'code', cliOllama, 'Ollama local', at(4), at(4));
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));

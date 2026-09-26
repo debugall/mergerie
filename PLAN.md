@@ -496,6 +496,15 @@ plus `jira_email` et `jenkins_user`), `clone_path`, `language`,
   anciens `COPILOT_*`) n'étant que le défaut. La détection du binaire est en cache une minute, par
   binaire, et se refait à la demande (`POST /api/agent/redetect`) ; changer `agent_bin` remet la
   preuve de sandbox à zéro. `POST /api/agent/test` fait un appel court en lecture seule.
+- **Plusieurs binaires, un par défaut** : le défaut reste `local_config` (avec `agent_name`, `agent_env`,
+  `agent_backend`) ; `agent_cli` (de poste, `data/agentcli.js`, routes `/api/agent-clis`) porte les
+  autres, chacun complet. Une session choisit le sien (`task.cli_id` de poste, `cli_name` photographié
+  et partagé) et l'exécutant du job le pose sur le **contexte asynchrone** (`agent/cli.js`,
+  `AsyncLocalStorage`) : `copilot.reglagesAgent`, `policy.agentEnvRegle`, `backends.choixExplicite`
+  et la preuve de sandbox (`configLancement`, toujours à zéro sous un profil) le lisent là, sans que
+  la review, la convergence ni les cinq entrées du runner ne se le passent de main en main. Les caches
+  `backendDe`/`capacites` sont par binaire (et par choix explicite). « Utiliser par défaut » échange
+  une ligne avec `local_config` via `updateConfig` — la preuve de sandbox tombe comme à toute saisie.
 - L'amorçage des commandes git a déménagé en fin de schéma (`db/schema/10-jenkins-config.js`) : son drapeau est devenu une donnée de
   poste, et lu avant le drain il aurait réintroduit les cinq entrées à chaque démarrage.
 

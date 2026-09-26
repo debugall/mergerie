@@ -12,6 +12,7 @@ const agentsession = require('../../agent/session');
 const agentpass = require('../../agent/pass');
 const tasks = require('../../agent/tasks');
 const agentprofile = require('../../agent/profile');
+const cli = require('../../agent/cli');
 const path = require('path');
 const { readFileSafe } = require('../http');
 const { avecRangement, unitesAvecRetour } = require('./partage');
@@ -26,7 +27,11 @@ function taskById(id) {
 function taskTargets(taskId) {
   /* Les options du profil, s'il y en a un : la commande « Reprendre au terminal » doit
      reprendre LA MÊME session — sans son modèle ni son allowlist, ce serait une autre. */
-  const optionsAgent = agentprofile.optionsFor(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId));
+  const tache = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
+  const optionsAgent = agentprofile.optionsFor(tache);
+  /* Le binaire choisi par la session : « Reprendre au terminal » doit nommer LE binaire qui a
+     ouvert la session, pas le défaut du moment — avec un autre, le handle ne désigne rien. */
+  const profilCli = cli.deSession(tache);
   const poignees = localsession.carte('task_target');   // une requête, pas une par projet
   /* `has_review` : la merge request de ce projet porte-t-elle un rapport ? C'est ce qui décide
      de l'apparition du bouton « Reprendre le rapport de review » sur le formulaire de suivi.
@@ -109,7 +114,7 @@ function taskTargets(taskId) {
       ticket_key: r.mr_ticket_key || null,
       ticket_status: r.mr_ticket_status || null,
       ticket_category: r.mr_ticket_category || null,
-      resume_cmd: agentsession.resumeCommand(ligne.session_backend, ligne.session_key, ligne.session_cwd, optionsAgent),
+      resume_cmd: cli.avec(profilCli, () => agentsession.resumeCommand(ligne.session_backend, ligne.session_key, ligne.session_cwd, optionsAgent)),
     };
   });
 }
@@ -157,15 +162,21 @@ function applySessionId(scope, key, taskId, sessionId, units) {
   if (sessionId === commun) return;
   /* `session_cwd` reste NUL : on ignore d'où vient la session fournie, et le garde-fou « même
      dossier » ne doit pas refuser ce que l'utilisateur a explicitement demandé. */
+  // Le backend est celui du binaire de LA session (`cli_id`), pas du défaut du moment.
+  const table = scope === 'task_target' ? 'task' : 'local_task';
+  const backend = cli.avec(cli.deSession(db.prepare(`SELECT cli_id, cli_name FROM ${table} WHERE id = ?`).get(taskId)), () => agentsession.backendName());
   for (const u of units) {
-    localsession.ecrire(scope, u.uid, { session_key: sessionId, session_backend: agentsession.backendName(), session_cwd: null });
+    localsession.ecrire(scope, u.uid, { session_key: sessionId, session_backend: backend, session_cwd: null });
   }
 }
-function normalizeSessionId(raw) {
+/* `cliId` : le binaire choisi pour la session — c'est SON backend qui dit la forme d'un handle
+   (un UUID avec claude, un chemin de home avec copilot), pas celui du défaut du moment. */
+function normalizeSessionId(raw, cliId) {
   const id = String(raw || '').trim();
   if (!id) return null;
   if (id.startsWith('-')) throw new Error(t('err.session-id-invalide'));
-  if (agentsession.backendName() === 'claude'
+  const backend = cli.avec(cli.deSession({ cli_id: cliId }), () => agentsession.backendName());
+  if (backend === 'claude'
     && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
     throw new Error(t('err.session-id-uuid-attendu'));
   }
@@ -237,6 +248,17 @@ function dureeParSession(kind) {
 /* Un libellé vide et un libellé absent sont la MÊME chose : NULL. Sans ça, une chaîne vide
    s'afficherait comme un titre — un titre invisible qui pousse le prompt d'un cran. */
 const lireLibelle = (v) => (v == null ? null : (String(v).trim().slice(0, 120) || null));
+/* Le binaire choisi pour une session (`cli_id`, Réglages → Session IA → autres binaires) :
+   vide = le défaut, sans rien écrire ; un id inconnu est refusé — la carte dirait un nom que
+   personne n'a saisi. Le nom est PHOTOGRAPHIÉ : il reste lisible après suppression du profil,
+   et chez un collègue qui ne l'a pas. */
+function lireCliSession(body) {
+  const brut = body && body.cli_id;
+  if (brut === undefined || brut === null || brut === '' || Number(brut) === 0) return { cliId: null, cliName: null };
+  const profil = require('../../data/agentcli').parId(brut);
+  if (!profil) throw new Error(t('err.cli.not-found'));
+  return { cliId: profil.id, cliName: profil.name };
+}
 /* Un suivi vide n'est pas un suivi : l'écran afficherait un bloc « suivi prêt » sans texte,
    avec un bouton « Envoyer » qui échouerait. Effacer le texte EST la façon de le supprimer. */
 const lireSuivi = (v) => (v == null ? null : (String(v).trim() || null));
@@ -329,6 +351,7 @@ function localDirsFor(taskId) {
   const carteDirs = localdirs.carte();
   const poignees = localsession.carte('local_task_dir');
   const avecRetour = unitesAvecRetour('local', taskId);
+  const profilCli = cli.deSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId));
   return db.prepare('SELECT * FROM local_task_dir WHERE task_id = ? ORDER BY id').all(taskId)
     .map((brute) => localsession.resoudre('local_task_dir', brute, poignees))
     .map((d) => ({
@@ -336,7 +359,7 @@ function localDirsFor(taskId) {
       has_output: (avecRetour.has(d.id) || !!d.output_path) ? 1 : 0,
       path: carteDirs.get(d.dir_hash) || null,
       // Sur la ligne RECOLLÉE à `local_session` : la ligne brute n'a plus la poignée.
-      resume_cmd: agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd),
+      resume_cmd: cli.avec(profilCli, () => agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd)),
       // Les questions posées par l'agent, prêtes à afficher. Illisibles → aucune, plutôt qu'un plantage.
       questions: d.questions_json ? (() => { try { return JSON.parse(d.questions_json); } catch { return null; } })() : null,
     }));
@@ -375,5 +398,5 @@ function normalizeDirIds(taskId, brut) {
 }
 
 module.exports = {
-  taskById, taskTargets, effectiveMr, targetById, normalizeTargets, insertTargets, taskContextRepos, normalizeContextRepos, insertContextRepos, applySessionId, normalizeSessionId, assertValidBranch, sansMarquage, chapeauReponse, coutParSession, dureeParSession, lireLibelle, lireSuivi, poserSuivi, lireVerifierSession, reposPourScan, demoMrDe, diffDePasse, normalizeTargetIds, localDirsFor, localTaskById, envoyerSuivi, normalizeDirIds,
+  taskById, taskTargets, effectiveMr, targetById, normalizeTargets, insertTargets, taskContextRepos, normalizeContextRepos, insertContextRepos, applySessionId, normalizeSessionId, assertValidBranch, sansMarquage, chapeauReponse, coutParSession, dureeParSession, lireLibelle, lireCliSession, lireSuivi, poserSuivi, lireVerifierSession, reposPourScan, demoMrDe, diffDePasse, normalizeTargetIds, localDirsFor, localTaskById, envoyerSuivi, normalizeDirIds,
 };

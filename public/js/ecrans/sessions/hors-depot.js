@@ -77,7 +77,7 @@ function localCard(t) {
     <div style="min-width:0;flex:1">
       <div class="title">
         <span class="tag ${st.cls}">${st.label}</span>
-        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>${badgeProgrammation(t, 'l')}${shareMark(t)}
+        <span class="task-projects">${tr('local.dirs-count', { n, count: n })}</span>${t.cli_name ? `<span class="tag task-cli" title="${esc(tr('task.card.cli'))}">${svgIco('bot')} ${esc(t.cli_name)}</span>` : ''}${badgeProgrammation(t, 'l')}${shareMark(t)}
         <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
       </div>
       ${libelleBlock(t, 'local')}

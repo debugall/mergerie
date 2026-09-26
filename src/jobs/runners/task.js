@@ -10,6 +10,7 @@ const notify = require('../../core/notify');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestion, verifierApresSession } = require('../apres-session');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
+const cli = require('../../agent/cli');
 
 async function runTaskJob(jobId, taskId, action, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
@@ -32,11 +33,15 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     }
     if (action === 'push') await taskrunner.pushTarget(task.id, opts.targetId, onLog, { force: opts.force });
     else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
-    else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
-    else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
-    else if (action === 'approve-plan') await taskrunner.runTaskApprovePlan(task, opts.targetIds, opts.instruction, onLog);
-    else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
-    else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
+    /* LE BINAIRE CHOISI PAR LA SESSION (`task.cli_id`) est posé sur le contexte du job : toutes
+       les passes — première, suivi, réponses, plan approuvé, rebase — partent avec lui. */
+    else await cli.avecSession(task, onLog, async () => {
+      if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
+      else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
+      else if (action === 'approve-plan') await taskrunner.runTaskApprovePlan(task, opts.targetIds, opts.instruction, onLog);
+      else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
+      else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
+    });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
     /* CE QU'ON FAIT DE LA SORTIE D'UN AGENT : page de notes, création d'un agent de domaine,
        écarts constatés. AVANT le suivi automatique — un suivi enchaîne un second run, et la

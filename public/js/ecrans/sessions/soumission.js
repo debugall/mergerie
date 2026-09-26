@@ -24,6 +24,7 @@ async function dupliquerLocalTask(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
+  cliPreselection = t.cli_id || '';    // le binaire fait partie de ce qu'on copie
   if (f.session_id) f.session_id.value = '';
   $('#taskModalTitle').textContent = tr('task.duplicate.title-local');
   infoDuplication(false, (d.images && d.images.length) || 0);
@@ -67,6 +68,7 @@ async function openLocalTaskEdit(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
+  cliPreselection = t.cli_id || '';    // le binaire choisi, relu par showTaskModal
   poserDateProgrammee(f, t.scheduled_at);
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
   deplierAvanceSiRempli(f);
@@ -262,6 +264,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
           prompt: f.prompt.value, dirs, files: taskNewImages,
           session_id: f.session_id ? f.session_id.value : '',
           ask_questions: f.ask_questions ? f.ask_questions.checked : false,
+          cli_id: f.cli_id ? f.cli_id.value : '',
         } }));
         await majProgrammationEdition(f, `/local-tasks/${editingTaskId}/schedule`, programmeA);
         toast(tr('toast.session-mise-a-jour'));
@@ -275,6 +278,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
         /* La modale est commune aux trois saveurs, mais CHAQUE SAVEUR A SON ENVOI : la case
            « partager » doit donc être câblée trois fois, sans quoi elle ne ferait rien ici. */
         shared: f.shared ? f.shared.checked : false,
+        cli_id: f.cli_id ? f.cli_id.value : '',   // le binaire : câblé ici aussi, même raison
       } }));
       if (programmeA) {
         await api(`/local-tasks/${created.id}/schedule`, { method: 'PUT', body: { at: programmeA } });
@@ -346,6 +350,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
     review_after: f.review_after ? f.review_after.checked : false,
     // « Planifier d'abord » : lu à la création ET à l'édition — la même route PUT accepte le champ.
     plan_first: f.plan_first ? f.plan_first.checked : false,
+    // Le binaire de cette session : vide = le défaut. Création et édition, la route PUT l'accepte.
+    cli_id: f.cli_id ? f.cli_id.value : '',
     verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
     // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà

@@ -41,8 +41,10 @@ du code (`data-demo/`, `data/`).
 
 Au **premier lancement**, `npx mergerie` cherche `claude` puis `copilot` sur la machine et écrit un
 `.env` court dans `~/.mergerie/` qui pointe `AGENT_BIN` sur celui qu'il trouve. **L'agent se règle
-ensuite à l'écran** — Réglages → Session IA : binaire, arguments, délai, et un bouton *Tester
-l'agent* — sans redémarrage. Aucun agent trouvé ? Une bannière le dit, avec les commandes
+ensuite à l'écran** — Réglages → Session IA : une liste de **binaires** (binaire, arguments, délai,
+variables d'environnement, un bouton *Tester* chacun), l'un par défaut, autant d'autres qu'on veut (un
+Claude Code sur un Ollama local à côté de son Claude Max), et une session choisit le sien — sans redémarrage.
+Aucun agent trouvé ? Une bannière le dit, avec les commandes
 d'installation ; les rapports sont **simulés** et dits tels jusqu'à ce que ce soit réglé.
 
 `PORT`, `HOST`, `MERGERIE_DATA_DIR` et les réglages de [`.env.example`](./.env.example) sont honorés

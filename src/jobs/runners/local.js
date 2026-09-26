@@ -8,6 +8,7 @@ const localcoder = require('../../session/localcoder');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestionLocal } = require('../apres-session');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
+const cli = require('../../agent/cli');
 
 // Exécute une session « Codage hors dépôt » : l'IA code dans chaque dossier local, en
 // place, sans git. Un seul job de fond ; les dossiers sont traités en série.
@@ -16,7 +17,8 @@ async function runLocalJob(jobId, taskId, opts = {}) {
   logLine(jobId, null, t('log.job.local-start', { id: jobId }));
   const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
-    await localcoder.runLocal(taskId, onLog, opts);
+    // Le binaire choisi par la session (`local_task.cli_id`), posé sur le contexte du job.
+    await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog, () => localcoder.runLocal(taskId, onLog, opts));
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
       logLine(jobId, null, t('log.job.stopped'));

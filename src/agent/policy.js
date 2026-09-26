@@ -83,12 +83,14 @@ function interditsDonnees() {
 
 /* Ce que CE binaire sait faire, lu une fois dans son `--help`. Une option qu'il ne connaît pas
    ferait échouer chaque lancement : mieux vaut s'en passer et le savoir. */
-let capaciteCache = null;
+/* Une entrée PAR BINAIRE : deux sessions sur deux profils (`agent/cli.js`) alternent, et un
+   cache à une case relirait `--help` à chaque bascule. */
+const capaciteCache = new Map();
 function capacites(bin) {
-  if (capaciteCache && capaciteCache.bin === bin) return capaciteCache;
+  if (capaciteCache.has(bin)) return capaciteCache.get(bin);
   let aide = '';
   try { aide = String(spawnSync(bin, ['--help'], { encoding: 'utf8', timeout: 8000 }).stdout || ''); } catch { /* binaire absent */ }
-  capaciteCache = {
+  const cap = {
     bin,
     restricted: /--restricted\b/.test(aide),
     settingSources: /--setting-sources\b/.test(aide),
@@ -105,33 +107,46 @@ function capacites(bin) {
     cdOpt: /(^|\s)-C\b|--cd\b/.test(aide),
     approvalMode: /--approval-mode\b/.test(aide),
   };
-  return capaciteCache;
+  capaciteCache.set(bin, cap);
+  return cap;
 }
-const oublierCapacites = () => { capaciteCache = null; };
+const oublierCapacites = () => { capaciteCache.clear(); };
 
 /* Le backend que désigne `COPILOT_BIN` (plan_secure.md, lot A, S7/point 8) — d'après ce que le
    binaire répond à `--version`, PAS son seul nom : un wrapper neutre (`runPrompt`) qui relaie à
    `claude` sans le dire dans son propre nom désactivait toute la politique en silence. Le nom
    reste un REPLI quand `--version` ne dit rien de reconnaissable (binaire absent, ancien CLI
    sans cette sortie) ; `unknown` dans les deux cas — jamais un fail-open. */
-let backendCache = null;
+const backendCache = new Map();
 function backendDe(bin) {
   const b = String(bin || '');
-  if (backendCache && backendCache.bin === b) return backendCache.val;
+  /* La clé porte le choix EXPLICITE du lancement (profil ou réglage) : le même binaire peut être
+     « claude » pour un profil et « generic » pour un autre. */
+  const profil = require('./cli').courant();
+  const cle = `${profil ? profil.backend || 'auto' : ''}\u0000${b}`;
+  if (backendCache.has(cle)) return backendCache.get(cle);
   /* La détection est dans le registre des backends (`backends/index.js`) : `--version`, puis le
      nom, `unknown` sinon — ou le choix explicite des Réglages. Requis ici, pas en tête : les
      backends n'importent jamais la politique, et la politique ne les charge qu'au besoin. */
   const val = require('./backends').detecter(b);
-  backendCache = { bin: b, val };
+  backendCache.set(cle, val);
   return val;
 }
-const oublierBackend = () => { backendCache = null; };
+const oublierBackend = () => { backendCache.clear(); };
 
 /** Le niveau de garantie (`prouve` / `declare` / `allege`) du backend qui désigne `bin`. */
-function niveauDe(bin) {
+/* LA PREUVE DE SANDBOX NE VAUT QUE POUR LE BINAIRE PAR DÉFAUT : « Tester le sandbox » a constaté
+   ce que CE CLI faisait. Un autre profil (`agent/cli.js`) est un autre programme — sa config est
+   relue avec la preuve à zéro, et la politique d'écriture retombe sur la liste blanche. */
+function configLancement() {
   const { getConfig } = require('../data/config');
+  const cfg = getConfig();
+  return require('./cli').courant() ? { ...cfg, agent_sandbox_verified: 0 } : cfg;
+}
+
+function niveauDe(bin) {
   let cfg = {};
-  try { cfg = getConfig(); } catch { /* base absente : niveau lu sans réglage */ }
+  try { cfg = configLancement(); } catch { /* base absente : niveau lu sans réglage */ }
   if (cfg.agent_mode !== 'secure') return 'yolo';
   return require('./backends').niveau(backendDe(bin), capacites(bin), cfg);
 }
@@ -275,8 +290,7 @@ function argvEcriture({ bin, extra, profil, addDirs, cwd }) {
        policy.js n'y ajoute que les interdits de fuite et, quand il est vérifié, le sandbox —
        qui ne retire rien qu'un profil aurait explicitement demandé, il borne le système de
        fichiers et le réseau autour de lui. */
-    const { getConfig } = require('../data/config');
-    const cfg = getConfig();
+    const cfg = configLancement();
     const args = ['--disallowedTools', disallowedTools];
     if ((cfg.agent_write_mode || 'sandbox') === 'sandbox' && cfg.agent_sandbox_verified && capacites(bin).settings) {
       args.push('--settings', JSON.stringify(sandboxSettings(cwd)));
@@ -284,8 +298,7 @@ function argvEcriture({ bin, extra, profil, addDirs, cwd }) {
     return { extra: sansModeLarge(extra), args, lecture: false, note: null, mode: 'profil' };
   }
 
-  const { getConfig } = require('../data/config');
-  const cfg = getConfig();
+  const cfg = configLancement();
   const mode = cfg.agent_write_mode || 'sandbox';
 
   if (mode === 'large') {
@@ -469,7 +482,11 @@ const PREFIXES = {
 function agentEnvRegle() {
   const out = {};
   let brut = '';
-  try { brut = String(require('../data/config').getConfig().agent_env || ''); } catch { return out; }
+  /* Le profil du lancement en cours (`agent/cli.js`) porte SES variables, qui REMPLACENT celles
+     du défaut : un profil se suffit — l'Ollama de l'un ne doit pas hériter du proxy de l'autre. */
+  const profil = require('./cli').courant();
+  if (profil) brut = String(profil.env || '');
+  else { try { brut = String(require('../data/config').getConfig().agent_env || ''); } catch { return out; } }
   for (const l of brut.split('\n')) {
     const i = l.indexOf('=');
     if (i > 0 && !/^MERGERIE_/i.test(l.slice(0, i))) out[l.slice(0, i).trim()] = l.slice(i + 1);

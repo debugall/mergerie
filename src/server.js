@@ -100,6 +100,7 @@ require('./app/middleware/corps');
    de même méthode a été relue, et aucune n'a changé d'ordre. Une nouvelle route littérale sous
    un préfixe qui porte un motif se déclare dans le fichier du motif, avant lui. */
 require('./app/routes/activite');
+require('./app/routes/agent-clis');
 require('./app/routes/agent-passes');
 require('./app/routes/agents');
 require('./app/routes/config');

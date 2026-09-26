@@ -101,7 +101,7 @@ function creerTask(champs) {
   const {
     kind, prompt, branch, commitMessage, autoPush, askQuestions, verifierId, label,
     notifyJira, reviewAfter, targets, contextRepos, sessionId, agentId, agentName, triggeredBy, agentQuestion,
-    agentDraft, shared, planFirst,
+    agentDraft, shared, planFirst, cliId, cliName,
   } = champs;
   const now = new Date().toISOString();
   /* `shared` À LA CRÉATION : décoché par défaut, ici comme à l'écran. Un agent planifié passe par
@@ -109,8 +109,8 @@ function creerTask(champs) {
      défaut : leur produit (page de notes, carte du code) part par son propre canal. */
   const info = db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, base_branch, commit_message, auto_push,
       ask_questions, verifier_id, label, notify_jira, review_after, agent_id, agent_name, triggered_by,
-      agent_question, agent_draft_json, shared, plan_first, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
+      agent_question, agent_draft_json, shared, plan_first, cli_id, cli_name, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)`).run(
     targets[0].repo_id, kind, prompt, branch || '',
     commitMessage || null, autoPush ? 1 : 0, askQuestions ? 1 : 0, verifierId || null, label || null,
     notifyJira ? 1 : 0, reviewAfter ? 1 : 0,
@@ -120,9 +120,13 @@ function creerTask(champs) {
     shared ? 1 : 0,
     // « Planifier d'abord » : codage seulement — une exploration ne code pas.
     planFirst && kind === 'code' ? 1 : 0,
+    // Le binaire choisi (`agent/cli.js`) : l'id de poste, et son nom en photo.
+    cliId || null, cliName || null,
     now, now);
   const taskId = info.lastInsertRowid;
-  insertTargets(taskId, targets, sessionId);
+  // Une session fournie est rangée avec le backend du binaire CHOISI, pas celui du défaut.
+  const cli = require('./cli');
+  cli.avec(cliId ? require('../data/agentcli').parId(cliId) : null, () => insertTargets(taskId, targets, sessionId));
   if (contextRepos && contextRepos.length) insertContextRepos(taskId, contextRepos);
   return taskId;
 }
