@@ -40,6 +40,19 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **The forge's CI on every card.** A CI badge reads the latest GitLab pipeline or the GitHub
   check-runs and statuses of the merge request — green, red, running — with a link to what broke.
   It is not Mergerie's verdict, which keeps its own badge.
+- **Secured or yolo: one switch for what the agent may do, per machine.** Settings → AI session
+  now opens with a single choice. **Yolo** — the default of an installation that touched nothing,
+  and of an existing database — runs the agent with no restriction from the launcher, every
+  flavour and every backend alike: arguments intact (wide-open mode included), no sandbox, no
+  allowlist, no refused read, no after-the-fact integrity check; a discreet “yolo” badge in the
+  header leads to the setting, and every run's journal opens with it. **Secured** is what the
+  previous release's hardening did — the CLI's sandbox once proven, else an allowlist, proven
+  read-only for reviews and explorations, leak denials — and its details (sandbox, allowlist,
+  “Test the sandbox”) now live under that choice, folded away in yolo. The start-up assistant
+  asks the question once, with the tools your team uses. What yolo never lifts, because it is
+  the server's limit and not the agent's: the local token on `/api/`, the `Host` allowlist, the
+  nonce on protocol blocks, the per-machine approval of what arrives through the sync, the
+  agent's allowlisted environment.
 - **Four agent backends, and a guarantee level said in plain words.** Next to Claude Code and
   Copilot CLI, **Codex CLI** and **Gemini CLI** are wired — from their documentation, without a
   binary to try them on, and Settings say so (“unverified”) — and any other CLI is **run as is**
@@ -68,6 +81,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Security
 
+- **Note on the default.** The agent restrictions below apply in **secured** mode, which is now
+  chosen in Settings → AI session; the default of an installation that touched nothing is
+  **yolo** (no restriction of the agent). The server-side limits — local token, `Host`
+  allowlist, protocol nonces, per-machine approval, allowlisted environment — hold in both.
 - **The API on `localhost` now belongs only to your browser.** A second, local-only session
   token — separate from the one an exposed server already required — closes every `/api/` route
   to any other process on the machine: an AI agent's own shell, a verifier command, a script run

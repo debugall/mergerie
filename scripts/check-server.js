@@ -466,7 +466,7 @@ if (registre) {
       }
       const corps = pol.slice(debut, fin);
       if (!/\bextra\b\s*[:,}]/.test(corps)) continue;              // ne RENVOIE pas extra : rien à filtrer ici
-      if (/mode:\s*'large'/.test(corps)) continue;                  // échappatoire nommée
+      if (/mode:\s*'(large|yolo)'/.test(corps)) continue;           // échappatoires nommées : le mode large, le mode yolo
       if (!/sansModeLarge\(extra\)/.test(corps)) {
         const ligne = pol.slice(0, m.index).split('\n').length;
         soucis.push(`${nomDe(F_POLICY)}:${ligne}  ${m[1]}() rend extra sans jamais appeler sansModeLarge(extra)`);

@@ -32,6 +32,17 @@ const { spawnSync } = require('node:child_process');
    sans qu'aucun des deux n'importe l'autre. */
 const { sansModeLarge } = require('./modelarge');
 
+/* SÉCURISÉ OU YOLO (ameliorations_proposal.md, §5). Un seul interrupteur, de poste
+   (`agent_mode`, Réglages → Session IA). En YOLO — le défaut — l'agent tourne SANS RESTRICTION du
+   lanceur, toutes saveurs et tous backends confondus : `AGENT_ARGS` intact, pas de
+   `--disallowedTools`, pas de sandbox, pas de liste blanche, pas de contrôle d'intégrité après
+   coup. En SÉCURISÉ, tout ce qui suit dans ce fichier s'applique. Ce que yolo ne lève jamais :
+   les limites du SERVEUR (jeton local sur /api/, Host, nonce, approbation, env en liste blanche —
+   `envAgent` ne dépend pas du mode). Requis à l'appel : `config` ouvre la base. */
+function modeSecurise() {
+  try { const { getConfig } = require('../data/config'); return getConfig().agent_mode === 'secure'; } catch { return true; }
+}
+
 const LECTURE = new Set(['review', 'explain', 'question', 'modify', 'explore', 'ask', 'test']);
 const ECRITURE = new Set(['code', 'fix', 'converge', 'local', 'task', 'rebase']);
 
@@ -121,6 +132,7 @@ function niveauDe(bin) {
   const { getConfig } = require('../data/config');
   let cfg = {};
   try { cfg = getConfig(); } catch { /* base absente : niveau lu sans réglage */ }
+  if (cfg.agent_mode !== 'secure') return 'yolo';
   return require('./backends').niveau(backendDe(bin), capacites(bin), cfg);
 }
 
@@ -350,6 +362,7 @@ function argvCopilot({ extra, kind, bin }) {
  * @returns {{ extra: string[], args: string[], lecture: boolean, note: string|null, mode: string }}
  */
 function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDirs = [], allowedToolsProfil = [], cwd }) {
+  if (!modeSecurise()) return argvYolo({ extra, kind, addDirs });
   if (backend === 'copilot') return argvCopilot({ extra, kind, bin });
   if (backend !== 'claude') {
     /* codex, gemini, un CLI inconnu : c'est le backend qui dit comment se borne sa lecture et
@@ -361,9 +374,19 @@ function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDi
   return argvEcriture({ bin, extra, profil, addDirs, cwd });
 }
 
-/** Vrai quand ce lancement ne pourra PAS écrire son document : saveur de lecture sur claude. Le
-    prompt demande alors la réponse finale comme résultat, au lieu d'un fichier refusé d'avance. */
-const sortieSurStdout = (kind, bin) => saveurDe(kind) === 'lecture' && ['claude', 'codex', 'gemini'].includes(backendDe(bin));
+/* LE MODE YOLO : l'argv est rendu tel quel — `extra` (AGENT_ARGS) intact, mode large compris,
+   aucune option ajoutée hormis les dossiers liés qu'une lecture doit voir. `mode: 'yolo'` est
+   l'échappatoire NOMMÉE que `npm run check` reconnaît, comme `mode: 'large'`. */
+function argvYolo({ extra, kind, addDirs }) {
+  const args = [];
+  for (const d of addDirs || []) args.push('--add-dir', String(d));
+  return { extra: [...(extra || [])], args, lecture: saveurDe(kind) === 'lecture', note: null, mode: 'yolo' };
+}
+
+/** Vrai quand ce lancement ne pourra PAS écrire son document : saveur de lecture, en mode
+    sécurisé, sur un backend qui borne sa lecture. Le prompt demande alors la réponse finale comme
+    résultat, au lieu d'un fichier refusé d'avance. En yolo, l'agent écrit son fichier comme avant. */
+const sortieSurStdout = (kind, bin) => modeSecurise() && saveurDe(kind) === 'lecture' && ['claude', 'codex', 'gemini'].includes(backendDe(bin));
 
 /* ---------------------------------------------------------------- les bornes */
 
@@ -454,7 +477,7 @@ function envAgent(backend, source = process.env) {
 }
 
 module.exports = {
-  LECTURE, ECRITURE, backendDe, oublierBackend, niveauDe, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
+  LECTURE, ECRITURE, modeSecurise, backendDe, oublierBackend, niveauDe, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
   OUTILS_LECTURE, INTERDITS_LECTURE, INTERDITS_ECRITURE, interditsDonnees,
   allowlistEcriture, sandboxSettings, BARE_KINDS,
 };

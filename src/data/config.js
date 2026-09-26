@@ -43,7 +43,7 @@ const ALLOWED = [
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
-  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend',
+  'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -174,6 +174,11 @@ function updateConfig(patch) {
   }
   // Le backend explicite : un identifiant du registre, `generic`, ou `auto` (la détection).
   if (!['auto', 'claude', 'copilot', 'codex', 'gemini', 'generic'].includes(String(next.agent_backend || ''))) next.agent_backend = 'auto';
+  /* SÉCURISÉ OU YOLO. Le défaut est yolo, et une valeur illisible y retombe : c'est le sens du
+     réglage — « sans restriction, sauf si j'ai dit sécurisé ». Posé aux DEUX endroits (ici et dans
+     la tranche de schéma), jamais dans un seul : un défaut lu à un endroit et écrit à un autre
+     finit par diverger. */
+  next.agent_mode = next.agent_mode === 'secure' ? 'secure' : 'yolo';
   next.agent_write_allow = String(next.agent_write_allow || '').trim();
   next.agent_sandbox_network_domains = String(next.agent_sandbox_network_domains || '').trim();
   /* COLONNE INTEGER, PAS TEXT COMME SES VOISINES (revue de add-secure-layer-2) : relue depuis
@@ -282,7 +287,8 @@ function updateConfig(patch) {
       agent_bin = @agent_bin,
       agent_args = @agent_args,
       agent_timeout_ms = @agent_timeout_ms,
-      agent_backend = @agent_backend
+      agent_backend = @agent_backend,
+      agent_mode = @agent_mode
     WHERE id = 1`).run(next);
 
   /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX. « Tester le sandbox » a constaté ce qu'un

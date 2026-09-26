@@ -15,7 +15,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { startApp, afficherMenusOptionnels } = require('./helpers/app');
+const { attendreServeur, startApp, afficherMenusOptionnels } = require('./helpers/app');
 
 let chromium = null;
 let dispo = false;
@@ -311,7 +311,12 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     await page.waitForSelector('#toReviewList .step[data-step="3"] [data-outil="docker"]', { timeout: ATTENTE });
     await page.locator('#toReviewList [data-outil="docker"]').check();
     await page.locator('#toReviewList [data-outil="jira"]').check();
+    /* « Sécurisé ou yolo ? » se pose ici, une fois : on choisit yolo (le harnais avait forcé le
+       sécurisé) et on relit le réglage sur le serveur, pas à l'écran. */
+    await page.locator('#toReviewList [data-agent-mode]').selectOption('yolo');
     await page.locator('#toReviewList [data-empty-act="outils-ok"]').click();
+    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.agent_mode === 'yolo', 'le mode yolo choisi dans l’assistant est enregistré');
+    await page.waitForSelector('#yoloBadge:not([hidden])', { timeout: ATTENTE });
     await page.waitForFunction(
       () => document.querySelectorAll('#toReviewList .step.done').length === 4,
       null, { timeout: ATTENTE },

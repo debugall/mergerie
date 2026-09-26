@@ -40,6 +40,7 @@ delete process.env.COPILOT_ARGS;
 // Après les variables d'environnement : copilot.js fige COPILOT_BIN au chargement.
 // eslint-disable-next-line import/order
 const agentsession = require('../src/agent/session');
+require('../src/data/config').updateConfig({ agent_mode: 'secure' });   // l'argv restreint n'existe qu'en mode sécurisé (le défaut est yolo)
 // eslint-disable-next-line import/order
 const agentpass = require('../src/agent/pass');
 // eslint-disable-next-line import/order

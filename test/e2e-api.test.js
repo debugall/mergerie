@@ -66,6 +66,13 @@ describe('API de bout en bout', () => {
     const choisi = (await app.api('GET', '/api/status')).body;
     assert.equal(choisi.agentBackend, 'codex'); assert.equal(choisi.agentBackendLabel, 'OpenAI Codex CLI');
     assert.equal((await app.api('PUT', '/api/config', { agent_backend: 'plop' })).body.agent_backend, 'auto', 'une valeur inconnue retombe sur auto');
+    /* Sécurisé ou yolo : le harnais force le sécurisé ; le statut le dit, et le niveau devient
+       « yolo » dès qu'on repasse en yolo. */
+    assert.equal((await app.api('GET', '/api/status')).body.agentMode, 'secure');
+    await app.api('PUT', '/api/config', { agent_mode: 'yolo' });
+    const yolo = (await app.api('GET', '/api/status')).body;
+    assert.equal(yolo.agentMode, 'yolo'); assert.equal(yolo.agentLevel, 'yolo');
+    await app.api('PUT', '/api/config', { agent_mode: 'secure' });
     assert.deepEqual(apres.copilotArgs, ['--model', 'x']);
     assert.equal(apres.agentTimeoutMs, 120000);
     assert.equal(apres.copilotAvailable, false, 'un chemin qui n’existe pas : introuvable');

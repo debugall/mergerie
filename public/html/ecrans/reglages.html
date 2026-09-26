@@ -626,6 +626,22 @@
                 </p>
             </div>
 
+            <!-- SÉCURISÉ OU YOLO : un seul interrupteur, global, de poste. Le détail (sandbox,
+                 liste blanche, mode large, « Tester le sandbox ») ne vaut qu'en sécurisé et se
+                 replie en yolo. -->
+            <h2 data-i18n="settings.mode.title">Sécurisé ou yolo</h2>
+            <p class="muted" data-i18n="settings.mode.intro">Ce que l'agent a le droit de faire. Yolo (le défaut) : aucune restriction du lanceur — arguments intacts, ni sandbox, ni liste blanche, ni refus de lecture, réseau et sockets ouverts. Sécurisé : la sandbox du CLI une fois prouvée, sinon une liste blanche ; lecture seule prouvée pour la review et l'exploration ; interdits de fuite. Dans les deux cas : le jeton de forge reste hors du clone, l'API fermée par le jeton local, l'environnement en liste blanche.</p>
+            <div class="form">
+                <label><span data-i18n="settings.mode.lbl">Mode de l'agent</span>
+                    <select form="configForm" name="agent_mode" id="cfgAgentMode">
+                        <option value="yolo" data-i18n="settings.mode.opt.yolo">Yolo — aucune restriction (défaut)</option>
+                        <option value="secure" data-i18n="settings.mode.opt.secure">Sécurisé — sandbox, liste blanche, lecture seule prouvée</option>
+                    </select></label>
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                </p>
+            </div>
+            <div id="sandboxDetails">
             <h2 data-i18n="settings.sandbox.title">Sandbox de l'agent en écriture</h2>
             <p class="muted" data-i18n="settings.sandbox.intro">Ce qu'un agent en écriture (codage, correction) a le droit de faire SANS rien demander. « sandbox » ne s'applique vraiment qu'une fois vérifié par le bouton ci-dessous, sur CETTE machine — tant qu'il ne l'est pas, la politique retombe sur une liste blanche de commandes.</p>
             <div class="form">
@@ -648,6 +664,7 @@
                 </p>
                 <div id="sandboxTestResult"></div>
             </div>
+            </div><!-- /sandboxDetails -->
 
             <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>
             <p class="muted" data-i18n="settings.aisession.intro">Test technique : l'agent mémorise un marqueur secret lors d'une première passe, puis on reprend la <strong>même</strong> session et on lui redemande ce marqueur. S'il le restitue, on sait qu'on peut reprendre une session — socle de la future fonctionnalité « l'IA pose une question ».</p>

@@ -4,12 +4,21 @@
 async function renderSandboxSettings() {
   const btn = $('#sandboxTest');
   if (btn && !btn.dataset.bound) { btn.dataset.bound = '1'; btn.addEventListener('click', runSandboxTest); }
+  /* Le détail de la sandbox ne vaut qu'en mode sécurisé : replié en yolo, déplié dès qu'on
+     choisit sécurisé dans le sélecteur — avant même d'enregistrer, pour voir ce qu'on active. */
+  const sel = $('#cfgAgentMode');
+  if (sel && !sel.dataset.bound) { sel.dataset.bound = '1'; sel.addEventListener('change', () => replierSandbox(sel.value)); }
   await afficherEtatSandbox();
+}
+function replierSandbox(mode) {
+  const box = $('#sandboxDetails');
+  if (box) box.hidden = mode !== 'secure';
 }
 async function afficherEtatSandbox() {
   const box = $('#sandboxTestResult');
   if (!box) return;
   const c = await api('/config');
+  replierSandbox(c.agent_mode === 'secure' ? 'secure' : 'yolo');
   box.innerHTML = sandboxEtatHtml(c);
 }
 function sandboxEtatHtml(c) {

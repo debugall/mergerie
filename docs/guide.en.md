@@ -2973,6 +2973,16 @@ as a code clone (no hooks, no `fsmonitor`, allowlisted environment) — a weaker
 slips in unnoticed. A verifier's local folder and the permission to work “in place” do not travel. Each
 review rule shows who set it.
 
+**Secured or yolo — one switch, per machine** (Settings → AI session). In **yolo**, the default of an
+installation that touched nothing, the agent runs **with no restriction from the launcher**, every
+flavour and every backend alike: `AGENT_ARGS` intact (wide-open mode included), no `--disallowedTools`,
+no sandbox, no allowlist, no after-the-fact integrity check — the old behaviour, as it was; a “yolo”
+badge in the header says so, and every run's journal opens with it. In **secured** mode, everything this
+paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
+limits and not the agent's: the local token on `/api/`, the `Host` allowlist, the nonce on protocol
+blocks, the per-machine approval of what arrives through the sync, and the agent's allowlisted
+environment.
+
 **The AI agent only has the rights of what it is asked.** `COPILOT_ARGS` (often
 `--dangerously-skip-permissions`, or its Copilot equivalent `--allow-all-tools`) no longer goes on any
 launch, whatever its flavour — including when that setting comes from the environment rather than a choice

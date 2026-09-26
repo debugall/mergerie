@@ -122,6 +122,7 @@ function afficherBanniereAgent(s) {
   $('#agentBannerText').textContent = tr('ui.agent-banner.text', { bin: s.copilotBin || 'claude' });
   $('#agentBannerInstall').textContent = tr('ui.agent-banner.install');
 }
+onEl($('#yoloBadge'), 'click', () => { navTab('admin'); showAdminSub('aisession'); const c = $('[name="agent_mode"]'); if (c) c.focus({ preventScroll: true }); });
 onEl($('#agentBannerSettings'), 'click', () => { navTab('admin'); showAdminSub('aisession'); const c = $('[name="agent_bin"]'); if (c) c.focus({ preventScroll: true }); });
 onEl($('#agentBannerRetry'), 'click', async () => {
   try { await api('/agent/redetect', { method: 'POST' }); } catch { /* le statut suivant dira */ }
@@ -226,6 +227,7 @@ async function refreshStatus() {
       if (ms !== jkPeriodeMs) { jkPeriodeMs = ms; jkAutoRelance(); }
     }
     $('#dryBadge').hidden = !s.dryRun;
+    if ($('#yoloBadge')) $('#yoloBadge').hidden = s.agentMode !== 'yolo';
     const job = s.job;
     const running = s.running;
     const queued = s.queued || 0;

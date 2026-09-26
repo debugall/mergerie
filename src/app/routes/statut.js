@@ -40,6 +40,8 @@ app.get('/api/status', wrap((req, res) => {
     agentLevel: require('../../agent/policy').niveauDe(copilot.binActuel()),
     agentBackendLabel: require('../../agent/backends').pour(require('../../agent/policy').backendDe(copilot.binActuel())).label,
     agentBackendSetting: getConfig().agent_backend || 'auto',
+    // Sécurisé ou yolo : le badge discret de l'en-tête, et l'assistant de démarrage.
+    agentMode: getConfig().agent_mode === 'secure' ? 'secure' : 'yolo',
     agentTimeoutMs: copilot.timeoutActuel(),
     copilotCmdPreview: `${copilot.binActuel()} ${[...copilot.argsActuels(), '-p', '"<prompt>"'].join(' ')}`,
     /* La dernière découverte de MR de ce processus : l'onglet Reviews relance une découverte à

@@ -830,6 +830,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
        `.git/config`/`.git/hooks` planté, lui, survit à `resetWorktree` (hors suivi Git). */
     const parDepot = [];
     for (const d of dirs) {
+      if (!agentpolicy.modeSecurise()) break;   // yolo : l'agent a le droit d'écrire, rien à reprocher
       const c = integrite.comparer(empreintesAvant.get(d.cwd), await integrite.empreindre(d.cwd));
       if (c) parDepot.push(`${d.project} (${c.join(', ')})`);
     }

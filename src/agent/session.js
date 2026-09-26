@@ -312,6 +312,7 @@ function argvSaveur(backend, saveur, options, addDirs, cwd, onLog = () => {}) {
   /* LE NIVEAU DE GARANTIE EN PREMIÈRE LIGNE : ce que ce lancement peut promettre, avant qu'il
      ne dise quoi que ce soit d'autre. */
   onLog(t(`agents.log.level.${agentpolicy.niveauDe(copilot.COPILOT_BIN)}`, { backend: backendCourant().label }));
+  if (pol.mode === 'yolo') return pol;      // rien d'autre à dire : aucune restriction du lanceur
   if (pol.mode === 'large') onLog(t('agents.log.write-mode-large'));
   else if (pol.mode === 'allowlist') {
     onLog(pol.sandboxDemandeNonVerifie ? t('agents.log.write-mode-sandbox-unverified') : t('agents.log.write-mode-allowlist'));

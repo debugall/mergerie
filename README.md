@@ -117,9 +117,11 @@ you with the tab closed.
 - 🔒 **[Security](./SECURITY.md)** — trust model and how to report a vulnerability. In short: localhost by
   default, a token when exposed, and a second local-only token closing the API to any process on the
   machine that isn't your browser; code that arrives through the shared repository waits for your approval
-  on this machine; reviews and explorations run the agent read-only, coding runs it under a CLI sandbox
-  verified by a real test call (or a command allowlist, never a broad mode), with a filtered environment,
-  the forge token out of the clone, and every agent output block tied to the nonce of its own run.
+  on this machine; one switch per machine for the agent itself — **secured** (reviews and explorations
+  run it read-only, coding runs it under a CLI sandbox verified by a real test call, or a command
+  allowlist) or **yolo** (no restriction of the agent, the default) — with, either way, a filtered
+  environment, the forge token out of the clone, and every agent output block tied to the nonce of its
+  own run.
 - 🤝 **[Contributing](./CONTRIBUTING.md)** — how to report a bug or an idea, how to run it in dev, and why
   **pull requests are not accepted**: Mergerie is written by one maintainer, who stays its only rights holder.
 - 🦊 **Development happens on [GitLab](https://gitlab.com/amady/mergerie)** — merge requests are opened there

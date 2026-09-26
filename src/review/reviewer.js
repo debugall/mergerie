@@ -355,6 +355,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   const depotsVus = [{ nom: repo.project, cwd }, ...linkedDirs.map((d) => ({ nom: d.cwd, cwd: d.cwd }))];
   const releve = async () => Promise.all(depotsVus.map((d) => integrite.empreindre(d.cwd)));
   const derive = async (avant) => {
+    if (!agentpolicy.modeSecurise()) return null;   // yolo : l'agent a le droit d'écrire, rien à reprocher
     const apres = await releve();
     const diffs = [];
     for (let i = 0; i < depotsVus.length; i += 1) {

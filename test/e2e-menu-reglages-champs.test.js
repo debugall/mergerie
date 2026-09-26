@@ -84,6 +84,7 @@ function groupes(app) {
       ['jenkins_refresh_minutes', '5'],
     ] },
     { sub: 'aisession', champs: [
+      ['agent_mode', 'yolo'],
       ['agent_bin', '/opt/agents/claude-ecran'],
       ['agent_args', '--model claude-sonnet-5'],
       ['agent_timeout_ms', '600000'],

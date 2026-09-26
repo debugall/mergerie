@@ -108,6 +108,16 @@ describe('local_config — ce qui reste sur ce poste', () => {
      pas — silencieusement, sans message. */
   /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX : « Tester le sandbox » a constaté ce qu'UN
      programme faisait ; un autre chemin est un autre programme. */
+  /* LE DÉFAUT D'UNE INSTALLATION EST YOLO : une base neuve où personne n'a rien touché tourne sans
+     restriction de l'agent ; le sécurisé se choisit. Posé aux deux endroits (schéma et config). */
+  test('sur une base neuve, agent_mode vaut yolo — et le harnais des tests le repasse en sécurisé', () => {
+    assert.equal(db.prepare('SELECT agent_mode m FROM local_config WHERE id = 1').get().m, 'yolo', 'le défaut de la colonne');
+    assert.equal(config.getConfig().agent_mode, 'yolo');
+    assert.equal(config.updateConfig({ gitlab_url: 'https://gl.example.com' }).agent_mode, 'yolo', 'une mise à jour sans rapport le garde');
+    assert.equal(config.updateConfig({ agent_mode: 'secure' }).agent_mode, 'secure');
+    assert.equal(config.updateConfig({ agent_mode: 'yolo' }).agent_mode, 'yolo');
+  });
+
   test('changer agent_bin remet la preuve de sandbox à zéro, un autre réglage la garde', () => {
     db.prepare("UPDATE local_config SET agent_sandbox_verified = 1, agent_sandbox_tested_at = '2026-09-01T00:00:00Z', agent_sandbox_detail = 'ok' WHERE id = 1").run();
     config.updateConfig({ agent_args: '--model x' });

@@ -67,6 +67,10 @@ async function startApp() {
   }
   const base = `http://127.0.0.1:${server.server.address().port}`;
   const localToken = fs.readFileSync(path.join(dataDir, 'local-token'), 'utf8').trim();
+  /* LE MODE SÉCURISÉ, D'OFFICE DANS LES TESTS. Le défaut d'une installation est yolo (aucune
+     restriction de l'agent) ; ce que la suite éprouve — lecture seule, sandbox, liste blanche,
+     contrôle d'intégrité — n'existe qu'en sécurisé. Un test qui veut le défaut le repasse à
+     `yolo` via `PUT /api/config` ; le défaut lui-même est prouvé dans unit-local-config. */
 
   async function api(method, p, body) {
     const res = await fetch(base + p, {
@@ -82,6 +86,8 @@ async function startApp() {
     try { json = JSON.parse(text); } catch { /* réponse non-JSON (fichier, 404 vide) */ }
     return { status: res.status, body: json, text, headers: res.headers };
   }
+
+  await api('PUT', '/api/config', { agent_mode: 'secure' });
 
   /* Configure l'app pour parler au faux GitLab (et au faux Jira si demandé).
 

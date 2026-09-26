@@ -182,9 +182,11 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`  dry-run : ${copilot.isDryRun()}${copilot.isDryRun() && !copilot.dryRunForce() ? '  ⚠ binaire introuvable — les rapports seront simulés' : ''}`);
   {
     const LARGES_ENV = /--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--yolo|--allow-all-tools/;
-    if (LARGES_ENV.test(copilot.argsActuels().join(' '))) {
-      let mode = 'sandbox';
-      try { mode = getConfig().agent_write_mode || 'sandbox'; } catch { /* base pas encore prête : défaut prudent */ }
+    let cfg = {};
+    try { cfg = getConfig(); } catch { /* base pas encore prête */ }
+    console.log(`  mode    : ${cfg.agent_mode === 'secure' ? 'sécurisé (restrictions de l’agent actives)' : 'yolo (aucune restriction de l’agent — Réglages → Session IA pour passer en sécurisé)'}`);
+    if (cfg.agent_mode === 'secure' && LARGES_ENV.test(copilot.argsActuels().join(' '))) {
+      const mode = cfg.agent_write_mode || 'sandbox';
       console.warn(`  ⚠ les arguments de l'agent portent un mode large — ignoré sauf agent_write_mode=large (Réglages → Session IA) ; réglage actuel : ${mode}.`);
     }
   }

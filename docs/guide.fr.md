@@ -3072,6 +3072,16 @@ durcissement git** qu'un clone de code (sans hooks, sans `fsmonitor`, environnem
 version ad hoc, plus faible, ne s'y glisse plus en silence. Le dossier local d'un vérificateur et
 l'autorisation d'y travailler « in place » ne voyagent pas. Chaque règle de review affiche qui l'a posée.
 
+**Sécurisé ou yolo — un seul interrupteur, de poste** (Réglages → Session IA). En **yolo**, le défaut
+d'une installation qui n'a rien touché, l'agent tourne **sans restriction du lanceur**, toutes saveurs
+et tous backends confondus : `AGENT_ARGS` intact (mode large compris), ni `--disallowedTools`, ni sandbox,
+ni liste blanche, ni contrôle d'intégrité après coup — l'ancien comportement, tel quel ; un badge « yolo »
+dans l'en-tête le rappelle, et le journal de chaque run l'écrit en première ligne. En **sécurisé**, tout
+ce que ce paragraphe et les suivants décrivent s'applique. Ce que le mode yolo ne lève JAMAIS, parce que
+ce sont les limites du serveur et non celles de l'agent : le jeton local sur `/api/`, le `Host`
+allowlist, le nonce des blocs de protocole, l'approbation par poste de ce qui arrive par la synchro, et
+l'environnement de l'agent en liste blanche.
+
 **L'agent IA n'a que les droits de ce qu'on lui demande.** `COPILOT_ARGS` (souvent
 `--dangerously-skip-permissions`, ou son équivalent Copilot `--allow-all-tools`) ne part plus sur aucun
 lancement, quelle que soit sa saveur — y compris quand ce réglage vient de l'environnement plutôt que d'un

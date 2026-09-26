@@ -25,6 +25,9 @@
     </button>
     <div class="header-right">
         <span id="dryBadge" class="badge" hidden title="Mode dry-run : les rapports sont simulés, l'IA n'est pas appelée" data-i18n-title="ui.title.mode-dry-run-les-rapports">dry-run</span>
+        <!-- LE MODE YOLO SE DIT, DISCRÈTEMENT : un badge, cliquable, qui mène au réglage. C'est le
+             défaut d'une installation qui n'a rien touché ; le sécurisé se choisit. -->
+        <button type="button" id="yoloBadge" class="badge badge-btn" hidden title="Mode yolo : aucune restriction de l'agent — cliquer pour choisir le mode sécurisé" data-i18n-title="ui.title.mode-yolo">yolo</button>
         <!-- CHRONO DE SESSION DE TRAVAIL. Il occupait le coin de l'écran sur les dix onglets,
              en gros chiffres, sans dire de quoi il parlait : « 00:00 ▶ ↺ » ressemble à un
              minuteur du produit. Il porte maintenant une icône qui le nomme, il passe APRÈS

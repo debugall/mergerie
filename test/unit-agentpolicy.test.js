@@ -21,6 +21,7 @@ const pol = require('../src/agent/policy');
 const { updateConfig } = require('../src/data/config');
 const db = require('../src/db');
 const approbation = require('../src/data/approbation');
+updateConfig({ agent_mode: 'secure' });   // ce que ce fichier éprouve n'existe qu'en mode sécurisé (le défaut est yolo)
 
 const fauxAide = (nom, aide) => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), `faux-${nom}-`));
@@ -286,6 +287,42 @@ describe('agentpolicy : copilot', () => {
     assert.deepEqual(ecriture.extra, []);
     const lecture = pol.argvPermissions({ backend: 'copilot', bin: '/inexistant/copilot', extra: ['--allow-all-tools'], kind: 'review' });
     assert.deepEqual(lecture.extra, []);
+  });
+});
+
+/* SÉCURISÉ OU YOLO (ameliorations_proposal.md, §5). En yolo — le DÉFAUT d'une installation —
+   l'argv est rendu tel quel, toutes saveurs et tous backends : le mode large de AGENT_ARGS
+   passe, aucun `--disallowedTools`, aucune sandbox, aucune liste blanche. L'environnement, lui,
+   reste en liste blanche : c'est une limite du serveur, pas de l'agent. */
+describe('agentpolicy : le mode yolo rend tout, le mode sécurisé retire — et yolo est le défaut', { skip: process.platform === 'win32' ? 'faux binaire sh' : false }, () => {
+  beforeEach(() => pol.oublierCapacites());
+  test('yolo : AGENT_ARGS intact, aucune option ajoutée, en lecture comme en écriture, sur chaque backend', () => {
+    updateConfig({ agent_mode: 'yolo' });
+    try {
+      for (const backend of ['claude', 'copilot', 'codex', 'unknown']) {
+        for (const kind of ['review', 'explore', 'code', 'local']) {
+          const r = pol.argvPermissions({ backend, bin: COMPLET, extra: YOLO, kind, addDirs: ['/lie'] });
+          assert.deepEqual(r.extra, YOLO, `${backend}/${kind} : les arguments passent tels quels`);
+          assert.deepEqual(r.args, ['--add-dir', '/lie'], `${backend}/${kind} : rien d'ajouté hormis les dossiers liés`);
+          assert.equal(r.mode, 'yolo');
+          assert.equal(r.lecture, kind === 'review' || kind === 'explore');
+        }
+      }
+      assert.equal(pol.sortieSurStdout('review', COMPLET), false, 'en yolo, l’agent écrit son fichier comme avant');
+      assert.equal(pol.niveauDe(COMPLET), 'yolo');
+      assert.equal(pol.modeSecurise(), false);
+      const env = pol.envAgent('claude', { PATH: '/bin', MERGERIE_ACCESS_TOKEN: 'x', ANTHROPIC_API_KEY: 'a' });
+      assert.equal(env.MERGERIE_ACCESS_TOKEN, undefined, 'l’environnement reste en liste blanche : limite du serveur, pas de l’agent');
+    } finally { updateConfig({ agent_mode: 'secure' }); }
+  });
+  test('sécurisé : le mode large est retiré (le comportement de tout ce fichier)', () => {
+    const r = pol.argvPermissions({ backend: 'claude', bin: COMPLET, extra: YOLO, kind: 'review' });
+    assert.equal([...r.extra, ...r.args].includes('--dangerously-skip-permissions'), false);
+    assert.equal(pol.modeSecurise(), true);
+  });
+  test('une valeur illisible retombe sur yolo — c’est le sens du réglage', () => {
+    assert.equal(updateConfig({ agent_mode: 'plop' }).agent_mode, 'yolo');
+    updateConfig({ agent_mode: 'secure' });
   });
 });
 

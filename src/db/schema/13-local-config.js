@@ -92,6 +92,12 @@ const COLONNES_LOCALES = [
      autour de claude, un CLI dont le `--version` ne dit rien. Les identifiants sont ceux du
      registre `agent/backends/`, plus `generic`. */
   ["agent_backend", "TEXT NOT NULL DEFAULT 'auto'"],
+  /* SÉCURISÉ OU YOLO — un seul interrupteur, de poste. `yolo` est le DÉFAUT : une installation
+     qui ne touche à rien tourne sans restriction de l'agent (l'ancien comportement, tel quel),
+     et `secure` se choisit dans Réglages → Session IA. Ce que le mode yolo ne lève JAMAIS :
+     le jeton local sur /api/, le Host allowlist, le nonce des blocs de protocole, l'approbation
+     par poste de ce qui arrive par la synchro — ce sont les limites du serveur, pas de l'agent. */
+  ["agent_mode", "TEXT NOT NULL DEFAULT 'yolo'"],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),

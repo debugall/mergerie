@@ -17,6 +17,7 @@ const pol = require('../src/agent/policy');
 const backends = require('../src/agent/backends');
 const agentargs = require('../src/agent/args');
 const { updateConfig } = require('../src/data/config');
+updateConfig({ agent_mode: 'secure' });   // ce que ce fichier éprouve n'existe qu'en mode sécurisé (le défaut est yolo)
 
 const skip = process.platform === 'win32' ? 'faux binaire sh' : false;
 const faux = (nom, version, aide = '') => {

@@ -25,6 +25,7 @@ async function checkSetup() {
       /* L'AGENT : trouvé, ou simulé EXPRÈS (COPILOT_DRY_RUN=1 — démo, tests). Introuvable sans
          l'avoir voulu, l'étape reste ouverte, et la bannière en haut le dit aussi. */
       agent: { bin: statut.copilotBin || '', ok: !!statut.copilotAvailable, force: !!statut.dryRunForced },
+      agentMode: statut.agentMode === 'secure' ? 'secure' : 'yolo',
       /* LA FORGE, L'UNE OU L'AUTRE. L'étape ne se cochait qu'avec GitLab : un utilisateur GitHub
          seul la gardait ouverte à vie. */
       configured: !!((cfg.gitlab_url && cfg.access_token) || cfg.github_token),
@@ -68,6 +69,11 @@ function onboardingHtml() {
         <label class="inline-check"><input type="checkbox" data-outil="jenkins" /> <span>${esc(tr('onboard.s3.jenkins'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="docker" /> <span>${esc(tr('onboard.s3.docker'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="links" /> <span>${esc(tr('onboard.s3.links'))}</span></label>
+        <label class="onboard-mode"><span>${esc(tr('onboard.s3.mode'))}</span>
+          <select data-agent-mode>
+            <option value="yolo" ${s.agentMode === 'secure' ? '' : 'selected'}>${esc(tr('onboard.s3.mode-yolo'))}</option>
+            <option value="secure" ${s.agentMode === 'secure' ? 'selected' : ''}>${esc(tr('onboard.s3.mode-secure'))}</option>
+          </select></label>
         ${btn('outils-ok', tr('onboard.s3.btn'), prochaine === 3)}
       </span>`;
   return `<div class="empty">
@@ -95,6 +101,13 @@ function validerOutils(racine) {
   const coches = $$('[data-outil]', racine).filter((c) => c.checked).map((c) => c.dataset.outil);
   try { localStorage.setItem(ONBOARD_OUTILS_KEY, coches.join(',') || 'none'); } catch { /* ignore */ }
   if (coches.length && typeof devoilerMenus === 'function') devoilerMenus(coches);
+  /* « Sécurisé ou yolo ? » — posée ici, une fois, sans imposer : le choix part au serveur comme
+     depuis Réglages → Session IA, et l'étape se coche dans les deux cas. */
+  const sel = racine && racine.querySelector('[data-agent-mode]');
+  const mode = sel && sel.value === 'secure' ? 'secure' : 'yolo';
+  if (sel && mode !== setupState.agentMode) {
+    api('/config', { method: 'PUT', body: { agent_mode: mode } }).then(() => { setupState.agentMode = mode; if (typeof refreshStatus === 'function') refreshStatus(); }).catch(() => {});
+  }
   setupState.outils = true;
   if (currentSeg === 'to_review') renderToReview();
 }
