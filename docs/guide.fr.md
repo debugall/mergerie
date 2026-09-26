@@ -17,7 +17,7 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 - [Les onglets en détail](#les-onglets-en-détail) — Reviews, Dev IA, Agents, Notes, Jira, Git, Docker, Jenkins, Liens, Stats, Réglages
 - [Vérification objective (vérificateurs)](#vérification-objective-vérificateurs)
 - [Configuration (.env)](#configuration-env)
-- [GitLab auto-hébergé / GitHub Enterprise / Jenkins interne / certificat d'entreprise](#gitlab-auto-hébergé--github-enterprise--jenkins-interne--certificat-dentreprise)
+- [GitLab self-hosted / GitHub Enterprise / Jenkins interne / certificat d'entreprise](#gitlab-self-hosted--github-enterprise--jenkins-interne--certificat-dentreprise)
 - [Mode dry-run (sans IA)](#mode-dry-run-sans-ia)
 - [Clones locaux](#clones-locaux)
 - [Partager avec une équipe (dépôt de données)](#partager-avec-une-équipe-dépôt-de-données)
