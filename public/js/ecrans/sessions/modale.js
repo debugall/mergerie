@@ -40,6 +40,8 @@ function applyKindToModal(kind) {
   const av = $('#taskAdvanced'); if (av) { av.hidden = isAsk; av.open = false; }   // replié à chaque ouverture
   // La case « l'IA peut poser une question » vit hors de l'accordéon, pour les trois saveurs à cible.
   const aq = $('#taskAskQuestionsRow'); if (aq) aq.hidden = isAsk;
+  // « Planifier d'abord » : codage sur dépôt seulement — une exploration ne code pas, le hors dépôt a son propre envoi.
+  const pf = $('#taskPlanFirstRow'); if (pf) pf.hidden = kind !== 'code';
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
   /* Projets liés en lecture seule : CODAGE seulement. Une exploration voit déjà tous ses

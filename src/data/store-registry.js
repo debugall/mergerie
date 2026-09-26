@@ -1044,6 +1044,7 @@ const REGISTRE = [
       label: r.label || null,
       commit_message: r.commit_message || null,
       ask_questions: r.ask_questions ? 1 : 0,
+      plan_first: r.plan_first ? 1 : 0,
       notify_jira: r.notify_jira ? 1 : 0,
       review_after: r.review_after ? 1 : 0,
       status: r.status,
@@ -1116,6 +1117,7 @@ const REGISTRE = [
       // `auto_push` reste toujours à 0 à l'import (locale, lot C, S5).
       auto_push: 0,
       ask_questions: doc.ask_questions ? 1 : 0,
+      plan_first: doc.plan_first ? 1 : 0,
       notify_jira: doc.notify_jira ? 1 : 0,
       review_after: doc.review_after ? 1 : 0,
       status: doc.status || 'new',

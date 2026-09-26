@@ -454,6 +454,31 @@ sa propre branche, et sa date de création est affichée. Le **choix du dépôt 
 rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
 liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
 
+**« Planifier d'abord » : lire, approuver, puis coder.** Cochée dans la modale de session (codage sur
+dépôt seulement), la première passe ne touche à rien : l'agent lit le dépôt et rend un **plan** —
+fichiers, étapes, risques, questions ouvertes — comme une itération marquée *plan*. La ligne du
+projet dit **plan à approuver**, propose **Lire le plan**, une remarque facultative (« garde l'API
+telle quelle ») et **Approuver et coder** : la **même session d'agent** reprend et réalise le plan,
+remarque comprise, puis commite comme d'habitude. Relancer une session planifiée replanifie. Avec
+Claude, la passe tourne dans son mode *plan* quoi que dise l'interrupteur sécurisé/yolo — c'est ce
+que la session demande, pas une restriction ; un autre backend suit la consigne, et la passe
+suivante repart de toute façon d'un clone propre.
+
+**« Stopper et reprendre avec cette consigne ».** Pendant qu'une session tourne, le champ de suivi
+ne cache plus son bouton : il devient **Stopper et reprendre avec cette consigne**. La passe
+s'arrête, et la consigne repart en suivi — dans la **même session d'agent** quand son handle est
+connu (Claude le donne avant de dire un mot), sinon dans une session neuve qui reçoit la tâche et la
+transcription. La consigne reste en brouillon sur la carte tant que le suivi n'est pas parti.
+
+**Le journal reste court, l'annexe garde le reste.** Le message d'un agent est coupé à 600
+caractères dans le journal du job, un `Edit` tient sur une ligne — `Edit src/x.js (+12 −3)` — et la
+réflexion de l'agent s'affiche en une ligne `∴`. Chacune porte un **« … voir »** qui ouvre le texte
+entier, ou le **diff** de la modification, dans un panneau ; le polling ne transporte jamais le
+contenu. **Les jobs tournent en parallèle d'eux-mêmes** quand ils touchent des dépôts ou des dossiers
+différents : une review sur le dépôt A ne retarde plus une session sur le dépôt B ; deux jobs sur le
+même dépôt gardent leur ordre, un job au périmètre inconnu attend tout le monde, et les jobs lancés
+à la main passent avant les automatiques.
+
 **« L'IA peut me poser des questions » vaut pour les trois saveurs.** Codage sur dépôt, **codage
 hors dépôt** et **exploration** : cochée, l'option autorise l'agent à s'arrêter devant une décision
 qu'il ne peut pas trancher, au lieu de deviner. Une exploration hésite comme un codage — « de quel

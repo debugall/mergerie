@@ -14,7 +14,7 @@ const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file')
 async function runLocalJob(jobId, taskId, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   logLine(jobId, null, t('log.job.local-start', { id: jobId }));
-  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     await localcoder.runLocal(taskId, onLog, opts);
     if (proc.isCancelled()) {

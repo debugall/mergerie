@@ -188,7 +188,8 @@ function codeCard(t) {
      exactement le geste qui manquait pour répondre « continue ». */
   const canFollow = enCours || cibles.some((x) => ['committed', 'pushed'].includes(x.status)
     || (x.status === 'error' && x.resume_cmd));
-  const canRun = ['new', 'error', 'committed', 'pushed'].includes(t.status);
+  // « planned » se relance aussi : relancer replanifie, si le plan ne convient pas.
+  const canRun = ['new', 'error', 'committed', 'pushed', 'planned'].includes(t.status);
   /* Repli de la liste de projets. Au-delà de quelques dépôts, une session occupe tout l'écran et
      on ne voit plus les autres. L'état est PERSISTÉ : sans ça, il se rouvrirait à chaque
      rafraîchissement automatique, c'est-à-dire toutes les secondes et demie pendant un job. */
@@ -211,7 +212,9 @@ function codeCard(t) {
         ${(cibles || []).some((tg) => tg.has_verify_fail) ? boutonSuiviVerif(t.id) : ''}
         <button class="btn" data-followcancel="${t.id}">${tr('ui.cancel')}</button>
         <button class="btn" data-followsave="${t.id}">${tr('task.btn.save-followup')}</button>
-        ${enCours ? '' : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
+        ${enCours
+    ? `<button class="btn btn-primary" data-followstopresume="${t.id}" title="${esc(tr('task.title.stop-resume'))}"><svg class="ico"><use href="#i-stop"/></svg>${tr('task.btn.stop-resume')}</button>`
+    : `<button class="btn btn-primary" data-followsubmit="${t.id}">${tr('task.btn.run-iteration')}</button>`}
       </div>
     </div>
     ${taskActions([

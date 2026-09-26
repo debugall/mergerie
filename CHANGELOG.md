@@ -13,6 +13,20 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Plan first, then approve.** A coding session can start with a reading pass that returns a
+  plan (files, steps, risks, open questions) instead of code; the project line says *plan to
+  approve*, offers to read it, a remark, and **Approve and code**, which resumes the same agent
+  session to carry the plan out. With Claude the pass runs in its plan mode whatever the
+  secure/yolo switch says.
+- **Stop and resume with this instruction.** While a session runs, the follow-up field's button
+  stops the pass and sends the instruction back into the same agent session (Claude's handle is
+  known before it says a word), or into a fresh one that receives the task and the transcript.
+- **The journal stays short, the annex holds the rest.** Agent messages are still cut at 600
+  characters and an `Edit` is one line with its size, but each now carries a **“… see”** that
+  opens the full text or the diff in a panel; the agent's reasoning shows as a short line too.
+- **Jobs run in parallel by themselves** when they touch different repositories or folders: a
+  review on one repository no longer delays a session on another. Jobs on the same repository
+  keep their order, and jobs launched by hand pass before automatic ones.
 - **The first quarter of an hour.** The Reviews tab's start-up assistant has five steps instead
   of three, and works for GitHub as well as GitLab: the **AI agent** (found, simulated on purpose,
   or missing — with a button to set it up and one to retry), the **forge** (GitLab *or* GitHub,

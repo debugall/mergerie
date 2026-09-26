@@ -86,6 +86,9 @@ app.post('/api/tasks', wrap((req, res) => {
     agentDraft: brouillon,
     // Partager cette session-là : décoché par défaut, et la case n'apparaît qu'en mode partagé.
     shared: req.body && req.body.shared ? 1 : 0,
+    /* « Planifier d'abord » : une passe de lecture rend un plan, la carte attend « Approuver
+       et coder ». Pas pour un agent programmé : personne n'est là pour approuver. */
+    planFirst: !profil && req.body && req.body.plan_first ? 1 : 0,
   });
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
@@ -134,7 +137,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
       insertContextRepos(tache.id, list2);
     }
   })();
-  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, review_after = ?, updated_at = ? WHERE id = ?').run(
+  db.prepare('UPDATE task SET prompt = ?, commit_message = ?, auto_push = ?, ask_questions = ?, verifier_id = ?, label = ?, notify_jira = ?, review_after = ?, plan_first = ?, updated_at = ? WHERE id = ?').run(
     prompt != null ? String(prompt).trim() : tache.prompt,
     commit_message != null ? (String(commit_message).trim() || null) : tache.commit_message,
     auto_push == null ? tache.auto_push : (auto_push ? 1 : 0),
@@ -149,6 +152,7 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     // Absent du body → on garde la valeur actuelle, comme les autres cases de la modale.
     (req.body && req.body.notify_jira) === undefined ? tache.notify_jira : (req.body.notify_jira ? 1 : 0),
     (req.body && req.body.review_after) === undefined ? tache.review_after : (req.body.review_after ? 1 : 0),
+    (req.body && req.body.plan_first) === undefined ? tache.plan_first : (req.body.plan_first && tache.kind === 'code' ? 1 : 0),
     new Date().toISOString(), tache.id,
   );
   savePiecesEtImages('task', tache.id, req.body || {});

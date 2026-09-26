@@ -6,7 +6,7 @@ const db = require('../db');
 const proc = require('../core/proc');
 const docker = require('../integrations/docker');
 const { t } = require('../core/i18n');
-const { MAX_RUNNING, RUNNERS, active, activeJob, canRetry, conflictsWithRunning, mrRowById, mrsToReview, parallelBusy, queue, rememberRetry, setJob } = require('./file');
+const { MAX_RUNNING, RUNNERS, active, activeJob, canRetry, conflictsWithRunning, jobKeys, keysClash, mrRowById, mrsToReview, parallelBusy, queue, rememberRetry, setJob } = require('./file');
 
 /* File d'attente SÉQUENTIELLE : un job à la fois, les suivants attendent. L'état est
    persisté en table `job` pour survivre à la fermeture d'onglet.
@@ -66,22 +66,64 @@ function launch(entry, lane) {
     if (!active.size) proc.reset();
   });
 }
-// Worker de la voie séquentielle : les jobs de la file, un par un.
+/* LE PARALLÉLISME EST AUTOMATIQUE POUR CE QUI NE SE TOUCHE PAS. Une review automatique sur le
+   dépôt A n'a aucune raison de retarder une session sur le dépôt B : les clés de conflit
+   (`jobKeys`) disent exactement ce que chaque job va toucher, et c'est elles qui décident —
+   pas la position dans la file. Ce qui reste vrai :
+   — deux jobs qui partagent une clé se SÉRIALISENT, dans l'ordre de la file : un job n'en
+     double jamais un plus ancien qui touche le même dépôt ou le même dossier ;
+   — un job au périmètre inconnu (`*`) attend que tout soit fini, et bloque tout derrière lui ;
+   — les jobs lancés À LA MAIN passent avant les automatiques (`opts.auto` : reviews de la
+     découverte, sessions programmées) — c'est l'humain qui attend, pas la machine ;
+   — `MAX_RUNNING` borne le tout : au-delà de quelques agents, ils rament ensemble. */
+const estAuto = (e) => !!(e && e.opts && e.opts.auto);
+function prochainLancable() {
+  const ordre = [...queue.keys()].sort((a, b) => (Number(estAuto(queue[a])) - Number(estAuto(queue[b]))) || (a - b));
+  for (const i of ordre) {
+    const e = queue[i];
+    if (conflictsWithRunning(e).length) continue;
+    const mienne = jobKeys(e);
+    /* On ne double pas un job plus ancien qui touche la même chose — sauf un automatique,
+       qu'un job à la main a le droit de devancer. */
+    const devant = queue.slice(0, i).filter((q) => estAuto(e) || !estAuto(q));
+    if (devant.some((q) => keysClash(mienne, jobKeys(q)))) continue;
+    return i;
+  }
+  return -1;
+}
 async function pump() {
-  if (mainRunning || active.size >= MAX_RUNNING) return;
-  const next = queue[0];
-  if (!next) return;
-  /* La voie séquentielle est soumise à la MÊME règle que la promotion manuelle : elle ne
-     démarre pas un job qui toucherait un dépôt déjà occupé par un job parallèle. Sans ce
-     test, promouvoir un job puis laisser la file avancer suffisait à mettre deux process
-     dans le même clone — précisément ce que la règle existe pour empêcher.
-     On ATTEND plutôt que de sauter au suivant : l'ordre de la file est ce que l'utilisateur
-     a sous les yeux, le réordonner en silence serait pire qu'un léger retard. La fin de
-     n'importe quel job relance cette tentative. */
-  if (conflictsWithRunning(next).length) return;
-  queue.shift();
-  mainRunning = true;
-  await launch(next, 'main');
+  while (queue.length && active.size < MAX_RUNNING) {
+    const i = prochainLancable();
+    if (i === -1) return;
+    const [entry] = queue.splice(i, 1);
+    // La voie « principale » n'est plus qu'un nom d'onglet : le premier lancé quand rien ne tourne.
+    const lane = mainRunning ? 'extra' : 'main';
+    if (lane === 'main') mainRunning = true;
+    launch(entry, lane);
+  }
+}
+/* ATTENDRE QU'UN JOB SOIT FINI — arrêté, en erreur ou terminé. `launch` retire le job des actifs
+   dans son `finally` : c'est ce qu'on guette. Sert à « stopper et reprendre avec cette consigne »,
+   qui ne peut relancer la session qu'une fois son job sorti du clone. */
+function attendreFin(jobId, { timeoutMs = 120000, pasMs = 100 } = {}) {
+  const id = Number(jobId);
+  return new Promise((resolve) => {
+    const debut = Date.now();
+    const tick = () => {
+      if (!active.has(id) && !queue.some((e) => e.jobId === id)) return resolve(true);
+      if (Date.now() - debut > timeoutMs) return resolve(false);
+      return setTimeout(tick, pasMs).unref();
+    };
+    tick();
+  });
+}
+// Le job (actif ou en file) qui porte cette session de codage, s'il y en a un.
+function jobEnCoursPour(taskId) {
+  const id = Number(taskId);
+  const porte = (e) => e && ['task', 'converge-session', 'reconcile'].includes(e.kind) && Number(e.taskId) === id;
+  for (const [jobId, a] of active.entries()) if (porte(a.entry)) return { jobId, entry: a.entry, enFile: false };
+  const q = queue.find(porte);
+  return q ? { jobId: q.jobId, entry: q, enFile: true } : null;
 }
 /* Sort un job PRÉCIS de la file et le lance à côté de celui qui tourne. Refuse plutôt que
    d'avertir quand les deux touchent le même dépôt : un clone abîmé en cours de review ne
@@ -303,5 +345,5 @@ function isRunning() {
 }
 
 module.exports = {
-  mainRunning, retryJob, runEntry, launch, pump, startNow, startJob, startGitJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
+  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, startNow, startJob, startGitJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
 };

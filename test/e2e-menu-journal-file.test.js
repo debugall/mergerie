@@ -1,12 +1,11 @@
 'use strict';
 /* LA FILE D'ATTENTE ET LES JOBS EN PARALLÈLE, DANS LE PANNEAU DE JOURNAL, DANS UN VRAI NAVIGATEUR.
  *
- * Un job de plus pendant qu'un autre tourne attend son tour. Le panneau le dit (« +1 en
- * attente », bouton « En attente » et son compteur), permet de VOIR la file, d'en sortir un job
- * pour le lancer « en parallèle », ou de le retirer. Deux jobs qui tournent ensemble ont chacun
- * leur onglet et leur volet de journal, et chacun son bouton d'arrêt qui ne touche pas l'autre.
- * Au-delà de trois jobs simultanés, la file dit pourquoi elle ne peut plus en lancer. Et le
- * Stop global annonce qu'il vide la file avant de le faire.
+ * Deux jobs qui ne se touchent pas tournent ENSEMBLE, d'eux-mêmes : chacun son onglet et son
+ * volet de journal, chacun son bouton d'arrêt qui ne touche pas l'autre. Au-delà de trois jobs
+ * simultanés, le suivant attend son tour et la file dit pourquoi (« +1 en attente », bouton
+ * « En attente » et son compteur) ; on peut l'en retirer. Et le Stop global annonce qu'il vide
+ * la file avant de le faire.
  *
  * Les jobs sont des cibles `make` qui attendent un feu vert posé par le test
  * (helpers/journal.js) : ils durent exactement le temps qu'on décide, sur toute machine. Un job
@@ -73,48 +72,19 @@ describe('Panneau de journal — file d’attente et jobs parallèles', { skip: 
 
   /* ------------------------------------------------------------ la file ---- */
 
-  test('un second job attend son tour : bandeau « +1 en attente », bouton « En attente » et son compteur', async () => {
+  test('un second job qui ne touche à rien part tout de suite : deux jobs en cours, chacun son onglet', async () => {
     ids.a = await chantier.lancer('porte-a');
     await attendreStatutServeur(ids.a, 'running');
     ids.b = await chantier.lancer('porte-b');
-    assert.equal(await statut(ids.b), 'queued', 'la voie séquentielle est occupée : le second attend');
+    await attendreStatutServeur(ids.b, 'running');
+    assert.equal(await statut(ids.a), 'running', 'le premier tourne toujours');
     await rafraichir();
     await page.locator('#logPanel').waitFor({ state: 'visible', timeout: ATTENTE });
-    await attendreBandeau(/en cours.*\+1 en attente/);
-    await page.locator('#logQueueBtn').waitFor({ state: 'visible' });
-    assert.equal(await page.locator('#logQueueCount').innerText(), '1');
+    await attendreBandeau(/2 jobs en cours/);
+    await page.locator('#logQueueBtn').waitFor({ state: 'hidden' });
     // Le journal déplié pour la suite : sans lui, les volets ne se voient pas.
     await page.locator('#logToggle').click();
     await page.locator('#logBox').waitFor({ state: 'visible' });
-  });
-
-  test('la file se déplie et dit ce qui attend ; elle et l’Activité ne s’ouvrent jamais ensemble', async () => {
-    await ouvrirFile();
-    const ligne = ligneFile(ids.b);
-    await ligne.waitFor({ timeout: ATTENTE });
-    assert.equal(await page.locator('#logQueue .log-queue-row').count(), 1);
-    assert.equal(await ligne.locator('.tag').innerText(), 'Docker');
-    assert.match(await ligne.innerText(), new RegExp(`#${ids.b}`));
-    assert.equal(await ligne.locator(`[data-jobnow="${ids.b}"]`).isVisible(), true, 'rien ne bloque : on peut le lancer à côté');
-
-    await page.locator('#logHistBtn').click();
-    await page.locator('#logHist').waitFor({ state: 'visible' });
-    await page.locator('#logHistBar').waitFor({ state: 'visible' });
-    await page.locator('#logQueue').waitFor({ state: 'hidden' });
-
-    await page.locator('#logQueueBtn').click();
-    await page.locator('#logQueue').waitFor({ state: 'visible' });
-    await page.locator('#logHist').waitFor({ state: 'hidden' });
-    await page.locator('#logHistBar').waitFor({ state: 'hidden' });
-  });
-
-  /* ----------------------------------------------------- en parallèle ---- */
-
-  test('« Lancer en parallèle » : les deux jobs tournent, chacun son onglet, et la file se vide', async () => {
-    await ligneFile(ids.b).locator(`[data-jobnow="${ids.b}"]`).click();
-    await page.waitForFunction(() => [...document.querySelectorAll('#toasts .toast')].some((t) => /lancé en parallèle/.test(t.textContent)));
-    await attendreStatutServeur(ids.b, 'running');
-    assert.equal(await statut(ids.a), 'running');
 
     await page.locator('#logTabs').waitFor({ state: 'visible', timeout: ATTENTE });
     await onglet(ids.a).waitFor();
@@ -129,9 +99,6 @@ describe('Panneau de journal — file d’attente et jobs parallèles', { skip: 
        on vérifie qu'il y en a un de chaque, sans présumer lequel. */
     const noms = [await onglet(ids.a).innerText(), await onglet(ids.b).innerText()].map((t) => t.split('\n')[0].trim()).sort();
     assert.deepEqual(noms, ['En parallèle', 'Job principal']);
-    await attendreBandeau(/2 jobs en cours/);
-    await page.locator('#logQueueBtn').waitFor({ state: 'hidden' });
-    await page.locator('#logQueue').waitFor({ state: 'hidden' });
     // Le Stop global le dit : il arrête TOUT.
     await page.waitForFunction(() => /Arrêter les 2 jobs/.test(document.querySelector('#logStop').title));
   });
@@ -183,26 +150,37 @@ describe('Panneau de journal — file d’attente et jobs parallèles', { skip: 
   /* ------------------------------------------------ le plafond et le retrait ---- */
 
   test('trois jobs simultanés au plus : le suivant reste en file, et la file dit pourquoi', async () => {
+    // #b est arrêté : #a tourne seul. Deux de plus partent d'eux-mêmes, le quatrième attend.
     for (const c of ['c', 'd']) {
       ids[c] = await chantier.lancer(`porte-${c}`);
-      assert.equal(await statut(ids[c]), 'queued');
-      await rafraichir();
-      await ouvrirFile();
-      const bouton = ligneFile(ids[c]).locator(`[data-jobnow="${ids[c]}"]`);
-      await bouton.waitFor({ timeout: ATTENTE });
-      await bouton.click();
       await attendreStatutServeur(ids[c], 'running');
     }
     ids.e = await chantier.lancer('porte-e');
+    assert.equal(await statut(ids.e), 'queued', 'le plafond est atteint : il attend');
     await rafraichir();
+    await attendreBandeau(/en cours.*\+1 en attente/);
     await ouvrirFile();
+    assert.equal(await page.locator('#logQueueCount').innerText(), '1');
     const ligne = ligneFile(ids.e);
     await ligne.waitFor({ timeout: ATTENTE });
+    assert.equal(await page.locator('#logQueue .log-queue-row').count(), 1);
+    assert.equal(await ligne.locator('.tag').innerText(), 'Docker');
+    assert.match(await ligne.innerText(), new RegExp(`#${ids.e}`));
     await page.waitForFunction((j) => {
       const r = [...document.querySelectorAll('#logQueue .log-queue-row')].find((x) => x.querySelector(`[data-jobcancel="${j}"]`));
       return r && /Maximum de jobs simultanés atteint/.test(r.textContent);
     }, ids.e, { timeout: ATTENTE });
     assert.equal(await ligne.locator('[data-jobnow]').count(), 0, 'pas de bouton qui répondrait par un refus');
+
+    // La file et l'Activité ne s'ouvrent jamais ensemble.
+    await page.locator('#logHistBtn').click();
+    await page.locator('#logHist').waitFor({ state: 'visible' });
+    await page.locator('#logHistBar').waitFor({ state: 'visible' });
+    await page.locator('#logQueue').waitFor({ state: 'hidden' });
+    await page.locator('#logQueueBtn').click();
+    await page.locator('#logQueue').waitFor({ state: 'visible' });
+    await page.locator('#logHist').waitFor({ state: 'hidden' });
+    await page.locator('#logHistBar').waitFor({ state: 'hidden' });
   });
 
   test('retirer un job de la file : confirmation, puis il ne s’exécutera jamais', async () => {

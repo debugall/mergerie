@@ -119,10 +119,19 @@ app.post('/api/jobs/:id/retry', wrap((req, res) => {
 app.post('/api/jobs/:id/start-now', wrap((req, res) => {
   res.json({ ok: true, job: jobs.startNow(Number(req.params.id)) });
 }));
+/* L'ANNEXE D'UNE LIGNE : le texte complet que la ligne a tronqué, ou le diff de l'outil qu'elle
+   résume. Lue au clic sur « … voir », jamais par le polling — c'est ce qui garde le journal léger. */
+app.get('/api/jobs/:id/log/:line/annexe', wrap((req, res) => {
+  const row = db.prepare('SELECT id, text, annexe FROM job_log WHERE job_id = ? AND id = ?').get(Number(req.params.id), Number(req.params.line));
+  if (!row || !row.annexe) { res.status(404).json({ error: t('err.job-log-annexe-absente') }); return; }
+  let annexe = null;
+  try { annexe = JSON.parse(row.annexe); } catch { annexe = null; }
+  res.json({ line_id: row.id, text: row.text, annexe });
+}));
 // Charge utile commune aux deux routes de log : le job, ses compteurs, ses lignes.
 function jobLogPayload(job, after) {
   const lines = db.prepare(
-    'SELECT id, mr_id, text, ts FROM job_log WHERE job_id = ? AND id > ? ORDER BY id LIMIT 3000',
+    'SELECT id, mr_id, text, ts, (annexe IS NOT NULL) AS has_annexe FROM job_log WHERE job_id = ? AND id > ? ORDER BY id LIMIT 3000',
   ).all(job.id, after);
   return {
     job_id: job.id,

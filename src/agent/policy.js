@@ -362,7 +362,7 @@ function argvCopilot({ extra, kind, bin }) {
  * @returns {{ extra: string[], args: string[], lecture: boolean, note: string|null, mode: string }}
  */
 function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDirs = [], allowedToolsProfil = [], cwd }) {
-  if (!modeSecurise()) return argvYolo({ extra, kind, addDirs });
+  if (!modeSecurise()) return argvYolo({ extra, kind, addDirs, backend });
   if (backend === 'copilot') return argvCopilot({ extra, kind, bin });
   if (backend !== 'claude') {
     /* codex, gemini, un CLI inconnu : c'est le backend qui dit comment se borne sa lecture et
@@ -377,9 +377,13 @@ function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDi
 /* LE MODE YOLO : l'argv est rendu tel quel — `extra` (AGENT_ARGS) intact, mode large compris,
    aucune option ajoutée hormis les dossiers liés qu'une lecture doit voir. `mode: 'yolo'` est
    l'échappatoire NOMMÉE que `npm run check` reconnaît, comme `mode: 'large'`. */
-function argvYolo({ extra, kind, addDirs }) {
+function argvYolo({ extra, kind, addDirs, backend }) {
   const args = [];
   for (const d of addDirs || []) args.push('--add-dir', String(d));
+  /* « PLANIFIER D'ABORD » N'EST PAS UNE RESTRICTION DE SÉCURITÉ, c'est ce que la session demande :
+     un plan, pas du code. Le mode plan de Claude est ce qui le garantit, yolo ou non ; un autre
+     backend s'en remet à la consigne (et la passe suivante repart d'un clone propre). */
+  if (kind === 'plan' && backend === 'claude') args.push('--permission-mode', 'plan');
   return { extra: [...(extra || [])], args, lecture: saveurDe(kind) === 'lecture', note: null, mode: 'yolo' };
 }
 

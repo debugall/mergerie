@@ -40,6 +40,45 @@ app.post('/api/tasks/:id/followup', wrap((req, res) => {
   res.json(envoyerSuivi('task', tache, () => jobs.startTaskJob(tache.id, 'followup',
     { instruction, ...(targetIds ? { targetIds } : {}), ...(imageIds.length ? { imageIds } : {}) })));
 }));
+/* « APPROUVER ET CODER ». La session a rendu son plan (cibles `planned`) ; on relance la MÊME
+   session d'agent pour le réaliser — avec, au besoin, une remarque avant de coder. Les cibles
+   non planifiées sont ignorées : rien à approuver sur un projet qui a déjà codé. */
+app.post('/api/tasks/:id/approve-plan', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const voulues = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  const planifiees = db.prepare("SELECT id FROM task_target WHERE task_id = ? AND status = 'planned'").all(tache.id)
+    .map((x) => x.id).filter((id) => !voulues || voulues.includes(id));
+  if (!planifiees.length) { const e = new Error(t('err.plan-rien-a-approuver')); e.code = 'BUSY'; throw e; }
+  const instruction = String((req.body && req.body.instruction) || '').trim();
+  const encore = db.prepare(`SELECT COUNT(*) c FROM task_target WHERE task_id = ? AND status = 'planned' AND id NOT IN (${planifiees.map(() => '?').join(',')})`).get(tache.id, ...planifiees).c;
+  if (!encore) notes.fermerTodoAuto('session_question', tache.id);
+  res.json(jobs.startTaskJob(tache.id, 'approve-plan', { targetIds: planifiees, ...(instruction ? { instruction } : {}) }));
+}));
+/* « STOPPER ET REPRENDRE AVEC CETTE CONSIGNE ». Le seul pilotage à chaud d'une session qui tourne
+   était Stop. Ici : on arrête son job, on attend qu'il ait rendu le clone, et on envoie la consigne
+   comme un suivi — dans la même session d'agent quand son handle est connu (Claude le donne dès le
+   lancement), sinon dans une session neuve qui reçoit la tâche et la transcription. La route répond
+   dès l'arrêt demandé : la reprise part toute seule, et se lit sur la carte. */
+app.post('/api/tasks/:id/stop-resume', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const instruction = String((req.body && req.body.instruction) || '').trim();
+  if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  const enCours = jobs.jobEnCoursPour(tache.id);
+  if (!enCours) { const e = new Error(t('err.task-pas-en-cours')); e.code = 'BUSY'; throw e; }
+  const targetIds = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  jobs.stopJob(enCours.jobId);
+  // Le brouillon garde la consigne : si la file refusait la reprise, rien ne serait perdu.
+  poserSuivi('task', tache.id, instruction, 0, null);
+  jobs.attendreFin(enCours.jobId).then(() => {
+    try {
+      jobs.startTaskJob(tache.id, 'followup', { instruction, ...(targetIds ? { targetIds } : {}), reprise: true });
+      poserSuivi('task', tache.id, '', 0, null);
+    } catch { /* la file a refusé : le suivi reste en brouillon sur la carte */ }
+  });
+  res.json({ ok: true, stopped: enCours.jobId, queued: enCours.enFile });
+}));
 /* LE SUIVI EN ATTENTE. Écrit pendant que la session tourne, relisible et modifiable tant
    qu'il n'est pas parti, envoyé quand on le décide — jamais par la machine. Une seule route
    pour poser, corriger et effacer : un texte vide EST la suppression. */

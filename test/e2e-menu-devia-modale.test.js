@@ -171,6 +171,8 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
         assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), false, `${kind} : l’avancé démarre replié`);
         await deplierAvance();
       }
+      // « Planifier d'abord » n'a de sens qu'en codage sur dépôt.
+      assert.equal(await page.locator('#taskPlanFirstRow').isVisible(), kind === 'code', `${kind} : planifier d’abord`);
       for (let i = 0; i < BLOCS.length; i += 1) {
         assert.equal(await page.locator(BLOCS[i]).isVisible(), attendu[i], `${kind} : ${BLOCS[i]} ${attendu[i] ? 'visible' : 'masqué'}`);
       }
@@ -178,7 +180,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
       assert.equal(await page.locator('#taskSubmitOnly').isVisible(), true);
       assert.equal((await page.locator('#taskSubmit').textContent()).trim(), await tr('task.btn.create-run'));
       if (kind === 'code') {
-        for (const r of ['#taskConvergeRow', '#taskReviewAfterRow', '#taskNotifyJiraRow']) {
+        for (const r of ['#taskConvergeRow', '#taskReviewAfterRow', '#taskNotifyJiraRow', '#taskPlanFirstRow']) {
           assert.equal(await page.locator(r).isVisible(), true, `${r} en codage`);
         }
         assert.match(await page.locator('#taskConvergeLbl').textContent(), /8/, 'la case annonce le seuil réglé');
@@ -217,7 +219,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
 
     await deplierAvance();
     await page.locator('#taskForm [name="commit_message"]').fill('feat: cache du panier');
-    for (const c of ['ask_questions', 'review_after', 'notify_jira', 'auto_push']) {
+    for (const c of ['ask_questions', 'review_after', 'notify_jira', 'auto_push', 'plan_first']) {
       await page.locator(`#taskForm [name="${c}"]`).check();
     }
 
@@ -258,6 +260,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.equal(t.review_after, 1);
     assert.equal(t.notify_jira, 1);
     assert.equal(t.auto_push, 1);
+    assert.equal(t.plan_first, 1, '« planifier d’abord » arrive en base');
     assert.deepEqual(t.targets.map((x) => [x.repo_id, x.branch]), [[repoApp, 'ai/ajout-du-cache'], [repoLib, 'feat/cache-lib']]);
     assert.equal(t.targets[0].base_branch, 'develop', 'la branche de départ choisie dans le combo');
     assert.equal(body.images.length, 1, 'seule la pièce gardée est jointe');
@@ -602,7 +605,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.equal(await page.locator('#taskForm [name="commit_message"]').inputValue(), 'feat: cache du panier');
     // Un message de commit relu se VOIT : l'avancé s'est déplié tout seul à l'édition.
     assert.equal(await page.locator('#taskAdvanced').evaluate((e) => e.open), true, 'l’avancé se déplie quand il porte une valeur');
-    for (const c of ['ask_questions', 'review_after', 'notify_jira', 'auto_push']) {
+    for (const c of ['ask_questions', 'review_after', 'notify_jira', 'auto_push', 'plan_first']) {
       assert.equal(await page.locator(`#taskForm [name="${c}"]`).isChecked(), true, `${c} relu`);
     }
     assert.deepEqual(await page.$$eval('#targetRows .target-row .t-branch', (els) => els.map((e) => e.value)),

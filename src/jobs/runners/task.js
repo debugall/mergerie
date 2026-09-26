@@ -17,7 +17,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   const portee = (opts.targetIds && opts.targetIds.length) ? ` · ${opts.targetIds.length} projet(s) ciblé(s)` : '';
   logLine(jobId, null, `=== Session #${jobId} (${action})${portee} : ${task ? (task.kind === 'explore' ? 'exploration' : 'codage') : '?'} ===`);
   if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
-  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
   try {
     /* RÉ-APPROBATION AU DÉMARRAGE DU JOB, PAS SEULEMENT AU LANCEMENT (plan_secure.md, lot C,
@@ -34,6 +34,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     else if (action === 'push-all') await taskrunner.pushTargets(task, opts.targetIds, onLog);
     else if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
     else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
+    else if (action === 'approve-plan') await taskrunner.runTaskApprovePlan(task, opts.targetIds, opts.instruction, onLog);
     else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
     else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     setJob(jobId, { status: 'done', done_count: 1, current_mr_id: null, finished_at: new Date().toISOString(), message: '' });
@@ -52,7 +53,12 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     if (after && after.status === 'needs_input') {
       notify.push('needs_input', { task_id: task.id });
       todoQuestion(task.id);
-    } else if (action === 'run' || action === 'answer' || (action === 'followup' && opts.autoSuivi)) {
+    } else if (after && after.status === 'planned') {
+      /* UN PLAN ATTEND SON APPROBATION : la même attente qu'une question — rien ne repartira
+         seul. La notification le dit avec les mots du plan, la todo est celle d'une question. */
+      notify.push('needs_input', { task_id: task.id, plan: 1 });
+      todoQuestion(task.id);
+    } else if (action === 'run' || action === 'answer' || action === 'approve-plan' || (action === 'followup' && opts.autoSuivi)) {
       /* Un suivi armé part MAINTENANT, et repasse ici en finissant : la notification de fin et
          la vérification attendent donc ce second tour. Annoncer « terminée » puis relancer
          l'agent dans la seconde serait mentir, et un verdict rendu sur du code qui va encore

@@ -165,7 +165,7 @@ function lancerLotReview(mrIds, { kind, opts = {}, etiquette }) {
   const retenues = plafond ? mrIds.slice(0, plafond) : mrIds;
   bilan.plafonnees = mrIds.length - retenues.length;
   try {
-    jobs.startJob(kind, retenues, opts);
+    jobs.startJob(kind, retenues, { ...opts, auto: true });   // un job à la main passe devant
     bilan.lancees = retenues.length;
   } catch (e) {
     /* Best-effort, comme pour les vérifications : la découverte a fait son travail — trouver

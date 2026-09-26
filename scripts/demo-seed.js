@@ -690,6 +690,27 @@ for (const [projet, statut, err] of MULTI) {
   );
 }
 
+/* Session « PLANIFIER D'ABORD » dont le plan attend son approbation : la ligne du projet montre
+   « Lire le plan », la remarque facultative et « Approuver et coder ». */
+const t6 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, plan_first, label, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Ajoute un cache LRU de 5 minutes sur GET /catalog/products, invalidé à chaque écriture du catalogue.',
+    'ai/catalog-cache', 'main', 'planned', 'code', 'Cache du catalogue', at(0.2), at(0.2));
+{
+  const tg = db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
+    .run(t6.lastInsertRowid, repoIds['groupe/api-core'], 'ai/catalog-cache', 'main', 'planned', at(0.2));
+  const dir = ensureDir(path.join(TASKS_DIR, String(t6.lastInsertRowid), String(tg.lastInsertRowid)));
+  const f = path.join(dir, 'output-v1.md');
+  fs.writeFileSync(f, ['# Plan — cache du catalogue', '',
+    '1. `src/catalog/service.js` : envelopper `listProducts()` dans un cache LRU (clé = filtres, TTL 5 min) via `lru-cache`, déjà en dépendance.',
+    '2. `src/catalog/writes.js` : invalider le cache dans `createProduct`, `updateProduct`, `deleteProduct` — un seul point, `cache.clear()`.',
+    '3. `test/catalog.test.js` : deux tests — une lecture répétée ne touche la base qu’une fois ; une écriture rend la lecture suivante fraîche.', '',
+    '**Risques** : les filtres non normalisés (ordre des clés) feraient deux entrées pour la même requête — je normalise la clé en JSON trié.', '',
+    '**Question ouverte** : faut-il aussi mettre en cache `GET /catalog/products/:id` ? Je ne le fais pas sans ton accord.'].join('\n'), 'utf8');
+  db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,1,'plan',?,?,?)`)
+    .run(t6.lastInsertRowid, tg.lastInsertRowid, 'Rédige un plan d’implémentation pour : cache LRU sur le catalogue.', f, at(0.2));
+  db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?').run(f, tg.lastInsertRowid);
+}
+
 /* Session RANGÉE + prompt LONG : les deux nouveautés de la liste réunies sur une seule fiche.
    Elle n'apparaît qu'en cochant « afficher les sessions masquées », et son prompt dépasse
    trois lignes, donc « Voir plus » s'y affiche. */

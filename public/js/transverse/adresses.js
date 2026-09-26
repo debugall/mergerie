@@ -133,7 +133,8 @@ function handleNotifEvent(e, p) {
       break;
     case 'needs_input':
       if (p.needs_input) {
-        showNotif(tr('notif.needs-input.title'), tr('notif.needs-input.body'),
+        // Un plan rendu est la même attente qu'une question : même réglage, autres mots.
+        showNotif(tr(e.plan ? 'notif.plan-ready.title' : 'notif.needs-input.title'), tr(e.plan ? 'notif.plan-ready.body' : 'notif.needs-input.body'),
           () => (e.task_id ? ouvrirSession(e.task_id, 'code')
             : (e.local_task_id ? ouvrirSession(e.local_task_id, 'local') : navTab('task'))));
       }

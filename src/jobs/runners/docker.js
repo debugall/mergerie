@@ -9,7 +9,7 @@ const { enregistrer, logLine, setJob } = require('../file');
 
 async function runDockerJob(jobId, payload) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
-  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     if (payload.op === 'compose') {
       if (payload.action === 'down') await docker.runDown(payload.dir, onLog);

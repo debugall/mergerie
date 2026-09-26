@@ -116,6 +116,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'auto_push',
       'taskImages',                    // une possibilité, pas une étape
       'taskAskQuestionsRow',           // COMMENT : l'IA peut demander, hors de l'accordéon
+      'taskPlanFirstRow',              // …et planifier d'abord : même famille, codage seulement
       'taskScheduleRow',               // QUAND : lancer plus tard, juste au-dessus du bouton qu'elle renomme
       'taskAdvanced',                  // message de commit, session d'agent, skills — replié
     ]);

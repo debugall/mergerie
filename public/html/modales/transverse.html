@@ -41,6 +41,18 @@
     </div>
 </div>
 
+<!-- L'annexe d'une ligne de journal : texte complet d'un agent, diff d'un outil Edit, fichier
+     écrit. Ouverte par « … voir », vide tant qu'on ne clique pas. -->
+<div id="logAnnexeModal" class="modal" hidden>
+    <div class="modal-box modal-lg">
+        <h3 id="logAnnexeTitle"></h3>
+        <div id="logAnnexeBody" class="log-annexe-body"></div>
+        <div class="modal-actions">
+            <button id="logAnnexeClose" type="button" class="btn" data-i18n="ui.close">Fermer</button>
+        </div>
+    </div>
+</div>
+
 <!-- Modale de confirmation générique : remplace les confirm() natifs -->
 <div id="confirmModal" class="modal" hidden>
     <div class="modal-box modal-confirm">

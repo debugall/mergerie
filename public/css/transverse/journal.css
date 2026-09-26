@@ -86,4 +86,11 @@
 .logpane .cmd { color: var(--log-cmd); }
 .logpane .err { color: var(--diff-del-text); }
 .logpane .hdr { color: var(--hunk); font-weight: 600; }
-
+/* « … voir » : le bouton d'une ligne qui a une annexe — discret, dans la ligne, jamais une ligne de plus. */
+.log-voir { margin-left: 6px; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--accent); font: inherit; font-size: 11px; cursor: pointer; }
+.log-voir:hover { background: var(--panel); }
+.log-annexe-body { max-height: 65vh; overflow: auto; }
+.log-annexe-body pre { margin: 0; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; background: var(--code-bg); color: var(--code-text); border-radius: var(--radius); }
+.annexe-diff .del { display: block; background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.annexe-diff .add { display: block; background: color-mix(in srgb, var(--green) 14%, transparent); color: var(--green); }
+.annexe-diff .ctx { display: block; color: var(--muted); }

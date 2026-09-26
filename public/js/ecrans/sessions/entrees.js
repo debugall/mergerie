@@ -246,6 +246,7 @@ async function openTaskEdit(id) {
     if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
+  if (f.plan_first) f.plan_first.checked = !!t.plan_first;
     poserDateProgrammee(f, t.scheduled_at);
     await majVerificateursSession(t.verifier_id || '', { autoPick: false });
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
@@ -315,6 +316,7 @@ async function dupliquerTask(id) {
   if (f.ask_questions) f.ask_questions.checked = !!t.ask_questions;
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
+  if (f.plan_first) f.plan_first.checked = !!t.plan_first;
   /* « AUCUN » SE COPIE AUSSI. La duplication reprend le vérificateur de l'original — son
      commentaire le dit — donc un « aucun » délibéré ne doit pas se faire remplacer par le
      vérificateur unique qui couvre les dépôts : même raison qu'à l'édition. */

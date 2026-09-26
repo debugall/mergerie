@@ -7,7 +7,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, makeRemoteRepo, waitForJobs, git, pushChange } = require('./helpers/app');
+const { startApp, makeRemoteRepo, waitForJobs, git, pushChange, attendreServeur } = require('./helpers/app');
 
 const PNG = 'data:image/png;base64,aGVsbG8=';
 
@@ -1059,6 +1059,84 @@ describe('Sessions de dev de bout en bout', () => {
 
     // Répondre à un projet qui n'attend rien → refusé.
     assert.equal((await app.api('POST', `/api/tasks/${taskId}/targets/${task.targets[0].id}/answer`, { answers: { q1: 'x' } })).status, 400);
+  });
+
+  /* « PLANIFIER D'ABORD » : la première passe lit et rend un plan — rien n'est commité, la cible
+     attend `planned` — puis « Approuver et coder » reprend la même session et code. Relancer une
+     session planifiée replanifie. En dry-run, le plan est simulé, comme les questions. */
+  test('planifier d’abord : plan rendu sans commit, puis « approuver et coder » code dans la même session', async () => {
+    const creation = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un cache sur le panier', plan_first: true, commit_message: 'PROJ-9 cache',
+      targets: [{ repo_id: repoId, branch: 'feat/plan' }],
+    });
+    assert.equal(creation.status, 200);
+    assert.equal(creation.body.plan_first, 1, 'l’option est persistée');
+    const taskId = creation.body.id;
+    // Rien à approuver tant que le plan n'est pas rendu.
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/approve-plan`, {})).status, 409);
+
+    await app.api('POST', `/api/tasks/${taskId}/run`);
+    await waitForJobs(app.api);
+    let task = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(task.status, 'planned', `la session attend l’approbation (${task.last_error || ''})`);
+    const tg = task.targets[0];
+    assert.equal(tg.status, 'planned');
+    assert.ok(!tg.commit_sha, 'aucun commit : la passe de plan ne code pas');
+    assert.equal(tg.has_output, 1, 'le plan se lit comme un retour de l’IA');
+    const passes = (await app.api('GET', `/api/tasks/${taskId}/targets/${tg.id}/passes`)).body;
+    assert.equal(passes.passes[passes.passes.length - 1].kind, 'plan', 'l’itération est marquée « plan »');
+    assert.match(passes.current.text || passes.current.md || JSON.stringify(passes.current), /Plan/);
+
+    // Approuver, avec une remarque : la session reprend et code.
+    const ok = await app.api('POST', `/api/tasks/${taskId}/approve-plan`, { instruction: 'garde l’API telle quelle' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    await waitForJobs(app.api);
+    task = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(task.status, 'committed', `après approbation, la session a codé (${task.last_error || ''})`);
+    assert.ok(task.targets[0].commit_sha, 'un commit existe');
+    const apres = (await app.api('GET', `/api/tasks/${taskId}/targets/${tg.id}/passes`)).body;
+    assert.equal(apres.passes.length, 2, 'deux itérations : le plan, puis le code');
+    assert.match(apres.passes[1].prompt, /approuvé/, 'la passe de code part de l’approbation');
+    assert.match(apres.passes[1].prompt, /garde l’API telle quelle/, '…et porte la remarque');
+    // Plus rien à approuver.
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/approve-plan`, {})).status, 409);
+    // La case se décoche par la même route que les autres.
+    assert.equal((await app.api('PUT', `/api/tasks/${taskId}`, { plan_first: false })).body.plan_first, 0);
+  });
+
+  test('une exploration ne planifie pas : la case est ignorée', async () => {
+    const r = await app.api('POST', '/api/tasks', { kind: 'explore', prompt: 'que fait ce dépôt ?', plan_first: true, targets: [{ repo_id: repoId }] });
+    assert.equal(r.body.plan_first, 0);
+  });
+
+  /* « STOPPER ET REPRENDRE AVEC CETTE CONSIGNE ». En dry-run un run finit en une seconde : la
+     route peut trouver la session déjà finie (409, « pas en cours ») — c'est un état légitime
+     qu'on accepte. Si elle l'attrape, le suivi part de lui-même une fois le job arrêté. */
+  test('stopper et reprendre : refuse une session qui ne tourne pas, sinon relance un suivi avec la consigne', async () => {
+    const creation = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un cache sur le panier', commit_message: 'PROJ-10 cache',
+      targets: [{ repo_id: repoId, branch: 'feat/stop-resume' }],
+    });
+    const taskId = creation.body.id;
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/stop-resume`, { instruction: 'x' })).status, 409, 'rien ne tourne');
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/stop-resume`, {})).status, 400, 'consigne requise');
+    await app.api('POST', `/api/tasks/${taskId}/run`);
+    const r = await app.api('POST', `/api/tasks/${taskId}/stop-resume`, { instruction: 'et mets un test' });
+    assert.ok([200, 409].includes(r.status), `stop-resume → ${r.status}`);
+    await waitForJobs(app.api);
+    if (r.status === 200) {
+      // Le suivi est parti (ou attend en brouillon si la file l'a refusé) : la consigne n'est pas perdue.
+      await attendreServeur(async () => {
+        const jobsListe = (await app.api('GET', '/api/jobs/queue')).body;
+        const t2 = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+        return (!jobsListe.running.length && !jobsListe.queued.length) && (t2.followup_draft === 'et mets un test' || t2.status !== 'running');
+      }, 'la reprise est passée', 60000);
+      await waitForJobs(app.api);
+      const t2 = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+      const passes = (await app.api('GET', `/api/tasks/${taskId}/targets/${t2.targets[0].id}/passes`)).body.passes;
+      assert.ok(passes.some((x) => x.kind === 'followup' && /et mets un test/.test(x.prompt)) || t2.followup_draft === 'et mets un test',
+        'la consigne est partie en suivi, ou attend en brouillon');
+    }
   });
 
   test('toggle désactivé : aucune question n’est posée', async () => {

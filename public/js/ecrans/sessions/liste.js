@@ -43,6 +43,7 @@ const TASK_STATUS = {
   pushed: { label: tr('task.status.pushed'), cls: 'done' },
   done: { label: tr('task.status.done'), cls: 'done' },
   needs_input: { label: tr('task.status.needs-input'), cls: 'needs-input' },
+  planned: { label: tr('task.status.planned'), cls: 'needs-input' },
   error: { label: tr('task.status.error'), cls: 'stale' },
 };
 const fmtDateTime = (iso) => {

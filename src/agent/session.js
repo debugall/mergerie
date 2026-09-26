@@ -97,6 +97,7 @@ function toolHint(input) {
 /* Deux appels d'outil méritent mieux que leur nom brut : `Skill` (quel skill a servi — la
    question « l'agent a-t-il vraiment utilisé le skill ? » se posait à chaque run) et `Agent`
    (quel sous-agent, sur quoi). Le reste garde `» <outil> <indice>`. */
+const nbLignes = (s) => (s == null || s === '' ? 0 : String(s).split('\n').length);
 function ligneOutil(c) {
   const input = c.input || {};
   if (c.name === 'Skill' && input.skill) return `» skill ${input.skill}`;
@@ -104,8 +105,34 @@ function ligneOutil(c) {
     const p = String(input.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 60);
     return `» sous-agent ${input.subagent_type}${p ? ` — ${p}` : ''}`;
   }
+  /* Une écriture dit sa taille : « Edit src/x.js (+12 −3) » se lit d'un coup d'œil, et le diff
+     lui-même est dans l'annexe de la ligne (`annexeOutil`), ouvert au clic. */
+  if (c.name === 'Edit' && (input.old_string != null || input.new_string != null)) {
+    return `» Edit ${input.file_path || ''} (+${nbLignes(input.new_string)} −${nbLignes(input.old_string)})`;
+  }
+  if (c.name === 'MultiEdit' && Array.isArray(input.edits)) {
+    const plus = input.edits.reduce((n, e) => n + nbLignes(e && e.new_string), 0);
+    const moins = input.edits.reduce((n, e) => n + nbLignes(e && e.old_string), 0);
+    return `» MultiEdit ${input.file_path || ''} (${input.edits.length} × · +${plus} −${moins})`;
+  }
+  if (c.name === 'Write' && input.content != null) return `» Write ${input.file_path || ''} (${nbLignes(input.content)} lignes)`;
   return `» ${c.name}${toolHint(input)}`;
 }
+/* CE QUE LA LIGNE NE MONTRE PAS, et que « … voir » ouvre : le diff d'un Edit, le contenu d'un
+   Write. `null` pour tout le reste — une lecture, un Bash, une recherche n'ont rien à annexer. */
+function annexeOutil(c) {
+  const input = c.input || {};
+  if (c.name === 'Edit' && (input.old_string != null || input.new_string != null)) {
+    return { kind: 'edit', file: input.file_path || '', edits: [{ old: String(input.old_string || ''), new: String(input.new_string || '') }] };
+  }
+  if (c.name === 'MultiEdit' && Array.isArray(input.edits)) {
+    return { kind: 'edit', file: input.file_path || '', edits: input.edits.map((e) => ({ old: String((e && e.old_string) || ''), new: String((e && e.new_string) || '') })) };
+  }
+  if (c.name === 'Write' && input.content != null) return { kind: 'write', file: input.file_path || '', content: String(input.content) };
+  return null;
+}
+// Le texte d'un agent est tronqué DANS le journal ; l'annexe garde l'entier.
+const TEXTE_MAX = 600;
 
 // Claude en `--output-format stream-json` émet des ÉVÉNEMENTS NDJSON en DIRECT (contrairement
 // à `json` qui ne rend qu'à la fin). On les streame en clair dans le log (texte de l'assistant
@@ -131,11 +158,20 @@ function runClaudeStream(args, cwd, onLog) {
       /* Un événement émis DANS un sous-agent porte `parent_tool_use_id`. On l'indente : sans
          ça, le journal d'un agent à sous-agents mélange à plat ce que dit le principal et ce que
          disent ses cinq chercheurs, et on ne sait plus qui parle. */
-      const dire = ev.parent_tool_use_id ? (x) => onLog(`  ${x}`) : onLog;
+      const dire = ev.parent_tool_use_id ? (x, a) => onLog(`  ${x}`, a) : onLog;
       if (ev.type === 'assistant' && ev.message && Array.isArray(ev.message.content)) {
         for (const c of ev.message.content) {
-          if (c.type === 'text' && String(c.text || '').trim()) { lastText = c.text; dire(String(c.text).trim().slice(0, 600)); }
-          else if (c.type === 'tool_use') dire(ligneOutil(c));
+          if (c.type === 'text' && String(c.text || '').trim()) {
+            lastText = c.text;
+            const txt = String(c.text).trim();
+            /* Tronqué sur la ligne, entier dans l'annexe : le journal reste léger, et rien n'est perdu. */
+            if (txt.length > TEXTE_MAX) dire(`${txt.slice(0, TEXTE_MAX)} …`, { kind: 'text', text: txt });
+            else dire(txt);
+          } else if (c.type === 'thinking' && String(c.thinking || '').trim()) {
+            /* La réflexion de l'agent, jusqu'ici ignorée : une ligne courte, l'entier à côté. */
+            const th = String(c.thinking).trim().replace(/\s+/g, ' ');
+            dire(`∴ ${th.slice(0, 160)}${th.length > 160 ? ' …' : ''}`, th.length > 160 ? { kind: 'text', text: String(c.thinking).trim() } : undefined);
+          } else if (c.type === 'tool_use') dire(ligneOutil(c), annexeOutil(c) || undefined);
         }
       } else if (ev.type === 'result') {
         result = (typeof ev.result === 'string') ? ev.result : lastText;
@@ -244,7 +280,7 @@ function enrichCopilotError(e, bootstrap, home) {
  * le mode large de `COPILOT_ARGS` ; une saveur inconnue garde l'écriture. `addDirs` : dossiers
  * hors du cwd que la lecture doit pouvoir ouvrir.
  */
-async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = false, onLog = () => {}, options, saveur, addDirs }) {
+async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = false, onLog = () => {}, options, saveur, addDirs, onHandle }) {
   const backend = backendName();
   if (!reprenable()) throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN, backend: backendCourant().label }));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
@@ -267,6 +303,8 @@ async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = fal
     const id = handle || crypto.randomUUID();
     // stream-json (+ --verbose, requis en -p) : événements en DIRECT → progression visible.
     const sess = resume ? ['--resume', id] : ['--session-id', id];
+    // Le handle est connu AVANT de lancer : qui veut reprendre une session arrêtée en route l'a.
+    if (!resume && typeof onHandle === 'function') { try { onHandle(id); } catch { /* best-effort */ } }
     const bornes = agentpolicy.argsMaxTurns(backend, [...EXTRA, ...extra.args]);
     const args = [...EXTRA, ...extra.args, ...bornes, ...sess, '--output-format', 'stream-json', '--verbose', '-p', prompt];
     const out = await runClaudeStream(args, cwd, onLog);
@@ -339,4 +377,4 @@ function resumeCommand(backend, handle, cwd, options) {
   return require('./backends').pour(backend).resumeCommand({ bin, suffixe: extra, handle, cd, shQuote });
 }
 
-module.exports = { backendName, reprenable, backendCourant, argvSaveur, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT };
+module.exports = { backendName, reprenable, backendCourant, argvSaveur, runInSession, resumeCommand, enrichCopilotError, SESSIONS_ROOT, ligneOutil, annexeOutil };

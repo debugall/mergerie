@@ -51,11 +51,22 @@ function setJob(id, patch) {
   db.prepare(`UPDATE job SET ${cols} WHERE id = @id`).run({ ...patch, id });
 }
 // Ajoute une ligne au log du job (persistée, pollée par l'UI en temps réel).
-const insertLog = db.prepare('INSERT INTO job_log (job_id, mr_id, ts, text) VALUES (?,?,?,?)');
-function logLine(jobId, mrId, text) {
+const insertLog = db.prepare('INSERT INTO job_log (job_id, mr_id, ts, text, annexe) VALUES (?,?,?,?,?)');
+/* L'ANNEXE : ce que la ligne ne montre pas — le texte complet d'un agent, le diff d'un outil
+   Edit/Write. JSON, plafonné (un `Write` de 3 Mo n'a rien à faire en base), lu par « … voir »
+   dans le journal et jamais par le polling. Rend l'id de la ligne. */
+const ANNEXE_MAX = 200000;
+function logLine(jobId, mrId, text, annexe = null) {
   // Même raison que pour les logs Docker : la sortie d'un agent ou d'un git peut contenir
   // des séquences de couleur, et le panneau de journal n'est pas un terminal.
-  insertLog.run(jobId, mrId, new Date().toISOString(), stripAnsi(text).slice(0, 4000));
+  let json = null;
+  if (annexe && typeof annexe === 'object') {
+    try {
+      json = JSON.stringify(annexe);
+      if (json.length > ANNEXE_MAX) json = JSON.stringify({ kind: annexe.kind, file: annexe.file, tronque: true, text: String(annexe.text || '').slice(0, ANNEXE_MAX / 2) });
+    } catch { json = null; }
+  }
+  return insertLog.run(jobId, mrId, new Date().toISOString(), stripAnsi(text).slice(0, 4000), json).lastInsertRowid;
 }
 // Sélectionne les MR à traiter pour un job 'review' : toutes celles en to_review.
 function mrsToReview() {

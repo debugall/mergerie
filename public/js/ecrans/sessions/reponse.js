@@ -104,7 +104,7 @@ function targetLine(t, tg) {
   /* Lancer UN projet d'une session multi-dépôts. Absent quand le projet est déjà en cours ou en
      attente de réponses : relancer par-dessus perdrait la question posée. Le bouton ne s'affiche
      que sur une session à plusieurs projets — sur un seul, il ferait doublon avec « Relancer ». */
-  const runTarget = (t.targets || []).length > 1 && !['running', 'needs_input'].includes(tg.status);
+  const runTarget = (t.targets || []).length > 1 && !['running', 'needs_input', 'planned'].includes(tg.status);
   /* Corriger CE projet. Une remarque porte presque toujours sur un dépôt précis : l'envoyer à
      toute la session coûtait un appel IA par dépôt et faisait repasser l'agent sur du code
      qu'on ne voulait plus voir toucher. Comme « Lancer », le bouton n'apparaît qu'à partir de
@@ -185,7 +185,17 @@ function targetLine(t, tg) {
   })()}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
-  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}`;
+  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;
+}
+
+/* LE PLAN À APPROUVER. La passe de lecture a rendu un plan (« Retour de l'IA » l'ouvre) ; ici on
+   ajoute une remarque si l'on veut, et « Approuver et coder » reprend la même session d'agent. */
+function planForm(t, tg) {
+  return `<div class="mr-create followup plan-approve" data-planform="${tg.id}">
+    <button type="button" class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('task.btn.read-plan'))}</button>
+    <textarea class="plan-remark" placeholder="${esc(tr('task.plan.remark-ph'))}"></textarea>
+    <button type="button" class="btn btn-primary" data-tgplanok="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.approve-plan'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('task.btn.approve-plan'))}</button>
+  </div>`;
 }
 
 // Formulaire de réponses aux questions de l'agent (ask → stop → resume). Radio quand
@@ -415,6 +425,25 @@ function wireTaskActions() {
   // --- actions PAR PROJET (codage) ---
   on('[data-tgdiff]', (b) => openTargetDiff(b.dataset.task, b.dataset.tgdiff));
   on('[data-tgout]', (b) => openTargetOutput(b.dataset.task, b.dataset.tgout));
+  // « Approuver et coder » : la remarque part avec l'approbation, dans la même session d'agent.
+  on('[data-tgplanok]', (b) => {
+    const form = b.closest('[data-planform]');
+    const instruction = form ? form.querySelector('.plan-remark').value.trim() : '';
+    busy(b, () => api(`/tasks/${b.dataset.task}/approve-plan`, { method: 'POST', body: { targets: [Number(b.dataset.tgplanok)], instruction } }))
+      .then(() => { toast(tr('toast.plan-approuve')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
+  /* « Stopper et reprendre avec cette consigne » : la passe s'arrête, la consigne repart dans la
+     même session. Le texte est celui du formulaire de suivi — un seul champ, deux destins. */
+  on('[data-followstopresume]', async (b) => {
+    const form = $(`#taskList [data-followform="${b.dataset.followstopresume}"]`);
+    const instruction = form ? form.querySelector('.followup-text').value.trim() : '';
+    if (!instruction) { toast(tr('err.demande-de-suivi-vide'), true); return; }
+    if (!await confirmDialog({ text: tr('confirm.stop-resume'), confirmLabel: tr('task.btn.stop-resume') })) return;
+    busy(b, () => api(`/tasks/${b.dataset.followstopresume}/stop-resume`, { method: 'POST', body: { instruction } }))
+      .then(() => { toast(tr('toast.stop-resume')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
   on('[data-tgpush]', async (b) => {
     const where = `${b.dataset.project} · ${b.dataset.branch}`;
     /* LE FORÇAGE EST UNE DÉCISION, ET ELLE SE PREND ICI. La case est décochée par défaut ; elle

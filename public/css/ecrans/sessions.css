@@ -131,4 +131,6 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
    où ✏ n'existe pas. */
 .ta-meta { display: flex; justify-content: flex-end; gap: 6px; }
 .ta-work + .ta-meta { border-top: 1px solid var(--line); padding-top: 8px; margin-top: 2px; }
-
+/* Le plan à approuver : le même bloc qu'un suivi, avec sa remarque facultative. */
+.plan-approve { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.plan-approve .plan-remark { flex: 1 1 100%; min-height: 48px; }

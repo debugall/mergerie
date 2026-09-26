@@ -190,3 +190,8 @@ try { db.exec('ALTER TABLE git_merge ADD COLUMN ai_json TEXT'); } catch { /* dé
 /* Tickets Jira surveillés. `status` est le DERNIER état connu : c'est lui qu'on compare au
    prochain passage pour décider s'il y a eu changement. Un ticket ajouté part donc avec
    l'état courant, sinon la première vérification notifierait un faux changement. */
+
+/* L'ANNEXE D'UNE LIGNE DE JOURNAL. La ligne reste courte (le texte d'un agent est tronqué à 600
+   caractères, un outil Edit tient sur une ligne) ; ce qui a été coupé — le texte complet, le diff
+   de l'outil — vit ICI, en JSON, lu à la demande par « … voir », jamais par le polling. */
+try { db.exec('ALTER TABLE job_log ADD COLUMN annexe TEXT'); } catch { /* déjà présente */ }

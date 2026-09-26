@@ -146,7 +146,16 @@ function appendLogLines(pane, lines) {
     if (cls) span.className = cls;
     // Le double-clic mène à la MR de la ligne : le serveur donne `mr_id`, encore fallait-il le poser.
     if (l.mr_id) span.dataset.logMr = String(l.mr_id);
-    span.textContent = l.text + '\n';
+    span.textContent = l.text;
+    /* La ligne a une ANNEXE (texte complet, diff d'un Edit) : un « … voir » l'ouvre à la demande.
+       Le polling ne porte que le drapeau — c'est ce qui garde le journal léger. */
+    if (l.has_annexe) {
+      const voir = document.createElement('button');
+      voir.type = 'button'; voir.className = 'log-voir'; voir.dataset.logAnnexe = `${pane.dataset.job}:${l.id}`;
+      voir.textContent = tr('job.log.voir');
+      span.appendChild(voir);
+    }
+    span.appendChild(document.createTextNode('\n'));
     frag.appendChild(span);
   }
   pane.appendChild(frag);
@@ -334,3 +343,48 @@ async function pumpLog() {
   updateFooterLogs();
 }
 
+/* L'ANNEXE D'UNE LIGNE. Texte complet : tel quel. Modification d'un outil Edit : un diff par
+   lignes, calculé ici (le serveur garde l'ancien et le nouveau, pas un patch) ; fichier écrit :
+   son contenu. Chargée au clic, jamais avant. */
+function diffLignes(a, b) {
+  const A = a.split('\n'); const B = b.split('\n');
+  const n = A.length; const m = B.length;
+  // LCS classique, borné : au-delà, on montre les deux blocs sans les aligner.
+  if (n * m > 250000) return [...A.map((x) => ['-', x]), ...B.map((x) => ['+', x])];
+  const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i -= 1) for (let j = m - 1; j >= 0; j -= 1) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out = []; let i = 0; let j = 0;
+  while (i < n && j < m) {
+    if (A[i] === B[j]) { out.push([' ', A[i]]); i += 1; j += 1; }
+    else if (L[i + 1][j] >= L[i][j + 1]) { out.push(['-', A[i]]); i += 1; }
+    else { out.push(['+', B[j]]); j += 1; }
+  }
+  while (i < n) { out.push(['-', A[i]]); i += 1; }
+  while (j < m) { out.push(['+', B[j]]); j += 1; }
+  return out;
+}
+function annexeHtml(a) {
+  if (!a) return '';
+  const note = a.tronque ? `<p class="muted">${esc(tr('job.log.annexe.tronque'))}</p>` : '';
+  if (a.kind === 'edit') {
+    return note + (a.edits || []).map((e) => `<pre class="annexe-diff">${diffLignes(e.old || '', e.new || '')
+      .map(([s, l]) => `<span class="${s === '-' ? 'del' : s === '+' ? 'add' : 'ctx'}">${esc(`${s} ${l}`)}</span>`).join('\n')}</pre>`).join('<hr>');
+  }
+  if (a.kind === 'write') return `${note}<pre class="annexe-texte">${esc(a.content || '')}</pre>`;
+  return `${note}<pre class="annexe-texte">${esc(a.text || '')}</pre>`;
+}
+function fermerAnnexe() { const m = $('#logAnnexeModal'); if (m) m.hidden = true; }
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-log-annexe]');
+  if (!b) return;
+  const [jobId, lineId] = b.dataset.logAnnexe.split(':');
+  try {
+    const d = await api(`/jobs/${jobId}/log/${lineId}/annexe`);
+    const a = d.annexe || {};
+    $('#logAnnexeTitle').textContent = `${tr(`job.log.annexe.title-${a.kind === 'edit' ? 'edit' : a.kind === 'write' ? 'write' : 'text'}`)}${a.file ? ` — ${a.file}` : ''}`;
+    $('#logAnnexeBody').innerHTML = annexeHtml(a);
+    $('#logAnnexeModal').hidden = false;
+  } catch (err) { toast(explainError(err.message), true); }
+});
+if (typeof fermerAuFond === 'function') fermerAuFond('#logAnnexeModal', fermerAnnexe, { salissable: false });
+onEl($('#logAnnexeClose'), 'click', fermerAnnexe);

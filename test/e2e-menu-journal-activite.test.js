@@ -144,16 +144,22 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
   /* --------------------------------------- « Relancer » dans le bandeau ---- */
 
   test('une review annulée avant de démarrer propose « Relancer » dans le bandeau, et la relance aboutit', async () => {
-    // Un échec (sans relance possible), puis une review mise en file derrière un job long et retirée.
+    /* Un échec (sans relance possible), puis une review mise en file et retirée. Une review ne
+       touche aucun des jobs Docker : elle ne les attend pas — elle n'attend que le PLAFOND de
+       jobs simultanés, d'où trois portes ouvertes avant elle. */
     job.casse = await chantier.lancer('casse');
     await attendreStatutServeur(job.casse, 'error');
     job.porte = await chantier.lancer('porte-a');
     await attendreStatutServeur(job.porte, 'running');
+    job.porteC = await chantier.lancer('porte-c');
+    await attendreStatutServeur(job.porteC, 'running');
+    job.porteD = await chantier.lancer('porte-d');
+    await attendreStatutServeur(job.porteD, 'running');
     job.review201 = (await app.api('POST', `/api/mrs/${mr[201]}/review`, {})).body.id;
     assert.equal((await jobServeur(app, job.review201)).status, 'queued');
     assert.equal((await app.api('POST', `/api/jobs/${job.review201}/stop`)).status, 200);
-    chantier.feuVert('porte-a');
-    await attendreStatutServeur(job.porte, 'done');
+    for (const c of ['porte-a', 'porte-c', 'porte-d']) chantier.feuVert(c);
+    for (const j of [job.porte, job.porteC, job.porteD]) await attendreStatutServeur(j, 'done');
     await attendreStatutServeur(job.review201, 'stopped');
 
     await rafraichir();
@@ -178,7 +184,7 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
   /* ------------------------------------------------------ l'Activité ---- */
 
   test('l’Activité liste les jobs, dit la raison d’un échec, et remet son compteur à zéro', async () => {
-    const attendus = [job.review200, job.casse, job.porte, job.review201, job.relance];
+    const attendus = [job.review200, job.casse, job.porte, job.porteC, job.porteD, job.review201, job.relance];
     await page.waitForFunction((n) => document.querySelector('#logHistCount').textContent === String(n),
       attendus.length, { timeout: ATTENTE });
     await ouvrirActivite();
@@ -209,11 +215,11 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
 
   test('filtrer l’Activité : par texte, « Échecs seulement », et les deux ensemble — sans rien retirer', async () => {
     await ouvrirActivite();
-    const tous = [job.review200, job.casse, job.porte, job.review201, job.relance];
+    const tous = [job.review200, job.casse, job.porte, job.porteC, job.porteD, job.review201, job.relance];
     await attendreLignes(tous);
 
     await page.locator('#histFilter').fill('docker');
-    await attendreLignes([job.casse, job.porte]);
+    await attendreLignes([job.casse, job.porte, job.porteC, job.porteD]);
     await page.locator('#histFilter').fill('!201');
     await attendreLignes([job.review201, job.relance]);
 

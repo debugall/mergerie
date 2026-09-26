@@ -344,6 +344,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
     // B5 : prévenir Jira à la création de chaque merge request de cette session.
     notify_jira: f.notify_jira ? f.notify_jira.checked : false,
     review_after: f.review_after ? f.review_after.checked : false,
+    // « Planifier d'abord » : lu à la création ET à l'édition — la même route PUT accepte le champ.
+    plan_first: f.plan_first ? f.plan_first.checked : false,
     verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
     // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà

@@ -90,7 +90,7 @@ function tick(now = new Date(), onLog = () => {}) {
     if (!session) { onLog(t('log.programmation.disparue', { kind: p.kind, uid: p.uid })); continue; }
     try {
       if (p.quoi === 'run') {
-        const job = p.kind === 'local_task' ? startLocalJob(session.id, {}) : startTaskJob(session.id, 'run', {});
+        const job = p.kind === 'local_task' ? startLocalJob(session.id, { auto: true }) : startTaskJob(session.id, 'run', { auto: true });
         onLog(t('log.programmation.lancee', { kind: p.kind, id: session.id }));
         lances.push({ ...p, id: session.id, job });
       } else {

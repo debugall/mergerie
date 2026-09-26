@@ -15,7 +15,7 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
   logLine(jobId, null, `=== Convergence session #${jobId}${task ? ` : ${task.kind}` : ''} ===`);
-  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (task) db.prepare("UPDATE task SET status = 'running', last_error = NULL, updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
   try {
     const results = await converge.convergeSession(taskId, opts, onLog);

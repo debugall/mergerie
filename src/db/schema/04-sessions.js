@@ -42,6 +42,9 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_task_context_repo_task ON task_context_r
 // dans le flou. Le statut de session/cible peut alors devenir `needs_input` (état d'ATTENTE,
 // ni succès ni échec) et la file se libère.
 try { db.exec('ALTER TABLE task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* « Planifier d'abord » : une première passe en LECTURE rend un plan, la cible passe en `planned`,
+   et « Approuver et coder » reprend la même session d'agent pour le réaliser. Opt-in par session. */
+try { db.exec('ALTER TABLE task ADD COLUMN plan_first INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 // Handle de reprise de la session d'agent, persisté par cible (le cwd fait partie de son
 // identité — cf. src/agentsession.js). `questions_json` porte les questions posées et les
 // réponses de l'utilisateur pour cette cible.

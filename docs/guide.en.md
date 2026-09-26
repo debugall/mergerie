@@ -446,6 +446,29 @@ branches — which matters when the list of repositories is long.
 how many are filtered out. This applies to coding, out-of-repo coding and exploration alike. In the list, a
 long prompt is **folded to three lines** with a **“Show more”** that unrolls it.
 
+**“Plan first”: read, approve, then code.** Ticked in the session modal (repository coding only), the
+first pass touches nothing: the agent reads the repository and returns a **plan** — files, steps,
+risks, open questions — as an iteration marked *plan*. The project line says **plan to approve**,
+offers **Read the plan**, an optional remark (“keep the API as is”), and **Approve and code**: the
+**same agent session** resumes and carries the plan out, remark included, then commits as usual.
+Relaunching a planned session plans again. With Claude the pass runs in its *plan* mode whatever the
+secure/yolo switch says — this is what the session asked for, not a restriction; another backend
+follows the instruction, and the next pass starts from a clean clone anyway.
+
+**“Stop and resume with this instruction.”** While a session runs, the follow-up field no longer
+hides its button: it becomes **Stop and resume with this instruction**. The pass stops, and the
+instruction goes back as a follow-up — into the **same agent session** when its handle is known
+(Claude gives it before it says a word), otherwise into a fresh one that receives the task and the
+transcript. The instruction is kept as the card's draft until the follow-up has left.
+
+**The journal stays short, the annex holds the rest.** An agent's message is cut at 600 characters
+in the job journal, an `Edit` is one line — `Edit src/x.js (+12 −3)` — and the agent's reasoning
+shows as a short `∴` line. Each of those carries a **“… see”** that opens the full text, or the
+**diff** of the change, in a panel; the polling never carries the content. **Jobs run in parallel by
+themselves** when they touch different repositories or folders: a review on repository A no longer
+delays a session on repository B; two jobs on the same repository keep their order, a job whose
+scope is unknown waits for everything, and jobs launched by hand pass before automatic ones.
+
 **“The AI may ask me questions” applies to all three flavours.** Coding in a repository,
 **out-of-repo coding** and **exploration**: ticked, the option lets the agent stop in front of a
 decision it cannot settle instead of guessing. An exploration hesitates just like a coding session —

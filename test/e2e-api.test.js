@@ -1356,6 +1356,30 @@ describe('API de bout en bout', () => {
      déterministe en dry-run (où les jobs s'achèvent aussitôt), c'est le CONTRAT : la forme
      de la réponse, et les refus. Le parallélisme lui-même repose sur `keysClash`, testé à
      part sur la règle nue. */
+  /* L'ANNEXE D'UNE LIGNE DE JOURNAL : la ligne reste courte et porte un drapeau ; le contenu
+     entier (texte, diff d'un Edit) se lit par une route à part, jamais par le polling. */
+  test('Jobs : une ligne de journal peut porter une annexe, lue à la demande', async () => {
+    const { logLine } = require('../src/jobs/file');
+    const job = { id: app.db.prepare("INSERT INTO job (kind, status, total, done_count, message, started_at, finished_at) VALUES ('docker', 'done', 0, 0, '', ?, ?)")
+      .run(new Date().toISOString(), new Date().toISOString()).lastInsertRowid };
+    const sans = logLine(job.id, null, 'ligne ordinaire');
+    const avec = logLine(job.id, null, '» Edit src/a.js (+2 −1)', { kind: 'edit', file: 'src/a.js', edits: [{ old: 'a', new: 'b\nc' }] });
+    const log = (await app.api('GET', `/api/jobs/${job.id}/log?after=${sans - 1}`)).body;
+    const lignes = Object.fromEntries(log.lines.map((l) => [l.id, l]));
+    assert.equal(lignes[sans].has_annexe, 0);
+    assert.equal(lignes[avec].has_annexe, 1);
+    assert.ok(!('annexe' in lignes[avec]), 'le polling ne transporte jamais le contenu');
+    assert.equal((await app.api('GET', `/api/jobs/${job.id}/log/${sans}/annexe`)).status, 404);
+    const a = await app.api('GET', `/api/jobs/${job.id}/log/${avec}/annexe`);
+    assert.equal(a.status, 200);
+    assert.deepEqual(a.body.annexe, { kind: 'edit', file: 'src/a.js', edits: [{ old: 'a', new: 'b\nc' }] });
+    // Une annexe démesurée est tronquée, pas refusée.
+    const gros = logLine(job.id, null, 'texte …', { kind: 'text', text: 'x'.repeat(300000) });
+    const g = (await app.api('GET', `/api/jobs/${job.id}/log/${gros}/annexe`)).body.annexe;
+    assert.equal(g.tronque, true);
+    assert.ok(g.text.length <= 100000);
+  });
+
   test('Jobs : la file s’inspecte, et « lancer en parallèle » refuse ce qui n’attend plus', async () => {
     const q = await app.api('GET', '/api/jobs/queue');
     assert.equal(q.status, 200);

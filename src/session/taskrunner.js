@@ -96,6 +96,8 @@ function syncTaskStatus(taskId) {
     // needs_input = ATTENTE (ni succès ni échec) : prioritaire dès qu'aucune erreur, pour
     // que la session s'affiche « en attente de tes réponses » et n'entre dans aucun compteur d'échec.
     else if (st.includes('needs_input')) status = 'needs_input';
+    // Un plan attend son approbation : même nature d'attente, et rien ne repart seul.
+    else if (st.includes('planned')) status = 'planned';
     else if (st.every((s) => s === 'pushed')) status = 'pushed';
     else if (st.every((s) => s === 'pushed' || s === 'committed')) status = 'committed';
     else if (st.some((s) => s === 'pushed' || s === 'committed')) status = 'committed';
@@ -215,6 +217,23 @@ function buildCodePrompt(task) {
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
   return task && task.ask_questions ? base + questions.questionsInstruction(nonceQuestionsTache(task)) : base;
 }
+
+/* « PLANIFIER D'ABORD » : la première passe LIT et rend un plan, elle ne code pas. Le plan est relu
+   par un humain sur la carte, puis « Approuver et coder » reprend la même session d'agent — qui a
+   déjà lu le dépôt et sait ce qu'elle a proposé. Pas de bloc de questions ici : le plan est
+   l'endroit où l'agent pose ses questions ouvertes, et la remarque d'approbation y répond. */
+function buildPlanPrompt(task) {
+  return avecConsignes('Tu prépares une tâche de développement dans ce dépôt. NE MODIFIE AUCUN FICHIER '
+    + 'et ne lance aucune commande qui écrit : cette passe est une lecture. Étudie le code concerné et '
+    + 'rédige un PLAN d\'implémentation en Markdown : les fichiers à toucher et pourquoi, les étapes dans '
+    + 'l\'ordre, les risques ou effets de bord, les questions que tu te poses. Réponds par le plan seul — '
+    + 'il sera relu et approuvé par un humain avant que tu ne codes, dans cette même session.\n\n'
+    + `Tâche : ${task.prompt}`, consignesPermanentes(depotPrincipal(task)));
+}
+const promptApprobationPlan = (task, remarque) => avecConsignes('Le plan que tu as proposé est approuvé. '
+  + 'Réalise-le maintenant dans ce dépôt : modifie directement les fichiers nécessaires, dans l\'ordre que tu '
+  + 'as prévu. Si un point du plan s\'avère impossible, fais au plus proche et dis-le dans ta réponse.'
+  + (remarque ? `\n\nRemarque avant de coder : ${remarque}` : ''), consignesPermanentes(depotPrincipal(task)));
 
 /* REPRENDRE UNE CONVERSATION QUI S'EST TENUE AILLEURS.
  *
@@ -341,7 +360,7 @@ function commitMessageFor(task, defaut) {
    cette correction ») ne se comprend pas sans la tâche d'origine, que la session perdue
    portait. Le défaut réinjecte donc ce contexte — mais un premier run le contient déjà, et le
    lui ajouter enverrait deux fois la même consigne, prompt de la tâche compris. */
-async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds }) {
+async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds, planOnly }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -470,7 +489,10 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   let agentText = '';
   let coutUsd = null;
   if (copilot.isDryRun()) {
-    if (task.ask_questions && !doResume) {
+    if (planOnly) {
+      onLog('$ (DRY-RUN — l’agent rend un plan, sans toucher aux fichiers)');
+      agentText = `# Plan (dry-run)\n\n1. Lire les fichiers concernés par « ${String(task.prompt || '').split('\n')[0].slice(0, 80)} ».\n2. Écrire la modification.\n3. Ajouter un test.\n\n> Simulation dry-run : approuve pour que la session code.`;
+    } else if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
       agentText = questions.dryrunQuestions(nonceQuestionsTache(task)); // simule le bloc <<<QUESTIONS>>> au 1er passage
     } else {
@@ -503,8 +525,13 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     const envoye = doResume
       ? [rattrapageDesPasses(task.id, tg), promptText].filter(Boolean).join('\n\n')
       : reinjecte();
+    /* LE HANDLE DÈS LE LANCEMENT (Claude le connaît avant de parler) : une session arrêtée en
+       route — « stopper et reprendre avec cette consigne » — se reprend alors là où elle en était,
+       au lieu de repartir d'un agent neuf. */
+    const onHandle = (h) => { if (!doResume && h) setTarget(tg.id, { session_key: h, session_backend: 'claude', session_cwd: cwd }); };
+    const saveur = planOnly ? 'plan' : 'code';
     try {
-      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options, saveur: 'code' });
+      r = await agentsession.runInSession({ key, handle: doResume ? tg.session_key : null, prompt: envoye + imgBlock, cwd, resume: doResume, onLog, options, saveur, onHandle });
     } catch (e) {
       if (!doResume) throw e;
       // Fallback (§4.5) : reprise impossible → session neuve avec contexte réinjecté.
@@ -516,7 +543,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
          pas. Sans cette note, l'écran affiche après coup un identifiant que l'utilisateur
          n'a jamais saisi, sans rien dire de la substitution. */
       note = `${tg.session_key} : ${raison}`;
-      r = await agentsession.runInSession({ key, prompt: reinjecte() + imgBlock, cwd, resume: false, onLog, options, saveur: 'code' });
+      r = await agentsession.runInSession({ key, prompt: reinjecte() + imgBlock, cwd, resume: false, onLog, options, saveur, onHandle });
       created = true;
     }
     agentText = r.text || '';
@@ -542,6 +569,16 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   const passeN = saveAgentOutput(task.id, tg.id, agentText, {
     kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd, unitUid: tg.uid,
   });
+
+  /* LE PLAN EST RENDU : la cible attend son approbation, rien n'est commité. Un agent qui aurait
+     quand même touché au clone malgré la consigne (backend sans mode plan) est remis à plat — la
+     passe suivante repart de la branche telle qu'elle était. */
+  if (planOnly) {
+    try { await git.resetWorktree(cwd, onLog); } catch { /* best-effort : ensureCleanWorktree repassera */ }
+    setTarget(tg.id, { status: 'planned', last_error: null, questions_json: null });
+    onLog(t('log.task.planned'));
+    return { planned: true };
+  }
 
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
@@ -616,7 +653,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds, imageIds }) {
+async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds, imageIds, planOnly }) {
   /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
      forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
      refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
@@ -626,13 +663,13 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
   const targets = voulus ? tous.filter((tg) => voulus.includes(tg.id)) : tous;
   if (!tous.length) throw new Error(t('err.aucun-projet-selectionne-pour-cette'));
   if (!targets.length) throw new Error(t('err.projet-introuvable-pour-cette-session-2'));
-  let ok = 0; let waiting = 0; const fails = [];
+  let ok = 0; let waiting = 0; let planned = 0; const fails = [];
   for (const tg of targets) {
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind, imageIds });
-      if (r && r.needsInput) waiting += 1; else ok += 1;
+      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind, imageIds, planOnly });
+      if (r && r.needsInput) waiting += 1; else if (r && r.planned) planned += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
       fails.push({ project: tg.project, error: e.message });
@@ -642,9 +679,10 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
   syncTaskStatus(task.id);
   const portee = voulus ? t('log.task.scope', { n: tous.length }) : '';
   onLog(t('log.task.done', {
-    ok, total: targets.length, portee, attente: waiting ? t('log.task.waiting', { n: waiting }) : '',
+    ok, total: targets.length, portee,
+    attente: (waiting ? t('log.task.waiting', { n: waiting }) : '') + (planned ? t('log.task.planned-count', { n: planned }) : ''),
   }));
-  if (!ok && !waiting) {
+  if (!ok && !waiting && !planned) {
     // Tout a échoué : on remonte la VRAIE raison plutôt qu'un « voir le détail ». Un seul
     // projet → son erreur directement ; plusieurs → la liste, projet par projet.
     if (fails.length === 1) throw new Error(fails[0].error);
@@ -925,6 +963,15 @@ async function runTask(task, onLog = () => {}, opts = {}) {
   if (task.kind === 'explore') {
     return runExploration(task, { question: task.prompt, previous: null, onLog });
   }
+  /* « Planifier d'abord » : cette passe rend un plan et s'arrête ; « Approuver et coder » fait
+     la suite (`runTaskApprovePlan`). Relancer la session replanifie — c'est ce que la case dit. */
+  if (task.plan_first) {
+    return runCodeTask(task, {
+      promptText: buildPlanPrompt(task), promptRepli: buildPlanPrompt(task),
+      message: commitMessageFor(task), allowCreate: true, onLog, passKind: 'plan', planOnly: true,
+      targetIds: opts.targetIds,
+    });
+  }
   return runCodeTask(task, {
     // Premier run : le prompt porte déjà toute la tâche, il n'y a rien à réinjecter par-dessus.
     promptText: buildCodePrompt(task), promptRepli: buildCodePrompt(task),
@@ -949,6 +996,33 @@ async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds,
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
     + `Demande de suivi : ${instr}`, consignesPermanentes(depotPrincipal(task)));
   return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds, imageIds });
+}
+
+/* « APPROUVER ET CODER » : les cibles planifiées reprennent LEUR session d'agent avec l'ordre de
+   réaliser le plan — et la remarque de l'approbateur, s'il en a laissé une. Une cible dont la
+   reprise échoue repart d'une session neuve qui reçoit la tâche, le plan (transcription) et l'ordre. */
+async function runTaskApprovePlan(task, targetIds, remarque, onLog = () => {}) {
+  const voulus = Array.isArray(targetIds) && targetIds.length ? targetIds.map(Number) : null;
+  const cibles = targetsOf(task.id).filter((tg) => tg.status === 'planned' && (!voulus || voulus.includes(tg.id)));
+  if (!cibles.length) throw new Error(t('err.plan-rien-a-approuver'));
+  const promptText = promptApprobationPlan(task, String(remarque || '').trim());
+  let ok = 0; const fails = [];
+  for (const tg of cibles) {
+    onLog(`──────── ${tg.project} · ${tg.branch} (${t('log.task.plan-approved')}) ────────`);
+    setTarget(tg.id, { status: 'running', last_error: null });
+    try {
+      const r = await execOnTarget(task, tg, {
+        promptText, message: commitMessageFor(task), allowCreate: false, onLog, resume: true, passKind: 'run',
+      });
+      if (!(r && r.needsInput)) ok += 1;
+    } catch (e) {
+      setTarget(tg.id, { status: 'error', last_error: e.message });
+      fails.push({ project: tg.project, error: e.message });
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
+    }
+  }
+  syncTaskStatus(task.id);
+  if (!ok && fails.length) throw new Error(fails.length === 1 ? fails[0].error : `${t('err.aucun-projet-n-a-pu')}\n\n${fails.map((f) => `— ${f.project} :\n${f.error}`).join('\n\n')}`);
 }
 
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :
@@ -1164,6 +1238,6 @@ async function pushTargets(task, targetIds, onLog = () => {}) {
 
 module.exports = {
   reconcileTargets, pushTargets,
-  runTask, runTaskFollowup, mettreAJourDepuisBase, runTaskAnswer, pushTarget, targetsOf, setTarget, syncTaskStatus,
+  runTask, runTaskFollowup, mettreAJourDepuisBase, runTaskAnswer, runTaskApprovePlan, buildPlanPrompt, pushTarget, targetsOf, setTarget, syncTaskStatus,
   execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage,
 };

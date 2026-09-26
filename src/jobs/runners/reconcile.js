@@ -14,7 +14,7 @@ async function runReconcileJob(jobId, taskId, opts = {}) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
   logLine(jobId, null, t('log.job.reconcile-start', { id: jobId }));
   if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
-  const onLog = (msg) => { logLine(jobId, null, msg); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   try {
     const r = await taskrunner.reconcileTargets(task, onLog, opts);
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
