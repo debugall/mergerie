@@ -14,7 +14,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, afficherMenusOptionnels } = require('./helpers/app');
 
 /* Le paquet `playwright` peut être installé sans que les navigateurs le soient : c'est le cas
    d'un runner CI ou d'un conteneur vierge. On vérifie donc l'EXÉCUTABLE, pas le module. */
@@ -28,6 +28,8 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     await app.configure();
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    // Le sous-onglet Jenkins suit son menu, replié d'office : ce fichier éprouve l'ordre COMPLET.
+    await afficherMenusOptionnels(page);
     await page.goto(app.base);
   });
 

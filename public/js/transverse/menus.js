@@ -151,6 +151,8 @@ function appliquerNav() {
     b.hidden = navMasque(tab);
     barre.insertBefore(b, ancre);
   }
+  // Les sous-onglets des Réglages qui suivent un menu (Jenkins) se replient et se rendent avec lui.
+  if (typeof replierSousOngletsSelonMenus === 'function') replierSousOngletsSelonMenus();
   /* L'onglet courant vient d'être masqué : on ne laisse pas un écran ouvert sans son entrée de
      menu — on bascule sur le premier visible. */
   const actif = boutonsNav().find((b) => b.classList.contains('active'));

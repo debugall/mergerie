@@ -27,7 +27,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const {
-  startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
+  startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur, afficherMenusOptionnels,
 } = require('./helpers/app');
 const { lancerCollegue } = require('./helpers/synchro-collegue');
 
@@ -74,6 +74,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
+    await afficherMenusOptionnels(page);   // le sous-onglet Jenkins suit son menu, replié d'office
     page.on('pageerror', (e) => erreurs.push(e.message));
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab="admin"]');

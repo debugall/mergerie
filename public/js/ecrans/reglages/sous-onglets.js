@@ -1,6 +1,6 @@
 'use strict';
 /* Réglages : sous-onglets (Git · Dépôts · Merge Request · …). */
-// @expose ADMIN_SUBS, showAdminSub
+// @expose ADMIN_SUBS, showAdminSub, replierSousOngletsSelonMenus
 /* ---------- Réglages : sous-onglets (Git · Dépôts · Merge Request · …) ----------
    Chaque panneau charge ses données à l'ouverture (rien d'inutile au démarrage),
    et le dernier sous-onglet consulté est mémorisé — on revient dans Réglages pour finir ce
@@ -26,9 +26,34 @@ function loadJenkinsConfig() { loadConfig(); loadJenkinsLinks(); }
    vérifications automatiques, venu de Merge Request rejoindre son interrupteur) : sans
    `loadConfig` il s'afficherait vide quoi qu'il y ait en base. */
 function loadVerifiersEtPlafond() { loadConfig(); loadVerifiers(); }
+/* LES RÉGLAGES SUIVENT LE MENU. Le sous-onglet Jenkins n'apparaît que si le menu Jenkins est
+   visible : un menu replié n'a pas à occuper une place dans les Réglages de qui ne s'en sert pas.
+   Déplier le menu (Réglages → Général → Menus, ou une porte contextuelle) le rend. Le sous-onglet
+   courant qui disparaît ramène sur le premier. */
+const SOUS_ONGLETS_PAR_MENU = { jenkinscfg: 'jenkins' };
+function replierSousOngletsSelonMenus() {
+  for (const [sub, tab] of Object.entries(SOUS_ONGLETS_PAR_MENU)) {
+    const b = $(`#tab-admin .subnav [data-sub="${sub}"]`);
+    if (!b) continue;
+    const menu = $(`nav button[data-tab="${tab}"]`);
+    b.hidden = !!(menu && menu.hidden);
+    /* Le sous-onglet courant vient de disparaître : on bascule les classes à la main — pas par
+       `showAdminSub`, qui repasse ici et bouclerait. */
+    if (b.hidden && b.classList.contains('active')) {
+      $$('#tab-admin .subnav [data-sub]').forEach((x) => x.classList.toggle('active', x.dataset.sub === 'gitcfg'));
+      $$('#tab-admin .subtab').forEach((p) => p.classList.toggle('active', p.id === 'sub-gitcfg'));
+      try { localStorage.setItem('aidevtools_admin_sub', 'gitcfg'); } catch { /* ignore */ }
+      try { ADMIN_SUBS.gitcfg(); } catch { /* best-effort */ }
+    }
+  }
+}
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
   if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
+  /* Un sous-onglet demandé NOMMÉMENT (une porte contextuelle, une adresse) déplie son menu. */
+  const menu = SOUS_ONGLETS_PAR_MENU[sub];
+  if (menu && typeof devoilerMenus === 'function') { const b = $(`nav button[data-tab="${menu}"]`); if (b && b.hidden) devoilerMenus([menu]); }
+  replierSousOngletsSelonMenus();
   $$('#tab-admin .subnav [data-sub]').forEach((b) => b.classList.toggle('active', b.dataset.sub === sub));
   $$('#tab-admin .subtab').forEach((p) => p.classList.toggle('active', p.id === `sub-${sub}`));
   try { localStorage.setItem('aidevtools_admin_sub', sub); } catch { /* ignore */ }

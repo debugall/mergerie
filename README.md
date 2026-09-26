@@ -67,11 +67,25 @@ npm run demo       # http://localhost:4319
 > Throughout the docs, **"MR"** means either a GitLab *merge request* or a GitHub *pull request* — the
 > screens and actions are identical.
 
+## Built for N repositories
+
+What no editor assistant does: **twenty repositories at once**. One Git action on every repository
+of a group in one gesture; the logs of ten containers without opening ten terminals; a batch of
+merge requests from several micro-services **verified together**, and a coding session that fixes
+the three repositories in one go; an agent that **maps a subject** across repositories; **repository
+groups** that carry once the rules, verifiers and templates twenty micro-services share. **Most
+coding sessions start from a ticket**: the Jira tab lists yours, and “Have the AI code” opens the
+session already filled in. And `Ctrl`/`Cmd` + `K` finds **a deployment address in two keystrokes**,
+where browser bookmarks make you walk through folders.
+
 ## What it does
 
 Eleven tabs in a left sidebar, each one line — plus the objective verification, which lives inside Reviews
 and Settings. **Git, Docker, Jenkins and Links start folded away**: they are conveniences, and the bar
-carries the everyday work first — one tick in Settings → General → Menus brings them back for good.
+carries the everyday work first — one tick in Settings → General → Menus brings them back for good, and
+**so does a contextual door**: “Resolve in Git → Merge” on a conflicting merge request, “See the logs”
+from the morning brief, “this repository has a compose file: show Docker” on a repository's row — a menu
+opened that way stays in the bar.
 
 - **Reviews** — AI-scored, versioned reviews of GitLab merge requests **and GitHub pull requests**; incremental re-reviews; an autonomous **convergence loop** (review → fix → re-review until the score threshold) Convergence works on the *review*; the **objective verification** comes after, on the merge request itself — see the guide. A question can be asked **about** a report — why is this finding blocking, does it hold for the other caller — and the answer lands under it without touching the report or its score. A report stays with you unless you decide otherwise: one button **publishes it as a comment on the merge request**, and a setting does it automatically at the end of every review — unchecked by default, because writing on other people's work is a decision. When your team shares a data repository, a second button posts the **link** to the report instead of its six hundred lines — one copy, read by everyone in the same place. And the verdict the forge itself reads: an **Approve** button (GitLab approval, GitHub `APPROVE` review — never a burst of inline comments), **Resolve / Reopen** on any discussion thread, and the **forge CI** (GitLab pipeline, GitHub checks) as a badge on every card. The morning brief counts what is **ready to merge** — score above the threshold, verified green, no ticket in the way. Nothing is merged: the tool says how many are only waiting for a decision.
 - **AI Dev** — automated coding sessions (the AI codes, commits, pushes, opens the MR), off-repo coding (with the AI's report back and follow-ups that continue the session), read-only code exploration, and **free questions** asked with no repository at all (kept, labelled and resumable) — *from prompt to converged MR* in one click. On a multi-repo session each project runs, and takes a follow-up fix, on its own. The latest iteration keeps **the diff of what it changed** — off-repo included, where a tracking repository kept outside your folder stands in for the missing branch — so re-reading your last follow-up no longer means re-reading everything. A follow-up can be **written while a session is still running** and waits on the card until you send it — or goes out by itself at the end of the session if you tick the box. A session — coding, exploration or off-repo — can also be **scheduled for a date and time** from the same modal (“Create and schedule”), and so can a waiting follow-up (“Or send it on…”): the card shows the date with a cross to cancel it, launching by hand cancels it too, and the date belongs to *your* workstation — it is the one that launches, and catches up if it was off at that time. Finished sessions can be tidied away without being deleted.

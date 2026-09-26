@@ -21,7 +21,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, lancerNavigateur, navigateurDispo, attendreServeur } = require('./helpers/app');
+const { startApp, lancerNavigateur, navigateurDispo, attendreServeur, afficherMenusOptionnels } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
@@ -34,6 +34,7 @@ describe('Réglages · la portée de chaque champ', { skip: dispo ? false : 'chr
     await app.configure();
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 950 } });
+    await afficherMenusOptionnels(page);   // le sous-onglet Jenkins suit son menu, replié d'office
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab]');
   });

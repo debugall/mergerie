@@ -150,8 +150,8 @@ casses.length ? fail('require qui ne mènent nulle part', casses) : ok(`Tous les
       if (RANG[dDe] === undefined) { soucis.push(`${ou} — dossier « ${dDe} » inconnu du schéma des couches (PLAN.md, « Modules »)`); continue; }
       if (RANG[dVers] === undefined) { soucis.push(`${ou} — dossier « ${dVers} » inconnu du schéma des couches (PLAN.md, « Modules »)`); continue; }
       /* Un fichier encore à la racine de `src/` n'est pas classé : le temps du déménagement,
-         l'importer ne dit rien de la direction. Une fois `server.js` et `cli.js` seuls à la
-         racine, plus rien ne les importe, et la ligne ne sert plus. */
+         l'importer ne dit rien de la direction. `server.js` seul reste à la racine, et rien ne
+         l'importe : la ligne ne sert plus qu'à un déménagement futur. */
       if (dVers === 'racine') continue;
       if (EXCEPTIONS.some((e) => e.de === de && e.vers === vers)) continue;
       if (dVers !== dDe && RANG[dVers] > RANG[dDe] && !IMPORTEURS[dVers]) {

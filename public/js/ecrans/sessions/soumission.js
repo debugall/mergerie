@@ -118,9 +118,57 @@ function jiraKeyFromBranch(branch) {
 function setupTaskJira(branch) {
   const row = $('#taskJiraRow');
   if (!row) return;
+  oublierTicketsJira();   // la liste se recharge à chaque ouverture : un ticket bouge dans la journée
   row.hidden = !jiraConfigured;
   const st = $('#taskJiraStatus'); if (st) st.textContent = '';
   const key = $('#taskJiraKey'); if (key) key.value = jiraKeyFromBranch(branch);
+}
+/* MES TICKETS, SOUS LE CHAMP. La plupart des sessions de codage partent d'un ticket : le champ
+   propose ceux qui me sont affectés dès qu'on y entre, filtrés à la frappe (clé ou titre) ; en
+   choisir un remplit la clé et récupère le ticket, comme le bouton. La saisie libre reste — un
+   ticket qui n'est pas à moi se tape. Chargés une fois par ouverture de modale, jamais en fond. */
+let ticketsJiraPourModale = null;
+async function ticketsJira() {
+  if (ticketsJiraPourModale) return ticketsJiraPourModale;
+  try {
+    /* Les MIENS : le compte courant, comme le menu Jira par défaut. Inconnu (mock, compte sans
+       profil), on prend ce que le compte voit — mieux qu'une liste vide. */
+    let moi = '';
+    try { const a = await api('/jira/assignees'); moi = (a && a.me && a.me.accountId) || ''; } catch { /* sans filtre */ }
+    const d = await api(`/jira/tickets?assignees=${encodeURIComponent(moi)}`);
+    ticketsJiraPourModale = (d && d.issues) || [];
+  } catch { ticketsJiraPourModale = []; }
+  return ticketsJiraPourModale;
+}
+function oublierTicketsJira() { ticketsJiraPourModale = null; }
+{
+  const input = $('#taskJiraKey');
+  const box = $('#taskJiraOptions');
+  const fermer = () => { if (box) box.hidden = true; };
+  const ouvrir = async () => {
+    if (!input || !box || !jiraConfigured) return;
+    const q = input.value.trim().toLowerCase();
+    const tous = await ticketsJira();
+    const list = tous.filter((i) => !q || `${i.key} ${i.summary || ''}`.toLowerCase().includes(q)).slice(0, 30);
+    box.innerHTML = list.map((i) => `<div class="combo-opt" data-v="${esc(i.key)}"><code>${esc(i.key)}</code> ${esc(String(i.summary || '').slice(0, 90))}${i.status ? ` <span class="muted">${esc(i.status)}</span>` : ''}</div>`).join('')
+      || `<div class="combo-opt muted">${esc(tr(tous.length ? 'ui.combo.empty' : 'task.jira.no-ticket'))}</div>`;
+    box.hidden = false;
+    if (typeof placerMenu === 'function') placerMenu(input, box);
+  };
+  if (input && box) {
+    input.addEventListener('focus', ouvrir);
+    input.addEventListener('input', ouvrir);
+    input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) fermer(); }, 150));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); fermer(); } });
+    box.addEventListener('mousedown', (e) => {
+      const o = e.target.closest('.combo-opt[data-v]');
+      if (!o) return;
+      e.preventDefault();
+      input.value = o.dataset.v;
+      fermer();
+      const btn = $('#taskJiraFetch'); if (btn) btn.click();
+    });
+  }
 }
 $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () => {
   const btn = $('#taskJiraFetch');

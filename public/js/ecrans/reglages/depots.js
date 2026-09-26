@@ -66,6 +66,8 @@ document.addEventListener('click', async (e) => {
   if (sv) { navTab('links'); return; }
   const a = e.target.closest && e.target.closest('[data-sheet-agent]');
   if (a) { navTab('agents'); showAgentsSub('list'); return; }
+  const dk = e.target.closest && e.target.closest('[data-docker-porte]');
+  if (dk) { navTab('docker'); toast(tr('settings.repo.docker-porte-done')); return; }
   const g = e.target.closest && e.target.closest('[data-sheet-group]');
   if (g) { const f = $('#groupForm'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); const b = $(`#groupList [data-gedit="${g.dataset.sheetGroup}"]`); if (b) b.click(); }
 });
@@ -89,6 +91,10 @@ async function loadRepos() {
     r.last_seen_at ? `<span data-when="${esc(r.last_seen_at)}">${esc(tr('settings.repo.last-fetch', { when: depuis(r.last_seen_at) }))}</span>` : '',
     `<span class="repo-clone repo-clone-${esc(r.clone_state)}" title="${esc(r.clone_dir || '')}">${esc(tr(`settings.repo.clone.${r.clone_state}`))}</span>`,
     `<button type="button" class="lien-reglage" data-reclone="${r.id}" data-project="${esc(r.project)}">${esc(tr('settings.repo.reclone'))}</button>`,
+    /* LA PORTE VERS DOCKER : ce dépôt porte un compose, et le menu Docker est replié d'office.
+       Une fois cliquée, le menu reste — c'est par l'usage qu'il se découvre. */
+    r.has_compose && (typeof navMasque === 'function') && navMasque('docker')
+      ? `<button type="button" class="lien-reglage" data-docker-porte="${r.id}" title="${esc(tr('settings.repo.docker-porte-title'))}">${esc(tr('settings.repo.docker-porte'))}</button>` : '',
   ].filter(Boolean).join(' · ')}</div>
         </div>
         <div class="spacer"></div>

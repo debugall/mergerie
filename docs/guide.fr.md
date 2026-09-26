@@ -2812,7 +2812,6 @@ une demi-heure et donne un fichier deux fois trop lourd.
 
 ```bash
 COPILOT_DRY_RUN=1 npm start
-npm run pipe        # smoke test du pipeline sur un dépôt synthétique
 ```
 
 ## Clones locaux

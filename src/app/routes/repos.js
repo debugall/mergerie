@@ -44,7 +44,10 @@ app.get('/api/repos', wrap((req, res) => {
       if (fs.statSync(path.join(dir, '.git')).isDirectory() || fs.statSync(path.join(dir, '.git')).isFile()) clone = 'present';
     } catch { clone = 'absent'; }
     const o = ouvertes[repo.id] || {};
-    return { ...repo, open_mrs: o.n || 0, last_seen_at: o.at || null, clone_state: clone, clone_dir: dir, groups: groupesPar[repo.id] || [] };
+    /* UN COMPOSE DANS LE CLONE : c'est la porte contextuelle vers le menu Docker, replié d'office —
+       un dépôt qui porte `docker-compose.yml` a des services à regarder, et la ligne le dit. */
+    const hasCompose = clone === 'present' && ['compose.yaml', 'compose.yml', 'docker-compose.yaml', 'docker-compose.yml'].some((f) => fs.existsSync(path.join(dir, f)));
+    return { ...repo, open_mrs: o.n || 0, last_seen_at: o.at || null, clone_state: clone, clone_dir: dir, groups: groupesPar[repo.id] || [], has_compose: hasCompose };
   }));
 }));
 /* B17 — LA FICHE D'UN DÉPÔT. La ligne des réglages dit son URL, ses merge requests ouvertes

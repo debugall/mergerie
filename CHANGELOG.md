@@ -30,6 +30,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the install commands for Claude Code and Copilot CLI, and a **Retry** that redoes the detection
   on the spot. The detection used to be cached for the life of the process: installing the agent
   after starting changed nothing until a restart, and the only sign was a mute “dry-run” badge.
+- **The folded menus are found by use.** Git, Docker, Jenkins and Links still start folded; a
+  door to one of them — “Resolve in Git → Merge” on a conflicting merge request, “See the logs”
+  from the brief, a Jenkins job from a card, and a new “this repository has a compose file: show
+  Docker” on a repository's row — now unfolds the menu for good, as if the Settings box had been
+  ticked. The Jenkins sub-tab of Settings follows its menu. The session dialog's Jira field lists
+  **your tickets** as you type, and picking one fills the key and fetches the ticket; the READMEs
+  open with what the cockpit is for: N repositories at once, and sessions that start from a ticket.
 - **Repository groups.** Settings → Repositories gets *Repository groups*: a name, its members,
   and — folded — the review, fix and modification templates and the standing instructions that
   apply to every repository of the group (empty: the global settings). A review rule can be
@@ -149,6 +156,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Removed
 
+- **`npm run pipe` (`src/cli.js`).** That smoke test wrote a fake forge address and token into
+  the *real* configuration and a fake repository into the real database whenever
+  `MERGERIE_DATA_DIR` was not set. `npm run demo` and the end-to-end suite cover the same path,
+  isolated.
 - **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the
   local whisper.cpp engine (and its install scripts), the OpenAI-compatible and browser providers,
   and every setting that configured them are gone. Text fields go back to typing and pasting only.

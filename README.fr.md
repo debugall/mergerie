@@ -78,19 +78,31 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
 
 *(Enregistrer une vidéo de présentation : voir le [Guide complet → Mode démo](./docs/guide.fr.md#enregistrer-une-vidéo-de-présentation-prête-pour-youtube).)*
 
+## Fait pour N dépôts
+
+Ce qu'aucun assistant d'éditeur ne fait : **vingt dépôts à la fois**. Une action Git sur tous les
+dépôts d'un groupe en un geste ; les logs de dix conteneurs sans ouvrir dix terminaux ; un lot de
+merge requests de plusieurs micro-services **vérifié ensemble**, et une session de codage qui
+corrige les trois dépôts d'un seul coup ; un agent qui **cartographie un sujet** à travers les
+dépôts ; des **groupes de dépôts** qui portent une fois les règles, vérificateurs et gabarits que
+vingt micro-services partagent. **La plupart des sessions de codage partent d'un ticket** : le
+menu Jira liste les tiens, et « Faire coder l'IA » ouvre la session déjà remplie. Et `Ctrl`/`Cmd`
++ `K` retrouve **une adresse de déploiement en deux touches**, là où les favoris du navigateur
+demandent de traverser des dossiers.
+
 ## Les onglets
 
 **Onze onglets**, dans une barre latérale — détail de chacun dans le **[Guide complet](./docs/guide.fr.md#les-onglets-en-détail)**, et la **[vérification objective](./docs/guide.fr.md#vérification-objective-vérificateurs)** a sa propre section.
-**Git, Docker, Jenkins et Liens démarrent repliés** : ce sont des commodités, et la barre porte d'abord le travail de tous les jours — une case dans Réglages → Général → Menus les ramène pour de bon.
+**Git, Docker, Jenkins et Liens démarrent repliés** : ce sont des commodités, et la barre porte d'abord le travail de tous les jours — une case dans Réglages → Général → Menus les ramène pour de bon, et **une porte contextuelle aussi** : « Résoudre dans Git → Merge » sur une merge request en conflit, « Voir les logs » depuis le brief, « ce dépôt a un compose : afficher Docker » sur la ligne d'un dépôt — le menu ainsi ouvert reste dans la barre.
 
-- **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée, Et le verdict que la forge lit elle-même : un bouton **Approuver** (approbation GitLab, review `APPROVE` GitHub — jamais une rafale de commentaires inline), **Résoudre / Rouvrir** sur chaque fil de discussion, et la **CI de la forge** (pipeline GitLab, checks GitHub) en badge sur chaque carte.
+- **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
   Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
   pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport
   sans toucher ni à lui ni à sa note.
   Un rapport se **publie en commentaire sur la MR** d'un bouton ; et quand l'équipe partage un dépôt
   de données, un second bouton en publie le **lien** plutôt que ses six cents lignes — un seul
-  exemplaire, relu par tous au même endroit.
+  exemplaire, relu par tous au même endroit. Et le verdict que la forge lit elle-même : un bouton **Approuver** (approbation GitLab, review `APPROVE` GitHub — jamais une rafale de commentaires inline), **Résoudre / Rouvrir** sur chaque fil de discussion, et la **CI de la forge** (pipeline GitLab, checks GitHub) en badge sur chaque carte.
 - **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
 - **Agents** — des **profils de session** : un rôle, un périmètre, des outils, des skills, une sortie, parfois un horaire. Deux exemples livrés — l'**enquêteur d'incident**, qui trouve dans quel dépôt et quel fichier vit le code désigné par une trace, et le **documentaliste**, qui tient la carte des services dans une page de notes. Et les **agents de domaine** : on donne un sujet, le cartographe écrit la carte du sujet à travers les dépôts — chemins vérifiés un par un, âge de la carte compté sans IA, mise à jour relue et validée. Un agent ne pousse jamais et ne publie jamais de lui-même.
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions
@@ -145,11 +157,11 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
   relevé sur trois merge requests d'un même dépôt se transforme en règle de review d'un clic.
   Chaque nombre est une porte : il ouvre Reviews filtré sur ce projet, au bon stade.
-- **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en **Groupes de dépôts** : vingt micro-services qui partagent les mêmes règles de review, vérificateurs, gabarits de prompt et consignes les portent une fois, sur un groupe qui voyage avec l'équipe — et une pastille par groupe remplit une session, une action Git ou la couverture d'un vérificateur avec tous ses membres.
+- **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
-  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts. Chaque champ porte un badge **« équipe » / « ce poste »** : gabarits de prompt, seuils et politiques décrivent l'outil, tandis que les jetons d'API, le dossier de clonage et la langue n'appartiennent qu'à ta machine — et sont rangés à part. Désigne un dépôt git et une **équipe partage le travail accumulé** — règles de review, vérificateurs, agents et leur carte du code, et les pages de notes, sessions et todos que tu coches — chacun gardant son instance, ses jetons et son abonnement IA. Ce qu'on écrit sans destinataire (une session, une question, un brouillon) reste à soi tant qu'on n'a pas dit le contraire.
+  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts. Chaque champ porte un badge **« équipe » / « ce poste »** : gabarits de prompt, seuils et politiques décrivent l'outil, tandis que les jetons d'API, le dossier de clonage et la langue n'appartiennent qu'à ta machine — et sont rangés à part. Désigne un dépôt git et une **équipe partage le travail accumulé** — règles de review, vérificateurs, agents et leur carte du code, et les pages de notes, sessions et todos que tu coches — chacun gardant son instance, ses jetons et son abonnement IA. Ce qu'on écrit sans destinataire (une session, une question, un brouillon) reste à soi tant qu'on n'a pas dit le contraire. **Groupes de dépôts** : vingt micro-services qui partagent les mêmes règles de review, vérificateurs, gabarits de prompt et consignes les portent une fois, sur un groupe qui voyage avec l'équipe — et une pastille par groupe remplit une session, une action Git ou la couverture d'un vérificateur avec tous ses membres.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste

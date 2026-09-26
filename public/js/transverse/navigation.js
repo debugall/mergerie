@@ -30,7 +30,17 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
-function navTab(tab) { const b = $(`nav button[data-tab="${tab}"]`); if (b) b.click(); }
+/* LA PORTE CONTEXTUELLE DÉPLIE LE MENU. Git, Docker, Jenkins et Liens démarrent repliés, et rien
+   ne les faisait découvrir ; mais l'outil y MÈNE déjà de partout — « Résoudre dans Git → Merge »
+   sur une MR en conflit, « Voir les logs » depuis le brief, un job Jenkins depuis une carte. Un
+   écran ouvert par une de ces portes reste alors visible dans la barre, comme si la case des
+   Réglages avait été cochée : c'est par l'usage qu'un menu se découvre, pas par une case. */
+function navTab(tab) {
+  const b = $(`nav button[data-tab="${tab}"]`);
+  if (!b) return;
+  if (b.hidden && typeof devoilerMenus === 'function') devoilerMenus([tab]);
+  b.click();
+}
 function navReviews(seg) { navTab('review'); loadSegment(seg); }
 /* Ouvrir un rapport depuis AILLEURS (palette, bandeau de job, notification). Deux pièges :
    — le stade. `#reportSplit` est masqué tant qu'on est sur « à traiter » : ouvrir le rapport

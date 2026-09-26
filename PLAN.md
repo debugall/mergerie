@@ -1185,4 +1185,4 @@ WSL/MAC/Linux. GitLab self-hosted ou GitHub Enterprise avec CA d'entreprise → 
 
 ## Mode dry-run
 
-Sans binaire d'agent (ou `COPILOT_DRY_RUN=1`) : rapports/tâches mock générés depuis le diff → pipeline complet testable hors-ligne. `npm run pipe` = smoke test sur un dépôt synthétique.
+Sans binaire d'agent (ou `COPILOT_DRY_RUN=1`) : rapports/tâches mock générés depuis le diff → pipeline complet testable hors-ligne. (`npm run pipe` / `src/cli.js` a été retiré : ce smoke test écrivait `example.invalid` dans la configuration RÉELLE quand `MERGERIE_DATA_DIR` n'était pas posé ; `npm run demo` et la suite e2e couvrent le même chemin, isolés.)

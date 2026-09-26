@@ -13,6 +13,8 @@
 /* Champ « ticket Jira » : occupe la largeur restante avant le bouton Récupérer. */
 #taskModal .task-jira .jira-fetch { flex-wrap: nowrap; }
 #taskModal .task-jira .jira-fetch input { flex: 1 1 auto; min-width: 160px; }
+#taskModal .task-jira .task-jira-combo { flex: 1 1 auto; display: inline-flex; }
+#taskModal .task-jira .task-jira-combo input { width: 100%; }
 
 /* Tasks */
 .form select { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }

@@ -2727,7 +2727,6 @@ stays testable.
 
 ```bash
 COPILOT_DRY_RUN=1 npm start
-npm run pipe        # smoke test of the pipeline on a synthetic repository
 ```
 
 ## Local clones

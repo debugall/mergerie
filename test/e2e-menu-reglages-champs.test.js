@@ -21,7 +21,7 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const {
-  startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
+  startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur, afficherMenusOptionnels,
 } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
@@ -119,6 +119,7 @@ describe('Menu Réglages — chaque champ s’enregistre depuis l’écran et se
     assert.equal(r.status, 200, r.text);
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
+    await afficherMenusOptionnels(page);   // le sous-onglet Jenkins suit son menu, replié d'office
     page.on('pageerror', (e) => erreurs.push(e.message));
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab="admin"]');
