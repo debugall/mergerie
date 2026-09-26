@@ -19,8 +19,22 @@ const crypto = require('node:crypto');
 const { t } = require('./i18n');
 
 const MARQUE = '<<<DONNEE';
-// Toute imitation d'une balise — d'ouverture comme de fermeture, quel que soit son nonce.
-const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE)/gi;
+/* LES MARQUEURS DE PROTOCOLE CONNUS (plan_secure.md, lot D, point 1) — pas seulement `DONNEE`/
+   `FIN DONNEE`. Une donnée qui contient `<<<FINDINGS … FINDINGS>>>` ou `<<<QUESTIONS …
+   QUESTIONS>>>` tout formés se faisait lire comme le bloc de sortie du RUN COURANT si l'agent
+   la recopiait — c'est le vecteur direct de S6. La défense principale est le nonce par run que
+   chaque module de parsing exige désormais (`resolution.js`, `protocol.js`, `questions.js`) ;
+   ceci est la profondeur : un CLI qui perdrait le nonce reste protégé, puisque la donnée ne
+   porte plus aucune balise reconnaissable AVANT même d'atteindre le prompt.
+   LA LISTE EST FERMÉE (revue de add-secure-layer-2), pas « tout mot en majuscules » : un
+   heredoc PHP (`<<<SQL`, `<<<EOT`, `<<<HTML`) ou un here-string shell cité dans une description
+   de MR, un ticket, un rapport précédent partait déformé chez l'agent, qui y lisait alors de
+   fausses erreurs de syntaxe. Tenue à jour avec `protocol.NOMS`, `questions.js`, `resolution.js`.
+   LE `i` RESTE NÉCESSAIRE (revue de add-secure-layer-2, 2e passe) : une liste ouverte l'aurait
+   rendu dangereux pour les heredocs (`<<<sql` neutralisé pour rien) — une liste FERMÉE, elle, n'a
+   plus aucune raison de le perdre : `<<<findings`/`<<<fin donnee` doivent rester neutralisés
+   autant que leur forme en majuscules. */
+const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE)\b/gi;
 
 const neutraliser = (texte) => String(texte == null ? '' : texte).replace(IMITATION, '‹‹‹$1$2');
 
@@ -42,4 +56,13 @@ function avecPreambule(prompt) {
   return `${pre}\n\n${p}`;
 }
 
-module.exports = { nonFiable, avecPreambule, neutraliser };
+/* LE NONCE DE PROTOCOLE D'UN RUN (plan_secure.md, lot D, point 1) — distinct de celui d'une
+   donnée : celui-ci identifie le RUN entier, posé une fois par le module qui compose le prompt
+   (reviewer.js, questions.js, profile/apres.js…) et redemandé à l'agent pour CHAQUE bloc de
+   sortie qu'il produit (FINDINGS, QUESTIONS, REPO, AGENT, STALE, PAGE). Une donnée ne le connaît
+   jamais — elle ne peut donc pas fabriquer un bloc que le parseur accepterait comme venant de
+   CE run. Plus court que celui d'une donnée (6 car. hex) : il apparaît en clair dans le prompt
+   et dans la sortie attendue, ce n'est pas un secret. */
+const nonceRun = () => crypto.randomBytes(3).toString('hex');
+
+module.exports = { nonFiable, avecPreambule, neutraliser, nonceRun };

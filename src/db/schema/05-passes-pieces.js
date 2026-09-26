@@ -45,6 +45,13 @@ try { db.exec('ALTER TABLE agent_pass ADD COLUMN cost_usd REAL'); } catch { /* d
    muet) ; le nombre de tokens, lui, se calcule toujours. Nul sur toute passe antérieure à
    cette mesure — l'affichage doit le supporter. */
 try { db.exec('ALTER TABLE agent_pass ADD COLUMN tokens_est INTEGER'); } catch { /* déjà présente */ }
+/* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : pour une passe qui ne
+   DEVAIT rien écrire — une exploration, une question sur un rapport de review (`scope='review'`)
+   — `git/integrite.js` compare l'état du dépôt avant et après. Une différence marque CETTE
+   passe, jamais un run de codage (écrire y est le but). `compromised_detail` nomme les champs
+   qui ont bougé (`head`, `statut`, `config`, `hooks`). */
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN compromised INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE agent_pass ADD COLUMN compromised_detail TEXT'); } catch { /* déjà présente */ }
 /* LE DIFF D'UNE SEULE ITÉRATION. Relire une session de codage revenait à relire TOUT le diff
    de la branche à chaque suivi : la correction de trois lignes qu'on vient de demander se
    cherchait au milieu de deux cents. On retient donc les deux bornes de la passe — le HEAD

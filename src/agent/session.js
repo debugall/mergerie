@@ -238,13 +238,19 @@ async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = fal
   const backend = backendName();
   if (backend === 'unknown') throw new Error(t('err.agent.backend', { bin: copilot.COPILOT_BIN }));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
-  const pol = argvSaveur(backend, saveur, options, addDirs, onLog);
+  const pol = argvSaveur(backend, saveur, options, addDirs, cwd, onLog);
   const prompt = avecPreambule(promptRecu);  // ce qui est balisé comme donnée est dit tel
   const EXTRA = [...pol.extra, ...pol.args];
+  /* UNE SAVEUR DE LECTURE GARDE LA LISTE DE `pol` SEULE (S3, plan_secure.md lot A) : si le
+     profil ajoutait son propre `--permission-mode`/`--allowedTools` par-dessus, ce dernier
+     l'EMPORTERAIT sur la ligne de commande — une union déguisée en intersection. */
+  const optionsPourArgs = pol.lecture && options
+    ? { ...options, permissionMode: undefined, allowedTools: undefined, disallowedTools: undefined }
+    : options;
   /* Les options du PROFIL viennent après `COPILOT_ARGS` : le .env pose le socle commun à
      toutes les sessions, l'agent l'affine. Sans profil, `extra.args` est vide et l'argv est
      exactement celui d'avant — c'est l'invariant d'`agentargs`. */
-  const extra = agentargs.argsFor(backend, options);
+  const extra = agentargs.argsFor(backend, optionsPourArgs);
   if (extra.ignored.length) onLog(t('agents.log.copilot-ignored', { list: extra.ignored.join(', ') }));
 
   if (backend === 'claude') {
@@ -279,14 +285,23 @@ async function runInSession({ key, handle, prompt: promptRecu, cwd, resume = fal
   }
 }
 
-/* Les options de permission d'un lancement, et ce qu'on en dit au journal quand elles ne
-   peuvent pas tenir (copilot n'a pas de liste d'outils). */
-function argvSaveur(backend, saveur, options, addDirs, onLog = () => {}) {
+const NOTES = {
+  'copilot-lecture-non-restreinte': 'agents.log.copilot-not-restricted',
+  'copilot-ecriture-non-restreinte': 'agents.log.copilot-write-not-restricted',
+};
+/* Les options de permission d'un lancement, et ce qu'on en dit au journal : ce que copilot ne
+   peut pas restreindre, et le MODE retenu pour une écriture (lot A, point 2). */
+function argvSaveur(backend, saveur, options, addDirs, cwd, onLog = () => {}) {
   const profil = !!(options && (options.permissionMode || (options.allowedTools || []).length));
   const pol = agentpolicy.argvPermissions({
-    backend, bin: copilot.COPILOT_BIN, extra: copilot.EXTRA_ARGS, kind: saveur, profil, addDirs,
+    backend, bin: copilot.COPILOT_BIN, extra: copilot.EXTRA_ARGS, kind: saveur, profil, addDirs, cwd,
+    allowedToolsProfil: (options && options.allowedTools) || [],
   });
-  if (pol.note) onLog(t('agents.log.copilot-not-restricted'));
+  if (pol.note && NOTES[pol.note]) onLog(t(NOTES[pol.note]));
+  if (pol.mode === 'large') onLog(t('agents.log.write-mode-large'));
+  else if (pol.mode === 'allowlist') {
+    onLog(pol.sandboxDemandeNonVerifie ? t('agents.log.write-mode-sandbox-unverified') : t('agents.log.write-mode-allowlist'));
+  } else if (pol.mode === 'sandbox') onLog(t('agents.log.write-mode-sandbox'));
   return pol;
 }
 

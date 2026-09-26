@@ -4,7 +4,7 @@ const { DEFAULT_CLONE_DIR } = require('../core/paths');
 const { promptsFor } = require('../core/prompts');
 const registre = require('./store-registry');
 const { t } = require('../core/i18n');
-const { adresseAdmise } = require('../core/garde');
+const { adresseAdmise, origineDe } = require('../core/garde');
 const approbation = require('./approbation');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
@@ -42,6 +42,7 @@ const ALLOWED = [
   'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
+  'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
@@ -60,6 +61,15 @@ function updateConfig(patch) {
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
   if (next.jenkins_url) next.jenkins_url = next.jenkins_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
+  /* UNE ADRESSE QUI CHANGE INVALIDE LE JETON STOCKÉ (plan_secure.md, lot B, S1). */
+  const invaliderSiOrigineChangee = (champUrl, champJeton, defaut = '') => {
+    if (champJeton in patch) return;
+    if (origineDe(next[champUrl], defaut) !== origineDe(current[champUrl], defaut)) next[champJeton] = '';
+  };
+  invaliderSiOrigineChangee('gitlab_url', 'access_token');
+  invaliderSiOrigineChangee('github_url', 'github_token', 'https://github.com');
+  invaliderSiOrigineChangee('jira_url', 'jira_token');
+  invaliderSiOrigineChangee('jenkins_url', 'jenkins_token');
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
   if ('auto_refresh_minutes' in patch) {
     let m = parseInt(patch.auto_refresh_minutes, 10);
@@ -152,6 +162,15 @@ function updateConfig(patch) {
     const b = parseFloat(String(patch.agent_daily_budget_usd).replace(',', '.'));
     next.agent_daily_budget_usd = Number.isFinite(b) && b >= 0 ? Math.min(100000, Math.round(b * 100) / 100) : 0;
   }
+  if (!['sandbox', 'allowlist', 'large'].includes(next.agent_write_mode)) next.agent_write_mode = 'sandbox';
+  next.agent_write_allow = String(next.agent_write_allow || '').trim();
+  next.agent_sandbox_network_domains = String(next.agent_sandbox_network_domains || '').trim();
+  /* COLONNE INTEGER, PAS TEXT COMME SES VOISINES (revue de add-secure-layer-2) : relue depuis
+     `local_config`, sa valeur est le NOMBRE 1 ou 0, jamais la CHAÎNE '1' — un `=== '1'` la
+     ratait donc à chaque tour, et remettait ce choix explicite à 0 dès la moindre mise à jour
+     partielle de la config qui ne le touchait pas. `String(…)` avant comparaison couvre les
+     deux formes. */
+  next.agent_read_unrestricted = String(next.agent_read_unrestricted) === '1' ? '1' : '0';
   /* ---------- Données partagées ----------
      L'URL est normalisée comme les autres (pas de slash final). La branche vide retombe sur
      `main` : une branche vide ferait échouer le premier `push` avec un message que personne ne
@@ -244,7 +263,11 @@ function updateConfig(patch) {
       task_default_notify_jira = @task_default_notify_jira,
       task_default_converge = @task_default_converge,
       agent_max_turns = @agent_max_turns,
-      agent_daily_budget_usd = @agent_daily_budget_usd
+      agent_daily_budget_usd = @agent_daily_budget_usd,
+      agent_write_mode = @agent_write_mode,
+      agent_write_allow = @agent_write_allow,
+      agent_sandbox_network_domains = @agent_sandbox_network_domains,
+      agent_read_unrestricted = @agent_read_unrestricted
     WHERE id = 1`).run(next);
   /* LES RÉGLAGES D'AUTOMATISME SUIVENT L'APPROBATION, SANS LA CONTOURNER. Ce que l'utilisateur
      règle ICI sur une base déjà approuvée est approuvé avec — il vient de le décider. Mais si

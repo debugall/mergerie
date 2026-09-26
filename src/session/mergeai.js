@@ -45,6 +45,7 @@ const protocol = require('../agent/protocol');
 const { nonFiable } = require('../core/nonfiable');
 const gitmerge = require('../git/gitmerge');
 const { t } = require('../core/i18n');
+const protocolesecret = require('../core/protocolesecret');
 
 /* Demande une proposition pour TOUS les fichiers encore en conflit du merge, l'enregistre, et
    rend un petit bilan (pour le journal du job). Un merge sans conflit, ou dont tous les
@@ -71,8 +72,11 @@ async function proposer(mergeId, onLog = () => {}) {
     fichier: f.chemin,
     bloc: nonFiable(t('git.merge.ai.file-label', { fichier: f.chemin }), f.raw),
   })).join('\n\n');
+  /* Un nonce PAR DEMANDE, dérivé du secret du poste : ce qu'un fichier en conflit y glisserait ne
+     peut pas le deviner, donc ne peut pas se faire passer pour une proposition. */
+  const nonce = protocolesecret.hmac(`merge-${mergeId}-${Date.now()}`, 12);
   const prompt = t('git.merge.ai.prompt', {
-    target: etat.target_branch, source: etat.source_branch,
+    nonce, target: etat.target_branch, source: etat.source_branch,
     nFichiers: fichiers.length, nConflits: totalConflits, contenu: blocsFichiers,
   });
 
@@ -91,9 +95,9 @@ async function proposer(mergeId, onLog = () => {}) {
        explicitement ici, pour que le tableau soit le même avant et après un aller-retour. */
     const propositions = new Array(f.nb).fill(null);
     for (let j = 0; j < f.nb; j += 1) {
-      const { block: texte } = protocol.extraire(reponse, `F${i + 1}H${j + 1}`);
+      const { block: texte } = protocol.extraire(reponse, `F${i + 1}H${j + 1}`, nonce);
       if (!texte) continue;
-      const { block: raison } = protocol.extraire(reponse, `R${i + 1}H${j + 1}`);
+      const { block: raison } = protocol.extraire(reponse, `R${i + 1}H${j + 1}`, nonce);
       propositions[j] = { texte, raison: raison || null };
       resolus += 1;
     }

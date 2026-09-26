@@ -13,7 +13,7 @@ const ADMIN_SUBS = { rules: loadRules, repos: loadRepos, notif: renderNotifSetti
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
-function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); }
+function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); renderSandboxSettings(); }
 /* « Général » porte les réglages de l'outil ET l'arrangement de la barre de menus, qui vit dans
    le navigateur : deux sources, un seul panneau, donc les deux chargements. */
 function loadGeneralSettings() { loadConfig(); renderNavPrefs(); }

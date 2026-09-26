@@ -39,7 +39,7 @@ function unitDir(scope, taskId, unitId) {
 
 /* Enregistre une passe et renvoie son numéro. Best-effort sur l'écriture du fichier :
    l'absence de trace ne doit jamais faire échouer un codage qui, lui, a réussi. */
-function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
+function record(scope, taskId, unitId, { kind, prompt, text, costUsd, compromised, compromisedDetail }) {
   const md = String(text || '').trim();
   const row = db.prepare('SELECT MAX(n) v FROM agent_pass WHERE scope = ? AND task_id = ? AND unit_id = ?')
     .get(scope, taskId, unitId);
@@ -56,10 +56,11 @@ function record(scope, taskId, unitId, { kind, prompt, text, costUsd }) {
       outPath = path.join(unitDir(scope, taskId, unitId), `output-v${n}.md`);
       fs.writeFileSync(outPath, md, 'utf8');
     }
-    const info = db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd, tokens_est)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`)
+    const info = db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at, cost_usd, tokens_est, compromised, compromised_detail)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(scope, taskId, unitId, n, kind || 'run', String(prompt || ''), outPath, new Date().toISOString(),
-        typeof costUsd === 'number' ? costUsd : null, tokensEst);
+        typeof costUsd === 'number' ? costUsd : null, tokensEst,
+        compromised ? 1 : 0, compromised ? String(compromisedDetail || '') : null);
     // L'uid est posé par un déclencheur à l'insertion : on le relit plutôt que de le deviner.
     uid = (db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(info.lastInsertRowid) || {}).uid || null;
   } catch { /* trace best-effort */ }

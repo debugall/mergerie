@@ -66,6 +66,18 @@ const COLONNES_LOCALES = [
      d'équipe aurait permis à un seul push de retirer les deux bornes chez tout le monde, sans porte. */
   ['agent_max_turns', 'INTEGER NOT NULL DEFAULT 200'],
   ['agent_daily_budget_usd', 'REAL NOT NULL DEFAULT 0'],
+  /* CE QU'UN AGENT EN ÉCRITURE A LE DROIT DE FAIRE SANS RIEN DEMANDER (plan_secure.md, lot A).
+     `large` n'est JAMAIS le défaut : un `.env` migré d'avant ce lot n'y bascule pas tout seul. */
+  ["agent_write_mode", "TEXT NOT NULL DEFAULT 'sandbox'"],
+  ["agent_write_allow", "TEXT DEFAULT ''"],
+  ["agent_sandbox_network_domains", "TEXT DEFAULT ''"],
+  /* CE QUE « TESTER LE SANDBOX » A CONSTATÉ — jamais posé par un `PUT /api/config` : seul
+     l'appel réel du CLI depuis `POST /api/agent/sandbox-test` écrit ces trois colonnes. */
+  ['agent_sandbox_verified', 'INTEGER NOT NULL DEFAULT 0'],
+  ["agent_sandbox_tested_at", "TEXT DEFAULT ''"],
+  ["agent_sandbox_detail", "TEXT DEFAULT ''"],
+  // Copilot ne sait pas toujours se restreindre : jamais coché par défaut.
+  ['agent_read_unrestricted', 'INTEGER NOT NULL DEFAULT 0'],
 ];
 db.exec(`CREATE TABLE IF NOT EXISTS local_config (
   id INTEGER PRIMARY KEY CHECK (id = 1),

@@ -143,7 +143,7 @@ function valider(body, id = null) {
     permissionMode: body.permission_mode,
     maxTurns: body.max_turns,
     agents: sous,
-  }));
+  }, body.kind));
   return [...new Set(errs)];
 }
 /* A18 — LE BROUILLON D'UN PROFIL QU'ON ESSAIE, réduit à ce qui CHANGE LE RUN. On ne recopie

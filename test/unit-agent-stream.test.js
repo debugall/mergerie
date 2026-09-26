@@ -81,23 +81,24 @@ describe('flux d’agent : ce qu’on envoie', () => {
     assert.ok(argv.includes('--output-format') && argv.includes('--verbose') && argv.includes('-p'));
   });
 
-  test('sans options, l’argv ne porte aucun argument de profil', async () => {
+  test('sans options, l’argv ne porte aucun argument de PROFIL', async () => {
     const cwd2 = fs.mkdtempSync(path.join(tmp, 'work2-'));
     await agentsession.runInSession({ key: 'test-nu', prompt: 'x', cwd: cwd2, resume: false, onLog: () => {} });
     const argv = faux.argv();
-    for (const a of ['--model', '--append-system-prompt', '--permission-mode', '--allowedTools',
-      '--agents', '--add-dir']) {
+    for (const a of ['--model', '--append-system-prompt', '--agents', '--add-dir']) {
       assert.ok(!argv.includes(a), `argument de profil inattendu : ${a}`);
     }
     // La borne de tours vient des réglages (défaut 200), pas d'un profil — et une seule fois.
     assert.equal(argv[argv.indexOf('--max-turns') + 1], '200');
     assert.equal(argv.filter((x) => x === '--max-turns').length, 1);
-    /* Le seul ajout, et il vient de la politique par saveur (`agentpolicy`), pas d'un profil :
-       sans saveur, un lancement garde l'écriture mais perd les chemins de fuite. */
+    /* CE QUI EST LÀ QUAND MÊME vient de la politique par saveur (`agentpolicy`), pas d'un
+       profil : sans saveur (fail-closed, lot A point 8), un lancement passe par la branche
+       LECTURE — `--permission-mode default`, une liste de lecture, une seule liste d'interdits. */
     const i = argv.indexOf('--disallowedTools');
     assert.equal(argv.lastIndexOf('--disallowedTools'), i, 'une seule liste d’interdits');
+    assert.equal(argv[argv.indexOf('--permission-mode') + 1], 'default');
     const pol = require('../src/agent/policy');
-    assert.equal(argv[i + 1], [...pol.INTERDITS_ECRITURE, ...pol.interditsDonnees()].join(','));
+    assert.equal(argv[i + 1], [...pol.INTERDITS_LECTURE, ...pol.interditsDonnees()].join(','));
   });
 });
 

@@ -47,10 +47,11 @@ describe('Ce que reçoit le processus de l’agent', () => {
     assert.equal(argv[argv.indexOf('--permission-mode') + 1], 'default');
   });
 
-  test('un codage le garde, sans les chemins de fuite', async () => {
+  test('un codage n’a plus le mode large non plus (lot A) : acceptEdits, sans les chemins de fuite', async () => {
     await lancer('code');
     const argv = faux.argv();
-    assert.ok(argv.includes('--dangerously-skip-permissions'));
+    assert.equal(argv.includes('--dangerously-skip-permissions'), false, argv.join(' '));
+    assert.equal(argv[argv.indexOf('--permission-mode') + 1], 'acceptEdits');
     assert.match(argv[argv.indexOf('--disallowedTools') + 1], /Bash\(git push:\*\)/);
   });
 

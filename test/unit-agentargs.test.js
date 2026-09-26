@@ -91,6 +91,12 @@ describe('agentargs : ce que la sauvegarde refuse', () => {
     assert.deepEqual(agentargs.validate({ permissionMode: '' }), [], 'vide = acceptEdits, décidé ailleurs');
   });
 
+  test('un profil d’exploration ne porte pas de mode de permission (plan_secure.md, lot A, S3)', () => {
+    assert.deepEqual(agentargs.validate({ permissionMode: 'acceptEdits' }, 'explore'), ['agents.err.permission-explore']);
+    assert.deepEqual(agentargs.validate({ permissionMode: '' }, 'explore'), [], 'vide reste accepté');
+    assert.deepEqual(agentargs.validate({ permissionMode: 'acceptEdits' }, 'code'), [], 'un profil de codage, lui, le porte');
+  });
+
   test('un nombre de tours non entier positif est refusé', () => {
     assert.deepEqual(agentargs.validate({ maxTurns: 0 }), ['agents.err.max-turns']);
     assert.deepEqual(agentargs.validate({ maxTurns: -3 }), ['agents.err.max-turns']);

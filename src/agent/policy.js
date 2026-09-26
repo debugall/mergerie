@@ -63,12 +63,21 @@ const INTERDITS_ECRITURE = ['WebFetch', 'WebSearch', 'Bash(curl:*)', 'Bash(wget:
 function interditsDonnees() {
   const path = require('node:path');
   const { DATA_DIR, ROOT } = require('../core/paths');
+  const jetonlocal = require('../core/jetonlocal');
+  const protocolesecret = require('../core/protocolesecret');
   const fs = require('node:fs');
   /* Le CLI compare au chemin RÉEL (`/var` → `/private/var` sur macOS) : on pose les deux. */
   const reels = (p) => { const r = [path.resolve(p)]; try { r.push(fs.realpathSync(p)); } catch { /* absent */ } return r; };
   const abs = (p) => `/${p}`.replace(/\\/g, '/');     // `//chemin` = absolu pour le CLI
   const cibles = [
     ...reels(DATA_DIR).map((d) => `${abs(d)}/reviewer.db*`),
+    /* Le jeton de session local (lot B, S1) : lu par un agent, il ouvrirait l'API depuis SON
+       Bash comme n'importe quel processus du poste. */
+    ...reels(jetonlocal.FICHIER).map(abs),
+    /* Le secret des nonces de protocole (lot D, revue) : lu par un agent, il pourrait forger
+       n'importe quel bloc `<<<AGENT…>>>`/`<<<QUESTIONS…>>>` et le glisser dans un fichier qu'un
+       AUTRE run lirait comme sa propre sortie. */
+    ...reels(protocolesecret.FICHIER).map(abs),
     ...[path.join(ROOT, '.env'), path.join(process.cwd(), '.env')].flatMap(reels).map(abs),
   ];
   return [...new Set(cibles)].flatMap((c) => [`Read(${c})`, `Edit(${c})`]);
@@ -86,25 +95,257 @@ function capacites(bin) {
     restricted: /--restricted\b/.test(aide),
     settingSources: /--setting-sources\b/.test(aide),
     strictMcp: /--strict-mcp-config\b/.test(aide),
+    bare: /--bare\b/.test(aide),
+    permissionPrompts: /--permission-prompts\b/.test(aide),
+    settings: /--settings\b/.test(aide),
+    denyTool: /--deny-tool\b/.test(aide),
+    allowTool: /--allow-tool\b/.test(aide),
   };
   return capaciteCache;
 }
 const oublierCapacites = () => { capaciteCache = null; };
 
-/** Le backend que désigne `COPILOT_BIN` — d'après son nom, comme l'a toujours fait `agentsession`. */
+/* Le backend que désigne `COPILOT_BIN` (plan_secure.md, lot A, S7/point 8) — d'après ce que le
+   binaire répond à `--version`, PAS son seul nom : un wrapper neutre (`runPrompt`) qui relaie à
+   `claude` sans le dire dans son propre nom désactivait toute la politique en silence. Le nom
+   reste un REPLI quand `--version` ne dit rien de reconnaissable (binaire absent, ancien CLI
+   sans cette sortie) ; `unknown` dans les deux cas — jamais un fail-open. */
+let backendCache = null;
 function backendDe(bin) {
-  const b = String(bin || '').toLowerCase();
-  if (b.includes('claude')) return 'claude';
-  if (b.includes('copilot')) return 'copilot';
-  return 'unknown';
+  const b = String(bin || '');
+  if (backendCache && backendCache.bin === b) return backendCache.val;
+  let val = 'unknown';
+  try {
+    const sortie = String(spawnSync(b, ['--version'], { encoding: 'utf8', timeout: 5000 }).stdout || '');
+    if (/claude code/i.test(sortie)) val = 'claude';
+    else if (/github copilot/i.test(sortie)) val = 'copilot';
+  } catch { /* binaire absent, ou --version inconnu : repli sur le nom */ }
+  if (val === 'unknown') {
+    const low = b.toLowerCase();
+    if (low.includes('claude')) val = 'claude';
+    else if (low.includes('copilot')) val = 'copilot';
+  }
+  backendCache = { bin: b, val };
+  return val;
+}
+const oublierBackend = () => { backendCache = null; };
+
+/* FAIL-CLOSED (plan_secure.md, lot A, point 8) : une saveur qu'on ne sait pas NOMMER est traitée
+   en LECTURE, jamais en écriture. L'inverse (l'ancien défaut) élargissait sans un mot dès qu'un
+   appelant passait un `kind` mal orthographié ou nouveau. */
+const saveurDe = (kind) => (ECRITURE.has(String(kind || '')) ? 'ecriture' : 'lecture');
+
+/* Kinds qui n'ont besoin d'AUCUN réglage du dépôt — ni `CLAUDE.md`, ni `.claude/`, ni plugin —
+   pour répondre : une question libre ou l'essai d'une session. `--bare` les coupe tous ; une
+   review ou une exploration, elles, lisent le `CLAUDE.md` du dépôt comme contexte légitime et
+   gardent `--setting-sources user` + `--strict-mcp-config` (lot A, point 6). */
+const BARE_KINDS = new Set(['ask', 'test']);
+
+/** Intersection outils-de-lecture × outils-du-profil — JAMAIS l'union (S3). Un profil qui ne
+ *  demande rien (pas de liste, kind sans profil) laisse la liste de lecture intacte ; un
+ *  chevauchement vide (syntaxe de motif différente) aussi, plutôt que de tout fermer. */
+function retrecir(listeLecture, demandeProfil) {
+  if (!demandeProfil || !demandeProfil.length) return listeLecture;
+  const inter = listeLecture.filter((o) => demandeProfil.includes(o));
+  return inter.length ? inter : listeLecture;
 }
 
-const saveurDe = (kind) => {
-  const k = String(kind || '');
-  if (LECTURE.has(k)) return 'lecture';
-  if (ECRITURE.has(k)) return 'ecriture';
-  return 'ecriture';          // inconnu : on ne restreint pas ce qu'on ne sait pas nommer
-};
+function argvLecture({ bin, extra, addDirs, allowedToolsProfil, kind }) {
+  const cap = capacites(bin);
+  const outils = retrecir(cap.restricted ? OUTILS_LECTURE.slice(0, 3) : OUTILS_LECTURE, allowedToolsProfil);
+  const disallowedTools = [...INTERDITS_LECTURE, ...interditsDonnees()].join(',');
+  const bare = cap.bare && BARE_KINDS.has(String(kind || ''));
+  const args = bare
+    ? ['--bare', '--allowedTools', outils.join(','), '--disallowedTools', disallowedTools]
+    : cap.restricted
+      ? ['--restricted', '--permission-mode', 'default', '--allowedTools', outils.join(','),
+        '--disallowedTools', disallowedTools, ...(cap.strictMcp ? ['--strict-mcp-config'] : [])]
+      : ['--permission-mode', 'default', '--allowedTools', outils.join(','),
+        '--disallowedTools', disallowedTools,
+        ...(cap.settingSources ? ['--setting-sources', 'user'] : []),
+        ...(cap.strictMcp ? ['--strict-mcp-config'] : [])];
+  for (const d of addDirs || []) args.push('--add-dir', String(d));
+  return { extra: sansModeLarge(extra), args, lecture: true, note: null, mode: bare ? 'bare' : 'lecture' };
+}
+
+/* ---------------------------------------------------------------- écriture : sandbox du CLI */
+
+/* Les fichiers qu'un agent en écriture ne doit JAMAIS pouvoir lire, sandbox ou pas : la base
+   (jetons de forge/Jira/Jenkins), le jeton de session local (lot B), le `.env` du serveur, les
+   identifiants du poste. Séparé de `interditsDonnees()` (une règle `Read(//chemin)` du CLI, qui
+   ne connaît que Claude) : ici c'est la forme `denyRead` du réglage `--settings` du sandbox. */
+function sandboxDenyRead() {
+  const path = require('node:path');
+  const { DATA_DIR, ROOT } = require('../core/paths');
+  const jetonlocal = require('../core/jetonlocal');
+  const protocolesecret = require('../core/protocolesecret');
+  return [
+    path.join(DATA_DIR, 'reviewer.db*'),
+    jetonlocal.FICHIER,
+    protocolesecret.FICHIER,
+    path.join(DATA_DIR, 'shared'),
+    path.join(ROOT, '.env'),
+    '~/.ssh', '~/.aws', '~/.config/gh', '~/.netrc',
+  ];
+}
+
+/** Le réglage `--settings` inline qui sandboxe l'agent en écriture : écriture bornée au dossier
+ *  de travail et à un dossier temporaire, réseau fermé sauf les domaines nommés par
+ *  `agent_sandbox_network_domains`, jeton GitHub jamais transmis en credential du sandbox. */
+function sandboxSettings(cwd) {
+  const os = require('node:os');
+  const { getConfig } = require('../data/config');
+  const cfg = getConfig();
+  const domaines = String(cfg.agent_sandbox_network_domains || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
+  return {
+    sandbox: {
+      enabled: true,
+      failIfUnavailable: true,
+      filesystem: { allowWrite: [cwd || process.cwd(), os.tmpdir()], denyRead: sandboxDenyRead() },
+      network: { allowedDomains: domaines, allowLocalBinding: false },
+      credentials: { envVars: [{ name: 'GH_TOKEN', mode: 'deny' }] },
+    },
+  };
+}
+
+/* Les commandes des VÉRIFICATEURS APPROUVÉS sur ce poste (Réglages → Vérificateurs) : ce qu'on
+   sait déjà vouloir laisser tourner sans surveillance — `npm test`, `npm run lint`… — devient la
+   liste blanche du repli sans sandbox. Un vérificateur non approuvé n'y contribue rien : son
+   contenu peut avoir changé par la synchro sans qu'on l'ait relu (`data/approbation.js`).
+   L'ENTRÉE EST LA COMMANDE EXACTE, jamais `Bash(<programme>:*)` (revue de add-secure-layer-2) :
+   un `:*` sur `npm` autorise aussi `npm exec`/`npm publish`/`npm run <n'importe quoi>`, sur
+   `node` autorise `node -e "…"` — un shell complet, alors que seule LA commande approuvée doit
+   tourner sans surveillance. */
+function commandesVerificateursApprouves() {
+  const db = require('../db');
+  const approbation = require('../data/approbation');
+  const out = new Set();
+  for (const v of db.prepare('SELECT id FROM verifier').all()) {
+    if (!approbation.verificateurApprouve(v.id)) continue;
+    for (const c of db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position').all(v.id)) {
+      const cmd = String((c && c.command) || '').trim();
+      if (cmd) out.add(`Bash(${cmd})`);
+    }
+  }
+  return [...out];
+}
+
+/* Le sous-ensemble de git qu'une écriture sans sandbox peut lancer sans surveillance : jamais
+   `push`, `remote` ni `config` (déjà dans `INTERDITS_ECRITURE`, répété nulle part ici — une
+   seule liste qui dit ce qui fuit). */
+const GIT_ALLOWLIST = ['status', 'log', 'show', 'diff', 'blame', 'add', 'commit', 'stash', 'checkout'];
+
+/** La liste blanche du mode `allowlist` (repli quand le sandbox manque ou n'est pas vérifié) :
+ *  fichiers, le sous-ensemble de git, les commandes des vérificateurs approuvés, et ce que
+ *  `agent_write_allow` (Réglages → Session IA) ajoute explicitement. */
+function allowlistEcriture() {
+  const { getConfig } = require('../data/config');
+  const cfg = getConfig();
+  const dits = String(cfg.agent_write_allow || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean)
+    .map((c) => (c.startsWith('Bash(') || !/^[\w.-]+$/.test(c.split(':')[0]) ? c : `Bash(${c})`));
+  return [...new Set([
+    'Read', 'Edit', 'Write', 'MultiEdit', 'Glob', 'Grep',
+    ...GIT_ALLOWLIST.map((s) => `Bash(git ${s}:*)`),
+    ...commandesVerificateursApprouves(),
+    ...dits,
+  ])];
+}
+
+/**
+ * L'argv d'une saveur d'écriture (plan_secure.md, lot A) : plus jamais de mode large. Trois
+ * modes, réglage de poste `agent_write_mode` (Réglages → Session IA) :
+ *   — `sandbox` (défaut) ET vérifié (`agent_sandbox_verified`, posé par le bouton « Tester le
+ *     sandbox », jamais par un simple `PUT /api/config`) : `--settings` sandboxé, filesystem et
+ *     réseau bornés par le CLI lui-même.
+ *   — `sandbox` NON vérifié, ou `allowlist` explicite : repli en liste blanche de commandes
+ *     (`allowlistEcriture`), sans sandbox — moins sûr, mais jamais un mode large.
+ *   — `large` : l'ancien comportement (`--dangerously-skip-permissions` intact), jamais le
+ *     défaut d'un réglage mal lu (`data/config.js` s'en assure), un bandeau rouge le rappelle.
+ */
+function argvEcriture({ bin, extra, profil, addDirs, cwd }) {
+  const disallowedTools = [...INTERDITS_ECRITURE, ...interditsDonnees()].join(',');
+  if (profil) {
+    /* Un profil de CODAGE porte ses propres permissions (`args.js`, ajoutées par l'appelant) :
+       policy.js n'y ajoute que les interdits de fuite et, quand il est vérifié, le sandbox —
+       qui ne retire rien qu'un profil aurait explicitement demandé, il borne le système de
+       fichiers et le réseau autour de lui. */
+    const { getConfig } = require('../data/config');
+    const cfg = getConfig();
+    const args = ['--disallowedTools', disallowedTools];
+    if ((cfg.agent_write_mode || 'sandbox') === 'sandbox' && cfg.agent_sandbox_verified && capacites(bin).settings) {
+      args.push('--settings', JSON.stringify(sandboxSettings(cwd)));
+    }
+    return { extra: sansModeLarge(extra), args, lecture: false, note: null, mode: 'profil' };
+  }
+
+  const { getConfig } = require('../data/config');
+  const cfg = getConfig();
+  const mode = cfg.agent_write_mode || 'sandbox';
+
+  if (mode === 'large') {
+    return { extra, args: ['--disallowedTools', disallowedTools], lecture: false, note: null, mode: 'large' };
+  }
+
+  const cap = capacites(bin);
+  const base = ['--permission-mode', 'acceptEdits', ...(cap.permissionPrompts ? ['--permission-prompts', 'none'] : []), '--disallowedTools', disallowedTools];
+  for (const d of addDirs || []) base.push('--add-dir', String(d));
+
+  if (mode === 'sandbox' && cfg.agent_sandbox_verified && cap.settings) {
+    return {
+      extra: sansModeLarge(extra),
+      args: [...base, '--allowedTools', 'Read,Edit,Write,MultiEdit,Glob,Grep,Bash', '--settings', JSON.stringify(sandboxSettings(cwd))],
+      lecture: false, note: null, mode: 'sandbox',
+    };
+  }
+  return {
+    extra: sansModeLarge(extra),
+    args: [...base, '--allowedTools', allowlistEcriture().join(',')],
+    lecture: false,
+    note: null,
+    mode: 'allowlist',
+    sandboxDemandeNonVerifie: mode === 'sandbox',
+  };
+}
+
+/* ---------------------------------------------------------------- copilot */
+
+function argvCopilot({ extra, kind, bin }) {
+  const lecture = saveurDe(kind) === 'lecture';
+  const cap = capacites(bin || 'copilot');
+  /* `extra` (COPILOT_ARGS) PASSE PAR LE MÊME FILTRE QUE CLAUDE : `LARGES` connaît
+     `--allow-all-tools`, l'équivalent Copilot du mode large, précisément pour ce backend — le
+     laisser passer intact aurait rouvert par COPILOT_ARGS ce que policy.js ferme partout
+     ailleurs (plan_secure.md, lot A, S4). */
+  const sansLarge = sansModeLarge(extra);
+  if (!lecture) {
+    /* Écriture : restreindre ce qui fuit, quand le binaire le sait faire — sondé une fois via
+       `--help` (lot A, point 7). Un CLI qui ne connaît pas `--deny-tool` reçoit `extra` (mode
+       large excepté) intact : c'est la limite documentée du backend Copilot (`SECURITY.md`). */
+    if (!cap.denyTool) return { extra: sansLarge, args: [], lecture, note: 'copilot-ecriture-non-restreinte', mode: 'copilot' };
+    return {
+      extra: sansLarge, args: ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"],
+      lecture, note: null, mode: 'copilot',
+    };
+  }
+  /* Lecture : sans `--deny-tool`, ce backend ne sait pas se restreindre — REFUSER plutôt que de
+     laisser croire à une lecture seule (point 7). `agent_read_unrestricted=1` est l'échappatoire
+     assumée, jamais le défaut. */
+  if (!cap.denyTool) {
+    const { getConfig } = require('../data/config');
+    const cfg = getConfig();
+    if (String(cfg.agent_read_unrestricted) !== '1') {
+      const { t } = require('../core/i18n');
+      const e = new Error(t('err.agent.copilot-lecture-non-restreinte'));
+      e.code = 'COPILOT_UNRESTRICTED';
+      throw e;
+    }
+    return { extra: sansLarge, args: [], lecture, note: 'copilot-lecture-non-restreinte', mode: 'copilot' };
+  }
+  return {
+    extra: sansLarge, args: ["--deny-tool", "write", "--deny-tool", "shell(*)"],
+    lecture, note: null, mode: 'copilot',
+  };
+}
 
 /**
  * L'argv de permission pour un lancement.
@@ -113,38 +354,19 @@ const saveurDe = (kind) => {
  * @param {string} p.bin
  * @param {string[]} p.extra  `COPILOT_ARGS` découpé
  * @param {string} p.kind     la saveur demandée
- * @param {boolean} p.profil  un profil d'agent porte ses propres permissions
+ * @param {boolean} p.profil  un profil de CODAGE porte ses propres permissions (jamais un profil
+ *                            d'exploration : celui-ci passe TOUJOURS par la branche lecture)
  * @param {string[]} p.addDirs dossiers hors du dossier de travail que la lecture doit voir
  *                             (les projets liés d'une review, montés par lien symbolique)
- * @returns {{ extra: string[], args: string[], lecture: boolean, note: string|null }}
+ * @param {string[]} p.allowedToolsProfil outils demandés par un profil de LECTURE — rétrécit la
+ *                             liste de lecture, ne l'élargit jamais (S3)
+ * @param {string} p.cwd      dossier de travail — borne l'écriture du sandbox
+ * @returns {{ extra: string[], args: string[], lecture: boolean, note: string|null, mode: string }}
  */
-function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDirs = [] }) {
-  const lecture = saveurDe(kind) === 'lecture';
-  if (backend !== 'claude') {
-    /* Copilot n'a pas d'équivalent aux listes d'outils : on ne peut pas restreindre ici, et on
-       le DIT dans le journal plutôt que de laisser croire à une lecture seule. */
-    return { extra, args: [], lecture, note: lecture ? 'copilot-lecture-non-restreinte' : null };
-  }
-  if (profil) {
-    /* Un profil porte ses permissions (approuvées sur ce poste). Pour qu'elles vaillent, le mode
-       large est retiré ; on garde tout de même les interdits de fuite. */
-    return { extra: sansModeLarge(extra), args: ['--disallowedTools', [...INTERDITS_ECRITURE, ...interditsDonnees()].join(',')], lecture, note: null };
-  }
-  if (lecture) {
-    const cap = capacites(bin);
-    /* `--restricted` retire aussi Bash : la liste blanche se réduit aux outils de fichiers.
-       Toute liste (variadique) est suivie d'une autre option : l'appelant termine par
-       `--output-format … -p <prompt>`, et le prompt ne se fait jamais avaler comme outil. */
-    const args = cap.restricted
-      ? ['--restricted', '--permission-mode', 'default', '--allowedTools', OUTILS_LECTURE.slice(0, 3).join(','),
-        '--disallowedTools', [...INTERDITS_LECTURE, ...interditsDonnees()].join(','), ...(cap.strictMcp ? ['--strict-mcp-config'] : [])]
-      : ['--permission-mode', 'default', '--allowedTools', OUTILS_LECTURE.join(','),
-        '--disallowedTools', [...INTERDITS_LECTURE, ...interditsDonnees()].join(','),
-        ...(cap.settingSources ? ['--setting-sources', 'user'] : [])];
-    for (const d of addDirs || []) args.push('--add-dir', String(d));
-    return { extra: sansModeLarge(extra), args, lecture, note: null };
-  }
-  return { extra, args: ['--disallowedTools', [...INTERDITS_ECRITURE, ...interditsDonnees()].join(',')], lecture, note: null };
+function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDirs = [], allowedToolsProfil = [], cwd }) {
+  if (backend !== 'claude') return argvCopilot({ extra, kind, bin });
+  if (saveurDe(kind) === 'lecture') return argvLecture({ bin, extra, addDirs, allowedToolsProfil, kind });
+  return argvEcriture({ bin, extra, profil, addDirs, cwd });
 }
 
 /** Vrai quand ce lancement ne pourra PAS écrire son document : saveur de lecture sur claude. Le
@@ -238,6 +460,7 @@ function envAgent(backend, source = process.env) {
 }
 
 module.exports = {
-  LECTURE, ECRITURE, backendDe, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
+  LECTURE, ECRITURE, backendDe, oublierBackend, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
   OUTILS_LECTURE, INTERDITS_LECTURE, INTERDITS_ECRITURE, interditsDonnees,
+  allowlistEcriture, sandboxSettings, BARE_KINDS,
 };

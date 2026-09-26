@@ -592,6 +592,30 @@
                 </p>
             </div>
 
+            <h2 data-i18n="settings.sandbox.title">Sandbox de l'agent en écriture</h2>
+            <p class="muted" data-i18n="settings.sandbox.intro">Ce qu'un agent en écriture (codage, correction) a le droit de faire SANS rien demander. « sandbox » ne s'applique vraiment qu'une fois vérifié par le bouton ci-dessous, sur CETTE machine — tant qu'il ne l'est pas, la politique retombe sur une liste blanche de commandes.</p>
+            <div class="form">
+                <label><span data-i18n="settings.sandbox.mode-lbl">Politique d'écriture</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.sandbox.mode-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select form="configForm" name="agent_write_mode">
+                        <option value="sandbox" data-i18n="settings.sandbox.opt.sandbox">Sandbox du CLI (défaut — liste blanche tant que non vérifié)</option>
+                        <option value="allowlist" data-i18n="settings.sandbox.opt.allowlist">Liste blanche de commandes seulement</option>
+                        <option value="large" data-i18n="settings.sandbox.opt.large">⚠ Mode large (--dangerously-skip-permissions) — aucune restriction</option>
+                    </select></label>
+                <label><span data-i18n="settings.sandbox.allow-lbl">Commandes ajoutées à la liste blanche (une par ligne, ex. make, Bash(mvn:*))</span>
+                    <textarea form="configForm" name="agent_write_allow" rows="3" placeholder="make&#10;Bash(mvn:*)" data-i18n-placeholder="settings.sandbox.allow-ph"></textarea></label>
+                <label><span data-i18n="settings.sandbox.domains-lbl">Domaines joignables sous sandbox (un par ligne — vide = réseau fermé)</span>
+                    <textarea form="configForm" name="agent_sandbox_network_domains" rows="2" placeholder="registry.npmjs.org&#10;pypi.org" data-i18n-placeholder="settings.sandbox.domains-ph"></textarea></label>
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                </p>
+                <p>
+                    <button id="sandboxTest" type="button" class="btn btn-primary" title="Lance un appel réel au CLI pour vérifier le sandbox sur cette machine" data-i18n-title="settings.sandbox.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.sandbox.test">Tester le sandbox</span></button>
+                    <span id="sandboxTestInfo" class="muted"></span>
+                </p>
+                <div id="sandboxTestResult"></div>
+                <label class="inline-check"><input form="configForm" name="agent_read_unrestricted" type="checkbox" /> <span data-i18n="settings.sandbox.unrestricted-lbl">Copilot : laisser une lecture non restreinte si ce CLI ne sait pas se restreindre (--deny-tool absent)</span></label>
+            </div>
+
             <h2 data-i18n="settings.aisession.title">Reprise de session IA</h2>
             <p class="muted" data-i18n="settings.aisession.intro">Test technique : l'agent mémorise un marqueur secret lors d'une première passe, puis on reprend la <strong>même</strong> session et on lui redemande ce marqueur. S'il le restitue, on sait qu'on peut reprendre une session — socle de la future fonctionnalité « l'IA pose une question ».</p>
             <p>

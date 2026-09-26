@@ -25,7 +25,10 @@ describe('Origine des requêtes', () => {
   // `app.api` n'envoie pas d'`Origin` : on descend d'un cran pour en poser un à la main.
   const poster = (chemin, origine, methode = 'POST') => fetch(`${app.base}${chemin}`, {
     method: methode,
-    headers: origine ? { Origin: origine, 'Content-Type': 'application/x-www-form-urlencoded' } : {},
+    headers: {
+      Authorization: `Bearer ${app.localToken}`,
+      ...(origine ? { Origin: origine, 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+    },
   });
 
   /* LE SCÉNARIO RÉEL : un formulaire auto-soumis depuis une page tierce. `Content-Type`
@@ -42,6 +45,16 @@ describe('Origine des requêtes', () => {
       'et SURTOUT : le rapport est toujours là — un 403 qui aurait quand même effacé ne vaudrait rien');
     assert.equal(app.db.prepare('SELECT status FROM mr WHERE id = 1').get().status, 'reviewed',
       'la merge request n’a pas été remise en file');
+  });
+
+  /* Express route SANS tenir compte de la casse : `GET /API/…` atteint la même route que
+     `/api/…`. Une garde sensible à la casse (`req.path.startsWith('/api/')`) laissait passer un
+     `Sec-Fetch-Site: cross-site` sur ce chemin-là. */
+  test('la casse de l’URL ne contourne pas la garde Sec-Fetch-Site', async () => {
+    const r = await fetch(`${app.base}/API/config`, {
+      headers: { Authorization: `Bearer ${app.localToken}`, 'Sec-Fetch-Site': 'cross-site' },
+    });
+    assert.equal(r.status, 403);
   });
 
   test('le refus dit ce qui s’est passé, sans jargon', async () => {
@@ -64,7 +77,7 @@ describe('Origine des requêtes', () => {
   });
 
   test('les lectures ne sont pas concernées', async () => {
-    const r = await fetch(`${app.base}/api/status`, { headers: { Origin: 'https://evil.example' } });
+    const r = await fetch(`${app.base}/api/status`, { headers: { Origin: 'https://evil.example', Authorization: `Bearer ${app.localToken}` } });
     assert.equal(r.status, 200, 'un GET ne change rien, et la réponse reste illisible pour la page tierce');
   });
 

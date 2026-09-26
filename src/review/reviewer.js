@@ -8,7 +8,7 @@ const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('../core/paths');
 const git = require('../git/git');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
-const { nonFiable } = require('../core/nonfiable');
+const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const { extractNote } = require('./note');
 const resolution = require('../git/resolution');
@@ -16,6 +16,7 @@ const glob = require('../core/glob');
 const diffnum = require('../git/diffnum');
 const demoReview = require('../demo/review');
 const agentpass = require('../agent/pass');
+const integrite = require('../git/integrite');
 const agentknowledge = require('../agent/knowledge');   // B7 : la carte du domaine touché
 const demoDiff = require('../demo/diff');
 const demoComments = require('../demo/comments');
@@ -34,9 +35,13 @@ const { SHARED_DIR } = require('../core/paths');
    de résolution d'une passe à l'autre (ideas.md).
    La consigne « titre stable » est ce qui rend l'appariement mécanique fiable :
    un même problème doit garder le même titre pour être reconnu. */
-const FINDINGS_INSTRUCTION =
+/* À NONCE PAR RUN (plan_secure.md, lot D, point 1) : le nonce est tiré une fois par review
+   (`prepareContext`) et redemandé ici à l'agent, en clair — ce n'est pas un secret, c'est ce qui
+   empêche une donnée de fabriquer un bloc que le parseur prendrait pour celui de CE run. */
+const findingsInstruction = (nonce) =>
   `\n\nEn PLUS du rapport ci-dessus, ajoute tout à la fin du fichier un bloc de ` +
-  `constats structurés, délimité EXACTEMENT par ${resolution.START} et ${resolution.END}. ` +
+  `constats structurés, délimité EXACTEMENT par ${resolution.START(nonce)} et ${resolution.END(nonce)} ` +
+  `(le nombre ${nonce} doit apparaître EXACTEMENT ainsi, c'est ce qui identifie CE rapport-ci). ` +
   `À l'intérieur, une ligne par constat, au format : sévérité | fichier | ligne | titre court. ` +
   `La sévérité vaut blocker, major, minor ou info ; « fichier » est relatif au dépôt ; « ligne » ` +
   `est le numéro concerné (ou vide). Donne à chaque problème un TITRE stable et descriptif : le ` +
@@ -56,6 +61,9 @@ function reviewDirFor(repo, mr) {
 // Utilisé aussi bien par la review que par la modification (même comportement).
 async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   onLog(t('log.review.prepare', { project: repo.project }));
+  // Un seul nonce pour tout le run : la review ET son explication partagent le même contexte,
+  // mais seule la review porte un bloc de constats (voir `fi` dans `generate`).
+  const nonceFindings = nonceRun();
   /* En démo, `gitlab.demo` n'existe pas : cloner échouait, et la fonctionnalité centrale de
      l'outil était la seule qu'on ne pouvait pas montrer. On travaille alors dans un dossier
      sans git, avec le diff fictif de `demo-diff.js` — voir `demo-review.js`. */
@@ -262,7 +270,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       // Une question n'est pas un rapport : rendre le rapport ici aurait fait croire, en démo,
       // qu'une question régénère la revue — exactement ce que la fonctionnalité évite.
       if (kind === 'question') return demoReview.reponseQuestion(mr, diff, opts.question);
-      return demoReview.rapport(mr, diff, { START: resolution.START, END: resolution.END });
+      return demoReview.rapport(mr, diff, { START: resolution.START(nonceFindings), END: resolution.END(nonceFindings) });
     }
     const outAbs = path.join(cwd, outRel);
     try { fs.rmSync(outAbs, { force: true }); } catch { /* pas de fichier précédent */ }
@@ -276,7 +284,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
         `\`${outRel}\` (chemin relatif au dépôt courant). Écris uniquement le contenu du ` +
         `document dans ce fichier, sans le dupliquer dans la sortie standard.`;
     const rb = (kind === 'review') ? rulesBlock : ''; // règles = prompt de review uniquement
-    const fi = (kind === 'review') ? FINDINGS_INSTRUCTION : ''; // constats = review uniquement
+    const fi = (kind === 'review') ? findingsInstruction(nonceFindings) : ''; // constats = review uniquement
     /* Ajoutée à l'EXÉCUTION, comme les constats : le gabarit de l'utilisateur n'a pas à
        connaître ce fichier, et un gabarit personnalisé doit en profiter aussi. */
     const li = (kind === 'review') ? `\n\n${t('review.lines-instruction', { file: lignesName })}` : '';
@@ -342,13 +350,31 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   // `incremental` = true seulement si le diff delta a réellement été produit (permet à
   // reviewMr d'injecter le rapport précédent en contexte, et de savoir qu'il ne voit
   // qu'une partie de la MR).
-  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental };
+  /* LA GARDE D'INTÉGRITÉ COUVRE TOUS LES CLONES QUE L'AGENT VOIT : le principal ET les projets
+     liés (`addDirs`) — un `.git/hooks` planté dans un projet lié survivrait sinon au reset. */
+  const depotsVus = [{ nom: repo.project, cwd }, ...linkedDirs.map((d) => ({ nom: d.cwd, cwd: d.cwd }))];
+  const releve = async () => Promise.all(depotsVus.map((d) => integrite.empreindre(d.cwd)));
+  const derive = async (avant) => {
+    const apres = await releve();
+    const diffs = [];
+    for (let i = 0; i < depotsVus.length; i += 1) {
+      const c = integrite.comparer(avant[i], apres[i]);
+      if (c) diffs.push(i === 0 ? c.join(', ') : `${depotsVus[i].nom}: ${c.join(', ')}`);
+    }
+    return diffs.length ? diffs.join(' ; ') : null;
+  };
+  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental, nonceFindings, releve, derive };
 }
 
 // Enregistre une NOUVELLE version de la review au lieu d'écraser la précédente.
 // La table `review` continue de pointer la version la plus récente : le reste de
 // l'application (rapports, dashboard, footer) n'a rien à changer.
-function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStorePath, kind, noExplain, instruction }) {
+/* `compromised`/`compromisedDetail` (plan_secure.md, lot A, point 5) : la passe reste ÉCRITE —
+   l'historique ne ment pas sur ce qui s'est passé — mais elle n'est JAMAIS posée comme version
+   COURANTE (`review`) : la table que l'écran, le dashboard et la publication automatique lisent
+   continue de pointer la dernière version DIGNE DE CONFIANCE, comme si celle-ci n'avait jamais eu
+   lieu. */
+function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStorePath, kind, noExplain, instruction, compromised, compromisedDetail }) {
   const now = new Date().toISOString();
   const last = db.prepare('SELECT MAX(version) v FROM review_version WHERE mr_id = ?').get(mr.id);
   const version = (last && last.v ? last.v : 0) + 1;
@@ -370,18 +396,20 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
   const noteValue = note ? note.value : null;
 
   db.prepare(`INSERT INTO review_version
-    (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, instruction)
-    VALUES (?,?,?,?,?,?,?,?,?)`)
+    (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, instruction, compromised, compromised_detail)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
     .run(mr.id, version, mdPath, explPath, noteValue, mr.current_sha || null, kind || 'review', now,
-      instruction ? String(instruction) : null);
+      instruction ? String(instruction) : null, compromised ? 1 : 0, compromisedDetail || null);
 
-  const existing = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mr.id);
-  if (existing) {
-    db.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, note_value = ?, updated_at = ? WHERE mr_id = ?')
-      .run(mdPath, explPath, diffStorePath, noteValue, now, mr.id);
-  } else {
-    db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-      .run(mr.id, mdPath, explPath, diffStorePath, noteValue, now, now);
+  if (!compromised) {
+    const existing = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mr.id);
+    if (existing) {
+      db.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, note_value = ?, updated_at = ? WHERE mr_id = ?')
+        .run(mdPath, explPath, diffStorePath, noteValue, now, mr.id);
+    } else {
+      db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
+        .run(mr.id, mdPath, explPath, diffStorePath, noteValue, now, now);
+    }
   }
   return { version, mdPath, explPath, noteValue, now };
 }
@@ -551,7 +579,12 @@ async function publierLienRapport(mr, cfg, { onLog = () => {} } = {}) {
 async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
   const cfg = getConfig();
   const explain = opts.explain != null ? !!opts.explain : cfg.review_explain !== '0';
-  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
+  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings, releve, derive } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
+  /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : `--restricted` et
+     `Write`/`Edit` interdits sont des FLAGS — ils ne prouvent rien sur Copilot, ni sur un bug du
+     CLI, ni sur un outil qu'on aurait oublié d'interdire. Le relevé d'AVANT sert à comparer
+     après le run ; en démo (pas de dépôt git réel), il vaut `null` et ne déclenche jamais rien. */
+  const empreinteAvant = await releve();
 
   try {
     // En incrémental, l'IA ne voit QUE le delta : on lui donne le rapport précédent en
@@ -571,7 +604,7 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     const rawReview = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
     // On retire le bloc de constats du rapport affiché : il ne doit pas polluer la
     // lecture. Ce qui est enregistré et montré est le Markdown SANS le bloc.
-    const { markdown: reviewContent, block } = resolution.splitFindings(rawReview);
+    const { markdown: reviewContent, block } = resolution.splitFindings(rawReview, nonceFindings);
     const findings = resolution.parseFindings(block);
 
     let explainContent = null;
@@ -580,6 +613,23 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
       explainContent = await generate(cfg.prompt_explain, 'ai-dev-tools-internal/explanation.md', 'explain');
     } else {
       onLog(t('log.review.explain-skip'));
+    }
+
+    /* LE RELEVÉ D'APRÈS, et la comparaison. Une différence ne veut pas forcément dire que
+       l'agent a triché — un `git gc` concurrent, un hook d'un AUTRE outil — mais dans le doute,
+       le rapport est écarté plutôt que présenté comme fiable : c'est la seule preuve qu'on a
+       sur un backend qui ne restreint rien lui-même (Copilot). */
+    const detail = await derive(empreinteAvant);
+    if (detail) {
+      // L'historique garde une trace du run — mais jamais posée comme version courante (voir
+      // saveReviewVersion) — puis on lève : le job appelant (processList) sait déjà consigner
+      // une erreur de MR (last_error, journal, notification), le même chemin qu'un dépôt injoignable.
+      saveReviewVersion(mr, outDir, {
+        reviewContent, explainContent, diffStorePath, kind: 'review', noExplain: !explain,
+        compromised: true, compromisedDetail: detail,
+      });
+      onLog(t('log.review.compromised', { detail }));
+      throw new Error(t('err.review-compromised', { detail }));
     }
 
     const { version, mdPath, explPath, now, noteValue } = saveReviewVersion(mr, outDir, {
@@ -613,8 +663,8 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
        jamais refermé — n'a pas suivi le format demandé : le motif le plus probable est une
        réponse détournée (une consigne glissée dans la MR). Il reste enregistré et publiable à
        la main ; il ne part pas chez les autres sans que quelqu'un l'ait lu. */
-    const debutBloc = rawReview.indexOf(resolution.START);
-    const blocComplet = debutBloc !== -1 && rawReview.indexOf(resolution.END, debutBloc) !== -1;
+    const debutBloc = rawReview.indexOf(resolution.START(nonceFindings));
+    const blocComplet = debutBloc !== -1 && rawReview.indexOf(resolution.END(nonceFindings), debutBloc) !== -1;
     if (cfg.auto_post_review === '1' && !blocComplet) {
       onLog(t('log.review.post-no-findings'));
     } else if (cfg.auto_post_review === '1') {
@@ -696,7 +746,8 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
   const previous = (rev && rev.md_path && fs.existsSync(rev.md_path))
     ? fs.readFileSync(rev.md_path, 'utf8') : '';
 
-  const { outDir, diffStorePath, generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
+  const { outDir, diffStorePath, generate, cleanupLinked, releve, derive } = await prepareContext(cfg, repo, mr, onLog);
+  const empreinteAvant = await releve();
 
   try {
     const extra =
@@ -706,6 +757,17 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
 
     onLog(`modification IA (${copilot.isDryRun() ? 'dry-run' : 'copilot'})`);
     const content = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
+
+    /* Même garde que `reviewMr` : ce run produit une version COURANTE du rapport. */
+    const detail = await derive(empreinteAvant);
+    if (detail) {
+      saveReviewVersion(mr, outDir, {
+        reviewContent: content, explainContent: null, diffStorePath, kind: 'modify', instruction,
+        compromised: true, compromisedDetail: detail,
+      });
+      onLog(t('log.review.compromised', { detail }));
+      throw new Error(t('err.review-compromised', { detail }));
+    }
 
     // une régénération est une nouvelle version : l'ancienne reste consultable
     const { version, mdPath } = saveReviewVersion(mr, outDir, {
@@ -738,16 +800,29 @@ async function askReview(repo, mr, question, onLog = () => {}) {
   const rapport = (rev && rev.md_path && fs.existsSync(rev.md_path))
     ? fs.readFileSync(rev.md_path, 'utf8') : '';
 
-  const { generate, cleanupLinked } = await prepareContext(cfg, repo, mr, onLog);
+  const { generate, cleanupLinked, releve, derive } = await prepareContext(cfg, repo, mr, onLog);
+  const empreinteAvant = await releve();
   try {
+    /* LE RAPPORT PRÉCÉDENT EST UNE DONNÉE (plan_secure.md, lot D, point 2) : il vient d'un
+       fichier que l'IA a elle-même écrit une passe plus tôt, mais qui peut recopier — voire
+       citer tel quel — un extrait de diff ou de ticket. Le `"""` d'avant se refermait sur
+       n'importe quel `"""` que le texte contenait ; `nonFiable()` le ferme avec un nonce que
+       rien dans le texte ne peut deviner. */
     const extra = `
 
-${t('review.ask.report', { rapport: rapport || t('review.ask.no-report') })}`
+${t('review.ask.report-label')}
+${rapport ? nonFiable('rapport de revue actuel', rapport) : t('review.ask.no-report')}`
       + `
 
 ${t('review.ask.question', { question })}`;
     onLog(t('log.review.ask', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai') }));
     const reponse = await generate(t('review.ask.prompt'), 'ai-dev-tools-internal/question.md', 'question', extra, { question });
+    const detail = await derive(empreinteAvant);
+    if (detail) {
+      agentpass.record('review', mr.id, 0, { kind: 'question', prompt: question, text: reponse, compromised: 1, compromisedDetail: detail });
+      onLog(t('log.review.compromised', { detail }));
+      throw new Error(t('err.review-compromised', { detail }));
+    }
     /* La question et sa réponse rejoignent l'historique des échanges. `unit_id = 0` : une MR
        n'a qu'un fil, là où une session a une unité par projet. */
     const { n } = agentpass.record('review', mr.id, 0, { kind: 'question', prompt: question, text: reponse });

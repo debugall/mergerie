@@ -175,13 +175,18 @@ Les badges signalent le **travail en attente** (MR à traiter, sessions non lanc
 ## Sécurité (résumé)
 
 L'outil est **local** : par défaut le serveur **n'écoute que sur `localhost`** (`127.0.0.1`), et l'exposer
-(`HOST=0.0.0.0`) **exige un jeton** (`MERGERIE_ACCESS_TOKEN`). Une page ouverte dans un autre onglet ne peut
-rien faire à ta place (garde `Host` contre le *DNS rebinding*, `Sec-Fetch-Site`, CSP). Ce qui **exécute du
-code** et arrive par le dépôt de données — commandes d'un vérificateur, permissions d'un agent, reviews
-automatiques — **attend ton approbation sur ce poste**. L'agent IA n'a que les droits de ce qu'on lui
-demande : une review ou une exploration tourne **en lecture seule**, un codage garde l'écriture mais perd
-réseau, `push` et `remote` ; son environnement est filtré et le jeton de la forge n'est plus dans le clone.
-Le texte venu d'ailleurs (description de MR, ticket) lui est présenté **comme une donnée**. Les **secrets**
+(`HOST=0.0.0.0`) **exige un jeton** (`MERGERIE_ACCESS_TOKEN`) ; sur `localhost`, un second jeton, purement
+local, ferme la même API à tout processus du poste qui n'est pas ton navigateur. Une page ouverte dans un
+autre onglet ne peut rien faire à ta place (garde `Host` contre le *DNS rebinding*, `Sec-Fetch-Site`, CSP).
+Ce qui **exécute du code** et arrive par le dépôt de données — commandes d'un vérificateur, permissions
+d'un agent, reviews automatiques — **attend ton approbation sur ce poste**, et la synchro elle-même tourne
+avec le même git durci qu'un clone de code. L'agent IA n'a que les droits de ce qu'on lui demande : une
+review ou une exploration tourne **en lecture seule** (ou est refusée plutôt que supposée restreinte, sur
+un binaire qui ne peut pas le prouver), un codage tourne sous un **sandbox du CLI vérifié par un vrai
+appel de test** — jamais une case cochée — ou à défaut une liste blanche de commandes, jamais un mode
+large ; son environnement est filtré et le jeton de la forge n'est plus dans le clone. Le texte venu
+d'ailleurs (description de MR, ticket) lui est présenté **comme une donnée**, et chaque bloc que l'agent
+émet (constats, questions, dépôt trouvé, agent proposé) porte le nonce de son propre run. Les **secrets**
 sont stockés en local et **jamais renvoyés en clair**. Exécution **sans shell**, git durci (ni hooks ni
 fsmonitor), palette git en **liste blanche**, rendu **anti-XSS**, opérations destructrices **restaurables**
 et **jamais de merge automatique**.

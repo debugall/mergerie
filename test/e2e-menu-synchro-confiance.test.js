@@ -267,8 +267,11 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
   });
 
   test('un agent de Claire aux permissions élargies : son lancement est refusé ici tant qu’on ne l’a pas approuvé à l’écran', async () => {
+    /* `kind: 'code'` — pas `'explore'` : depuis plan_secure.md (lot A, S3), un profil
+       d'exploration ne peut plus porter de `permission_mode` du tout ; l'élévation à éprouver
+       ici tient à `allowed_tools_json`, jamais vu de ce côté avant la synchro. */
     const cree = await claire.api('POST', '/api/agents', {
-      name: 'Agent de Claire', kind: 'explore', scope_kind: 'all_repos', permission_mode: 'acceptEdits', allowed_tools_json: ['Bash'],
+      name: 'Agent de Claire', kind: 'code', scope_kind: 'all_repos', permission_mode: 'acceptEdits', allowed_tools_json: ['Bash'],
     });
     assert.equal(cree.status, 201, cree.text);
     await claire.synchroniser();

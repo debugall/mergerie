@@ -94,12 +94,13 @@ function previewFor(backend, options) {
    comptait sur lui coûte un run et une attente. `default` est refusé parce que l'entrée
    standard de l'agent est fermée (`stdio: ['ignore', …]`) : le CLI poserait une question à
    laquelle personne ne peut répondre, et la session partirait au délai de quinze minutes. */
-function validate(options) {
+function validate(options, kind) {
   const o = options || {};
   const errs = [];
   const mode = texte(o.permissionMode);
   if (mode === 'default') errs.push('agents.err.permission-default');
   else if (mode && !MODES.includes(mode)) errs.push('agents.err.permission-unknown');
+  if (kind === 'explore' && mode) errs.push('agents.err.permission-explore');
   const model = texte(o.model);
   if (model && !sur(model)) errs.push('agents.err.model-invalid');
   if ([...liste(o.allowedTools), ...liste(o.disallowedTools)].some((x) => !sur(x))) errs.push('agents.err.tool-invalid');

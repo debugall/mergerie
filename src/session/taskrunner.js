@@ -6,10 +6,12 @@ const localsession = require('../data/localsession');
 const { getConfig } = require('../data/config');
 const { TASKS_DIR, ensureDir, slugify } = require('../core/paths');
 const git = require('../git/git');
+const integrite = require('../git/integrite');
 const configagent = require('../data/configagent');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
-const { nonFiable } = require('../core/nonfiable');
+const protocolesecret = require('../core/protocolesecret');
+const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
 const { avecConsignes } = require('../core/prompts');
@@ -193,6 +195,17 @@ async function reappliquerMessage(cwd, branch, message, onLog = () => {}) {
 
 /* ================= CODAGE ================= */
 
+/* LE NONCE DES BLOCS <<<QUESTIONS>>> D'UNE TÂCHE (plan_secure.md, lot D, point 1). À la
+   différence de celui d'un rapport de review (un par RUN, tiré au hasard dans `nonceRun()`),
+   celui-ci doit rester LE MÊME d'une passe à l'autre : sur une session reprise (suivi, réponse
+   aux questions), la consigne n'est envoyée qu'à la CRÉATION de la session — l'agent la garde
+   en mémoire, mais aucune passe suivante ne la réémet, donc le parseur d'une passe suivante doit
+   reconnaître le nonce que l'agent a gardé, pas en attendre un nouveau qu'il n'a jamais vu.
+   Dérivé de l'id de la tâche PAR HMAC (`core/protocolesecret.js`, revue de add-secure-layer-2) :
+   un simple hachage de l'id, sans secret, se précalcule pour tous les ids plausibles depuis un
+   fichier que l'agent lirait ; l'HMAC ferme ce calcul derrière le secret de ce poste. */
+const nonceQuestionsTache = (task) => protocolesecret.hmac(`questions-${task && task.id}`, 12);
+
 /* Prompt de dev et message de commit d'une session : UNE seule définition, partagée
    par la session « normale » (runTask) et la session « convergée » (converge.js).
    Le jour où on affine ce prompt — c'est le cœur produit — les deux chemins suivent. */
@@ -200,7 +213,7 @@ function buildCodePrompt(task) {
   const base = avecConsignes('Réalise la tâche de développement suivante dans ce dépôt. '
     + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`, consignesPermanentes());
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
-  return task && task.ask_questions ? base + questions.QUESTIONS_INSTRUCTION : base;
+  return task && task.ask_questions ? base + questions.questionsInstruction(nonceQuestionsTache(task)) : base;
 }
 
 /* REPRENDRE UNE CONVERSATION QUI S'EST TENUE AILLEURS.
@@ -450,7 +463,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   if (copilot.isDryRun()) {
     if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      agentText = questions.DRYRUN_QUESTIONS; // simule le bloc <<<QUESTIONS>>> au 1er passage
+      agentText = questions.dryrunQuestions(nonceQuestionsTache(task)); // simule le bloc <<<QUESTIONS>>> au 1er passage
     } else {
       onLog('$ (DRY-RUN — aucune vraie modification)');
       fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), `\n## ${message}\n${promptText.slice(0, 200)}\n`, 'utf8');
@@ -524,7 +537,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   // L'agent a-t-il posé des questions ? Si oui → session en ATTENTE, sans commit (il s'est
   // arrêté avant d'implémenter). Un bloc malformé/absent est ignoré (parseQuestions → null).
   if (task.ask_questions) {
-    const qs = questions.parseQuestions(agentText);
+    const qs = questions.parseQuestions(agentText, nonceQuestionsTache(task));
     if (qs && qs.length) {
       setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
       onLog(t('log.task.questions', { n: qs.length, count: qs.length }));
@@ -646,6 +659,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
 
   const root = path.resolve(cfg.clone_path);
   const dirs = [];
+  const empreintesAvant = new Map();   // cwd -> relevé (lecture seule prouvée après coup, lot A5)
   for (const tg of targets) {
     const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
     if (!repo) { setTarget(tg.id, { status: 'error', last_error: 'Dépôt introuvable.' }); continue; }
@@ -662,8 +676,29 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       } else {
         throw new Error(t('err.branch-missing-on-project', { branch, project: tg.project }));
       }
+      /* LA BRANCHE EXPLORÉE PEUT RÉÉCRIRE LES RÈGLES DE L'AGENT (plan_secure.md, lot A, point 6) :
+         un `CLAUDE.md`/`.claude/`/`.mcp.json` qui diffère de la branche par défaut devient un
+         contexte actif pour l'agent qui l'explore, au même titre qu'un codage sur cette branche —
+         `configagent.examiner` n'était appelé que pour l'écriture. Pas de distinction « première
+         passe seulement » ici : une exploration ne commite jamais, donc rien de ce qu'elle
+         produirait elle-même ne peut expliquer un changement vu à la passe suivante. */
+      if (!copilot.isDryRun()) {
+        const defaut = await git.defaultBranch(cwd);
+        if (branch !== defaut) {
+          const examen = await configagent.examiner(cwd, `origin/${defaut}`, branch);
+          if (examen.fichiers.length && !configagent.accepte(repo, branch, examen.empreinte)) {
+            throw configagent.erreur(t('err.agent-config.touched', { branch, files: examen.fichiers.join(', ') }), examen);
+          }
+        }
+      }
       dirs.push({ dir: path.relative(root, cwd) || path.basename(cwd), project: tg.project, branch, cwd, repo_id: tg.repo_id });
       setTarget(tg.id, { base_branch: branch, status: 'done', last_error: null });
+      /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : relevé AVANT le run,
+         pour chaque dépôt visible de l'agent — une exploration en voit plusieurs à la fois. Voir
+         plus bas pourquoi le relevé D'APRÈS doit avoir lieu AVANT `git.resetWorktree` (le
+         `finally`), pas après : `resetWorktree` efface les traces de fichier, mais jamais un
+         `.git/config` ou un `.git/hooks` planté, qui vivent hors du suivi Git. */
+      empreintesAvant.set(cwd, await integrite.empreindre(cwd));
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
       onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
@@ -703,8 +738,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
      quand l'agent s'en souvient, et en dry-run ou sur un backend non reprenable elle reste
      le seul fil de continuité. */
   const prev = (previous && !doResume)
-    ? `\n\nTu as déjà produit la réponse suivante :\n"""\n${previous}\n"""\nPrends-la en compte et complète-la selon la nouvelle demande.`
+    ? `\n\nTu as déjà produit la réponse suivante :\n${nonFiable('réponse précédente', previous)}\nPrends-la en compte et complète-la selon la nouvelle demande.`
     : '';
+  /* Nonce FRAIS À CHAQUE APPEL (contrairement à celui d'un codage) : le prompt d'exploration est
+     intégralement RENVOYÉ à chaque passe — suivi compris —, la consigne des questions avec lui ;
+     rien ne dépend donc de ce que l'agent aurait gardé en mémoire d'un tour précédent. */
+  const nonceExplore = task.ask_questions ? nonceRun() : null;
 
   const prompt =
     `Tu explores ${dirs.length} dépôt(s) de code, chacun dans un sous-dossier du répertoire courant :\n${listing}\n\n`
@@ -723,13 +762,14 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     /* …et on lève la CONTRADICTION avec la consigne ci-dessus : « n'écris rien sur la sortie
        standard » d'un côté, « émets ce bloc à la fin de ta sortie » de l'autre. Un agent doit
        pouvoir poser sa question sans se demander où la mettre. Les deux endroits sont lus. */
-    + (task.ask_questions ? `${questions.QUESTIONS_INSTRUCTION}\n\nCe bloc est la SEULE exception `
+    + (task.ask_questions ? `${questions.questionsInstruction(nonceExplore)}\n\nCe bloc est la SEULE exception `
       + `à la consigne ci-dessus : émets-le sur la sortie standard OU dans \`${outRel}\`, et `
       + `n'écris alors pas de réponse de synthèse — tu la rédigeras une fois les réponses reçues.` : '');
 
   onLog(t('log.explore.run', { mode: copilot.isDryRun() ? 'dry-run' : t('log.mode.ai'), n: dirs.length, count: dirs.length }));
   let stdout = '';
   let coutUsd = null;
+  let compromis = null;   // lecture seule prouvée après coup (lot A5) : null, ou la liste des dépôts + champs changés
   try {
     if (sessionable) {
       const key = `explore-${task.id}`;
@@ -744,7 +784,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
         // réinjecte la réponse précédente, seul contexte dont dispose une session neuve.
         onLog(t('log.task.resume-failed', { raison: String(e.message).split('\n')[0] }));
         const withPrev = previous
-          ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n"""\n${previous}\n"""`
+          ? `${prompt}\n\nTu avais déjà produit la réponse suivante :\n${nonFiable('réponse précédente', previous)}`
           : prompt;
         r = await agentsession.runInSession({ key, prompt: withPrev, cwd: root, resume: false, onLog, options, saveur: 'explore' });
         created = true;
@@ -779,17 +819,36 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
          personne n'emprunte. (Le codage et le hors dépôt, eux, répondent sur la sortie
          standard : les deux chemins restent couverts.) */
       onLog('$ (DRY-RUN — l’agent pose des questions)');
-      fs.writeFileSync(outAbs, questions.DRYRUN_QUESTIONS, 'utf8');
+      fs.writeFileSync(outAbs, questions.dryrunQuestions(nonceExplore), 'utf8');
       stdout = 'J’ai besoin de précisions avant de répondre.';
     } else {
       stdout = await copilot.runPrompt(prompt, root, { kind: 'explore' }, onLog);
     }
+    /* LE RELEVÉ D'APRÈS, ICI — AVANT le `finally` (plan_secure.md, lot A, point 5) :
+       `resetWorktree` efface les traces de FICHIER quoi qu'il arrive, mais un dépôt qui
+       « redevient propre » après coup n'a jamais existé pour la garde d'ici — et un
+       `.git/config`/`.git/hooks` planté, lui, survit à `resetWorktree` (hors suivi Git). */
+    const parDepot = [];
+    for (const d of dirs) {
+      const c = integrite.comparer(empreintesAvant.get(d.cwd), await integrite.empreindre(d.cwd));
+      if (c) parDepot.push(`${d.project} (${c.join(', ')})`);
+    }
+    if (parDepot.length) compromis = parDepot;
   } finally {
     // garantie lecture seule : quoi qu'il arrive, on annule toute modification
     for (const d of dirs) {
       await git.resetWorktree(d.cwd, () => {});
     }
     onLog(t('log.explore.reset'));
+  }
+
+  if (compromis) {
+    // Le job appelant (`runTaskJob`) sait déjà consigner une erreur de tâche (statut, last_error,
+    // notification `job_failed`) — le même chemin qu'un échec de clone ou de branche manquante.
+    const detail = compromis.join(' ; ');
+    onLog(t('log.explore.compromised', { detail }));
+    try { agentpass.record('task', task.id, 0, { kind: 'explore', prompt, text: stdout, compromised: 1, compromisedDetail: detail }); } catch { /* trace best-effort */ }
+    throw new Error(t('err.explore-compromised', { detail }));
   }
 
   /* L'AGENT A POSÉ DES QUESTIONS : il s'est arrêté avant de répondre, il n'y a donc pas de
@@ -809,7 +868,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
        sortie ». Un agent qui hésite pose donc sa question là où on lui a dit d'écrire — dans le
        fichier. Ne lire que la sortie standard laissait l'exploration se terminer « normalement »,
        avec le bloc brut en guise de réponse et aucun formulaire à l'écran. */
-    const qs = questions.parseQuestions(stdout) || questions.parseQuestions(content);
+    const qs = questions.parseQuestions(stdout, nonceExplore) || questions.parseQuestions(content, nonceExplore);
     if (qs && qs.length) {
       for (const tg of targets) {
         setTarget(tg.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });

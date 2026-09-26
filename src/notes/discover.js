@@ -147,10 +147,11 @@ async function discoverAll() {
            tout. Ici, `closed_seen` VIENT d'être posé sur cette MR : plus rien ne la rattachera
            jamais à sa session si on ne le fait pas maintenant. Sans lui, la carte perd toute trace
            qu'une MR a existé — « Créer la MR » réapparaît sur une branche déjà mergée. `COALESCE`
-           ne prend la main que si la session ne savait pas déjà mieux. */
+           ne prend la main que si la session ne savait pas déjà mieux ; et une cible déjà liée à UNE
+           AUTRE merge request (branche réutilisée) n'est pas touchée : ce merge n'est pas le sien. */
         if (mergee && g.source_branch) {
           db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
-            WHERE repo_id = ? AND branch = ?`).run(g.iid, now, repo.id, g.source_branch);
+            WHERE repo_id = ? AND branch = ? AND (mr_iid IS NULL OR mr_iid = ?)`).run(g.iid, now, repo.id, g.source_branch, g.iid);
         }
         /* B1 — LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE. Elle se
            coche, avec la mention de ce qui l'a fermée ; rien n'est supprimé. Débrayable

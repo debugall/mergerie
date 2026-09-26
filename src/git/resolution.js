@@ -13,29 +13,49 @@
    re-signaler, et compter ça comme résolu donnerait un taux flatteur et faux. */
 
 const crypto = require('crypto');
+const path = require('path');
 const git = require('./git');
 const { t } = require('../core/i18n');
 
 const SEVERITIES = ['blocker', 'major', 'minor', 'info'];
 
-// Délimiteurs du bloc de constats. Sentinelles explicites, robustes au Markdown.
-const START = '<<<FINDINGS';
-const END = 'FINDINGS>>>';
+/* Délimiteurs du bloc de constats, à NONCE PAR RUN (plan_secure.md, lot D, point 1). Sans lui,
+   une donnée qui contient elle-même `<<<FINDINGS … FINDINGS>>>` tout formé — une description de
+   MR, un rapport venu du dépôt partagé — se faisait lire comme le bloc de CE run si l'agent la
+   recopiait, avec sa propre note et ses propres constats. Le nonce est tiré par l'appelant
+   (`reviewer.js`), dit à l'agent dans la consigne, et redemandé ici pour reconnaître le bloc :
+   une donnée ne le connaît jamais. */
+const START = (nonce) => `<<<FINDINGS ${nonce}`;
+const END = (nonce) => `FINDINGS ${nonce}>>>`;
 
 // Retire le bloc de constats du rapport (il ne doit pas s'afficher) et le renvoie.
-function splitFindings(md) {
-  const s = md.indexOf(START);
+function splitFindings(md, nonce) {
+  const debut = START(nonce);
+  const fin = END(nonce);
+  const s = md.indexOf(debut);
   if (s === -1) return { markdown: md.trim(), block: '' };
-  const e = md.indexOf(END, s);
-  const block = e === -1 ? md.slice(s + START.length) : md.slice(s + START.length, e);
-  const cleaned = (md.slice(0, s) + (e === -1 ? '' : md.slice(e + END.length))).trim();
+  const e = md.indexOf(fin, s);
+  const block = e === -1 ? md.slice(s + debut.length) : md.slice(s + debut.length, e);
+  const cleaned = (md.slice(0, s) + (e === -1 ? '' : md.slice(e + fin.length))).trim();
   return { markdown: cleaned, block };
 }
 
 const normTitle = (titre) => String(titre || '')
   .toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
   .replace(/[^a-z0-9]+/g, ' ').trim();
-const normFile = (f) => String(f || '').trim().replace(/^\.?\//, '');
+/* UN CONSTAT NE DÉSIGNE JAMAIS UN FICHIER HORS DU DÉPÔT (plan_secure.md, lot D, point 5) : un
+   `file` en `../../etc/passwd` ou en chemin absolu (`/etc/passwd`) n'est ni écrasé ni affiché
+   tel quel — le CONSTAT reste (il peut être légitime malgré un chemin mal formé), seul le
+   chemin devient un texte qui ne désigne rien. Sert aussi d'empreinte : un `file` bidon ne doit
+   pas fabriquer une empreinte qui coïncide avec un vrai fichier. */
+const HORS_DEPOT = '(chemin hors dépôt)';
+function normFile(f) {
+  const saisi = String(f || '').trim();
+  if (!saisi) return saisi;
+  // AVANT de retirer un éventuel `./` : `/etc/shadow` doit rester détecté absolu.
+  if (path.isAbsolute(saisi) || /^[a-z]:[\\/]/i.test(saisi) || saisi.split(/[\\/]/).includes('..')) return HORS_DEPOT;
+  return saisi.replace(/^\.?\//, '');
+}
 
 function fingerprint(file, title) {
   return crypto.createHash('sha1').update(`${normFile(file)}\n${normTitle(title)}`).digest('hex').slice(0, 16);

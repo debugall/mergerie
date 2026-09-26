@@ -66,11 +66,15 @@ async function startApp() {
     await new Promise((resolve) => server.server.once('listening', resolve));
   }
   const base = `http://127.0.0.1:${server.server.address().port}`;
+  const localToken = fs.readFileSync(path.join(dataDir, 'local-token'), 'utf8').trim();
 
   async function api(method, p, body) {
     const res = await fetch(base + p, {
       method,
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${localToken}`,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const text = await res.text();
@@ -107,7 +111,7 @@ async function startApp() {
   }
 
   return {
-    base, api, configure, configureGithub, dataDir, db,
+    base, api, configure, configureGithub, dataDir, db, localToken,
     gitlabUrl: gitlab.url, githubUrl: github.url,
     state: mock.state, ghState: mockGh.state,
     async stop() {

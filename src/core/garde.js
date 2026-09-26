@@ -71,6 +71,11 @@ function siteEtranger(req) {
   return site === 'cross-site' || site === 'same-site';
 }
 
+/** La requête vise-t-elle `/api/` ? EN MINUSCULES : Express route sans tenir compte de la casse
+ *  (pas de `case sensitive routing`), donc `GET /API/config` atteint bien la route `/api/config`
+ *  — un test sensible à la casse ici laisserait passer une requête que la route, elle, sert. */
+const estApi = (req) => req.path.toLowerCase().startsWith('/api/');
+
 /* ---------------------------------------------------------------- les adresses de dépôt */
 
 /* LES ADRESSES QU'ON ACCEPTE DE JOINDRE. `git` sait parler bien plus de langues qu'il n'en
@@ -113,10 +118,10 @@ function lireCookie(req, nom) {
 }
 
 /** Le jeton présenté par la requête : `Authorization: Bearer …` ou le cookie de la page d'accès. */
-function jetonPresente(req) {
+function jetonPresente(req, cookie = COOKIE) {
   const auth = String(req.headers.authorization || '');
   if (/^bearer\s+/i.test(auth)) return auth.replace(/^bearer\s+/i, '').trim();
-  return lireCookie(req, COOKIE);
+  return lireCookie(req, cookie);
 }
 
 const echapper = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -141,17 +146,18 @@ button{margin-top:14px;width:100%;padding:10px;border:0;border-radius:8px;backgr
    enregistré » : il ne doit partir que vers l'adresse où il est enregistré. Rien d'enregistré, rien
    à protéger ; un jeton tapé dans la requête est le sien. `defaut` est l'adresse que vaut un champ
    vide (pour GitHub, l'hôte WEB `https://github.com` — c'est ce que `github_url` désigne). */
+function origineDe(u, defaut = '') {
+  const v = String(u || '').trim() || defaut;
+  try { return new URL(v).origin; } catch { return v; }
+}
+
 function jetonFraisRequis(urlCorps, urlBase, jetonCorps, jetonBase, defaut = '') {
   if (urlCorps == null || !jetonBase || (jetonCorps && jetonCorps !== '***')) return false;
-  const origine = (u) => {
-    const v = String(u || '').trim() || defaut;
-    try { return new URL(v).origin; } catch { return v; }
-  };
-  return origine(urlCorps) !== origine(urlBase);
+  return origineDe(urlCorps, defaut) !== origineDe(urlBase, defaut);
 }
 
 module.exports = {
-  jetonFraisRequis,
-  nomHote, estIpLitterale, estBoucle, nomsAutorises, hoteAutorise, siteEtranger, adresseAdmise,
+  jetonFraisRequis, origineDe,
+  nomHote, estIpLitterale, estBoucle, nomsAutorises, hoteAutorise, siteEtranger, estApi, adresseAdmise,
   COOKIE, memeJeton, lireCookie, jetonPresente, pageAcces,
 };

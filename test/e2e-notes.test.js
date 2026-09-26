@@ -427,7 +427,7 @@ describe('Sauvegarde', () => {
   test('les notes et les todos entrent dans l’archive de sauvegarde', async () => {
     await app.api('POST', '/api/notes', { title: 'page à sauvegarder' });
     await app.api('POST', '/api/todos', { title: 'todo à sauvegarder' });
-    const res = await fetch(`${app.base}/api/backup`, { method: 'POST' });
+    const res = await fetch(`${app.base}/api/backup`, { method: 'POST', headers: { Authorization: `Bearer ${app.localToken}` } });
     assert.equal(res.status, 200);
     const zip = Buffer.from(await res.arrayBuffer());
     assert.ok(zip.length > 0);

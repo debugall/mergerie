@@ -18,6 +18,7 @@ const agentpass = require('../agent/pass');
 const localsnapshot = require('./localsnapshot');
 const { getConfig } = require('../data/config');
 const { avecConsignes } = require('../core/prompts');
+const { nonceRun } = require('../core/nonfiable');
 const questions = require('../agent/questions');
 const pieces = require('../agent/pieces');
 const { t } = require('../core/i18n');
@@ -117,6 +118,7 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
      où l'IA travaille, pas la façon dont on veut qu'elle travaille. */
   /* Reprise après réponses : le prompt EST la réponse aux questions. L'agent garde le reste
      dans sa session — réexpliquer la tâche lui ferait recommencer au lieu de continuer. */
+  const nonceQuestions = task.ask_questions ? nonceRun() : null;
   const repondu = reponses
     ? questions.buildAnswerInstruction(lireQuestions(dirs[0]))
     : null;
@@ -129,14 +131,14 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
     /* Option « l'IA peut poser des questions » : hors dépôt aussi. C'est même là qu'elle
        compte le plus — l'agent travaille EN PLACE, sans branche ni commit à relire : mieux
        vaut une question qu'un fichier réécrit selon une hypothèse qu'on n'a pas validée. */
-    + (task.ask_questions ? questions.QUESTIONS_INSTRUCTION : '');
+    + (task.ask_questions ? questions.questionsInstruction(nonceQuestions) : '');
 
   /* L'AGENT S'EST ARRÊTÉ POUR DEMANDER. Le dossier passe EN ATTENTE — ni succès ni échec —
      et garde ses questions ; la file se libère. Rendre `true` fait sauter la fin du tour :
      marquer « fait » un dossier où rien n'a été décidé serait le pire des deux. */
   function attendQuestions(tache, id, dossier, texte, log) {
     if (!tache.ask_questions) return false;
-    const qs = questions.parseQuestions(texte);
+    const qs = questions.parseQuestions(texte, nonceQuestions);
     if (!qs || !qs.length) return false;
     setDir(dossier.id, { questions_json: JSON.stringify(qs), status: 'needs_input', last_error: null });
     log(t('log.task.questions', { n: qs.length, count: qs.length }));
@@ -181,8 +183,9 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
       if (copilot.isDryRun() && task.ask_questions && !followup && !reponses) {
         // Dry-run, première passe : l'agent simule ses questions plutôt que de coder.
         onLog('$ (DRY-RUN — l’agent pose des questions)');
-        passeN = saveAgentOutput(taskId, d.id, questions.DRYRUN_QUESTIONS, { kind: passKind, prompt: promptText });
-        attendQuestions(task, taskId, d, questions.DRYRUN_QUESTIONS, onLog);
+        const dryText = questions.dryrunQuestions(nonceQuestions);
+        passeN = saveAgentOutput(taskId, d.id, dryText, { kind: passKind, prompt: promptText });
+        attendQuestions(task, taskId, d, dryText, onLog);
         await mesurer();
         continue;
       } else if (copilot.isDryRun()) {
