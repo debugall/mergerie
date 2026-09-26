@@ -108,6 +108,7 @@ require('./app/routes/docker');
 require('./app/routes/git');
 require('./app/routes/git-compare');
 require('./app/routes/git-merge');
+require('./app/routes/groupes');
 require('./app/routes/jenkins');
 require('./app/routes/jira');
 require('./app/routes/jobs');

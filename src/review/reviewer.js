@@ -17,6 +17,7 @@ const diffnum = require('../git/diffnum');
 const demoReview = require('../demo/review');
 const agentpass = require('../agent/pass');
 const integrite = require('../git/integrite');
+const groupes = require('../data/groupes');
 const agentknowledge = require('../agent/knowledge');   // B7 : la carte du domaine touché
 const demoDiff = require('../demo/diff');
 const demoComments = require('../demo/comments');
@@ -168,9 +169,9 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
      Le risque d'une MR vient de ce qu'elle touche, pas de comment elle s'appelle. */
   let rulesBlock = '';
   const rules = db.prepare('SELECT * FROM review_rule WHERE enabled = 1').all().filter((r) => {
-    /* Une règle limitée à un dépôt ne sort pas de ce dépôt, quel que soit son motif : c'est
-       la raison d'être de la limite. `repo_id` nul = toutes, comme avant. */
-    if (r.repo_id && Number(r.repo_id) !== Number(mr.repo_id)) return false;
+    /* Une règle limitée à un dépôt — ou à un GROUPE de dépôts — ne sort pas de sa limite, quel
+       que soit son motif : c'est la raison d'être de la limite. Sans limite = toutes, comme avant. */
+    if (!groupes.regleVautPour(r, mr.repo_id)) return false;
     const branchHit = r.branch_match && (mr.source_branch || '').includes(r.branch_match);
     const pathHit = r.path_match && glob.matchingPaths(r.path_match, changedPaths).length > 0;
     return branchHit || pathHit;
@@ -602,7 +603,7 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     }
 
     onLog(t('log.review.run', { mode: copilot.isDryRun() ? 'dry-run' : 'copilot', incremental: incremental ? t('log.review.run-inc') : '' }));
-    const rawReview = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
+    const rawReview = await generate(groupes.configPourDepot(cfg, mr.repo_id).config.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
     // On retire le bloc de constats du rapport affiché : il ne doit pas polluer la
     // lecture. Ce qui est enregistré et montré est le Markdown SANS le bloc.
     const { markdown: reviewContent, block } = resolution.splitFindings(rawReview, nonceFindings);
@@ -757,7 +758,7 @@ async function modifyReview(repo, mr, instruction, onLog = () => {}) {
       `Produis le rapport de revue MIS À JOUR (même style et exigences qu'une revue complète).`;
 
     onLog(`modification IA (${copilot.isDryRun() ? 'dry-run' : 'copilot'})`);
-    const content = await generate(cfg.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
+    const content = await generate(groupes.configPourDepot(cfg, mr.repo_id).config.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
 
     /* Même garde que `reviewMr` : ce run produit une version COURANTE du rapport. */
     const detail = await derive(empreinteAvant);

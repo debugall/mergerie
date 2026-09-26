@@ -77,7 +77,7 @@ async function applyFixAndPush(repo, mr, reviewMd, message, onLog, ctx = {}) {
   /* LE MÊME GABARIT QUE « FAIRE CORRIGER PAR L'IA ». Ce texte était recopié ici en français,
      hors des réglages : ni traduit, ni éditable, et deux copies qui auraient divergé dès la
      première retouche de l'une d'elles. */
-  let prompt = fillTemplate(prompts.gabarit('prompt_fix', cfg), {
+  let prompt = fillTemplate(prompts.gabarit('prompt_fix', require('../data/groupes').configPourDepot(cfg, mr.repo_id).config), {
     source: mr.source_branch, target: mr.target_branch || '', report: nonFiable('rapport de revue', reviewMd),
   });
   if (ask) prompt += questions.questionsInstruction(nonceQuestions);

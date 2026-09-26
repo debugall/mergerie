@@ -143,9 +143,28 @@ async function gitFillRow(idx) {
    600 ms — la règle du projet sur les délais fixes vaut aussi pour l'app, et un dépôt lent (ou
    une machine chargée) faisait alors un aperçu sur des lignes encore vides. On rend donc une
    promesse : l'aperçu attend l'effet, pas l'horloge. */
+/* LES PASTILLES DE GROUPE : un clic ajoute une ligne par dépôt du groupe qui n'en a pas encore
+   — « toute l'équipe backend », sans vingt « Ajouter un projet ». */
+function gitRenderGroupChips() {
+  const zone = $('#gitGroupChips');
+  if (!zone) return;
+  zone.innerHTML = groupeChipsHtml('git');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('#gitGroupChips [data-groupe-chip]');
+  if (!b) return;
+  const deja = new Set(gitTargets.map((t) => Number(t.repo_id)).filter(Boolean));
+  const nouveaux = membresDuGroupe(b.dataset.groupeChip).filter((id) => !deja.has(id));
+  if (!nouveaux.length) { toast(tr('ui.groupes.deja-la')); return; }
+  /* Une ligne vide (le dépôt par défaut, jamais touché) est REMPLACÉE plutôt que laissée. */
+  gitTargets = gitTargets.filter((t) => t.repo_id).concat(nouveaux.map((id) => ({ repo_id: id })));
+  gitDropPreview();
+  gitRenderTargets();
+});
 async function gitRenderTargets() {
   const el = $('#gitTargetRows');
   if (!el) return;
+  gitRenderGroupChips();
   el.innerHTML = gitTargets.map((t, i) => gitTargetRow(i, t)).join('');
   wireRepoCombos(el);
   /* Les refs sont chargées à l'OUVERTURE de la liste, pas au rendu de la ligne : rien ne

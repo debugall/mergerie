@@ -25,6 +25,10 @@ const { exigerMemeEtat } = require('../lib/verifications');
 const verifierRepos = (id) => db.prepare(`SELECT vr.*, r.project
   FROM verifier_repo vr JOIN repo r ON r.id = vr.repo_id
   WHERE vr.verifier_id = ? ORDER BY r.project`).all(id);
+/* La couverture PAR GROUPE : les groupes désignés, et les dépôts qu'ils apportent (worktree). */
+const verifierGroupes = (id) => db.prepare(`SELECT g.id, g.name FROM verifier_group vg
+  JOIN repo_group g ON g.id = vg.group_id WHERE vg.verifier_id = ? ORDER BY g.name`).all(id);
+const groupes = require('../../data/groupes');
 const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
   .all(id).map((c) => c.command);
 // « CLE=valeur », une par ligne : les noms d'équipe, les valeurs de ce poste.
@@ -42,6 +46,8 @@ const verifierAvecRepos = (id) => {
   return {
     ...v,
     repos: verifierRepos(id),
+    groups: verifierGroupes(id),
+    covered: [...groupes.couvertureVerifier(id).values()].map((c) => ({ repo_id: c.repo_id, mode: c.mode, via: c.via })),
     commands: verifierCommandes(id),
     env: envTexte(v),
     env_missing: verifierenv.manquantes(v),
@@ -127,8 +133,11 @@ function lireVerifier(body, courant) {
     if (vus.has(l.repo_id)) throw new Error(t('err.verifier.repo-twice'));
     vus.add(l.repo_id);
   }
+  /* Les GROUPES couverts : chacun doit exister. `null` = absent du corps, couverture inchangée. */
+  const groupIds = b.groups == null ? null : [...new Set((Array.isArray(b.groups) ? b.groups : []).map(Number).filter(Boolean))];
+  for (const gid of (groupIds || [])) if (!groupes.parId(gid)) throw new Error(t('err.group.not-found'));
   return {
-    name, kind, command, commands, timeout_s, envPaires, report_path,
+    name, kind, command, commands, timeout_s, envPaires, report_path, groups: groupIds,
     parse_tap: bool(b.parse_tap, courant ? courant.parse_tap : 1),
     run_base: bool(b.run_base, courant ? courant.run_base : 1),
     comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
@@ -152,6 +161,12 @@ function ecrireCommandes(verifierId, commands) {
   const ins = db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)');
   commands.forEach((c, i) => ins.run(verifierId, i, c));
 }
+function ecrireGroupes(verifierId, groupIds) {
+  if (groupIds == null) return;
+  db.prepare('DELETE FROM verifier_group WHERE verifier_id = ?').run(verifierId);
+  const ins = db.prepare('INSERT OR IGNORE INTO verifier_group (verifier_id, group_id) VALUES (?, ?)');
+  for (const gid of groupIds) ins.run(verifierId, gid);
+}
 function ecrireRepos(verifierId, repos) {
   if (repos == null) return;   // absent du corps = couverture inchangée
   db.prepare('DELETE FROM verifier_repo WHERE verifier_id = ?').run(verifierId);
@@ -169,12 +184,14 @@ app.get('/api/verifiers', wrap((req, res) => {
       AND id = (SELECT MAX(v2.id) FROM verification v2 WHERE v2.verifier_id = v.verifier_id)`).all()) {
     dernieres[v.verifier_id] = { verdict: v.verdict, at: v.finished_at };
   }
+  /* Sur la couverture EFFECTIVE (dépôts directs + dépôts des groupes). */
   const enAttente = {};
-  for (const r of db.prepare(`SELECT vr.verifier_id AS id, COUNT(DISTINCT mr.id) AS n
-    FROM verifier_repo vr JOIN mr ON mr.repo_id = vr.repo_id
-    WHERE mr.status = 'to_review' AND (mr.closed_seen IS NULL OR mr.closed_seen = 0)
-    GROUP BY vr.verifier_id`).all()) {
-    enAttente[r.id] = r.n;
+  const aTraiter = new Map();
+  for (const r of db.prepare(`SELECT repo_id, COUNT(*) n FROM mr WHERE status = 'to_review' AND (closed_seen IS NULL OR closed_seen = 0) GROUP BY repo_id`).all()) aTraiter.set(r.repo_id, r.n);
+  for (const v of db.prepare('SELECT id FROM verifier').all()) {
+    let n = 0;
+    for (const repoId of groupes.couvertureVerifier(v.id).keys()) n += aTraiter.get(repoId) || 0;
+    enAttente[v.id] = n;
   }
   /* A/Réglages 3 — COMBIEN DE SESSIONS S'APPUIENT DESSUS. Renommer ou supprimer un
      vérificateur se faisait à l'aveugle : rien ne disait que douze sessions le portaient et
@@ -185,7 +202,9 @@ app.get('/api/verifiers', wrap((req, res) => {
   }
   res.json(db.prepare('SELECT * FROM verifier ORDER BY name').all()
     .map((v) => ({
-      ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id),
+      ...v, repos: verifierRepos(v.id), groups: verifierGroupes(v.id),
+      covered: [...groupes.couvertureVerifier(v.id).values()].map((c) => ({ repo_id: c.repo_id, mode: c.mode, via: c.via })),
+      commands: verifierCommandes(v.id),
       last: dernieres[v.id] || null, pending_mrs: enAttente[v.id] || 0,
       used_by_tasks: parSession[v.id] || 0,
       /* Le formulaire « Modifier » se remplit de cette liste : sans `env`, il s'ouvrait vide, et
@@ -237,6 +256,7 @@ app.post('/api/verifiers', wrap((req, res) => {
       db.prepare('UPDATE verifier SET env_keys = ? WHERE id = ?').run(verifierenv.poser(uid, v.envPaires), id);
     }
     ecrireRepos(id, v.repos || []);
+    ecrireGroupes(id, v.groups || []);
     ecrireCommandes(id, v.commands || []);
     return id;
   });
@@ -257,6 +277,7 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
       .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
         v.auto_on_stale, v.comment_template, v.mentions, cles, v.report_path, v.parse_tap, cur.id);
     ecrireRepos(cur.id, v.repos);
+    ecrireGroupes(cur.id, v.groups);
     ecrireCommandes(cur.id, v.commands);
     return cur.id;
   });
@@ -303,8 +324,8 @@ app.get('/api/verifiers/for', wrap((req, res) => {
     .map((x) => Number(x.trim())).filter(Boolean))];
   if (!ids.length) return res.json({ verifiers: [] });
   const couvrants = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
-    const couverts = new Set(verifierRepos(v.id).map((r) => r.repo_id));
+    const couverts = groupes.couvertureVerifier(v.id);   // dépôts directs ET dépôts des groupes
     return ids.every((id) => couverts.has(id));
   });
-  res.json({ verifiers: couvrants.map((v) => ({ ...v, repos: verifierRepos(v.id), commands: verifierCommandes(v.id) })) });
+  res.json({ verifiers: couvrants.map((v) => ({ ...v, repos: verifierRepos(v.id), groups: verifierGroupes(v.id), commands: verifierCommandes(v.id) })) });
 }));

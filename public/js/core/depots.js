@@ -32,3 +32,22 @@ async function loadRepoOptions() {
    qui mourra au clonage est pire que de l'annoncer avant le clic. */
 const marqueDemo = (r) => (modeDemo && !depotClonableEnDemo(r)
   ? `<span class="combo-hint">${esc(tr('demo.repo.not-runnable'))}</span>` : '');
+
+/* ---------- Les groupes de dépôts (ameliorations_proposal.md, §4.5) ----------
+   Une liste courte — une équipe en a trois, pas trente —, chargée avec les dépôts, et des
+   PASTILLES posées à côté de chaque sélecteur multi-dépôts : cliquer « backend » ajoute ou
+   coche tous ses membres. Le geste est le même partout ; ce que « ajouter » veut dire (une
+   ligne de session, une ligne d'action Git, une case de couverture) est à chaque écran. */
+let groupeOptions = [];
+async function loadGroupeOptions() {
+  try { groupeOptions = await api('/repo-groups'); } catch { groupeOptions = []; }
+  return groupeOptions;
+}
+/* Les pastilles d'un sélecteur : `data-groupe-chip` porte l'id, `data-groupe-zone` dit à quel
+   écran elles parlent. Rien sans groupe : une rangée vide n'apprend rien. */
+function groupeChipsHtml(zone) {
+  if (!groupeOptions.length) return '';
+  return `<span class="groupe-chips" data-groupe-zone="${esc(zone)}" title="${esc(tr('ui.groupes.chips-title'))}">${groupeOptions
+    .map((g) => `<button type="button" class="groupe-chip" data-groupe-chip="${g.id}" title="${esc((g.repos || []).map((r) => r.project).join(', '))}">${esc(g.name)} <span class="groupe-n">${(g.repos || []).length}</span></button>`).join('')}</span>`;
+}
+const membresDuGroupe = (id) => ((groupeOptions.find((g) => g.id === Number(id)) || {}).repos || []).map((r) => r.repo_id);

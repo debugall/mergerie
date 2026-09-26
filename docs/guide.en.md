@@ -2059,6 +2059,29 @@ Every chart displays **the question it answers**. The token total is a **lower b
 work is not counted).
 
 ### Settings
+
+#### Repository groups
+
+Twenty micro-services of one team share the same review rules, the same verification commands,
+the same template. A configuration file in every repository would duplicate them twenty times; a
+**group** carries them once. Settings → Repositories → *Repository groups*: a name, its members
+(ticked behind a filter that hides without unticking) and, folded, its **templates** (review, fix,
+modification) and **standing instructions** — empty, the global settings apply. Resolution is
+*global → group(s) → repository*: a repository can be in several groups, the oldest one carrying a
+value wins, and the repository's sheet says where each value comes from.
+
+What a group also carries: a **review rule** can be limited to it (it applies to every member,
+present and future), and a **verifier** can cover it as a whole (in worktree mode — “in place” and
+its consent stay line by line, a machine's folder is not declared for twenty repositories).
+Wherever repositories are picked — a multi-repository session, a Git action, a verifier's coverage
+— **one chip per group** adds or ticks all its members.
+
+The group belongs to the **team**: it travels through the data repository, its members designated
+by their address (`forge/project`), and a repository a machine does not track is kept aside, never
+lost. What **executes** keeps the verifiers' rule: a group coverage that arrives through the sync
+waits for approval on each machine; a template or a rule travels freely, its text entering the
+prompt tagged as data.
+
 Every field carries a **“team”** or **“this machine”** badge, because settings are not all of the
 same kind. A **team** setting describes the tool: the prompt templates, the thresholds, the review
 policies, the forge address — two reviews of the same merge request written under different

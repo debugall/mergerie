@@ -145,7 +145,7 @@ run déclenché par un **horaire** qui a réécrit une page de notes.
   **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
   relevé sur trois merge requests d'un même dépôt se transforme en règle de review d'un clic.
   Chaque nombre est une porte : il ouvre Reviews filtré sur ce projet, au bon stade.
-- **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en
+- **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en **Groupes de dépôts** : vingt micro-services qui partagent les mêmes règles de review, vérificateurs, gabarits de prompt et consignes les portent une fois, sur un groupe qui voyage avec l'équipe — et une pastille par groupe remplit une session, une action Git ou la couverture d'un vérificateur avec tous ses membres.
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et

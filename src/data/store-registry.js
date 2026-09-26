@@ -539,6 +539,60 @@ const REGISTRE = [
     referencesDifferees: ['mr_id'],
     refSource: { mr_id: 'mr' },
   },
+  /* ── Les groupes de dépôts ─────────────────────────────────────────────────────────────
+     AVANT les règles et les vérificateurs, qui les désignent : l'ordre du registre est l'ordre
+     d'hydratation. Le groupe est d'équipe (c'est son sens) ; ses membres sont désignés par leur
+     clé naturelle, et un dépôt inconnu de ce poste est gardé en marge, jamais perdu. */
+  {
+    table: 'repo_group', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['name'],
+    chemin: 'groups/{uid}.json', fusion: 'last-writer',
+    note: 'un ensemble de dépôts qui partagent règles, vérificateurs et gabarits : vingt micro-services, une configuration',
+    commitMessage: (r) => `repo group ${String(r.name || '').slice(0, 50)}`,
+    toFile: (r, ctx) => ({
+      uid: r.uid,
+      name: r.name,
+      description: r.description || null,
+      prompt_review: r.prompt_review || null,
+      prompt_modify: r.prompt_modify || null,
+      prompt_fix: r.prompt_fix || null,
+      ai_extra_instructions: r.ai_extra_instructions || null,
+      created_at: r.created_at,
+      repos: (() => {
+        const locaux = ctx.enfants('repo_group_member', 'group_id', r.id)
+          .map((m) => ({ repo: ctx.repoRef(m.repo_id) })).filter((m) => m.repo);
+        return [...locaux, ...ctx.margeInconnue('repo_group_member', r.uid, locaux)];
+      })(),
+    }),
+    fromFile: (doc) => ({
+      uid: doc.uid,
+      name: doc.name,
+      description: doc.description || '',
+      prompt_review: doc.prompt_review || '',
+      prompt_modify: doc.prompt_modify || '',
+      prompt_fix: doc.prompt_fix || '',
+      ai_extra_instructions: doc.ai_extra_instructions || '',
+      created_at: doc.created_at,
+    }),
+    listes: [
+      {
+        table: 'repo_group_member',
+        liste: 'repos',
+        colonneParent: 'group_id',
+        remplace: (db2, parent, items, ctx, signaler) => {
+          db2.prepare('DELETE FROM repo_group_member WHERE group_id = ?').run(parent.id);
+          const ins = db2.prepare('INSERT OR IGNORE INTO repo_group_member (group_id, repo_id) VALUES (?, ?)');
+          const horsPerimetre = [];
+          for (const m of items) {
+            const id = ctx.repoId(m.repo);
+            if (!id) { signaler(`groupe : « ${m.repo} », dépôt inconnu sur ce poste`); horsPerimetre.push({ repo: m.repo }); continue; }
+            ins.run(parent.id, id);
+          }
+          garderHorsPerimetre(db2, 'repo_group_member', parent.uid, horsPerimetre);
+        },
+      },
+    ],
+  },
+  { table: 'repo_group_member', famille: 'P', uidPropre: false /* pas de clé primaire propre : (groupe, dépôt) la décrit entièrement */, parent: 'repo_group', liste: 'repos', fusion: 'parent' },
   {
     table: 'review_rule', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'rules/{uid}.json',
     fusion: 'last-writer',
@@ -557,6 +611,8 @@ const REGISTRE = [
       enabled: r.enabled ? 1 : 0,
       /* Une règle peut être LIMITÉE à un dépôt : par sa clé naturelle, jamais par son id. */
       repo: r.repo_id ? ctx.repoRef(r.repo_id) : null,
+      // …ou à un GROUPE de dépôts, par son uid — le groupe voyage avant elle (ordre du registre).
+      group: r.group_id ? ctx.uid('repo_group', r.group_id) : null,
       created_at: r.created_at,
     }),
     fromFile: (doc, ctx) => ({
@@ -571,14 +627,15 @@ const REGISTRE = [
       content: doc.content || '',
       enabled: doc.enabled ? 1 : 0,
       repo_id: doc.repo ? ctx.repoId(doc.repo) : null,
+      group_id: doc.group ? ctx.id('repo_group', doc.group) : null,
       created_at: doc.created_at,
     }),
     /* Une règle limitée à un dépôt que ce poste ne connaît pas devient une règle GÉNÉRALE si on
        laisse faire — elle s'appliquerait partout. On signale donc, et on la laisse désactivée
        de fait (sans dépôt, `repo_id` nul = générale)… ce qui serait faux. D'où le report : la
-       seconde passe retente après que les dépôts sont hydratés. */
-    referencesDifferees: ['repo_id'],
-    refSource: { repo_id: 'repo' },
+       seconde passe retente après que les dépôts sont hydratés. Même chose pour le groupe. */
+    referencesDifferees: ['repo_id', 'group_id'],
+    refSource: { repo_id: 'repo', group_id: 'group' },
   },
 
   /* ── Vérificateurs ───────────────────────────────────────────────────────────────────── */
@@ -634,6 +691,12 @@ const REGISTRE = [
            `locaux` en passager : la marge ne répète jamais un dépôt déjà résolu en ligne, seul
            cas où le doublon casserait l'import sur la clé primaire (verifier_id, repo_id). */
         return [...locaux, ...ctx.margeInconnue('verifier_repo', r.uid, locaux)];
+      })(),
+      /* La couverture PAR GROUPE, par l'uid du groupe : « teste tout le groupe backend ». */
+      groups: (() => {
+        const locaux = ctx.enfants('verifier_group', 'verifier_id', r.id)
+          .map((vg) => ({ group: ctx.uid('repo_group', vg.group_id) })).filter((vg) => vg.group);
+        return [...locaux, ...ctx.margeInconnue('verifier_group', r.uid, locaux)];
       })(),
     }),
     fromFile: (doc) => ({
@@ -697,9 +760,26 @@ const REGISTRE = [
           garderHorsPerimetre(db2, 'verifier_repo', parent.uid, horsPerimetre);
         },
       },
+      {
+        table: 'verifier_group',
+        liste: 'groups',
+        colonneParent: 'verifier_id',
+        remplace: (db2, parent, items, ctx, signaler) => {
+          db2.prepare('DELETE FROM verifier_group WHERE verifier_id = ?').run(parent.id);
+          const ins = db2.prepare('INSERT OR IGNORE INTO verifier_group (verifier_id, group_id) VALUES (?, ?)');
+          const horsPerimetre = [];
+          for (const vg of items) {
+            const id = ctx.id('repo_group', vg.group);
+            if (!id) { signaler(`couverture sur le groupe « ${vg.group} », inconnu sur ce poste`); horsPerimetre.push({ group: vg.group }); continue; }
+            ins.run(parent.id, id);
+          }
+          garderHorsPerimetre(db2, 'verifier_group', parent.uid, horsPerimetre);
+        },
+      },
     ],
   },
   { table: 'verifier_command', famille: 'P', uidPropre: false /* pas de clé primaire propre : (vérificateur, position) la décrit entièrement */, parent: 'verifier', liste: 'commands', fusion: 'parent' },
+  { table: 'verifier_group', famille: 'P', uidPropre: false /* pas de clé primaire propre : (vérificateur, groupe) la décrit entièrement */, parent: 'verifier', liste: 'groups', fusion: 'parent' },
   { table: 'verifier_repo', famille: 'P', uidPropre: false /* pas de clé primaire propre : (vérificateur, dépôt) la décrit entièrement */, parent: 'verifier', liste: 'repos', fusion: 'parent' },
   {
     table: 'verification', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'verifications/{uid}.json',
@@ -1689,6 +1769,8 @@ const UNIQUES_SANS_CLE = {
   'repo_jenkins.repo_id+job_path': 'liste fille remplacée en bloc avec son dépôt',
   'verifier_command.verifier_id+position': 'liste fille remplacée en bloc avec son vérificateur',
   'verifier_repo.verifier_id+repo_id': 'liste fille remplacée en bloc avec son vérificateur',
+  'verifier_group.verifier_id+group_id': 'liste fille remplacée en bloc avec son vérificateur',
+  'repo_group_member.group_id+repo_id': 'liste fille remplacée en bloc avec son groupe',
   'agent_repo.agent_id+repo_id': 'liste fille remplacée en bloc avec son agent',
   'lot_member.lot_id+kind+ref_id': 'liste fille remplacée en bloc avec son lot',
   'agent_knowledge.agent_id': 'partielle (status = active) : `apresHydratation` renumérote et une seule version reste active',

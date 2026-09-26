@@ -184,6 +184,15 @@ db.prepare('INSERT INTO review_rule (branch_match, path_match, label, content, e
 db.prepare('INSERT INTO review_rule (branch_match, path_match, label, content, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?)')
   .run('hotfix', '', '', 'Branche hotfix : vérifier qu\'un test de non-régression couvre le correctif.', at(50));
 
+// ---------- un groupe de dépôts : « backend », et ce qu'il porte ----------
+const groupeBackend = db.prepare('INSERT INTO repo_group (name, description, ai_extra_instructions, created_at) VALUES (?, ?, ?, ?)')
+  .run('backend', 'Les services de l\'API et leurs bibliothèques', 'Commente en français ; lance `npm test` avant de committer.', at(45)).lastInsertRowid;
+for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
+  if (repoIds[projet]) db.prepare('INSERT INTO repo_group_member (group_id, repo_id) VALUES (?, ?)').run(groupeBackend, repoIds[projet]);
+}
+db.prepare('INSERT INTO review_rule (branch_match, path_match, label, content, group_id, enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
+  .run('', 'src/api/**', 'contrat API', 'Un changement de route ou de schéma de réponse met à jour le contrat OpenAPI et ses tests.', groupeBackend, at(44));
+
 // ---------- rapport Markdown réaliste ----------
 function reviewMd(mr, note, findings) {
   return `# Revue de code — !${mr.iid} ${mr.title}
@@ -948,10 +957,9 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
 const verifierId = db.prepare(`INSERT INTO verifier
   (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
   VALUES (?, 'commands', '', ?,?,?,1,?)`).run('integ (démo)', 900, 1, 0, at(20)).lastInsertRowid;
-for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
-  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
-    .run(verifierId, repoIds[projet]);
-}
+/* Sa couverture passe par le GROUPE : « teste tout backend » — un dépôt ajouté au groupe demain
+   sera couvert sans retoucher le vérificateur. */
+db.prepare('INSERT INTO verifier_group (verifier_id, group_id) VALUES (?, ?)').run(verifierId, groupeBackend);
 ['npm ci', 'npm run test:integ'].forEach((c, i) => {
   db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(verifierId, i, c);
 });

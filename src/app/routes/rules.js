@@ -10,6 +10,12 @@ const glob = require('../../core/glob');
 const { wrap } = require('../http');
 const { auteurs } = require('../lib/partage');
 
+/* Un groupe désigné doit exister : une règle sur un groupe fantôme ne vaudrait nulle part. */
+function groupeValide(v) {
+  const id = Number(v || 0) || null;
+  if (id && !db.prepare('SELECT 1 FROM repo_group WHERE id = ?').get(id)) throw new Error(t('err.group.not-found'));
+  return id;
+}
 /* ---------- Règles de review spécifiques ---------- */
 app.get('/api/rules', wrap((req, res) => {
   /* COMBIEN DE MERGE REQUESTS OUVERTES CETTE RÈGLE TOUCHE-T-ELLE ? Une règle qui ne matche
@@ -49,22 +55,24 @@ app.post('/api/rules', wrap((req, res) => {
   if ((!branch_match && !path_match) || !content) throw new Error(t('err.rule-needs-trigger'));
   // A/Réglages 2 : 0 ou absent = « tous les dépôts », c'est-à-dire le comportement d'avant.
   const repoId = Number((req.body && req.body.repo_id) || 0) || null;
+  const groupId = groupeValide((req.body || {}).group_id);
   res.json(store.ecrire('review_rule', () => db.prepare(
-    `INSERT INTO review_rule (branch_match, path_match, label, content, repo_id, enabled, created_at)
-     VALUES (?, ?, ?, ?, ?, 1, ?)`,
-  ).run(branch_match, path_match, label, content, repoId, new Date().toISOString()).lastInsertRowid));
+    `INSERT INTO review_rule (branch_match, path_match, label, content, repo_id, group_id, enabled, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
+  ).run(branch_match, path_match, label, content, repoId, groupId, new Date().toISOString()).lastInsertRowid));
 }));
 app.put('/api/rules/:id', wrap((req, res) => {
   const cur = db.prepare('SELECT * FROM review_rule WHERE id = ?').get(Number(req.params.id));
   if (!cur) throw new Error(t('err.regle-introuvable'));
   const { branch_match, path_match, label, content, enabled } = req.body || {};
   res.json(store.ecrire('review_rule', () => {
-    db.prepare('UPDATE review_rule SET branch_match = ?, path_match = ?, label = ?, content = ?, repo_id = ?, enabled = ? WHERE id = ?').run(
+    db.prepare('UPDATE review_rule SET branch_match = ?, path_match = ?, label = ?, content = ?, repo_id = ?, group_id = ?, enabled = ? WHERE id = ?').run(
       branch_match != null ? String(branch_match).trim() : cur.branch_match,
       path_match != null ? String(path_match).trim() : (cur.path_match || ''),
       label != null ? String(label).trim() : (cur.label || ''),
       content != null ? String(content).trim() : cur.content,
       (req.body || {}).repo_id === undefined ? cur.repo_id : (Number(req.body.repo_id) || null),
+      (req.body || {}).group_id === undefined ? cur.group_id : groupeValide(req.body.group_id),
       enabled == null ? cur.enabled : (enabled ? 1 : 0),
       cur.id,
     );

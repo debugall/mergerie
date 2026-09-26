@@ -64,6 +64,9 @@
                 <h3 data-i18n="settings.verifier.repos" class="req">Dépôts couverts</h3>
                 <p class="muted" data-i18n="settings.verifier.repos.help">Déclarer un dépôt dit que ce vérificateur sait le tester. Seuls les dépôts effectivement visés par une vérification lui sont mis à disposition.</p>
                 <p class="muted" id="verifierRepoHint"></p>
+                <!-- La couverture PAR GROUPE : « teste tout le groupe backend », en worktree, et un
+                     dépôt ajouté au groupe demain est couvert sans retoucher le vérificateur. -->
+                <div id="verifierGroupBox" class="verif-groupes"></div>
                 <div id="verifierRepoBox"></div>
                 <div id="verifierCommandsBlock">
                     <label><span data-i18n="settings.verifier.lbl.commands">Commandes, dans l'ordre</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.commands" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
@@ -166,6 +169,44 @@
             <div id="repoList" class="list"></div>
             <p class="muted" id="repoSearchNone" hidden data-i18n="settings.repo.search.none">Aucun dépôt suivi ne correspond.</p>
 
+            <!-- LES GROUPES DE DÉPÔTS (ameliorations_proposal.md, §4.5). Vingt micro-services, une
+                 configuration : règles, vérificateurs, gabarits et consignes se posent sur le
+                 groupe, et chaque sélecteur multi-dépôts propose « tout le groupe » d'un clic. Le
+                 groupe est d'équipe (il voyage par le dépôt de données) ; ses membres sont
+                 désignés par leur adresse, un dépôt qu'un poste ne suit pas est gardé en marge. -->
+            <h2 data-i18n="settings.groups.title">Groupes de dépôts</h2>
+            <p class="muted" style="max-width:760px" data-i18n="settings.groups.intro">Vingt micro-services qui partagent les mêmes règles de review, les mêmes vérificateurs et les mêmes gabarits n'ont pas à les porter vingt fois : un groupe les porte une fois, et voyage avec l'équipe. Un dépôt peut être dans plusieurs groupes. Partout où l'on choisit des dépôts, une pastille par groupe coche tous ses membres.</p>
+            <div id="groupList" class="list"></div>
+            <p><button type="button" id="btnNewGroup" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.groups.new">Nouveau groupe</span></button></p>
+            <form id="groupForm" class="form" style="max-width:760px" hidden>
+                <input type="hidden" name="id" />
+                <label><span class="req" data-i18n="settings.groups.lbl.name">Nom</span>
+                    <input name="name" placeholder="backend" required /></label>
+                <label><span data-i18n="settings.groups.lbl.description">Description (optionnel)</span>
+                    <input name="description" placeholder="les services de l'API" data-i18n-placeholder="settings.groups.ph.description" /></label>
+                <h3 data-i18n="settings.groups.lbl.repos">Dépôts du groupe</h3>
+                <div class="repo-multi">
+                    <input type="search" id="groupRepoFilter" class="repo-multi-search" placeholder="Filtrer les dépôts…" data-i18n-placeholder="settings.groups.ph.filter" />
+                    <div id="groupRepoList" class="repo-multi-list"></div>
+                </div>
+                <details class="group-overrides">
+                    <summary data-i18n="settings.groups.overrides">Gabarits et consignes propres à ce groupe (vides = les réglages globaux)</summary>
+                    <label><span data-i18n="settings.groups.lbl.ai-extra">Consignes permanentes des sessions de codage</span>
+                        <textarea name="ai_extra_instructions" rows="3"></textarea></label>
+                    <label><span data-i18n="settings.groups.lbl.prompt-review">Gabarit de review</span>
+                        <textarea name="prompt_review" rows="4"></textarea></label>
+                    <label><span data-i18n="settings.groups.lbl.prompt-fix">Gabarit de correction</span>
+                        <textarea name="prompt_fix" rows="3"></textarea></label>
+                    <label><span data-i18n="settings.groups.lbl.prompt-modify">Gabarit de modification</span>
+                        <textarea name="prompt_modify" rows="3"></textarea></label>
+                </details>
+                <p class="form-actions">
+                    <button type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                    <button type="button" id="btnCancelGroup" class="btn" data-i18n="ui.cancel">Annuler</button>
+                    <span id="groupInfo" class="muted"></span>
+                </p>
+            </form>
+
             <!-- Répertoires LOCAUX : un dossier de la machine, un sous-dossier par projet git.
                  Sert à l'onglet Git → Navigation et au choix du dossier du codage hors dépôt. -->
             <h2 data-i18n="settings.localroot.title">Répertoires locaux</h2>
@@ -194,6 +235,11 @@
                      possible, jamais lisible. Vide = tous les dépôts, comme avant. -->
                 <label><span data-i18n="settings.rule.lbl.repo">Limiter à un dépôt (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.repo" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <div id="ruleRepoBox"></div>
+                </label>
+                <!-- …ou à un GROUPE de dépôts : la règle vaut pour tous ses membres, et pour ceux
+                     qu'on y ajoutera. Une équipe en a trois : un sélecteur natif suffit. -->
+                <label><span data-i18n="settings.rule.lbl.group">Limiter à un groupe de dépôts (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.group" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <select name="group_id" id="ruleGroupBox"><option value="" data-i18n="settings.rule.group-none">Aucun</option></select>
                 </label>
                 <label><span data-i18n="settings.rule.lbl.label">Badge « risque » (court, optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.rule.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input name="label" placeholder="ex. migrations" data-i18n-placeholder="settings.rule.ph.label" />

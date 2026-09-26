@@ -43,10 +43,14 @@ function empreinteVerificateur(id) {
     .all(v.id).map((c) => c.command);
   const repos = db.prepare('SELECT repo_id, mode FROM verifier_repo WHERE verifier_id = ? ORDER BY repo_id')
     .all(v.id).map((r) => [r.repo_id, r.mode || 'worktree']);
+  /* Les GROUPES couverts, par leur uid (stable d'un poste à l'autre) : une couverture élargie
+     par la synchro à un groupe entier est une chose à approuver, comme un dépôt de plus. */
+  const groups = db.prepare(`SELECT g.uid FROM verifier_group vg JOIN repo_group g ON g.id = vg.group_id
+    WHERE vg.verifier_id = ? ORDER BY g.uid`).all(v.id).map((g) => g.uid);
   return JSON.stringify({
     kind: v.kind || 'commands', command: v.command || '', commands,
     run_base: v.run_base ? 1 : 0, auto_on_mr: v.auto_on_mr ? 1 : 0, auto_on_stale: v.auto_on_stale ? 1 : 0,
-    repos,
+    repos, ...(groups.length ? { groups } : {}),
   });
 }
 const refVerificateur = (id) => {

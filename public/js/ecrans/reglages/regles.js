@@ -28,6 +28,13 @@ async function loadRules() {
     boxRegle.innerHTML = repoComboHtml(null, { idClass: 'rule-repo', defaultFirst: false });
     wireRepoCombos(boxRegle);
   }
+  /* …ou un GROUPE : la règle vaut pour tous ses membres, présents et futurs. */
+  const selGroupe = $('#ruleGroupBox');
+  if (selGroupe) {
+    const groupes = await loadGroupeOptions();
+    selGroupe.innerHTML = `<option value="">${esc(tr('settings.rule.group-none'))}</option>`
+      + groupes.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  }
   const rows = await api('/rules');
   const el = $('#ruleList');
   el.innerHTML = rows.length ? rows.map((r) => `
@@ -49,6 +56,7 @@ async function loadRules() {
             matche plus rien reste dans la liste sans qu'on le sache. Calculé localement,
             sans IA : les chemins modifiés et le nom de branche sont en base. */''}
       ${r.repo_id ? `<p class="field-note">${esc(tr('settings.rule.scoped', { project: (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}` }))}</p>` : ''}
+      ${r.group_id ? `<p class="field-note">${esc(tr('settings.rule.scoped-group', { name: (groupeOptions.find((x) => x.id === r.group_id) || {}).name || `#${r.group_id}` }))}</p>` : ''}
       ${r.author ? `<p class="field-note">${esc(tr('settings.rule.author', { who: r.author }))}</p>` : ''}
       <p class="field-note${r.open_mrs ? '' : ' rule-vide'}">${esc(r.open_mrs
     ? tr('settings.rule.reach', { n: r.open_mrs, count: r.open_mrs })
@@ -63,7 +71,7 @@ async function loadRules() {
       await api('/rules', { method: 'POST', body: {
         branch_match: r.branch_match || '', path_match: r.path_match || '',
         label: r.label ? tr('settings.rule.copy-of', { label: r.label }) : '',
-        content: r.content, repo_id: r.repo_id || null,
+        content: r.content, repo_id: r.repo_id || null, group_id: r.group_id || null,
       } });
       toast(tr('settings.rule.duplicated'));
       loadRules();
@@ -102,6 +110,7 @@ $('#ruleForm').addEventListener('submit', async (e) => {
     await api('/rules', { method: 'POST', body: {
       branch_match: f.branch_match.value, path_match: f.path_match.value, label: f.label.value, content: f.content.value,
       repo_id: Number(($('#ruleRepoBox .rule-repo') || {}).value || 0) || null,
+      group_id: Number(($('#ruleGroupBox') || {}).value || 0) || null,
     } });
     f.branch_match.value = ''; f.path_match.value = ''; f.label.value = ''; f.content.value = ''; loadRules(); toast(tr('toast.regle-ajoutee'));
   } catch (err) { toast(err.message, true); }

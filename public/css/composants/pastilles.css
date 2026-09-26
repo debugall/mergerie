@@ -202,3 +202,11 @@ body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
 .muted { color: var(--muted); font-size: 13px; }
 
 .split { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding-top: 12px; }
+
+/* ---------- Les pastilles de groupe de dépôts ----------
+   À côté de chaque sélecteur multi-dépôts : un clic coche ou ajoute tous les membres. */
+.groupe-chips { display: inline-flex; flex-wrap: wrap; gap: var(--s-1); align-items: center; }
+.groupe-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--r-full); border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.groupe-chip:hover { border-color: var(--accent-btn); color: var(--accent-btn); }
+.groupe-chip .groupe-n { color: var(--muted); }
+.groupe-tag { display: inline-block; padding: 0 6px; border-radius: var(--r-full); border: 1px solid var(--line); font-size: var(--fs-xs); color: var(--muted); }

@@ -2130,6 +2130,29 @@ Chaque graphe affiche **la question à laquelle il répond**. Le total de tokens
 travail interne de l'agent n'est pas compté).
 
 ### Réglages
+
+#### Groupes de dépôts
+
+Vingt micro-services d'une même équipe partagent les mêmes règles de review, les mêmes commandes de
+vérification, le même gabarit. Un fichier de configuration dans chaque dépôt les dupliquerait vingt
+fois ; un **groupe** les porte une fois. Réglages → Dépôts → *Groupes de dépôts* : un nom, ses
+membres (cochés derrière un filtre qui masque sans décocher), et, repliés, ses **gabarits** (review,
+correction, modification) et ses **consignes permanentes** — vides, ce sont les réglages globaux qui
+valent. La résolution est *global → groupe(s) → dépôt* : un dépôt peut être dans plusieurs groupes,
+le plus ancien qui porte une valeur gagne, et la fiche du dépôt dit d'où vient chaque valeur.
+
+Ce qu'un groupe porte encore : une **règle de review** peut lui être limitée (elle vaut pour tous
+ses membres, présents et futurs), et un **vérificateur** peut le couvrir en bloc (en worktree — le
+mode « in place » et son consentement restent ligne à ligne, un dossier de poste ne se déclare pas
+pour vingt dépôts). Partout où l'on choisit des dépôts — une session multi-dépôts, une action Git,
+la couverture d'un vérificateur — une **pastille par groupe** ajoute ou coche tous ses membres.
+
+Le groupe est d'**équipe** : il voyage par le dépôt de données, ses membres désignés par leur
+adresse (`forge/projet`), et un dépôt qu'un poste ne suit pas est gardé en marge, jamais perdu. Ce
+qui **exécute** garde la règle des vérificateurs : une couverture par groupe arrivée par la synchro
+attend l'approbation sur chaque poste ; un gabarit ou une règle voyagent librement, leur texte
+entrant dans le prompt balisé comme donnée.
+
 Chaque champ porte un badge **« équipe »** ou **« ce poste »**, parce que les réglages ne sont pas
 tous de même nature. Un réglage d'**équipe** décrit l'outil : les gabarits de prompt, les seuils,
 les politiques de review, l'adresse de la forge — deux reviews de la même merge request faites avec

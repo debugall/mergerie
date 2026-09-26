@@ -12,6 +12,7 @@ let verifiers = [];
 
 async function loadVerifiers() {
   await loadRepoOptions();
+  await loadGroupeOptions();   // la couverture par groupe : une case par groupe
   // Le mode « in place » propose de piocher dans les répertoires locaux déclarés.
   await loadLocalRoots();
   try { verifiers = await api('/verifiers'); } catch (e) { verifiers = []; toast(explainError(e.message), true); }
@@ -23,6 +24,7 @@ async function loadVerifiers() {
      blocs que si le formulaire est fermé. */
   const f = $('#verifierForm');
   if (!f || f.hidden) {
+    renderVerifierGroupBox();
     renderVerifierRepoBox();
     renderCommandList([]);
     appliquerKind();
@@ -33,6 +35,18 @@ async function loadVerifiers() {
 /* Couverture déclarative : une ligne par dépôt, cochée ou non. Recherche obligatoire — le
    nombre de dépôts peut être élevé, et elle MASQUE sans décocher : filtrer ne doit jamais
    modifier la sélection en cours. */
+/* La couverture PAR GROUPE : une case par groupe. Les membres sont dits en survol ; le formulaire
+   n'a pas à les cocher un par un — c'est le point. */
+function renderVerifierGroupBox(coches = []) {
+  const box = $('#verifierGroupBox');
+  if (!box) return;
+  const set = new Set((coches || []).map((g) => Number(g.id != null ? g.id : g)));
+  box.innerHTML = groupeOptions.length
+    ? `<span class="muted">${esc(tr('settings.verifier.groups'))}</span> ` + groupeOptions.map((g) => `<label class="inline-check vg-item" title="${esc(g.repos.map((r) => r.project).join(', '))}"><input type="checkbox" class="vg-pick" value="${g.id}" ${set.has(g.id) ? 'checked' : ''} /> <span>${esc(g.name)} <span class="muted">(${g.repos.length})</span></span></label>`).join(' ')
+    : '';
+}
+const verifierGroupesFromForm = () => $$('#verifierGroupBox .vg-pick').filter((c) => c.checked).map((c) => Number(c.value));
+
 function renderVerifierRepoBox(lignes = []) {
   const box = $('#verifierRepoBox');
   if (!box) return;
@@ -314,7 +328,7 @@ function renderVerifierList() {
       <div class="meta">${herite
     ? `<code>${esc(v.command || '')}</code>`
     : (v.commands || []).map((c) => `<button type="button" class="code-copy" data-copy-txt="${esc(c)}" title="${esc(tr('verify.copy-command'))}"><code>${esc(c)}</code></button>`).join(' <span class="muted">→</span> ')}</div>
-      <div class="meta">${(v.repos || []).map((r) => {
+      <div class="meta">${(v.groups || []).map((g) => `<span class="groupe-tag">${esc(g.name)}</span>`).join(' ')}${(v.groups || []).length && (v.repos || []).length ? ' · ' : ''}${(v.repos || []).map((r) => {
     const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
   }).join(' ')}</div>
@@ -435,6 +449,7 @@ function remplirFormVerifier(v, info) {
   f.mentions.value = v.mentions || '';
   majBlocCommentaire();
   renderCommandList(v.commands || []);
+  renderVerifierGroupBox(v.groups || []);
   renderVerifierRepoBox(v.repos || []);
   appliquerKind();
   $('#verifierInfo').textContent = info;
@@ -479,6 +494,7 @@ function viderFormVerifier() {
   /* C15 — le délai effectif s'ÉCRIT. Vide, avec « 900 » en gris, on ne sait pas si le
      vérificateur n'a pas de limite ou s'il en a une qu'on ne voit pas. */
   if (f.timeout_s) f.timeout_s.value = 900;
+  renderVerifierGroupBox([]);
   renderVerifierRepoBox([]);
   renderCommandList([]);
   appliquerKind();
@@ -515,7 +531,7 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     signalerChamp($('#verifierCommandList .vc-cmd'), tr('err.verifier-sans-commande'));
     return;
   }
-  if (!verifierReposFromForm().length) {
+  if (!verifierReposFromForm().length && !verifierGroupesFromForm().length) {
     const boite = $('#verifierRepoBox');
     erreurChamp(boite && boite.querySelector('input'), tr('err.verifier-sans-depot'));
     if (boite) boite.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -535,6 +551,7 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     mentions: f.mentions.value,
     auto_on_mr: f.auto_on_mr.checked ? 1 : 0,
     repos: verifierReposFromForm(),
+    groups: verifierGroupesFromForm(),
   };
   const id = f.id.value;
   try {

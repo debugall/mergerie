@@ -31,6 +31,12 @@ app.get('/api/repos', wrap((req, res) => {
     WHERE (closed_seen IS NULL OR closed_seen = 0) GROUP BY repo_id`).all()) {
     ouvertes[r.id] = r;
   }
+  /* Les GROUPES de chaque dépôt, en une requête : la ligne les porte en pastilles, et les
+     sélecteurs multi-dépôts s'en servent pour cocher « tout le groupe ». */
+  const groupesPar = {};
+  for (const m of db.prepare('SELECT m.repo_id, g.id, g.name FROM repo_group_member m JOIN repo_group g ON g.id = m.group_id ORDER BY g.name').all()) {
+    (groupesPar[m.repo_id] = groupesPar[m.repo_id] || []).push({ id: m.id, name: m.name });
+  }
   res.json(db.prepare('SELECT * FROM repo ORDER BY id').all().map((repo) => {
     const dir = git.cloneDirFor(cfg, repo);
     let clone = 'absent';
@@ -38,7 +44,7 @@ app.get('/api/repos', wrap((req, res) => {
       if (fs.statSync(path.join(dir, '.git')).isDirectory() || fs.statSync(path.join(dir, '.git')).isFile()) clone = 'present';
     } catch { clone = 'absent'; }
     const o = ouvertes[repo.id] || {};
-    return { ...repo, open_mrs: o.n || 0, last_seen_at: o.at || null, clone_state: clone, clone_dir: dir };
+    return { ...repo, open_mrs: o.n || 0, last_seen_at: o.at || null, clone_state: clone, clone_dir: dir, groups: groupesPar[repo.id] || [] };
   }));
 }));
 /* B17 — LA FICHE D'UN DÉPÔT. La ligne des réglages dit son URL, ses merge requests ouvertes
@@ -55,14 +61,25 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
   const id = Number(req.params.id);
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(id);
   if (!repo) throw new Error(t('err.depot-introuvable'));
+  const groupes = require('../../data/groupes');
+  const parGroupe = [...new Set([...db.prepare(`SELECT vg.verifier_id FROM verifier_group vg
+      JOIN repo_group_member m ON m.group_id = vg.group_id WHERE m.repo_id = ?`).all(id).map((r) => r.verifier_id)])];
   res.json({
-    verifiers: db.prepare(`SELECT v.id, v.name, vr.mode FROM verifier_repo vr
+    /* Ses groupes : la porte vers Réglages → Dépôts → Groupes. */
+    groups: groupes.groupesDuDepot(id).map((g) => ({ id: g.id, name: g.name })),
+    verifiers: [
+      ...db.prepare(`SELECT v.id, v.name, vr.mode FROM verifier_repo vr
       JOIN verifier v ON v.id = vr.verifier_id WHERE vr.repo_id = ? ORDER BY v.name`).all(id),
+      // …et ceux qui le couvrent PAR UN GROUPE (worktree), dits tels.
+      ...db.prepare('SELECT id, name FROM verifier WHERE id IN (' + (parGroupe.length ? parGroupe.map(() => '?').join(',') : 'NULL') + ') ORDER BY name').all(...parGroupe)
+        .filter((v) => !db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?').get(v.id, id))
+        .map((v) => ({ ...v, mode: 'worktree', via_group: true })),
+    ],
     jenkins: db.prepare('SELECT id, job_path, param FROM repo_jenkins WHERE repo_id = ? ORDER BY job_path').all(id),
     /* Les règles LIMITÉES à ce dépôt. Celles qui valent partout ne sont pas « rattachées » :
        les lister ici ferait croire qu'elles disparaîtraient avec lui. */
-    rules: db.prepare(`SELECT id, label, branch_match, path_match, enabled FROM review_rule
-      WHERE repo_id = ? ORDER BY id`).all(id),
+    rules: db.prepare(`SELECT id, label, branch_match, path_match, enabled, group_id FROM review_rule
+      WHERE repo_id = ? OR group_id IN (SELECT group_id FROM repo_group_member WHERE repo_id = ?) ORDER BY id`).all(id, id),
     services: db.prepare('SELECT id, name FROM service WHERE repo_id = ? ORDER BY name').all(id),
     // Les projets liés PAR DÉFAUT : ce qui sera joint au contexte des futures merge requests.
     links: db.prepare(`SELECT l.linked_repo_id AS id, l.branch, r.project FROM repo_link l

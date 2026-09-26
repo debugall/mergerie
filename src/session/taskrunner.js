@@ -211,7 +211,7 @@ const nonceQuestionsTache = (task) => protocolesecret.hmac(`questions-${task && 
    Le jour où on affine ce prompt — c'est le cœur produit — les deux chemins suivent. */
 function buildCodePrompt(task) {
   const base = avecConsignes('Réalise la tâche de développement suivante dans ce dépôt. '
-    + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`, consignesPermanentes());
+    + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}`, consignesPermanentes(depotPrincipal(task)));
   // Option « l'IA peut poser des questions » : on ajoute la consigne du bloc <<<QUESTIONS>>>.
   return task && task.ask_questions ? base + questions.questionsInstruction(nonceQuestionsTache(task)) : base;
 }
@@ -309,7 +309,16 @@ function redigerTranscription(taskId, unitId, passes, titre, avertissement) {
 
 /* Relues à CHAQUE prompt et non mises en cache : on les change en réglages parce qu'on vient de
    voir ce qui manquait, et la session suivante doit en tenir compte sans redémarrer l'outil. */
-const consignesPermanentes = () => getConfig().ai_extra_instructions;
+/* …et celles du GROUPE du dépôt visé quand il en porte (`data/groupes.js`) : une session sur un
+   micro-service reçoit les consignes de son groupe, pas celles d'un autre. */
+const consignesPermanentes = (repoId) => require('../data/groupes').consignesPour(getConfig(), repoId);
+/* Le dépôt PRINCIPAL d'une session multi-dépôts : sa première cible. Un prompt composé pour
+   toute la session ne peut porter qu'un jeu de consignes ; celles de la première cible valent. */
+const depotPrincipal = (task) => {
+  if (!task || !task.id) return null;
+  const tg = db.prepare('SELECT repo_id FROM task_target WHERE task_id = ? ORDER BY id LIMIT 1').get(task.id);
+  return tg ? tg.repo_id : null;
+};
 /* LE CHAMP « MESSAGE DE COMMIT » VAUT POUR TOUTE LA SESSION. Renseigné, il est la règle : le
    premier run, un suivi, la reprise après questions et les passes de convergence commitent tous
    sous ce message. C'est la demande de qui préfixe ses commits — une clé de ticket, une
@@ -938,7 +947,7 @@ async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds,
   const promptText = avecConsignes(
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
-    + `Demande de suivi : ${instr}`, consignesPermanentes());
+    + `Demande de suivi : ${instr}`, consignesPermanentes(depotPrincipal(task)));
   return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds, imageIds });
 }
 
@@ -963,7 +972,7 @@ async function runTaskAnswer(task, targetId, onLog = () => {}) {
   }
   onLog(`──────── ${tg.project} · ${tg.branch} (${t('log.task.after-answers')}) ────────`);
   setTarget(tg.id, { status: 'running', last_error: null });
-  const promptText = avecConsignes(questions.buildAnswerInstruction(qs), consignesPermanentes());
+  const promptText = avecConsignes(questions.buildAnswerInstruction(qs), consignesPermanentes(tg.repo_id));
   try {
     const res = await execOnTarget(task, tg, {
       promptText, message: commitMessageFor(task, t('log.task.answers-commit')),

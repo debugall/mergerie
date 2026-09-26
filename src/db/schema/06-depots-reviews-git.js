@@ -204,3 +204,32 @@ db.exec(`CREATE TABLE IF NOT EXISTS verify_run_test (
   created_at TEXT NOT NULL
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_verify_run_test ON verify_run_test(verifier_id, targets_key)');
+
+/* ---------- LES GROUPES DE DÉPÔTS (ameliorations_proposal.md, §4.5) ----------
+   Vingt micro-services d'une même équipe partagent les mêmes règles de review, les mêmes
+   vérificateurs, le même gabarit de prompt. Un fichier de configuration DANS chaque dépôt les
+   dupliquerait vingt fois ; un groupe les porte une fois, et voyage par le dépôt de données
+   d'équipe (famille P). L'appartenance désigne un dépôt par sa clé naturelle à l'export
+   (`forge/projet`), jamais par son id — un dépôt qu'un poste ne suit pas est gardé en marge.
+   Un dépôt peut être dans plusieurs groupes (« backend », « paiement », « legacy »).
+   Ce qu'un groupe PORTE : ses gabarits de prompt (review, correction, modification) et ses
+   consignes permanentes — vides, c'est le réglage global qui vaut ; les règles de review
+   (`review_rule.group_id`) et la couverture des vérificateurs (`verifier_group`, tranche 07). */
+db.exec(`CREATE TABLE IF NOT EXISTS repo_group (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT DEFAULT '',
+  prompt_review TEXT DEFAULT '',
+  prompt_modify TEXT DEFAULT '',
+  prompt_fix TEXT DEFAULT '',
+  ai_extra_instructions TEXT DEFAULT '',
+  created_at TEXT NOT NULL
+)`);
+db.exec(`CREATE TABLE IF NOT EXISTS repo_group_member (
+  group_id INTEGER NOT NULL REFERENCES repo_group(id) ON DELETE CASCADE,
+  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
+  PRIMARY KEY (group_id, repo_id)
+)`);
+/* Une règle de review peut viser un GROUPE (NULL = pas de groupe ; `repo_id` reste la limite à
+   un seul dépôt, les deux pouvant coexister : la règle s'applique si l'un OU l'autre matche). */
+try { db.exec('ALTER TABLE review_rule ADD COLUMN group_id INTEGER'); } catch { /* déjà présente */ }

@@ -10,6 +10,7 @@ const verifyLib = require('../../verify/verify');
 const verifyrun = require('../../verify/verifyrun');
 const { mrById } = require('../http');
 const memo = require('../middleware/memo-requete');
+const groupes = require('../../data/groupes');
 
 /* L'état APPROUVÉ est celui que l'écran a montré : sa signature revient avec le clic, et un objet
    changé entre-temps par la synchro est refusé (409) — l'écran recharge et le montre. */
@@ -42,8 +43,7 @@ function ciblesDepuisMrs(mrIds) {
 function verifierPour(cibles, verifierId) {
   const ids = cibles.map((c) => c.repo_id);
   const candidats = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
-    const couverts = new Set(db.prepare('SELECT repo_id FROM verifier_repo WHERE verifier_id = ?')
-      .all(v.id).map((r) => r.repo_id));
+    const couverts = groupes.couvertureVerifier(v.id);   // dépôts directs ET dépôts des groupes
     return ids.every((id) => couverts.has(id));
   });
   if (!candidats.length) throw new Error(t('err.verify.no-verifier'));
@@ -55,8 +55,7 @@ function verifierPour(cibles, verifierId) {
 /* Mode de chaque cible : déclaré par le vérificateur, dépôt par dépôt. Le mode voyage avec la
    cible pour que le rapport puisse dire « (in place) » longtemps après le run. */
 function appliquerModes(verifier, cibles) {
-  const par = new Map(db.prepare('SELECT * FROM verifier_repo WHERE verifier_id = ?')
-    .all(verifier.id).map((r) => [r.repo_id, r]));
+  const par = groupes.couvertureVerifier(verifier.id);   // une ligne directe l'emporte, un groupe = worktree
   return cibles.map((c) => {
     const l = par.get(c.repo_id);
     return { ...c, mode: (l && l.mode) || 'worktree', workdir: (l && l.workdir) || null };

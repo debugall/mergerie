@@ -155,6 +155,7 @@ function targetHeadHtml() {
 
 function renderTargetRows(list) {
   const el = $('#targetRows');
+  renderTaskGroupChips();
   el.innerHTML = targetHeadHtml() + (list.length ? list : [{}]).map((t, i) => targetRowHtml(i, t)).join('');
   $$('#targetRows [data-rmrow]').forEach((b) => b.addEventListener('click', () => {
     const cur = readTargetRows();
@@ -178,6 +179,25 @@ function renderTargetRows(list) {
 }
 $('#addTarget').addEventListener('click', () => {
   renderTargetRows([...readTargetRows(), {}]);
+  majVerificateursSession(); majSkillsSession();
+});
+/* LES PASTILLES DE GROUPE : « une session sur tout le groupe backend » — une ligne par membre qui
+   n'en a pas encore, la branche proposée comme pour une ligne ajoutée à la main. */
+function renderTaskGroupChips() {
+  const zone = $('#taskGroupChips');
+  if (zone) zone.innerHTML = groupeChipsHtml('task');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('#taskGroupChips [data-groupe-chip]');
+  if (!b) return;
+  const courantes = readTargetRows();
+  const deja = new Set(courantes.map((t) => t.repo_id));
+  const nouveaux = membresDuGroupe(b.dataset.groupeChip).filter((id) => !deja.has(id));
+  if (!nouveaux.length) { toast(tr('ui.groupes.deja-la')); return; }
+  /* Les lignes déjà là restent (la première porte souvent un membre, présélectionné) ; les
+     membres qui manquent viennent à la suite, avec la branche proposée comme pour une ligne
+     ajoutée à la main. */
+  renderTargetRows([...courantes, ...nouveaux.map((id) => ({ repo_id: id }))]);
   majVerificateursSession(); majSkillsSession();
 });
 

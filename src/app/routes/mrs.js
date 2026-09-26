@@ -138,7 +138,11 @@ app.get('/api/mrs', wrap((req, res) => {
   /* Un dépôt qu'aucun vérificateur ne couvre : le bouton « Vérifier » sera GRISÉ, avec la raison
      en info-bulle. Proposer un bouton qui répond « impossible » une fois cliqué fait perdre un
      geste et n'apprend rien de plus. */
-  const couverts = new Set(db.prepare('SELECT DISTINCT repo_id FROM verifier_repo').all().map((r) => r.repo_id));
+  const couverts = new Set([
+    ...db.prepare('SELECT DISTINCT repo_id FROM verifier_repo').all().map((r) => r.repo_id),
+    // …et les dépôts couverts PAR UN GROUPE (`verifier_group`), résolus par leurs membres.
+    ...db.prepare('SELECT DISTINCT m.repo_id FROM verifier_group vg JOIN repo_group_member m ON m.group_id = vg.group_id').all().map((r) => r.repo_id),
+  ]);
   res.json(rows.map((r) => {
     const key = jira.ticketKey(r.title, r.source_branch);
     return {
@@ -445,7 +449,9 @@ app.post('/api/mrs/:id/converge', wrap(async (req, res) => {
    par l'IA » et pour chaque passe de Converger, pris dans les réglages et traduit comme les
    autres gabarits. Vide → le défaut de la langue courante. */
 function promptCorrection(mr, reviewMd) {
-  return reviewer.fillTemplate(prompts.gabarit('prompt_fix', getConfig()), {
+  // Le gabarit du GROUPE du dépôt s'il en porte un, sinon le global (`data/groupes.js`).
+  const cfgDepot = require('../../data/groupes').configPourDepot(getConfig(), mr.repo_id).config;
+  return reviewer.fillTemplate(prompts.gabarit('prompt_fix', cfgDepot), {
     source: mr.source_branch, target: mr.target_branch || '', report: nonFiable('rapport de revue', reviewMd),
   });
 }

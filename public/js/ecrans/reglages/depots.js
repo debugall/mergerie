@@ -10,9 +10,14 @@ async function ficheDepotHtml(d) {
     ? `<div class="repo-sheet-sec"><h5>${esc(titre)}</h5><ul>${lignes.join('')}</ul></div>` : '');
   const li = (contenu) => `<li>${contenu}</li>`;
   return [
+    /* Ses GROUPES, en tête : c'est d'eux que viennent règles, vérificateurs et gabarits hérités. */
+    section(tr('settings.repo.sheet.groups'), (d.groups || []).map((g) => li(
+      `<button type="button" class="lien-reglage" data-sheet-group="${g.id}">${esc(g.name)}</button>`,
+    ))),
     section(tr('settings.repo.sheet.verifiers'), (d.verifiers || []).map((v) => li(
       `<button type="button" class="lien-reglage" data-sheet-verifier="${v.id}">${esc(v.name)}</button>`
-      + (v.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : ''),
+      + (v.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : '')
+      + (v.via_group ? ` <span class="muted">${esc(tr('settings.repo.sheet.via-group'))}</span>` : ''),
     ))),
     section(tr('settings.repo.sheet.jenkins'), (d.jenkins || []).map((j) => li(
       `<button type="button" class="lien-reglage" data-sheet-jenkins="${esc(j.job_path)}">${esc(j.job_path)}</button>`
@@ -61,6 +66,8 @@ document.addEventListener('click', async (e) => {
   if (sv) { navTab('links'); return; }
   const a = e.target.closest && e.target.closest('[data-sheet-agent]');
   if (a) { navTab('agents'); showAgentsSub('list'); return; }
+  const g = e.target.closest && e.target.closest('[data-sheet-group]');
+  if (g) { const f = $('#groupForm'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); const b = $(`#groupList [data-gedit="${g.dataset.sheetGroup}"]`); if (b) b.click(); }
 });
 
 async function loadRepos() {
@@ -73,7 +80,7 @@ async function loadRepos() {
     <div class="card repo-row" data-repo="${r.id}">
       <div class="repo-view">
         <div style="min-width:0">
-          <div class="title">${forgeBadge(r.forge)}${esc(r.project)}</div>
+          <div class="title">${forgeBadge(r.forge)}${esc(r.project)} ${groupeTagsHtml(r.groups)}</div>
           <div class="meta">${esc(r.url)} · ${tr('settings.repo.pattern')} <code>${r.branch_pattern ? esc(r.branch_pattern) : tr('settings.repo.all-mrs')}</code></div>
           ${/* CE QU'IL EN EST DE CE DÉPÔT. « Pourquoi cette review échoue ? » commence presque
                 toujours par « le clone est-il là ? » : on répond ici, et on propose le geste. */''}

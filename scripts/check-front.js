@@ -283,7 +283,7 @@ fondKo.length
    FRÈRE de la liste (même parent) et son id se terminer par `Filter` — c'est la convention
    que suit `filtrerLignes()`, qui reçoit le couple. Une liste rendue sans lui redevient un
    mur de cases où l'on cherche à l'œil. */
-const LISTES_A_FILTRER = ['skillList', 'taskSkills', 'taskSubagents', 'agentSkills', 'agentRepos', 'domainRepos'];
+const LISTES_A_FILTRER = ['skillList', 'taskSkills', 'taskSubagents', 'agentSkills', 'agentRepos', 'domainRepos', 'groupRepoList'];
 const sansFiltre = [];
 for (const id of LISTES_A_FILTRER) {
   const re = new RegExp(`<[^>]*\\bid="${id}"[^>]*>`);

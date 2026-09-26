@@ -108,8 +108,7 @@ async function lancerVerificationsAuto(mrIds, { colonne = 'auto_on_mr' } = {}) {
     const mr = mrById(Number(mrId));
     if (!mr) continue;
     // Ceux qui couvrent CE dépôt. Plusieurs peuvent le couvrir : ils partent tous.
-    const couvrants = autos.filter((v) => db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?')
-      .get(v.id, mr.repo_id));
+    const couvrants = autos.filter((v) => require('../../data/groupes').couvre(v.id, mr.repo_id));
     for (const verifier of couvrants) {
       if (plafond && bilan.lancees >= plafond) { bilan.plafonnees += 1; continue; }
       /* PRÉ-VOL : des services arrêtés produiraient un rouge imputé à cette branche. */

@@ -189,3 +189,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS convergence_run (
   finished_at TEXT
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_convergence_run_mr ON convergence_run(mr_id)');
+
+/* La couverture d'un vérificateur PAR GROUPE (ameliorations_proposal.md, §4.5) : « ce
+   vérificateur teste tous les dépôts du groupe backend », en mode worktree — le mode in place et
+   son consentement restent ligne à ligne dans `verifier_repo`, parce qu'un dossier de poste ne se
+   déclare pas pour vingt dépôts d'un coup. Résolue à l'exécution : un dépôt ajouté au groupe est
+   couvert sans retoucher le vérificateur. */
+db.exec(`CREATE TABLE IF NOT EXISTS verifier_group (
+  verifier_id INTEGER NOT NULL REFERENCES verifier(id) ON DELETE CASCADE,
+  group_id INTEGER NOT NULL REFERENCES repo_group(id) ON DELETE CASCADE,
+  PRIMARY KEY (verifier_id, group_id)
+)`);

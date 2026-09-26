@@ -30,6 +30,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   the install commands for Claude Code and Copilot CLI, and a **Retry** that redoes the detection
   on the spot. The detection used to be cached for the life of the process: installing the agent
   after starting changed nothing until a restart, and the only sign was a mute “dry-run” badge.
+- **Repository groups.** Settings → Repositories gets *Repository groups*: a name, its members,
+  and — folded — the review, fix and modification templates and the standing instructions that
+  apply to every repository of the group (empty: the global settings). A review rule can be
+  limited to a group, a verifier can cover a group as a whole (worktree; “in place” stays line by
+  line), and wherever repositories are picked — a coding or exploration session, a Git action, a
+  verifier's coverage — one chip per group adds or ticks all its members. A repository can belong
+  to several groups; the oldest group carrying a value wins, and the repository's sheet says where
+  each value comes from. Groups travel with the team's data repository; a coverage that arrives
+  through the sync waits for approval like any command that runs. Deleting a group disables the
+  rules that only targeted it rather than letting them apply everywhere.
 - **Approve from the report.** An **Approve** button next to Publish posts the verdict the forge
   reads — a GitLab approval, a GitHub `APPROVE` review — with no comment, never a burst of inline
   remarks. The confirmation states the score against the threshold and the verification verdict
