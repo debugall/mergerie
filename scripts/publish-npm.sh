@@ -58,7 +58,8 @@ FAKE_HOME="$TMP/home"; mkdir -p "$FAKE_HOME" "$TMP/vide"
 ( cd "$TMP/vide" && HOME="$FAKE_HOME" PORT="$PORT" npm exec --yes --package="$TGZ" -- mergerie demo > "$TMP/demo.log" 2>&1 ) &
 RUNNER=$!
 i=0
-until curl -sf "http://127.0.0.1:$PORT/api/config" >/dev/null 2>&1; do
+# La page elle-même : toute route /api/ exige le jeton de session local, qu'on ne connaît pas encore.
+until curl -sf "http://127.0.0.1:$PORT/" >/dev/null 2>&1; do
   i=$((i + 1))
   if [ $i -gt 240 ] || ! kill -0 "$RUNNER" 2>/dev/null; then cat "$TMP/demo.log"; fail "le serveur de démo n'a pas répondu sur :$PORT"; fi
   sleep 1
@@ -66,7 +67,10 @@ done
 curl -sf "http://127.0.0.1:$PORT/" | grep -q demoBanner || { cat "$TMP/demo.log"; fail "pas de bannière de démo : MERGERIE_DEMO n'est pas passé"; }
 [ -f "$FAKE_HOME/.mergerie/demo/reviewer.db" ] || fail "la base de démo n'est pas dans ~/.mergerie/demo"
 [ -z "$(find "$FAKE_HOME/.npm" -name reviewer.db 2>/dev/null)" ] || fail "une base a été écrite dans le cache de npx"
-MRS=$(curl -sf "http://127.0.0.1:$PORT/api/mrs" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).length))')
+# L'API n'appartient qu'au navigateur (jeton local, `mergerie token`) : on le lit là où la démo l'a écrit.
+JETON=$(cat "$FAKE_HOME/.mergerie/demo/local-token" 2>/dev/null || true)
+[ -n "$JETON" ] || fail "pas de jeton de session local dans ~/.mergerie/demo"
+MRS=$(curl -sf -H "Authorization: Bearer $JETON" "http://127.0.0.1:$PORT/api/mrs" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).length))')
 echo "démo levée en ${i}s sur :$PORT — $MRS merge requests fictives, base dans ~/.mergerie/demo, rien dans le cache"
 # Le serveur est l'enfant de la commande ; on tue par le port, ce qui marche quel que soit le
 # nombre d'intermédiaires que npm exec a mis entre nous et lui.
