@@ -220,7 +220,78 @@ EN = [
 ]
 
 
-def dire(texte, langue='fr'):
-    for motif, remplacement in (FR if langue == 'fr' else EN):
+# --- VOIX NEURONALE (edge-tts). Elle lit les mots anglais et les sigles courants correctement :
+#     les respellings phonétiques faits pour espeak/Piper (« guite », « linnte », « prompte ») la
+#     feraient dérailler. On ne garde que ce qu'un narrateur humain dirait autrement que l'écrit :
+#     les sigles à dire en toutes lettres, la ponctuation muette, les nombres. ---
+FR_NEURONAL = [
+    (r'Chiffres pour les onglets, / pour la recherche',
+     'Les chiffres pour les onglets, la touche slash pour la recherche'),
+    (r'\?\s+affiche la liste complète', 'La touche point d’interrogation affiche la liste complète'),
+    (r'à portée de\s*«?\s*\?\s*»?', 'à portée du point d’interrogation'),
+    (r'\bMRs\b', 'merge requests'),
+    (r'\bMR\b', 'merge request'),
+    (r'\bDev IA\b', 'Dev I A'),
+    (r'\bCLI\b', 'C L I'),
+    (r'\bURL\b', 'U R L'),
+    (r'\bAPI\b', 'A P I'),
+    (r'\bSSH\b', 'S S H'),
+    (r'\bXSS\b', 'X S S'),
+    (r'\bJUnit\b', 'J Unit'),
+    (r'\bSQL\b', 'S Q L'),
+    (r'\bSHAs?\b', 'cha'),
+    (r'\bGNU\b', 'G N U'),
+    (r'\bN°\b', 'numéro'),
+    (r'\bAGPL-3\.0\b', 'A G P L trois point zéro'),
+    (r'\bCtrl/Cmd \+ K\b', 'Contrôle ou Commande plus K'),
+    (r'\bCtrl\+V\b', 'Contrôle V'),
+    (r'\bCtrl\+K\b', 'Contrôle K'),
+    (r'\bnpm install\b', 'N P M install'),
+    (r'\bnpm start\b', 'N P M start'),
+    (r'\.env\b', 'point env'),
+    (r'\bDB_POOL_SIZE\b', 'D B pool size'),
+    (r'\bFEATURE_X\b', 'feature X'),
+    (r'\bet/ou\b', 'et ou'),
+    (r'\s*→\s*', ', puis '),
+    (r'\s*·\s*', ', '),
+    (r'/10\b', ' sur 10'),
+    (r'\b30 s\b', '30 secondes'),
+    (r'\bj\s*/\s*k\b', 'J et K'),
+    (r'\bdocker run\b', 'docker run'),
+    (r'«\s*', ''), (r'\s*»', ''),
+]
+EN_NEURONAL = [
+    (r'\ban MR\b', 'a merge request'),
+    (r'\bMRs\b', 'merge requests'),
+    (r'\bMR\b', 'merge request'),
+    (r'\bCLI\b', 'C L I'),
+    (r'\bURL\b', 'U R L'),
+    (r'\bAPI\b', 'A P I'),
+    (r'\bSSH\b', 'S S H'),
+    (r'\bXSS\b', 'X S S'),
+    (r'\bAGPL-3\.0\b', 'A G P L three point zero'),
+    (r'\bCtrl\+K\b', 'Control K'),
+    (r'\bCtrl\+V\b', 'Control V'),
+    (r'\.env\b', 'dot env'),
+    (r'\bDB_POOL_SIZE\b', 'D B pool size'),
+    (r'\bFEATURE_X\b', 'feature X'),
+    (r'\s*→\s*', ', then '),
+    (r'\s*·\s*', ', '),
+    (r'/10\b', ' out of ten'),
+    (r'\bJUnit\b', 'J Unit'),
+    (r'\bSQL\b', 'S Q L'),
+    (r'\bSHAs?\b', 'sha'),
+    (r'\bGNU\b', 'G N U'),
+    (r'\band/or\b', 'and or'),
+    (r'“\s*', ''), (r'\s*”', ''),
+]
+
+
+def dire(texte, langue='fr', moteur='piper'):
+    if moteur == 'edge':
+        regles = FR_NEURONAL if langue == 'fr' else EN_NEURONAL
+    else:
+        regles = FR if langue == 'fr' else EN
+    for motif, remplacement in regles:
         texte = re.sub(motif, remplacement, texte)
     return re.sub(r'\s{2,}', ' ', texte).strip()

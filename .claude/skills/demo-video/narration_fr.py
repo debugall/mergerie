@@ -6,146 +6,147 @@ pendant la Nième étape. AJOUTER UNE ÉTAPE ICI SANS EN AJOUTER UNE DANS `parco
 (ou l'inverse) décale tout ce qui suit — les deux fichiers se comptent, et le script
 s'arrête net si le compte ne tombe pas juste.
 
-Le texte est écrit pour ACCOMPAGNER le geste : il décrit ce qui est à l'écran au moment où
-le curseur y arrive. Il est ensuite réécrit pour la voix par `prononciation.py` — écrire
+Écrite pour QUELQU'UN QUI DÉCOUVRE L'OUTIL : chaque écran commence par le problème qu'il règle,
+puis montre le geste. Le texte accompagne le curseur — il décrit ce qui est à l'écran au moment
+où il y arrive. Il est ensuite réécrit pour la voix par `prononciation.py` — écrire
 l'orthographe correcte ici, jamais une graphie phonétique.
 """
 
 NARRATION = [
     (
-        "Voici Mergerie, un cockpit de développement local assisté par IA. Onze onglets dans une colonne à gauche : les reviews de merge requests, les sessions de développement, les agents, les notes, Jira, git, Docker, Jenkins, les liens de travail, les statistiques et les réglages. Les pastilles signalent le travail en attente, jamais des totaux décoratifs. "
+        "Tu connais la journée : des merge requests qui s'empilent, des tickets à faire avancer, cinq dépôts, et une IA qui sait coder mais qu'on n'ose pas laisser seule. Mergerie, c'est un cockpit local qui règle ça. L'IA relit, code, teste et prépare. Toi, tu décides, et tu merges. Tout tourne sur ta machine, avec l'agent que tu as déjà. Onze onglets à gauche ; les pastilles ne montrent que ce qui attend un geste. "
     ),
     (
-        "On commence par les merge requests à traiter. Chaque carte donne l'essentiel : le numéro, le titre, le projet, l'auteur et la date, puis les branches concernées et les liens vers le ticket et vers la forge. "
+        "On commence par ce qui arrive tous les jours : une merge request à relire. Chaque carte donne l'essentiel en un regard : le numéro, le titre, le projet, l'auteur, les branches, et les liens vers le ticket et vers GitLab ou GitHub. "
     ),
     (
-        "Une barre de recherche filtre sur le titre, l'auteur, le projet ou le ticket. On la retrouve partout dans l'outil : sur un dépôt actif, les listes deviennent vite longues. "
+        "Une recherche filtre sur le titre, l'auteur, le projet ou le ticket. Tu la retrouveras partout dans l'outil : sur un dépôt actif, les listes deviennent vite longues. "
     ),
     (
-        "La file se range comme on veut : les petites d'abord, les plus anciennes, la note la plus basse, les bloquants d'abord. Quand l'ordre n'est pas l'ordre habituel, le contrôle le marque — une liste réordonnée sans qu'on sache selon quoi ne se lit pas. "
+        "La file se range comme tu veux : les petites d'abord, les plus anciennes, la note la plus basse, les bloquantes en tête. Et quand l'ordre n'est pas l'habituel, le contrôle le dit, pour que tu saches toujours selon quoi tu lis. "
     ),
     (
-        "Le bouton Reviewer lance l'analyse par l'IA sur cette merge request. La petite flèche à côté ouvre deux variantes : review seule, ou review accompagnée d'une explication pédagogique du changement. "
+        "Reviewer, c'est le geste clé. L'IA lit le diff, le compare aux règles de ton équipe, et rend un rapport noté. La petite flèche propose deux variantes : la review seule, ou la review avec une explication pédagogique du changement. "
     ),
     (
-        "Avant de dépenser un appel, Voir le diff permet de lire le code. "
+        "Avant de dépenser un appel, tu peux lire le code toi-même. "
     ),
     (
-        "Le diff s'ouvre dans l'outil : fichier par fichier, avec les ajouts et les suppressions. On juge soi-même si la merge request mérite une review complète. "
+        "Le diff s'ouvre dans l'outil, fichier par fichier. Tu juges seul si cette merge request mérite une review complète, ou si un coup d'œil suffit. "
     ),
     (
-        "Le bouton Contexte, lui, sert à donner à l'IA ce qu'elle ne peut pas deviner. "
+        "Contexte, c'est ce qui rend la review vraiment pertinente : donner à l'IA ce qu'elle ne peut pas deviner. "
     ),
     (
-        "On y colle le texte du ticket, une spécification ou une règle métier, on peut joindre une capture d'écran, et déclarer les projets et les branches liés. Tout cela est ajouté à la consigne de review. "
+        "Le texte du ticket, une spécification, une règle métier, une capture d'écran, les projets et les branches liés. Tout ça entre dans la consigne de review. Une IA qui connaît l'intention relit mieux qu'une IA qui devine. "
     ),
     (
-        "En haut, Reviewer les 6 MR traite toute la file d'un coup. Les jobs s'enchaînent, trois au maximum en parallèle, et deux jobs qui toucheraient le même dépôt sont refusés plutôt que de se marcher dessus. "
+        "Et quand la file est longue, un seul bouton reviewe tout. Les jobs s'enchaînent, trois en parallèle au maximum, et deux jobs qui toucheraient le même dépôt sont refusés plutôt que de se marcher dessus. "
     ),
     (
-        "Chercher les nouvelles MR interroge GitLab et GitHub et ramène ce qui est apparu depuis la dernière fois. "
+        "Chercher les nouvelles MR interroge tes forges et ramène ce qui est apparu depuis la dernière fois. "
     ),
     (
-        "Sur chaque carte, Classer sans review sort une merge request triviale de la file, Merger la fusionne directement, et Faire coder l'IA ouvre une session de développement à partir de cette merge request. "
+        "Le menu de la carte porte le reste : classer sans review une merge request triviale, la merger directement, ou faire coder l'IA à partir d'elle. "
     ),
     (
-        "Et quand un agent a cartographié un sujet, les merge requests qui touchent ses fichiers portent sa carte : on sait sur quel terrain on entre avant même d'ouvrir le diff. "
+        "Et là, un détail qui change tout : quand un agent a cartographié un sujet, les merge requests qui touchent ses fichiers portent sa carte. Tu sais sur quel terrain tu entres avant même d'ouvrir le diff. "
     ),
     (
         "Passons aux merge requests déjà reviewées. "
     ),
     (
-        "Quand on revient dans l'outil, le panneau de droite résume ce qui a bougé depuis la dernière visite, et propose les rapports à regarder en priorité. "
+        "Quand tu reviens dans l'outil, le panneau de droite résume ce qui a bougé depuis ta dernière visite, et te dit quels rapports regarder en priorité. "
     ),
     (
-        "La liste de gauche montre la note attribuée à chacune, de zéro à dix, et signale les rapports devenus périmés parce que la branche a bougé depuis. On en ouvre un. "
+        "À gauche, chaque rapport porte sa note sur dix, et un marqueur si la branche a bougé depuis : un rapport périmé ne se lit pas comme un rapport à jour. On en ouvre un. "
     ),
     (
-        "Le rapport suit toujours la même structure : un résumé, les points relevés avec leur emplacement précis dans le code et leur gravité, ce qui est bien, et une note globale. "
+        "Le rapport suit toujours la même structure : un résumé, les points relevés avec le fichier, la ligne et la gravité, ce qui est bien, et une note globale. En trente secondes, tu sais si tu peux merger. "
     ),
     (
-        "Chaque constat porte un fichier et une ligne. Mettre en brouillons les transforme d'un geste en remarques posées sur le diff, prêtes à relire. Rien ne part chez la forge. "
+        "Chaque constat porte un fichier et une ligne. Mettre en brouillons les transforme d'un geste en remarques posées sur le diff, prêtes à relire. Rien n'est encore parti sur la forge. "
     ),
     (
-        "Et ce qui ne peut pas être posé est dit : un constat qui parle d'une ligne que la branche n'a pas touchée n'a pas d'ancrage dans le diff, la forge refuserait la position. Ceux-là sont laissés de côté, et comptés. "
+        "Et ce qui ne peut pas se poser est dit : un constat sur une ligne que la branche n'a pas touchée n'a pas d'ancrage dans le diff. Ceux-là sont laissés de côté, et comptés. L'outil ne triche jamais sur ce qu'il a fait. "
     ),
     (
-        "Le second onglet contient l'explication pédagogique : ce que fait la merge request et pourquoi, pour prendre en main un changement qu'on n'a pas écrit. Le bouton Copier récupère tout le rapport en Markdown. "
+        "Le second onglet, c'est l'explication pédagogique : ce que fait la merge request et pourquoi. Idéal pour prendre en main un changement qu'on n'a pas écrit. Copier récupère tout le rapport en Markdown. "
     ),
     (
-        "Au-dessus, Ouvrir le code lance l'éditeur sur le dépôt local, positionné sur la bonne branche. Contexte rouvre le dossier de contexte de cette merge request, pour le compléter avant une nouvelle passe. "
+        "Ouvrir le code lance ton éditeur sur le dépôt local, déjà positionné sur la bonne branche. Contexte rouvre le dossier de cette merge request, pour le compléter avant une nouvelle passe. "
     ),
     (
-        "Relancer la review refait tout. Quand la branche a bougé depuis, le rapport est marqué périmé, et la relance devient une relance delta : elle ne fait relire que ce qui a changé. "
+        "Relancer la review refait tout. Mais si la branche a bougé, la relance devient une relance delta : l'IA ne relit que ce qui a changé. Moins de tokens, et pas de remarques en double. "
     ),
     (
-        "Marquer traitée range la merge request sans la fusionner, Merger la fusionne, et Supprimer le rapport repart de zéro. "
+        "Marquer traitée range la merge request sans la fusionner. Merger la fusionne, avec confirmation. "
     ),
     (
         "Le menu porte les gestes plus rares : publier le rapport sur la merge request, ranger un constat dans les todos, supprimer le rapport. "
     ),
     (
-        "Plus bas, on peut demander une modification du rapport en langage naturel : creuse ce point, reformule plus court. L'IA régénère le rapport avec cette consigne. "
+        "Plus bas, tu peux demander une modification du rapport en langage naturel : creuse ce point, reformule plus court. L'IA le régénère avec cette consigne. "
     ),
     (
-        "Juste en dessous, on peut simplement poser une question : pourquoi ce point est-il bloquant, qu'est-ce qui se passerait si on ne le corrigeait pas. "
+        "Juste en dessous, tu peux simplement poser une question : pourquoi ce point est-il bloquant ? Que se passerait-il si on ne le corrigeait pas ? "
     ),
     (
-        "La réponse s'ajoute sous le rapport, et le rapport ne bouge pas : ni son texte, ni sa note, ni ses versions. Demander une explication ne doit pas coûter le rapport qu'on est en train de lire. "
+        "La réponse s'ajoute sous le rapport, et le rapport ne bouge pas : ni son texte, ni sa note. Demander une explication ne doit jamais coûter le rapport qu'on est en train de lire. "
     ),
     (
-        "Et si une page de notes parle de cette merge request, elle est citée ici. L'autolien marche dans les deux sens : la note mène à la merge request, la merge request retrouve la note. "
+        "Et si une page de notes parle de cette merge request, elle est citée ici. Le lien marche dans les deux sens : la note mène à la merge request, la merge request retrouve la note. "
     ),
     (
-        "Encore en dessous, les commentaires de la merge request sont repris depuis la forge. On lit les échanges, on répond, et la réponse est postée sur GitLab ou GitHub sans quitter l'outil. "
+        "Encore en dessous, les commentaires de la merge request, repris depuis la forge. Tu lis les échanges, tu réponds, et la réponse part sur GitLab ou GitHub sans quitter l'outil. "
     ),
     (
-        "Faire corriger le code par l'IA ouvre une session de développement sur la branche de la merge request, avec les points du rapport comme consigne. "
+        "Faire corriger le code ouvre une session de développement sur la branche, avec les points du rapport comme consigne. L'IA corrige ce qu'elle a elle-même relevé. "
     ),
     (
-        "Et Converger lance la boucle autonome. "
+        "Et Converger, c'est la boucle complète. "
     ),
     (
-        "L'IA corrige, commite, pousse, se relit, et recommence jusqu'au seuil de note ou au plafond de passes. L'avertissement est explicite : chaque passe pousse un commit sur la branche partagée, mais jamais de fusion. C'est toi qui relis et qui merges à la fin. "
+        "L'IA corrige, commite, pousse, se relit, et recommence jusqu'à atteindre la note visée ou le plafond de passes. Une merge request qui passe de cinq à huit toute seule, avec tout l'historique conservé. L'avertissement est clair : chaque passe pousse un commit, mais jamais de fusion. Le merge, c'est toi. "
     ),
     (
         "Le troisième segment, Traitées, garde la trace de ce qui est terminé. "
     ),
     (
-        "Une review donne un avis. À côté, un badge donne un fait : vérifié, ou tant de tests cassés. Il vient d'un vérificateur, c'est-à-dire de vos propres tests, lancés sur les commits de la branche. "
+        "Une review, c'est un avis. Ce badge, c'est un fait : vérifié, ou tant de tests cassés. Il vient d'un vérificateur, c'est-à-dire de tes propres tests, lancés pour de vrai sur les commits de la branche. "
     ),
     (
-        "Le rapport dit sur quels commits le verdict porte, quels tests ont cassé, avec leur message, et le déroulé des commandes lancées. Mergerie a aussi rejoué la suite sur la branche cible avant vos changements : un test déjà rouge avant n'est donc jamais imputé à la branche. "
+        "Le rapport dit sur quels commits le verdict porte, quels tests ont cassé, et le déroulé des commandes. Et Mergerie a aussi rejoué la suite sur la branche cible avant tes changements : un test déjà rouge avant n'est jamais imputé à la branche. "
     ),
     (
-        "Quand l'échec est imputable à la branche, un bouton ouvre une session de correction, avec les tests cassés et les commits testés déjà dans le prompt. "
+        "Quand l'échec vient bien de la branche, un bouton ouvre une session de correction, avec les tests cassés et les commits testés déjà dans le prompt. "
     ),
     (
-        "Vérifier se lance depuis la liste, et aussi depuis une merge request déjà reviewée : l'avis et le fait ne s'excluent pas. "
+        "Vérifier se lance depuis la liste, et aussi sur une merge request déjà reviewée : l'avis de l'IA et le fait des tests se complètent. "
     ),
     (
-        "Une confirmation annonce ce qui va tourner : quel vérificateur, quelles commandes, dans quel dépôt et avec quel délai. Lancer des commandes sur sa machine mérite un écran, pas un clic silencieux. "
+        "Une confirmation annonce ce qui va tourner : quel vérificateur, quelles commandes, dans quel dépôt, avec quel délai. Lancer des commandes sur ta machine mérite un écran, pas un clic silencieux. "
     ),
     (
-        "Et pour les changements qui ne valent qu'ensemble, on coche plusieurs merge requests de dépôts différents et on les vérifie en une fois : le verdict vaut alors pour toutes. "
+        "Et pour des changements qui ne valent qu'ensemble, tu coches plusieurs merge requests de dépôts différents et tu les vérifies en une fois : le verdict vaut pour toutes. "
     ),
     (
-        "Un vérificateur peut partir tout seul dès qu'une merge request apparaît. Ce bouton ouvre le résultat de chacun de ceux qui ont tourné sur elle : le verdict, les commits testés, et les tests cassés nommés un par un. "
+        "Un vérificateur peut aussi partir tout seul dès qu'une merge request apparaît. Ce bouton montre le résultat de chacun de ceux qui ont tourné : le verdict, les commits testés, les tests cassés nommés un par un. "
     ),
     (
-        "Et le déroulé des commandes, avec leur code de sortie et leur sortie. C'est ce qui manquait quand on n'a pas vu passer le lancement : savoir non pas que c'est vert, mais ce qui a tourné. "
+        "Et le déroulé des commandes, avec leur code de sortie. Tu ne sais pas seulement que c'est vert : tu sais ce qui a tourné. "
     ),
     (
-        "Sur un diff, une remarque peut attendre. Ces commentaires sont enregistrés en local, relisables et modifiables, et rien n'est encore parti sur la forge. "
+        "Sur un diff, une remarque peut attendre. Ces commentaires restent en local, relisables et modifiables. Rien n'est encore parti. "
     ),
     (
-        "Quand la relecture est finie, un seul bouton les envoie tous. L'auteur reçoit une notification au lieu de dix, et une remarque qu'on n'aurait pas gardée trois fichiers plus loin ne part jamais. "
+        "Quand la relecture est finie, un seul bouton les envoie tous. L'auteur reçoit une notification au lieu de dix, et une remarque qu'on aurait retirée trois fichiers plus loin ne part jamais. "
     ),
     (
-        "Et si le lot ne va plus, Tout supprimer le vide d'un coup. La confirmation dit combien de remarques partent, et lesquelles : on ne jette pas dix remarques écrites hier sur un « êtes-vous sûr » anonyme. "
+        "Et si le lot ne va plus, Tout supprimer le vide d'un coup. La confirmation dit combien de remarques partent, et lesquelles. "
     ),
     (
-        "Passons à l'onglet Dev IA, celui où c'est l'IA qui écrit le code. "
+        "Passons à l'onglet Dev IA. Ici, c'est l'IA qui écrit le code, et c'est là que Mergerie change vraiment la journée. "
     ),
     (
         "Quatre familles de sessions : le codage sur des dépôts git, le codage hors dépôt sur un simple dossier, l'exploration qui lit le code sans rien modifier, et la question libre, sans dépôt du tout. "
@@ -154,73 +155,91 @@ NARRATION = [
         "On crée une session de codage. "
     ),
     (
-        "On choisit un ou plusieurs dépôts — avec recherche, forcément — la branche à créer ou à réutiliser, et la branche de départ. "
+        "Tu choisis un ou plusieurs dépôts, avec recherche, la branche à créer ou à réutiliser, et la branche de départ. Plusieurs dépôts, c'est le cas qui fait mal à la main : ici, c'est une seule session. "
     ),
     (
-        "Puis on décrit la tâche en langage naturel. On peut joindre une capture d'écran, et fixer le message de commit. "
+        "Puis tu décris la tâche en langage naturel, comme à un collègue. Tu peux joindre une capture d'écran, et fixer le message de commit. "
     ),
     (
-        "Deux options changent le comportement : l'auto-push, qui pousse la branche dès que le travail est fini, et l'autorisation donnée à l'IA de poser des questions quand elle hésite. En dessous, un champ permet de reprendre une session d'agent existante plutôt que d'en ouvrir une neuve. "
+        "Deux options changent le comportement : l'auto-push, qui pousse la branche dès que le travail est fini, et l'autorisation donnée à l'IA de poser des questions quand elle hésite, plutôt que de deviner. "
     ),
     (
-        "Une session peut aussi emprunter le profil d'un agent : son rôle, son périmètre de dépôts, ses outils et ses skills, sans les ressaisir. "
+        "Une session peut aussi emprunter le profil d'un agent : son rôle, son périmètre de dépôts, ses outils et ses skills, sans rien ressaisir. "
     ),
     (
-        "En bas, le bouton principal crée la session et la lance. Une case à cocher enchaîne directement avec la boucle de convergence, et le bouton d'à côté crée la session sans l'exécuter — on la lancera quand on voudra. "
+        "Et voici le choix qui fait économiser : le binaire. Tu déclares plusieurs agents dans les réglages, par exemple ton Claude habituel et un modèle local qui tourne sur ta machine. Pour une tâche simple, tu choisis le modèle local : zéro token dépensé. "
     ),
     (
-        "Une fenêtre qui contient de la saisie se met de côté. Le tiret la range dans le menu, avec ce qu'on avait écrit. "
+        "Planifier d'abord, c'est la sécurité avant de coder : la première passe ne touche à rien, l'IA lit le dépôt et propose un plan. Tu le relis, tu le fais corriger, et elle ne code qu'une fois que tu as approuvé. "
     ),
     (
-        "Un clic la reprend : les champs remplis, le curseur là où on l'avait laissé, et l'onglet d'où elle venait. "
+        "En bas, le bouton principal crée la session et la lance. Une case enchaîne directement avec la convergence, et le bouton d'à côté crée la session sans l'exécuter, pour la lancer quand tu veux. "
     ),
     (
-        "Voici une session qui porte sur quatre dépôts à la fois. Chaque projet affiche son état, sa branche et sa progression. Un projet en échec n'interrompt jamais les autres — son erreur reste sur sa ligne. "
+        "Une fenêtre en cours de saisie se met de côté : le tiret la range dans le menu, avec ce que tu avais écrit. "
     ),
     (
-        "Une session à plusieurs projets affiche sa liste repliée : au-delà de quelques dépôts, une seule session prendrait tout l'écran et masquerait les autres. Un clic la déplie, et le choix est mémorisé. "
+        "Un clic la reprend : les champs remplis, le curseur là où tu l'avais laissé. "
     ),
     (
-        "Chaque projet a ses propres actions : le relancer lui seul, sans rejouer les autres. "
+        "Voici une session qui porte sur quatre dépôts à la fois. Chaque projet affiche son état, sa branche et sa progression. Un projet en échec n'interrompt jamais les autres : son erreur reste sur sa ligne. "
     ),
     (
-        "Lui envoyer un suivi qui ne concerne que lui, reviewer sa merge request, ou la merger. Et quand plusieurs projets sont prêts en même temps, des boutons groupés font le geste pour tous. "
+        "Une session à plusieurs projets s'affiche repliée : au-delà de quelques dépôts, une seule session prendrait tout l'écran. Un clic la déplie, et le choix est mémorisé. "
     ),
     (
-        "À droite, les actions de la session entière : la relancer, l'enchaîner avec la convergence, et — quand certains projets ont échoué — ne rejouer que ceux-là. Une session qui s'est arrêtée en erreur alors que le travail était fait propose en plus de vérifier l'état des branches. "
+        "Chaque projet a ses propres actions : le relancer seul, sans rejouer les autres. "
+    ),
+    (
+        "Lui envoyer un suivi, reviewer sa merge request, ou la merger. Et quand plusieurs projets sont prêts en même temps, des boutons groupés font le geste pour tous : pousser tout, créer toutes les merge requests. "
+    ),
+    (
+        "À droite, les actions de la session entière : la relancer, l'enchaîner avec la convergence, et, si certains projets ont échoué, ne rejouer que ceux-là. "
     ),
     (
         "Une session se duplique : le formulaire s'ouvre pré-rempli, et enregistrer crée une nouvelle session au lieu d'écraser l'ancienne. "
     ),
     (
-        "Une session garde toutes ses itérations : le lancement, puis chaque suivi, avec la demande qui l'a produit. La liste se cherche. "
+        "Une session garde toutes ses itérations : le lancement, puis chaque suivi, avec la demande qui l'a produit. Tu retrouves toujours pourquoi l'IA a fait ce qu'elle a fait. "
     ),
     (
-        "Et chaque itération porte son propre diff. Au troisième suivi, les trois lignes qu'on vient de demander se cherchaient au milieu de deux cents : ce bouton ne montre que ce que cette passe-là a changé. Seule la dernière mesure est gardée. "
+        "Et chaque itération porte son propre diff. Au troisième suivi, les trois lignes que tu viens de demander se cherchaient au milieu de deux cents : ce bouton ne montre que ce que cette passe-là a changé. "
+    ),
+    (
+        "Cette session-ci a tourné sur le modèle local : le badge le dit. Le choix tient pour toute la session, suivis compris. "
+    ),
+    (
+        "Et voici une session en mode plan. L'IA a lu le dépôt et rendu son plan. Elle n'a encore rien codé, et la ligne attend ton accord. "
+    ),
+    (
+        "Lire le plan l'ouvre. Et à la place d'un suivi, tu as un champ de retours : garde l'API telle quelle, pas de migration. Régénérer renvoie tes retours à la même session, qui réécrit le plan complet, toujours sans coder. Autant de tours que nécessaire. "
+    ),
+    (
+        "Et quand tout est bon, Approuver et coder : la même session reprend, réalise le plan, et commite. Tu as validé le quoi avant de laisser faire le comment. "
     ),
     (
         "Voici l'autre cas : l'IA a préféré demander. Elle pose ses questions avec les options qu'elle voit dans le dépôt, et attend. "
     ),
     (
-        "On répond, et la session reprend exactement là où elle s'était arrêtée. "
+        "Tu réponds, et la session reprend exactement là où elle s'était arrêtée. "
     ),
     (
-        "Reprendre au terminal rouvre la même session d'agent dans un vrai terminal, avec tout son historique : on continue à la main quand c'est plus rapide. "
+        "Reprendre au terminal rouvre la même session d'agent dans un vrai terminal, avec tout son historique. Quand c'est plus rapide à la main, tu continues à la main. "
     ),
     (
-        "Le codage hors dépôt fait la même chose sur un simple dossier, sans git, sans branche et sans merge request. Pratique pour un script isolé ou un dossier de notes. "
+        "Le codage hors dépôt fait la même chose sur un simple dossier, sans git, sans branche et sans merge request. Un script isolé, un dossier de notes. "
     ),
     (
-        "L'exploration, elle, ne modifie rien : on pose une question sur le code, on lit la réponse, on enchaîne avec une question de suivi. C'est le mode à utiliser pour comprendre avant de toucher. "
+        "L'exploration ne modifie rien : tu poses une question sur le code, tu lis la réponse, tu enchaînes avec une question de suivi. C'est le mode pour comprendre avant de toucher. "
     ),
     (
-        "La question libre, elle, ne touche à aucun dépôt : on pose une question à l'IA, on garde la réponse, et on la retrouve avec ses itérations. "
+        "La question libre, elle, ne touche à aucun dépôt : une question à l'IA, la réponse gardée, et ses itérations. "
     ),
     (
         "Ces regroupements se nomment et se conservent : un lot se re-vérifie ensuite d'un seul bouton. "
     ),
     (
-        "L'onglet Agents. Un agent est un profil de session : un rôle, un périmètre de dépôts, des outils, des skills, une sortie — et parfois un horaire. "
+        "L'onglet Agents. Un agent, c'est un profil de session réutilisable : un rôle, un périmètre de dépôts, des outils, des skills, une sortie, et parfois un horaire. "
     ),
     (
         "Chaque carte dit à quoi l'agent sert et sur quoi il travaille : tous les dépôts actifs, ou seulement ceux qu'on lui a donnés. "
@@ -232,10 +251,10 @@ NARRATION = [
         "Celui-ci part tout seul, chaque lundi à sept heures. Un agent qui part sans personne doit avoir une borne de tours : sans elle, l'horaire est refusé. "
     ),
     (
-        "Un agent de domaine, lui, garde une connaissance : la carte de son sujet, versionnée — où vit ce code, par quel mécanisme, et comment on le teste. "
+        "Un agent de domaine, lui, garde une connaissance : la carte de son sujet, versionnée. Où vit ce code, par quel mécanisme, comment on le teste. "
     ),
     (
-        "Et cette carte vieillit. L'outil compte les commits qui ont touché ses chemins depuis la dernière cartographie, et signale ceux qui n'existent plus. "
+        "Et cette carte vieillit. L'outil compte les commits qui ont touché ses chemins depuis la dernière cartographie, et signale ceux qui n'existent plus. Une documentation qui sait qu'elle est périmée. "
     ),
     (
         "Mettre à jour relance la cartographie sur ce qui a bougé, plutôt que de tout refaire. "
@@ -244,40 +263,40 @@ NARRATION = [
         "Une nouvelle version ne s'impose pas : elle attend d'être relue et validée. Une connaissance fausse coûte plus cher qu'une connaissance vide. "
     ),
     (
-        "Le second sous-onglet liste ce que le disque offre : les skills et les sous-agents trouvés dans les dépôts clonés et dans ton home. En lecture seule — c'est le disque qui décide, pas l'outil. "
+        "Le second sous-onglet liste ce que le disque offre : les skills et les sous-agents trouvés dans les dépôts clonés et dans ton home. En lecture seule, c'est le disque qui décide. "
     ),
     (
-        "L'onglet Notes est celui sur lequel l'outil s'ouvre : c'est le premier écran de la journée. "
+        "L'onglet Notes est celui sur lequel l'outil s'ouvre : le premier écran de la journée. "
     ),
     (
-        "Le brief du matin rassemble ce qui appelle un geste : les merge requests dormantes, les vérifications rouges, les sessions qui attendent une réponse. Chaque ligne est cliquable, et se range définitivement d'une croix si elle ne t'intéresse pas. "
+        "Le brief du matin rassemble ce qui appelle un geste : les merge requests dormantes, les vérifications rouges, les sessions qui attendent une réponse. Tu ne cherches plus, c'est rassemblé. Chaque ligne est cliquable, et se range d'une croix. "
     ),
     (
         "Il compte aussi les sessions de développement en attente : jamais lancées, non poussées, sans merge request. Le travail est fait, il ne manque qu'un clic. "
     ),
     (
-        "Le brief dit aussi ce que la surveillance a vu pendant qu'on n'était pas là : un conteneur tombé, un build Jenkins terminé, un plafond automatique qui a laissé du travail de côté. "
+        "Le brief dit aussi ce que la surveillance a vu pendant que tu n'étais pas là : un conteneur tombé, un build Jenkins terminé, un plafond automatique atteint. "
     ),
     (
         "Et ce que les agents ont fait tout seuls, avec ce qu'ils ont produit. "
     ),
     (
-        "Copier pour le daily en fait un texte à coller dans la réunion du matin. "
+        "Copier pour le daily en fait un texte prêt à coller dans la réunion du matin. "
     ),
     (
-        "Les todos se trient par priorité d'abord, puis dans l'ordre que tu leur donnes à la main. Elles se cochent sur place. "
+        "Les todos se trient par priorité, puis dans l'ordre que tu leur donnes. Elles se cochent sur place. "
     ),
     (
-        "Celle-ci a été posée par l'outil : une session s'est arrêtée pour poser une question. La file est libre, plus rien ne repartira, et la notification est fermée depuis longtemps — la todo, elle, reste sous les yeux. Répondre la referme. "
+        "Celle-ci a été posée par l'outil : une session s'est arrêtée pour poser une question. La notification est fermée depuis longtemps ; la todo, elle, reste sous les yeux. Répondre la referme. "
     ),
     (
-        "Une todo se repousse d'une heure ou à demain matin, et garde le lien vers ce qui l'a fait naître : une merge request, un ticket, un conteneur, une vérification. "
+        "Une todo se repousse d'une heure ou à demain matin, et garde le lien vers ce qui l'a fait naître : une merge request, un ticket, un conteneur. "
     ),
     (
         "Les pages sont des notes libres en Markdown, cherchables. "
     ),
     (
-        "Une clé de ticket ou un numéro de merge request écrit dans le texte devient un lien vers l'écran correspondant, sans qu'on ait rien à coller. "
+        "Une clé de ticket ou un numéro de merge request écrit dans le texte devient un lien vers l'écran correspondant, sans rien coller. "
     ),
     (
         "L'onglet Liens répond à une question banale et pénible : où est l'adresse de ce service, dans cet environnement ? "
@@ -286,7 +305,7 @@ NARRATION = [
         "Une grille : les services en lignes, les environnements en colonnes. Une case peut porter plusieurs adresses nommées. "
     ),
     (
-        "On filtre par environnement, par service, par étiquette — et la grille reste lisible sans jamais défiler de côté. "
+        "On filtre par environnement, par service, par étiquette, et la grille reste lisible sans jamais défiler de côté. "
     ),
     (
         "Coller une adresse suffit : l'outil lit l'URL, reconnaît le service et l'environnement, et propose le libellé. "
@@ -295,7 +314,7 @@ NARRATION = [
         "La recherche traverse tout, et la palette de commandes cherche dans la même base : un lien, une merge request, un ticket, une todo. "
     ),
     (
-        "L'onglet Statistiques répond à une question simple : est-ce que la qualité monte ? "
+        "L'onglet Statistiques répond à une seule question : est-ce que la qualité monte ? "
     ),
     (
         "La distribution des notes et la moyenne par semaine montrent la tendance. En haut, l'activité récente de la forge, projet par projet. "
@@ -304,31 +323,31 @@ NARRATION = [
         "Le tableau par projet classe les pires notes en premier, avec le taux de résolution : combien de constats ont réellement été corrigés. "
     ),
     (
-        "Et le coût en tokens est affiché comme un minorant assumé : le travail interne de l'agent n'est pas comptabilisé, l'outil le dit plutôt que de faire semblant. "
+        "Le coût en tokens est affiché comme un minorant assumé : le travail interne de l'agent n'est pas compté, et l'outil le dit plutôt que de faire semblant. "
     ),
     (
         "Les opérations git sont comptées aussi, avec leur taux d'échec, et les constats qui reviennent d'une review à l'autre sont regroupés : c'est là qu'on voit ce qui mérite une règle plutôt qu'une remarque de plus. "
     ),
     (
-        "L'onglet Git applique la même opération à plusieurs dépôts en même temps. "
+        "L'onglet Git applique la même opération à plusieurs dépôts en même temps. Ce qu'on faisait dépôt par dépôt, en terminal, on le fait ici en une fois. "
     ),
     (
         "Huit outils. Le premier crée ou supprime des branches et des tags sur une sélection de dépôts. "
     ),
     (
-        "Les dépôts se filtrent par recherche, et les branches aussi — un dépôt actif en compte des centaines, une liste brute serait inutilisable. "
+        "Les dépôts se filtrent par recherche, et les branches aussi : un dépôt actif en compte des centaines. "
     ),
     (
-        "Rien ne s'exécute sans un aperçu ligne par ligne : on voit exactement ce qui va être fait, dépôt par dépôt, avant de confirmer. "
+        "Rien ne s'exécute sans un aperçu ligne par ligne : tu vois exactement ce qui va être fait, dépôt par dépôt, avant de confirmer. "
     ),
     (
         "Le deuxième fusionne une branche dans une autre, et quand il y a conflit, il se résout ici, fichier par fichier, sans quitter l'outil. "
     ),
     (
-        "La navigation positionne les dépôts locaux sur une branche donnée, en une fois, à partir d'un répertoire qui contient tous les clones. "
+        "La navigation positionne tous les dépôts locaux sur une branche donnée, en une fois. "
     ),
     (
-        "Les commandes git lancent la même commande partout — une palette de commandes courantes est fournie, et on peut écrire la sienne. "
+        "Les commandes git lancent la même commande partout : une palette de commandes courantes est fournie, et tu peux écrire la tienne. "
     ),
     (
         "L'explorateur de branches compare l'état des branches entre les dépôts : ce qui est en avance, en retard, ou absent. "
@@ -340,25 +359,25 @@ NARRATION = [
         "Trouver une ref cherche un tag ou une branche dans tous les dépôts actifs et dit lesquels le possèdent. "
     ),
     (
-        "Enfin, l'historique garde la trace de chaque opération, et chaque suppression de branche ou de tag reste restaurable. "
+        "Et l'historique garde la trace de chaque opération : chaque suppression de branche ou de tag reste restaurable. "
     ),
     (
-        "L'onglet Docker montre l'état réel des projets compose. "
+        "L'onglet Docker montre l'état réel de tes projets compose. "
     ),
     (
-        "Chaque service affiche son état, et surtout le drift de configuration : ce que le compose demande, comparé à ce qui tourne vraiment, variable par variable. Ici, la taille du pool est passée de dix à vingt-cinq. Les valeurs sensibles, elles, sont masquées. "
+        "Chaque service affiche son état, et surtout le drift de configuration : ce que le compose demande, comparé à ce qui tourne vraiment, variable par variable. Ici, la taille du pool est passée de dix à vingt-cinq. Les valeurs sensibles sont masquées. "
     ),
     (
-        "La recherche et le filtre d'état séparent nettement les containers en cours, ceux qui se sont arrêtés proprement, et ceux qui ont vraiment échoué. La pastille rouge de l'onglet ne compte que les seconds. "
+        "La recherche et le filtre d'état séparent les conteneurs en cours, ceux arrêtés proprement, et ceux qui ont vraiment échoué. La pastille rouge ne compte que les derniers. "
     ),
     (
         "Chaque projet compose se monte et se démonte depuis l'outil. "
     ),
     (
-        "Les containers lancés hors compose ont leur propre onglet. Reconstituer la commande retrouve le docker run qui a servi à les créer — précieux pour un container démarré à la main il y a six mois. "
+        "Les conteneurs lancés hors compose ont leur propre onglet. Reconstituer la commande retrouve le docker run qui a servi à les créer : précieux pour un conteneur démarré à la main il y a six mois. "
     ),
     (
-        "Les logs se lisent container par container, avec une recherche par mot-clé. "
+        "Les logs se lisent conteneur par conteneur, avec une recherche par mot-clé. "
     ),
     (
         "Et l'onglet Actions applique recréation, build, redémarrage ou arrêt à une sélection de services, avec le même aperçu préalable qu'ailleurs. "
@@ -367,7 +386,7 @@ NARRATION = [
         "L'onglet Jenkins montre les jobs et sait les lancer, sans quitter l'outil. Rien n'est sondé en continu : l'écran demande, on demande à Jenkins. "
     ),
     (
-        "Chaque ligne répond à quatre questions : quel job, dans quel état, quand pour la dernière fois, et lancé par qui, sur quelle branche. Le tri se fait par dernier lancement. "
+        "Chaque ligne répond à quatre questions : quel job, dans quel état, quand pour la dernière fois, et lancé par qui, sur quelle branche. "
     ),
     (
         "Avec quels paramètres, aussi. Un paramètre qui revient d'un job à l'autre porte une couleur tirée de son nom : l'œil descend la colonne sans lire. "
@@ -376,22 +395,22 @@ NARRATION = [
         "Les dossiers se cochent en tête de liste, et ceux qu'on n'utilise jamais se rangent hors de la barre. "
     ),
     (
-        "On filtre sur la valeur d'un paramètre : qu'est-ce qui est parti en prod ? Le champ suggère les valeurs qu'il a vues, sans y enfermer — une valeur plus ancienne se tape à la main. "
+        "On filtre sur la valeur d'un paramètre : qu'est-ce qui est parti en prod ? Le champ suggère les valeurs qu'il a vues, sans y enfermer. "
     ),
     (
-        "La fiche d'un job tient en trois blocs. D'abord les paramètres de lancement : les valeurs proposées sont celles du job, ce sont elles qui partiront si tu n'y touches pas. "
+        "La fiche d'un job tient en trois blocs. D'abord les paramètres de lancement : les valeurs proposées sont celles du job. "
     ),
     (
-        "Ensuite l'historique, avec sous chaque ligne les paramètres de ce lancement-là — deux exécutions vertes du même après-midi ne se distinguent que par là. "
+        "Ensuite l'historique, avec sous chaque ligne les paramètres de ce lancement-là : deux exécutions vertes du même après-midi ne se distinguent que par là. "
     ),
     (
-        "Et à droite le détail de celle qu'on choisit : quand, combien de temps, par qui, sur quelle branche. Il suit la descente pendant qu'on parcourt l'historique. "
+        "Et à droite le détail de celle qu'on choisit : quand, combien de temps, par qui, sur quelle branche. "
     ),
     (
-        "Reprendre remplit le formulaire avec les valeurs de cette exécution, sans rien lancer : on repart de ce qui a marché en changeant une valeur. Relancer, juste à côté, part tout de suite — avec confirmation, et la confirmation montre les valeurs. "
+        "Reprendre remplit le formulaire avec les valeurs de cette exécution, sans rien lancer. Relancer, juste à côté, part tout de suite, avec confirmation. "
     ),
     (
-        "Le menu porte le nombre de jobs qui ont tourné aujourd'hui, et les échecs du jour en rouge. Un lancement suivi depuis l'outil est surveillé jusqu'à sa fin : la notification arrive quand le build se termine, sans avoir à revenir regarder. "
+        "Le menu porte le nombre de jobs du jour, et les échecs en rouge. Un lancement suivi depuis l'outil est surveillé jusqu'à sa fin : la notification arrive quand le build se termine. "
     ),
     (
         "L'onglet Jira récupère automatiquement les tickets qui te sont affectés. "
@@ -400,63 +419,69 @@ NARRATION = [
         "On filtre par ticket ou par personne, et on lit la description, les commentaires et les pièces jointes sans quitter l'outil. "
     ),
     (
-        "Sous le ticket, ce que Mergerie sait de lui : les merge requests qui le citent, leur état, et les sessions de développement qu'il a déclenchées. "
+        "Sous le ticket, ce que Mergerie sait de lui : les merge requests qui le citent, leur état, et les sessions de développement qu'il a déclenchées. Du ticket au code, tout est relié. "
     ),
     (
-        "Le statut se change depuis ici, et Faire coder l'IA ouvre une session de développement déjà remplie avec le contenu du ticket. "
+        "Le statut se change depuis ici, et Faire coder l'IA ouvre une session déjà remplie avec le contenu du ticket. Un ticket, un clic, une branche qui avance. "
     ),
     (
-        "Les tickets surveillés sont ceux dont on veut voir le statut changer sans aller le regarder : l'outil les relit régulièrement, et le brief du matin le dit. "
+        "Les tickets surveillés sont ceux dont tu veux voir le statut changer sans aller regarder : l'outil les relit régulièrement, et le brief du matin le dit. "
     ),
     (
-        "Restent les réglages, répartis en onze onglets. "
+        "Restent les réglages, en onze onglets. "
     ),
     (
-        "Le général tient le thème — clair, sombre, ou suivant le système —, la langue, française ou anglaise, et la densité d'affichage. "
+        "Le général tient le thème, clair, sombre ou suivant le système, la langue, française ou anglaise, et la densité d'affichage. "
     ),
     (
-        "Les dépôts s'ajoutent en masse depuis un groupe GitLab ou une organisation GitHub. Chaque dépôt garde son propre pattern de branches, et se désactive sans se supprimer. "
+        "Les dépôts s'ajoutent en masse depuis un groupe GitLab ou une organisation GitHub. Chaque dépôt garde son propre motif de branches, et se désactive sans se supprimer. "
     ),
     (
-        "Les règles de review spécifiques ajoutent des consignes ciblées : sur un ticket, sur un chemin de fichiers, sur un projet. Une règle sur les migrations ne s'applique qu'aux migrations. "
+        "Les règles de review ciblées ajoutent des consignes sur un ticket, un chemin de fichiers, un projet. Une règle sur les migrations ne s'applique qu'aux migrations. "
     ),
     (
-        "Un vérificateur se duplique : le formulaire s'ouvre pré-rempli et enregistrer crée une copie, au lieu d'écraser l'original. "
+        "Un vérificateur se duplique : le formulaire s'ouvre pré-rempli et enregistrer crée une copie. "
     ),
     (
-        "Coché, il part tout seul sur toute nouvelle merge request des dépôts qu'il couvre. Cinq vérifications au maximum par tour de découverte : au-delà, les merge requests gardent leur bouton, et le journal dit ce qui n'est pas parti. "
+        "Coché, il part tout seul sur toute nouvelle merge request des dépôts qu'il couvre, avec un plafond par tour de découverte. "
     ),
     (
-        "Un vérificateur se déclare ici : on le nomme, et on lui donne la liste des commandes à jouer. Il n'y a rien d'autre à savoir — pas de script à écrire, pas de format à respecter. "
+        "Un vérificateur se déclare ici : un nom, et la liste des commandes à jouer. Pas de script à écrire, pas de format à respecter. "
     ),
     (
-        "Les commandes s'ordonnent : installer avant de tester. Elles tournent sans shell, dans le dépôt préparé. Mergerie retrouve le nom des tests cassés dans un rapport JUnit si vous en déclarez un, sinon dans le TAP que beaucoup d'outils émettent déjà, et sinon il nomme la commande plutôt que d'inventer un nombre de tests. "
+        "Les commandes s'ordonnent : installer avant de tester. Mergerie retrouve le nom des tests cassés dans un rapport JUnit ou dans le TAP que beaucoup d'outils émettent déjà. "
     ),
     (
-        "Reste à dire quels dépôts ce vérificateur sait tester, et où. Dans une copie jetable créée pour l'occasion, ou dans votre propre répertoire de travail — auquel cas Mergerie demande votre accord, refuse net si vous avez des modifications en cours, et vous remet toujours sur la branche où il vous avait trouvé. "
+        "Reste à dire quels dépôts ce vérificateur sait tester, et où : dans une copie jetable, ou dans ton propre répertoire de travail, avec ton accord, et toujours remis sur la branche où il t'avait trouvé. "
     ),
     (
-        "Les consignes permanentes s'ajoutent au prompt de toutes les sessions de codage, dans un dépôt comme hors dépôt, au premier lancement comme à chaque suivi. C'est ce qu'on redit à chaque fois : la langue des commentaires, une commande à lancer avant de committer. "
+        "Les consignes permanentes s'ajoutent au prompt de toutes les sessions de codage : la langue des commentaires, une commande à lancer avant de committer. "
     ),
     (
-        "Un onglet dédié aux sessions d'IA règle l'agent utilisé, son binaire, ses délais et ses limites. "
+        "Et voici les binaires de l'agent. Le premier est le défaut. En dessous, autant d'autres que tu veux, chacun complet : binaire, arguments, variables d'environnement, backend. Ici, un Claude Code branché sur un modèle Ollama local. "
     ),
     (
-        "L'onglet Git porte l'URL de la forge, le jeton d'accès et le répertoire de clonage, avec un bouton qui teste la connexion avant d'aller plus loin. "
+        "Chacun se teste d'un bouton, et Utiliser par défaut échange les rôles. Reviews, résolutions de conflits, agents : tout ce qui n'a pas choisi passe par le défaut. Le reste, tu le décides session par session. "
     ),
     (
-        "Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel on veut être averti. La surveillance de fond en ajoute : un build Jenkins terminé, un conteneur qui tombe, une restauration en échec, un plafond automatique atteint. "
+        "Le même onglet tient les bornes du jour, le mode sécurisé ou libre, et le test du sandbox. "
     ),
     (
-        "En bas de l'écran, une barre suit les jobs en direct : ce qui tourne, les tokens consommés, et un journal qui se déplie. Ce journal contient une vue Activité, qui liste ce qui a été lancé et ce qui s'est terminé, avec un lien qui ramène directement sur l'objet concerné. "
+        "L'onglet Git porte l'adresse de la forge, le jeton d'accès et le répertoire de clonage, avec un bouton qui teste la connexion. "
     ),
     (
-        "Contrôle K ouvre la palette globale : elle cherche partout à la fois, les liens de travail, les merge requests, les tickets, les pages de notes et les todos, et remonte d'abord ce qu'on ouvre souvent et récemment. "
+        "Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel tu veux être alerté. La surveillance de fond en ajoute : un build terminé, un conteneur qui tombe. "
     ),
     (
-        "La touche point d'interrogation affiche tous les raccourcis clavier. "
+        "En bas de l'écran, une barre suit les jobs en direct : ce qui tourne, les tokens consommés, et un journal qui se déplie. Sa vue Activité liste ce qui a été lancé et ce qui s'est terminé, avec un lien vers l'objet concerné. "
     ),
     (
-        "Et tout ce qu'on vient de voir existe aussi en thème clair. L'IA prépare, c'est toi qui merges. "
+        "Contrôle K ouvre la palette : elle cherche partout à la fois, liens, merge requests, tickets, notes, todos, et remonte d'abord ce que tu ouvres souvent. "
+    ),
+    (
+        "La touche point d'interrogation affiche tous les raccourcis. "
+    ),
+    (
+        "Et tout ce que tu viens de voir existe aussi en thème clair. Mergerie est open source, tourne sur ta machine, avec ton agent. L'IA prépare, c'est toi qui merges. "
     ),
 ]
