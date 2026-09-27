@@ -224,7 +224,17 @@ function renderLogTabs(ids, main) {
   }
 }
 
+/* UN SEUL SONDAGE À LA FOIS. `refreshStatus` appelle `pumpLog` depuis plusieurs horloges (le timer
+   de 1,5 s pendant un job, celui de 5 s, un bouton, l'auto-rafraîchissement) : deux appels qui se
+   chevauchent lisent le MÊME curseur avant que l'un l'ait avancé, et le journal affiche chaque
+   ligne deux fois. Le second appel se retire ; le prochain tour rattrapera ce qu'il aurait lu. */
+let pumpEnCours = false;
 async function pumpLog() {
+  if (pumpEnCours) return;
+  pumpEnCours = true;
+  try { await pumpLogUneFois(); } finally { pumpEnCours = false; }
+}
+async function pumpLogUneFois() {
   let d;
   const cur = LOGP.after.get(logJobId) || 0;
   try { d = await api(`/jobs/current/log?after=${cur}&expect=${logJobId || 0}`); } catch { return; }

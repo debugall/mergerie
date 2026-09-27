@@ -464,8 +464,11 @@ liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »
 dépôt seulement), la première passe ne touche à rien : l'agent lit le dépôt et rend un **plan** —
 fichiers, étapes, risques, questions ouvertes — comme une itération marquée *plan*. La ligne du
 projet dit **plan à approuver**, propose **Lire le plan**, une remarque facultative (« garde l'API
-telle quelle ») et **Approuver et coder** : la **même session d'agent** reprend et réalise le plan,
-remarque comprise, puis commite comme d'habitude. Relancer une session planifiée replanifie. Avec
+telle quelle ») et deux gestes. **Régénérer le plan avec mes retours** renvoie tes retours à la
+**même session**, qui réécrit le plan complet en les intégrant, toujours sans coder : la ligne reste
+*plan à approuver*, avec une nouvelle itération *plan* — autant de tours qu'il faut. **Approuver et
+coder** : la même session reprend et réalise le plan, remarque comprise, puis commite comme
+d'habitude. Relancer une session planifiée replanifie de zéro. Avec
 Claude, la passe tourne dans son mode *plan* quoi que dise l'interrupteur sécurisé/yolo — c'est ce
 que la session demande, pas une restriction ; un autre backend suit la consigne, et la passe
 suivante repart de toute façon d'un clone propre.

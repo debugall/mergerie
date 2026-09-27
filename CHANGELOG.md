@@ -13,6 +13,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Feedback on a plan before approving it.** On a “plan to approve” line, “Regenerate the plan
+  with my feedback” sends your remarks to the same agent session, which rewrites the whole plan
+  without coding; the line waits again. Approve only when everything is right, after as many
+  rounds as needed.
 - **Several agent binaries, one default, chosen per session.** Settings → AI session → “Agent
   binaries” is now a list — the default first, marked, then as many others as you like (a Claude Code
   on a local Ollama next to your Claude Max, a Copilot to compare), each complete (binary, arguments,
@@ -143,6 +147,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   compared with the hosts configured in Settings → Git first.
 - The guide opens with a **table of contents** and a **“First real review in 5 minutes”** section;
   the npm description says GitHub too.
+
+### Fixed
+
+- **Journal lines shown twice.** Two overlapping polls of the journal could read the same cursor before
+  either advanced it and append every line twice; a single poll runs at a time now.
 
 ### Security
 

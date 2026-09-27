@@ -138,3 +138,4 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .converge-verdict-pass { color: var(--green); }
 .converge-verdict-fail { color: var(--red); }
 .converge-verdict-stale { color: var(--muted); }
+.plan-approve .plan-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

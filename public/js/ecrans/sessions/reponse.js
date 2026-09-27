@@ -193,12 +193,17 @@ function targetLine(t, tg) {
 }
 
 /* LE PLAN À APPROUVER. La passe de lecture a rendu un plan (« Retour de l'IA » l'ouvre) ; ici on
-   ajoute une remarque si l'on veut, et « Approuver et coder » reprend la même session d'agent. */
+   écrit des retours, et DEUX gestes : « Régénérer le plan » les renvoie à la même session, qui
+   rend un plan réécrit et attend encore ; « Approuver et coder » la fait coder — avec la remarque,
+   s'il y en a une. Autant de tours de retours qu'il faut avant d'approuver. */
 function planForm(t, tg) {
   return `<div class="mr-create followup plan-approve" data-planform="${tg.id}">
     <button type="button" class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('task.btn.read-plan'))}</button>
     <textarea class="plan-remark" placeholder="${esc(tr('task.plan.remark-ph'))}"></textarea>
-    <button type="button" class="btn btn-primary" data-tgplanok="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.approve-plan'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('task.btn.approve-plan'))}</button>
+    <div class="plan-actions">
+      <button type="button" class="btn" data-tgplanrevise="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.revise-plan'))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${esc(tr('task.btn.revise-plan'))}</button>
+      <button type="button" class="btn btn-primary" data-tgplanok="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.approve-plan'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr('task.btn.approve-plan'))}</button>
+    </div>
   </div>`;
 }
 
@@ -435,6 +440,15 @@ function wireTaskActions() {
     const instruction = form ? form.querySelector('.plan-remark').value.trim() : '';
     busy(b, () => api(`/tasks/${b.dataset.task}/approve-plan`, { method: 'POST', body: { targets: [Number(b.dataset.tgplanok)], instruction } }))
       .then(() => { toast(tr('toast.plan-approuve')); loadTasks(); refreshStatus(); })
+      .catch((e) => toast(explainError(e.message), true));
+  });
+  // « Régénérer le plan avec mes retours » : les retours sont requis, le plan revient réécrit, rien n'est approuvé.
+  on('[data-tgplanrevise]', (b) => {
+    const form = b.closest('[data-planform]');
+    const instruction = form ? form.querySelector('.plan-remark').value.trim() : '';
+    if (!instruction) { toast(tr('err.plan-retours-requis'), true); if (form) form.querySelector('.plan-remark').focus(); return; }
+    busy(b, () => api(`/tasks/${b.dataset.task}/revise-plan`, { method: 'POST', body: { targets: [Number(b.dataset.tgplanrevise)], instruction } }))
+      .then(() => { toast(tr('toast.plan-revise')); loadTasks(); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   });
   /* « Stopper et reprendre avec cette consigne » : la passe s'arrête, la consigne repart dans la

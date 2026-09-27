@@ -454,9 +454,11 @@ long prompt is **folded to three lines** with a **“Show more”** that unrolls
 **“Plan first”: read, approve, then code.** Ticked in the session modal (repository coding only), the
 first pass touches nothing: the agent reads the repository and returns a **plan** — files, steps,
 risks, open questions — as an iteration marked *plan*. The project line says **plan to approve**,
-offers **Read the plan**, an optional remark (“keep the API as is”), and **Approve and code**: the
-**same agent session** resumes and carries the plan out, remark included, then commits as usual.
-Relaunching a planned session plans again. With Claude the pass runs in its *plan* mode whatever the
+offers **Read the plan**, an optional remark (“keep the API as is”), and two actions. **Regenerate
+the plan with my feedback** sends your feedback to the **same session**, which rewrites the whole
+plan with it, still without coding: the line stays *plan to approve*, with a new *plan* iteration —
+as many rounds as needed. **Approve and code**: the same session resumes and carries the plan out,
+remark included, then commits as usual. Relaunching a planned session plans again from scratch. With Claude the pass runs in its *plan* mode whatever the
 secure/yolo switch says — this is what the session asked for, not a restriction; another backend
 follows the instruction, and the next pass starts from a clean clone anyway.
 

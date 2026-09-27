@@ -55,6 +55,20 @@ app.post('/api/tasks/:id/approve-plan', wrap((req, res) => {
   if (!encore) notes.fermerTodoAuto('session_question', tache.id);
   res.json(jobs.startTaskJob(tache.id, 'approve-plan', { targetIds: planifiees, ...(instruction ? { instruction } : {}) }));
 }));
+/* « RÉGÉNÉRER LE PLAN AVEC MES RETOURS » : les retours sont requis (sans eux, replanifier ne change
+   rien), les cibles planifiées reprennent leur session et rendent un plan réécrit — la ligne reste
+   « plan à approuver », et l'attente (todo) aussi : rien n'est encore approuvé. */
+app.post('/api/tasks/:id/revise-plan', wrap((req, res) => {
+  const tache = taskById(Number(req.params.id));
+  if (!tache) throw new Error(t('err.session-introuvable'));
+  const instruction = String((req.body && req.body.instruction) || '').trim();
+  if (!instruction) throw new Error(t('err.plan-retours-requis'));
+  const voulues = normalizeTargetIds(tache.id, req.body && req.body.targets);
+  const planifiees = db.prepare("SELECT id FROM task_target WHERE task_id = ? AND status = 'planned'").all(tache.id)
+    .map((x) => x.id).filter((id) => !voulues || voulues.includes(id));
+  if (!planifiees.length) { const e = new Error(t('err.plan-rien-a-approuver')); e.code = 'BUSY'; throw e; }
+  res.json(jobs.startTaskJob(tache.id, 'revise-plan', { targetIds: planifiees, instruction }));
+}));
 /* « STOPPER ET REPRENDRE AVEC CETTE CONSIGNE ». Le seul pilotage à chaud d'une session qui tourne
    était Stop. Ici : on arrête son job, on attend qu'il ait rendu le clone, et on envoie la consigne
    comme un suivi — dans la même session d'agent quand son handle est connu (Claude le donne dès le

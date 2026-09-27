@@ -53,6 +53,20 @@ describe('Sessions · plan à approuver, sur la carte', { skip: dispo ? false : 
     await page.waitForSelector('#taskMdView:not([hidden])');
     await page.waitForFunction(() => /Plan/.test(document.querySelector('#taskMdBody').textContent));
     await page.evaluate(() => { document.querySelector('#taskMdView').hidden = true; });
+    /* DES RETOURS SANS APPROUVER : « Régénérer le plan » est refusé sans texte, puis renvoie les
+       retours ; la ligne reste « plan à approuver » avec un plan réécrit, rien n'est codé. */
+    await page.locator(`${carte} [data-tgplanrevise]`).click();
+    await page.waitForSelector('.toast');
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM job WHERE kind = 'task' AND status = 'running'").get().c, 0, 'sans retours, aucun job ne part');
+    await page.locator(`${carte} [data-planform] .plan-remark`).fill('garde le cache en mémoire, pas de Redis');
+    await page.locator(`${carte} [data-tgplanrevise]`).click();
+    await waitForJobs(app.api);
+    await page.waitForFunction((sel) => !!document.querySelector(`${sel} [data-planform]`) && !document.querySelector(`${sel} [data-planform] .plan-remark`).value, carte);
+    const passes1 = (await app.api('GET', `/api/tasks/${taskId}/targets/${(await app.api('GET', `/api/tasks/${taskId}`)).body.task.targets[0].id}/passes`)).body;
+    assert.equal(passes1.passes.length, 2, 'le plan, puis le plan révisé');
+    assert.equal(passes1.passes[1].kind, 'plan');
+    assert.match(passes1.passes[1].prompt, /pas de Redis/);
+    assert.equal((await app.api('GET', `/api/tasks/${taskId}`)).body.task.status, 'planned', 'toujours à approuver');
     // Une remarque, puis l'approbation.
     await page.locator(`${carte} [data-planform] .plan-remark`).fill('pas de migration');
     await page.locator(`${carte} [data-tgplanok]`).click();

@@ -508,8 +508,8 @@ db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (
 // task.branch / base_branch sont NOT NULL (schéma mono-projet historique) : on les
 // renseigne même si l'état réel vit désormais dans task_target.
 // Cette session a choisi l'autre binaire : sa carte porte le badge, son édition le relit.
-const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, cli_id, cli_name, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-  .run(repoIds['groupe/api-core'], 'Ajouter un endpoint /metrics au format Prometheus', 'ai/metrics-endpoint', 'main', 'pushed', 'code', cliOllama, 'Ollama local', at(4), at(4));
+const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, cli_id, cli_name, label, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Ajouter un endpoint /metrics au format Prometheus', 'ai/metrics-endpoint', 'main', 'pushed', 'code', cliOllama, 'Ollama local', 'Endpoint /metrics', at(4), at(4));
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
@@ -713,7 +713,19 @@ const t6 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, s
     '**Question ouverte** : faut-il aussi mettre en cache `GET /catalog/products/:id` ? Je ne le fais pas sans ton accord.'].join('\n'), 'utf8');
   db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,1,'plan',?,?,?)`)
     .run(t6.lastInsertRowid, tg.lastInsertRowid, 'Rédige un plan d’implémentation pour : cache LRU sur le catalogue.', f, at(0.2));
-  db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?').run(f, tg.lastInsertRowid);
+  /* UN TOUR DE RETOURS : le plan a été régénéré une fois (« pas de cache sur /:id, et un TTL
+     configurable ») — la ligne attend encore l'approbation, avec deux itérations « plan ». */
+  const f2 = path.join(dir, 'output-v2.md');
+  fs.writeFileSync(f2, ['# Plan — cache du catalogue (révisé)', '',
+    '1. `src/catalog/service.js` : envelopper `listProducts()` dans un cache LRU (clé = filtres normalisés en JSON trié) via `lru-cache`, déjà en dépendance.',
+    '2. `src/config.js` : `CATALOG_CACHE_TTL_MS`, défaut 5 min — le TTL se règle sans redéployer, comme demandé.',
+    '3. `src/catalog/writes.js` : invalider le cache dans `createProduct`, `updateProduct`, `deleteProduct` — un seul point, `cache.clear()`.',
+    '4. `test/catalog.test.js` : trois tests — lecture répétée, écriture puis lecture fraîche, TTL à 0 = pas de cache.', '',
+    '**Retiré suite à tes retours** : aucun cache sur `GET /catalog/products/:id`.', '',
+    '**Risques** : un TTL très long masque une écriture faite hors API (import batch) — documenté dans le README du service.'].join('\n'), 'utf8');
+  db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,2,'plan',?,?,?)`)
+    .run(t6.lastInsertRowid, tg.lastInsertRowid, 'Retours : pas de cache sur /catalog/products/:id, et rends le TTL configurable. Réécris le plan complet.', f2, at(0.15));
+  db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?').run(f2, tg.lastInsertRowid);
 }
 
 /* Session RANGÉE + prompt LONG : les deux nouveautés de la liste réunies sur une seule fiche.

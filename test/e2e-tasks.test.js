@@ -1087,6 +1087,22 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(passes.passes[passes.passes.length - 1].kind, 'plan', 'l’itération est marquée « plan »');
     assert.match(passes.current.text || passes.current.md || JSON.stringify(passes.current), /Plan/);
 
+    /* DES RETOURS SANS APPROUVER : la même session réécrit son plan, la ligne reste planifiée, rien
+       n'est codé. Autant de tours qu'on veut ; les retours sont requis (sinon le plan serait le même). */
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/revise-plan`, { instruction: '   ' })).status, 400, 'sans retours, rien à régénérer');
+    const rev = await app.api('POST', `/api/tasks/${taskId}/revise-plan`, { instruction: 'pas de migration, garde le cache en mémoire' });
+    assert.equal(rev.status, 200, JSON.stringify(rev.body));
+    await waitForJobs(app.api);
+    task = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
+    assert.equal(task.status, 'planned', `après révision, la session attend toujours l’approbation (${task.last_error || ''})`);
+    assert.ok(!task.targets[0].commit_sha, 'toujours aucun commit');
+    const revisees = (await app.api('GET', `/api/tasks/${taskId}/targets/${tg.id}/passes`)).body;
+    assert.equal(revisees.passes.length, 2, 'deux itérations : le plan, puis le plan révisé');
+    assert.equal(revisees.passes[1].kind, 'plan', 'la révision est une passe de plan, pas de code');
+    assert.match(revisees.passes[1].prompt, /pas de migration, garde le cache en mémoire/, 'la passe porte les retours');
+    assert.match(revisees.passes[1].prompt, /NE MODIFIE AUCUN FICHIER/, '…et reste une lecture');
+    assert.match(revisees.current.text || revisees.current.md || JSON.stringify(revisees.current), /révisé/, 'le plan courant est le plan réécrit');
+
     // Approuver, avec une remarque : la session reprend et code.
     const ok = await app.api('POST', `/api/tasks/${taskId}/approve-plan`, { instruction: 'garde l’API telle quelle' });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
@@ -1095,11 +1111,12 @@ describe('Sessions de dev de bout en bout', () => {
     assert.equal(task.status, 'committed', `après approbation, la session a codé (${task.last_error || ''})`);
     assert.ok(task.targets[0].commit_sha, 'un commit existe');
     const apres = (await app.api('GET', `/api/tasks/${taskId}/targets/${tg.id}/passes`)).body;
-    assert.equal(apres.passes.length, 2, 'deux itérations : le plan, puis le code');
-    assert.match(apres.passes[1].prompt, /approuvé/, 'la passe de code part de l’approbation');
-    assert.match(apres.passes[1].prompt, /garde l’API telle quelle/, '…et porte la remarque');
-    // Plus rien à approuver.
+    assert.equal(apres.passes.length, 3, 'trois itérations : le plan, le plan révisé, puis le code');
+    assert.match(apres.passes[2].prompt, /approuvé/, 'la passe de code part de l’approbation');
+    assert.match(apres.passes[2].prompt, /garde l’API telle quelle/, '…et porte la remarque');
+    // Plus rien à approuver, ni à réviser.
     assert.equal((await app.api('POST', `/api/tasks/${taskId}/approve-plan`, {})).status, 409);
+    assert.equal((await app.api('POST', `/api/tasks/${taskId}/revise-plan`, { instruction: 'encore' })).status, 409);
     // La case se décoche par la même route que les autres.
     assert.equal((await app.api('PUT', `/api/tasks/${taskId}`, { plan_first: false })).body.plan_first, 0);
   });

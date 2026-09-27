@@ -39,6 +39,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
       if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
       else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
       else if (action === 'approve-plan') await taskrunner.runTaskApprovePlan(task, opts.targetIds, opts.instruction, onLog);
+      else if (action === 'revise-plan') await taskrunner.runTaskRevisePlan(task, opts.targetIds, opts.instruction, onLog);
       else if (action === 'update-base') await taskrunner.mettreAJourDepuisBase(task.id, opts.targetId, onLog);
       else await taskrunner.runTask(task, onLog, { targetIds: opts.targetIds });
     });

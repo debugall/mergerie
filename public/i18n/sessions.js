@@ -78,7 +78,10 @@
       "task.btn.read-plan": "Lire le plan",
       "task.btn.approve-plan": "Approuver et coder",
       "task.title.approve-plan": "L’IA reprend sa session et réalise le plan qu’elle a proposé — avec ta remarque, s’il y en a une.",
-      "task.plan.remark-ph": "Remarque avant de coder (facultatif) : « garde l’API telle quelle », « pas de migration »…",
+      "task.plan.remark-ph": "Tes retours sur le plan, ou une remarque avant de coder : « garde l’API telle quelle », « pas de migration »…",
+
+      "task.btn.revise-plan": "Régénérer le plan avec mes retours",
+      "task.title.revise-plan": "Renvoie tes retours à la même session : l’IA réécrit le plan complet en les intégrant, sans coder. Tu approuves quand tout est bon.",
       "task.btn.stop-resume": "Stopper et reprendre avec cette consigne",
       "task.title.stop-resume": "Arrête la passe en cours, puis renvoie cette consigne à la même session d’agent — là où elle en était.",
       "task.status.needs-input": "en attente de réponses",
@@ -503,7 +506,10 @@
       "task.btn.read-plan": "Read the plan",
       "task.btn.approve-plan": "Approve and code",
       "task.title.approve-plan": "The AI resumes its session and carries out the plan it proposed — with your remark, if any.",
-      "task.plan.remark-ph": "Remark before coding (optional): “keep the API as is”, “no migration”…",
+      "task.plan.remark-ph": "Your feedback on the plan, or a remark before coding: “keep the API as is”, “no migration”…",
+
+      "task.btn.revise-plan": "Regenerate the plan with my feedback",
+      "task.title.revise-plan": "Sends your feedback to the same session: the AI rewrites the whole plan with it, without coding. You approve once everything is right.",
       "task.btn.stop-resume": "Stop and resume with this instruction",
       "task.title.stop-resume": "Stops the current pass, then sends this instruction to the same agent session — right where it was.",
       "task.status.needs-input": "waiting for answers",

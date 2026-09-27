@@ -230,6 +230,14 @@ function buildPlanPrompt(task) {
     + 'il sera relu et approuvé par un humain avant que tu ne codes, dans cette même session.\n\n'
     + `Tâche : ${task.prompt}`, consignesPermanentes(depotPrincipal(task)));
 }
+/* RÉVISER LE PLAN : les retours du relecteur, sans approbation. La même session relit son plan, les
+   intègre et rend le PLAN COMPLET réécrit — toujours sans toucher aux fichiers. On approuve ensuite,
+   ou on renvoie d'autres retours : autant de tours que nécessaire. */
+const promptRevisionPlan = (retours) => 'Voici mes retours sur le plan que tu as proposé. NE MODIFIE AUCUN FICHIER : '
+  + 'cette passe reste une lecture. Intègre ces retours et rends le PLAN COMPLET réécrit, en Markdown, dans le '
+  + 'même format que le précédent (fichiers à toucher, étapes dans l\'ordre, risques, questions) — pas seulement '
+  + 'les différences. Il sera relu et approuvé par un humain avant que tu ne codes, dans cette même session.\n\n'
+  + `Retours : ${retours}`;
 const promptApprobationPlan = (task, remarque) => avecConsignes('Le plan que tu as proposé est approuvé. '
   + 'Réalise-le maintenant dans ce dépôt : modifie directement les fichiers nécessaires, dans l\'ordre que tu '
   + 'as prévu. Si un point du plan s\'avère impossible, fais au plus proche et dis-le dans ta réponse.'
@@ -491,7 +499,8 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   if (copilot.isDryRun()) {
     if (planOnly) {
       onLog('$ (DRY-RUN — l’agent rend un plan, sans toucher aux fichiers)');
-      agentText = `# Plan (dry-run)\n\n1. Lire les fichiers concernés par « ${String(task.prompt || '').split('\n')[0].slice(0, 80)} ».\n2. Écrire la modification.\n3. Ajouter un test.\n\n> Simulation dry-run : approuve pour que la session code.`;
+      // En reprise (retours sur le plan), le plan simulé se dit révisé : la carte doit montrer un nouveau plan.
+      agentText = `# Plan (dry-run${doResume ? ', révisé avec tes retours' : ''})\n\n1. Lire les fichiers concernés par « ${String(task.prompt || '').split('\n')[0].slice(0, 80)} ».\n2. Écrire la modification.\n3. Ajouter un test.\n\n> Simulation dry-run : approuve pour que la session code.`;
     } else if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
       agentText = questions.dryrunQuestions(nonceQuestionsTache(task)); // simule le bloc <<<QUESTIONS>>> au 1er passage
@@ -1025,6 +1034,36 @@ async function runTaskApprovePlan(task, targetIds, remarque, onLog = () => {}) {
   if (!ok && fails.length) throw new Error(fails.length === 1 ? fails[0].error : `${t('err.aucun-projet-n-a-pu')}\n\n${fails.map((f) => `— ${f.project} :\n${f.error}`).join('\n\n')}`);
 }
 
+/* « RÉGÉNÉRER LE PLAN AVEC MES RETOURS » : les cibles planifiées reprennent LEUR session d'agent avec les
+   retours, et rendent un plan réécrit — la ligne reste « plan à approuver ». Une reprise impossible
+   repart d'une session neuve qui reçoit la tâche, la transcription (le plan précédent) et les retours. */
+async function runTaskRevisePlan(task, targetIds, retours, onLog = () => {}) {
+  const texte = String(retours || '').trim();
+  if (!texte) throw new Error(t('err.plan-retours-requis'));
+  const voulus = Array.isArray(targetIds) && targetIds.length ? targetIds.map(Number) : null;
+  const cibles = targetsOf(task.id).filter((tg) => tg.status === 'planned' && (!voulus || voulus.includes(tg.id)));
+  if (!cibles.length) throw new Error(t('err.plan-rien-a-approuver'));
+  let ok = 0; const fails = [];
+  for (const tg of cibles) {
+    onLog(`──────── ${tg.project} · ${tg.branch} (${t('log.task.plan-revise')}) ────────`);
+    setTarget(tg.id, { status: 'running', last_error: null });
+    try {
+      await execOnTarget(task, tg, {
+        promptText: promptRevisionPlan(texte),
+        promptRepli: [buildPlanPrompt(task), transcriptionDesPasses(task.id, tg.id), promptRevisionPlan(texte)].filter(Boolean).join('\n\n'),
+        message: commitMessageFor(task), allowCreate: false, onLog, resume: true, passKind: 'plan', planOnly: true,
+      });
+      ok += 1;
+    } catch (e) {
+      setTarget(tg.id, { status: 'error', last_error: e.message });
+      fails.push({ project: tg.project, error: e.message });
+      onLog(t('log.task.project-error', { project: tg.project, message: e.message }));
+    }
+  }
+  syncTaskStatus(task.id);
+  if (!ok && fails.length) throw new Error(fails.length === 1 ? fails[0].error : `${t('err.aucun-projet-n-a-pu')}\n\n${fails.map((f) => `— ${f.project} :\n${f.error}`).join('\n\n')}`);
+}
+
 // Reprise après réponses de l'utilisateur (ask → stop → resume). Cible UN projet précis :
 // la cible qui avait posé des questions, avec ses réponses déjà enregistrées côté serveur.
 async function runTaskAnswer(task, targetId, onLog = () => {}) {
@@ -1238,6 +1277,6 @@ async function pushTargets(task, targetIds, onLog = () => {}) {
 
 module.exports = {
   reconcileTargets, pushTargets,
-  runTask, runTaskFollowup, mettreAJourDepuisBase, runTaskAnswer, runTaskApprovePlan, buildPlanPrompt, pushTarget, targetsOf, setTarget, syncTaskStatus,
+  runTask, runTaskFollowup, mettreAJourDepuisBase, runTaskAnswer, runTaskApprovePlan, runTaskRevisePlan, buildPlanPrompt, pushTarget, targetsOf, setTarget, syncTaskStatus,
   execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage,
 };
