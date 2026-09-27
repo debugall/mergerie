@@ -88,6 +88,12 @@ async function openPasses(base, n, dossiers = null) {
     // Une autre unité s'ouvre : le suivi qu'on tapait pour la précédente n'a plus sa place ici.
     $('#taskMdFollow').hidden = true;
     $('#taskMdFollowText').value = '';
+    /* UN PLAN À APPROUVER se lit pour être corrigé ou approuvé, pas pour recevoir un suivi :
+       « Préparer un suivi » s'efface, le bloc de retours du plan prend sa place, déjà ouvert. */
+    passCtx.planned = !!d.planned;
+    $('#taskMdFollowToggle').hidden = passCtx.planned;
+    $('#taskMdPlan').hidden = !passCtx.planned;
+    $('#taskMdPlanText').value = '';
     $('#taskMdTitle').textContent = d.title || '';
     /* Sélecteur de DOSSIER : propre au codage hors dépôt, où une session en couvre plusieurs.
        Comme la liste d'itérations, il disparaît quand il n'y a rien à choisir. */
@@ -326,3 +332,26 @@ $('#taskMdFollowSend').addEventListener('click', async (e) => {
   } catch (err) { toast(explainError(err.message), true); }
 });
 
+
+/* LES RETOURS SUR LE PLAN, DEPUIS LA VUE QUI L'AFFICHE. Mêmes routes que les deux boutons de la
+   carte ; la cible vient de `passCtx.base`. La vue se referme : le plan qu'on lisait est en train
+   d'être réécrit — ou réalisé — et la carte montre la session en cours. */
+function cibleDuPlan() {
+  const m = /^\/tasks\/(\d+)\/targets\/(\d+)$/.exec(passCtx.base || '');
+  return m ? { task: Number(m[1]), target: Number(m[2]) } : null;
+}
+async function envoyerRetoursPlan(bouton, action, instructionRequise) {
+  const cible = cibleDuPlan();
+  if (!cible || !passCtx.planned) return;
+  const instruction = $('#taskMdPlanText').value.trim();
+  if (instructionRequise && !instruction) { toast(tr('err.plan-retours-requis'), true); $('#taskMdPlanText').focus(); return; }
+  try {
+    await busy(bouton, () => api(`/tasks/${cible.task}/${action}`, { method: 'POST', body: { targets: [cible.target], instruction } }));
+    toast(tr('toast.lance'));
+    $('#taskMdPlanText').value = '';
+    $('#taskMdView').hidden = true;
+    refreshStatus(); loadTasks();
+  } catch (err) { toast(explainError(err.message), true); }
+}
+$('#taskMdPlanRevise').addEventListener('click', (e) => envoyerRetoursPlan(e.currentTarget, 'revise-plan', true));
+$('#taskMdPlanOk').addEventListener('click', (e) => envoyerRetoursPlan(e.currentTarget, 'approve-plan', false));

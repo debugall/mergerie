@@ -273,7 +273,9 @@ app.get('/api/tasks/:id/targets/:tid/filediff', wrap(async (req, res) => {
 app.get('/api/tasks/:id/targets/:tid/passes', wrap((req, res) => {
   const tg = targetById(Number(req.params.id), Number(req.params.tid));
   if (!tg) throw new Error(t('err.projet-introuvable-pour-cette-session'));
-  res.json(passesPayload('task', tg.id, Number(req.params.id), req.query.n, `${tg.project} — ${tg.branch}`, tg.output_path));
+  /* `planned` : la vue « Lire le plan » remplace alors « Préparer un suivi » par le bloc de retours
+     du plan — on relit un plan pour le corriger ou l'approuver, pas pour lui envoyer un suivi. */
+  res.json({ ...passesPayload('task', tg.id, Number(req.params.id), req.query.n, `${tg.project} — ${tg.branch}`, tg.output_path), planned: tg.status === 'planned' });
 }));
 app.post('/api/tasks/:id/reconcile', wrap((req, res) => {
   const t2 = taskById(Number(req.params.id));

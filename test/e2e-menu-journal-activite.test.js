@@ -286,6 +286,28 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
     await attendreStatutServeur(job.porteB, 'done');
   });
 
+  /* L'ÉPINGLE NE SURVIT PAS À UN NOUVEAU JOB. On relisait le journal d'un job passé ; on en lance
+     un autre : c'est lui qu'on veut voir. Avant, l'épingle désignait un volet que la remise à zéro
+     avait supprimé, le nouveau job écrivait dans un volet caché et le bandeau restait sur
+     « terminé » jusqu'au rechargement de la page. */
+  test('un job lancé pendant qu’on relit un journal passé reprend la vue et le bandeau', async () => {
+    await ouvrirActivite();
+    await ligneHist(job.casse).locator(`[data-histlog="${job.casse}"]`).click();
+    await page.waitForFunction((j) => {
+      const p = document.querySelector('#logBox .logpane:not([hidden])');
+      return p && Number(p.dataset.job) === j;
+    }, job.casse, { timeout: ATTENTE });
+    job.porteE = await chantier.lancer('porte-e');
+    await rafraichir();
+    await page.waitForFunction((j) => {
+      const p = document.querySelector('#logBox .logpane:not([hidden])');
+      return p && Number(p.dataset.job) === j && p.textContent.includes('porte-e : en attente');
+    }, job.porteE, { timeout: ATTENTE });
+    await attendreBandeau(/en cours|in progress/);
+    chantier.feuVert('porte-e');
+    await attendreStatutServeur(job.porteE, 'done');
+  });
+
   test('l’objet d’un job mène à lui : la merge request reviewée s’ouvre dans Reviews', async () => {
     await page.locator('nav button[data-tab="notes"]').click();
     await page.locator('#tab-notes.active').waitFor();

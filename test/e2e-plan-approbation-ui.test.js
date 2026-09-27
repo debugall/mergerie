@@ -52,14 +52,17 @@ describe('Sessions · plan à approuver, sur la carte', { skip: dispo ? false : 
     await page.locator(`${carte} [data-planform] [data-tgout]`).click();
     await page.waitForSelector('#taskMdView:not([hidden])');
     await page.waitForFunction(() => /Plan/.test(document.querySelector('#taskMdBody').textContent));
-    await page.evaluate(() => { document.querySelector('#taskMdView').hidden = true; });
-    /* DES RETOURS SANS APPROUVER : « Régénérer le plan » est refusé sans texte, puis renvoie les
-       retours ; la ligne reste « plan à approuver » avec un plan réécrit, rien n'est codé. */
-    await page.locator(`${carte} [data-tgplanrevise]`).click();
+    /* ON LIT UN PLAN, PAS UN RETOUR À SUIVRE : « Préparer un suivi » s'efface, le bloc de retours du
+       plan est là, ouvert. « Régénérer le plan » est refusé sans texte, puis renvoie les retours et
+       referme la vue ; la ligne reste « plan à approuver » avec un plan réécrit, rien n'est codé. */
+    assert.equal(await page.locator('#taskMdFollowToggle').isVisible(), false, 'pas de suivi sur un plan');
+    assert.equal(await page.locator('#taskMdPlan').isVisible(), true, 'les retours du plan, à la place');
+    await page.locator('#taskMdPlanRevise').click();
     await page.waitForSelector('.toast');
     assert.equal(app.db.prepare("SELECT COUNT(*) c FROM job WHERE kind = 'task' AND status = 'running'").get().c, 0, 'sans retours, aucun job ne part');
-    await page.locator(`${carte} [data-planform] .plan-remark`).fill('garde le cache en mémoire, pas de Redis');
-    await page.locator(`${carte} [data-tgplanrevise]`).click();
+    await page.locator('#taskMdPlanText').fill('garde le cache en mémoire, pas de Redis');
+    await page.locator('#taskMdPlanRevise').click();
+    await page.waitForFunction(() => document.querySelector('#taskMdView').hidden === true);
     await waitForJobs(app.api);
     await page.waitForFunction((sel) => !!document.querySelector(`${sel} [data-planform]`) && !document.querySelector(`${sel} [data-planform] .plan-remark`).value, carte);
     const passes1 = (await app.api('GET', `/api/tasks/${taskId}/targets/${(await app.api('GET', `/api/tasks/${taskId}`)).body.task.targets[0].id}/passes`)).body;
@@ -77,6 +80,12 @@ describe('Sessions · plan à approuver, sur la carte', { skip: dispo ? false : 
     assert.equal(t.status, 'committed', `la session a codé (${t.last_error || ''})`);
     const passes = (await app.api('GET', `/api/tasks/${taskId}/targets/${t.targets[0].id}/passes`)).body.passes;
     assert.match(passes[passes.length - 1].prompt, /pas de migration/, 'la remarque est partie avec l’approbation');
+    // Une fois codé, le retour se relit comme n'importe quel autre : le suivi revient, le plan s'efface.
+    await page.locator(`${carte} .target-line [data-tgout]`).first().click();
+    await page.waitForSelector('#taskMdView:not([hidden])');
+    assert.equal(await page.locator('#taskMdFollowToggle').isVisible(), true);
+    assert.equal(await page.locator('#taskMdPlan').isVisible(), false);
+    await page.evaluate(() => { document.querySelector('#taskMdView').hidden = true; });
   });
 
   test('pendant qu’une session tourne, le suivi propose « Stopper et reprendre » — sinon « Lancer l’itération »', async () => {

@@ -16,7 +16,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **Feedback on a plan before approving it.** On a “plan to approve” line, “Regenerate the plan
   with my feedback” sends your remarks to the same agent session, which rewrites the whole plan
   without coding; the line waits again. Approve only when everything is right, after as many
-  rounds as needed.
+  rounds as needed. The view “Read the plan” opens offers the same feedback field and the same two
+  actions in place of “Prepare a follow-up”: you re-read a plan to correct or approve it, not to
+  send it a follow-up.
 - **Several agent binaries, one default, chosen per session.** Settings → AI session → “Agent
   binaries” is now a list — the default first, marked, then as many others as you like (a Claude Code
   on a local Ollama next to your Claude Max, a Copilot to compare), each complete (binary, arguments,
@@ -152,6 +154,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **Journal lines shown twice.** Two overlapping polls of the journal could read the same cursor before
   either advanced it and append every line twice; a single poll runs at a time now.
+- **Journal stuck on “done” after re-reading a past job.** Reopening a past job's log from Activity
+  pins the view; a job launched afterwards (approving a plan, a rerun…) then wrote into a hidden pane
+  and the banner never said “in progress” until the page was reloaded. A new job now takes the view.
 
 ### Security
 

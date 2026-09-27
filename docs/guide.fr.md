@@ -464,7 +464,8 @@ liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »
 dépôt seulement), la première passe ne touche à rien : l'agent lit le dépôt et rend un **plan** —
 fichiers, étapes, risques, questions ouvertes — comme une itération marquée *plan*. La ligne du
 projet dit **plan à approuver**, propose **Lire le plan**, une remarque facultative (« garde l'API
-telle quelle ») et deux gestes. **Régénérer le plan avec mes retours** renvoie tes retours à la
+telle quelle ») et deux gestes — les mêmes dans la vue qu'ouvre **Lire le plan**, où le champ de
+retours remplace « Préparer un suivi » : on relit un plan pour le corriger ou l'approuver. **Régénérer le plan avec mes retours** renvoie tes retours à la
 **même session**, qui réécrit le plan complet en les intégrant, toujours sans coder : la ligne reste
 *plan à approuver*, avec une nouvelle itération *plan* — autant de tours qu'il faut. **Approuver et
 coder** : la même session reprend et réalise le plan, remarque comprise, puis commite comme
@@ -729,7 +730,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   pas l'usage, elle voit déjà tous ses dépôts côte à côte.
 - **Activité — ce que tu as lancé, et ce qui s'est terminé.** Le panneau de log expose une vue
   **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini. Chaque ligne
-  **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé**. Ce qui
+  **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé** — la vue y
+  reste tant qu'un autre job écrit, et un job **lancé ensuite** la reprend. Ce qui
   s'est terminé depuis ta dernière visite est marqué, et le compte s'affiche sur le bouton. Les
   notifications bureau ne répondaient pas à cette question : elles ne vivent qu'en mémoire du
   serveur et ne sont volontairement pas rejouées au chargement — donc tout ce qui finissait onglet

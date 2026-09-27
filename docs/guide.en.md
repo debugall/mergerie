@@ -454,7 +454,9 @@ long prompt is **folded to three lines** with a **“Show more”** that unrolls
 **“Plan first”: read, approve, then code.** Ticked in the session modal (repository coding only), the
 first pass touches nothing: the agent reads the repository and returns a **plan** — files, steps,
 risks, open questions — as an iteration marked *plan*. The project line says **plan to approve**,
-offers **Read the plan**, an optional remark (“keep the API as is”), and two actions. **Regenerate
+offers **Read the plan**, an optional remark (“keep the API as is”), and two actions — the same ones
+in the view **Read the plan** opens, where the feedback field replaces “Prepare a follow-up”: you
+re-read a plan to correct it or approve it. **Regenerate
 the plan with my feedback** sends your feedback to the **same session**, which rewrites the whole
 plan with it, still without coding: the line stays *plan to approve*, with a new *plan* iteration —
 as many rounds as needed. **Approve and code**: the same session resumes and carries the plan out,
@@ -713,7 +715,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   use for it, it already sees all its repositories side by side.
 - **Activity — what you launched, and what finished.** The log panel exposes an **Activity** view: what ran,
   on what, for how long, and how it ended. Each row **names its object** and takes you there in one click; a
-  button reopens the **log of a past job**. What has finished since your last visit is marked, and the count
+  button reopens the **log of a past job** — the view stays on it while another job writes, and a job
+  **launched afterwards** takes it back. What has finished since your last visit is marked, and the count
   appears on the button. Desktop notifications did not answer that question: they only live in the server's
   memory and are deliberately not replayed on load — so anything that finished with the tab closed existed
   nowhere.

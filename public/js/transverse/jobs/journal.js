@@ -245,7 +245,11 @@ async function pumpLogUneFois() {
      changer sans que rien ne commence : le principal se termine, un job parallèle devient
      le plus récent en cours. Effacer là ferait disparaître le journal du principal en pleine
      lecture. Tant que le job est déjà suivi, on se contente de changer qui est « principal ». */
-  if (!LOGP.shown.includes(d.job_id)) { logReset(); logHidden = false; }
+  /* Un job NOUVEAU relâche aussi l'épingle : on relisait le journal d'un job passé, on vient d'en
+     lancer un autre — c'est lui qu'on veut voir. Sans ça, l'épingle survivait à la remise à zéro,
+     désignait un volet qui n'existait plus, et le bandeau restait sur « terminé » pendant que le
+     nouveau job tournait dans un volet caché, jusqu'au rechargement de la page. */
+  if (!LOGP.shown.includes(d.job_id)) { logReset(); logHidden = false; logPaneEpingle = null; }
   logJobId = d.job_id;
   if (!logHidden) panel.hidden = false;
   const pane = logPane(d.job_id);

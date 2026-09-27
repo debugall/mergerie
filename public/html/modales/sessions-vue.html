@@ -29,6 +29,15 @@
         <button id="taskMdFollowCancel" class="btn" type="button" data-i18n="ui.cancel">Annuler</button>
         <button id="taskMdFollowSend" class="btn btn-primary" type="button" data-i18n="task.btn.send-followup">Envoyer le suivi</button>
     </div>
+    <!-- ON LIT UN PLAN À APPROUVER : pas de suivi ici, mais les retours sur le plan — le même
+         bloc que sur la carte, ouvert d'emblée, parce que c'est en le lisant qu'on les trouve. -->
+    <div id="taskMdPlan" class="mr-create followup plan-approve" hidden>
+        <textarea id="taskMdPlanText" class="plan-remark" placeholder="" data-i18n-placeholder="task.plan.remark-ph"></textarea>
+        <div class="plan-actions">
+            <button id="taskMdPlanRevise" class="btn" type="button" title="" data-i18n-title="task.title.revise-plan"><svg class="ico ico-sm"><use href="#i-repeat"/></svg><span data-i18n="task.btn.revise-plan">Régénérer le plan avec mes retours</span></button>
+            <button id="taskMdPlanOk" class="btn btn-primary" type="button" title="" data-i18n-title="task.title.approve-plan"><svg class="ico ico-sm"><use href="#i-play"/></svg><span data-i18n="task.btn.approve-plan">Approuver et coder</span></button>
+        </div>
+    </div>
     <!-- Les ITÉRATIONS sont une liste à gauche, pas une liste déroulante : on les lit toutes
          d'un coup d'œil, avec la demande qui a produit chacune, et on cherche dedans. -->
     <div class="split-body pass-body no-list">
