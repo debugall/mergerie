@@ -30,8 +30,8 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
    fois pour se connecter) ou Copilot CLI (`npm i -g @github/copilot`, puis `copilot`). C'est ta
    souscription qui paie : Mergerie n'a ni clé ni quota à elle.
 2. **`npx mergerie`** — http://localhost:4319. L'onglet Reviews s'ouvre sur l'assistant en cinq
-   étapes. La première dit si l'agent est trouvé ; sinon, Réglages → Session IA → *Binaire*, puis
-   **Tester l'agent**.
+   étapes. La première dit si l'agent est trouvé ; sinon, Réglages → Session IA → *Binaires de l'agent*,
+   puis **Tester l'agent**.
 3. **Connecter la forge** — GitLab (URL + jeton, scopes `api` et `read_repository`) **ou** GitHub
    (jeton, scope `repo`). Un bouton *Tester* par forge.
 4. **Choisir tes dépôts** — Réglages → Dépôts, en masse depuis la forge ou une adresse à la fois.
@@ -50,7 +50,11 @@ faire, ma machine et ses liens, le méta :
 **Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
 **Quatre d'entre eux — Git, Docker, Jenkins et Liens — démarrent repliés** : ce sont des commodités,
 on y va le jour où on en a besoin, et une barre de sept entrées se lit mieux qu'une barre de onze.
-Rien n'est désactivé : une case dans *Réglages → Général → Menus* les ramène, définitivement.
+Rien n'est désactivé : une case dans *Réglages → Général → Menus* les ramène, définitivement — et une
+**porte contextuelle** aussi : « Résoudre dans Git → Merge » sur une merge request en conflit, « Voir les
+logs » depuis le brief, un job Jenkins ouvert depuis une carte, « ce dépôt a un compose : afficher Docker »
+sur la ligne d'un dépôt. Le menu ainsi ouvert reste dans la barre, et le sous-onglet Jenkins des Réglages
+suit son menu.
 La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
 sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
@@ -88,7 +92,9 @@ jeton est lu **une fois par forge** ; sans lui — un jeton qui ne permet pas de
 pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité devinée.
 
 - `Chercher les nouvelles MR` interroge la forge et remplit la liste (filtrée par pattern).
-  Un **rafraîchissement automatique** optionnel le fait pour toi (voir Réglages).
+  Un **rafraîchissement automatique** le fait pour toi — toutes les 5 minutes sur une base neuve, réglable
+  ou désactivable dans Réglages → Merge Request — et ouvrir l'onglet Reviews relance une recherche quand la
+  dernière est plus vieille que cet intervalle.
   Les dépôts dont la case **récupérer les MR** est décochée (Réglages → Dépôts) sont ignorés
   par cette recherche : leurs merge requests déjà récupérées restent dans la file, on cesse
   seulement d'en ramener de nouvelles. À distinguer de **actif**, qui retire le dépôt de partout.
@@ -119,10 +125,14 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   review ou une session lancée en parallèle ne tombe pas sur un dépôt à moitié fusionné.
   S'il y a des conflits, l'écran les prend **fichier par fichier**, et **conflit par conflit** :
   la version de la branche de destination et celle de la branche fusionnée, l'une sous l'autre,
-  avec `Garder` sur chacune et `Garder les deux`. Ce que tu retiens se colore, tu n'as pas à
+  avec `Garder` sur chacune et `Garder les deux : main puis feature` — le bouton nomme les deux branches
+  et l'ordre dans lequel il les applique. Ce que tu retiens se colore, tu n'as pas à
   relire les boutons pour savoir où tu en es. Aucun marqueur `<<<<<<<` n'est jamais à
   déchiffrer. Si ni l'une ni l'autre ne convient, **`Écrire moi-même`** ouvre le résultat de tes
   choix dans un champ libre : tu le corriges, et c'est ce texte qui est enregistré.
+  **`Demander à l'IA`** envoie tous les conflits de tous les fichiers en un seul job et rend, pour chacun,
+  une **troisième version** avec son propre `Garder` et sa raison ; **`Plein écran`** montre le fichier
+  entier — destination, source, résultat — côte à côte. Le détail est dans *Git → Merge*, plus bas.
   Quand tout est résolu, **`Commiter`** ouvre une fenêtre avec le message **déjà rempli**
   (`Merge branch 'x' into y`, plus la liste des fichiers qui ont été en conflit) — tu le relis,
   tu valides. Puis **`Pousser`**, après confirmation, envoie le merge sur la branche de
@@ -159,7 +169,11 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   réécrit l'historique, l'envoyer demande un push forcé, et c'est le bouton `Pousser` — un second
   geste — qui décide. Si la résolution n'aboutit pas (ou s'il n'y a pas d'agent configuré), la
   branche est **remise exactement comme elle était** : un rebase laissé en plan bloquerait le
-  clone pour tout le reste.
+  clone pour tout le reste. La ligne du projet porte alors la même étiquette **« en conflit »** que la
+  file des merge requests, à côté du bouton — il offrait déjà le remède, rien ne disait pourquoi il
+  était là. Le rattrapage tourne en arrière-plan ; un **toast** le suit jusqu'au bout, succès ou échec,
+  et rappelle qu'un push forcé vient ensuite. Étiquette et bouton s'effacent dès que le rattrapage a
+  réussi, sans attendre le prochain passage de la forge.
   Le même rattrapage est proposé **dans la modale de merge** : à l'ouverture, la forge est
   interrogée, et si la merge request est en conflit la modale le dit en rouge — avec la branche
   concernée — et porte le bouton. On apprend le conflit **avant** de cliquer « Merger », pas
@@ -280,13 +294,15 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   merge a réellement lieu la MR sort de la file (marquée traitée). Disponible aussi dans le panneau de
   décision de `Voir le diff`, là où l'on juge justement de la trivialité.
 - `Classer sans review` sort une MR de la file, avec **annulation** possible pendant quelques secondes.
-- Les reviews s'empilent dans une **file séquentielle** ; un **panneau de log en direct** montre les
+- Les reviews s'empilent dans une **file** — deux jobs sur le même dépôt gardent leur ordre, ceux qui
+  n'ont rien en commun partent en parallèle d'eux-mêmes (voir *Dev IA*) ; un **panneau de log en direct** montre les
   commandes, la sortie et la progression, avec un bouton **Stop** (qui vide aussi la file — la
   confirmation le précise), un **chronomètre** depuis le démarrage et, une fois le rythme établi, une
   **estimation du temps restant** (elle se tait plutôt que de mentir quand la cadence dévie).
-- **Voir la file d'attente et lancer en parallèle.** Le panneau de log liste ce qui attend, et propose
-  de **promouvoir un job en parallèle** (jusqu'à **3 à la fois**) quand il ne touche **aucun dépôt ni
-  dossier** en commun avec ce qui tourne déjà — la collision est refusée, pas arbitrée : deux agents sur
+- **Voir la file d'attente et lancer en parallèle.** Le panneau de log liste ce qui attend. Un job qui ne
+  touche **aucun dépôt ni dossier** en commun avec ce qui tourne part de lui-même (jusqu'à **3 à la
+  fois**), les jobs lancés à la main avant les automatiques ; celui dont le périmètre est inconnu attend,
+  et on peut le **promouvoir** à la main — la collision, elle, est refusée, pas arbitrée : deux agents sur
   le même clone le corrompraient. Chaque job promu a **son onglet** dans le panneau, avec **son propre
   bouton Stop** ; l'onglet reste après la fin, pour relire la sortie. Un job **interrompu** peut être
   **relancé** depuis la file.
@@ -642,10 +658,27 @@ voisine avec ceux dont on se sert tout le temps, et le clic de trop coûte une s
 **toute première** mise en route, elle, reste un seul clic : il n'y a rien à protéger. Vaut aussi pour
 le `Relancer` d'un projet en particulier.
 
+**La case est en vue, « Avancé » est replié.** « L'IA peut me poser des questions » a quitté
+l'accordéon Avancé : c'est une décision prise pour chaque session, pas un réglage à aller chercher — elle
+est au-dessus de « Lancer plus tard », dans les formulaires de codage, d'exploration et hors dépôt. L'accordéon
+(message de commit, session d'agent à reprendre, skills) s'ouvre replié pour que le formulaire tienne à
+l'écran ; un clic le déplie, et l'édition d'une session le déplie d'elle-même quand un de ses champs
+porte une valeur.
+
 **Créer maintenant, lancer plus tard.** Les **quatre** saveurs de session — codage, codage hors
 dépôt, exploration, question libre — et les sessions ouvertes depuis une merge request portent les
 deux mêmes boutons : **`Créer et lancer`** (le geste principal, en un clic) et **`Créer sans
 lancer`** à côté, pour préparer le prompt et les cibles et lancer quand on veut.
+
+**Lancer plus tard, le.** La même modale — codage, exploration, hors dépôt — porte un champ **date** et un
+champ **heure** côte à côte, chacun avec son sélecteur natif (calendrier, horloge) et toujours saisissables
+à la main ; n'en remplir qu'un est signalé sous celui qui manque. Remplis, le bouton principal devient
+**`Créer et programmer`** : la session est créée et attend, sa carte montre la date avec une croix pour
+l'annuler, et l'éditer montre la date et l'enregistre avec le reste. Un suivi en attente se programme de
+même (**« Ou l'envoyer le »**) : il part tout seul à ce moment, que la case « automatiquement à la fin »
+soit cochée ou non — un suivi a un déclencheur, jamais deux. Lancer à la main annule la date, une date
+déjà passée est refusée, et la date est celle du **poste** qui l'a posée : c'est lui qui lance, et il
+rattrape à la minute suivante s'il était éteint à l'heure dite. Les questions libres ne se programment pas.
 
 **Vérifier après, sans y penser.** Un champ facultatif **`Vérifier après`** à la création d'une
 session de codage : le vérificateur choisi part **tout seul, une fois, à la fin** — après la
@@ -679,7 +712,8 @@ second ignorerait le premier. C'est aussi ce qui fait que **« Reprendre au term
 conversation **telle qu'elle est**, et non son état d'il y a trois suivis.
 
 **Enrichir depuis un ticket Jira (optionnel).** Si Jira est configuré (Réglages → Jira), la modale
-propose un champ **N° de ticket** avec un bouton **Récupérer** : le **titre + la description** du ticket
+propose un champ **ticket** qui **liste tes tickets affectés à la frappe** — en choisir un pose la clé et
+récupère le ticket — ou une clé tapée à la main suivie de **Récupérer** : le **titre + la description** du ticket
 sont récupérés via l'API Jira et **ajoutés en tête du prompt** comme bloc de contexte — visible et
 **éditable** avant de lancer. Le numéro est **pré-rempli** si la branche de travail contient déjà une
 clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'exploration.
@@ -720,6 +754,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   En revanche, si la branche **porte déjà le travail** — cas d'une relance après un échec survenu
   *après* le commit, un push refusé par exemple —, l'absence de nouveau changement n'est **pas** une
   erreur : la session reprend son état « commit prêt », avec le diff et le bouton de création de MR.
+  Un projet arrêté **sans avoir codé** — l'IA qui demande en clair « je continue sur le lot suivant ? »,
+  sans question structurée — garde son bouton **`Envoyer un suivi`** tant que sa session d'agent est
+  vivante : c'est le seul geste qui répond à cette pause. Les boutons de remède d'une erreur (« Rattraper
+  la base et réessayer », « Résoudre le conflit », « Repartir d'une session d'agent neuve », « Re-cloner le
+  dépôt ») s'expliquent au survol.
 - **Projets liés en lecture seule (Avancé).** En codage, la modale de session propose d'ajouter
   d'autres dépôts comme **contexte** : l'IA les consulte — leur API, leur schéma, leurs contrats —
   pour respecter ce qu'ils exposent, sans **jamais** les modifier. Un dépôt (recherche incluse,
@@ -732,7 +771,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini. Chaque ligne
   **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé** — la vue y
   reste tant qu'un autre job écrit, et un job **lancé ensuite** la reprend. Ce qui
-  s'est terminé depuis ta dernière visite est marqué, et le compte s'affiche sur le bouton. Les
+  s'est terminé depuis ta dernière visite est marqué, et le compte s'affiche sur le bouton. Le bouton
+  **« journal »** du pied de page dit aussi l'état du job derrière un panneau replié : **ambre et
+  pulsant** tant qu'il tourne, vert quand c'est fini, rouge en échec — replié, il avait la même tête
+  qu'un job encore au travail ou fini depuis longtemps. Les
   notifications bureau ne répondaient pas à cette question : elles ne vivent qu'en mémoire du
   serveur et ne sont volontairement pas rejouées au chargement — donc tout ce qui finissait onglet
   fermé n'existait nulle part.
@@ -782,6 +824,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   quelle demande elle répondait n'apprend rien : les deux sont donc affichés ensemble. Une seule
   itération n'affiche aucune colonne — il n'y a rien à choisir. Vaut aussi pour le **codage hors
   dépôt**, dossier par dossier.
+  **Combien d'itérations déjà ?** Le bouton `Envoyer un suivi` porte son **compte** dans son libellé —
+  « Envoyer un suivi (2) » — sur chaque carte de session, de question et de dossier hors dépôt. Dans
+  `Retour de l'IA`, chaque itération affiche ses **tokens**, l'en-tête de la colonne les additionne, et un
+  suivi **s'écrit et part de là** — sans refermer la vue, retrouver la carte et rouvrir son formulaire pour
+  demander la chose qu'on venait de lire.
   **Épingler et nommer.** Au-delà de quelques passes, ni le numéro ni la date ne disent ce qui
   s'y est joué. Chaque itération porte donc deux gestes : une **étiquette** qui la remonte **en
   tête de colonne** (le numéro reste affiché, la chronologie se lit encore), et un **nom** qu'on
@@ -1148,6 +1195,9 @@ Markdown côte à côte** (le même rendu que les rapports de review, donc le m�
 - **Autosauvegarde** à la frappe, avec un délai d'une seconde et un indicateur discret « Enregistré ».
   Enregistrer à chaque caractère ferait une requête par lettre ; n'enregistrer qu'à la fermeture perdrait
   le travail d'une page restée ouverte.
+- **Plein écran** : un bouton à côté de Rendu / Deux colonnes / Markdown retire la liste des pages et étend
+  l'éditeur à toute la fenêtre — les trois modes restent choisissables pendant la lecture. Échap, ou le
+  même bouton, revient aux deux colonnes.
 - **Coller une capture** (Ctrl+V) dans l'éditeur l'**insère au curseur**, sur sa propre ligne, et
   l'aperçu l'affiche aussitôt. L'image part **sur le disque** (`data/notes/<page>/`) et la page ne garde
   qu'un lien : mettre la capture en base64 dans le contenu gonflerait la ligne de plusieurs mégaoctets,
@@ -1417,11 +1467,31 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   review, une session de codage ou une vérification qui tourne à côté ne doit pas trouver le dépôt à moitié
   fusionné. Un merge **se reprend** après un redémarrage de l'outil.
   - **Les conflits se résolvent à l'écran, un par un.** Pour chaque conflit : la **version de la
-    destination** et la **version entrante**, l'une sous l'autre, avec `Garder` sur chacune et
-    `Garder les deux, dans cet ordre` en dessous ; le côté retenu est mis en évidence, pour voir où l'on
-    en est sans relire les boutons. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
+    destination** et la **version entrante**, l'une sous l'autre — chacune avec la **date et l'heure** du
+    dernier commit de ce fichier sur sa branche, pour ne plus deviner laquelle est la plus récente (deux
+    commits du même jour se ressemblaient) —, avec `Garder` sur chacune et `Garder les deux : main puis
+    feature` en dessous, qui nomme les deux branches et l'ordre dans lequel il les applique ; le côté
+    retenu est mis en évidence, pour voir où l'on en est sans relire les boutons. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
     ne convient, `Écrire moi-même` donne le **résultat de tes choix** dans un champ texte libre et
     enregistre ce que tu écris.
+  - **`Demander à l'IA` propose une résolution pour chaque conflit de chaque fichier, en une fois — tu
+    valides chacune.** Un bouton sur l'écran des conflits, pas un par fichier : le merge entier part à
+    l'agent en un seul job d'arrière-plan, qui voit tous les fichiers en conflit ensemble avant de
+    proposer — une correction qui n'a de sens que lue à côté d'un changement dans un autre fichier ne se
+    perd pas en demandant fichier par fichier. Le bouton **demande confirmation** : le contenu de chaque
+    fichier encore en conflit part vers l'IA. Chaque proposition apparaît comme une **troisième version**
+    à côté de « la nôtre » et « la leur », avec son propre `Garder` — rien ne s'applique tout seul, et un
+    conflit que l'agent a passé n'a simplement pas de troisième version, jamais une devinette. Chaque
+    proposition porte sa **raison**, repliée derrière `Voir la raison`. Les propositions restent avec le
+    merge : rouvrir un fichier ne perd pas ce qui a déjà été demandé.
+  - **`Plein écran` montre le fichier entier, trois fois côte à côte** — destination, source, et le
+    résultat courant au milieu — au lieu de trois lignes de contexte par conflit ; cliquer un passage
+    d'un côté le garde, et le choix revient dans la vue normale à la fermeture. Une **quatrième colonne**,
+    la proposition de l'IA et sa raison, n'apparaît que sur un fichier qui en a une ; cliquer la
+    proposition la retient, comme un passage. Chaque colonne se **masque et se réaffiche** à part — les
+    autres se partagent la largeur libérée, une au moins reste visible — et des flèches **conflit
+    précédent / suivant** avec un compteur « Conflit N/M » sautent au conflit suivant, actives même sur
+    un fichier à un seul conflit : passer le dernier le recentre, au lieu de ne rien faire.
   - **Puis deux gestes séparés, dans cet ordre.** `Commiter` — le message est déjà rempli avec celui que
     git a écrit — puis `Pousser`, chacun derrière sa propre confirmation. `Commiter` refuse tant qu'un
     conflit reste ; `Pousser` refuse tant que rien n'est commité. `Abandonner` remet tout en état :
@@ -1451,7 +1521,9 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   commencer par une sous-commande. Un projet en échec est **isolé** ; les autres s'exécutent quand même.
 - **Explorateur de branches** — par projet, une ligne par branche avec ses colonnes : `↑avance ↓retard`
   vs la branche par défaut, sa **branche d'origine**, la **branche dans laquelle elle a été mergée** et son
-  **dernier commit**. Trié **par date du dernier commit, du plus récent au plus ancien**. Depuis une branche,
+  **dernier commit**. Trié **par date du dernier commit, du plus récent au plus ancien**. Le sélecteur de
+  dépôts porte **`Tout cocher` / `Tout décocher`** et le compte des cochés, comme celui des Commandes Git.
+  Depuis une branche,
   **`Créer la MR`** ouvre une MR entre elle et sa source (l'origine déduite, sinon la branche par défaut) —
   même popup de titre que dans Dev IA, proposé seulement quand la branche a des commits d'avance. Cocher des
   branches puis `Supprimer la sélection` ouvre l'aperçu pré-rempli. **Chaque ligne porte aussi ce que la
@@ -2109,6 +2181,12 @@ qui fait relire trois dépôts pour rien s'y voit immédiatement. La consommatio
 c'est la matière première d'une règle de review, et `En faire une règle` ouvre le formulaire pré-rempli —
 le `path_match` déduit des fichiers concernés, le constat comme contenu.
 
+**Les mêmes constats, sur plusieurs dépôts.** La carte précédente ne compare un constat qu'aux merge
+requests du **même** dépôt : relevé deux fois sur l'un et une fois sur l'autre, il n'atteignait son seuil
+de trois nulle part. Celle-ci attrape exactement ce cas — trois merge requests, au moins deux dépôts — et
+propose une règle **sans dépôt ni chemin** (un déclencheur `**`) : deux dépôts sans lien ne partagent aucun
+préfixe de chemin qui vaille d'être déduit.
+
 **Chaque nombre est une porte.** Cliquer « pire 5,5 » ou « en attente 3 » ouvre Reviews filtré sur ce dépôt,
 au bon stade — au lieu de laisser retrouver à la main ce que le chiffre désigne.
 
@@ -2207,7 +2285,9 @@ et la **palette de commandes git** de l'onglet *Git → Commandes Git* : ajout/�
 commandes *nom + commande figée*). C'est le **premier** onglet, et celui qui s'ouvre d'office la
 première fois : sans jeton, aucun autre réglage ne sert à rien ·
 **Dépôts** (ajout un par un ou en masse **depuis GitLab** ou **depuis GitHub** — chaque dépôt porte un badge
-de forge, et un même chemin peut exister sur les deux ; sans jeton pour cette forge, la fenêtre
+de forge, et un même chemin peut exister sur les deux ; une adresse collée est rangée dans sa forge
+d'après son **hôte**, comparé d'abord à ceux configurés dans Réglages → Git — un GitHub Enterprise sur
+`git.entreprise.com` n'est plus pris pour un GitLab ; sans jeton pour cette forge, la fenêtre
 d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
 recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
 les modifications non poussées du clone local le sont, d'où la confirmation) ; un bouton **`Fiche`**
@@ -2216,7 +2296,11 @@ services de la grille, projets liés par défaut, agents dont il fait partie. La
 concerne LUI ; la fiche répond à « qu'est-ce qui casse si je le retire ? » et « quel vérificateur le teste,
 déjà ? ». Chaque entrée mène à l'écran où l'objet se modifie, et rien n'est demandé au serveur tant que le
 panneau n'est pas déplié) ·
-**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré n'invoque **aucun skill**, celui qui en a un l'y écrit ; la **note globale**, elle, est réclamée par l'application quel que soit le gabarit, parce que la liste s'en sert pour filtrer) ·
+**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
+🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
+une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une
+installation restée sur l'ancien défaut passe au nouveau d'elle-même, dans sa langue ; il n'invoque
+**aucun skill**, celui qui en a un l'y écrit ; la **note globale**, elle, est réclamée par l'application quel que soit le gabarit, parce que la liste s'en sert pour filtrer) ·
 **Règles de review spécifiques** (une règle peut être **limitée à un dépôt** — sans quoi il fallait
 deviner un `path_match` que seul ce dépôt satisferait ; critères ajoutés au prompt quand le nom de
 branche contient un fragment donné **ou quand le diff touche un chemin** — glob type `**/migrations/**`,
@@ -2321,8 +2405,8 @@ ni recherche, ni modale, ni rapport ouvert, car un état périmé est pire qu'un
 **raccourcis clavier** (`1`-`9` puis `0` pour les dix onglets, `/` recherche, `n` nouvelle todo, `r` chercher les MR, `l` logs, `?` aide,
 `Échap` ferme) · **favicon dynamique** pendant un job · messages d'erreur **traduits en actions**
 (certificat, token, CLI introuvable, timeout, réseau — dont **« Mergerie ne répond pas »** avec un
-bouton *Réessayer* quand le serveur est arrêté) · **onboarding en 3 étapes** tant que la
-connexion et les dépôts ne sont pas configurés, **étapes cochées au fur et à mesure**, et tant que
+bouton *Réessayer* quand le serveur est arrêté) · **assistant en cinq étapes** (agent, forge GitLab ou GitHub, dépôts, ce que l'équipe utilise, première
+recherche) tant que la connexion et les dépôts ne sont pas configurés, **étapes cochées au fur et à mesure**, et tant que
 rien n'est configuré c'est cet écran qui s'ouvre au démarrage (le brief du matin prend le relais
 dès le lendemain) · chaque champ de formulaire porte une **icône i** dont
 le survol (ou le focus clavier) explique à quoi il sert · **aucun compteur n'est affiché avant sa
@@ -2747,13 +2831,13 @@ qu'il trouve. Il est **court** (une dizaine de lignes), écrit une seule fois, e
 réécrit ensuite, et la commande dit ce qu'elle a créé. `npx mergerie demo` n'en pose pas : elle
 promet de ne rien laisser derrière elle.
 
-**L'agent se règle aussi à l'écran, sans redémarrage** — Réglages → Session IA : le binaire, ses
-arguments de base, le délai d'un appel, et un bouton **Tester l'agent** (un appel réel, court, en
+**L'agent se règle aussi à l'écran, sans redémarrage** — Réglages → Session IA → Binaires de l'agent :
+le binaire par défaut, ses arguments de base, le délai d'un appel, et un bouton **Tester l'agent** (un appel réel, court, en
 lecture seule, dont la réponse attendue est « OK »). Ce qui est renseigné là passe devant le `.env`.
 Aucun agent trouvé ? Une bannière le dit en haut de l'écran, avec le chemin cherché et les commandes
 d'installation, et « Réessayer » refait la détection sans relancer le serveur — jusque-là les
 rapports sont **simulés** et dits tels. Ce que l'agent a le droit de faire ne se règle plus dans le
-`.env` : voir *Sandbox de l'agent* dans le même sous-onglet, et la section Sécurité.
+`.env` : voir *Sécurisé ou yolo* dans la section Sécurité, et le même sous-onglet.
 
 **Quatre backends, et un niveau de garantie dit en clair.** Claude Code et Copilot CLI sont
 éprouvés ; **Codex CLI** et **Gemini CLI** sont écrits d'après leur documentation, sans avoir été
@@ -2813,7 +2897,7 @@ avec le défaut : l'ancien défaut prend sa place dans la liste, les sessions qu
 De ce poste, jamais partagés : ce sont des chemins de cette machine, souvent des secrets — chez un collègue,
 la carte d'une session partagée dit le **nom** du binaire choisi, et sa relance part sur son défaut à lui.
 
-L'agent IA doit pouvoir **modifier des fichiers** (mode « yolo ») pour les sessions de codage. Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
+Les sessions de codage **écrivent** dans le clone, en mode sécurisé comme en yolo (voir *Sécurisé ou yolo*, section Sécurité). Les explorations, elles, sont en lecture seule : les dépôts sont remis à zéro après chaque passe.
 
 ## GitLab self-hosted / GitHub Enterprise / Jenkins interne / certificat d'entreprise
 
@@ -3108,8 +3192,8 @@ au `git gc`, une fois par mois au plus. **Cloner sans les blobs** (Réglages →
 décoché par défaut, parce qu'un agent qui lit beaucoup de fichiers paie chaque contenu d'un aller-retour.
 Et **la jauge** : Réglages → Général → « Mesurer l'occupation disque » dit ce que pèsent la base, les
 clones, les rapports, les sessions, les worktrees de vérification, les tickets, les notes, le dépôt de
-données et le temporaire ; « Nettoyer maintenant » lance la passe quotidienne tout de suite et dit ce qui
-est parti.
+données et le temporaire ; « Nettoyer maintenant » **demande confirmation** — journaux, versions de rapport, diffs, clones
+compactés : rien ne se restaure — puis lance la passe quotidienne tout de suite et dit ce qui est parti.
 
 Pour lancer des tests sans toucher ta base : `MERGERIE_DATA_DIR=/tmp/mon-test npm start`.
 
@@ -3193,7 +3277,7 @@ choix fait dans l'écran :
   l'agent, qui n'a rien à écrire ; une saveur inconnue est traitée comme une lecture, jamais comme une
   écriture ;
 - **en écriture** — codage, correction, convergence, hors dépôt — trois modes (Réglages → Session IA) :
-  **sandbox** (le défaut) confine le système de fichiers et le réseau du CLI lui-même via son propre
+  **sandbox** (le défaut du mode sécurisé) confine le système de fichiers et le réseau du CLI lui-même via son propre
   mécanisme (Seatbelt sur macOS, bubblewrap sur Linux/WSL2) ; **liste blanche** retire les commandes qui
   fuient (WebFetch, `curl`, `wget`, `ssh`, `git push`, `git remote`, `git config`) sans s'appuyer sur le
   sandbox du CLI ; **large** rend l'ancien comportement, jamais le défaut d'un réglage mal lu, un bandeau
@@ -3210,9 +3294,9 @@ choix fait dans l'écran :
 
 **Copilot CLI connaît `--allow-tool`/`--deny-tool`** quand le binaire installé les propose (sondé une fois
 via `--help`) : en écriture, `git push`/`curl`/`wget`/`ssh`/`scp` sont refusés à ce titre ; en lecture,
-`write` et `shell(*)` le sont. Un binaire plus ancien, qui ne les connaît pas, REFUSE la lecture plutôt que
-de laisser croire à une restriction qui n'a pas lieu (`agent_read_unrestricted=1` est l'échappatoire
-assumée, jamais le défaut) ; en écriture il journalise franchement l'absence de restriction. **Limite, à ne
+`write` et `shell(*)` le sont. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
+le journal du run l'écrit en première ligne, en lecture comme en écriture — plutôt que de laisser croire
+à une restriction qui n'a pas lieu. **Limite, à ne
 pas oublier** : un agent qui écrit du code peut écrire un code qui fuit ; ce qui borne les dégâts, c'est ce
 qu'il n'a plus sous la main.
 

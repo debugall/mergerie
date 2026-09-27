@@ -10,7 +10,7 @@ priority, and priorities shift with feedback. Ideas and feedback on any of these
 - ✅ **GitHub support** — done. The full workflow (review, comments, merge, coding sessions, convergence,
   Git tab) works on GitHub pull requests, and GitLab and GitHub repositories can be used side by side.
 - **Bitbucket support** — same workflow for Bitbucket pull requests, so a mixed-forge organization can use a
-  single cockpit. The forge dispatcher (`src/forge.js`) is the extension point.
+  single cockpit. The forge dispatcher (`src/forge/index.js`, `clientFor(repo)`) is the extension point.
 
 ## Orchestrated multi-repo releases
 
@@ -42,10 +42,9 @@ one set to re-run when its verdict goes stale) runs inside the convergence job, 
 the journal and on the convergence panel (green, red, stale), and a verdict that turns red is called out
 without stopping the loop.
 
-Half of the ground is now covered: **verifiers** run the project's own commands and give a verdict that
-owes nothing to the model, a coding session can carry one and run it when it is done, and a verifier can
-fire by itself on every new merge request (1.2.0). Since 1.3.0 that verdict also **leaves the tool**: it
+The ground covered so far: **verifiers** run the project's own commands and give a verdict that owes
+nothing to the model, a coding session can carry one and run it when it is done, and a verifier can fire
+by itself on every new merge request (1.2.0). Since 1.3.0 that verdict also **leaves the tool**: it
 publishes as a comment on the merge request, mentions the people who need to know when it breaks, re-runs
-when it goes stale, and can be asked of a **branch with no merge request at all**. What remains is the
-wiring itself — making that verdict an **exit condition of the convergence loop**, instead of a check that
-runs beside it.
+when it goes stale, and can be asked of a **branch with no merge request at all**. Since 2.0.0 it runs
+**inside the convergence job** after every pass — beside the loop, as decided above.

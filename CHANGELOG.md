@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-27
+
 ### Added
 
 - **Feedback on a plan before approving it.** On a “plan to approve” line, “Regenerate the plan
@@ -136,147 +138,6 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   **5 minutes** (it was off, so nothing ever arrived without a click), and opening the Reviews tab
   runs a discovery when the last one is older than that interval.
 
-### Changed
-
-- **No more “yolo” badge in the header.** The agent mode is read and changed in Settings → AI
-  session only; every run's journal still opens with it.
-- **`npx mergerie` writes its `.env` in `~/.mergerie/`, next to the data**, not in the folder the
-  command happens to be run from — a file written in one project folder was silently ignored when
-  the command was run from another. It is now a dozen lines: the agent found, the port, the
-  dry-run switch. A `.env` in the current folder still overrides it, and the shell wins over both.
-- **A repository's forge is recognised by its host.** Pasting a GitHub Enterprise address on a
-  host without “github” in its name used to add it as a GitLab repository; the address is now
-  compared with the hosts configured in Settings → Git first.
-- The guide opens with a **table of contents** and a **“First real review in 5 minutes”** section;
-  the npm description says GitHub too.
-
-### Fixed
-
-- **Journal lines shown twice.** Two overlapping polls of the journal could read the same cursor before
-  either advanced it and append every line twice; a single poll runs at a time now.
-- **A review's stored diff survives a re-read of the shared data.** Re-reading the shared format
-  (after a version upgrade, or a sync that only brought new report versions) reset the local diff
-  of every review; the screen then recomputed it from the clone, and the demo, which has no clone,
-  showed an empty diff and lost the remarks placed on it. The diff now stays as long as the review
-  still points at the same report version.
-- **Journal stuck on “done” after re-reading a past job.** Reopening a past job's log from Activity
-  pins the view; a job launched afterwards (approving a plan, a rerun…) then wrote into a hidden pane
-  and the banner never said “in progress” until the page was reloaded. A new job now takes the view.
-
-### Security
-
-- **Note on the default.** The agent restrictions below apply in **secured** mode, which is now
-  chosen in Settings → AI session; the default of an installation that touched nothing is
-  **yolo** (no restriction of the agent). The server-side limits — local token, `Host`
-  allowlist, protocol nonces, per-machine approval, allowlisted environment — hold in both.
-- **The API on `localhost` now belongs only to your browser.** A second, local-only session
-  token — separate from the one an exposed server already required — closes every `/api/` route
-  to any other process on the machine: an AI agent's own shell, a verifier command, a script run
-  by a dependency under test. Nothing to configure; it's issued and renewed automatically.
-- **Coding sessions no longer run the AI agent in an unrestricted (“yolo”) mode.** Settings →
-  AI session has a new **“Test the sandbox”** button: it runs a real check (a blocked write
-  outside the working folder, a blocked network call) and only turns the CLI's own sandbox on if
-  both are confirmed blocked — never a checkbox on trust. Until verified, or on a CLI that
-  doesn't support it, Mergerie falls back to a command allowlist; the old wide-open mode still
-  exists but is now an explicit, clearly-flagged opt-in, never the default. Copilot CLI's own
-  `--deny-tool`/`--allow-tool` are now used when available, and a read-only session on a CLI that
-  can't prove it's restricted is refused rather than assumed safe.
-- **The team data repository can no longer be made to silently rewrite a review verdict, push
-  on your behalf, or run with a weaker git setup than a code clone.** Verdicts and attachments
-  synced from a colleague are fingerprinted the same way reports already were; a session's
-  “push automatically” flag stays a setting of your own machine; the sync itself now runs with
-  the same hardened git invocation (no hooks, no `fsmonitor`, filtered environment) as any other
-  clone, and a `.gitmodules` file in the shared repository suspends the sync instead of being
-  checked out.
-- **Text an AI agent reads — a merge request description, a Jira ticket, a previous report — can
-  no longer forge one of the agent's own protocol blocks** (its findings, its questions, the
-  repository it names, the agent it proposes to create). Every such block now carries a nonce
-  tied to the run that asked for it, on top of the existing data-tagging; a look-alike block a
-  piece of text might contain is neutralised regardless.
-- **Follow-up hardening, from an internal review of the changes above:**
-  - The local session token closed `/api/` requests case-sensitively; `GET /API/config` slipped
-    through unrouted case-insensitively by Express itself. Both the local token and the
-    cross-origin guard now compare paths without regard to case.
-  - The nonce carried by an agent's protocol blocks was derived from a plain hash of a
-    sequential database id — guessable in advance for every plausible id. It's now an HMAC keyed
-    by a per-installation secret that never leaves this machine and is closed to the agent itself.
-  - A verifier command approved for the unsandboxed write allowlist granted the whole program
-    (`npm test` opened all of `npm`, including `npm publish`; `node script.js` opened `node -e`).
-    Only the exact approved command line is granted now.
-  - A verification synced while still running (before it has a verdict) no longer has its
-    fingerprint locked in — syncing mid-run used to make the real, later verdict look like a
-    silent rewrite and get rejected.
-  - “Test the sandbox” could mark the sandbox verified from an offline machine, since any failed
-    network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
-    checks the network works *outside* the sandbox first.
-  - An automatic verifier's outbound network was briefly cut off (`unshare` on Linux,
-    `sandbox-exec` on macOS) for the duration of this work, then removed again: cutting the
-    network also cut access to `localhost`, breaking any verifier whose commands reach a
-    database, Redis, or a `docker-compose` service there — with no way to opt back in. Automatic
-    verifiers keep the network open; what still closes this path is the local session token
-    above and the throwaway `HOME` they already ran under.
-  - A second review pass caught two of its own fixes: the “verification synced mid-run” fix
-    above had left a hole where a verification whose verdict was already locked in could be
-    erased by resending it without a verdict; and narrowing the injection-marker regex to known
-    names had dropped its case-insensitive flag along the way, so `<<<findings` in lowercase
-    slipped through neutralisation. Both are closed now.
-
-### Removed
-
-- **`npm run pipe` (`src/cli.js`).** That smoke test wrote a fake forge address and token into
-  the *real* configuration and a fake repository into the real database whenever
-  `MERGERIE_DATA_DIR` was not set. `npm run demo` and the end-to-end suite cover the same path,
-  isolated.
-- **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the
-  local whisper.cpp engine (and its install scripts), the OpenAI-compatible and browser providers,
-  and every setting that configured them are gone. Text fields go back to typing and pasting only.
-- **The dollar cost of a session, everywhere it showed up** — the sessions list, “Agent's
-  response” — is gone; only the token count remains. A dollar figure only ever came from a
-  backend willing to report one, didn't compare from one month to the next as prices moved, and
-  duplicated the token count sitting right next to it. Tokens alone are shown now, consistently
-  with what Stats already did.
-
-### Changed
-
-- **Repositories join Docker, Jenkins, Git and Jira on the local side.** Which repositories you
-  follow no longer travels through the team's data repository: adding one used to make it appear
-  on every machine, with its cloning and its merge-request discovery starting there too — on that
-  machine's own token — the moment anyone synced, with no checkbox to decline it. Each machine now
-  keeps its own list and syncs only the repositories on it. A merge request, a review rule or a
-  verifier's coverage still designates its repository the same way for everyone once discovered,
-  so a team still reads the same history on the repositories it follows on both sides. Repositories
-  already sent to a team's data repository are removed from it once, on the next start — otherwise
-  they would sit there and land back on a colleague's machine at their next sync.
-- **The screen's code is now organised by screen and by layer** (`public/js/core/`,
-  `public/js/ecrans/<screen>/`, `public/css/`, `public/i18n/`, `public/html/` — see PLAN.md).
-  Nothing changes on screen: same tabs, same shortcuts, same labels, same behaviour. What changes
-  is where a thing is found: one short file per screen section instead of a twenty-five-thousand-line
-  `app.js`, one dictionary file per family with French and English side by side, one stylesheet
-  per screen, one HTML piece per tab and per modal, and a check that refuses a file missing from
-  the page or a call crossing a screen's boundary undeclared. A browser's error names the file.
-- **The session form keeps “The AI may ask me questions” in plain sight, and starts with
-  “Advanced” folded.** The box has left the Advanced accordion: whether the AI may stop and ask
-  is a decision you take for each session, not a setting to go looking for — it now sits above
-  “Launch later”, in the coding, exploration and off-repo forms alike. The accordion (commit
-  message, agent session to resume, skills) is folded by default so the form fits the screen; one
-  click unfolds it, and editing a session unfolds it by itself when one of its fields holds a value.
-- **Scheduling a session's launch now uses a date field and a time field, side by side**,
-  instead of one combined field — each opens its own native picker (a calendar, a clock), and
-  both stay just as typeable by hand. Filling only one of the two is signalled under the field
-  that's missing, the same way a passed date already was.
-- **The default review prompt (Settings → Review, when the field is left empty) now asks for a
-  structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score
-  calibrated on named anchors (a score ≥ 7 excludes any remaining blocker), a “what's good”
-  section and a merge checklist — instead of one free-form paragraph. A review prompt already
-  customized in Settings is untouched; installations still on the previous default pick up the
-  new one automatically, in their configured language.
-- **A session card in Dev IA says exactly when it finished** — date and time, e.g. “finished on
-  09/23/2026 at 08:34” — instead of a relative “yesterday”/“the day before yesterday” that only
-  told you it was recent, not which of several same-week sessions came first. The relative wording
-  still shows up on hover, like every other date in the app.
-
-### Added
-
 - **“Ask the AI” proposes a resolution for every conflict of every file in one go — you still
   validate each one individually.** One button on Git → Merge's conflict screen, not one per
   file: it sends the whole merge to the agent as a single background job, so it sees every
@@ -380,6 +241,55 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **No more “yolo” badge in the header.** The agent mode is read and changed in Settings → AI
+  session only; every run's journal still opens with it.
+- **`npx mergerie` writes its `.env` in `~/.mergerie/`, next to the data**, not in the folder the
+  command happens to be run from — a file written in one project folder was silently ignored when
+  the command was run from another. It is now a dozen lines: the agent found, the port, the
+  dry-run switch. A `.env` in the current folder still overrides it, and the shell wins over both.
+- **A repository's forge is recognised by its host.** Pasting a GitHub Enterprise address on a
+  host without “github” in its name used to add it as a GitLab repository; the address is now
+  compared with the hosts configured in Settings → Git first.
+- The guide opens with a **table of contents** and a **“First real review in 5 minutes”** section;
+  the npm description says GitHub too.
+
+- **Repositories join Docker, Jenkins, Git and Jira on the local side.** Which repositories you
+  follow no longer travels through the team's data repository: adding one used to make it appear
+  on every machine, with its cloning and its merge-request discovery starting there too — on that
+  machine's own token — the moment anyone synced, with no checkbox to decline it. Each machine now
+  keeps its own list and syncs only the repositories on it. A merge request, a review rule or a
+  verifier's coverage still designates its repository the same way for everyone once discovered,
+  so a team still reads the same history on the repositories it follows on both sides. Repositories
+  already sent to a team's data repository are removed from it once, on the next start — otherwise
+  they would sit there and land back on a colleague's machine at their next sync.
+- **The screen's code is now organised by screen and by layer** (`public/js/core/`,
+  `public/js/ecrans/<screen>/`, `public/css/`, `public/i18n/`, `public/html/` — see PLAN.md).
+  Nothing changes on screen: same tabs, same shortcuts, same labels, same behaviour. What changes
+  is where a thing is found: one short file per screen section instead of a twenty-five-thousand-line
+  `app.js`, one dictionary file per family with French and English side by side, one stylesheet
+  per screen, one HTML piece per tab and per modal, and a check that refuses a file missing from
+  the page or a call crossing a screen's boundary undeclared. A browser's error names the file.
+- **The session form keeps “The AI may ask me questions” in plain sight, and starts with
+  “Advanced” folded.** The box has left the Advanced accordion: whether the AI may stop and ask
+  is a decision you take for each session, not a setting to go looking for — it now sits above
+  “Launch later”, in the coding, exploration and off-repo forms alike. The accordion (commit
+  message, agent session to resume, skills) is folded by default so the form fits the screen; one
+  click unfolds it, and editing a session unfolds it by itself when one of its fields holds a value.
+- **Scheduling a session's launch now uses a date field and a time field, side by side**,
+  instead of one combined field — each opens its own native picker (a calendar, a clock), and
+  both stay just as typeable by hand. Filling only one of the two is signalled under the field
+  that's missing, the same way a passed date already was.
+- **The default review prompt (Settings → Review, when the field is left empty) now asks for a
+  structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score
+  calibrated on named anchors (a score ≥ 7 excludes any remaining blocker), a “what's good”
+  section and a merge checklist — instead of one free-form paragraph. A review prompt already
+  customized in Settings is untouched; installations still on the previous default pick up the
+  new one automatically, in their configured language.
+- **A session card in Dev IA says exactly when it finished** — date and time, e.g. “finished on
+  09/23/2026 at 08:34” — instead of a relative “yesterday”/“the day before yesterday” that only
+  told you it was recent, not which of several same-week sessions came first. The relative wording
+  still shows up on hover, like every other date in the app.
+
 - **The server's code is now organised by layer** (`src/app/`, `src/jobs/`, `src/db/`,
   `src/agent/profile/`… — see PLAN.md). Nothing changes on screen or in the API: same routes,
   same database schema, same behaviour. What changes is where a thing is found: one file per
@@ -393,7 +303,33 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   translation errors; CONTRIBUTING.md says what a useful report carries, and asks for the fix in
   words rather than as a patch, for the same reason.
 
+### Removed
+
+- **`npm run pipe` (`src/cli.js`).** That smoke test wrote a fake forge address and token into
+  the *real* configuration and a fake repository into the real database whenever
+  `MERGERIE_DATA_DIR` was not set. `npm run demo` and the end-to-end suite cover the same path,
+  isolated.
+- **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the
+  local whisper.cpp engine (and its install scripts), the OpenAI-compatible and browser providers,
+  and every setting that configured them are gone. Text fields go back to typing and pasting only.
+- **The dollar cost of a session, everywhere it showed up** — the sessions list, “Agent's
+  response” — is gone; only the token count remains. A dollar figure only ever came from a
+  backend willing to report one, didn't compare from one month to the next as prices moved, and
+  duplicated the token count sitting right next to it. Tokens alone are shown now, consistently
+  with what Stats already did.
+
 ### Fixed
+
+- **Journal lines shown twice.** Two overlapping polls of the journal could read the same cursor before
+  either advanced it and append every line twice; a single poll runs at a time now.
+- **A review's stored diff survives a re-read of the shared data.** Re-reading the shared format
+  (after a version upgrade, or a sync that only brought new report versions) reset the local diff
+  of every review; the screen then recomputed it from the clone, and the demo, which has no clone,
+  showed an empty diff and lost the remarks placed on it. The diff now stays as long as the review
+  still points at the same report version.
+- **Journal stuck on “done” after re-reading a past job.** Reopening a past job's log from Activity
+  pins the view; a job launched afterwards (approving a plan, a rerun…) then wrote into a hidden pane
+  and the banner never said “in progress” until the page was reloaded. A new job now takes the view.
 
 - **A question asked on a review report, and its answer, are never shared with the team** —
   they used to travel with the team's data repository unconditionally, on the theory that the
@@ -527,6 +463,62 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Security
 
+- **Note on the default.** The agent restrictions below apply in **secured** mode, which is now
+  chosen in Settings → AI session; the default of an installation that touched nothing is
+  **yolo** (no restriction of the agent). The server-side limits — local token, `Host`
+  allowlist, protocol nonces, per-machine approval, allowlisted environment — hold in both.
+- **The API on `localhost` now belongs only to your browser.** A second, local-only session
+  token — separate from the one an exposed server already required — closes every `/api/` route
+  to any other process on the machine: an AI agent's own shell, a verifier command, a script run
+  by a dependency under test. Nothing to configure; it's issued and renewed automatically.
+- **Coding sessions no longer run the AI agent in an unrestricted (“yolo”) mode.** Settings →
+  AI session has a new **“Test the sandbox”** button: it runs a real check (a blocked write
+  outside the working folder, a blocked network call) and only turns the CLI's own sandbox on if
+  both are confirmed blocked — never a checkbox on trust. Until verified, or on a CLI that
+  doesn't support it, Mergerie falls back to a command allowlist; the old wide-open mode still
+  exists but is now an explicit, clearly-flagged opt-in, never the default. Copilot CLI's own
+  `--deny-tool`/`--allow-tool` are now used when available, and a read-only session on a CLI that
+  can't prove it's restricted is refused rather than assumed safe.
+- **The team data repository can no longer be made to silently rewrite a review verdict, push
+  on your behalf, or run with a weaker git setup than a code clone.** Verdicts and attachments
+  synced from a colleague are fingerprinted the same way reports already were; a session's
+  “push automatically” flag stays a setting of your own machine; the sync itself now runs with
+  the same hardened git invocation (no hooks, no `fsmonitor`, filtered environment) as any other
+  clone, and a `.gitmodules` file in the shared repository suspends the sync instead of being
+  checked out.
+- **Text an AI agent reads — a merge request description, a Jira ticket, a previous report — can
+  no longer forge one of the agent's own protocol blocks** (its findings, its questions, the
+  repository it names, the agent it proposes to create). Every such block now carries a nonce
+  tied to the run that asked for it, on top of the existing data-tagging; a look-alike block a
+  piece of text might contain is neutralised regardless.
+- **Follow-up hardening, from an internal review of the changes above:**
+  - The local session token closed `/api/` requests case-sensitively; `GET /API/config` slipped
+    through unrouted case-insensitively by Express itself. Both the local token and the
+    cross-origin guard now compare paths without regard to case.
+  - The nonce carried by an agent's protocol blocks was derived from a plain hash of a
+    sequential database id — guessable in advance for every plausible id. It's now an HMAC keyed
+    by a per-installation secret that never leaves this machine and is closed to the agent itself.
+  - A verifier command approved for the unsandboxed write allowlist granted the whole program
+    (`npm test` opened all of `npm`, including `npm publish`; `node script.js` opened `node -e`).
+    Only the exact approved command line is granted now.
+  - A verification synced while still running (before it has a verdict) no longer has its
+    fingerprint locked in — syncing mid-run used to make the real, later verdict look like a
+    silent rewrite and get rejected.
+  - “Test the sandbox” could mark the sandbox verified from an offline machine, since any failed
+    network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
+    checks the network works *outside* the sandbox first.
+  - An automatic verifier's outbound network was briefly cut off (`unshare` on Linux,
+    `sandbox-exec` on macOS) for the duration of this work, then removed again: cutting the
+    network also cut access to `localhost`, breaking any verifier whose commands reach a
+    database, Redis, or a `docker-compose` service there — with no way to opt back in. Automatic
+    verifiers keep the network open; what still closes this path is the local session token
+    above and the throwaway `HOME` they already ran under.
+  - A second review pass caught two of its own fixes: the “verification synced mid-run” fix
+    above had left a hole where a verification whose verdict was already locked in could be
+    erased by resending it without a verdict; and narrowing the injection-marker regex to known
+    names had dropped its case-insensitive flag along the way, so `<<<findings` in lowercase
+    slipped through neutralisation. Both are closed now.
+
 A security review of the whole tool, and what came out of it. Most of it is invisible when all goes
 well; a few things now ask for a click or a setting, and those are listed first.
 
@@ -568,7 +560,6 @@ well; a few things now ask for a click or a setting, and those are listed first.
   option that runs a program or writes outside the repository — are refused when saved and when run.
 - **“Test” with a changed address requires typing the token again**: the saved token is only ever sent
   to its own address.
-- **The dictation command** must be `whisper-server` — in PATH, or the absolute path of an existing `whisper-server` file.
 - **The backup README no longer claims the tokens are removed**: the archive carries the database,
   tokens included, and now says to keep it like a password.
 
@@ -594,9 +585,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 - Docker actions only run in a compose folder found under your local folders; the data repository
   address refuses `http://`, `ext::` and friends; Docker drift masks secrets by value, not just by name.
 - “Stop” now kills the whole process group, grandchildren included.
-- The whisper install script downloads a pinned version and checks each file's sha256; the CI pins its
-  actions by commit and runs with a read-only token. A `.env` in the current folder that picks the agent
-  binary is flagged at startup.
+- The CI pins its actions by commit and runs with a read-only token. A `.env` in the current folder
+  that picks the agent binary is flagged at startup.
 - The data folder is created readable by you only.
 
 ## [1.7.0] - 2026-09-18
@@ -3942,7 +3932,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/debugall/mergerie/compare/v1.7.0...v2.0.0
 [1.7.0]: https://github.com/debugall/mergerie/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/debugall/mergerie/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0

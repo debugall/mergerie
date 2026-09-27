@@ -13,23 +13,24 @@
 **From prompt to merge — un cockpit de dev local, assisté par IA, pour GitLab et GitHub.**
 
 Outil local (mono-utilisateur) pour **reviewer les merge requests GitLab et les pull requests GitHub** assisté par IA, **piloter des
-sessions de développement** automatisées (l'IA code, commite, pousse, ouvre et merge les MR) et **explorer
+sessions de développement** automatisées (l'IA code, commite, pousse, ouvre la MR) et **explorer
 du code** en lecture seule pour répondre à une question, via un CLI d'agent (`claude` / `copilot` —
 Codex CLI et Gemini CLI sont câblés d'après leur documentation, et tout autre CLI tourne tel quel,
-avec son niveau de garantie dit en clair) et le skill `git-review`. Une instance chacun — et une **équipe partage le travail accumulé** par un dépôt git
+avec son niveau de garantie dit en clair). Une instance chacun — et une **équipe partage le travail accumulé** par un dépôt git
 qui lui appartient, sans serveur au milieu.
 
 Dans toute la documentation, **« MR »** désigne indifféremment une *merge request* GitLab ou une
 *pull request* GitHub : les écrans et les actions sont les mêmes.
 
 Tout tourne **en local** : un serveur Node + SQLite + une interface web. Aucune donnée n'est envoyée
-ailleurs que vers les services que **tu** configures. L'IA **prépare** (review, corrections, convergence),
+ailleurs que vers les services que **tu** configures. L'outil pilote ton **abonnement Claude ou Copilot existant**
+par leur propre CLI — aucune clé d'API ni jeton supplémentaire à acheter. L'IA **prépare** (review, corrections, convergence),
 c'est **toi** qui merges. Voir [PLAN.md](./PLAN.md) pour l'architecture détaillée, et le
 **[Guide complet](./docs/guide.fr.md)** pour le détail de chaque onglet.
 
 ## Démarrage
 
-Nécessite **Node 22.9+**.
+Nécessite **Node 22.9+** et `git`.
 
 ```bash
 npx mergerie demo    # le voir vivant en 30 secondes — rien à cloner, aucune config, aucun jeton
@@ -101,14 +102,17 @@ demandent de traverser des dossiers.
 
 - **Reviews** — les trois stades d'une MR (à traiter · reviewées · traitées), review IA notée et versionnée,
   re-review incrémentale et **boucle de convergence autonome** (review → correction → re-review jusqu'au seuil).
+  La convergence travaille sur la *review* ; la **vérification objective** vient après, sur la merge request
+  elle-même — voir le guide.
   Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
   pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport
   sans toucher ni à lui ni à sa note.
-  Un rapport se **publie en commentaire sur la MR** d'un bouton ; et quand l'équipe partage un dépôt
-  de données, un second bouton en publie le **lien** plutôt que ses six cents lignes — un seul
-  exemplaire, relu par tous au même endroit. Et le verdict que la forge lit elle-même : un bouton **Approuver** (approbation GitLab, review `APPROVE` GitHub — jamais une rafale de commentaires inline), **Résoudre / Rouvrir** sur chaque fil de discussion, et la **CI de la forge** (pipeline GitLab, checks GitHub) en badge sur chaque carte.
-- **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt** **« Planifier d'abord »** : la première passe lit et rend un plan, on le lit, on envoie des retours qui le font réécrire par la même session (depuis la carte ou depuis la vue du plan elle-même), et **« Approuver et coder »** reprend cette session pour le réaliser. Pendant qu'une session tourne, le champ de suivi propose **« Stopper et reprendre avec cette consigne »** — la passe s'arrête, la consigne repart dans la même session. Le journal des jobs garde ses lignes courtes, et chaque message d'agent tronqué ou chaque `Edit` porte un **« … voir »** qui ouvre le texte entier ou le diff. Les jobs qui touchent des dépôts différents **tournent en parallèle d'eux-mêmes**, ceux lancés à la main d'abord.
-- **Agents** — des **profils de session** : un rôle, un périmètre, des outils, des skills, une sortie, parfois un horaire. Deux exemples livrés — l'**enquêteur d'incident**, qui trouve dans quel dépôt et quel fichier vit le code désigné par une trace, et le **documentaliste**, qui tient la carte des services dans une page de notes. Et les **agents de domaine** : on donne un sujet, le cartographe écrit la carte du sujet à travers les dépôts — chemins vérifiés un par un, âge de la carte compté sans IA, mise à jour relue et validée. Un agent ne pousse jamais et ne publie jamais de lui-même.
+  Un rapport se **publie en commentaire sur la MR** d'un bouton — et un réglage le fait automatiquement à la
+  fin de chaque review, décoché par défaut parce qu'écrire sur le travail des autres est une décision ; quand
+  l'équipe partage un dépôt de données, un second bouton en publie le **lien** plutôt que ses six cents
+  lignes — un seul exemplaire, relu par tous au même endroit, et ce commentaire peut compter les constats
+  de la passe (`{blockers}`, `{majors}`, `{minors}`). Et le verdict que la forge lit elle-même : un bouton **Approuver** (approbation GitLab, review `APPROVE` GitHub — jamais une rafale de commentaires inline), **Résoudre / Rouvrir** sur chaque fil de discussion, et la **CI de la forge** (pipeline GitLab, checks GitHub) en badge sur chaque carte. Le brief du matin compte ce qui est **prêt à merger** — note au-dessus du seuil, vérification verte, aucun ticket en travers. Rien n'est mergé : l'outil dit combien n'attendent qu'une décision.
+- **Dev IA** — sessions de codage automatisées (l'IA code, commite, pousse, ouvre la MR), **codage hors dépôt**
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions
   libres** posées hors de tout dépôt (gardées, libellées, reprenables) ;
   *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
@@ -118,8 +122,19 @@ demandent de traverser des dossiers.
   se **programme aussi à une date et une heure** depuis la même modale (« Créer et programmer »),
   et un suivi en attente de même (« Ou l'envoyer le… ») : la carte porte la date avec une croix
   pour l'annuler, lancer à la main l'annule aussi, et la date est celle de *ton* poste — c'est
-  lui qui lance, et il rattrape le lancement s'il était éteint à l'heure dite. Les sessions
-  terminées se **rangent** sans être supprimées.
+  lui qui lance, et il rattrape le lancement s'il était éteint à l'heure dite. Un suivi peut s'**écrire
+  pendant que la session tourne** et attend sur la carte — ou part de lui-même à la fin si tu coches la
+  case. Les sessions terminées se **rangent** sans être supprimées. **« Planifier d'abord »** : la première
+  passe lit et rend un plan, on le lit, on envoie des retours qui le font réécrire par la même session
+  (depuis la carte ou depuis la vue du plan elle-même), et **« Approuver et coder »** reprend cette session
+  pour le réaliser. Pendant qu'une session tourne, le champ de suivi propose **« Stopper et reprendre avec
+  cette consigne »** — la passe s'arrête, la consigne repart dans la même session. Des **projets liés en
+  lecture seule** donnent à une session de codage le contexte d'autres dépôts — l'IA lit leur API, leur
+  schéma, leurs contrats — sans jamais pouvoir les modifier. Le journal des jobs garde ses lignes courtes,
+  et chaque message d'agent tronqué ou chaque `Edit` porte un **« … voir »** qui ouvre le texte entier ou
+  le diff. Les jobs qui touchent des dépôts différents **tournent en parallèle d'eux-mêmes**, ceux lancés à
+  la main d'abord.
+- **Agents** — des **profils de session** : un rôle, un périmètre, des outils, des skills, une sortie, parfois un horaire. Deux exemples livrés — l'**enquêteur d'incident**, qui trouve dans quel dépôt et quel fichier vit le code désigné par une trace, et le **documentaliste**, qui tient la carte des services dans une page de notes — avec un schéma « qui appelle qui » et, pour chaque dépôt, son schéma de base lu dans les migrations. Et les **agents de domaine** : on donne un sujet, le cartographe écrit la carte du sujet à travers les dépôts — chemins vérifiés un par un, âge de la carte compté sans IA, mise à jour relue et validée. Un agent ne pousse jamais et ne publie jamais de lui-même.
 - **Vérification objective** — une liste de commandes (`npm ci`, `npm test`) donne à
   une merge request un verdict qui n'est pas un avis : `✓ vérifié`, `✗ 2 tests cassés`, `⚠ base déjà rouge`. Les
   noms des tests cassés sont lus de la sortie **TAP** ou d'un rapport **JUnit** quand il y en a. Des merge requests
@@ -135,7 +150,10 @@ demandent de traverser des dossiers.
   mémorisée par vérificateur. Pendant une boucle de convergence, le vérificateur tourne après chaque passe
   et son verdict s'affiche sur le panneau — une information à côté de la note, jamais une condition de sortie.
   Ce n'est pas un onglet : ça vit dans *Reviews* et *Réglages*.
-- **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown, avec un **mode plein
+- **Notes** — les post-it du quotidien, gardés dans l'outil : pages de notes en Markdown — avec des **sous-pages** (un
+  niveau, pour qu'une page générale porte le détail de chacun de ses points) et des **diagrammes Mermaid**
+  rendus sur place, la bibliothèque livrée dans le dépôt et chargée seulement quand une page en contient —,
+  un **mode plein
   écran** qui retire la colonne des pages pour lire sans distraction, en gardant Rendu / Deux colonnes /
   Markdown à un clic, todos priorisées dont
   l'échéance sert de **rappel bureau**, et un **brief du matin** qui ouvre la journée — rappels, sessions en
@@ -144,8 +162,11 @@ demandent de traverser des dossiers.
   ticket s'ajoute aux todos d'un clic.
 - **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, tickets liés (groupés par relation, ouverts sans quitter l'onglet), changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, un **merge de
-  branche à branche avec résolution des conflits à l'écran** (les deux versions l'une sous l'autre, garder
-  l'une, garder les deux, ou écrire soi-même ; puis commit et push, chacun derrière sa confirmation),
+  branche à branche avec résolution des conflits à l'écran** (les deux versions l'une sous l'autre, datées à l'heure
+  près, garder l'une, garder les deux, écrire soi-même — ou **demander à l'IA** une proposition pour chaque
+  conflit de chaque fichier en un seul job, avec sa raison, que tu valides une par une ; une vue **plein
+  écran** met les versions côte à côte et saute de conflit en conflit ; puis commit et push, chacun derrière
+  sa confirmation),
   explorateur de branches, recherche de refs et **comparaison de deux dépôts** (sans histoire commune
   nécessaire), suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
@@ -166,13 +187,14 @@ demandent de traverser des dossiers.
   `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
 - **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens,
   **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
-  relevé sur trois merge requests d'un même dépôt se transforme en règle de review d'un clic.
+  relevé sur trois merge requests d'un même dépôt — ou, dans une seconde carte, **d'un dépôt à l'autre** —
+  se transforme en règle de review d'un clic.
   Chaque nombre est une porte : il ouvre Reviews filtré sur ce projet, au bon stade.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge
   requests à l'arrivée** et **re-review automatique quand un rapport se périme** (toutes deux plafonnées et
   décochées par défaut), **publication automatique du rapport sur la MR**, templates de prompt, thème et
-  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts. Chaque champ porte un badge **« équipe » / « ce poste »** : gabarits de prompt, seuils et politiques décrivent l'outil, tandis que les jetons d'API, le dossier de clonage et la langue n'appartiennent qu'à ta machine — et sont rangés à part. Désigne un dépôt git et une **équipe partage le travail accumulé** — règles de review, vérificateurs, agents et leur carte du code, et les pages de notes, sessions et todos que tu coches — chacun gardant son instance, ses jetons et son abonnement IA. Ce qu'on écrit sans destinataire (une session, une question, un brouillon) reste à soi tant qu'on n'a pas dit le contraire. **Groupes de dépôts** : vingt micro-services qui partagent les mêmes règles de review, vérificateurs, gabarits de prompt et consignes les portent une fois, sur un groupe qui voyage avec l'équipe — et une pastille par groupe remplit une session, une action Git ou la couverture d'un vérificateur avec tous ses membres.
+  langue, règles de review pouvant être **limitées à un dépôt**, cases cochées d'office d'une nouvelle session, et jobs Jenkins liés aux dépôts. Chaque champ porte un badge **« équipe » / « ce poste »** : gabarits de prompt, seuils et politiques décrivent l'outil, tandis que les jetons d'API, le dossier de clonage et la langue n'appartiennent qu'à ta machine — et sont rangés à part. Désigne un dépôt git et une **équipe partage le travail accumulé** — règles de review, vérificateurs, agents et leur carte du code, et les pages de notes, sessions et todos que tu coches — chacun gardant son instance, ses jetons et son abonnement IA. L'écran **suit le travail de l'équipe** après une synchro — une MR reviewée par un collègue change de stade sous tes yeux — et chaque élément partagé dit **« partagé par Claire »**. Ce qu'on écrit sans destinataire (une session, une question, un brouillon) reste à soi tant qu'on n'a pas dit le contraire. **Groupes de dépôts** : vingt micro-services qui partagent les mêmes règles de review, vérificateurs, gabarits de prompt et consignes les portent une fois, sur un groupe qui voyage avec l'équipe — et une pastille par groupe remplit une session, une action Git ou la couverture d'un vérificateur avec tous ses membres.
 
 Partout : `Ctrl`/`Cmd` + `K` ouvre une **palette de commandes** (sauter à un onglet, une MR, une session
 en tapant son nom — `!217` ou `PROJ-1408` tapés seuls y vont directement), `j` / `k` parcourent la liste

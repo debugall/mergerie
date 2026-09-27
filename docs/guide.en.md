@@ -28,8 +28,8 @@ security model. For a quick start, stay on the [README](../README.md).
    to sign in) or Copilot CLI (`npm i -g @github/copilot`, then `copilot`). Your subscription pays:
    Mergerie has no key and no quota of its own.
 2. **`npx mergerie`** — http://localhost:4319. The Reviews tab opens on the five-step assistant. The
-   first step says whether the agent was found; if not, Settings → AI session → *Binary*, then
-   **Test the agent**.
+   first step says whether the agent was found; if not, Settings → AI session → *Agent binaries*, then
+   **Test** on the default line.
 3. **Connect the forge** — GitLab (URL + token, scopes `api` and `read_repository`) **or** GitHub
    (token, scope `repo`). One *Test* button per forge.
 4. **Pick your repositories** — Settings → Repositories, in bulk from the forge or one address at a time.
@@ -86,8 +86,9 @@ what the team is waiting on, a developer at what they pushed. The token's accoun
 forge**; without it — a token that cannot read its own account — the chips do not appear at all, rather
 than sorting on a guessed identity.
 
-- `Fetch new MRs` queries the forge and fills the list (filtered by pattern). An optional **automatic
-  refresh** does it for you (see Settings). Repositories whose **fetch MRs** box is unticked (Settings →
+- `Fetch new MRs` queries the forge and fills the list (filtered by pattern). The **automatic
+  refresh** does it for you (every 5 minutes on a new database — see Settings), and **opening the Reviews tab**
+  runs a discovery by itself when the last one is older than that interval. Repositories whose **fetch MRs** box is unticked (Settings →
   Repositories) are skipped by this search: the merge requests already fetched stay in the queue, only new
   ones stop coming in. Not to be confused with **enabled**, which removes the repository from everywhere.
 - `Review N MRs` runs the AI review over the whole queue; past 5, a confirmation reminds you that each MR
@@ -121,7 +122,9 @@ than sorting on a guessed identity.
   with `Keep`, plus `Keep both`. What you keep is highlighted, so you never have to re-read the
   buttons to know where you stand. No `<<<<<<<` marker is ever left for you to decipher. If
   neither side will do, **`Write it myself`** opens the result of your choices in a free text
-  field: you fix it, and that text is what gets saved.
+  field: you fix it, and that text is what gets saved. Each side shows the date and time of its last commit,
+  a `Fullscreen` view puts the whole file three times side by side, and `Ask the AI` proposes a resolution
+  for every conflict at once, to keep or ignore one by one — see *Git → Merge* below.
   Once everything is resolved, **`Commit`** opens a dialog with the message **already filled in**
   (`Merge branch 'x' into y`, plus the list of files that were in conflict) — you read it and
   confirm. Then **`Push`**, after a confirmation, sends the merge to the destination branch. The
@@ -170,6 +173,13 @@ than sorting on a guessed identity.
   the refusal shows on the project's line. Checked, it is `--force-with-lease` — never `--force`:
   a commit pushed to the branch since the last fetch makes the push **fail** instead of
   disappearing. A teammate's work is never silently erased.
+  The project's line also carries the same **“in conflict”** tag as the merge request queue, next to `Update
+  with main`, when the forge has actually flagged a conflict — the button offered the fix, nothing said why it
+  was there —, and the tag and the button **leave with the conflict**: a successful catch-up clears them, no
+  push needed. The catch-up runs in the background, and a **toast follows it to its end**, success or failure,
+  saying that a force push is next. Every remedy button of a failed project (“Catch up with the base and
+  retry”, “Resolve the conflict”, “Start from a fresh agent session”, “Re-clone the repository”) **explains
+  itself on hover**.
 - **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
   want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
   **new** session for that; from the session that produced the branch, what you want is a
@@ -277,16 +287,18 @@ than sorting on a guessed identity.
   really happens the MR leaves the queue (marked done). Also available in the decision panel of
   `View diff`, which is precisely where triviality is judged.
 - `Dismiss without review` takes an MR out of the queue, with a few seconds to **undo**.
-- Reviews stack up in a **sequential queue**; a **live log panel** shows the commands, the output and the
-  progress, with a **Stop** button (which also empties the queue — the confirmation says so), a **stopwatch**
-  since the start and, once a rhythm is established, an **estimate of the time left** (it goes quiet rather
-  than lie when the pace drifts).
-- **See the queue and run jobs in parallel.** The log panel lists what is waiting and offers to **promote a
-  job to run alongside** the current one (up to **3 at a time**) when it touches **no repository or folder**
-  in common with what is already running — a collision is refused, not arbitrated: two agents in the same
-  clone would corrupt it. Each promoted job gets **its own tab** in the panel, with **its own Stop button**;
-  the tab stays after the job ends, so you can re-read the output. An **interrupted** job can be **re-run**
-  from the queue.
+- Jobs on the **same repository run one after the other**, in the order they were asked; a **live log panel**
+  shows the commands, the output and the progress, with a **Stop** button (which also empties the queue — the
+  confirmation says so), a **stopwatch** since the start and, once a rhythm is established, an **estimate of
+  the time left** (it goes quiet rather than lie when the pace drifts).
+- **Jobs on different repositories run in parallel by themselves** (up to **3 at a time**): a review on
+  repository A no longer waits for a session on repository B. Two jobs that touch **a repository or a folder
+  in common** keep their order — a collision is refused, not arbitrated: two agents in the same clone would
+  corrupt it —, a job whose scope is unknown waits for everything, and jobs launched by hand pass before
+  automatic ones. The log panel lists what is waiting and still lets you **promote a job to run alongside**
+  by hand when it is eligible. Each job running alongside gets **its own tab** in the panel, with **its own
+  Stop button**; the tab stays after the job ends, so you can re-read the output. An **interrupted** job can
+  be **re-run** from the queue.
 - **Edit your own comment.** A comment posted from Mergerie — **inline** in the explorer or **general** on
   the MR — can be **rewritten** without going through the forge. Yours only: a colleague's are read-only.
 - **Full or incremental re-review.** `Re-run the review` does a **full** review (the whole diff). When the
@@ -539,10 +551,15 @@ itself for the one you are creating — but the sequence does not change: **wher
 their branches, or the root folder and its projects — the “the AI edits in place, no commit” warning
 follows *that* choice, not the bottom of the form), **what** (the Jira ticket that fills the prompt,
 the prompt, the attachments, then the label — optional, so after what it summarises), **how the AI
-works** (questions, resuming an agent session) and finally **once the code is written** (commit
+works** (questions, the binary, when to launch) and finally **once the code is written** (commit
 message, auto-push, verifier) — last because it is chronologically last, and it disappears whole as
 soon as there is nothing to commit. Two discreet captions separate the last three groups; a **free
-question** shows none of them, it only has the request.
+question** shows none of them, it only has the request. **“The AI may ask me questions when unsure” stays in
+plain sight**, above “Launch later, on”, in the coding, exploration and out-of-repo forms alike: whether the AI
+may stop and ask is a decision you take for each session, not a setting to go looking for. The **Advanced**
+accordion (commit message, agent session to resume, skills, read-only linked projects) opens **folded** so the
+form fits the screen; one click unfolds it, and editing a session unfolds it by itself when one of its fields
+holds a value.
 
 **A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one
@@ -635,6 +652,17 @@ free question — and sessions opened from a merge request carry the same two bu
 **`Create and run`** (the main gesture, one click) and **`Create without running`** next to it, to
 prepare the prompt and the targets and launch when you want.
 
+**Or at a date and time.** The same modal — coding, exploration and out-of-repo alike — carries a **“Launch
+later, on”** field: a date and a time side by side, each with its native picker (a calendar, a clock), both
+typeable by hand; filling only one of the two is signalled under the missing one, like a passed date. Filled,
+the primary button reads **`Create and schedule`**: the session is created and waits, its card shows the date
+with a cross to cancel it, and editing the session shows and saves the date with the rest. A waiting
+follow-up can be scheduled the same way (**“Or send it on…”**): it then goes out by itself at that moment,
+whether or not “automatically at the end” is ticked — a follow-up has one trigger, never two. Launching a
+session by hand cancels its date, a date already past is refused, and the date belongs to **the workstation
+that set it**: that one launches, and catches up at the next minute if it was switched off at the time. Free
+questions are not schedulable.
+
 **Verify afterwards, without thinking about it.** An optional **`Verify afterwards`** field when
 creating a coding session: the chosen verifier runs **by itself, once, at the end** — after
 convergence if you converge, after the coding run otherwise. You launch the session in the morning
@@ -666,7 +694,8 @@ ignore the first. It is also what makes **“Resume in terminal”** open the co
 not as it was three follow-ups ago.
 
 **Enrich from a Jira ticket (optional).** If Jira is configured (Settings → Jira), the dialog offers a
-**ticket number** field with a **Fetch** button: the ticket's **title + description** are pulled through the
+**ticket** field — type a key, or a few letters and pick one of **your tickets** in the list it opens: picking
+one fills the key and fetches the ticket — with a **Fetch** button: the ticket's **title + description** are pulled through the
 Jira API and **added at the top of the prompt** as a context block — visible and **editable** before you
 launch. The number is **pre-filled** if the working branch already contains a key (e.g.
 `feature/PROJ-1234-…`). Available for coding **and** exploration.
@@ -697,7 +726,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   (“use AbortController here instead” means nothing elsewhere), and sending it to the whole session costs
   one AI call per repository to redo work that was already fine. The button on the card itself still
   addresses everyone. An **exploration** answers as a single whole: it does not narrow down to one
-  repository.
+  repository. The button also shows up on a project that **stopped without coding**, as long as its AI session
+  is still alive — an AI that pauses to ask “should I continue?” in plain text has committed nothing, and that
+  button is the one that answers it. Its label carries the **count of follow-ups already sent** — “Send a
+  follow-up (2)” — on every session, question and off-repo card.
   When coding ends, **`AI output`** shows what the agent says it did (like an exploration's answer) — useful
   to understand its work, or **when nothing changed**: if the prompt was incomplete and the AI **answered
   instead of coding** (e.g. “give me the file name”), its answer is **surfaced directly** in the project's
@@ -719,7 +751,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **launched afterwards** takes it back. What has finished since your last visit is marked, and the count
   appears on the button. Desktop notifications did not answer that question: they only live in the server's
   memory and are deliberately not replayed on load — so anything that finished with the tab closed existed
-  nowhere.
+  nowhere. The footer's **journal button** says what is behind it even when the panel is hidden: **amber and
+  pulsing** while a job still runs, green once done, red on a failure — hiding the panel (or its own
+  auto-collapse a few seconds after a job ends) no longer leaves it looking the same whether the job is still
+  working or long finished.
 - **The project list opens folded.** Past a few repositories, a session filled the whole screen and hid the
   others — which are exactly what you came to look at. A “Show the N projects” unfolds it, and the state is
   **remembered per session**: otherwise the automatic refresh would close it again every second and a half
@@ -759,7 +794,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   of the column therefore searches those requests and **hides** the iterations that do not match, losing
   none of them — and the filter survives switching iterations. Re-reading an answer without knowing which
   request it answered teaches nothing: the two are therefore shown together. A single iteration shows no
-  column — there is nothing to pick. Applies to **out-of-repo coding** too, folder by folder.
+  column — there is nothing to pick. Applies to **out-of-repo coding** too, folder by folder. Each iteration shows its **token count**, and the
+  column's heading adds up the tokens of every iteration listed below it. A follow-up can be **written and sent
+  right there**, from inside *AI output* — no need to close the view, find the card again and reopen its form.
   **Pin and name.** Past a few passes, neither the number nor the date says what happened in
   them. Every iteration therefore carries two gestures: a **tag** that lifts it to the **top of
   the column** (the number stays visible, so the chronology still reads), and a **name** typed in
@@ -805,7 +842,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude
   `--resume <id>`, copilot `COPILOT_HOME=… --continue`). You pick the AI's conversation up yourself, with
   all its context, where the app left it.
-- **🙋 The AI can ask you a question.** A **per-session** option (checkbox, off by default): if the AI hits a
+- **🙋 The AI can ask you a question.** A **per-session** checkbox — “The AI may ask me questions when unsure”,
+  in plain sight above “Launch later, on”, never inside *Advanced*; ticked by default on a new session, a habit
+  set once in Settings → General: if the AI hits a
   structural decision it cannot settle (an architecture choice, an ambiguity, a clash of conventions), it
   **stops and asks you** instead of guessing. The session goes **into waiting** (the queue frees up, a
   notification warns you); you answer from the card — **offered choices or free text** — and the AI
@@ -1128,6 +1167,9 @@ renderer as the review reports, hence the same escaping).
   whose colours are baked into the SVG. A diagram that **does not compile keeps its source on screen**,
   with the error above it: a typo does not take the page down.
 - **Pin** keeps a page at the top of the list.
+- **Full screen.** A button next to *Rendered / Two columns / Markdown* drops the page list and expands the
+  editor to the whole window; the three view buttons stay, so the display can still be switched while reading.
+  Escape, or the same button, returns to the two-column layout.
 - **Export** downloads the page as `.md`, under a name **slugified** from the title. ⚠ Screenshots are
   referenced by their **address inside Mergerie**: the `.md` read elsewhere will show the text, not the
   images.
@@ -1372,8 +1414,8 @@ Operations across **several repositories at once**, and branch exploration.
   review, a coding session or a verification running alongside must not find the repository half-merged. A
   merge **can be resumed** after the tool restarts.
   - **Conflicts are resolved on screen, one at a time.** For each conflict: the **destination's version**
-    and the **incoming version**, one under the other, with `Keep` on each and `Keep both, in this order`
-    below them; the side you keep is highlighted, so you can see where you stand without re-reading the
+    and the **incoming version**, one under the other, with `Keep` on each and `Keep both: <destination> then <source>` — the button names the two
+    branches and the order it applies them in — below them; the side you keep is highlighted, so you can see where you stand without re-reading the
     buttons. **You never see a `<<<<<<<` marker.** When neither side fits, `Write it myself` hands you the
     **result of your choices** in a plain text field and saves what you write.
   - **Then two separate gestures, in that order.** `Commit` — the message is already filled in with the one
@@ -1383,6 +1425,26 @@ Operations across **several repositories at once**, and branch exploration.
   - When the two branches **share no common ancestor**, the tool explains what that means and offers to go
     ahead anyway (`--allow-unrelated-histories`), instead of passing on git's bare
     `fatal: refusing to merge unrelated histories`.
+  - **Each side says when it was last touched.** Above each version, the date **and time** of the last
+    commit on that branch: picking the more recent one no longer means guessing, even when both were
+    made the same day.
+  - **`Fullscreen`** shows the whole file **three times side by side** — destination, the current result
+    in the middle, source — instead of three lines of context per conflict. Clicking a passage on either
+    side still keeps it, and the choice carries back to the normal view on close; `Keep both` and manual
+    editing stay in the normal view. **Previous / next conflict** arrows jump straight to the next one,
+    with a **“Conflict N of M”** counter; on a file with a single conflict, or at either end, they re-center
+    and re-mark it rather than looking broken. Each column can be **hidden and shown back** on its own —
+    the others share the freed-up width, and one always stays visible.
+  - **`Ask the AI`** proposes a resolution for **every conflict of every file in one go** — one button on
+    the conflict screen, not one per file: the whole merge goes to the agent as a single background job,
+    so it sees every conflicted file together before proposing anything (a fix that only makes sense
+    read alongside a change in another file is not lost by asking file by file). The button asks for
+    confirmation first: the content of every conflicted file leaves for the agent. Each proposal then
+    shows up as a **third version** next to “ours” and “theirs”, with its own `Keep` — **nothing is
+    applied on its own**, and a conflict the agent skipped simply shows no third version rather than a
+    guess. `See reason` unfolds the agent's short explanation for that conflict. Proposals are kept with
+    the merge, so reopening a file does not lose them. In fullscreen, a **fourth column** carries the
+    proposal and its reason on a file that has one; clicking it selects it, like a passage on either side.
 - **Navigate** — checks out **several projects on your machine** (not the tool's clones: your own
   repositories) on the branch of your choice, in one gesture. You pick a **local directory** — a folder
   holding one subfolder per git project, declared in *Settings → Repositories* — then, row by row, a
@@ -1412,7 +1474,8 @@ Operations across **several repositories at once**, and branch exploration.
   opens that job **with the branch already filled in**. The button existed only on a merge request verified
   green: a branch you want to deploy to staging *before* turning it into a merge request had no right to
   it. The sheet opens, never a run. The row finally takes a **todo** (“rebase before Monday”), which knows
-  how to bring you back. You can also **explore several repositories at once** (each result in a collapsible
+  how to bring you back. The repository picker carries **`Check all` / `Uncheck all`** with a running count of
+  what is ticked, as *Git commands* already did. You can also **explore several repositories at once** (each result in a collapsible
   block, **folded** and marked with a chevron that rotates — repositories are analysed **one after
   another**, and each block says where it stands (*waiting*, then *analysing* with its spinner, then its
   branch count). A clone can take a minute: the button spins meanwhile, and a repository that fails
@@ -2036,6 +2099,12 @@ attached to **the session that spent it**, which is also what makes this ranking
 repository**: that is the raw material of a review rule, and `Make it a rule` opens the form pre-filled —
 the `path_match` derived from the files involved, the finding as the content.
 
+**The same findings, across repositories.** The card above only compares a finding with merge requests of the
+*same* repository, so a finding raised twice on one and once on another never reached its three anywhere.
+This twin catches exactly that case — three merge requests, at least two repositories — and proposes a rule
+scoped to **no repository and no path** (a `**` trigger: two unrelated repositories share no path prefix worth
+deducing).
+
 **Every number is a door.** Clicking “worst 5.5” or “pending 3” opens Reviews filtered on that repository,
 at the right stage — instead of leaving you to find by hand what the figure points at.
 
@@ -2132,7 +2201,9 @@ tool, the optional integrations, the test bench:
 commands* tab: add/edit/delete commands as *name + fixed command*). It comes **first**, and it is the one
 that opens on a fresh install: without a token no other setting is worth anything ·
 **Repositories**
-(added one by one or in bulk **from GitLab** or **from GitHub** — each repository carries a forge badge, and
+(added one by one or in bulk **from GitLab** or **from GitHub** — a pasted address is assigned to its forge by
+**its host**, compared with the hosts configured above first, so a GitHub Enterprise on a name without “github”
+in it lands on the right side; each repository carries a forge badge, and
 the same path can exist on both; without a token for that forge, the bulk-add window says so and points
 to the field to fill —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
@@ -2144,7 +2215,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
@@ -2158,7 +2229,10 @@ field selected: renaming is the first gesture; the form **suggests the commands 
 already declare** — `package.json` scripts (with `npm`, `pnpm` or `yarn` after the lockfile), `composer.json`
 scripts and `phpunit`, Makefile targets, `pytest` / `tox` / `ruff`, `go build|vet|test ./...`,
 `cargo build|test|clippy`, `mvn`/`./mvnw -B test`, `gradle`/`./gradlew test`, `dotnet test`, read from the clone
-on disk, **nothing is executed** — to add in one click) ·
+on disk, **nothing is executed** — to add in one click; when a compose file is in the clone, the
+**`docker compose run --rm <service> <command>`** variant of every test command is offered too: the commands run
+**on the host**, and it is in the line that you say to enter a container; every suggestion is an **exact line**,
+the one that will be approved as is) ·
 **Notifications** (a dedicated sub-tab, see below) ·
 **General** (with its own **Save** button — the fields of every sub-tab belong to the same form,
 and this one had none: you ticked a box and nothing left; the **four boxes ticked by default** on a new session — auto-push, AI questions, tell Jira, converge afterwards: these are working habits, set once instead of starting unticked at every opening; light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
@@ -2174,7 +2248,7 @@ without the usual confirmation) ·
 instructions**, see below, the daily limits, secure or yolo mode, and a technical test: two passes inside the
 same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
-context continuity between review, fixes and convergence). And when a compose file is in the clone, the **`docker compose run --rm <service> <command>`** variant of every test command: the commands run **on the host**, and it is in the line that you say to enter a container. Every suggestion is an **exact line**, the one that will be approved as is.
+context continuity between review, fixes and convergence).
 
 The first three are what you fill in to get started; **Rules** and **Verifiers** complete the review; the
 rest is tuned when the need arises. The **last sub-tab you visited is remembered** — you come back to
@@ -2243,9 +2317,9 @@ else**: no search, no dialog, no open report, because a stale state is worse tha
 **keyboard shortcuts** (`1`-`9` then `0` for the ten tabs, `/` search, `n` new todo, `r` fetch MRs, `l` logs, `?` help, `Esc` closes) · a
 **dynamic favicon** during a job · error messages **translated into actions** (certificate, token, CLI not
 found, timeout, network — including **“Mergerie is not responding”** with a *Try again* button when the
-server is down) · a **3-step onboarding** as long as the connection and the repositories are not
-configured, **with the steps ticked off as you go**, and as long as nothing is configured that is the
-screen the app opens on (the morning brief takes over from the next day) · every form field carries an
+server is down) · a **five-step start-up assistant** (agent, forge — GitLab or GitHub —, repositories, what your
+team uses, first fetch) as long as the connection and the repositories are not configured, **with the steps
+ticked off as you go**, and as long as nothing is configured that is the screen the app opens on (the morning brief takes over from the next day) · every form field carries an
 **i icon** whose hover (or keyboard focus) explains what it is for · **no counter is shown before its
 data**: a skeleton while it loads, never a “0” that would read as “nothing to review”.
 
@@ -2267,7 +2341,10 @@ data**: a skeleton while it loads, never a “0” that would read as “nothing
   original one; offering a screen whose menu entry has gone would be a one-way ticket. The
   **feature itself stays**: nothing is disabled, only filed away. ⚠ **Settings cannot be hidden**
   (it is the way back), and the arrangement is remembered **in this browser**, like the theme —
-  not in the database.
+  not in the database. **The folded menus are also found by use**: a door to one of them — “Resolve in
+  Git → Merge” on a conflicting merge request, “See the logs” from the brief, a Jenkins job from a card,
+  “this repository has a compose file: show Docker” on a repository's row — unfolds the menu for good, as if
+  the box had been ticked. The Jenkins sub-tab of Settings follows its menu.
 - **Command palette — `Ctrl`/`Cmd` + `K`.** You type a fragment and jump wherever you want: a tab, a stage,
   a merge request, a session — the search covers what is already loaded, so it answers without calling the
   server. `?` shows the full list of shortcuts.
@@ -2655,12 +2732,13 @@ is read back wherever the command is run from: it looks for `claude` then `copil
 **short** (a dozen lines), written once, mode `600`, never rewritten afterwards, and the command
 says what it created. `npx mergerie demo` writes none: it promises to leave nothing behind.
 
-**The agent is also set on screen, without a restart** — Settings → AI session: the binary, its base
-arguments, the timeout of one call, and a **Test the agent** button (one real, short, read-only call
-whose expected answer is “OK”). What is filled in there wins over the `.env`. No agent found? A
-banner says so at the top of the screen, with the path looked for and the install commands, and
+**The agent is also set on screen, without a restart** — Settings → AI session → **Agent binaries**: the
+default line carries the binary, its base arguments, the timeout of one call, and a **Test** button (one
+real, short, read-only call whose expected answer is “OK”); the other lines are the alternatives a session
+can pick, see *Several binaries, one default* below. What is filled in there wins over the `.env`. No agent
+found? A banner says so at the top of the screen, with the path looked for and the install commands, and
 “Retry” redoes the detection without restarting the server — until then reports are **simulated**
-and say so. What the agent is allowed to do is no longer set in the `.env`: see *Agent sandbox* in
+and say so. What the agent is allowed to do is no longer set in the `.env`: see *Secured or yolo* in
 the same sub-tab, and the Security section.
 
 **Four backends, and a guarantee level said in plain words.** Claude Code and Copilot CLI are
@@ -2721,8 +2799,9 @@ with any change of binary. This workstation only, never shared: these are paths 
 secrets — on a teammate's workstation, the card of a shared session says the **name** of the chosen binary,
 and rerunning it uses their own default.
 
-The AI agent must be able to **modify files** (“yolo” mode) for the coding sessions. Explorations, on the
-other hand, are read-only: the repositories are reset after each pass.
+Coding sessions **write in the clone**: in **secured** mode the CLI's sandbox (once proven) or a command allowlist
+bounds them, in **yolo** nothing from the launcher does — see *Secured or yolo* in the Security section.
+Explorations, on the other hand, are read-only: the repositories are reset after each pass.
 
 ## Self-hosted GitLab / GitHub Enterprise / internal Jenkins / corporate certificate
 
@@ -3004,7 +3083,8 @@ workstation*) applies `--filter=blob:none` to the **next** clones: the whole his
 demand — off by default, because an agent that reads many files pays a round trip for each content. And
 **the gauge**: Settings → General → “Measure disk usage” says what the database, the clones, the reports,
 the sessions, the verification worktrees, the tickets, the notes, the data repository and the temporary
-folder weigh; “Clean up now” runs the daily pass right away and says what left.
+folder weigh; “Clean up now” runs the daily pass right away — behind a confirmation, since what it deletes
+(old job logs, slimmed merge requests, compacted clones) does not come back — and says what left.
 
 To run tests without touching your database: `MERGERIE_DATA_DIR=/tmp/my-test npm start`.
 
@@ -3100,9 +3180,8 @@ made on screen:
 
 **Copilot CLI knows `--allow-tool`/`--deny-tool`** when the installed binary offers them (probed once via
 `--help`): when writing, `git push`/`curl`/`wget`/`ssh`/`scp` are refused on that basis; when reading,
-`write` and `shell(*)` are. An older binary that does not know them REFUSES reading rather than let it look
-restricted when it is not (`agent_read_unrestricted=1` is the accepted escape hatch, never the default);
-when writing it plainly logs the lack of restriction. **A limit to keep in mind**: an agent that writes code
+`write` and `shell(*)` are. An older binary that does not know them is no longer refused: the run goes at
+the **lightened** level, reading as writing, and the journal says so on its first line. **A limit to keep in mind**: an agent that writes code
 can write code that leaks; what bounds the damage is what it no longer has at hand.
 
 **Text from elsewhere is data, and is said to be.** MR title and description, Jira ticket, previous
