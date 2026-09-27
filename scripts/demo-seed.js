@@ -922,6 +922,14 @@ if (someMr) {
   db.prepare('INSERT INTO comment_log (mr_id, body, sent_at) VALUES (?, ?, ?)').run(someMr.id, 'Bien vu pour la validation MIME.', at(2));
 }
 
+/* LE DIFF DE CHAQUE REVIEW APPARTIENT À SA DERNIÈRE VERSION (`diff_version_uid`). Sans ce
+   rattachement, la relecture des données partagées au démarrage — celle qui suit une montée de
+   version — jetterait le diff de toutes les reviews, et la démo n'a pas de clone pour le
+   recalculer : plus de diff, plus de remarques posées dessus. */
+db.prepare(`UPDATE review SET diff_version_uid = (
+  SELECT uid FROM review_version WHERE review_version.mr_id = review.mr_id ORDER BY uid DESC LIMIT 1
+) WHERE diff_path IS NOT NULL AND diff_path != ''`).run();
+
 /* ---------- commentaires EN ATTENTE (mr_comment_draft) ----------
    Le geste qu'on veut montrer : on annote plusieurs endroits d'un diff sans rien publier, puis
    on envoie tout d'un coup. Sans brouillon semé, l'écran ne montre qu'un bouton grisé et la

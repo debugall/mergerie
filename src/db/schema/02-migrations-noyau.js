@@ -33,6 +33,12 @@ try { db.exec('ALTER TABLE mr ADD COLUMN merged_at TEXT'); } catch { /* déjà p
 try { db.exec('ALTER TABLE mr ADD COLUMN author TEXT'); } catch { /* déjà présente */ }
 // Migration : chemin du diff sauvegardé (pour la vue rapport + diff).
 try { db.exec('ALTER TABLE review ADD COLUMN diff_path TEXT'); } catch { /* déjà présente */ }
+/* Migration : À QUELLE VERSION DU RAPPORT CE DIFF APPARTIENT (l'uid de `review_version`). Le
+   diff est local et ne voyage pas ; à la relecture des données partagées, c'est cette colonne
+   qui dit s'il correspond encore au rapport courant (on le garde) ou si une version plus
+   récente est arrivée d'un collègue (on l'oublie). Les chemins de fichiers ne le disent pas :
+   l'hydratation réécrit celui de chaque version. */
+try { db.exec('ALTER TABLE review ADD COLUMN diff_version_uid TEXT'); } catch { /* déjà présente */ }
 // Migration : note globale numérique (0..1) pour le dashboard.
 try { db.exec('ALTER TABLE review ADD COLUMN note_value REAL'); } catch { /* déjà présente */ }
 /* Migration : quand le rapport a été publié en commentaire sur la merge request. Une trace,

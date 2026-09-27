@@ -154,6 +154,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **Journal lines shown twice.** Two overlapping polls of the journal could read the same cursor before
   either advanced it and append every line twice; a single poll runs at a time now.
+- **A review's stored diff survives a re-read of the shared data.** Re-reading the shared format
+  (after a version upgrade, or a sync that only brought new report versions) reset the local diff
+  of every review; the screen then recomputed it from the clone, and the demo, which has no clone,
+  showed an empty diff and lost the remarks placed on it. The diff now stays as long as the review
+  still points at the same report version.
 - **Journal stuck on “done” after re-reading a past job.** Reopening a past job's log from Activity
   pins the view; a job launched afterwards (approving a plan, a rerun…) then wrote into a hidden pane
   and the banner never said “in progress” until the page was reloaded. A new job now takes the view.

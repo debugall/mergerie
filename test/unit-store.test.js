@@ -330,6 +330,38 @@ describe('store — l’aller-retour par les fichiers', () => {
     assert.equal(fs.readFileSync(rev.md_path, 'utf8'), 'le rapport');
   });
 
+  test('la relecture garde le diff local de la review tant que sa version n’a pas changé', () => {
+    /* LE DIFF NE VOYAGE PAS PLUS QUE LE RAPPORT, mais lui ne se recalcule pas d'un fichier reçu :
+       c'est git qui l'a rendu au moment de la passe. La reprise le mettait à zéro sur TOUTES les
+       reviews à chaque relecture du format — au démarrage suivant une montée de version, la démo
+       perdait son diff et les remarques posées dessus. */
+    const repo = db.prepare("INSERT INTO repo (forge, project, url) VALUES ('gitlab', 'eq/diff', 'u')").run();
+    const mrId = db.prepare('INSERT INTO mr (repo_id, iid, status) VALUES (?, 9, ?)').run(repo.lastInsertRowid, 'reviewed').lastInsertRowid;
+    const rapport = ecrireRapport('rapport v1');
+    db.prepare(`INSERT INTO review_version (mr_id, version, md_path, kind, created_at)
+      VALUES (?, 1, ?, 'review', ?)`).run(mrId, rapport, new Date().toISOString());
+    const uidV1 = db.prepare('SELECT uid FROM review_version WHERE mr_id = ?').get(mrId).uid;
+    db.prepare('INSERT INTO review (mr_id, md_path, diff_path, diff_version_uid, created_at, updated_at) VALUES (?,?,?,?,?,?)')
+      .run(mrId, rapport, '/tmp/le-diff-local.patch', uidV1, new Date().toISOString(), new Date().toISOString());
+    const revId = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mrId).id;
+    store.rafraichir('review', revId);
+    store.rafraichir('review_version', db.prepare('SELECT id FROM review_version WHERE mr_id = ?').get(mrId).id);
+    // Même version relue (montée de version, synchro sans nouveauté) : le diff reste — même si
+    // la relecture de la VERSION a réécrit son chemin de rapport, ce qu'elle fait toujours.
+    store.hydraterFichiers(['reviews/gitlab/eq/diff/9/review.json', `reviews/gitlab/eq/diff/9/${uidV1}.md`]);
+    assert.equal(db.prepare('SELECT diff_path FROM review WHERE id = ?').get(revId).diff_path, '/tmp/le-diff-local.patch');
+    // Une version PLUS RÉCENTE arrive : le diff d'avant ne correspond plus au rapport, il tombe.
+    db.prepare(`INSERT INTO review_version (mr_id, version, md_path, kind, created_at)
+      VALUES (?, 2, ?, 'review', ?)`).run(mrId, ecrireRapport('rapport v2'), new Date().toISOString());
+    const uidV2 = db.prepare('SELECT uid FROM review_version WHERE mr_id = ? AND version = 2').get(mrId).uid;
+    store.rafraichir('review_version', db.prepare('SELECT id FROM review_version WHERE mr_id = ? AND version = 2').get(mrId).id);
+    store.hydraterFichiers([`reviews/gitlab/eq/diff/9/${uidV2}.md`]);
+    const apres = db.prepare('SELECT md_path, diff_path, diff_version_uid FROM review WHERE id = ?').get(revId);
+    assert.equal(fs.readFileSync(apres.md_path, 'utf8'), 'rapport v2');
+    assert.equal(apres.diff_path, null);
+    assert.equal(apres.diff_version_uid, null);
+  });
+
   test('un fichier disparu supprime sa ligne', () => {
     const ephemere = notes.creerPage({ title: 'Éphémère', content: 'x' }, MSGS);
     notes.majPage(ephemere.id, { shared: 1 }, MSGS);

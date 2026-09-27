@@ -397,20 +397,22 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
   const note = extractNote(reviewContent);
   const noteValue = note ? note.value : null;
 
-  db.prepare(`INSERT INTO review_version
+  const versionId = db.prepare(`INSERT INTO review_version
     (mr_id, version, md_path, explanation_path, note_value, reviewed_sha, kind, created_at, instruction, compromised, compromised_detail)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
     .run(mr.id, version, mdPath, explPath, noteValue, mr.current_sha || null, kind || 'review', now,
-      instruction ? String(instruction) : null, compromised ? 1 : 0, compromisedDetail || null);
+      instruction ? String(instruction) : null, compromised ? 1 : 0, compromisedDetail || null).lastInsertRowid;
+  // L'uid est posé par le déclencheur d'identité : c'est lui qui rattache le diff local à SA version.
+  const versionUid = (db.prepare('SELECT uid FROM review_version WHERE id = ?').get(versionId) || {}).uid || null;
 
   if (!compromised) {
     const existing = db.prepare('SELECT id FROM review WHERE mr_id = ?').get(mr.id);
     if (existing) {
-      db.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, note_value = ?, updated_at = ? WHERE mr_id = ?')
-        .run(mdPath, explPath, diffStorePath, noteValue, now, mr.id);
+      db.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, diff_version_uid = ?, note_value = ?, updated_at = ? WHERE mr_id = ?')
+        .run(mdPath, explPath, diffStorePath, versionUid, noteValue, now, mr.id);
     } else {
-      db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?)')
-        .run(mr.id, mdPath, explPath, diffStorePath, noteValue, now, now);
+      db.prepare('INSERT INTO review (mr_id, md_path, explanation_path, diff_path, diff_version_uid, note_value, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)')
+        .run(mr.id, mdPath, explPath, diffStorePath, versionUid, noteValue, now, now);
     }
   }
   return { version, mdPath, explPath, noteValue, now };

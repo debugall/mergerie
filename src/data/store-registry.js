@@ -84,13 +84,24 @@ const extensionDe = (chemin) => {
    tables que la passe a touchées. Un collègue qui pousse une NOUVELLE passe de review ne modifie
    que les fichiers de `review_version` ; sans cette reprise-là, le pointeur resterait sur la
    passe précédente et l'écran montrerait un rapport périmé — ou rien, si c'est la première. */
+/* LE DIFF DE LA REVIEW EST LOCAL LUI AUSSI, et il ne se recalcule pas d'un fichier : c'est ce
+   que git a rendu au moment de la passe. On le GARDE tant que la version courante est celle à
+   laquelle il appartient (`diff_version_uid`, posé par la passe) ; il ne tombe que si une
+   version plus récente est arrivée — le diff d'avant ne correspondrait plus au rapport. Le
+   mettre à zéro à chaque relecture — ce que faisait la première version de cette reprise —
+   vidait le diff de TOUTES les reviews au démarrage suivant une montée de version : l'écran le
+   recalculait depuis le clone quand il y en avait un, et en démo, sans clone, le diff et les
+   remarques posées dessus disparaissaient. Les chemins ne peuvent pas servir de repère : celui
+   d'une version est réécrit à chaque hydratation. */
 function recalculerCheminsReview(db2) {
-  const maj = db2.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ? WHERE id = ?');
-  for (const r of db2.prepare('SELECT id, mr_id FROM review').all()) {
+  const maj = db2.prepare('UPDATE review SET md_path = ?, explanation_path = ?, diff_path = ?, diff_version_uid = ? WHERE id = ?');
+  for (const r of db2.prepare('SELECT id, mr_id, diff_path, diff_version_uid FROM review').all()) {
     const v = db2.prepare(
-      'SELECT md_path, explanation_path FROM review_version WHERE mr_id = ? ORDER BY uid DESC LIMIT 1',
+      'SELECT uid, md_path, explanation_path FROM review_version WHERE mr_id = ? ORDER BY uid DESC LIMIT 1',
     ).get(r.mr_id);
-    if (v) maj.run(v.md_path || '', v.explanation_path || null, null, r.id);
+    if (!v) continue;
+    const garde = !!(r.diff_version_uid && r.diff_version_uid === v.uid && r.diff_path);
+    maj.run(v.md_path || '', v.explanation_path || null, garde ? r.diff_path : null, garde ? r.diff_version_uid : null, r.id);
   }
 }
 
@@ -356,7 +367,7 @@ const REGISTRE = [
        Deux postes qui reviewent la même MR en créent chacun une — c'est le même objet. */
     table: 'review', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['mr_id'],
     chemin: 'reviews/{forge}/{project}/{iid}/review.json',
-    fusion: 'last-writer', locales: ['md_path', 'explanation_path', 'diff_path'],
+    fusion: 'last-writer', locales: ['md_path', 'explanation_path', 'diff_path', 'diff_version_uid'],
     porteeRepo: 'chemin',
     // Le fichier est nommé par sa merge request : c'est par elle qu'on retrouve la review retirée.
     ligneDuChemin: (db, v) => db.prepare(`SELECT review.rowid AS r, review.* FROM review
@@ -387,7 +398,10 @@ const REGISTRE = [
       mr_id: ctx.mrId(doc.mr),
       note_value: doc.note_value == null ? null : doc.note_value,
       comment_posted_at: doc.comment_posted_at || null,
-      md_path: '',
+      /* PAS de `md_path: ''` ici : sur une ligne déjà connue, ce vide écrasait le pointeur local
+         avant même que `recalculerCheminsReview` ne le repose — et lui ôtait le moyen de savoir
+         si la version courante est toujours celle du diff local. Une ligne nouvelle naît sans
+         chemin ; la reprise les pose tous. */
       created_at: doc.created_at,
       updated_at: doc.updated_at,
     }),
