@@ -88,7 +88,7 @@ describe('Rattraper la branche de départ', () => {
   const nbJobsTask = () => app.db.prepare("SELECT COUNT(*) n FROM job WHERE kind = 'task'").get().n;
   const clone = () => {
     const repo = app.db.prepare('SELECT * FROM repo WHERE id = ?').get(repoId);
-    return require('../src/git').cloneDirFor(app.db.prepare('SELECT * FROM config WHERE id = 1').get(), repo);
+    return require('../src/git/git').cloneDirFor(app.db.prepare('SELECT * FROM config WHERE id = 1').get(), repo);
   };
 
   test('les commits de la session repassent AU-DESSUS de la branche de départ', async () => {
@@ -279,6 +279,38 @@ describe('Rattraper la branche de départ', () => {
       const tg = cible(targetId);
       assert.equal(tg.status, 'committed');
       assert.equal(tg.last_error, null, JSON.stringify(tg.last_error));
+      /* LE CONFLIT VENAIT DE LA FORGE, LE RATTRAPAGE EST LOCAL — sans ce reset, le tag « en
+         conflit » et le bouton restaient affichés indéfiniment après un rattrapage réussi,
+         jusqu'au push ET au prochain passage de la découverte. */
+      assert.equal(tg.mr_conflicts, 0, 'le rattrapage vient de résoudre ce que la forge signalait');
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.waitForSelector('#taskList .card');
+      const carte = page.locator(`#taskList .card[data-task="${taskId}"]`);
+      assert.equal(await carte.locator(`[data-tgrebase="${targetId}"]`).count(), 0,
+        'rien à rattraper de plus : le bouton ne se repropose pas tout seul');
+      assert.equal(await carte.locator('.tag.conflict-info').count(), 0,
+        'le tag ne doit pas survivre à son propre remède');
+    });
+
+    /* LE JOB TOURNE EN TÂCHE DE FOND : sans repli, la seule preuve d'un rattrapage réussi
+       était de remarquer, sur une carte qui se redessine toute seule, qu'un bouton avait changé
+       de libellé. Un toast le dit maintenant explicitement — succès compris le geste qui suit
+       (pousser en forçant). Le rattrapage précédent a déjà résolu et remis `mr_conflicts` à 0
+       (test ci-dessus) : on fait à nouveau prendre du retard à la branche, et on refait
+       flaguer un conflit comme la forge le ferait, pour prouver que le toast suit CE job-là. */
+    test('un rattrapage réussi le dit, et qu’il faut maintenant pousser en forçant', async () => {
+      mainAvance('e.txt', 'ui, encore\n', 'main avance encore pour l’écran');
+      app.db.prepare('UPDATE task_target SET mr_conflicts = 1 WHERE id = ?').run(targetId);
+      await page.reload();
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator(`#taskList [data-tgrebase="${targetId}"]`).click();
+      await page.locator('#confirmModal:not([hidden])').waitFor();
+      await page.locator('#confirmOk').click();
+      // « réécrit » (l'historique) est le mot distinctif du toast de fin — pas celui de départ.
+      await page.waitForFunction(() => [...document.querySelectorAll('#toasts .toast-msg')]
+        .some((el) => /réécrit/i.test(el.textContent)), null, { timeout: 15000 });
+      assert.equal(cible(targetId).mr_conflicts, 0, 'résolu à nouveau, le drapeau retombe encore');
     });
   });
 
@@ -309,6 +341,23 @@ describe('Rattraper la branche de départ', () => {
     test('conflit avéré : le bouton apparaît', async () => {
       const { targetId } = await sessionPoussee('feature/avec-conflit', { conflits: 1 });
       assert.equal(await boutonPour(targetId), 1);
+    });
+
+    // Le même tag que sur la file des merge requests : un conflit se voit avant de cliquer.
+    test('conflit avéré : le tag « en conflit » apparaît aussi, pas seulement le bouton', async () => {
+      const { taskId, targetId } = await sessionPoussee('feature/avec-conflit-tag', { conflits: 1 });
+      await boutonPour(targetId);
+      const carte = page.locator(`#taskList .card[data-task="${taskId}"]`);
+      await carte.locator('.tag.conflict-info').waitFor();
+      assert.match(await carte.locator('.tag.conflict-info').textContent(), /conflit/i);
+    });
+
+    test('conflit inconnu ou absent : pas de tag « en conflit »', async () => {
+      const { taskId, targetId } = await sessionPoussee('feature/tag-sans-conflit', { conflits: 0 });
+      await boutonPour(targetId);
+      const carte = page.locator(`#taskList .card[data-task="${taskId}"]`);
+      await carte.locator('.target-line').first().waitFor();
+      assert.equal(await carte.locator('.tag.conflict-info').count(), 0);
     });
   });
 

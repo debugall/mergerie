@@ -1,11 +1,13 @@
 {
   "name": "mergerie",
-  "version": "1.7.0",
-  "description": "From prompt to merge — a local AI dev cockpit for GitLab: MR review, autonomous coding sessions and convergence.",
+  "version": "2.0.0",
+  "description": "From prompt to merge — a local AI dev cockpit for GitLab and GitHub: MR/PR review, autonomous coding sessions across many repositories, and convergence.",
   "license": "AGPL-3.0-only",
   "author": "Amady (https://github.com/debugall)",
   "keywords": [
     "gitlab",
+    "github",
+    "pull-request",
     "code-review",
     "merge-request",
     "ai",
@@ -39,16 +41,15 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.js",
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
-    "pipe": "node --env-file-if-exists=.env src/cli.js",
     "test": "node --test test/*.test.js",
     "test:coverage": "node --test --experimental-test-coverage test/*.test.js",
     "i18n:check": "node scripts/i18n-check.js",
     "check:front": "node scripts/check-front.js",
     "check:server": "node scripts/check-server.js",
     "check:docs": "node scripts/check-docs.js",
-    "check": "npm run check:front && npm run check:server && npm run check:docs && npm run i18n:check",
-    "install:whisper": "sh scripts/install-whisper.sh",
-    "bench:dictation": "node scripts/dictation-bench.js",
+    "check:deps": "node scripts/check-deps.js",
+    "check": "npm run check:front && npm run check:server && npm run check:deps && npm run check:docs && npm run check:types && npm run i18n:check",
+    "check:types": "node scripts/check-types.js",
     "demo": "node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 node src/server.js",
     "record:demo": "node scripts/record-demo.js",
     "demo:gif": "sh scripts/demo-gif.sh"
@@ -62,6 +63,8 @@
     "gpt-tokenizer": "^3.4.0"
   },
   "devDependencies": {
-    "playwright": "^1.48.0"
+    "@types/node": "^22.20.4",
+    "playwright": "^1.48.0",
+    "typescript": "^5.9.3"
   }
 }

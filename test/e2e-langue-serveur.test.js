@@ -90,7 +90,7 @@ describe('Le serveur parle la langue choisie', () => {
     await app.api('PUT', '/api/config', { language: 'fr' });
 
     const enTete = async (lang) => {
-      const res = await fetch(`${app.base}/api/tasks/999999`, { headers: { 'X-Mergerie-Lang': lang } });
+      const res = await fetch(`${app.base}/api/tasks/999999`, { headers: { 'X-Mergerie-Lang': lang, Authorization: `Bearer ${app.localToken}` } });
       return (await res.json()).error || '';
     };
     const fr = await enTete('fr');

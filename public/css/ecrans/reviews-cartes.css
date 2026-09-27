@@ -1,0 +1,39 @@
+/* Le champ de recherche garde l'anneau commun. Il était le SEUL à l'annuler, alors qu'il est la
+   cible de `/` et de ⌘K : au clavier, on ne savait pas qu'on y était arrivé. */
+.search:focus { border-color: var(--accent); }
+
+.list { display: flex; flex-direction: column; gap: 8px; padding: 6px 0; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.card { min-width: 0; }
+.card .title { font-weight: 600; }
+.card .meta { color: var(--muted); font-size: 12px; }
+.card .spacer { flex: 1; }
+/* Ligne de MR : contenu à gauche (prend la place), actions groupées à droite qui wrappent
+   proprement en bloc aligné à droite plutôt que de laisser le bouton principal orphelin. */
+.card-main { flex: 1 1 300px; min-width: 0; }
+.card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+/* Groupes d'actions DÉCLARÉS dans le HTML, et non émergeant du flex-wrap : jusqu'ici
+   l'endroit où la rangée se cassait dépendait de la longueur des libellés, donc de la
+   langue — les mêmes boutons ne se regroupaient pas en français et en anglais. Trois
+   intentions, toujours dans cet ordre : consulter, agir, clore.
+   L'écart INTERNE reste à 6 px, l'écart ENTRE groupes passe à 20 px : c'est ce seul
+   contraste qui les fait lire comme des groupes, sans ajouter de trait ni de titre. */
+/* `flex-start` : quand un groupe se replie, sa seconde rangée se collait à droite (le parent
+   est justifié à droite), et le même bouton se retrouvait à 780 px d'écart d'une carte à la
+   suivante. Une colonne d'actions doit rester un rail vertical. */
+.btn-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-start; }
+.card-actions:has(.btn-group), .detail-actions:has(.btn-group) { gap: 20px; }
+/* Tags de la carte : métadonnées, sous l'identité — jamais dans la rangée d'actions,
+   dont le point de départ deviendrait dépendant de leur nombre (R2 de l'étude). */
+.card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.card-tags:empty { display: none; }
+/* La fente du badge « remarques en attente » : le viewer la réécrit quand le lot change. Elle
+   ne doit pas peser dans la rangée — `contents` laisse le badge lui-même être l'élément flex,
+   et une fente vide n'ouvre donc pas un écart de 6 px entre deux tags. */
+.draft-slot { display: contents; }
+/* évite les débordements de texte dans les listes (colonne étroite) */
+.list .card > div:not(.spacer) { min-width: 0; }
+

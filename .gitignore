@@ -1,6 +1,6 @@
 # Dépendances
 node_modules/
-data/
+/data/
 data-demo/
 demo-recordings/
 .env
@@ -14,3 +14,9 @@ social_network
 
 design-review.md
 design-review-captures/
+
+# A database opened by mistake outside data/ (a wrong MERGERIE_DATA_DIR): never versioned, never packed.
+*.db
+*.db-wal
+*.db-shm
+/src/data/shared/

@@ -3,8 +3,8 @@
  *
  * `config` est ce que l'équipe a décidé (gabarits de prompt, seuils, politiques, URL de la
  * forge) : c'est cette table qui partira un jour dans le dépôt de données partagé.
- * `local_config` est ce qui appartient à CETTE machine : les sept jetons d'API, le chemin des
- * clones, la langue, le moteur de dictée.
+ * `local_config` est ce qui appartient à CETTE machine : les six jetons d'API, le chemin des
+ * clones, la langue.
  *
  * Ce que ces tests tiennent, et pourquoi : un jeton resté dans `config` serait poussé sur la
  * forge, et un secret commité dans git est DÉFINITIF — l'historique est immuable, chaque clone
@@ -21,7 +21,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-loca
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const registre = require('../src/store-registry');
+const registre = require('../src/data/store-registry');
 
 const GELEES = registre.localesDe('config').filter((c) => c !== 'id');
 
@@ -30,7 +30,7 @@ describe('local_config — ce qui reste sur ce poste', () => {
 
   before(() => {
     db = require('../src/db');
-    config = require('../src/config');
+    config = require('../src/data/config');
   });
 
   test('la table existe, avec sa ligne unique et les colonnes du registre', () => {
@@ -48,14 +48,14 @@ describe('local_config — ce qui reste sur ce poste', () => {
   test('le chemin de clone par défaut a bien DÉMÉNAGÉ, il n’a pas été perdu', () => {
     // La ligne initiale de `config` naît avec DEFAULT_CLONE_DIR : si le drain se contentait de
     // vider, l'application cloner‍ait dans un chemin vide au premier démarrage.
-    const { DEFAULT_CLONE_DIR } = require('../src/paths');
+    const { DEFAULT_CLONE_DIR } = require('../src/core/paths');
     assert.equal(db.prepare('SELECT clone_path AS p FROM local_config WHERE id = 1').get().p, DEFAULT_CLONE_DIR);
     assert.equal(config.getConfig().clone_path, DEFAULT_CLONE_DIR);
   });
 
   test('getConfig() rend UN objet : le reste de l’application ne voit pas la coupure', () => {
     const cfg = config.getConfig();
-    for (const champ of ['access_token', 'clone_path', 'language', 'dictation_provider']) {
+    for (const champ of ['access_token', 'clone_path', 'language']) {
       assert.ok(champ in cfg, `${champ} (poste) doit rester lisible depuis getConfig()`);
     }
     for (const champ of ['prompt_review', 'gitlab_url', 'converge_threshold', 'brief_on_open']) {
@@ -66,13 +66,12 @@ describe('local_config — ce qui reste sur ce poste', () => {
   test('un jeton enregistré atterrit dans local_config, et JAMAIS dans config', () => {
     config.updateConfig({
       access_token: 'glpat-SECRET', github_token: 'ghp-SECRET', jira_token: 'jira-SECRET',
-      jenkins_token: 'jk-SECRET', dictation_api_key: 'sk-SECRET',
+      jenkins_token: 'jk-SECRET',
       jira_email: 'moi@example.com', jenkins_user: 'moi',
     });
     const c = db.prepare('SELECT * FROM config WHERE id = 1').get();
     const l = db.prepare('SELECT * FROM local_config WHERE id = 1').get();
     assert.equal(l.access_token, 'glpat-SECRET');
-    assert.equal(l.dictation_api_key, 'sk-SECRET');
     assert.equal(config.getConfig().access_token, 'glpat-SECRET');
     const fuites = GELEES.filter((col) => c[col] !== null && c[col] !== undefined && c[col] !== '');
     assert.deepEqual(fuites, [], 'écrire un réglage ne doit jamais re-remplir une colonne gelée');
@@ -93,9 +92,6 @@ describe('local_config — ce qui reste sur ce poste', () => {
     assert.equal(config.destinationDe('clone_path'), 'poste');
     assert.equal(config.destinationDe('prompt_review'), 'equipe');
     assert.equal(config.destinationDe('gitlab_url'), 'equipe');
-    // Le glossaire de dictée est d'équipe (les noms propres du métier), le moteur est de poste.
-    assert.equal(config.destinationDe('dictation_vocabulary'), 'equipe');
-    assert.equal(config.destinationDe('dictation_model'), 'poste');
   });
 
   test('l’amorçage des commandes git ne se rejoue pas — son drapeau a suivi', () => {
@@ -104,5 +100,40 @@ describe('local_config — ce qui reste sur ce poste', () => {
     assert.equal(db.prepare('SELECT git_commands_seeded AS s FROM local_config WHERE id = 1').get().s, 1);
     const avant = db.prepare('SELECT COUNT(*) n FROM git_command').get().n;
     assert.equal(avant, 5);
+  });
+
+  /* Revue de add-secure-layer-2 : `agent_read_unrestricted` est une colonne INTEGER — relue,
+     c'est le NOMBRE 1, jamais la CHAÎNE '1'. Un `=== '1'` le ratait donc à chaque tour et
+     remettait ce choix explicite à 0 dès la moindre mise à jour partielle qui ne le touchait
+     pas — silencieusement, sans message. */
+  /* CHANGER DE BINAIRE INVALIDE LA PREUVE DE SANDBOX : « Tester le sandbox » a constaté ce qu'UN
+     programme faisait ; un autre chemin est un autre programme. */
+  /* LE DÉFAUT D'UNE INSTALLATION EST YOLO : une base neuve où personne n'a rien touché tourne sans
+     restriction de l'agent ; le sécurisé se choisit. Posé aux deux endroits (schéma et config). */
+  test('sur une base neuve, agent_mode vaut yolo — et le harnais des tests le repasse en sécurisé', () => {
+    assert.equal(db.prepare('SELECT agent_mode m FROM local_config WHERE id = 1').get().m, 'yolo', 'le défaut de la colonne');
+    assert.equal(config.getConfig().agent_mode, 'yolo');
+    assert.equal(config.updateConfig({ gitlab_url: 'https://gl.example.com' }).agent_mode, 'yolo', 'une mise à jour sans rapport le garde');
+    assert.equal(config.updateConfig({ agent_mode: 'secure' }).agent_mode, 'secure');
+    assert.equal(config.updateConfig({ agent_mode: 'yolo' }).agent_mode, 'yolo');
+  });
+
+  test('changer agent_bin remet la preuve de sandbox à zéro, un autre réglage la garde', () => {
+    db.prepare("UPDATE local_config SET agent_sandbox_verified = 1, agent_sandbox_tested_at = '2026-09-01T00:00:00Z', agent_sandbox_detail = 'ok' WHERE id = 1").run();
+    config.updateConfig({ agent_args: '--model x' });
+    assert.equal(db.prepare('SELECT agent_sandbox_verified v FROM local_config WHERE id = 1').get().v, 1, 'les arguments ne changent pas le programme');
+    config.updateConfig({ agent_bin: '/autre/claude' });
+    const l = db.prepare('SELECT agent_sandbox_verified v, agent_sandbox_tested_at t FROM local_config WHERE id = 1').get();
+    assert.equal(l.v, 0); assert.equal(l.t, '');
+    assert.equal(config.getConfig().agent_bin, '/autre/claude');
+    assert.equal(config.destinationDe('agent_bin'), 'poste', 'un chemin de binaire est un réglage de CE poste');
+  });
+
+  test('agent_read_unrestricted survit à une mise à jour partielle qui ne le touche pas', () => {
+    config.updateConfig({ agent_read_unrestricted: '1' });
+    assert.equal(config.getConfig().agent_read_unrestricted, 1);
+    config.updateConfig({ gitlab_url: 'https://gl-autre.example.com/' });
+    assert.equal(config.getConfig().agent_read_unrestricted, 1,
+      'un réglage sans rapport ne doit pas effacer ce choix explicite');
   });
 });

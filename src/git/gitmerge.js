@@ -1,0 +1,377 @@
+'use strict';
+/* MERGER UNE BRANCHE DANS UNE AUTRE, conflits compris (onglet Git → Merge).
+ *
+ * Trois partis pris, qui expliquent tout le reste du fichier.
+ *
+ * 1. LE MERGE VIT DANS SON PROPRE WORKTREE, jamais dans le clone partagé. Un merge se résout
+ *    en plusieurs minutes et plusieurs requêtes ; laisser le clone à moitié fusionné pendant ce
+ *    temps bloquerait tout ce qui le touche — reviews, sessions, vérifications — et le premier
+ *    `ensureCleanWorktree` venu l'annulerait sans prévenir.
+ *
+ * 2. ON TRAVAILLE EN DÉTACHÉ, depuis `origin/<destination>`, et on pousse `HEAD:<destination>`.
+ *    Aucune branche locale n'est créée ni déplacée : impossible d'entrer en conflit avec la
+ *    branche que le clone principal a sortie, et impossible de laisser une branche locale en
+ *    avance sur la distante après coup. Ce qui compte est ce qui part sur la forge.
+ *
+ * 3. GIT EST LA SOURCE DE VÉRITÉ, pas une machine à états parallèle. Les fichiers en conflit se
+ *    relisent à chaque fois (`--diff-filter=U`), la résolution est un `write` + `git add`, le
+ *    message de commit vient de `MERGE_MSG` que git a lui-même écrit. La table `git_merge` ne
+ *    retient que ce que git ne sait pas : quel dossier appartient à quelle demande.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const db = require('../db');
+const git = require('./git');
+const { DATA_DIR, ensureDir } = require('../core/paths');
+const { t } = require('../core/i18n');
+const { decouper, recoller } = require('./conflits');
+
+/* Répertoire SÉPARÉ de celui des vérifications : `verifyrun.gcWorktrees` vide le sien à chaque
+   démarrage, ce qui jetterait une résolution en cours. Un merge, lui, se reprend après un
+   redémarrage — les fichiers résolus sont déjà dans son index. */
+const MERGES_DIR = path.join(DATA_DIR, 'merges');
+
+const assainir = (x) => String(x).replace(/[^\w.-]+/g, '_');
+
+function repoDe(id) {
+  const r = db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(id));
+  if (!r) throw new Error(t('err.depot-introuvable'));
+  return r;
+}
+
+function ligne(id) {
+  const m = db.prepare('SELECT * FROM git_merge WHERE id = ?').get(Number(id));
+  if (!m) throw new Error(t('err.merge.not-found'));
+  return m;
+}
+
+/** Les fichiers que git laisse « unmerged », relus à chaque fois. */
+async function enConflit(dir) {
+  const { stdout } = await git.run('git', ['diff', '--name-only', '--diff-filter=U'], { cwd: dir });
+  return stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/** Ce que le merge a préparé et qui est prêt à partir (résolu ou repris sans conflit). */
+async function prets(dir) {
+  const { stdout } = await git.run('git', ['diff', '--cached', '--name-only'], { cwd: dir });
+  return stdout.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/* LE MESSAGE PRÉ-REMPLI.
+ *
+ * La PREMIÈRE LIGNE est écrite ici, pas reprise de git. Comme on travaille en détaché sur
+ * `origin/<destination>`, git propose « Merge remote-tracking branch 'origin/x' into HEAD » :
+ * exact, et illisible — « into HEAD » ne dit rien à personne. On rend la formule que l'auteur
+ * attend : « Merge branch 'source' into destination ».
+ *
+ * Le RESTE de `MERGE_MSG`, lui, est repris tel quel : c'est là que git énumère les fichiers qui
+ * ont été en conflit, et cette liste a sa place dans l'historique. */
+async function messageParDefaut(dir, m) {
+  const premiere = `Merge branch '${m.source_branch}' into ${m.target_branch}`;
+  try {
+    const { stdout } = await git.run('git', ['rev-parse', '--git-path', 'MERGE_MSG'], { cwd: dir });
+    const f = path.resolve(dir, stdout.trim());
+    if (!fs.existsSync(f)) return premiere;
+    const suite = fs.readFileSync(f, 'utf8')
+      .split('\n').filter((l) => !l.startsWith('#')).slice(1).join('\n').trim();
+    return suite ? `${premiere}\n\n${suite}` : premiere;
+  } catch { return premiere; }
+}
+
+/** L'état complet, tel que l'écran le consomme. Recalculé, jamais mémorisé. */
+async function etat(id) {
+  const m = ligne(id);
+  const repo = repoDe(m.repo_id);
+  if (!fs.existsSync(m.dir)) {
+    /* Le dossier a disparu (ménage manuel, disque nettoyé). On le dit au lieu de laisser
+       l'écran interroger un chemin mort à chaque rafraîchissement. */
+    return { ...m, project: repo.project, forge: repo.forge, perdu: true, conflits: [], prets: [] };
+  }
+  const conflits = m.status === 'committed' || m.status === 'pushed' ? [] : await enConflit(m.dir);
+  /* A31 — LA MERGE REQUEST QU'ON EST EN TRAIN DE RATTRAPER. On arrive souvent ici depuis un
+     badge « en conflit » d'une merge request : le worktree ne retient que dépôt/source/cible,
+     et l'écran ne disait donc plus ni `!iid`, ni sa note, ni son ticket — on résolvait des
+     conflits sans plus savoir sur quoi. La jointure est celle de `enCours()` : le merge rattrape
+     la base DANS la branche de la MR, qui est donc sa CIBLE — la liste disait « !77 » et cet
+     écran rien. À défaut, la source (on merge la branche d'une MR ailleurs). */
+  const mrDe = db.prepare(`SELECT id, iid, title, web_url, ticket_jira_key FROM mr
+    WHERE repo_id = ? AND source_branch = ? AND (closed_seen IS NULL OR closed_seen = 0)
+    ORDER BY id DESC LIMIT 1`);
+  const mr = mrDe.get(m.repo_id, m.target_branch) || mrDe.get(m.repo_id, m.source_branch);
+  const note = mr ? db.prepare('SELECT note_value FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id) : null;
+  return {
+    ...m,
+    mr: mr ? {
+      id: mr.id, iid: mr.iid, title: mr.title || '', url: mr.web_url || '',
+      note: note && note.note_value != null ? note.note_value : null,
+      ticket: mr.ticket_jira_key || null,
+    } : null,
+    project: repo.project,
+    forge: repo.forge,
+    perdu: false,
+    conflits,
+    prets: m.status === 'committed' || m.status === 'pushed' ? [] : await prets(m.dir),
+    message: m.status === 'conflict' || m.status === 'ready' ? await messageParDefaut(m.dir, m) : '',
+  };
+}
+
+/* DÉMARRER. `--no-commit --no-ff` : on veut TOUJOURS passer par l'écran de commit, même quand
+   la destination pourrait simplement avancer — c'est le geste que l'utilisateur a demandé, et
+   un merge qui se serait fait tout seul sans rien montrer serait déroutant. */
+async function demarrer(cfg, { repo_id: repoId, source, target, allow_unrelated: sansAncetre }, onLog = () => {}) {
+  const repo = repoDe(repoId);
+  if (!source || !target) throw new Error(t('err.merge.branches-required'));
+  if (source === target) throw new Error(t('err.merge.same-branch'));
+
+  const dejaLa = db.prepare(`SELECT * FROM git_merge WHERE repo_id = ? AND status IN ('conflict','ready')`).get(repo.id);
+  if (dejaLa) throw new Error(t('err.merge.already-running', { source: dejaLa.source_branch, target: dejaLa.target_branch }));
+
+  const clone = await git.ensureRepo(cfg, repo, onLog);
+  try { await git.run('git', ['worktree', 'prune'], { cwd: clone }); } catch { /* best effort */ }
+  ensureDir(MERGES_DIR);
+  const dir = path.join(MERGES_DIR, `${assainir(repo.project)}-${assainir(target)}-${assainir(source)}`);
+  if (fs.existsSync(dir)) await retirer(clone, dir);
+
+  for (const ref of [`origin/${target}`, `origin/${source}`]) {
+    if (!await git.refExists(clone, ref)) throw new Error(t('err.merge.ref-missing', { ref }));
+  }
+  /* DEUX BRANCHES SANS ANCÊTRE COMMUN. Git refuse de les fusionner, et il a raison : ça arrive
+     quand une branche a été créée avec `--orphan`, quand un dépôt a été réinitialisé, ou quand
+     `master` et `main` ont chacun leur racine. Le résultat n'est alors pas une fusion mais une
+     juxtaposition de deux projets, souvent avec des conflits partout.
+     On ne force donc pas d'office : on l'explique, et on laisse demander explicitement. Sans ce
+     contrôle, l'utilisateur reçoit « fatal: refusing to merge unrelated histories » — la sortie
+     brute de git, qui ne dit ni pourquoi ni quoi faire. */
+  if (!sansAncetre) {
+    let ancetre = '';
+    try {
+      const { stdout } = await git.run('git', ['merge-base', `origin/${target}`, `origin/${source}`], { cwd: clone });
+      ancetre = stdout.trim();
+    } catch { ancetre = ''; }
+    if (!ancetre) {
+      const e = new Error(t('err.merge.unrelated', { source, target }));
+      e.code = 'UNRELATED';
+      throw e;
+    }
+  }
+  await git.run('git', ['worktree', 'add', '--detach', dir, `origin/${target}`], { cwd: clone, onLog });
+
+  let status = 'ready';
+  try {
+    await git.run('git', ['merge', '--no-commit', '--no-ff',
+      ...(sansAncetre ? ['--allow-unrelated-histories'] : []), `origin/${source}`], { cwd: dir, onLog });
+  } catch (e) {
+    const conflits = await enConflit(dir);
+    if (!conflits.length) {                       // échec pour une autre raison : on nettoie
+      await retirer(clone, dir);
+      throw e;
+    }
+    status = 'conflict';
+  }
+  /* « Déjà à jour » : git n'a rien à faire, il n'y a donc rien à commiter. On ne crée pas une
+     demande fantôme que l'écran afficherait avec un bouton « Commiter » sans effet. */
+  if (status === 'ready' && !(await prets(dir)).length) {
+    await retirer(clone, dir);
+    throw new Error(t('err.merge.already-merged', { source, target }));
+  }
+
+  const now = new Date().toISOString();
+  const info = db.prepare(`INSERT INTO git_merge
+    (repo_id, source_branch, target_branch, dir, status, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?)`).run(repo.id, source, target, dir, status, now, now);
+  return etat(info.lastInsertRowid);
+}
+
+/* RÉSOUDRE UN FICHIER. Le contenu vient de l'écran : c'est le texte que l'utilisateur a validé,
+   qu'il l'ait obtenu par un bouton « Garder » ou en éditant à la main. On n'accepte QUE des
+   chemins que git déclare en conflit — un chemin libre laisserait écrire n'importe où sur le
+   disque depuis le navigateur. */
+async function resoudre(id, fichier, { contenu = null, choix = null } = {}) {
+  const m = ligne(id);
+  const conflits = await enConflit(m.dir);
+  if (!conflits.includes(fichier)) throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
+  const abs = path.join(m.dir, fichier);
+  /* DEUX FAÇONS DE RÉSOUDRE, UN SEUL ASSEMBLEUR. Les boutons « garder celle-ci / celle-là /
+     les deux » envoient des CHOIX, et c'est le serveur qui recolle : l'écran n'a pas sa propre
+     version de la règle, qui finirait par diverger de celle qu'on teste. L'édition à la main,
+     elle, envoie le texte — par définition c'est celui que l'utilisateur a écrit.
+     « ia » est un troisième CHOIX, pas un texte : l'écran ne renvoie que le mot, comme pour
+     « ours »/« theirs », et c'est ici qu'on le résout contre la proposition ENREGISTRÉE — la
+     même règle que pour les deux autres, où le texte vient toujours du serveur, jamais du
+     navigateur. Une proposition manquante (jamais demandée, ou fichier changé depuis) retombe
+     sur « ours », le repli le moins surprenant. */
+  const propositions = propositionsDe(id, fichier) || [];
+  const resolus = (Array.isArray(choix) ? choix : []).map((c, i) => (
+    c === 'ia' && propositions[i] != null ? { texte: propositions[i].texte } : c
+  ));
+  const texte = contenu != null
+    ? String(contenu)
+    : recoller(decouper(fs.readFileSync(abs, 'utf8')), resolus);
+  fs.writeFileSync(abs, texte, 'utf8');
+  await git.run('git', ['add', '--', fichier], { cwd: m.dir });
+  const reste = await enConflit(m.dir);
+  const status = reste.length ? 'conflict' : 'ready';
+  db.prepare('UPDATE git_merge SET status = ?, updated_at = ? WHERE id = ?')
+    .run(status, new Date().toISOString(), m.id);
+  return etat(m.id);
+}
+
+/* QUELLE VERSION EST LA PLUS RÉCENTE ? Les deux blocs d'un conflit se lisaient à l'aveugle : rien
+   ne disait si « la nôtre » datait d'hier ou de six mois. `HEAD` est la cible (le worktree en est
+   détaché, cf. `demarrer`) et `MERGE_HEAD` la source — l'une comme l'autre ne bougent pas tant que
+   le merge n'est pas commité, donc datent bien la version montrée à l'écran. `git log -1` sur un
+   chemin sans historique à cette ref (fichier apparu de l'autre côté) ne renvoie rien : `null`,
+   pas une erreur. */
+async function datesFichier(id, fichier) {
+  const m = ligne(id);
+  const date = async (ref) => {
+    try {
+      const { stdout } = await git.run('git', ['log', '-1', '--format=%aI', ref, '--', fichier], { cwd: m.dir });
+      return stdout.trim() || null;
+    } catch { return null; }
+  };
+  const [ours, theirs] = await Promise.all([date('HEAD'), date('MERGE_HEAD')]);
+  return { ours, theirs };
+}
+
+/** Le contenu d'un fichier en conflit, tel qu'il est sur le disque (marqueurs compris). */
+function contenu(id, fichier) {
+  const m = ligne(id);
+  const abs = path.join(m.dir, fichier);
+  /* `path.resolve` puis comparaison au dossier : un `../` dans le nom sortirait du worktree. */
+  if (!path.resolve(abs).startsWith(path.resolve(m.dir) + path.sep)) {
+    throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
+  }
+  if (!fs.existsSync(abs)) throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
+  /* GIT PEUT LISTER UN CHEMIN EN CONFLIT QUI N'EST PAS UN FICHIER : un sous-module dont le
+     pointeur diverge entre les deux côtés (le chemin est alors le DOSSIER du sous-module sur le
+     disque), ou un conflit d'ADD/ADD fichier-contre-dossier. `fs.readFileSync` sur un dossier
+     lève `EISDIR`, un message Node brut plutôt qu'une explication — on le rend clair et
+     traduit ici, une fois, plutôt que de laisser chaque appelant deviner le code d'erreur. */
+  if (!fs.statSync(abs).isFile()) throw new Error(t('err.merge.file-not-conflicted', { file: fichier }));
+  return fs.readFileSync(abs, 'utf8');
+}
+
+/* LES PROPOSITIONS DE L'IA, par fichier. `git_merge.ai_json` : un objet `{ chemin: [...] }`,
+   un tableau par conflit du fichier, chaque entrée `{ texte, raison }` ou `null` là où l'agent
+   n'a rien proposé — un bloc mal formé n'est jamais une panne. Recalculées à la demande, jamais
+   synchronisées : voir la migration qui a posé la colonne pour le pourquoi. La CONSTRUCTION du
+   prompt et l'appel à l'agent vivent plus haut (`session/mergeai.js`) : ce module ne connaît que
+   git et le disque. */
+function toutesPropositions(m) {
+  try { return JSON.parse(m.ai_json || '{}'); } catch { return {}; }
+}
+function propositionsDe(id, fichier) {
+  return toutesPropositions(ligne(id))[fichier] || null;
+}
+/* UN SEUL APPEL POSE TOUS LES FICHIERS D'UN COUP — la vue globale de `session/mergeai.js`
+   répond en une fois pour tout le merge, pas fichier par fichier : un seul écrit ici évite de
+   relire/réécrire `ai_json` une fois par fichier pour rien. */
+function enregistrerPropositionsMultiples(id, parFichier) {
+  const m = ligne(id);
+  const toutes = { ...toutesPropositions(m), ...parFichier };
+  db.prepare('UPDATE git_merge SET ai_json = ?, updated_at = ? WHERE id = ?')
+    .run(JSON.stringify(toutes), new Date().toISOString(), id);
+}
+
+/* COMMITER. On refuse tant qu'il reste un conflit : `git commit` le refuserait de toute façon,
+   mais avec un message que personne ne lit. */
+async function commiter(id, message, onLog = () => {}) {
+  const m = ligne(id);
+  if ((await enConflit(m.dir)).length) throw new Error(t('err.merge.still-conflicted'));
+  const texte = String(message || '').trim();
+  if (!texte) throw new Error(t('err.merge.message-required'));
+  await git.run('git', ['commit', '-m', texte], { cwd: m.dir, onLog });
+  const { stdout } = await git.run('git', ['rev-parse', 'HEAD'], { cwd: m.dir });
+  db.prepare("UPDATE git_merge SET status = 'committed', commit_sha = ?, updated_at = ? WHERE id = ?")
+    .run(stdout.trim(), new Date().toISOString(), m.id);
+  return etat(m.id);
+}
+
+/* A31 — LE DIFF DE CE QU'ON VIENT D'ASSEMBLER. `commit_sha` était écrit et relu par personne :
+   après trente conflits résolus un par un, la seule question qui reste est « qu'est-ce que ça
+   donne, au total ? » — et il fallait ouvrir un terminal pour y répondre. `git show` sur le
+   commit de merge, en mode `--first-parent` : sans lui, `git show` d'un merge ne rend RIEN
+   (il ne montre par défaut que les conflits résolus autrement que par un parent). */
+async function diffCommit(id) {
+  const m = ligne(id);
+  if (!m.commit_sha) throw new Error(t('err.merge.commit-first'));
+  const { stdout } = await git.run('git',
+    ['show', '--first-parent', '--format=%H%n%an%n%ad%n%s', m.commit_sha], { cwd: m.dir });
+  const [sha, auteur, date, ...reste] = String(stdout || '').split('\n');
+  const i = reste.findIndex((l) => /^diff --git /.test(l));
+  return {
+    sha, auteur, date,
+    sujet: i >= 0 ? reste.slice(0, i).join('\n').trim() : reste.join('\n').trim(),
+    diff: i >= 0 ? reste.slice(i).join('\n') : '',
+  };
+}
+
+/* POUSSER. `HEAD:refs/heads/<destination>` : on pousse le commit obtenu vers la branche visée,
+   sans jamais avoir créé de branche locale. Pas de forçage — un merge AJOUTE un commit, il ne
+   réécrit rien ; si la forge refuse, c'est que la destination a bougé, et il faut refaire le
+   merge plutôt que d'écraser le travail de quelqu'un. */
+async function pousser(cfg, id, onLog = () => {}) {
+  const m = ligne(id);
+  if (m.status !== 'committed') throw new Error(t('err.merge.commit-first'));
+  await git.run('git', [...git.gitTlsArgs(), 'push', 'origin', `HEAD:refs/heads/${m.target_branch}`],
+    { cwd: m.dir, onLog, redactSecrets: git.secretsOf(cfg) });
+  db.prepare("UPDATE git_merge SET status = 'pushed', updated_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), m.id);
+  return etat(m.id);
+}
+
+async function retirer(clone, dir) {
+  try { await git.run('git', ['worktree', 'remove', '--force', dir], { cwd: clone }); }
+  catch { /* on insiste ci-dessous */ }
+  try { if (fs.existsSync(dir)) fs.rmSync(dir, { recursive: true, force: true }); }
+  catch { /* le ménage ne doit jamais faire échouer l'appel */ }
+}
+
+/* ABANDONNER. Le worktree part avec la demande : un merge à moitié résolu qu'on garderait
+   « au cas où » réapparaîtrait plus tard sans qu'on sache d'où il sort. */
+async function abandonner(cfg, id) {
+  const m = ligne(id);
+  const repo = repoDe(m.repo_id);
+  await retirer(git.cloneDirFor(cfg, repo), m.dir);
+  db.prepare('DELETE FROM git_merge WHERE id = ?').run(m.id);
+  return { ok: true };
+}
+
+/** Les merges non soldés, pour que l'écran puisse en reprendre un. */
+/* A31 — UN MERGE SE SOUVIENT DE CE QU'IL RATTRAPE. On arrive ici depuis le badge « en
+   conflit » d'une merge request : le dossier de travail garde le dépôt et les deux branches,
+   mais plus rien ne dit DE QUELLE merge request il s'agit — ni son numéro, ni sa note, ni son
+   ticket. Or c'est précisément ce qu'on veut relire avant de résoudre trente conflits.
+
+   La jointure se fait sur la branche : le merge rattrape `main` DANS la branche de la MR, sa
+   `target_branch` est donc la `source_branch` de celle-ci. Merge request ouverte seulement —
+   une MR fermée ne rattrape plus rien. */
+function enCours() {
+  const rows = db.prepare(`SELECT gm.*, repo.project, repo.forge FROM git_merge gm
+    JOIN repo ON repo.id = gm.repo_id
+    WHERE gm.status IN ('conflict','ready','committed') ORDER BY gm.id DESC`).all();
+  const mr = db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.web_url, mr.ticket_jira_key, review.note_value AS note
+    FROM mr LEFT JOIN review ON review.mr_id = mr.id
+    WHERE mr.repo_id = ? AND mr.source_branch = ? AND COALESCE(mr.closed_seen, 0) = 0
+    ORDER BY mr.id DESC LIMIT 1`);
+  for (const r of rows) {
+    const m = mr.get(r.repo_id, r.target_branch);
+    if (m) {
+      r.mr = {
+        id: m.id, iid: m.iid, title: m.title || '', url: m.web_url || '',
+        note: m.note == null ? null : Math.round(m.note * 1000) / 100, ticket: m.ticket_jira_key || '',
+      };
+    }
+  }
+  return rows;
+}
+
+module.exports = {
+  MERGES_DIR, demarrer, etat, resoudre, contenu, datesFichier, propositionsDe, enregistrerPropositionsMultiples,
+  commiter, pousser, abandonner, enCours, diffCommit,
+  // Réexportés par commodité pour les routes ; ils vivent dans `conflits.js`, qui ne touche
+  // NI la base NI le disque — c'est ce qui les rend testables sans démarrer l'application.
+  decouper, recoller,
+};

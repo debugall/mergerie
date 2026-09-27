@@ -1,0 +1,43 @@
+    <!-- Dev IA -->
+    <section id="tab-task" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-kind="code" class="active" role="tab" title="L'IA modifie le code, commite et ouvre les MR" data-i18n-title="ui.title.l-ia-modifie-le-code"><span data-i18n="task.kind.code">Codage</span><span class="seg-count" id="kindCountCode">0</span></button>
+            <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title"><span data-i18n="task.kind.local">Codage hors dépôt</span><span class="seg-count" id="kindCountLocal">0</span></button>
+            <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une"><span data-i18n="task.kind.explore">Exploration</span><span class="seg-count" id="kindCountExplore">0</span></button>
+            <button data-kind="ask" role="tab" title="Poser une question à l'IA sans lien avec un dépôt, et garder la réponse" data-i18n-title="ask.tab-title"><span data-i18n="task.kind.ask">Question libre</span><span class="seg-count" id="kindCountAsk">0</span></button>
+        </div>
+        <div id="taskToolbar" class="toolbar">
+            <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
+            <span id="taskKindHint" class="muted"></span>
+        </div>
+        <div class="task-filters">
+            <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
+            <div id="taskAgentFilterBox"></div>
+            <!-- LES MIENNES OU CELLES DE L'ÉQUIPE. Dès qu'on partage, la liste mêle son propre
+                 travail et celui des autres : deux boutons, pas une liste à choix, et rien du
+                 tout en mono-poste — il n'y aurait qu'un seul cas. -->
+            <div id="taskOwnerFiltre" class="chips" role="group" hidden></div>
+        </div>
+        <div class="list-head">
+            <label class="inline-check"><input type="checkbox" id="taskShowHidden" /> <span data-i18n="task.hidden.show">Afficher les sessions masquées</span></label>
+            <span id="taskHiddenCount" class="muted"></span>
+        </div>
+        <div id="taskList" class="list"></div>
+
+        <!-- Codage hors dépôt : liste des sessions (le formulaire vit dans la modale de codage) -->
+        <div id="localPanel" hidden>
+            <div id="localList" class="list"></div>
+        </div>
+
+        <!-- Question libre : ni dépôt ni dossier. Le formulaire vit dans la modale commune. -->
+        <div id="askPanel" hidden>
+            <div id="askList" class="list"></div>
+        </div>
+
+        <!-- Lots : des merge requests qui ne valent qu'ensemble, nommées une fois pour toutes. -->
+        <div id="lotPanel">
+            <h2 data-i18n="verify.lots.title">Lots à vérifier ensemble</h2>
+            <p class="muted" style="max-width:760px" data-i18n="verify.lots.intro">Un lot regroupe des merge requests de dépôts différents qui ne se tiennent que réunies. Le vérificateur les teste en une fois et le verdict vaut pour toutes. La sélection se fait depuis l'onglet Reviews.</p>
+            <div id="lotList" class="list"></div>
+        </div>
+    </section>

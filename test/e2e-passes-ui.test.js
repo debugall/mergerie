@@ -246,4 +246,113 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
 
     assert.equal((await app.api('PUT', '/api/agent-passes/999999', { titre: 'x' })).status, 404);
   });
+
+  /* LE COÛT EN TOKENS, PAS EN DOLLARS. Le dollar n'est jamais garanti — seul le backend
+     `claude` l'annonce, et seulement s'il le veut bien — alors que le nombre de tokens se
+     calcule toujours, même en dry-run. La colonne affichait `$…` ; elle affiche des tokens. */
+  test('chaque itération montre ses tokens, jamais un coût en dollars', async () => {
+    await ouvrirRetour(multi.id);
+    const textes = await items().allTextContents();
+    assert.ok(textes.every((x) => /tokens?/.test(x)), `chaque ligne porte ses tokens : ${textes.join(' / ')}`);
+    assert.ok(textes.every((x) => !/\$/.test(x)), `aucune ligne ne montre un coût en dollars : ${textes.join(' / ')}`);
+  });
+
+  /* LE TOTAL, EN TÊTE DE COLONNE. On lisait ce qu'UNE passe avait coûté, jamais l'addition
+     des trois qu'on venait de relire. */
+  test('le total des tokens de la session est affiché en tête de la liste', async () => {
+    await ouvrirRetour(multi.id);
+    const total = app.db.prepare("SELECT COALESCE(SUM(tokens_est), 0) s FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(multi.id).s;
+    assert.ok(total > 0, 'les passes de fixture portent bien des tokens');
+    const titre = await page.locator('#taskPassTitle').innerText();
+    assert.match(titre, /Itérations \(3\)/i);
+    assert.match(titre, /tokens/i, `le titre porte un total de tokens : « ${titre} »`);
+    // Les séparateurs de milliers dépendent de la locale : on compare les CHIFFRES seuls.
+    const chiffres = titre.replace(/\D/g, '');
+    assert.ok(chiffres.includes(String(total)), `le total (${total}) apparaît en tête : « ${titre} »`);
+  });
+
+  /* NULLE PART UN COÛT EN DOLLARS, y compris sur la carte de la liste des sessions : il ne se
+     compare pas d'un mois à l'autre (les tarifs bougent) et n'existe que sur les backends qui
+     l'annoncent. Le nombre de tokens, lui, se calcule toujours et se compare toujours. Le
+     dry-run de test ne passe pas par `usage` (aucun coût annoncé à enregistrer) : on pose la
+     ligne à la main, EXACTEMENT comme le ferait un vrai backend qui annonce un coût, pour
+     prouver que la carte ne le montre plus. */
+  test('la carte de la liste des sessions montre les tokens, jamais un coût en dollars', async () => {
+    app.db.prepare(`INSERT INTO usage (kind, prompt_chars, output_chars, tokens_est, cost_usd, created_at, owner_kind, owner_id)
+      VALUES ('local', 400, 800, 1234, 0.42, ?, 'local', ?)`).run(new Date().toISOString(), multi.id);
+
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    await page.reload();
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector('#localList .card');
+
+    const cout = await page.locator(`#localList .card[data-local="${multi.id}"] .task-cout`).innerText();
+    assert.match(cout, /tokens?/i, `la carte porte ses tokens : « ${cout} »`);
+    assert.ok(!/\$/.test(cout), `la carte ne montre aucun coût en dollars, même quand le backend en annonce un : « ${cout} »`);
+  });
+
+  /* LA DATE ET L'HEURE DE FIN, PAS « HIER »/« AVANT-HIER ». Un relatif que `Intl` invente pour
+     -1 et -2 jours ne dit pas QUAND, seulement « il y a peu » — comparer plusieurs sessions à
+     l'œil demandait de rouvrir chacune. L'absolu se lit d'un coup d'œil, comme la date de
+     création juste au-dessus (`task-date`) ; le relatif reste au survol (`data-when` + la
+     bulle du core), pas remplacé, seulement plus discret. */
+  test('la carte montre la date ET l’heure de fin, jamais un relatif du genre « hier »', async () => {
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    await page.reload();
+    await page.locator('nav button[data-tab="task"]').click();
+    await page.locator('#tab-task .subnav [data-kind="local"]').click();
+    await page.waitForSelector('#localList .card');
+
+    const cout = await page.locator(`#localList .card[data-local="${multi.id}"] .task-cout`).innerText();
+    assert.match(cout, /\d{1,2}:\d{2}/, `une heure doit être visible : « ${cout} »`);
+    assert.doesNotMatch(cout, /hier|aujourd.hui|maintenant|à l.instant/i,
+      `plus de formule relative sur la carte : « ${cout} »`);
+
+    // L'attribut qui nourrit la bulle au survol (relatif) est toujours là : rien n'est perdu.
+    const when = await page.locator(`#localList .card[data-local="${multi.id}"] .task-cout [data-when]`).getAttribute('data-when');
+    assert.ok(when, 'la date exacte reste disponible pour le survol');
+  });
+
+  /* LE NOMBRE D'ITÉRATIONS DÉJÀ FAITES, DANS LE LIBELLÉ du bouton lui-même (« Envoyer un
+     suivi (3) ») — avant de demander un énième suivi, sans avoir à ouvrir « Retour de l'IA »
+     pour le savoir. */
+  test('le nombre d’itérations déjà faites apparaît dans le libellé du bouton de suivi', async () => {
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    const carte = page.locator(`#localList .card[data-local="${multi.id}"]`);
+    await carte.locator('[data-lfollow]').waitFor();
+    assert.match(await carte.locator('[data-lfollow]').innerText(), /\(3\)/,
+      'le bouton porte les trois itérations déjà faites');
+  });
+
+  /* ENVOYER UN SUIVI SANS QUITTER CETTE VUE. Il fallait jusqu'ici fermer, retrouver la carte,
+     rouvrir son formulaire — pour redemander quelque chose qu'on venait justement de lire ici. */
+  test('on peut envoyer un suivi directement depuis « Retour de l’IA »', async () => {
+    await ouvrirRetour(multi.id);
+    const avant = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(multi.id).c;
+
+    assert.equal(await page.locator('#taskMdFollow').isVisible(), false, 'replié tant qu’on n’a rien demandé');
+    await page.locator('#taskMdFollowToggle').click();
+    await page.locator('#taskMdFollowText').fill('Ajoute un commentaire en tête de chaque fichier');
+    await page.locator('#taskMdFollowSend').click();
+    await page.waitForFunction(() => document.querySelector('#taskMdFollow').hidden === true);
+
+    await waitForJobs(app.api);
+    const apres = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(multi.id).c;
+    assert.equal(apres, avant + 1, 'une itération de plus a été enregistrée');
+    const derniere = app.db.prepare("SELECT prompt FROM agent_pass WHERE scope = 'local' AND task_id = ? ORDER BY n DESC LIMIT 1").get(multi.id);
+    assert.match(derniere.prompt, /commentaire en tête de chaque fichier/, 'c’est bien CETTE demande qui est partie');
+  });
+
+  /* Un champ vide n'envoie rien : la même règle que le formulaire de suivi de la carte. */
+  test('un suivi vide n’envoie rien, et le dit', async () => {
+    await ouvrirRetour(seule.id);
+    const avant = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(seule.id).c;
+    await page.locator('#taskMdFollowToggle').click();
+    await page.locator('#taskMdFollowText').fill('   ');
+    await page.locator('#taskMdFollowSend').click();
+    await page.waitForSelector('#toasts .toast-msg');
+    assert.match(await page.locator('#toasts .toast-msg').last().textContent(), /requise/i);
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(seule.id).c, avant);
+  });
 });

@@ -209,6 +209,37 @@ describe('Vérification d’une branche', () => {
     } finally { await nav.close(); }
   });
 
+  test('depuis l’écran : la case « HOME jetable » part avec la vérification, et sa note dit ce qu’elle change', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    const v = await poser('home', 'exit 0');
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    try {
+      await page.goto(app.base);
+      await page.locator('[data-tab="admin"]').click();
+      await page.waitForLoadState('networkidle');
+      await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+      await page.waitForSelector('#verifierList .card');
+      await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      // Décochée d'office (le vérificateur ne demande pas de HOME jetable) : la note avertit.
+      assert.equal(await page.locator('#branchVerifyHome').isChecked(), false);
+      assert.match(await page.locator('#branchVerifyHomeNote').textContent(), /HOME/);
+      await page.locator('#branchVerifyHome').check();
+      await page.waitForFunction(() => /jetable|throwaway/i.test(document.querySelector('#branchVerifyHomeNote').textContent));
+      const avant = app.db.prepare('SELECT COUNT(*) c FROM verification').get().c;
+      await page.locator('#branchVerifyGo').click();
+      await page.waitForSelector('#branchVerifyModal[hidden]', { state: 'attached' });
+      assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant + 1);
+      const derniere = app.db.prepare('SELECT id, isolated_home FROM verification ORDER BY id DESC LIMIT 1').get();
+      assert.equal(derniere.isolated_home, 1, 'la case cochée part avec la vérification');
+      await attendre(derniere.id);
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
+    } finally { await nav.close(); }
+  });
+
   /* CHOISIR SES DÉPÔTS. Un vérificateur qui en couvre plusieurs imposait ses lignes toutes
      obligatoires : cinq dépôts couverts, cinq branches à donner, même pour ne vérifier que
      `develop` sur un seul — et une ligne dont la branche par défaut ne se lisait pas bloquait

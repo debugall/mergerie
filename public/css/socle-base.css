@@ -1,0 +1,127 @@
+/* ================= SOCLE ================= */
+
+/* Focus clavier visible partout (une seule règle couvre toute l'app). */
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm);
+}
+:where(button, a, input, select, textarea):focus:not(:focus-visible) { outline: none; }
+
+/* Respect de la préférence système « moins d'animations ». */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+    /* Le DÉLAI aussi : sans lui, l'entrée en cascade survivait et la liste apparaissait par
+       saccades — précisément pour qui a demandé moins de mouvement. */
+    animation-delay: 0ms !important;
+    transition-duration: .001ms !important; transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Désactivé : lisible mais inerte (opacity .5 rendait certains boutons illisibles).
+   V2.17 : `select` inclus pour que les listes déroulantes stylées (.jira-transition,
+   .dact-action select…) partagent le même état désactivé que les boutons. */
+:where(button, .btn, select):disabled {
+  opacity: 1; cursor: not-allowed;
+  background: var(--panel2); border-color: var(--line); color: var(--muted);
+  filter: saturate(.15);
+}
+/* Les boutons COLORÉS aussi. `:where()` ne pèse rien face à `.btn-primary`, si bien qu'un
+   « Recréer » désactivé gardait son bleu simplement désaturé — un gris foncé plein, à côté
+   d'un « Démarrer » désactivé gris clair : deux dessins pour le même état inerte.
+   Visible depuis que les actions indisponibles sont désactivées au lieu d'être absentes. */
+.btn:disabled, .btn-primary:disabled, .btn-danger:disabled, .btn-ok:disabled {
+  background: var(--panel2); border-color: var(--line); color: var(--muted);
+}
+.btn:disabled .ico, .btn-primary:disabled .ico, .btn-danger:disabled .ico, .btn-ok:disabled .ico { color: var(--muted); }
+
+/* Titres : sans ça un <h2> non stylé était plus gros que le nom de l'app. */
+h2 { font-size: var(--fs-xl); font-weight: var(--fw-sem); margin: var(--s-6) 0 var(--s-3); letter-spacing: -.01em; }
+h3 { font-size: var(--fs-md); font-weight: var(--fw-sem); margin: 0 0 var(--s-3); }
+/* DEUX NIVEAUX DE TITRE, pas cinq. `h2` = un bloc de page (20 px) ; `h4` = une section interne
+   (13 px / 700 / majuscules — le traitement de Jira, le plus lisible en dense). Cinq réglages
+   coexistaient pour ce même rang, et les marges changeaient d'un onglet à l'autre.
+   `h3` reste le titre de MODALE (`.modal-box h3`) : renommer 23 modales pour respecter la
+   numérotation des balises aurait coûté plus que le désordre qu'on corrige. */
+h4, .brief-sec h3, .link-free-head, .dash-card > h3 {
+     margin: 0 0 8px; font-size: var(--fs-sm); font-weight: var(--fw-bold);
+     text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+
+/* Code inline hors markdown (noms de branche des cartes : l'info la plus consultée). */
+:where(.meta, .card, .task-pushcmd) code {
+  font-family: var(--ff-mono); font-size: .92em;
+  background: var(--code-bg); color: var(--code-text);
+  padding: 1px 5px; border-radius: var(--r-sm); border: 1px solid var(--line);
+}
+
+/* ---------- Sémantique des variantes de bouton ----------
+   Une couleur qui ne veut rien dire de stable ne se lit plus. Règle du socle :
+
+     .btn-primary   l'action PAR DÉFAUT du conteneur — au plus UNE par rangée, carte ou modale
+     .btn-danger    destructif ou irréversible — autant que nécessaire
+     .btn-ok        confirme un aboutissement positif (« Marquer traitée »), pas un « je passe »
+     .btn           tout le reste, y compris une liste d'actions équivalentes
+
+   Deux emphases fortes côte à côte n'en font aucune : quand une carte propose déjà un
+   chemin recommandé, les autres actions redescendent en `.btn` neutre avec leur icône.
+
+   Bouton unique : hauteur FIXE (et non padding vertical) → alignement garanti. */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px; font: inherit; font-size: var(--fs-sm);
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:active { transform: translateY(.5px); }
+.btn-primary { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+.btn-primary:hover { background: var(--accent-btn-hi); border-color: var(--accent-btn-hi); color: var(--on-accent); }
+.btn-icon { width: 32px; padding: 0; }
+.btn-sm { height: 26px; padding: 0 9px; font-size: var(--fs-xs); }
+.btn-ghost { background: transparent; }
+/* Destructif ou irréversible : identifiable AU REPOS. Le survol n'existe ni au clavier
+   ni au tactile, et il arrive de toute façon après qu'on a visé — un bouton « Merger »
+   ou « Stop » qui ressemble à « Pull » tant qu'on ne le survole pas banalise l'action.
+   Bordure + texte rouges (et non fond plein) : le but est de RECONNAÎTRE le destructif,
+   pas de l'attirer — un fond plein dominerait le `btn-primary` voisin. */
+.btn-danger { border-color: color-mix(in srgb, var(--red) 55%, var(--line)); color: var(--red-text); }
+.btn-danger:hover { border-color: var(--red); color: var(--red-text); background: color-mix(in srgb, var(--red) 10%, var(--panel2)); }
+.btn-ok { border-color: var(--green); color: var(--green); }
+.btn-ok:hover { background: var(--green); color: var(--on-green); border-color: var(--green); }
+
+/* État « en cours » : le libellé s'efface au profit d'un spinner. */
+button[data-busy] { position: relative; color: transparent !important; pointer-events: none; }
+button[data-busy] .ico { visibility: hidden; }
+button[data-busy]::after {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 13px; height: 13px;
+  border: 2px solid var(--text); border-top-color: transparent; border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+/* Spinner en ligne (à côté d'un texte, ex. « reprise en cours… »). */
+.spin { display: inline-block; width: 13px; height: 13px; vertical-align: -2px;
+  border: 2px solid var(--text); border-top-color: transparent; border-radius: 50%;
+  animation: spin .7s linear infinite; }
+.questions-box.resuming { opacity: .85; }
+
+/* Icônes SVG : prennent la couleur du bouton dans les deux thèmes. */
+.ico { width: 16px; height: 16px; flex: 0 0 16px; }
+.ico-sm { width: 14px; height: 14px; flex-basis: 14px; }
+.forge-ico { width: 14px; height: 14px; flex-basis: 14px; vertical-align: -2px; color: var(--muted); }
+
+.toolbar { display: flex; gap: 8px; align-items: center; padding: 14px 18px; }
+
+main { padding: 0 var(--s-6) var(--s-12); max-width: var(--content-w); margin-inline: auto; width: 100%; flex: 1; min-width: 0; }
+.tab { display: none; }
+.tab.active { display: block; }
+/* UNE SEULE LARGEUR DE CONTENU, portée par `main` (--content-w). Reviews plafonnait à 1200 et
+   le dashboard à 1400 pendant que les huit autres prenaient toute la place : les marges
+   sautaient à chaque changement d'onglet, sur une colonne de navigation qui, elle, ne bouge
+   pas. Le cap de LECTURE, lui, reste sur la colonne du rapport (~900px, voir #reportSplit) :
+   c'est la mesure de la ligne de texte qui compte, pas celle de la page. */
+
+.logbar { height: 3px; background: var(--line); }
+.logbar #progressBar { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+

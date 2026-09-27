@@ -1,0 +1,23 @@
+/* ===== Git · Commandes multi-projets ===== */
+.cmd-projects { border: 1px solid var(--border, #ccc); border-radius: 10px; padding: 8px 12px; }
+.cmd-picker-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.cmd-search { flex: 1; min-width: 180px; }
+.cmd-selall { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.cmd-plist { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; }
+.cmd-pitem { display: flex; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+.cmd-pitem:hover { background: color-mix(in srgb, var(--accent, #7c5cff) 8%, transparent); }
+.cmd-pname { font-weight: 600; }
+.cmd-pbranch { font-size: 12px; }
+.cmd-cmd-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.cmd-palette { flex: 0 1 260px; }
+.cmd-input-wrap { display: inline-flex; align-items: stretch; flex: 1 1 320px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel2); }
+.cmd-prefix { display: inline-flex; align-items: center; padding: 0 10px; background: var(--code-bg, #eee); color: var(--muted); font-family: var(--ff-mono); font-size: 13px; border-right: 1px solid var(--line); }
+.cmd-input-wrap input { flex: 1; border: none !important; background: transparent !important; border-radius: 0 !important; }
+.cmd-preview .cmd-full, .cmd-res-head + .cmd-res-out { font-family: var(--ff-mono); }
+.cmd-full { font-size: 13px; }
+.cmd-preview-list { margin: 6px 0 10px; padding-left: 20px; columns: 2; }
+.cmd-res { border: 1px solid var(--border, #ccc); border-radius: 10px; margin: 8px 0; overflow: hidden; }
+.cmd-res.err { border-color: color-mix(in srgb, var(--danger, #c62828) 45%, var(--border, #ccc)); }
+.cmd-res-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel2); }
+.cmd-res-out { margin: 0; padding: 8px 10px; max-height: 260px; overflow: auto; font-family: var(--ff-mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: var(--code-text); background: var(--code-bg); }
+

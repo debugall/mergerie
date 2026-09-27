@@ -1,0 +1,99 @@
+/* ---------- Sidebar ----------
+   La navigation est passée à GAUCHE : à neuf entrées, une barre horizontale dans l'en-tête
+   arrivait au bout de la place (« Dev IA » passait déjà sur deux lignes). Verticalement,
+   chaque entrée a sa ligne, ses badges tiennent, et la dixième ne coûtera rien.
+
+   `position: sticky` plutôt que `fixed` : la sidebar reste sous l'en-tête sans avoir à
+   dupliquer sa hauteur en dur, et le footer fixe garde sa place. */
+.shell { display: flex; align-items: flex-start; }
+.sidebar {
+  position: sticky; top: var(--header-h, 60px); flex: 0 0 var(--sidebar-w, 194px);
+  width: var(--sidebar-w, 194px); display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 10px; border-right: 1px solid var(--line); background: var(--panel);
+  height: calc(100vh - var(--header-h, 60px) - 36px); overflow-y: auto;
+}
+.sidebar button[data-tab] {
+  background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 8px 10px; border-radius: var(--radius); cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; gap: 9px; text-align: left; width: 100%;
+}
+.sidebar button[data-tab].active { background: var(--panel2); color: var(--text); border-color: var(--line); }
+/* Le libellé prend la place restante : les badges se rangent à droite, alignés d'une ligne
+   à l'autre — c'est ce qui rend la colonne lisible d'un coup d'œil. */
+.sidebar button[data-tab] > span:not([class]) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .nav-count, .sidebar .nav-health { flex: none; margin-left: 0; }
+/* ---- Les fenêtres réduites, au bas du menu ----
+   Le dock prend l'espace libre du bas quand il existe ; sinon c'est « Réduire le menu » qui
+   le prend, comme avant. Une seule des deux règles s'applique à la fois, faute de quoi
+   l'espace se partagerait entre les deux et les deux flotteraient au milieu. */
+.modal-dock { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.modal-dock:not([hidden]) ~ .sidebar-toggle { margin-top: 8px; }
+.dock-titre { font-size: 11px; text-transform: uppercase; letter-spacing: .3px; padding: 0 2px 2px; }
+.dock-chip { display: flex; align-items: center; gap: 2px; }
+.dock-open { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; font-size: 13px; text-align: left; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
+.dock-open:hover { border-color: var(--accent); }
+.dock-open .ico { flex: none; color: var(--muted); }
+.dock-open > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dock-close { flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; cursor: pointer;
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius); color: var(--muted); }
+.dock-close:hover { border-color: var(--danger); color: var(--danger-text, var(--danger)); }
+/* Menu compact : la puce se réduit à son icône, comme les onglets. Le titre reste dans le
+   `title` — et la croix disparaît : à 56 px, deux cibles côte à côte se manquent. */
+body.sidebar-compacte .modal-dock .dock-titre, body.sidebar-compacte .modal-dock .dock-close { display: none; }
+body.sidebar-compacte .modal-dock .dock-open { justify-content: center; padding: 8px 0; }
+
+.sidebar-toggle {
+  margin-top: auto; background: transparent; border: 1px solid transparent; color: var(--muted);
+  padding: 7px 10px; border-radius: var(--radius); cursor: pointer; font-size: 13px;
+  display: flex; align-items: center; gap: 9px; width: 100%;
+}
+.sidebar-toggle:hover { background: var(--hover); color: var(--text); }
+/* COMPACTE : icônes seules. Les libellés sont masqués, pas retirés — les lecteurs d'écran
+   et le `title` continuent de dire où l'on va. */
+body.sidebar-compacte { --sidebar-w: 56px; }
+body.sidebar-compacte .sidebar button > span:not([class]) { display: none; }
+body.sidebar-compacte .sidebar button[data-tab] { justify-content: center; padding: 9px 0; }
+body.sidebar-compacte .sidebar-toggle { justify-content: center; }
+body.sidebar-compacte .sidebar-toggle .ico { transform: rotate(180deg); }
+/* Les badges d'un menu compact se posent sur l'icône : côte à côte, ils déborderaient. */
+body.sidebar-compacte .sidebar .nav-count, body.sidebar-compacte .sidebar .nav-health {
+  position: absolute; top: 2px; right: 4px; font-size: 9px; min-width: 14px; height: 14px; line-height: 14px; padding: 0 3px;
+}
+body.sidebar-compacte .sidebar button[data-tab] { position: relative; }
+/* Le déclencheur de palette occupe le centre. `margin: 0 auto` le CENTRE dans l'en-tête
+   plutôt que de le coller à la marque : c'est un point de mire, pas un appendice du logo. */
+.palette-trigger {
+  flex: 1 1 auto; max-width: 460px; margin: 0 auto; display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--r-full); color: var(--muted); cursor: pointer; font: inherit; font-size: 13px;
+}
+.palette-trigger:hover { border-color: var(--accent); color: var(--text); }
+.palette-trigger > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.palette-trigger kbd {
+  flex: none; font: inherit; font-size: 11px; padding: 1px 6px; border-radius: 5px;
+  background: var(--panel); border: 1px solid var(--line); color: var(--muted);
+}
+/* Sous 900 px, le champ ne tient plus avec le reste : l'icône seule suffit à le rappeler. */
+@media (max-width: 900px) {
+  .palette-trigger { flex: 0 0 auto; max-width: none; }
+  .palette-trigger > span, .palette-trigger kbd { display: none; }
+}
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.badge { background: var(--amber); color: var(--on-amber); padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+
+.chrono { display: flex; align-items: center; gap: 4px; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 12px; }
+.chrono #chronoTime { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 14px; min-width: 54px; text-align: center; letter-spacing: .5px; color: var(--text); }
+.chrono button { background: transparent; border: none; color: var(--text); cursor: pointer; font-size: 13px; width: 26px; height: 26px; border-radius: 50%; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.chrono button:hover { background: var(--line); }
+.chrono .chrono-ico { color: var(--muted); flex: 0 0 auto; }
+/* Au repos et à zéro : l'icône dit ce que c'est, le temps s'efface. */
+.chrono.idle { padding-left: 8px; }
+.chrono.idle #chronoTime { display: none; }
+.chrono.running { border-color: var(--green); }
+.chrono.running #chronoTime { color: var(--green); }
+
+button { font-family: inherit; }
+

@@ -11,6 +11,584 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-27
+
+### Added
+
+- **Feedback on a plan before approving it.** On a “plan to approve” line, “Regenerate the plan
+  with my feedback” sends your remarks to the same agent session, which rewrites the whole plan
+  without coding; the line waits again. Approve only when everything is right, after as many
+  rounds as needed. The view “Read the plan” opens offers the same feedback field and the same two
+  actions in place of “Prepare a follow-up”: you re-read a plan to correct or approve it, not to
+  send it a follow-up.
+- **Several agent binaries, one default, chosen per session.** Settings → AI session → “Agent
+  binaries” is now a list — the default first, marked, then as many others as you like (a Claude Code
+  on a local Ollama next to your Claude Max, a Copilot to compare), each complete (binary, arguments,
+  environment variables, timeout, backend), with its state, a *Test* button and one shared edit form.
+  The session modal then offers a “Binary” picker; the choice holds for every pass of the session and
+  shows on its card. “Use as default” swaps a profile with the default. This workstation only, never
+  shared.
+- **Agent environment variables, on screen.** Settings → AI session takes `NAME=value` lines — an
+  Ollama behind Claude Code (`ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`), a proxy, a key — passed
+  to the agent Mergerie launches only, never to your terminal, overriding the shell; this
+  workstation only, never shared, applied on the next launch.
+- **Types on the pure layers, without a build.** `src/core`, `src/forge` and `src/verify` carry
+  `// @ts-check` and JSDoc; `npm run check` now runs `tsc --noEmit` on them (TypeScript is a
+  development dependency only). Editors get completion and error detection on those modules.
+- **What grows without limit is kept in check.** Closed merge requests slim down after a delay of
+  their own (Settings → General, 180 days by default): the last report stays, previous versions,
+  the stored diff, the questions asked on the report and the working folder go. Clones nobody has
+  fetched for a month get a `git gc`. A clone can be made without blobs (`--filter=blob:none`,
+  Settings → Git, this workstation, next clones only). And a **disk usage gauge** by category, with
+  a “Clean up now” button that runs the daily pass at once and reports what left.
+- **Verifier suggestions for every ecosystem.** The verifier form proposes exact lines from what
+  the clone declares — npm, pnpm or yarn scripts, composer and phpunit, Makefile targets, pytest,
+  tox and ruff, `go test ./...`, `cargo test`, Maven, Gradle, `dotnet test` — and, when a compose
+  file is there, the `docker compose run --rm <service> …` variant of each test command: the
+  commands run on the host, and the container goes in the line.
+- **“This run sees your HOME.”** The launch dialogs say it at the moment you click, with a
+  **throwaway HOME** box remembered per verifier (also in Settings → Verifiers); the journal says
+  which HOME a run saw.
+- **The verifier's verdict beside the convergence loop.** After each pass, the verifier carrying the
+  merge request runs inside the job and the convergence panel shows its verdict — green, red or
+  stale; a verdict that turns red is called out in the journal without stopping the loop. Never an
+  exit condition: the score threshold keeps the last word (the roadmap now says so).
+- **Plan first, then approve.** A coding session can start with a reading pass that returns a
+  plan (files, steps, risks, open questions) instead of code; the project line says *plan to
+  approve*, offers to read it, a remark, and **Approve and code**, which resumes the same agent
+  session to carry the plan out. With Claude the pass runs in its plan mode whatever the
+  secure/yolo switch says.
+- **Stop and resume with this instruction.** While a session runs, the follow-up field's button
+  stops the pass and sends the instruction back into the same agent session (Claude's handle is
+  known before it says a word), or into a fresh one that receives the task and the transcript.
+- **The journal stays short, the annex holds the rest.** Agent messages are still cut at 600
+  characters and an `Edit` is one line with its size, but each now carries a **“… see”** that
+  opens the full text or the diff in a panel; the agent's reasoning shows as a short line too.
+- **Jobs run in parallel by themselves** when they touch different repositories or folders: a
+  review on one repository no longer delays a session on another. Jobs on the same repository
+  keep their order, and jobs launched by hand pass before automatic ones.
+- **The first quarter of an hour.** The Reviews tab's start-up assistant has five steps instead
+  of three, and works for GitHub as well as GitLab: the **AI agent** (found, simulated on purpose,
+  or missing — with a button to set it up and one to retry), the **forge** (GitLab *or* GitHub,
+  each with its own button), the repositories, **what your team uses** (Jira, Jenkins, Docker,
+  environments: what is ticked unfolds its menu, the rest stays folded — the same preference as
+  Settings → General → Menus) and the first fetch. An installation that already had merge requests
+  skips the new step by itself.
+- **The AI agent is set on screen, and applies without a restart.** Settings → AI session gets
+  the agent's binary, its base arguments and the timeout of one call, plus a **Test the agent**
+  button: one real, short, read-only call whose expected answer is “OK”. The `.env` (`AGENT_BIN`,
+  `AGENT_ARGS`, `AGENT_TIMEOUT_MS`; the old `COPILOT_*` names are still read) is only the default
+  for an installation that never touched that screen. Changing the binary drops the sandbox proof
+  until the next sandbox test, exactly as for a CLI never verified.
+- **No agent found? A banner says so** — at the top of every screen, with the path looked for,
+  the install commands for Claude Code and Copilot CLI, and a **Retry** that redoes the detection
+  on the spot. The detection used to be cached for the life of the process: installing the agent
+  after starting changed nothing until a restart, and the only sign was a mute “dry-run” badge.
+- **The folded menus are found by use.** Git, Docker, Jenkins and Links still start folded; a
+  door to one of them — “Resolve in Git → Merge” on a conflicting merge request, “See the logs”
+  from the brief, a Jenkins job from a card, and a new “this repository has a compose file: show
+  Docker” on a repository's row — now unfolds the menu for good, as if the Settings box had been
+  ticked. The Jenkins sub-tab of Settings follows its menu. The session dialog's Jira field lists
+  **your tickets** as you type, and picking one fills the key and fetches the ticket; the READMEs
+  open with what the cockpit is for: N repositories at once, and sessions that start from a ticket.
+- **Repository groups.** Settings → Repositories gets *Repository groups*: a name, its members,
+  and — folded — the review, fix and modification templates and the standing instructions that
+  apply to every repository of the group (empty: the global settings). A review rule can be
+  limited to a group, a verifier can cover a group as a whole (worktree; “in place” stays line by
+  line), and wherever repositories are picked — a coding or exploration session, a Git action, a
+  verifier's coverage — one chip per group adds or ticks all its members. A repository can belong
+  to several groups; the oldest group carrying a value wins, and the repository's sheet says where
+  each value comes from. Groups travel with the team's data repository; a coverage that arrives
+  through the sync waits for approval like any command that runs. Deleting a group disables the
+  rules that only targeted it rather than letting them apply everywhere.
+- **Approve from the report.** An **Approve** button next to Publish posts the verdict the forge
+  reads — a GitLab approval, a GitHub `APPROVE` review — with no comment, never a burst of inline
+  remarks. The confirmation states the score against the threshold and the verification verdict
+  without forbidding anything; the button then reads “Approved ✓”, read back from the forge, and
+  is withdrawn in one click.
+- **Resolve or reopen a discussion thread** from the report or the diff viewer, without going to
+  the forge. On GitHub the resolved state, which only GraphQL knows, is now read back too.
+- **The forge's CI on every card.** A CI badge reads the latest GitLab pipeline or the GitHub
+  check-runs and statuses of the merge request — green, red, running — with a link to what broke.
+  It is not Mergerie's verdict, which keeps its own badge.
+- **Secured or yolo: one switch for what the agent may do, per machine.** Settings → AI session
+  now opens with a single choice. **Yolo** — the default of an installation that touched nothing,
+  and of an existing database — runs the agent with no restriction from the launcher, every
+  flavour and every backend alike: arguments intact (wide-open mode included), no sandbox, no
+  allowlist, no refused read, no after-the-fact integrity check; a discreet “yolo” badge in the
+  header leads to the setting, and every run's journal opens with it. **Secured** is what the
+  previous release's hardening did — the CLI's sandbox once proven, else an allowlist, proven
+  read-only for reviews and explorations, leak denials — and its details (sandbox, allowlist,
+  “Test the sandbox”) now live under that choice, folded away in yolo. The start-up assistant
+  asks the question once, with the tools your team uses. What yolo never lifts, because it is
+  the server's limit and not the agent's: the local token on `/api/`, the `Host` allowlist, the
+  nonce on protocol blocks, the per-machine approval of what arrives through the sync, the
+  agent's allowlisted environment.
+- **Four agent backends, and a guarantee level said in plain words.** Next to Claude Code and
+  Copilot CLI, **Codex CLI** and **Gemini CLI** are wired — from their documentation, without a
+  binary to try them on, and Settings say so (“unverified”) — and any other CLI is **run as is**
+  instead of being refused. The backend is detected from `--version`, then from the binary's
+  name, and can be chosen in Settings → AI session (or `AGENT_BACKEND`). Every run's journal now
+  opens with the level of what its backend can promise — **proven** (sandbox verified here),
+  **declared** (the CLI can restrict itself, nothing proved it), **lightened** (no restriction,
+  the after-the-fact integrity check is the only net) — and so does Settings. A Copilot that
+  cannot restrict a read-only run is no longer refused: it runs at the lightened level, said as
+  such; the “leave Copilot unrestricted” checkbox is gone with the refusal it excused.
+- **Reviews refreshes on its own.** A new database starts with automatic refresh every
+  **5 minutes** (it was off, so nothing ever arrived without a click), and opening the Reviews tab
+  runs a discovery when the last one is older than that interval.
+
+- **“Ask the AI” proposes a resolution for every conflict of every file in one go — you still
+  validate each one individually.** One button on Git → Merge's conflict screen, not one per
+  file: it sends the whole merge to the agent as a single background job, so it sees every
+  conflicted file together before proposing anything — a fix that only makes sense read
+  alongside a change happening in another file isn't lost by asking file-by-file. Each proposal
+  shows up as a third version next to “ours” and “theirs”, with its own “Keep” button — nothing
+  is applied on its own, and a conflict the agent skipped simply shows no third version rather
+  than a guess. Proposals are kept with the merge, so reopening a file doesn't lose what was
+  already asked for. Each proposal also carries the reason behind it, hidden by default behind
+  a “See reason” button — the request asks the agent for a short explanation per conflict, not
+  just the resolved text. The button asks for confirmation before sending anything, since it
+  means the content of every conflicted file leaves for the agent. The full-screen view (below)
+  gets a fourth column for the AI proposal and its reason, shown only on a file that has one —
+  clicking a proposal there selects it, exactly like a passage on the destination or source side,
+  and its text wraps instead of opening a horizontal scrollbar. Each of the four full-screen
+  columns can be hidden and shown back on its own — the remaining ones share the freed-up width
+  instead of leaving it blank — with at least one always left visible. The full-screen view also
+  gets previous/next arrows to jump straight to the next conflict, with a “conflict N/M” counter
+  — scrolling by hand through a long file to find the next one was slower than the click itself.
+  They stay active even on a file with a single conflict or at either end of the list: clicking
+  past the last one, or the only one there is, just re-centers and re-marks it instead of doing
+  nothing, so the arrows never look broken.
+- **Git → Merge's conflict screen says which version is newer, and gets a full-screen view.**
+  Each side of a conflict now shows the date AND time of its last commit on that branch, so
+  picking one no longer means guessing which is more recent — two commits made the same day
+  would otherwise have looked identical. “Keep both” now names the two branches and the
+  order it applies them in (it was “in this order” with no order shown). A new “Fullscreen”
+  button shows the whole file three times side by side — destination, source, and the current
+  result in the middle — instead of three lines of context per conflict; clicking a passage on
+  either side still picks it, and the choice carries back to the normal view on close.
+- **A full-screen view for a note page.** Notes → Pages: a button next to Rendered / Two
+  columns / Markdown drops the page list and expands the editor to fill the window — the three
+  view buttons stay available, so the display can still be switched while reading. Escape, or
+  the same button, exits back to the normal two-column layout.
+- **Read-only linked projects for a coding session.** The session dialog's Advanced section
+  lets you add other repositories as context — the AI reads their API, schema and contracts to
+  code correctly in the projects it modifies, without ever being allowed to change them. A
+  repository (with search) and an optional branch, mounted read-only for the duration of the
+  pass and reset afterwards, the same mechanism as a review's linked projects. Coding only; a
+  repository already a coding target of the same session cannot also be linked read-only.
+- **Schedule a session for a date and time.** The session modal — coding, exploration and
+  off-repo alike — has a “Launch later, on” field: fill it and the primary button becomes “Create
+  and schedule”; the session is created and waits, its card showing the date with a cross to cancel
+  it. Editing the session shows the date and saves it with the rest. A waiting follow-up can be
+  scheduled the same way (“Or send it on…”): it then goes out by itself at that moment, whether or
+  not the “automatically at the end” box is ticked — a follow-up has one trigger, never two. Launching
+  a session by hand cancels its date, a date already past is refused, and the date belongs to the
+  workstation that set it: that one launches, and catches up at the next minute if it was switched
+  off at the time. Free questions are not schedulable.
+- **“Check all” / “Uncheck all” on the branch explorer's repository picker**, with a running
+  count of how many are ticked (Git → Explorer of branches). Matches what “Git commands” already
+  offered on its own project picker.
+- **The footer's “journal” button turns amber and pulses while a job still runs behind it.**
+  Hiding the log panel (“masquer”, or its own auto-collapse a few seconds after a job finishes)
+  left the button looking the same whether the job was still working or long done — it now marks
+  “still running” separately from “done” (green) and “failed” (red).
+- **A session error's remedy buttons (“Catch up with the base and retry”, “Resolve the conflict”,
+  “Start from a fresh agent session”, “Re-clone the repository”) explain themselves on hover.**
+- **A coding session's project line shows the same “in conflict” tag as the merge request queue**,
+  next to “Update with {base}”, when the forge has actually flagged a conflict — not just any
+  rejected push. The button offered the fix already; nothing said why it was there.
+- **“Send a follow-up” now shows up on a project that stopped without coding, as long as its AI
+  session is still alive.** An AI that pauses to ask “should I continue into the next batch?” in
+  plain text (no structured question) had nothing committed, so the project landed in “error” —
+  and with it, the one button that could actually reply to that pause and say “continue”.
+- **“Update with {base}” now says when it's done, and that a force-push is next.** It runs in the
+  background (the AI may need to settle conflicts), and the only sign it had finished was a
+  button quietly changing label on a card that redraws itself every second and a half. A toast
+  now follows that one job to its end, success or failure, instead of leaving it to be noticed.
+
+- **The report-link comment can say how many findings the pass carries.** Three new variables in
+  the comment template — `{blockers}`, `{majors}` and `{minors}` — give the number of blocking,
+  major and minor findings of the pass, counted as on the report card (findings the pass saw
+  resolved are left out). “Review ready: {url} — {blockers} blocking, {majors} major” tells the
+  author whether there is anything urgent without opening the report. And the variables are now
+  **listed under the field**, where you look while typing, instead of hiding in a tooltip.
+
+- **The screen follows your team's work after a sync.** A merge request a teammate reviewed
+  moves from “To review” to “Reviewed” on your open screen, with its counters and menu badge; the
+  same goes for an open report, todos, notes pages, questions, agents, verifiers, review rules,
+  team settings and stats — with the manual sync buttons and with automatic sync alike, without
+  reloading the page.
+- **Shared items say who shared them**: “shared by Claire” or “shared by me” on sessions,
+  questions, notes pages and todos.
+- **An open notes page no longer overwrites a teammate's edit.** If a sync brought their version
+  while you were typing, a banner names them and lets you take their version or keep yours;
+  nothing is saved until you choose.
+- **“How many iterations already?” is answered without opening “Agent's response.”** The
+  session's follow-up button now carries its own count in its label — “Send a follow-up (2)” —
+  on every session, question and off-repo card. Inside “Agent's response”, each iteration shows
+  its token count, and the list's heading adds up the tokens of every iteration shown below it. A
+  follow-up can also be written and sent right there — no need to close the view, find the card
+  again, and reopen its own form to ask for the thing you were just reading about.
+- **Stats → “Findings that keep coming back” gained a cross-repository twin.** The existing
+  card only ever compares a finding against merge requests of the *same* repository, so a
+  finding raised twice on one repository and once on another never reached its threshold of
+  three anywhere. The new “The same findings, across repositories” card catches exactly that
+  case (three merge requests, at least two repositories) and proposes a rule scoped to no
+  repository and no file path — a `**` trigger, since two unrelated repositories share no path
+  prefix worth deducing.
+
+### Changed
+
+- **No more “yolo” badge in the header.** The agent mode is read and changed in Settings → AI
+  session only; every run's journal still opens with it.
+- **`npx mergerie` writes its `.env` in `~/.mergerie/`, next to the data**, not in the folder the
+  command happens to be run from — a file written in one project folder was silently ignored when
+  the command was run from another. It is now a dozen lines: the agent found, the port, the
+  dry-run switch. A `.env` in the current folder still overrides it, and the shell wins over both.
+- **A repository's forge is recognised by its host.** Pasting a GitHub Enterprise address on a
+  host without “github” in its name used to add it as a GitLab repository; the address is now
+  compared with the hosts configured in Settings → Git first.
+- The guide opens with a **table of contents** and a **“First real review in 5 minutes”** section;
+  the npm description says GitHub too.
+
+- **Repositories join Docker, Jenkins, Git and Jira on the local side.** Which repositories you
+  follow no longer travels through the team's data repository: adding one used to make it appear
+  on every machine, with its cloning and its merge-request discovery starting there too — on that
+  machine's own token — the moment anyone synced, with no checkbox to decline it. Each machine now
+  keeps its own list and syncs only the repositories on it. A merge request, a review rule or a
+  verifier's coverage still designates its repository the same way for everyone once discovered,
+  so a team still reads the same history on the repositories it follows on both sides. Repositories
+  already sent to a team's data repository are removed from it once, on the next start — otherwise
+  they would sit there and land back on a colleague's machine at their next sync.
+- **The screen's code is now organised by screen and by layer** (`public/js/core/`,
+  `public/js/ecrans/<screen>/`, `public/css/`, `public/i18n/`, `public/html/` — see PLAN.md).
+  Nothing changes on screen: same tabs, same shortcuts, same labels, same behaviour. What changes
+  is where a thing is found: one short file per screen section instead of a twenty-five-thousand-line
+  `app.js`, one dictionary file per family with French and English side by side, one stylesheet
+  per screen, one HTML piece per tab and per modal, and a check that refuses a file missing from
+  the page or a call crossing a screen's boundary undeclared. A browser's error names the file.
+- **The session form keeps “The AI may ask me questions” in plain sight, and starts with
+  “Advanced” folded.** The box has left the Advanced accordion: whether the AI may stop and ask
+  is a decision you take for each session, not a setting to go looking for — it now sits above
+  “Launch later”, in the coding, exploration and off-repo forms alike. The accordion (commit
+  message, agent session to resume, skills) is folded by default so the form fits the screen; one
+  click unfolds it, and editing a session unfolds it by itself when one of its fields holds a value.
+- **Scheduling a session's launch now uses a date field and a time field, side by side**,
+  instead of one combined field — each opens its own native picker (a calendar, a clock), and
+  both stay just as typeable by hand. Filling only one of the two is signalled under the field
+  that's missing, the same way a passed date already was.
+- **The default review prompt (Settings → Review, when the field is left empty) now asks for a
+  structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score
+  calibrated on named anchors (a score ≥ 7 excludes any remaining blocker), a “what's good”
+  section and a merge checklist — instead of one free-form paragraph. A review prompt already
+  customized in Settings is untouched; installations still on the previous default pick up the
+  new one automatically, in their configured language.
+- **A session card in Dev IA says exactly when it finished** — date and time, e.g. “finished on
+  09/23/2026 at 08:34” — instead of a relative “yesterday”/“the day before yesterday” that only
+  told you it was recent, not which of several same-week sessions came first. The relative wording
+  still shows up on hover, like every other date in the app.
+
+- **The server's code is now organised by layer** (`src/app/`, `src/jobs/`, `src/db/`,
+  `src/agent/profile/`… — see PLAN.md). Nothing changes on screen or in the API: same routes,
+  same database schema, same behaviour. What changes is where a thing is found: one file per
+  route domain instead of an eight-thousand-line `server.js`, one schema slice per domain, one
+  runner per job kind, and a check that refuses an import going the wrong way. A fork or a
+  reader of the code finds each piece in a folder that names it.
+- **Code contributions are closed.** Mergerie is written by one maintainer, who stays its only
+  rights holder — that is what keeps the project free to evolve its licensing, the AGPL staying in
+  place. Pull requests on the GitHub mirror are now closed automatically with a note explaining
+  why. Issues remain the place for bugs, ideas and
+  translation errors; CONTRIBUTING.md says what a useful report carries, and asks for the fix in
+  words rather than as a patch, for the same reason.
+
+### Removed
+
+- **`npm run pipe` (`src/cli.js`).** That smoke test wrote a fake forge address and token into
+  the *real* configuration and a fake repository into the real database whenever
+  `MERGERIE_DATA_DIR` was not set. `npm run demo` and the end-to-end suite cover the same path,
+  isolated.
+- **Voice dictation.** The microphone on text fields, its Settings → Voice dictation screen, the
+  local whisper.cpp engine (and its install scripts), the OpenAI-compatible and browser providers,
+  and every setting that configured them are gone. Text fields go back to typing and pasting only.
+- **The dollar cost of a session, everywhere it showed up** — the sessions list, “Agent's
+  response” — is gone; only the token count remains. A dollar figure only ever came from a
+  backend willing to report one, didn't compare from one month to the next as prices moved, and
+  duplicated the token count sitting right next to it. Tokens alone are shown now, consistently
+  with what Stats already did.
+
+### Fixed
+
+- **Journal lines shown twice.** Two overlapping polls of the journal could read the same cursor before
+  either advanced it and append every line twice; a single poll runs at a time now.
+- **A review's stored diff survives a re-read of the shared data.** Re-reading the shared format
+  (after a version upgrade, or a sync that only brought new report versions) reset the local diff
+  of every review; the screen then recomputed it from the clone, and the demo, which has no clone,
+  showed an empty diff and lost the remarks placed on it. The diff now stays as long as the review
+  still points at the same report version.
+- **Journal stuck on “done” after re-reading a past job.** Reopening a past job's log from Activity
+  pins the view; a job launched afterwards (approving a plan, a rerun…) then wrote into a hidden pane
+  and the banner never said “in progress” until the page was reloaded. A new job now takes the view.
+
+- **A question asked on a review report, and its answer, are never shared with the team** —
+  they used to travel with the team's data repository unconditionally, on the theory that the
+  report itself is team work. The report still is; a personal question about it, and what the
+  agent answered, now stay on the machine that asked, like a session's own follow-ups.
+- **Scrolling to the top or bottom of a review report, or of the merge request list next to
+  it, now keeps scrolling the page**, instead of stopping dead and forcing the mouse out of the
+  panel to reach the rest of the screen. The list used to hold the wheel at its own edges on
+  purpose, to keep a short scroll there from jumping the whole screen — but getting stuck inside
+  the panel turned out to be the worse annoyance of the two.
+- **The “in conflict” tag and the “Update with {base}” button no longer outlive the conflict
+  they pointed at.** A successful catch-up replays the session's commits on top of an up-to-date
+  base — resolved, locally — but the flag behind both stayed set until a push and the forge's
+  next sync caught up, so a card kept offering (and warning about) a conflict already gone.
+- **A merge request merged directly on the forge no longer loses its link to the coding session
+  that opened it.** Merging from the session's own “Merge” button recorded the link; discovery,
+  which is what actually notices a merge done anywhere else (GitLab's UI, another teammate), only
+  ever updated the merge request's own row — never the session's. Once the forge stopped listing
+  it as open, the project's link to it vanished from the session card, and “Create the MR”
+  reappeared on a branch that was already merged. Sessions that already lost that link before
+  this fix are repaired automatically on the next start — nothing to do.
+- **A coding session that fails now says why, instead of “claude failed (code 1): ” with nothing
+  after the colon.** In streaming mode, the CLI's explanation for a failed run arrives as a
+  `result` event on stdout, not on stderr — the error message only ever looked at stderr, which
+  is essentially always empty there, so the actual cause (an API error, a service outage…) was
+  visible only in the job's full log, never in the error itself.
+- **The “in conflict” badge on a merge request card had the wrong shape.** It shared its class
+  name with an unrelated block on Settings → Sharing (a kept version of a data-sync conflict),
+  which leaked that block's square corners, padding and background onto the badge. Renamed the
+  Sharing screen's classes to stop the collision — same conflict-resolution UI, unrelated pill.
+- **“Catch up with the base and retry” now offers something to catch up on plain push rejections
+  too, not only forge-flagged conflicts.** The button appeared on any rejected push, but the
+  project card's own “Update base” action only showed up once GitLab had flagged the merge
+  request as conflicting — a plain non-fast-forward push (no forge-side conflict yet) left the
+  button with nothing to click, and a “not available here” message instead.
+- **The assembled page tolerates CRLF line endings in `public/index.html`.** A checkout with
+  Windows-style line endings made the `<!--@include …-->` markers stop matching entirely, serving
+  the bare shell with none of its screens or modals filled in.
+- **Reviews: sorting by lowest score now sorts.** “Lowest score first” left the list in arrival
+  order, and “Blocking first” did not break ties by score either.
+- **Reviews: “ready to merge” no longer includes low-scored merge requests.** A merge request
+  scored 2/10 with a green verification was listed as ready; the list now applies the same score
+  threshold as the morning brief. The copied reference of a scored merge request shows its score
+  properly.
+- **Reviews: “Search for new MRs” updates the counter and the Review button.** On an empty queue
+  they stayed at 0 and greyed out above the merge requests just found.
+- **Reviews: the “To review by me” chip appears in the “To review” queue**, where review requests
+  wait — it only looked at reviewed reports.
+- **AI dev: “Resume in terminal” is offered on free questions and out-of-repo folders** again;
+  the list never carried the command.
+- **AI dev: the verifier list follows the projects of the session form** when a project is added
+  or removed, not only when a repository is changed.
+- **AI dev: choosing “none” as the verifier of a coding session now sticks**, in editing and in
+  duplication alike. Reopening or duplicating the session brought back the single verifier that
+  covers its projects, silently undoing the deliberate choice to run without one.
+- **Agents: “Sessions” on an exploration agent opens the Exploration list**, filtered on that
+  agent, instead of an empty Coding list.
+- **Agents: “Duplicate” and “Code” on an agent awaiting approval say why they are refused**
+  instead of reporting an unexpected error.
+
+- **Stats: the period and repository filters apply to every block.** Token cost and the
+  sent/received ratio now follow the period; “Per project”, recurring findings and the green rate
+  follow the chosen repository. The repository list is filled even when Stats is the first screen
+  opened, and an exploration among the most expensive sessions opens in the Exploration list.
+- **Settings: a review rule added without choosing a repository applies to all repositories**, as
+  its help says — it was silently limited to the first one.
+- **Settings: editing a verifier keeps its environment variables.** The form opened with the field
+  empty, and saving it again erased the values stored on this machine.
+- **Git: “Select all” in Git commands ticks the projects** instead of doing nothing, and the merge
+  work screen names the merge request it belongs to, like the running-merges list.
+- **Jira: a short outage no longer hides the Sprint filter or the workflow statuses** until the next
+  restart; removing a field-filter criterion keeps the filter menu open; “Make the AI code” offers
+  the ticket's screenshots; the comment box offers to insert the links of the ticket's merge
+  requests; and changing a status or un-watching from the Watched list refreshes that list.
+- **Notes: the todo add bar understands the short syntax it advertises** (`@tomorrow`, `!!`, `!217`,
+  `PROJ-12`), and the hint shows it as code rather than raw tags. A ticket linked from a note or a
+  todo opens that ticket, not the first of your list, and the share button is there from the first
+  visit to Todos.
+
+- **A window opened from another window now opens on top of it.** “Add to todos” and
+  “Investigate” from a Jenkins job's window opened behind it, out of reach of the mouse.
+- **Jenkins: “My branches” and the `!iid` tags work when Mergerie opens straight on Jenkins**,
+  without visiting Reviews first — a remembered “My branches” used to empty the list.
+- **Docker: “Put in the grid” appears for a local project again** — the server call behind it
+  always failed.
+- **Links: the copy button of a grid cell can be clicked** — it sat under the edit pencil.
+
+- **Activity: “Retry” is offered on a failed or stopped job**, as in the log banner, and
+  double-clicking a log line opens the merge request it is about. The banner counts only the jobs
+  still running (“2 jobs running” with one stopped and one running).
+- **A pasted link wins over the last tab and over the morning brief**: the object opens in front,
+  instead of in a hidden Reviews tab.
+- **Keyboard: Enter opens the selected report**, and Enter on a branch chip only copies its name —
+  it also started the review of another merge request. The palette opens a watched ticket
+  instead of the first of your list. The footer's “stats” mode is shown correctly after a reload.
+- **Sync: a push refused at every attempt (protected branch, read-only access) is reported**
+  instead of showing “up to date” forever, and a new sync cadence applies without a restart.
+- **Sharing: only its author can unshare or delete a shared note page or todo** — from a
+  colleague's machine it removed the file from the shared repository, for everyone. Editing
+  stays open to the team, as before.
+
+- **Settings: saving no longer writes back a team setting a teammate changed meanwhile** — the
+  form now sends only the fields you changed.
+- **Sync: a review report deleted by a teammate is deleted here too**; it survived, still
+  openable, next to a merge request back in “To review”.
+- **“Ask the AI” on Git → Merge no longer fails the whole request over one unreadable path** —
+  a submodule whose commit pointer diverges between the two branches, for instance, is a
+  directory on disk, and reading it as text used to throw Node's raw `EISDIR`, failing every
+  file's proposal along with it, not just that one. That path is now skipped like any conflict
+  the agent can't resolve, and opening it by hand reports a clear message instead of the raw error.
+- **A finding git had confirmed fixed no longer flips back to “gone, unverified” on the next
+  pass, and the review card no longer counts it as still blocking.** Once resolved, it stayed in
+  the comparison pool for every future pass; the next one, having nothing left to change at that
+  already-fixed line, found no trace of it in its own diff and downgraded it to “disappeared” —
+  forever after, since each pass carried the same stale finding into the next. A resolved finding
+  now leaves the pool for good, the way a merged branch leaves a to-do list.
+- **The merge dialog no longer offers to advance a Jira ticket that doesn't exist.** The ticket
+  key is guessed from the title or branch (e.g. a branch named after a word that happens to look
+  like a ticket key), and when a fetch of that key had already failed — wrong guess, deleted
+  ticket, no access — the dialog still proposed “move TICKET-1 to its next state and drop the
+  merge request's link on it” for a ticket that was never there. A key already known to fail no
+  longer counts.
+- **A coding session's card no longer offers “Tell Jira” for a ticket that doesn't exist**, same
+  root cause as the merge dialog above: the button used to test the branch name against a bare
+  “looks like a ticket key” pattern, with no idea that a fetch of that very key had already failed
+  at discovery. It now reads the same, error-aware ticket key the ticket badge already used.
+- **“Clean up now” (Settings → General, disk usage) now asks for confirmation before it runs.**
+  It deletes old job logs, slims down long-closed merge requests (previous versions, stored diff,
+  questions, working folder) and compacts inactive clones — all irreversible — but a bare click
+  ran it immediately, with no more warning than any read-only button on the same screen.
+
+### Security
+
+- **Note on the default.** The agent restrictions below apply in **secured** mode, which is now
+  chosen in Settings → AI session; the default of an installation that touched nothing is
+  **yolo** (no restriction of the agent). The server-side limits — local token, `Host`
+  allowlist, protocol nonces, per-machine approval, allowlisted environment — hold in both.
+- **The API on `localhost` now belongs only to your browser.** A second, local-only session
+  token — separate from the one an exposed server already required — closes every `/api/` route
+  to any other process on the machine: an AI agent's own shell, a verifier command, a script run
+  by a dependency under test. Nothing to configure; it's issued and renewed automatically.
+- **Coding sessions no longer run the AI agent in an unrestricted (“yolo”) mode.** Settings →
+  AI session has a new **“Test the sandbox”** button: it runs a real check (a blocked write
+  outside the working folder, a blocked network call) and only turns the CLI's own sandbox on if
+  both are confirmed blocked — never a checkbox on trust. Until verified, or on a CLI that
+  doesn't support it, Mergerie falls back to a command allowlist; the old wide-open mode still
+  exists but is now an explicit, clearly-flagged opt-in, never the default. Copilot CLI's own
+  `--deny-tool`/`--allow-tool` are now used when available, and a read-only session on a CLI that
+  can't prove it's restricted is refused rather than assumed safe.
+- **The team data repository can no longer be made to silently rewrite a review verdict, push
+  on your behalf, or run with a weaker git setup than a code clone.** Verdicts and attachments
+  synced from a colleague are fingerprinted the same way reports already were; a session's
+  “push automatically” flag stays a setting of your own machine; the sync itself now runs with
+  the same hardened git invocation (no hooks, no `fsmonitor`, filtered environment) as any other
+  clone, and a `.gitmodules` file in the shared repository suspends the sync instead of being
+  checked out.
+- **Text an AI agent reads — a merge request description, a Jira ticket, a previous report — can
+  no longer forge one of the agent's own protocol blocks** (its findings, its questions, the
+  repository it names, the agent it proposes to create). Every such block now carries a nonce
+  tied to the run that asked for it, on top of the existing data-tagging; a look-alike block a
+  piece of text might contain is neutralised regardless.
+- **Follow-up hardening, from an internal review of the changes above:**
+  - The local session token closed `/api/` requests case-sensitively; `GET /API/config` slipped
+    through unrouted case-insensitively by Express itself. Both the local token and the
+    cross-origin guard now compare paths without regard to case.
+  - The nonce carried by an agent's protocol blocks was derived from a plain hash of a
+    sequential database id — guessable in advance for every plausible id. It's now an HMAC keyed
+    by a per-installation secret that never leaves this machine and is closed to the agent itself.
+  - A verifier command approved for the unsandboxed write allowlist granted the whole program
+    (`npm test` opened all of `npm`, including `npm publish`; `node script.js` opened `node -e`).
+    Only the exact approved command line is granted now.
+  - A verification synced while still running (before it has a verdict) no longer has its
+    fingerprint locked in — syncing mid-run used to make the real, later verdict look like a
+    silent rewrite and get rejected.
+  - “Test the sandbox” could mark the sandbox verified from an offline machine, since any failed
+    network probe — including “no network at all” — looked like “the sandbox blocked it”. It now
+    checks the network works *outside* the sandbox first.
+  - An automatic verifier's outbound network was briefly cut off (`unshare` on Linux,
+    `sandbox-exec` on macOS) for the duration of this work, then removed again: cutting the
+    network also cut access to `localhost`, breaking any verifier whose commands reach a
+    database, Redis, or a `docker-compose` service there — with no way to opt back in. Automatic
+    verifiers keep the network open; what still closes this path is the local session token
+    above and the throwaway `HOME` they already ran under.
+  - A second review pass caught two of its own fixes: the “verification synced mid-run” fix
+    above had left a hole where a verification whose verdict was already locked in could be
+    erased by resending it without a verdict; and narrowing the injection-marker regex to known
+    names had dropped its case-insensitive flag along the way, so `<<<findings` in lowercase
+    slipped through neutralisation. Both are closed now.
+
+A security review of the whole tool, and what came out of it. Most of it is invisible when all goes
+well; a few things now ask for a click or a setting, and those are listed first.
+
+**What you may notice**
+
+- **Exposing the server now requires a token.** With `HOST` set to anything but a loopback address,
+  Mergerie refuses to start without `MERGERIE_ACCESS_TOKEN`; the browser enters it once on an
+  `/acces` page, scripts send it as a `Bearer` header. On `localhost`, nothing changes.
+- **Reaching Mergerie through a host name** (reverse proxy, `/etc/hosts` entry) needs that name in
+  `MERGERIE_ALLOWED_HOSTS`; anything else gets a 421. `localhost` and IP addresses always work.
+- **Code that arrives through the shared data repository waits for you.** A verifier whose commands
+  changed, an agent whose permissions or schedule changed, the automatic reviews switched on by a
+  colleague: each is marked “to approve”, shows what changed, and does not run on your machine until
+  you click **Approve on this machine**. The click approves what the screen showed: if sync brings yet
+  another version in between, it is refused and the new one is shown. Every change that counts is
+  listed — “all the project's authors” for automatic verifications, an agent's skills and subagents
+  with their tools. What you create or edit yourself is approved on the way, and everything that
+  existed before this version is taken over once.
+- **Reviews, explanations, questions and explorations run the agent read-only.** The broad mode from
+  `COPILOT_ARGS` (`--dangerously-skip-permissions`) no longer applies to them; the report comes back as
+  the agent's answer. Coding sessions keep your mode but lose web fetching, `curl`, `ssh`, `git push`,
+  `git remote` and `git config`. With Copilot CLI, which has no tool list, the run log says the read is
+  not restricted.
+- **Converging or coding on a branch that changes `CLAUDE.md`, `.claude/`, `.mcp.json` or
+  `.github/copilot-instructions.md` stops first** and names the files: that branch would rewrite the
+  rules of the agent about to work in it. Confirm once for that content; a new push that changes them
+  asks again.
+- **“The merge request's author” is now recognised by the forge username only**, not by the
+  display name, which anyone can change to someone else's: the display name is kept as a fallback
+  for a merge request discovered before its username was recorded.
+- **Automatic verifications run only on your own merge requests by default**, never on a draft or a
+  fork, with a throwaway `HOME`. “All the project's authors” is a new explicit choice in Settings →
+  Verifiers.
+- **Two new AI bounds** in Settings → AI, set per machine: at most N turns per agent session (200
+  by default) and an optional daily spend cap. They do not travel with the team settings — one push
+  could otherwise lift both on every machine.
+- **The git palette is an allowlist** of everyday subcommands (status, fetch, pull, push, log, diff,
+  branch, checkout, rebase, stash, tag…). Entries outside it — `config`, `bisect`, `submodule`, an
+  option that runs a program or writes outside the repository — are refused when saved and when run.
+- **“Test” with a changed address requires typing the token again**: the saved token is only ever sent
+  to its own address.
+- **The backup README no longer claims the tokens are removed**: the archive carries the database,
+  tokens included, and now says to keep it like a password.
+
+**What closed without asking anything**
+
+- Another website open in your browser can no longer drive Mergerie: `Host` check against DNS
+  rebinding, `Sec-Fetch-Site` check on the API, a strict Content Security Policy, `nosniff`,
+  `no-referrer`; the backup and the data repository preview became `POST`s.
+- The forge token is no longer written in the clones' `origin` URL, where the agent could read it: it
+  travels as an HTTP header in the git process's environment only, and existing clones are cleaned at
+  startup. Every git command runs without hooks, `fsmonitor`, external diff or `textconv`.
+- The agent's environment is an allowlist — nothing from Mergerie's `.env` — and its file tools cannot
+  read the database or the `.env`.
+- Text from elsewhere (MR title and description, Jira ticket, previous report, exchanges from another
+  machine, domain cards) enters the prompt framed as data, between tags a text cannot close. Automatic
+  posting waits for a complete findings block; convergence reads its score only from the requested
+  “Overall score: X/10” line.
+- Importing the shared repository validates each file (types, closed lists, 8 MB, no symbolic link) and
+  refuses silent rewrites of append-only documents; a verifier's local folder no longer travels. Each
+  review rule shows who set it.
+- Files supplied by others (attachments, note captures, ticket images) are served through one careful
+  door: only raster images and PDFs display, the rest downloads, under `nosniff` and a `sandbox` CSP.
+- Docker actions only run in a compose folder found under your local folders; the data repository
+  address refuses `http://`, `ext::` and friends; Docker drift masks secrets by value, not just by name.
+- “Stop” now kills the whole process group, grandchildren included.
+- The CI pins its actions by commit and runs with a read-only token. A `.env` in the current folder
+  that picks the agent binary is flagged at startup.
+- The data folder is created readable by you only.
+
 ## [1.7.0] - 2026-09-18
 
 ### Added
@@ -3354,7 +3932,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/debugall/mergerie/compare/v1.7.0...v2.0.0
 [1.7.0]: https://github.com/debugall/mergerie/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/debugall/mergerie/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/debugall/mergerie/compare/v1.4.0...v1.5.0

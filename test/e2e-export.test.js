@@ -17,7 +17,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { startApp, waitForJobs } = require('./helpers/app');
-const { markdownToDocx } = require('../src/docx');
+const { markdownToDocx } = require('../src/integrations/docx');
 
 let chromium = null;
 let dispo = false;

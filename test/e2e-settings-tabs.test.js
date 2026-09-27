@@ -14,7 +14,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, afficherMenusOptionnels } = require('./helpers/app');
 
 /* Le paquet `playwright` peut être installé sans que les navigateurs le soient : c'est le cas
    d'un runner CI ou d'un conteneur vierge. On vérifie donc l'EXÉCUTABLE, pas le module. */
@@ -28,6 +28,8 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     await app.configure();
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
+    // Le sous-onglet Jenkins suit son menu, replié d'office : ce fichier éprouve l'ordre COMPLET.
+    await afficherMenusOptionnels(page);
     await page.goto(app.base);
   });
 
@@ -56,13 +58,13 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
   test('la barre est rangée dans l’ordre du parcours', async () => {
     const ordre = await page.locator('#tab-admin .subnav [data-sub]')
       .evaluateAll((els) => els.map((e) => e.dataset.sub));
-    /* « Dictée vocale » ferme la marche, à côté de « AI sessions » : ce sont les deux panneaux
-       qui portent un BANC D'ESSAI plutôt qu'un simple réglage — on y vient pour éprouver une
-       installation, pas pour cocher une case en passant. */
+    /* « AI sessions » ferme la marche : c'est le seul panneau qui porte un BANC D'ESSAI plutôt
+       qu'un simple réglage — on y vient pour éprouver une installation, pas pour cocher une
+       case en passant. */
     /* « Données partagées » suit « Général » : les deux règlent L'OUTIL, l'un pour soi, l'autre
        à plusieurs. Elle passe avant Jira et Jenkins, qui branchent des services du dehors. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'datasync', 'jiracfg', 'jenkinscfg', 'aisession', 'dictation']);
+      'notif', 'config', 'datasync', 'jiracfg', 'jenkinscfg', 'aisession']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne
@@ -100,7 +102,10 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
       () => document.querySelector('#sub-aisession [name="ai_extra_instructions"]').value === 'Commente en français.',
       null, { timeout: 5000 },
     );
-    await page.locator('#sub-aisession button[type="submit"]').click();
+    /* Plusieurs boutons « Enregistrer » vivent dans ce sous-onglet (consignes, bornes, mode, sandbox) :
+       tous soumettent le MÊME #configForm en entier — on prend le premier. Celui du formulaire des
+       binaires, replié, n'est pas de ceux-là. */
+    await page.locator('#sub-aisession button[type="submit"][form="configForm"]').first().click();
     await page.waitForFunction(() => document.querySelector('#configInfoAi').textContent.trim() !== '');
 
     // Rechargement complet : ce qui compte est ce que la BASE a retenu, pas le champ resté à l'écran.

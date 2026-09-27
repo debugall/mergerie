@@ -1,0 +1,63 @@
+/* ---------- Info-bulle des champs de formulaire ----------
+   Une seule bulle, positionnée en `fixed` par JS : elle n'est donc JAMAIS rognée
+   par un conteneur qui défile (les modales, notamment, ont overflow-y: auto). */
+.hint {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-left: 5px; padding: 0; flex: 0 0 16px;
+  background: none; border: none; color: var(--muted); cursor: help;
+  vertical-align: -3px; transition: color var(--t-fast);
+}
+.hint:hover, .hint:focus-visible { color: var(--accent); }
+.hint .ico { width: 15px; height: 15px; flex-basis: 15px; }
+
+#tip {
+  position: fixed; z-index: 200; max-width: 340px; pointer-events: none;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); padding: 9px 12px;
+  font-size: var(--fs-sm); line-height: 1.5;
+  opacity: 0; transform: translateY(3px); transition: opacity .12s, transform .12s;
+}
+#tip.on { opacity: 1; transform: none; }
+/* Une bulle peut porter PLUSIEURS LIGNES — les messages des commits arrivés depuis la review.
+   `pre-line` garde les retours voulus sans figer les espaces d'indentation. */
+#tip { white-space: pre-line; }
+/* Variante « code » : le contenu d'une commande Makefile, large et monospace pour tenir sur
+   peu de lignes. Les retours à la ligne de la recette sont préservés (pre-wrap). */
+#tip.tip-code { max-width: min(820px, 92vw); white-space: pre-wrap; text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.45; }
+
+/* Le label était en colonne : l'icône « i » se serait retrouvée seule sur une
+   ligne entre le libellé et le champ. On passe en rangée qui se replie — libellé
+   et icône côte à côte, puis le champ (base 100 %) descend de lui-même.
+   `.inline-check` (case à cocher) garde sa case au naturel. */
+.form label { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 5px; }
+/* Les champs texte passent en pleine largeur sous leur libellé — mais PAS les cases à
+   cocher / radios (sinon elles occupent toute la ligne et le libellé tombe dessous). */
+.form label:not(.inline-check) > input:not([type="checkbox"]):not([type="radio"]),
+.form label:not(.inline-check) > textarea,
+.form label:not(.inline-check) > select { flex: 0 0 100%; }
+
+/* Débordement horizontal des rapports.
+   `1fr` vaut `minmax(auto, 1fr)` : le minimum d'une piste grid est la taille
+   min-content de son contenu. Un bloc de code, un tableau large ou une URL
+   insécable poussaient donc la colonne au-delà de l'écran, et l'`overflow-x`
+   de `.md` ne se déclenchait jamais — c'est le parent qui grandissait.
+   `minmax(0, 1fr)` autorise la piste à rétrécir : l'ascenseur revient à
+   l'intérieur du bloc de code / du tableau, là où il a du sens.
+   Les vues plein écran (.split-pane, .code-report) ont déjà leur min-width: 0. */
+.split { grid-template-columns: 320px minmax(0, 1fr); }
+.col-detail, .col-list { min-width: 0; }
+.md, .md-body { max-width: 100%; overflow-wrap: break-word; }   /* URLs et identifiants longs en prose */
+.md-tablewrap { max-width: 100%; }
+
+/* Le label ajouté dans la modale Contexte n'est pas dans un `.form` : on lui
+   redonne le même rendu (libellé discret, icône « i » sur la même ligne, champ
+   en dessous). `>` direct pour ne pas attraper `label.ticket-file`. */
+.modal-box > label { display: flex; flex-wrap: wrap; align-items: center; column-gap: 5px; font-size: 13px; color: var(--muted); }
+.modal-box > label > textarea { flex: 0 0 100%; }
+
+/* Le sélecteur de dépôt est passé en combo avec recherche : il reprend la largeur
+   qu'avait le <select> (28 %), un peu plus étroite que les champs de branche. */
+:is(.target-row, .target-head-row) .repo-combo { flex: 1 1 240px; min-width: 200px; }
+

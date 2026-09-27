@@ -48,6 +48,66 @@ describe('API de bout en bout', () => {
 
   /* ---------- Statut & configuration ---------- */
 
+  /* L'AGENT SE RÈGLE À L'ÉCRAN ET SE REDÉTECTE SANS REDÉMARRER. Le statut distingue le dry-run
+     VOULU (COPILOT_DRY_RUN=1, ici) du binaire introuvable ; « redetect » refait la détection ;
+     « test » fait un appel — simulé ici — et dit qu'il l'a été. */
+  test('l’agent : réglé par /api/config, relu par /api/status, redétecté et testé sans redémarrage', async () => {
+    const avant = (await app.api('GET', '/api/status')).body;
+    assert.equal(avant.dryRunForced, true, 'les tests forcent le dry-run : ce n’est pas un binaire absent');
+    assert.ok('lastDiscoveryAt' in avant);
+    const r = await app.api('PUT', '/api/config', { agent_bin: '/nulle/part/claude-test', agent_args: '--model x', agent_timeout_ms: '120000' });
+    assert.equal(r.status, 200);
+    const apres = (await app.api('GET', '/api/status')).body;
+    assert.equal(apres.copilotBin, '/nulle/part/claude-test', 'le binaire réglé à l’écran est celui que le statut montre, tout de suite');
+    assert.ok(['prouve', 'declare', 'allege'].includes(apres.agentLevel), `un niveau de garantie nommé : ${apres.agentLevel}`);
+    assert.equal(apres.agentBackendSetting, 'auto');
+    /* Le backend se CHOISIT : un CLI inconnu dit « codex » est traité en codex, et le statut le montre. */
+    await app.api('PUT', '/api/config', { agent_backend: 'codex' });
+    const choisi = (await app.api('GET', '/api/status')).body;
+    assert.equal(choisi.agentBackend, 'codex'); assert.equal(choisi.agentBackendLabel, 'OpenAI Codex CLI');
+    assert.equal((await app.api('PUT', '/api/config', { agent_backend: 'plop' })).body.agent_backend, 'auto', 'une valeur inconnue retombe sur auto');
+    /* Sécurisé ou yolo : le harnais force le sécurisé ; le statut le dit, et le niveau devient
+       « yolo » dès qu'on repasse en yolo. */
+    assert.equal((await app.api('GET', '/api/status')).body.agentMode, 'secure');
+    await app.api('PUT', '/api/config', { agent_mode: 'yolo' });
+    const yolo = (await app.api('GET', '/api/status')).body;
+    assert.equal(yolo.agentMode, 'yolo'); assert.equal(yolo.agentLevel, 'yolo');
+    await app.api('PUT', '/api/config', { agent_mode: 'secure' });
+    assert.deepEqual(apres.copilotArgs, ['--model', 'x']);
+    assert.equal(apres.agentTimeoutMs, 120000);
+    assert.equal(apres.copilotAvailable, false, 'un chemin qui n’existe pas : introuvable');
+    const red = await app.api('POST', '/api/agent/redetect');
+    assert.equal(red.status, 200); assert.equal(red.body.ok, false); assert.equal(red.body.dryRunForced, true);
+    const t = await app.api('POST', '/api/agent/test');
+    assert.equal(t.status, 200);
+    assert.equal(t.body.dryRun, true, 'en dry-run, l’appel est simulé et le dit');
+    assert.equal(t.body.ok, true);
+    // Un délai trop court est ramené au plancher, 0 rend le défaut.
+    const c = (await app.api('PUT', '/api/config', { agent_timeout_ms: '5' })).body;
+    assert.equal(c.agent_timeout_ms, 10000);
+    /* LES VARIABLES DE L'AGENT : normalisées, validées, refusées si elles sont à Mergerie — et passées
+       à l'agent par-dessus le shell, sans jamais atteindre le jeton d'accès. */
+    const env = (await app.api('PUT', '/api/config', { agent_env: '  ANTHROPIC_BASE_URL = http://localhost:11434 \n\n# commentaire\nANTHROPIC_AUTH_TOKEN=ollama' })).body;
+    assert.equal(env.agent_env, 'ANTHROPIC_BASE_URL=http://localhost:11434\nANTHROPIC_AUTH_TOKEN=ollama');
+    assert.equal((await app.api('GET', '/api/config')).body.scopes.agent_env, 'poste');
+    assert.equal((await app.api('PUT', '/api/config', { agent_env: 'pas-un-nom' })).status, 400);
+    assert.equal((await app.api('PUT', '/api/config', { agent_env: 'MERGERIE_ACCESS_TOKEN=x' })).status, 400);
+    const pol = require('../src/agent/policy');
+    process.env.ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
+    const e = pol.envAgent('claude');
+    delete process.env.ANTHROPIC_BASE_URL;
+    assert.equal(e.ANTHROPIC_BASE_URL, 'http://localhost:11434', 'le réglage prime sur le shell');
+    assert.equal(e.ANTHROPIC_AUTH_TOKEN, 'ollama');
+    assert.ok(!('MERGERIE_ACCESS_TOKEN' in e));
+    await app.api('PUT', '/api/config', { agent_env: '' });
+    const c0 = (await app.api('PUT', '/api/config', { agent_timeout_ms: '0', agent_bin: '', agent_args: '' })).body;
+    assert.equal(c0.agent_timeout_ms, 0);
+    /* Le défaut vient de l'environnement du serveur quand il en a un (le `.env` du clone, chargé
+       en repli), sinon 15 minutes : on calcule l'attendu de la même source. */
+    const defaut = Number(process.env.AGENT_TIMEOUT_MS || process.env.COPILOT_TIMEOUT_MS) || 900000;
+    assert.equal((await app.api('GET', '/api/status')).body.agentTimeoutMs, defaut, 'sans réglage, le délai revient au défaut');
+  });
+
   test('GET /api/status expose le mode dry-run et l’état des jobs', async () => {
     const { status, body } = await app.api('GET', '/api/status');
     assert.equal(status, 200);
@@ -65,6 +125,23 @@ describe('API de bout en bout', () => {
     assert.equal(body.recalled, true, 'la reprise restitue le marqueur');
     assert.ok(String(body.output2).includes(body.marker), 'la 2e passe contient le marqueur mémorisé');
     assert.ok(Array.isArray(body.logs), 'les logs de progression sont renvoyés');
+  });
+
+  test('POST /api/agent/sandbox-test refuse un appel réel sans backend claude, et note le résultat', async () => {
+    /* Le backend par défaut du harnais de test est « copilot » (COPILOT_BIN non posé) : le
+       banc d'essai du sandbox s'arrête donc avant tout appel réel — le chemin sûr à éprouver
+       ici, celui qui coûte de l'argent restant réservé à `test/manual/`. */
+    const { status, body } = await app.api('POST', '/api/agent/sandbox-test');
+    assert.equal(status, 200);
+    assert.equal(body.ok, false);
+    /* Deux refus possibles selon la machine : « pas claude » (CI, aucun `.env`) ou « dry-run »
+       (un poste dont le `.env` désigne claude — les tests forcent COPILOT_DRY_RUN=1). Dans les
+       deux cas, aucun appel réel n'est parti, et c'est ce qu'on éprouve. */
+    assert.match(body.detail, /claude|dry-run/i);
+    const apres = app.db.prepare('SELECT agent_sandbox_verified AS v, agent_sandbox_tested_at AS t, agent_sandbox_detail AS d FROM local_config WHERE id = 1').get();
+    assert.equal(apres.v, 0);
+    assert.ok(apres.t, 'la date du test est notée');
+    assert.match(apres.d, /claude|dry-run/i);
   });
 
   test('Docker : les endpoints répondent proprement (démon dispo OU non — jamais un crash)', async () => {
@@ -86,6 +163,18 @@ describe('API de bout en bout', () => {
     // Garde-fous d'action : action inconnue / répertoire manquant → 400 explicite.
     assert.equal((await app.api('POST', '/api/docker/compose/action', { dir: '/x', action: 'nope' })).status, 400);
     assert.equal((await app.api('POST', '/api/docker/compose/action', { action: 'up' })).status, 400);
+    /* Le dossier doit être celui d'un compose trouvé sous les répertoires déclarés : sinon
+       `docker compose up --build` ou `make` partaient dans n'importe quel dossier de la machine. */
+    for (const [route, corps] of [
+      ['/api/docker/compose/action', { dir: '/tmp', action: 'up' }],
+      ['/api/docker/make/run', { dir: '/tmp', target: 'all' }],
+      ['/api/docker/bulk-action', { action: 'up', targets: [{ dir: '/tmp', service: 'x' }] }],
+      ['/api/docker/compose/preview-down', { dir: '/tmp' }],
+    ]) {
+      const r = await app.api('POST', route, corps);
+      assert.equal(r.status, 400, `${route} : ${r.text}`);
+      assert.match(r.body.error || '', /\/tmp/, `${route} : le refus nomme le dossier`);
+    }
     // « build » est une action valide (au moins la validation passe — dir manquant sinon).
     assert.equal((await app.api('POST', '/api/docker/compose/action', { action: 'build' })).status, 400, 'build sans dir → 400 (dir requis), pas action inconnue');
 
@@ -474,6 +563,13 @@ describe('API de bout en bout', () => {
     const test = await app.api('POST', '/api/jira/test', { key: 'PROJ-21977' });
     assert.deepEqual(test.body, { ok: true, key: 'PROJ-21977', summary: 'Calculer le total' });
 
+    /* LE JETON ENREGISTRÉ NE PART PAS VERS UNE AUTRE ADRESSE : l'URL changée avec le masque
+       `***` faisait envoyer le jeton en base à l'hôte choisi par la requête. */
+    const detourne = await app.api('POST', '/api/jira/test', { key: 'PROJ-21977', jira_url: 'https://ailleurs.example', jira_token: '***' });
+    assert.equal(detourne.status, 400, detourne.text);
+    assert.match(detourne.body.error, /retapez le jeton|type the token again/);
+    const ghDetourne = await app.api('POST', '/api/gitlab/test', { gitlab_url: 'https://ailleurs.example', access_token: '***' });
+    assert.equal(ghDetourne.status, 400, 'même règle pour la forge');
     const inconnu = await app.api('POST', '/api/jira/test', { key: 'PROJ-0' });
     assert.equal(inconnu.status, 400);
     assert.match(inconnu.body.error, /404/);
@@ -964,6 +1060,15 @@ describe('API de bout en bout', () => {
     assert.equal(echec.status, 400);
     const detail = await app.api('GET', `/api/mrs/${mrId}`);
     assert.match(detail.body.ticket.jira_error, /404/, 'la cause est stockée, pas seulement affichée une fois');
+    /* UNE CLÉ EN ÉCHEC NE DOIT PLUS PROPOSER « passer le ticket à l'état suivant » À LA MERGE :
+       la modale de merge se fiait à `ticket_key`, calculé sans regarder si le fetch avait déjà
+       échoué — un titre/branche évoquant un ticket inexistant proposait quand même de le faire
+       avancer. Le champ affiché dans « Contexte Jira » (`ticket.jira_key`), lui, garde la clé
+       tentée : c'est elle qu'on montre à côté du message d'erreur. */
+    assert.equal(detail.body.ticket_key, null, 'la modale de merge ne doit plus proposer un ticket dont le fetch a échoué');
+    assert.equal(detail.body.ticket.jira_key, 'PROJ-21977', 'la section contexte garde la clé tentée, pour dire laquelle a échoué');
+    const liste = (await app.api('GET', '/api/mrs')).body.find((m) => m.id === mrId);
+    assert.equal(liste.ticket_key, null, 'même règle depuis la liste, d’où part aussi le bouton de merge');
   });
 
   /* ---------- Projets liés ---------- */
@@ -1275,6 +1380,30 @@ describe('API de bout en bout', () => {
      déterministe en dry-run (où les jobs s'achèvent aussitôt), c'est le CONTRAT : la forme
      de la réponse, et les refus. Le parallélisme lui-même repose sur `keysClash`, testé à
      part sur la règle nue. */
+  /* L'ANNEXE D'UNE LIGNE DE JOURNAL : la ligne reste courte et porte un drapeau ; le contenu
+     entier (texte, diff d'un Edit) se lit par une route à part, jamais par le polling. */
+  test('Jobs : une ligne de journal peut porter une annexe, lue à la demande', async () => {
+    const { logLine } = require('../src/jobs/file');
+    const job = { id: app.db.prepare("INSERT INTO job (kind, status, total, done_count, message, started_at, finished_at) VALUES ('docker', 'done', 0, 0, '', ?, ?)")
+      .run(new Date().toISOString(), new Date().toISOString()).lastInsertRowid };
+    const sans = logLine(job.id, null, 'ligne ordinaire');
+    const avec = logLine(job.id, null, '» Edit src/a.js (+2 −1)', { kind: 'edit', file: 'src/a.js', edits: [{ old: 'a', new: 'b\nc' }] });
+    const log = (await app.api('GET', `/api/jobs/${job.id}/log?after=${sans - 1}`)).body;
+    const lignes = Object.fromEntries(log.lines.map((l) => [l.id, l]));
+    assert.equal(lignes[sans].has_annexe, 0);
+    assert.equal(lignes[avec].has_annexe, 1);
+    assert.ok(!('annexe' in lignes[avec]), 'le polling ne transporte jamais le contenu');
+    assert.equal((await app.api('GET', `/api/jobs/${job.id}/log/${sans}/annexe`)).status, 404);
+    const a = await app.api('GET', `/api/jobs/${job.id}/log/${avec}/annexe`);
+    assert.equal(a.status, 200);
+    assert.deepEqual(a.body.annexe, { kind: 'edit', file: 'src/a.js', edits: [{ old: 'a', new: 'b\nc' }] });
+    // Une annexe démesurée est tronquée, pas refusée.
+    const gros = logLine(job.id, null, 'texte …', { kind: 'text', text: 'x'.repeat(300000) });
+    const g = (await app.api('GET', `/api/jobs/${job.id}/log/${gros}/annexe`)).body.annexe;
+    assert.equal(g.tronque, true);
+    assert.ok(g.text.length <= 100000);
+  });
+
   test('Jobs : la file s’inspecte, et « lancer en parallèle » refuse ce qui n’attend plus', async () => {
     const q = await app.api('GET', '/api/jobs/queue');
     assert.equal(q.status, 200);
@@ -1302,8 +1431,32 @@ describe('API de bout en bout', () => {
   });
 
   test('Les fichiers statiques du front sont servis', async () => {
-    const res = await fetch(`${app.base}/index.html`);
+    const res = await fetch(`${app.base}/js/demarrage.js`);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('cache-control'), 'no-cache');
+  });
+
+  /* LA PAGE EST ASSEMBLÉE PAR MORCEAUX : `index.html` est une coquille et des marqueurs
+     `<!--@include html/…-->`, résolus par `src/core/page.js` pour `/` et `/index.html`. Servir
+     le gabarit brut (ce que ferait `express.static` sans `index: false`) donnerait une page sans
+     onglet ni modale, et aucun test d'écran ne nommerait la cause. */
+  test('/ et /index.html rendent la page assemblée, pas le gabarit brut, en no-cache', async () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const brut = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+    assert.match(brut, /<!--@include html\/ecrans\/reviews\.html-->/, 'la coquille inclut l’onglet Reviews par un marqueur');
+    assert.doesNotMatch(brut, /id="tab-review"/, 'le gabarit brut ne porte pas l’onglet lui-même');
+    const pages = [];
+    for (const chemin of ['/', '/index.html']) {
+      const res = await fetch(`${app.base}${chemin}`);
+      assert.equal(res.status, 200, chemin);
+      assert.equal(res.headers.get('cache-control'), 'no-cache', chemin);
+      assert.match(res.headers.get('content-type') || '', /text\/html/, chemin);
+      pages.push(await res.text());
+    }
+    assert.equal(pages[0], pages[1], '/ et /index.html servent la même page');
+    for (const id of ['tab-review', 'tab-admin', 'taskModal', 'confirmModal', 'footer']) {
+      assert.ok(pages[0].includes(`id="${id}"`), `#${id} est dans la page servie`);
+    }
   });
 });

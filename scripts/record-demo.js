@@ -197,9 +197,18 @@ const OVERLAY_JS = `(() => {
 })();`;
 
 // --- Cycle de vie du serveur de démo ---
+/* LE JETON LOCAL. Toute route `/api/` exige le jeton de session que le serveur écrit au démarrage
+   dans `<DATA_DIR>/local-token` (middleware jeton-local) : sans lui, `/api/status` répond 401 et
+   le script croyait le serveur « pas en mode démo ». Le serveur de démo écrit dans `data-demo/`. */
+function entetesJeton() {
+  try {
+    const jeton = fs.readFileSync(path.join(ROOT, process.env.MERGERIE_DATA_DIR || 'data-demo', 'local-token'), 'utf8').trim();
+    return jeton ? { Authorization: `Bearer ${jeton}` } : {};
+  } catch { return {}; }
+}
 function fetchStatus() {
   return new Promise((resolve) => {
-    const req = http.get(`${BASE}/api/status`, (res) => {
+    const req = http.get(`${BASE}/api/status`, { headers: entetesJeton() }, (res) => {
       let d = ''; res.on('data', (c) => { d += c; }); res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(null); } });
     });
     req.on('error', () => resolve(null));
@@ -213,7 +222,7 @@ function setServerLang(lang) {
     const body = JSON.stringify({ language: lang });
     const req = http.request(`${BASE}/api/config`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), ...entetesJeton() },
     }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode < 400)); });
     req.on('error', () => resolve(false));
     req.setTimeout(4000, () => { req.destroy(); resolve(false); });
@@ -372,6 +381,9 @@ async function enregistrer(lang) {
     try {
       localStorage.setItem(k, v);
       localStorage.setItem('aidevtools_theme', 'dark');
+      /* Tous les onglets visibles : Git, Docker, Jenkins et Liens sont masqués par défaut
+         (menus optionnels), et la visite les parcourt. */
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] }));
     } catch { /* stockage indisponible */ }
   }, [LANG_KEY, lang]);
   await context.addInitScript(OVERLAY_JS);

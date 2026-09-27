@@ -27,8 +27,8 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-uid-
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const { ulid, estUlid, instantDe, slugifier, slugLibre } = require('../src/ulid');
-const registre = require('../src/store-registry');
+const { ulid, estUlid, instantDe, slugifier, slugLibre } = require('../src/core/ulid');
+const registre = require('../src/data/store-registry');
 
 describe('ulid — l’identité sans coordination', () => {
   test('26 caractères de l’alphabet Crockford, sans I, L, O ni U', () => {
@@ -157,7 +157,7 @@ describe('uid — posé par la base, jamais par l’appelant', () => {
   });
 
   test('un agent renommé garde son slug — son dossier ne se déplace pas', () => {
-    const ap = require('../src/agentprofile');
+    const ap = require('../src/agent/profile');
     const a = ap.creer({ name: 'Documentaliste', kind: 'explore' });
     const slug = db.prepare('SELECT slug FROM agent WHERE id = ?').get(a.id).slug;
     assert.equal(slug, 'documentaliste');
@@ -167,7 +167,7 @@ describe('uid — posé par la base, jamais par l’appelant', () => {
   });
 
   test('deux noms qui se normalisent pareil reçoivent deux slugs', () => {
-    const ap = require('../src/agentprofile');
+    const ap = require('../src/agent/profile');
     const b = ap.creer({ name: 'documentaliste ?', kind: 'explore' });
     assert.equal(db.prepare('SELECT slug FROM agent WHERE id = ?').get(b.id).slug, 'documentaliste-2');
   });

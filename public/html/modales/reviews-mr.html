@@ -1,0 +1,20 @@
+<!-- Modale : créer une merge request -->
+<div id="mrModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="mr.modal.title">Créer la merge request</h3>
+        <p id="mrModalIntro" class="muted"></p>
+        <div class="modal-fields">
+            <label class="modal-field"><span data-i18n="mr.modal.title-label">Titre</span>
+                <input id="mrTitle" type="text" autocomplete="off" /></label>
+            <label class="inline-check inline-check-mid"><input id="mrSquash" type="checkbox" />
+                <span data-i18n="merge.modal.squash">Squash : réunir les commits de la branche en un seul</span></label>
+            <label class="inline-check inline-check-mid"><input id="mrRemoveBranch" type="checkbox" />
+                <span data-i18n="merge.modal.remove-branch">Supprimer la branche source après le merge</span></label>
+        </div>
+        <p id="mrModalNote" class="converge-note" hidden><svg class="ico ico-sm"><use href="#i-info"/></svg> <span></span></p>
+        <div class="modal-actions">
+            <button id="mrCancel" type="button" class="btn" data-i18n="ui.cancel">Annuler</button>
+            <button id="mrGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="mr.modal.go">Créer la MR</span></button>
+        </div>
+    </div>
+</div>

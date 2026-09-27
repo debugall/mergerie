@@ -1,0 +1,128 @@
+/* Thème SOMBRE = défaut. Le thème clair surcharge ces variables plus bas.
+   `data-theme` est posé sur <html> par app.js (valeur résolue : dark | light). */
+
+/* CE QUE LE SYSTÈME DESSINE POUR NOUS. La liste OUVERTE d'un `<select>`, la barre de
+   défilement, le sélecteur de date : ce ne sont pas nos éléments, c'est l'OS qui les peint —
+   et sans cette déclaration il les peint TOUJOURS en clair. En thème sombre, notre texte clair
+   se retrouvait donc sur un fond blanc : illisible, et impossible à corriger avec des couleurs
+   sur `option`, que macOS ignore. Une ligne, et tous les contrôles natifs suivent le thème. */
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-theme="light"] { color-scheme: light; }
+
+:root {
+  --bg: #0f1420; --panel: #171d2b; --panel2: #1e2636; --line: #2a3346;
+  --text: #e6ebf5; --muted: #8b97ad; --accent: #4f8cff; --green: #35c07f;
+  --amber: #e0a838; --red: #e05a5a; --purple: #b47ce6;
+  /* Texte rouge sur --panel2 : #e05a5a n'y atteint que 4.17:1. Ce ton dédié donne 4.76:1 (AA). */
+  --red-text: #e56a6a;
+  --accent-hi: #6a9dff;
+  /* Six teintes pour les six mois du graphe d'activité. Une SÉQUENCE (froid → chaud) plutôt
+     qu'un arc-en-ciel : les mois se suivent, l'ordre doit rester lisible même sans lire la
+     légende — tout en restant assez distinctes pour qu'on désigne un mois du doigt. */
+  --mois-1: #7c8cf8; --mois-2: #4f9cf0; --mois-3: #2fb5c4;
+  --mois-4: #4bb56d; --mois-5: #d0a53a; --mois-6: #e2864a;
+  --accent-btn: #2f6fe0; --accent-btn-hi: #2b64d4; /* fond des boutons : blanc dessus = 4,70:1 */
+  /* B4 : texte sur fond coloré — jamais #fff en dur (échouait AA : 3,22:1) */
+  --on-amber: #1a1400; --on-green: #0a1e12; --on-accent: #ffffff; --on-red: #ffffff;
+  --on-overlay: #ffffff;
+  /* Badges d'alerte du header : texte blanc constant sur fond fort (identique clair/sombre).
+     V2.2 : --danger/--amber sont calibrés comme couleurs de TEXTE (trop clairs en fond blanc-dessus) ;
+     ces fonds dédiés passent AA — err 5,62:1, warn 4,83:1 (l'ancien #d97706 échouait à 3,18:1). */
+  --badge-err: #c62828; --badge-warn: #b45309;
+  /* V2.1 : alias historiques utilisés par Docker/Jira/Git (jamais définis avant → fallback #ccc/#2e7d32
+     échouant AA en sombre). Aliaser les tokens du socle règle 32 usages d'un coup ; comme var() est
+     résolu à l'usage, l'alias hérite du thème clair (où --line/--green/--red sont surchargés). */
+  --border: var(--line); --ok: var(--green); --danger: var(--red);
+  /* LES MÊMES COULEURS, RÉGLÉES POUR DU TEXTE. Le motif « couleur de marque sur un fond teinté
+     de cette même couleur » se lit bien en gros ; sur les puces de 10 à 12 px il tombait entre
+     2,86:1 et 3,9:1, sous les 4,5:1 exigés. Ces alias suivent le thème comme les autres. */
+  --ok-text: var(--green-text); --danger-text: var(--red-text);
+  --line-soft: #212a3a; --hover: rgba(255,255,255,.045);
+  /* Loupe des champs de recherche (V2.8 : remplace l'emoji 🔍, mal rendu sur WSL/Linux).
+     Gris médian lisible sur les deux thèmes ; mutualisée entre .search et .jira-search. */
+  --icon-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%239aa0aa' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.5'/%3E%3Cpath d='M10.5 10.5 14 14'/%3E%3C/svg%3E");
+  /* Bulle pleine pour masque (l'alpha sert de pochoir ; la couleur vient de background-color). */
+  --icon-comment: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M2 2h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H7l-3.5 3v-3H2a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
+
+  /* ---- Typographie : 7 pas, ratio ~1.2 ---- */
+  --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
+  --fs-lg: 16px;  --fs-xl: 20px; --fs-3xl: 28px;
+  --content-w: 1400px;   /* la seule largeur de contenu : tous les onglets s'y tiennent */
+  --footer-h: 30px;      /* le bandeau « live » du bas, fixe : ce qui flotte doit passer au-dessus */
+  --fw-med: 500; --fw-sem: 620; --fw-bold: 700;
+  --ff-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---- Espacement : grille 4pt ---- */ --s-2: 8px; --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
+
+  /* ---- Rayons (--radius reste un alias pour ne rien casser) ---- */
+  --r-sm: 6px; --r-md: 9px; --r-lg: 14px; --r-full: 999px;
+  --radius: var(--r-md);
+
+  /* ---- Élévation ---- */
+  --sh-1: 0 1px 2px rgba(0,0,0,.32);
+  --sh-2: 0 4px 12px rgba(0,0,0,.38);
+  --sh-3: 0 12px 32px rgba(0,0,0,.5);
+
+  /* ---- Mouvement ---- */
+  --t-fast: .12s cubic-bezier(.4,0,.2,1);
+  /* code, diff, coloration syntaxique */
+  --code-bg: #0c1018; --code-text: #cdd6e6; --hunk: #6fa8ff;
+  --diff-add-bg: rgba(53,192,127,.14); --diff-add-text: #93e6ba;
+  --diff-del-bg: rgba(224,90,90,.14); --diff-del-text: #f0a3a3;
+  --c-com: #6a9955; --c-str: #ce9178; --c-num: #b5cea8; --c-kw: #569cd6;
+  --log-cmd: #7fd6a0;
+  --amber-text: #e8b356;   /* orange lisible sur fond sombre (cf. --red-text) */
+  --green-text: #35c07f;
+  --accent-text: #79a8ff;   /* l'accent, éclairci pour porter du texte sur fond sombre */
+  --muted-text: #98a4b9;    /* le gris discret, relevé pour rester lisible sur un fond teinté */
+  --row-alt: rgba(255,255,255,.02); --minimap-bg: rgba(255,255,255,.03);
+}
+
+/* Thème CLAIR */
+:root[data-theme="light"] {
+  --bg: #f5f7fb; --panel: #ffffff; --panel2: #eef1f7; --line: #d6dce8;
+  --text: #1b2230; --muted: #5d6a80; --accent: #2563eb; --green: #14804a;
+  --amber: #a15c00; --red: #c62d2d; --purple: #7c3aed;
+  --red-text: #c62d2d;   /* 4.87:1 sur --panel2 (AA) */
+  --amber-text: #8a5200;   /* l'ambre du thème clair, assombri pour tenir 4,5:1 en 12 px */
+  --green-text: #0f6b3d;   /* le vert de marque assombri : 4,4:1 → au-dessus du seuil en 11 px */
+  --accent-text: #1d4ed8;  /* l'accent, assombri pour porter du texte sur fond clair */
+  --muted-text: #46536b;   /* le gris discret, assombri : #5d6a80 rendait 3,59:1 sur les puces */
+  --danger-text: #a81f1f;  /* plus foncé que --red-text : celui-ci est réglé pour --panel2 */
+  --accent-hi: #1d4ed8;
+  /* Mêmes teintes, assombries : sur fond blanc, les tons du thème sombre passeraient pour
+     des pastels indistincts. */
+  --mois-1: #5b63d6; --mois-2: #2b7fd4; --mois-3: #0e8f9e;
+  --mois-4: #2f8f52; --mois-5: #a97c12; --mois-6: #c05f22;
+  --accent-btn: #2563eb; --accent-btn-hi: #1d4ed8;
+  --on-amber: #ffffff; --on-green: #ffffff; --on-accent: #ffffff; --on-red: #ffffff;
+  --line-soft: #e6eaf2; --hover: rgba(16,24,40,.04);
+  --sh-1: 0 1px 2px rgba(16,24,40,.06);
+  --sh-2: 0 4px 14px rgba(16,24,40,.10);
+  --sh-3: 0 14px 36px rgba(16,24,40,.16);
+  --code-bg: #f1f4f9; --code-text: #232a3a; --hunk: #1d4ed8;
+  --diff-add-bg: rgba(20,128,74,.13); --diff-add-text: #0f6b3c;
+  --diff-del-bg: rgba(198,45,45,.11); --diff-del-text: #96201f;
+  --c-com: #3f7a35; --c-str: #a13d18; --c-num: #10627f; --c-kw: #1d4ed8;
+  --log-cmd: #0f6b3c;
+  --row-alt: rgba(0,0,0,.028); --minimap-bg: rgba(0,0,0,.05);
+}
+* { box-sizing: border-box; }
+
+/* L'attribut `hidden` doit TOUJOURS l'emporter. Sans ça, toute règle posant un
+   `display` (flex/grid/block) le neutralise silencieusement — source récurrente de
+   bugs ici (listes, panneaux, modales qui restaient visibles). Une règle globale
+   remplace les rustines au cas par cas. */
+[hidden] { display: none !important; }
+body {
+  margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg); color: var(--text);
+}
+/* `body >` : sans cette restriction, la règle s'appliquait à TOUT <header>, y compris celui du
+   détail d'un ticket Jira — dont le titre se retrouvait sur la même ligne que les boutons. */
+body > header {
+  display: flex; align-items: center; gap: 16px; padding: 10px 18px;
+  background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
+}
+header h1 { font-size: 16px; margin: 0; letter-spacing: .3px; }

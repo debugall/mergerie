@@ -10,10 +10,13 @@ const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { startApp, makeRemoteRepo, waitForJobs, git } = require('./helpers/app');
+const {
+  startApp, makeRemoteRepo, waitForJobs, git, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
+} = require('./helpers/app');
 
 describe('Converger depuis une session de dev IA', () => {
   let app;
+  let mrVerdict;   // la MR convergée avec un vérificateur : son verdict se lit à l'écran, plus bas
 
   async function addRepo(key, project) {
     const repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, `remote-${key}-`)), { branch: `feature/${key}` });
@@ -59,6 +62,60 @@ describe('Converger depuis une session de dev IA', () => {
     assert.equal(detail.convergence.status, 'converged');
     assert.equal(detail.convergence.passes_done, 0, 'déjà au seuil : aucune correction');
     assert.equal(detail.convergence.best_note, 8);
+  });
+
+  /* LE VERDICT À CÔTÉ DE LA BOUCLE. La session porte un vérificateur : après chaque passe de
+     correction, il tourne dans le job (HOME jetable) et son verdict se lit sur la merge request —
+     sans jamais décider de la sortie : ici le seuil est inatteignable, et c'est la note qui arrête. */
+  test('la session porte un vérificateur : il tourne après chaque passe, son verdict se lit, et n’arrête rien', async () => {
+    const { repoId, project } = await addRepo('verdict', 'grp/verdict');
+    const v = (await app.api('POST', '/api/verifiers', { name: 'verdict-passe', commands: ['true'], repos: [{ repo_id: repoId, mode: 'worktree' }] })).body;
+    const task = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un endpoint /ready', verifier_id: v.id, auto_push: 1,
+      targets: [{ repo_id: repoId, branch: 'ai/ready', base_branch: 'main' }],
+    })).body;
+    assert.equal(task.verifier_id, v.id);
+    // Seuil 10 : la review dry-run rend 8, une passe de correction part, puis la note stagne.
+    const job = await app.api('POST', `/api/tasks/${task.id}/converge`, { threshold: 10, maxPasses: 2 });
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+    const mrRow = (await app.api('GET', '/api/mrs')).body.find((m) => m.project === project && m.source_branch === 'ai/ready');
+    assert.ok(mrRow, 'la MR de la session existe');
+    const detail = (await app.api('GET', `/api/mrs/${mrRow.id}`)).body;
+    assert.ok(detail.convergence, 'une run de convergence existe');
+    assert.ok(detail.convergence.passes_done >= 1, `au moins une passe (${detail.convergence.status})`);
+    assert.ok(['regressed', 'capped', 'no_change', 'converged'].includes(detail.convergence.status), 'la boucle s’est arrêtée sur la note, pas sur les tests');
+    // Celles de la BOUCLE (parties seules, HOME jetable) — la session en lance une de plus en finissant.
+    const verifs = app.db.prepare("SELECT * FROM verification WHERE targets_json LIKE ? AND automatic = 1 ORDER BY id").all(`%"mr_id":${mrRow.id}%`);
+    assert.ok(verifs.length >= 1, 'le vérificateur a tourné dans la boucle');
+    assert.ok(verifs.every((x) => x.isolated_home === 1), 'parti seul : HOME jetable');
+    assert.ok(verifs.every((x) => x.status === 'done'), `chaque run est allé au bout (${verifs.map((x) => `${x.status}/${x.verdict}`).join(', ')})`);
+    assert.ok(detail.verification && detail.verification.verdict, 'le panneau lit le dernier verdict');
+    const log = app.db.prepare('SELECT GROUP_CONCAT(text, char(10)) AS t FROM job_log WHERE job_id = ?').get(job.body.id).t || '';
+    assert.match(log, /verdict-passe/, 'le journal nomme le vérificateur et son verdict');
+    mrVerdict = mrRow;
+  });
+
+  test('depuis l’écran : le panneau de la MR montre le verdict à côté de la convergence, en vert', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    assert.ok(mrVerdict, 'la MR convergée avec vérificateur existe (test précédent)');
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    try {
+      await page.goto(app.base);
+      await page.locator('nav button[data-tab="review"]').click();
+      // La liste est segmentée par état : une MR convergée est relue, elle vit sous « reviewed ».
+      const seg = (await app.api('GET', `/api/mrs/${mrVerdict.id}`)).body.mr.status === 'to_review' ? 'to_review' : 'reviewed';
+      await page.locator(`[data-seg="${seg}"]`).click();
+      await page.locator(`#reportList .card[data-id="${mrVerdict.id}"]`).click();
+      await page.waitForSelector('#reportDetail .converge-box');
+      await page.waitForSelector('#reportDetail .converge-verdict-pass');
+      assert.match(await page.locator('#reportDetail .converge-verdict-pass').textContent(), /tests verts|tests green/i);
+      assert.match(await page.locator('#reportDetail .converge-verdict-pass').getAttribute('title'), /verdict-passe/, 'le badge nomme le vérificateur');
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
+    } finally { await nav.close(); }
   });
 
   test('converge avec questions : le dev pose une question → en attente, pas de MR ; réponses → reprise', async () => {

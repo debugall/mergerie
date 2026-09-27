@@ -258,7 +258,7 @@ describe('Modales : le clic sur le fond', { skip: dispo ? false : 'chromium abse
   test('chaque fenêtre à saisie porte le bouton, au coin, sans recouvrir son titre', async () => {
     const IDS = ['taskModal', 'mergeModal', 'mrModal', 'convergeModal', 'ticketModal', 'bulkModal',
       'mergeCommitModal', 'captureModal', 'envModal', 'serviceModal', 'freeLinkModal', 'pasteModal',
-      'toServiceModal', 'importModal', 'dictInstallModal'];
+      'toServiceModal', 'importModal'];
     await page.evaluate(() => window.closeTaskModal());
     const vu = await page.evaluate((ids) => ids.map((id) => {
       const m = document.getElementById(id);

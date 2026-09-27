@@ -1,0 +1,224 @@
+/* ===== Onglet Jira : mes tickets affectés (liste → détail) ===== */
+.jira-layout { display: flex; gap: 18px; align-items: flex-start; }
+/* Largeur FIXE, et il en faut trois morceaux pour de bon.
+
+   `flex: 0 0 360px` ne suffit pas : un élément flex a `min-width: auto`, donc il refuse de
+   descendre sous la largeur minimale de son CONTENU — un titre de ticket un peu long poussait
+   la colonne à 610 px, et elle changeait de taille au gré des filtres. `min-width: 0` lève
+   cette contrainte, `width` fixe la cible. Le `max-width: 42%` d'avant, lui, la rétrécissait
+   entre 858 et 900 px de fenêtre ; sous 900 px la mise en page s'empile (requête média plus bas). */
+.jira-list-col { flex: 0 0 360px; width: 360px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+/* Champ de recherche : habillé (fond, bordure, hauteur), avec une loupe en préfixe. */
+.jira-search { width: 100%; height: 38px; padding: 8px 12px 8px 34px; font: inherit;
+  background: var(--panel2) var(--icon-search) no-repeat 11px center; color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  background-size: 15px; }
+.jira-search:focus { border-color: var(--accent); outline: none; }
+.jira-search::placeholder { color: var(--muted); }
+.jira-list { display: flex; flex-direction: column; gap: 6px; max-height: 76vh; overflow: auto; padding-right: 2px; }
+/* Filtre par statut : liste de cases à cocher (persisté), repliable. */
+/* Les trois filtres tiennent sur UNE ligne, côte à côte. Celui qu'on ouvre prend toute la
+   largeur (`flex-basis: 100%`) : à 360 px de colonne, un panneau déplié sur un tiers de ligne
+   serait illisible, et c'est le seul moment où l'on a besoin de place. */
+.jira-filters { display: flex; gap: 6px; align-items: flex-start; }
+/* Les puces se partagent toute la largeur de la ligne, à parts égales. */
+.jira-filters > .jira-status-filter { flex: 1 1 0; min-width: 0; position: relative; }
+/* Trois puces dans 360 px : on resserre pour que le compteur « 1/3 » reste lisible — c'est lui
+   qui dit si un filtre est actif, le tronquer viderait la ligne de son sens. */
+.jira-filters > .jira-status-filter { padding: 4px 10px; }
+.jira-filters > .jira-status-filter > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; gap: 4px; font-size: 12.5px; }
+.jira-filters > .jira-status-filter > summary .ico { flex-shrink: 0; }
+/* Le panneau FLOTTE au-dessus de la liste : c'est ce qui garde les trois filtres alignés quoi
+   qu'on ouvre. Dans le flux, déplier l'un poussait les deux autres à la ligne. */
+.jira-sf-pop { position: absolute; top: calc(100% + 5px); left: 0; z-index: 20;
+  min-width: 260px; max-width: 340px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 10px; box-shadow: var(--sh-3); }
+
+.jira-status-filter { border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; }
+.jira-status-filter > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.jira-status-filter-body { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 200px; overflow: auto; }
+.jira-sf-search { width: 100%; margin-top: 8px; padding: 6px 10px; font: inherit; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; }
+.jira-sf-search:focus { border-color: var(--accent); outline: none; }
+/* Saisie d'une clé de ticket à surveiller. Sans habillage, c'était le seul champ brut du
+   navigateur au milieu de contrôles stylés. Chasse fixe : on y tape une référence, pas une phrase. */
+.jira-watch-key { width: 170px; padding: 8px 12px; font: inherit; font-family: var(--ff-mono); font-size: 13px;
+  letter-spacing: .5px; text-transform: uppercase; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); border-radius: var(--radius); }
+.jira-watch-key::placeholder { color: var(--muted); letter-spacing: normal; }
+.jira-watch-key:focus { border-color: var(--accent); outline: none; }
+/* Le pourquoi de la surveillance, à côté de la clé. Il prend la place restante : c'est du
+   texte libre, une largeur fixe le tronquerait dès la première phrase utile. */
+.jira-watch-note { flex: 1 1 320px; min-width: 0; padding: 8px 12px; font: inherit; font-size: 13px;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius);
+  resize: vertical; min-height: 58px; line-height: 1.45; }
+.jira-watch-note:focus { border-color: var(--accent); outline: none; }
+
+/* Sur la carte : la raison en clair, et le crayon qui l'ouvre. Le tout en gris — c'est un
+   rappel personnel, pas une donnée du ticket, et il ne doit pas concurrencer son résumé. */
+.jira-watch-note-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+/* La note AFFICHÉE est un `span`, pas le champ : ni cadre, ni hauteur minimale. `pre-line`
+   garde les retours à la ligne qu'on vient d'autoriser à la saisie — les écraser à
+   l'affichage rendrait le textarea trompeur. */
+.jira-watch-note-row .jira-watch-note { flex: 1 1 auto; border: none; background: none; padding: 0;
+  min-height: 0; resize: none; font-size: 12px; font-style: italic; color: var(--muted);
+  overflow-wrap: anywhere; white-space: pre-line; }
+.jira-watch-note-row .btn { flex: 0 0 auto; opacity: .6; }
+.jira-watch-note-row .btn:hover { opacity: 1; }
+/* En COLONNE : la carte vit dans une liste étroite, et garder les boutons à côté du champ
+   ne laissait qu'une centaine de pixels pour écrire — moins qu'avant l'agrandissement. */
+.jira-note-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.jira-note-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.jira-note-form .jira-note-input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; font: inherit;
+  font-size: 12px; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); resize: vertical; min-height: 62px; line-height: 1.45; }
+.jira-note-form .jira-note-input:focus { border-color: var(--accent); outline: none; }
+.jira-sf-item { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.jira-avatar-sm { flex: 0 0 22px; height: 22px; font-size: 10px; }
+
+/* Carte ticket : compacte, liseré coloré à gauche selon la catégorie de statut.
+   PAS d'overflow:hidden ici : sur un <button> en flex-column, il fait clipper le contenu
+   (le navigateur calcule la hauteur sur une seule ligne). Le liseré passe donc par border-left,
+   qui respecte le border-radius sans overflow. */
+.jira-item { text-align: left; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--muted, #888);
+  border-radius: 8px; padding: 7px 11px; cursor: pointer; display: flex; flex-direction: column; gap: 3px;
+  color: var(--text); font: inherit; transition: border-color var(--t-fast), box-shadow var(--t-fast); }
+.jira-item.jira-cat-progress { border-left-color: var(--accent, #4f9cf9); }
+.jira-item.jira-cat-done { border-left-color: var(--ok, #2e7d32); }
+.jira-item:hover { border-color: var(--accent); }
+.jira-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+/* La carte d'un ticket surveillé n'est pas un `<button>` — elle en contient (retirer,
+   modifier la raison). Elle se comporte quand même comme une cible de sélection. */
+.jira-watch-item { cursor: pointer; }
+.jira-item-row1 { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+.jira-item-row1 .jira-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Statut plus compact DANS LA LISTE (évite le chevauchement quand la colonne est étroite). */
+.jira-item .jira-status { flex-shrink: 0; font-size: 10px; padding: 1px 8px; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+/* L'epic est un RATTACHEMENT, pas le sujet de la carte : il reste sur une ligne, discret,
+   au-dessus du résumé qui garde tout son poids visuel. Les deux couleurs suivent le thème. */
+/* Filtre générique : un bloc par critère, visuellement rattaché au panneau des filtres. */
+.jira-sf-actions { display: flex; gap: 6px; margin: 6px 0 2px; }
+.jira-ff-pick { padding: 6px 8px; }
+.jira-ff-crit { border-top: 1px solid var(--line); padding: 8px; }
+.jira-ff-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.jira-ff-head b { font-size: 12px; }
+.jira-ff-crit .jira-sf-search { width: 100%; margin-bottom: 4px; }
+.jira-ff-crit .jira-status-filter-body { max-height: 168px; overflow-y: auto; }
+
+.jira-item-epic { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11.5px; color: var(--muted, #888); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.jira-item-epic code { font-family: var(--ff-mono); font-weight: 700; color: var(--accent, #4f9cf9); }
+.jira-item-epic .ico { flex-shrink: 0; opacity: .7; }
+/* Le lien vers Jira n'existe que dans le DÉTAIL : dans la liste, l'epic reste une information. */
+.jira-key-link { color: var(--accent, #4f9cf9); text-decoration: none; }
+.jira-key-link:hover { text-decoration: underline; }
+.jira-epic-link { color: var(--accent, #4f9cf9); text-decoration: none; }
+.jira-epic-link:hover { text-decoration: underline; }
+/* Le titre passe à la ligne plutôt que d'être coupé : c'est l'information qui décide si on
+   ouvre le ticket, la tronquer oblige à survoler pour la lire. `overflow-wrap: anywhere` évite
+   qu'un mot insécable (une URL, un identifiant) ne déborde de la carte. */
+.jira-item-summary { font-weight: 600; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
+.jira-item-foot { font-size: 11.5px; }
+.jira-key { font-family: var(--ff-mono); font-size: 12px; font-weight: 700; letter-spacing: .3px; }
+
+.jira-status { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; text-transform: uppercase; letter-spacing: .3px; }
+.jira-status-todo { background: color-mix(in srgb, var(--muted) 14%, transparent); color: var(--muted-text); }
+.jira-status-progress { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
+.jira-status-done { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok-text); }
+
+/* Détail : liseré de catégorie en tête, sections aérées. */
+/* Colonne de droite : la ligne de filtres, puis le détail. Les filtres y ont toute la largeur —
+   dans la colonne de gauche, trois puces se disputaient 360 px et le compteur se faisait rogner. */
+.jira-detail-col { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.jira-detail { flex: 1 1 auto; min-width: 0; }
+.jira-detail-inner { border: 1px solid var(--line); border-top: 3px solid var(--muted, #888); border-radius: 12px; padding: 18px 20px; max-height: 78vh; overflow: auto; }
+.jira-detail-inner.jira-cat-progress { border-top-color: var(--accent, #4f9cf9); }
+.jira-detail-inner.jira-cat-done { border-top-color: var(--ok, #2e7d32); }
+.jira-dhead { margin-bottom: 16px; }
+.jira-dhead-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.jira-dhead-top .spacer { flex: 1; }
+.jira-open { font-size: 13px; white-space: nowrap; color: var(--accent); }
+.jira-open:hover { color: var(--accent-hi); }
+.jira-title { margin: 8px 0 10px; font-size: 20px; line-height: 1.3; }
+.jira-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.jira-chip { font-size: 12px; padding: 2px 10px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); white-space: nowrap; }
+/* Sélecteur de changement d'état : habillé, flèche personnalisée (comme les autres selects). */
+.jira-transition { height: 30px; padding: 4px 28px 4px 12px; font: inherit; font-size: 13px; cursor: pointer;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 999px;
+  -webkit-appearance: none; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239aa0aa' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 11px;
+  transition: border-color var(--t-fast), color var(--t-fast); }
+.jira-transition:hover { border-color: var(--accent); }
+
+.jira-section { margin-top: 18px; }
+.jira-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+
+.jira-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
+.jira-meta-row { display: contents; }
+.jira-meta-label { white-space: nowrap; }
+.jira-label { display: inline-block; font-size: 11px; padding: 1px 9px; border-radius: 999px; margin: 1px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent-text); }
+
+/* Pièces jointes : « chips fichier » cliquables (téléchargement via le proxy serveur). */
+.jira-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
+.jira-attach { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--panel2); color: var(--text); text-decoration: none; max-width: 320px; transition: border-color var(--t-fast), background var(--t-fast); }
+.jira-attach:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--panel2)); }
+.jira-attach .ico { flex-shrink: 0; color: var(--muted); }
+.jira-attach-name { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jira-attach-size { font-size: 12px; flex-shrink: 0; }
+.jira-attach-dl { flex-shrink: 0; }
+
+/* Tickets liés : une ligne par ticket, regroupée par relation. La clé est un BOUTON (elle
+   ouvre la fiche ici) et la flèche un lien (elle ouvre Jira) — deux gestes différents, deux
+   cibles différentes. Les couleurs passent par les variables : le bloc suit les deux thèmes. */
+.jira-rel-group + .jira-rel-group { margin-top: 10px; }
+.jira-rel-rel { font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+.jira-rel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.jira-rel-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 8px;
+  border: 1px solid transparent; border-radius: 8px; transition: border-color var(--t-fast), background var(--t-fast); }
+.jira-rel-row:hover { border-color: var(--line); background: var(--panel2); }
+.jira-rel-icon { width: 14px; height: 14px; flex-shrink: 0; }
+.jira-rel-key { flex-shrink: 0; font-family: var(--ff-mono); font-size: 12.5px; font-weight: 700;
+  color: var(--accent, #4f9cf9); background: none; border: none; padding: 0; cursor: pointer; }
+.jira-rel-key:hover { text-decoration: underline; }
+/* Un ticket lié TERMINÉ ne se lit pas comme les autres : c'est une dépendance levée. */
+.jira-rel-done .jira-rel-key { text-decoration: line-through; opacity: .75; }
+.jira-rel-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.jira-rel-row .jira-status { flex-shrink: 0; font-size: 10px; padding: 1px 8px; }
+.jira-rel-ext { flex-shrink: 0; color: var(--muted); text-decoration: none; }
+.jira-rel-ext:hover { color: var(--accent, #4f9cf9); }
+
+/* Aperçus d'IMAGES en pièce jointe : affichés directement (clic = plein écran). */
+.jira-img-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.jira-img { display: flex; flex-direction: column; gap: 4px; width: 160px; text-decoration: none; color: var(--text); }
+.jira-img img { width: 160px; height: 120px; object-fit: cover; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); display: block; transition: border-color var(--t-fast); }
+.jira-img:hover img { border-color: var(--accent); }
+.jira-img-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Image EMBARQUÉE (description / commentaire) : largeur fixe, clic = lightbox. */
+.jira-inline-img { max-width: 320px; height: auto; border: 1px solid var(--line); border-radius: 8px;
+  cursor: zoom-in; display: block; margin: 8px 0; background: var(--panel2); }
+/* Capture collée dans une page de notes : large pour être lisible, bornée pour ne pas pousser
+   le texte hors de l'écran. Sur SA ligne, comme elle est insérée dans le Markdown. */
+.note-inline-img { display: block; max-width: 100%; width: auto; max-height: 480px; height: auto;
+  border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; }/* Lightbox : image en grand par-dessus la page (le fond `.modal` gère l'overlay + le centrage). */
+.jira-lightbox { cursor: zoom-out; }
+.jira-lightbox-fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: default; }
+.jira-lightbox-fig img { max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 8px; background: var(--panel2); box-shadow: var(--sh-3); }
+.jira-lightbox-cap { color: var(--on-overlay); font-size: 13px; display: flex; gap: 14px; align-items: center; }
+.jira-lightbox-cap a { color: #bcd6f5; }
+
+/* Commentaires : fil avec pastille d'initiales. */
+.jira-comment { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.jira-comment:first-of-type { border-top: none; }
+.jira-avatar { flex: 0 0 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent-text); }
+.jira-comment-main { flex: 1; min-width: 0; }
+.jira-comment-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; font-size: 13px; }
+/* Composer : ajouter un commentaire. */
+.jira-comment-form { margin-top: 12px; }
+.jira-comment-input { width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; font: inherit; line-height: 1.5;
+  background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 10px; }
+.jira-comment-input:focus { border-color: var(--accent); outline: none; }
+.jira-comment-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.jira-empty { padding: 24px; }
+@media (max-width: 900px) { .jira-layout { flex-direction: column; } .jira-list-col { flex-basis: auto; max-width: none; width: 100%; } .jira-list { max-height: 40vh; } }
+

@@ -17,8 +17,8 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'notes-uni
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 
-const notes = require('../src/notes');
-const { autolink } = require('../public/notes-runtime.js');
+const notes = require('../src/notes/notes');
+const { autolink } = require('../public/runtime/notes-runtime.js');
 const db = require('../src/db');
 
 describe('autolink : les références du quotidien deviennent des liens', () => {

@@ -3,9 +3,8 @@
  *
  * Les réglages ne sont plus tous de même nature. Certains décrivent ce que l'équipe a décidé
  * (gabarits de prompt, seuils, URL de la forge) : ils vivent dans `config` et partiront dans le
- * dépôt de données partagé. D'autres appartiennent à cette machine — les sept jetons d'API, le
- * chemin des clones, la langue, le moteur de dictée : ils vivent dans `local_config` et n'en
- * bougent pas.
+ * dépôt de données partagé. D'autres appartiennent à cette machine — les six jetons d'API, le
+ * chemin des clones, la langue : ils vivent dans `local_config` et n'en bougent pas.
  *
  * CE QUE CES ÉPREUVES GARDENT :
  *
@@ -22,7 +21,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { startApp, lancerNavigateur, navigateurDispo, attendreServeur } = require('./helpers/app');
+const { startApp, lancerNavigateur, navigateurDispo, attendreServeur, afficherMenusOptionnels } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
@@ -35,6 +34,7 @@ describe('Réglages · la portée de chaque champ', { skip: dispo ? false : 'chr
     await app.configure();
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 950 } });
+    await afficherMenusOptionnels(page);   // le sous-onglet Jenkins suit son menu, replié d'office
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab]');
   });

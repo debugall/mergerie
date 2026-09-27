@@ -1,0 +1,31 @@
+/* ---------- Split-button « Review » (défaut + surcharge avec/sans explication) ---------- */
+.btn-split { position: relative; display: inline-flex; }
+/* Même mécanique pour un bouton simple qui déroule un menu (export d'une réponse) :
+   le menu est positionné par rapport à ce conteneur, pas à la barre entière. */
+.split-menu-wrap { position: relative; display: inline-flex; }
+/* Le bouton principal et le caret se collent en un seul bloc visuel. */
+.btn-split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.btn-split-caret { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 7px; padding-right: 7px; margin-left: -1px; font-size: 11px; }
+/* Menu split ouvert : la liste débloque son overflow (sinon `overflow: hidden` des
+   coins arrondis rogne le menu), et la carte passe au-dessus des cartes suivantes
+   (chaque carte anime `card-in` → contexte d'empilement propre, d'où le besoin). */
+.list.menu-open { overflow: visible; }
+.list .card.menu-open { position: relative; z-index: 50; }
+.split-menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
+  min-width: 210px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); display: flex; flex-direction: column; gap: 2px;
+}
+.split-menu button {
+  text-align: left; background: transparent; border: 0; color: var(--text);
+  padding: 7px 10px; border-radius: var(--r-sm); cursor: pointer; font: inherit; font-size: 13px;
+}
+.split-menu button:hover { background: var(--hover); }
+.split-menu button.danger { color: var(--danger); }
+/* Séparateur avant l'action destructrice, pour qu'elle ne se clique pas par inertie. */
+.split-menu .menu-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+
+/* Onglet Explication vide → invite à générer à la demande. */
+.empty-explain { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 4px; }
+

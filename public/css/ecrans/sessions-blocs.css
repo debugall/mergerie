@@ -1,0 +1,20 @@
+/* ---------- Dev IA : des blocs, pas des rangs ----------
+   Une session est un bloc HAUT — prompt, liste de projets, questions de l'agent, erreur. Entre
+   deux blocs de cette taille, un filet d'un pixel se perd dans le blanc : on ne voit plus où
+   l'un finit ni où l'autre commence. Ces listes-là abandonnent donc le rang au profit de la
+   carte — un fond, un contour, et de l'air entre les éléments. Les listes de merge requests,
+   elles, restent en rangs : leurs éléments sont courts, le filet y suffit. */
+#taskList, #localList, #lotList {
+  gap: 14px; border: none; background: transparent; overflow: visible; padding: 6px 0;
+}
+#taskList > .card, #localList > .card, #lotList > .card {
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel);
+}
+:root[data-density="compact"] #taskList,
+:root[data-density="compact"] #localList,
+:root[data-density="compact"] #lotList { gap: 9px; }
+
+/* L'erreur appartient à SA session : dans la carte, pleine largeur sous les deux colonnes.
+   Rendue en frère de la carte, elle flottait entre deux sessions sans dire de laquelle. */
+.card > .errbox { flex: 1 1 100%; margin-top: 10px; }
+

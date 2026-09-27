@@ -66,6 +66,26 @@ describe('Git · Explorateur de branches', { skip: dispo ? false : 'chromium abs
     await page.locator('#gitExploreGo').click();
   }
 
+  /* Combien de dépôts vais-je analyser ? Sur une liste longue, ça ne se lisait qu'en comptant
+     les cases une par une. Testé en tout premier : les tests suivants cochent des dépôts et
+     mémorisent leur choix (`localStorage`), ce qui reproduirait des cases déjà cochées ici. */
+  test('le compteur de dépôts cochés, et « Tout cocher » / « Tout décocher »', async () => {
+    assert.equal((await page.locator('.git-multi-count').textContent()).trim(), '', 'rien de coché au départ');
+
+    await page.locator('.git-multi-all').click();
+    await page.waitForFunction(() => document.querySelectorAll('#gitExploreRepoBox .git-multi-pick:checked').length === 2);
+    assert.match(await page.locator('.git-multi-count').textContent(), /2/, 'le compte dit combien sont cochés');
+
+    await page.locator('.git-multi-none').click();
+    await page.waitForFunction(() => document.querySelectorAll('#gitExploreRepoBox .git-multi-pick:checked').length === 0);
+    assert.equal((await page.locator('.git-multi-count').textContent()).trim(), '', 'tout décoché : plus de compte affiché');
+
+    // Une case cochée à la main (pas par « Tout cocher ») met aussi le compte à jour.
+    await page.locator('#gitExploreRepoBox .git-multi-pick').first().click();
+    assert.match(await page.locator('.git-multi-count').textContent(), /1/, 'une case cochée à la main est comptée aussi');
+    await page.locator('#gitExploreRepoBox .git-multi-pick').first().click();   // on la redécoche : pour les tests suivants
+  });
+
   /* Le cœur de la demande : pendant l'analyse, l'écran doit dire ce qui se passe — et sur
      plusieurs dépôts, LEQUEL travaille, puisqu'ils sont traités l'un après l'autre. */
   test('pendant l’analyse, chaque dépôt annonce son état et le bouton tourne', async () => {

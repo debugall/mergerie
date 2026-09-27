@@ -1,0 +1,38 @@
+    <!-- Jenkins : l'état des jobs et le bouton pour les lancer. Rien n'est sondé — l'écran
+         demande, on demande à Jenkins : surveiller des serveurs n'est pas le travail de
+         l'outil, et un sondage de fond finirait par peser sur une installation partagée. -->
+    <section id="tab-jenkins" class="tab">
+        <div class="toolbar">
+            <input id="jenkinsSearch" type="search" class="jira-search" placeholder="Rechercher un job, un dossier…" data-i18n-placeholder="jenkins.search" />
+            <label class="inline-check"><input type="checkbox" id="jenkinsFailOnly" /> <span data-i18n="jenkins.fail-only">Seulement ce qui ne va pas</span></label>
+            <!-- CE QUE J'AI DÉCLENCHÉ. La liste des jobs lancés depuis Mergerie existait déjà
+                 pour la notification de fin : elle devient un filtre. -->
+            <label class="inline-check"><input type="checkbox" id="jenkinsMineOnly" /> <span data-i18n="jenkins.filter.mine">Mes lancements</span></label>
+            <!-- A/Jenkins 2 : « mes lancements » dit ce que J'AI déclenché ; « mes branches »
+                 dit ce qui tourne sur MON travail, y compris déclenché par un push ou le
+                 planificateur — c'est là que se trouve la CI qui casse sans qu'on la regarde. -->
+            <label class="inline-check"><input type="checkbox" id="jenkinsMineBranches" /> <span data-i18n="jenkins.filter.my-branches">Mes branches</span></label>
+            <label class="inline-check"><input type="checkbox" id="jenkinsNoAuto" /> <span data-i18n="jenkins.no-auto">Ne pas rafraîchir tout seul</span></label>
+            <span class="spacer"></span>
+            <span id="jenkinsCount" class="muted"></span>
+            <button id="jenkinsReload" class="btn" data-i18n-title="jenkins.reload-title" title="Redemander l'état à Jenkins"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jenkins.reload">Rafraîchir</span></button>
+        </div>
+        <!-- LES DOSSIERS EN TÊTE, comme un filtre. La liste, elle, est chronologique : mêler
+             un groupement par dossier à un tri par date donnerait des dossiers dans le
+             désordre et une chronologie interrompue — deux lectures, aucune des deux juste. -->
+        <div id="jenkinsFolders" class="jk-folders" hidden>
+            <div class="jk-folders-head">
+                <strong data-i18n="jenkins.folders">Dossiers</strong>
+                <input id="jenkinsFolderSearch" type="search" class="jira-search jk-folder-search" placeholder="Filtrer les dossiers…" data-i18n-placeholder="jenkins.folders.search" />
+                <span class="spacer"></span>
+                <button type="button" class="btn btn-sm" id="jenkinsFoldersAll" data-i18n="jenkins.folders.all">Tout cocher</button>
+                <button type="button" class="btn btn-sm" id="jenkinsFoldersNone" data-i18n="jenkins.folders.none">Tout décocher</button>
+            </div>
+            <div id="jenkinsFolderList" class="jk-folder-list"></div>
+            <button type="button" id="jenkinsFolderHidden" class="btn btn-sm jk-folder-hidden" hidden></button>
+        </div>
+        <!-- Les paramètres qui reviennent d'un job à l'autre deviennent des colonnes : on filtre
+             donc sur leurs valeurs, comme sur les dossiers. -->
+        <div id="jenkinsParamFiltres" class="jk-param-filtres" hidden></div>
+        <div id="jenkinsBox" class="list"></div>
+    </section>

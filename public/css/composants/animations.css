@@ -1,0 +1,6 @@
+/* Toasts : entrée/sortie (le conteneur #toasts les empile, cf. socle). */
+@keyframes toast-in  { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+@keyframes toast-out { to   { opacity: 0; transform: translateX(12px); } }
+.toast.leaving { animation: toast-out .18s ease-in forwards; }
+
+/* Apparition échelonnée des cartes de liste (une seule passe, coût CPU nul). */

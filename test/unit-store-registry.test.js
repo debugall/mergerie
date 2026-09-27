@@ -21,7 +21,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-regi
 
 const { test, describe, before } = require('node:test');
 const assert = require('node:assert/strict');
-const registre = require('../src/store-registry');
+const registre = require('../src/data/store-registry');
 
 describe('store-registry — la classification des tables', () => {
   let colonnes;   // table -> [colonnes], lu d'une base NEUVE
@@ -176,12 +176,12 @@ describe('store-registry — la classification des tables', () => {
 
   test('cheminDe remplit le gabarit, et refuse de deviner un champ manquant', () => {
     assert.equal(registre.cheminDe('todo', { uid: '01J9' }), 'todos/01J9.json');
-    assert.equal(registre.cheminDe('repo', { forge: 'gitlab', project: 'acme/web' }),
-      'repos/gitlab/acme/web.json');
     // Un champ vide donnerait `todos/.json` — un fichier unique où toutes les todos s'écraseraient.
     assert.throws(() => registre.cheminDe('todo', {}), /uid/);
     assert.throws(() => registre.cheminDe('todo', { uid: '' }), /uid/);
     assert.equal(registre.cheminDe('job_log', { id: 1 }), null, 'une table C n’a pas de fichier');
+    assert.equal(registre.cheminDe('repo', { forge: 'gitlab', project: 'acme/web' }), null,
+      'repo est locale : la liste des dépôts suivis n’a plus de gabarit de fichier');
   });
 
   test('partage() dit vrai des tables P et de `mr`, faux du reste', () => {
@@ -189,6 +189,7 @@ describe('store-registry — la classification des tables', () => {
     assert.equal(registre.partage('mr'), true, 'mr est un cache, mais son état de relecture se partage');
     assert.equal(registre.partage('job_log'), false);
     assert.equal(registre.partage('local_root'), false);
+    assert.equal(registre.partage('repo'), false, 'la liste des dépôts suivis est locale, à chacun la sienne');
     assert.equal(registre.partage('table_qui_nexiste_pas'), false);
   });
 
@@ -210,7 +211,7 @@ describe('store-registry — la classification des tables', () => {
     // passerait sous le radar de INTERDITS, pas sous celui-ci.
     const locales = new Set(registre.localesDe('config'));
     for (const secret of ['access_token', 'github_token', 'jira_token', 'jenkins_token',
-      'jira_email', 'jenkins_user', 'dictation_api_key', 'clone_path']) {
+      'jira_email', 'jenkins_user', 'clone_path']) {
       assert.ok(locales.has(secret), `config.${secret} doit rester sur le poste`);
     }
     // Et l'inverse : les gabarits de prompt sont d'équipe (décision § 13 de la spec).

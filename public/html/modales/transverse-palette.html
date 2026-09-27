@@ -1,0 +1,12 @@
+<!-- Palette de commandes (Ctrl/Cmd+K). Une entrée de palette ne contient JAMAIS de logique
+     métier : elle clique un bouton existant. Sinon elle deviendrait une seconde navigation,
+     qui dériverait de la vraie au premier renommage. -->
+<div id="paletteModal" class="modal" hidden>
+    <div class="modal-box palette-box">
+        <input id="paletteInput" class="palette-input" type="search" autocomplete="off"
+               placeholder="Aller à… ou chercher une MR, une session" data-i18n-placeholder="palette.ph"
+               aria-label="Palette de commandes" data-i18n-aria="palette.aria" />
+        <div id="paletteList" class="palette-list" role="listbox"></div>
+        <p class="palette-hint muted" data-i18n="palette.hint">↑ ↓ choisir · Entrée ouvrir (⌘/Ctrl+Entrée : le diff) · « !217 » ou « PROJ-1408 » ouvre directement · Échap fermer · ⌘K ou o rouvrir</p>
+    </div>
+</div>

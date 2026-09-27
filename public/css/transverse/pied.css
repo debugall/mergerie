@@ -1,0 +1,13 @@
+/* ---------- Footer télémétrie « live » (esthétique terminal) ---------- */
+/* Réserve la place du bandeau fixe du bas — ET celle du PANNEAU DE JOB quand il est ouvert.
+   Ce panneau est `fixed`, large de toute la colonne et haut de cent-soixante-dix pixels : la
+   fin de chaque page passait dessous, et le bouton qui s'y trouve devenait incliquable.
+   Le cas se produit pour de bon — un job en ERREUR ne se replie jamais tout seul, par choix
+   (on doit pouvoir lire l'erreur) — et il touche le pied de formulaire des Réglages, donc le
+   bouton « Enregistrer ». La réserve rend la page défilable d'autant : ce qui est dessous
+   peut toujours être remonté au-dessus du panneau. La hauteur est mesurée par le script :
+   le panneau grandit avec sa file d'attente et sa barre de progression. */
+body { padding-bottom: calc(36px + var(--logpanel-h, 0px)); }
+/* Le bandeau du bas est FIXE : il recouvre les 30 derniers pixels. Une rangée d'actions qui
+   tombe pile dessous se clique à moitié — on garde donc sa hauteur de dégagement quand un
+   défilement l'amène à l'écran. */

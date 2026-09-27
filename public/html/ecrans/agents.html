@@ -1,0 +1,37 @@
+    <!-- AGENTS : des profils de session. Un agent Mergerie n'est pas un orchestrateur — c'est
+         ce qu'on met AUTOUR d'un lancement du CLI : un rôle, un périmètre, des outils, des
+         skills, des sous-agents, une sortie. Deux sous-onglets : les profils, et ce que le
+         disque offre (skills et sous-agents de fichier), qui se lit sans jamais s'écrire. -->
+    <section id="tab-agents" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-sub="list" class="active" role="tab" data-i18n-title="agents.sub.list-title" title="Les agents : profils de session, périmètre, sortie et horaire" data-i18n="agents.sub.list">Agents</button>
+            <button data-sub="skills" role="tab" data-i18n-title="agents.sub.skills-title" title="Ce que le disque offre : skills et sous-agents de fichier, en lecture seule" data-i18n="agents.sub.skills">Skills &amp; sous-agents</button>
+        </div>
+
+        <div id="sub-agents-list" class="subtab active">
+            <div class="toolbar">
+                <button id="btnNewDomainAgent" class="btn btn-primary" data-i18n-tip="agents.tip.new-domain"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="agents.btn.new-domain">Nouvel agent de domaine</span></button>
+                <button id="btnNewAgent" class="btn" data-i18n-tip="agents.tip.new"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="agents.btn.new">Nouvel agent</span></button>
+                <span class="spacer"></span>
+                <span id="agentListCopilotWarn" class="field-note" hidden data-i18n="agents.warn.copilot">Le backend configuré est copilot : seul le modèle est transmis, le reste du profil est ignoré.</span>
+            </div>
+            <div class="agent-filters">
+                <input id="agentFilter" class="search" type="search" placeholder="Rechercher un agent…" data-i18n-placeholder="agents.search.ph" data-i18n-aria="agents.search.aria" aria-label="Rechercher un agent" />
+                <div id="agentRepoFilterBox"></div>
+            </div>
+            <div id="agentList" class="list"></div>
+        </div>
+
+        <div id="sub-agents-skills" class="subtab">
+            <div class="toolbar">
+                <h2 style="margin:0" data-i18n="agents.skills.title">Skills &amp; sous-agents du disque</h2>
+                <span class="spacer"></span>
+                <button id="btnSkillRescan" class="btn" data-i18n-title="agents.skills.rescan-title" title="Relire les dossiers .claude des dépôts clonés et du home"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="agents.skills.rescan">Relire le disque</span></button>
+            </div>
+            <p class="muted" style="max-width:760px" data-i18n="agents.skills.intro">Mergerie lit les dossiers <code>.claude/skills/</code> et <code>.claude/agents/</code> des dépôts clonés et de ton home. Il ne les modifie jamais : cette liste est un miroir du disque.</p>
+            <div id="skillListBox">
+                <input id="skillFilter" class="search" type="search" placeholder="Filtrer par nom, description, dépôt…" data-i18n-placeholder="agents.skills.filter-ph" data-i18n-aria="agents.skills.filter-aria" aria-label="Filtrer les skills" />
+                <div id="skillList" class="list"></div>
+            </div>
+        </div>
+    </section>

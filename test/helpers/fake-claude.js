@@ -5,7 +5,7 @@
  * ce faux binaire, tout ce que `runClaudeStream` sait faire (journal des skills, sous-agents,
  * indentation, coût, refus de permission) ne serait prouvé par rien.
  *
- * Le script écrit son ARGV reçu dans un fichier, puis rejoue un flux NDJSON fourni : un test
+ * Le script écrit son ARGV (et son environnement) reçus dans un fichier, puis rejoue un flux NDJSON fourni : un test
  * vérifie donc à la fois ce qu'on a envoyé et ce qu'on sait lire. */
 
 const fs = require('node:fs');
@@ -17,11 +17,13 @@ function creerFauxClaude(dir, { events, exitCode = 0, stderr = '' } = {}) {
   const bin = path.join(dir, 'claude-faux');
   const fluxPath = path.join(dir, 'flux.ndjson');
   const argvPath = path.join(dir, 'argv.json');
+  const envPath = path.join(dir, 'env.json');
   fs.writeFileSync(fluxPath, (events || []).map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
   fs.writeFileSync(bin, [
     '#!/usr/bin/env node',
     "const fs = require('fs');",
     `fs.writeFileSync(${JSON.stringify(argvPath)}, JSON.stringify(process.argv.slice(2)));`,
+    `fs.writeFileSync(${JSON.stringify(envPath)}, JSON.stringify(process.env));`,
     `process.stdout.write(fs.readFileSync(${JSON.stringify(fluxPath)}, 'utf8'));`,
     stderr ? `process.stderr.write(${JSON.stringify(stderr)});` : '',
     `process.exit(${exitCode});`,
@@ -31,6 +33,7 @@ function creerFauxClaude(dir, { events, exitCode = 0, stderr = '' } = {}) {
   return {
     bin,
     argv() { return JSON.parse(fs.readFileSync(argvPath, 'utf8')); },
+    env() { return JSON.parse(fs.readFileSync(envPath, 'utf8')); },
     ecrireFlux(evts) { fs.writeFileSync(fluxPath, evts.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8'); },
   };
 }

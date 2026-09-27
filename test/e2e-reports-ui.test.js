@@ -407,28 +407,17 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
     assert.ok((await notesAffichees()).length >= avant.length, 'et la liste entière réapparaît');
   });
 
-  /* Le pendant du test de défilement : arrivé au bas de la liste, la page ne doit pas bouger.
-     (L'intention derrière la règle CSS est d'empêcher le chaînage de la molette ; voir la
-     limite mesurée, notée dans le corps du test.) */
-  test('la fin de la liste n’entraîne pas la page', async () => {
+  /* LA LISTE SE PARCOURT JUSQU'AU BOUT, indépendamment de la page. Ce test vérifiait AUSSI que
+     la page ne suivait pas à la fin de la liste — c'était l'intention d'un `overscroll-behavior:
+     contain` posé là, retiré depuis (la liste enchaîne désormais sur la page comme le rapport :
+     voir le test suivant). Reste ici ce qui ne dépend pas de ce réglage : la colonne va bien
+     jusqu'à son propre bout. */
+  test('la liste se parcourt jusqu’à son propre bout', async () => {
     await toutMarquerTraite(); // idempotent : le test reste jouable seul
-    /* FENÊTRE COURTE : pour que « la page ne suit pas » veuille dire quelque chose, il faut
-       au moins que la page AIT de quoi défiler — à pleine hauteur elle tient dans l'écran.
-       ⚠ Mesuré : même ainsi, retirer `overscroll-behavior: contain` ne fait pas échouer ce
-       test. Le chaînage du défilement est une mécanique du compositeur que `mouse.wheel`, qui
-       synthétise l'événement, ne déclenche pas en Chromium headless. Ce que ce test prouve
-       donc vraiment : la colonne se parcourt jusqu'au bout, et la page reste où elle est.
-       La règle CSS, elle, n'a pas de filet automatique — la toucher demande un contrôle à
-       l'œil, dans un vrai navigateur. */
     const tailleAvant = page.viewportSize();
     await page.setViewportSize({ width: 1280, height: 420 });
     await ouvrirStade('done');
     await attendreListeStable();   // les cartes entrent en s'animant : la liste grandit encore
-    assert.ok(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 20),
-      'la page doit pouvoir défiler pour que le test ait un sens');
-    // Position de départ mesurée, pas supposée : sélectionner une carte peut déjà avoir
-    // déplacé la page de quelques pixels. Ce qu'on défend, c'est qu'elle ne bouge PLUS.
-    const depart = await page.evaluate(() => Math.round(window.scrollY));
     await curseurSurLaListe();
     /* On descend jusqu'au bout, un cran à la fois, en attendant à chaque tour que le
        défilement SE STABILISE — pas qu'il « ait bougé ». Attendre un mouvement suppose qu'il
@@ -453,21 +442,31 @@ describe('Reviews — liste et rapport défilent séparément', { skip: dispo ? 
         return stable;
       });
     }
-    // Et on insiste UNE FOIS DE PLUS, arrivé en bas : c'est ce coup-là qui entraînerait la page.
-    await page.mouse.wheel(0, 1200);
-    await page.waitForFunction(() => {
+    const fin = await page.evaluate(() => {
       const l = document.querySelector('#reportSplit .col-list');
-      const v = String(l.scrollTop);
-      const stable = l.dataset.sMesure === v;
-      l.dataset.sMesure = v;
-      return stable;
+      return l.scrollTop + l.clientHeight >= l.scrollHeight - 2;
     });
-    const fin = await page.evaluate((d) => {
-      const l = document.querySelector('#reportSplit .col-list');
-      return { enBas: l.scrollTop + l.clientHeight >= l.scrollHeight - 2, bouge: Math.round(window.scrollY) - d };
-    }, depart);
     await page.setViewportSize(tailleAvant);
-    assert.ok(fin.enBas, 'la liste a bien été parcourue jusqu’en bas');
-    assert.equal(fin.bouge, 0, 'la page n’a pas suivi');
+    assert.ok(fin, 'la liste a bien été parcourue jusqu’en bas');
+  });
+
+  /* LES DEUX COLONNES DOIVENT ENCHAÎNER. Arrivé en haut ou en bas de la liste comme du rapport,
+     on continue de tourner la molette dans la même zone plutôt que de sortir la souris pour
+     reprendre le défilement de la page. Un `overscroll-behavior: contain` a un temps confiné la
+     liste seule (pour éviter qu'un défilement de fin de liste ne fasse sauter tout l'écran),
+     mais rester coincé dans la colonne était pire que le mal évité — les deux valent donc `auto`
+     maintenant, la valeur par défaut du navigateur. Le chaînage réel est une mécanique du
+     compositeur que `mouse.wheel` ne déclenche pas en Chromium headless (voir plus haut) : ce
+     test verrouille donc la déclaration CSS elle-même, à défaut de pouvoir observer le chaînage
+     pour de vrai. */
+  test('la liste et le rapport peuvent tous deux enchaîner sur la page', async () => {
+    // Le test précédent a tout basculé en « Traitées » : plus rien n'attend en « Reviewées ».
+    await ouvrirStade('done');
+    const valeurs = await page.evaluate(() => ({
+      liste: getComputedStyle(document.querySelector('#reportSplit .col-list')).overscrollBehaviorY,
+      rapport: getComputedStyle(document.querySelector('#reportSplit .col-detail')).overscrollBehaviorY,
+    }));
+    assert.equal(valeurs.liste, 'auto', 'la liste enchaîne : sa fin doit continuer sur la page');
+    assert.equal(valeurs.rapport, 'auto', 'le rapport enchaîne : sa fin doit continuer sur la page');
   });
 });

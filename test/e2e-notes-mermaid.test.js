@@ -59,7 +59,7 @@ describe('Notes — les diagrammes Mermaid', { skip: dispo ? false : 'chromium a
     /* APRÈS startApp : `src/paths.js` lit MERGERIE_DATA_DIR au chargement, et un require en
        tête de fichier ferait travailler la base de l'instance réelle. */
     // eslint-disable-next-line global-require
-    demoAgents = require('../src/demo-agents');
+    demoAgents = require('../src/demo/agents');
     await app.api('POST', '/api/repos', { url: 'https://gitlab.test/groupe/api-core.git', project: 'groupe/api-core' });
     await app.api('POST', '/api/repos', { url: 'https://gitlab.test/groupe/webapp-front.git', project: 'groupe/webapp-front' });
     navigateur = await chromium.launch();

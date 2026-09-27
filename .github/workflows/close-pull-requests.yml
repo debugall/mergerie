@@ -1,0 +1,37 @@
+name: Close pull requests
+
+# Mergerie n'accepte pas de contributions de code (voir CONTRIBUTING.md) : toute pull request
+# ouverte sur le miroir GitHub reçoit un commentaire qui l'explique, puis est fermée.
+#
+# `pull_request_target` et non `pull_request` : l'événement tourne dans le contexte du dépôt de
+# base, avec un jeton qui sait écrire un commentaire — ce que `pull_request` n'a pas depuis un
+# fork. C'est sûr ici parce que RIEN du code de la PR n'est ni extrait ni exécuté : pas de
+# checkout, juste deux appels à `gh` avec le numéro de la PR.
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment and close
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --body "$(cat <<'MSG'
+          Thank you for taking the time to work on Mergerie.
+
+          Mergerie does **not accept code contributions** — pull requests are closed automatically, and this one is no exception. The project is written by one maintainer, who stays its only rights holder: that is what keeps it free to evolve its licensing. The reasons in full are in [CONTRIBUTING.md](https://github.com/debugall/mergerie/blob/main/CONTRIBUTING.md).
+
+          What helps, and is very welcome: an **issue** describing the bug or the idea behind this change — what goes wrong, where, and what should happen — without pasting the patch. It will then be written from scratch by the maintainer.
+
+          The code is AGPL-3.0, so you are of course free to keep this change on your fork.
+          MSG
+          )"
+          gh pr close "$PR"

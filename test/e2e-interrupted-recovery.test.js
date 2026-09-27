@@ -103,7 +103,7 @@ describe('Reprise après un arrêt du serveur', () => {
   });
 
   test('le statut « interrompu » est traduit dans les deux langues', () => {
-    const I18N = require('../public/i18n.js');
+    const I18N = require('../public/i18n/index.js');
     for (const langue of ['fr', 'en']) {
       assert.ok(I18N[langue]['job.status.interrupted'],
         `job.status.interrupted manque en ${langue} — le panneau afficherait le mot brut`);

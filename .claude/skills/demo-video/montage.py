@@ -76,10 +76,15 @@ def main():
     bande = os.path.join(TRAVAIL, 'bande.m4a')
     sh(['ffmpeg', '-y', '-v', 'error', '-f', 'concat', '-safe', '0', '-i', liste, '-c', 'copy', bande])
 
-    # 1600×879 → 1920×1080 : on met à l'échelle sans déformer et on complète en blanc.
+    # 1600×879 → 1920×1080 : on met à l'échelle sans déformer et on complète avec le FOND DU
+    # THÈME SOMBRE (`--bg`, public/css). Les bandes étaient blanches : treize pixels clairs en
+    # haut et en bas d'un film sombre, et la première chose qu'on voyait.
     sh(['ffmpeg', '-y', '-v', 'error', '-i', video, '-i', bande,
-        '-vf', 'scale=1920:-2:flags=lanczos,pad=1920:1080:0:(oh-ih)/2:white,fps=25',
+        '-vf', 'scale=1920:-2:flags=lanczos,pad=1920:1080:0:(oh-ih)/2:0x0f1420,fps=25',
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p',
+        # NIVEAU SONORE NORMALISÉ (−16 LUFS, crête −1,5 dB) : la voix neuronale sort ~6 dB plus
+        # bas que Piper, et un film qu'on monte au maximum sur un portable n'est pas livrable.
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-shortest', SORTIE])
     print(f'{SORTIE} · {duree(SORTIE)/60:.1f} min')
 

@@ -8,7 +8,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const agentargs = require('../src/agentargs');
+const agentargs = require('../src/agent/args');
 
 describe('agentargs : options → argv', () => {
   test('sans options, aucun argument — l’argv d’une session ordinaire ne bouge pas', () => {
@@ -81,10 +81,20 @@ describe('agentargs : ce que la sauvegarde refuse', () => {
 
   test('un mode inconnu est refusé, les modes admis passent', () => {
     assert.deepEqual(agentargs.validate({ permissionMode: 'yolo' }), ['agents.err.permission-unknown']);
-    for (const m of ['acceptEdits', 'plan', 'dontAsk', 'bypassPermissions']) {
+    for (const m of ['acceptEdits', 'plan', 'dontAsk']) {
       assert.deepEqual(agentargs.validate({ permissionMode: m }), [], m);
     }
+    assert.deepEqual(agentargs.validate({ permissionMode: 'bypassPermissions' }), ['agents.err.permission-unknown'],
+      'un profil ne rend plus à l’agent le mode large que la saveur lui retire');
+    assert.deepEqual(agentargs.argsFor('claude', { permissionMode: 'bypassPermissions' }).args, [],
+      'un profil ancien qui le portait encore : l’option ne part pas');
     assert.deepEqual(agentargs.validate({ permissionMode: '' }), [], 'vide = acceptEdits, décidé ailleurs');
+  });
+
+  test('un profil d’exploration ne porte pas de mode de permission (plan_secure.md, lot A, S3)', () => {
+    assert.deepEqual(agentargs.validate({ permissionMode: 'acceptEdits' }, 'explore'), ['agents.err.permission-explore']);
+    assert.deepEqual(agentargs.validate({ permissionMode: '' }, 'explore'), [], 'vide reste accepté');
+    assert.deepEqual(agentargs.validate({ permissionMode: 'acceptEdits' }, 'code'), [], 'un profil de codage, lui, le porte');
   });
 
   test('un nombre de tours non entier positif est refusé', () => {
@@ -108,7 +118,7 @@ describe('agentargs : ce que la sauvegarde refuse', () => {
 
   test('toutes les clés d’erreur existent au dictionnaire, dans les deux langues', () => {
     // Sinon l'écran afficherait la clé brute à la place de la phrase.
-    const dict = require('../public/i18n.js');
+    const dict = require('../public/i18n/index.js');
     const toutes = [
       ...agentargs.validate({ permissionMode: 'default' }),
       ...agentargs.validate({ permissionMode: 'yolo' }),

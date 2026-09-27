@@ -18,9 +18,12 @@ function freshState() {
     branches: {},            // project -> [{ name, default, protected, merged, commit:{ id, committed_date, author_name } }]
     commits: {},             // project -> [{ id, short_id, title, author_name, committed_date, web_url }] (le plus récent d'abord)
     tags: {},                // project -> [{ name, target, message, commit:{ id, committed_date } }]
+    compare: {},             // project -> [commit] rendus par /repository/compare (commits depuis la review)
     protectedBranches: {},   // project -> [name]
     protectedTags: {},       // project -> [name]
     discussions: {},         // `${project}!${iid}` -> [discussion]
+    approvals: {},           // `${project}!${iid}` -> [username] (qui a approuvé)
+    pipelines: {},           // `${project}!${iid}` -> [{ id, status, web_url }] (le plus récent d'abord)
     changes: {},             // `${project}!${iid}` -> [{ new_path }]
     jiraIssues: {},          // KEY -> { key, fields }
     jiraFail: null,          // { status, body } pour forcer un refus Jira
@@ -131,6 +134,28 @@ function handleGitlab(req, res, pathname, query, body) {
       if (state.failNextNote) { state.failNextNote = false; return json(res, 403, { message: 'accès refusé' }); }
       return json(res, 201, { id: 900 + (state.calls.length), body: body.body });
     }
+    /* Approbations, résolution d'un fil, pipelines : le verdict que la forge lit. */
+    if (sub === '/approve' && req.method === 'POST') {
+      const l = (state.approvals[key] = state.approvals[key] || []);
+      if (!l.includes('testeur')) l.push('testeur');
+      return json(res, 201, { id: iid, approved_by: l.map((u) => ({ user: { username: u } })) });
+    }
+    if (sub === '/unapprove' && req.method === 'POST') {
+      state.approvals[key] = (state.approvals[key] || []).filter((u) => u !== 'testeur');
+      return json(res, 201, { id: iid });
+    }
+    if (sub === '/approvals' && req.method === 'GET') {
+      const l = state.approvals[key] || [];
+      return json(res, 200, { approvals_required: 1, approvals_left: l.length ? 0 : 1, approved_by: l.map((u) => ({ user: { username: u } })) });
+    }
+    if (sub === '/pipelines' && req.method === 'GET') return json(res, 200, state.pipelines[key] || []);
+    m = /^\/discussions\/([^/]+)$/.exec(sub);
+    if (m && req.method === 'PUT') {
+      const disc = (state.discussions[key] || []).find((d) => d.id === decodeURIComponent(m[1]));
+      if (!disc) return json(res, 404, { message: '404 Discussion Not Found' });
+      for (const n of disc.notes) n.resolved = !!body.resolved;
+      return json(res, 200, disc);
+    }
     if (sub === '/discussions' && req.method === 'GET') {
       return json(res, 200, paged(state.discussions[key] || []));
     }
@@ -166,6 +191,11 @@ function handleGitlab(req, res, pathname, query, body) {
 
   // --- Commits (dernier commit d'un projet) ---
   if (rest === '/repository/commits' && req.method === 'GET') return json(res, 200, paged(commitsOf()));
+  /* Comparaison entre deux SHA (commits arrivés depuis la review) : la liste est posée par le
+     test dans `state.compare[project]` ; sans elle, GitLab répond une comparaison vide. */
+  if (rest === '/repository/compare' && req.method === 'GET') {
+    return json(res, 200, { commits: (state.compare && state.compare[project]) || [] });
+  }
 
   // --- Refs (branches / tags) ---
   if (rest === '/repository/branches' && req.method === 'GET') return json(res, 200, paged(branchesOf()));

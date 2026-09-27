@@ -1,7 +1,8 @@
 # Roadmap
 
 Where Mergerie is heading. This list is about **direction, not dates** — items are roughly ordered by
-priority, and priorities shift with feedback. Contributions toward any of these are welcome; see
+priority, and priorities shift with feedback. Ideas and feedback on any of these are welcome in the
+[issues](https://github.com/debugall/mergerie/issues); the code itself is written by the maintainer — see
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Forge support
@@ -9,7 +10,7 @@ priority, and priorities shift with feedback. Contributions toward any of these 
 - ✅ **GitHub support** — done. The full workflow (review, comments, merge, coding sessions, convergence,
   Git tab) works on GitHub pull requests, and GitLab and GitHub repositories can be used side by side.
 - **Bitbucket support** — same workflow for Bitbucket pull requests, so a mixed-forge organization can use a
-  single cockpit. The forge dispatcher (`src/forge.js`) is the extension point.
+  single cockpit. The forge dispatcher (`src/forge/index.js`, `clientFor(repo)`) is the extension point.
 
 ## Orchestrated multi-repo releases
 
@@ -33,23 +34,17 @@ operation instead of a manual repo-by-repo chore.
 
 ## Objective convergence anchors
 
-Make the autonomous convergence loop exit on **objective signals**, not only the AI's own score: wire
-**lint / typecheck / tests** in as loop exit criteria, so a session converges when the code actually passes
-the project's own gates — not merely when the model is satisfied with it.
+~~Make the autonomous convergence loop exit on **objective signals**, not only the AI's own score.~~
+**Decided otherwise.** The verifier's verdict is shown **beside** the loop, never used as an exit
+condition: green tests do not mean the change is right, and the score threshold keeps the last word.
+What ships instead: after every pass, the verifier that carries the merge request (the session's, or
+one set to re-run when its verdict goes stale) runs inside the convergence job, its verdict is written in
+the journal and on the convergence panel (green, red, stale), and a verdict that turns red is called out
+without stopping the loop.
 
-Half of the ground is now covered: **verifiers** run the project's own commands and give a verdict that
-owes nothing to the model, a coding session can carry one and run it when it is done, and a verifier can
-fire by itself on every new merge request (1.2.0). Since 1.3.0 that verdict also **leaves the tool**: it
+The ground covered so far: **verifiers** run the project's own commands and give a verdict that owes
+nothing to the model, a coding session can carry one and run it when it is done, and a verifier can fire
+by itself on every new merge request (1.2.0). Since 1.3.0 that verdict also **leaves the tool**: it
 publishes as a comment on the merge request, mentions the people who need to know when it breaks, re-runs
-when it goes stale, and can be asked of a **branch with no merge request at all**. What remains is the
-wiring itself — making that verdict an **exit condition of the convergence loop**, instead of a check that
-runs beside it.
-
-## Word-by-word dictation
-
-Dictation landed in 1.5.0, and it cuts the audio at pauses: the text appears about a second after
-the end of a sentence. That is fast enough to write a prompt by voice, and slow enough to feel like a
-delay when you dictate a long note. **True streaming** — words appearing as they are spoken — needs a
-different kind of engine (Kyutai STT, or Voxtral Realtime if a light local runtime appears), behind the
-same provider abstraction, with the provisional text shown greyed **inside** the field. Worth doing only
-once the pause-based cut has proved to be a real irritation rather than a theoretical one.
+when it goes stale, and can be asked of a **branch with no merge request at all**. Since 2.0.0 it runs
+**inside the convergence job** after every pass — beside the loop, as decided above.

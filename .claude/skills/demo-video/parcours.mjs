@@ -14,7 +14,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const ICI = path.dirname(new URL(import.meta.url).pathname);
-const URL_APP = 'http://localhost:4321/';
+// PORT_DEMO : deux serveurs de démo (un par langue) permettent de tourner les deux films en même temps.
+const URL_APP = `http://localhost:${process.env.PORT_DEMO || 4321}/`;
 const LARGEUR = 1600, HAUTEUR = 879;
 // RAPIDE=1 : on parcourt tout sans tenir la pose, pour vérifier que chaque sélecteur répond.
 const RAPIDE = process.env.RAPIDE === '1';
@@ -150,6 +151,9 @@ async function principal() {
     try {
       localStorage.setItem('aidevtools_lang', lang);
       localStorage.setItem('aidevtools_theme', 'dark');
+      /* TOUS LES ONGLETS VISIBLES. Git, Docker, Jenkins et Liens sont masqués par défaut (menus
+         optionnels, Réglages → Général) ; le film les parcourt, et la narration compte onze. */
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] }));
     } catch { /* stockage indisponible */ }
   }, LANGUE);
   const page = await ctx.newPage();
@@ -465,6 +469,11 @@ async function principal() {
   await versEl('#taskModal [name=auto_push]'); await dit();
   /* UNE SESSION PEUT EMPRUNTER LE PROFIL D'UN AGENT : rôle, périmètre, outils, skills. */
   await versEl('#taskAgentBox'); await dit();
+  /* LE BINAIRE DE LA SESSION : la ligne n'apparaît qu'une fois `/api/agent-clis` relu (le jeu de
+     démo déclare « Ollama local ») — on attend qu'elle soit visible plutôt que de la viser cachée. */
+  await page.locator('#taskCliRow:not([hidden])').waitFor({ timeout: 15000 });
+  await versEl('#taskCliRow'); await dit();
+  await versEl('#taskPlanFirstRow'); await dit();
   /* « Créer et lancer » est devenu le geste principal ; « converger » est une CASE à côté,
      plus un bouton. On désigne la rangée du bas, qui porte les deux. */
   await versEl('#taskSubmit'); await dit();
@@ -503,11 +512,28 @@ async function principal() {
   /* CE QUE CHAQUE ITÉRATION A CHANGÉ. La sortie s'ouvre par projet ; les itérations sont la
      liste de gauche, et celle qu'on lit porte son propre diff — seule la DERNIÈRE mesure est
      gardée, c'est celle qu'on vient de demander. */
-  await clique(page.locator('#taskList [data-tgout]').first());
+  /* LA SESSION QUI A DES ITÉRATIONS ET UN DIFF MESURÉ : celle semée sur « Ollama local » (trois
+     passes). Le premier `[data-tgout]` venu était celui de la session en mode plan — un plan n'a
+     pas de diff, et l'étape suivante commente justement ce bouton. */
+  const sOllama = page.locator('#taskList .card').filter({ has: page.locator('.task-cli') }).first();
+  await clique(sOllama.locator('[data-tgout]').first());
   await page.waitForTimeout(1400);
   await versEl('#taskPassList'); await dit();
   await versEl('#taskMdBody [data-passdiff]'); await dit();
   await clique('#taskMdClose');
+
+  /* LE BINAIRE SUR LA CARTE : la session semée sur « Ollama local » porte son badge. */
+  await versEl('#taskList .task-cli'); await dit();
+  /* LA SESSION EN MODE PLAN : la ligne « plan à approuver », « Lire le plan » qui ouvre la vue
+     avec le champ de retours à la place du suivi, puis « Approuver et coder ». Désignée par ce
+     qu'elle seule porte (`[data-planform]`), jamais par un rang. */
+  const sp = page.locator('#taskList .card').filter({ has: page.locator('[data-planform]') }).first();
+  await versEl(sp.locator('[data-planform]')); await dit();
+  await clique(sp.locator('[data-planform] [data-tgout]'));
+  await page.locator('#taskMdPlan:not([hidden])').waitFor({ timeout: 15000 });
+  await versEl('#taskMdPlanText'); await dit();
+  await clique('#taskMdClose');
+  await versEl(sp.locator('[data-tgplanok]')); await dit();
 
   const sq = page.locator('#taskList .card')
     .filter({ has: page.locator('button', { hasText: L.answerResume }) }).first();
@@ -693,18 +719,17 @@ async function principal() {
   await versEl('#verifierRepoBox'); await dit();                         // @@NEW:c3
   await clique(reglage('aisession'));
   await versEl('#sub-aisession [name=ai_extra_instructions]'); await dit();
-  await versEl('#tab-admin'); await dit();
+  /* LES BINAIRES DE L'AGENT : la liste, le défaut en tête, « Ollama local » en dessous avec ses
+     boutons Tester et Utiliser par défaut (ce dernier n'existe que sur une ligne non-défaut). */
+  await versEl('#cliList'); await dit();
+  await versEl('#cliList [data-clidefault] >> nth=0'); await dit();
+  await versEl('#cfgAgentAutoMax'); await dit();
   await clique(reglage('gitcfg'));
   /* Le bouton porte maintenant « Enregistrer et tester » : on le vise par son id, qui ne
      dépend ni du libellé ni de la langue. */
   await versEl('#btnTestGitlab'); await dit();
   await clique(reglage('notif'));
   await versEl('#notifThreshold'); await dit();
-  /* LA DICTÉE : un micro sur chaque champ, et le vocabulaire des dépôts donné au moteur. */
-  await clique(reglage('dictation'));
-  await montreOptions('#dictationProvider'); await dit();
-  await fermeOptions('#dictationProvider');
-  await versEl('#dictationPanel'); await dit();
 
   /* Journal : on lance une vraie recherche de MR (elle rend maintenant un compte propre en
      démo), puis on désigne la barre du bas. On n'ouvre PAS le panneau de logs : il ne se

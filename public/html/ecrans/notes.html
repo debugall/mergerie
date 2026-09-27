@@ -1,0 +1,47 @@
+    <!-- Notes : les post-it du poste de travail. Le brief ouvre la journée, les todos
+         portent ce qui reste à faire, les pages remplacent le bloc-notes. Tout est local. -->
+    <section id="tab-notes" class="tab">
+        <div class="segmented subnav" role="tablist">
+            <button data-nsub="today" class="active" role="tab" data-i18n-title="notes.sub.today-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="notes.sub.today">Aujourd'hui</span></button>
+            <button data-nsub="todos" role="tab" data-i18n-title="notes.sub.todos-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="notes.sub.todos">Todos</span><span class="nav-count" id="notesTodoCount" hidden>0</span></button>
+            <button data-nsub="pages" role="tab" data-i18n-title="notes.sub.pages-title"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="notes.sub.pages">Pages</span></button>
+        </div>
+
+        <div id="notesSubToday">
+            <div id="briefBox" class="brief"></div>
+        </div>
+
+        <div id="notesSubTodos" hidden>
+            <div class="toolbar">
+                <input id="todoQuickAdd" type="text" class="todo-quick" autocomplete="off" maxlength="200" placeholder="Ajouter une todo…" data-i18n-placeholder="notes.todo.add-ph" />
+                <button id="todoQuickBtn" class="btn btn-primary" data-i18n-title="notes.todo.add-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="notes.todo.add">Ajouter</span></button>
+                <span class="spacer"></span>
+                <div class="segmented todo-filter" role="tablist">
+                    <button data-tfilter="open" class="active" role="tab" data-i18n="notes.todo.filter.open">À faire</button>
+                    <button data-tfilter="done" role="tab" data-i18n="notes.todo.filter.done">Faites</button>
+                    <button data-tfilter="archived" role="tab" data-i18n="notes.todo.filter.archived">Archivées</button>
+                </div>
+                <span id="todoInfo" class="muted"></span>
+            </div>
+            <!-- C14 : la syntaxe courte existe depuis 1.4.0 et rien ne la disait. Une barre de
+                 saisie qui comprend `!217`, `@demain` et `!!` sans l'annoncer n'est comprise
+                 que par qui a lu le CHANGELOG. -->
+            <p class="muted todo-syntaxe" data-i18n-html="notes.todo.syntax-help">Astuce : <code>!217</code> lie à une MR, <code>PROJ-42</code> à un ticket, <code>@demain</code> pose l'échéance, <code>!!</code> la priorité haute.</p>
+            <div id="todoList" class="todo-list"></div>
+        </div>
+
+        <div id="notesSubPages" hidden>
+            <div class="notes-layout">
+                <div class="notes-list-col">
+                    <div class="toolbar toolbar-tight">
+                        <button id="pageNew" class="btn btn-primary" data-i18n-title="notes.page.new-title"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="notes.page.new">Nouvelle page</span></button>
+                    </div>
+                    <input id="pageSearch" type="search" class="jira-search" placeholder="Rechercher (titre et contenu)…" data-i18n-placeholder="notes.page.search" />
+                    <div id="pageList" class="notes-list"></div>
+                </div>
+                <div class="notes-editor-col">
+                    <div id="pageEditor" class="notes-editor"></div>
+                </div>
+            </div>
+        </div>
+    </section>

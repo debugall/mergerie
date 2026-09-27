@@ -1,0 +1,10 @@
+/* ---------- L'histoire d'une page de notes ----------
+   Un panneau DANS la page, et non une modale : on consulte l'historique en écrivant, pour
+   retrouver ce qu'on avait dit avant — une modale masquerait le texte qu'on compare. */
+.note-history-panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); padding: .6rem .7rem; margin: .5rem 0; }
+.note-history { list-style: none; margin: .3rem 0 0; padding: 0; max-height: 12rem; overflow: auto; }
+.note-history li { margin: 0; }
+.note-history .lien-commit { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: .25rem .3rem; border-radius: 5px; cursor: pointer; font-size: var(--fs-xs); }
+.note-history .lien-commit:hover { background: var(--hover); }
+.note-history-diff { max-height: 16rem; overflow: auto; margin: .5rem 0 0; padding: .5rem; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font-size: var(--fs-xs); white-space: pre; }
+

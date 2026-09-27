@@ -260,4 +260,69 @@ describe('Rapport de review publié sur la merge request', () => {
     assert.equal(body.review.comment_posted_at, null, 'mais rien n’est marqué comme publié');
     await app.api('PUT', '/api/config', { auto_post_review: '0' });
   });
+
+  /* ------------------------------------------ le verdict que la forge lit ---- */
+
+  /* APPROUVER, sans un commentaire. Le rapport se publiait déjà ; ce qui manquait, c'est ce que
+     GitLab appelle une approbation. On vérifie que le geste part sur la bonne route, qu'il ne
+     poste AUCUNE note, que l'état se relit, et que retirer marche aussi. */
+  test('approuver part en `approve` sur la forge, sans note, et se relit ; retirer aussi', async () => {
+    const id = await nouvelleMr();
+    const notesAvant = notesPostees().length;
+    const avant = (await app.api('GET', `/api/mrs/${id}/approvals`)).body;
+    assert.equal(avant.byMe, false);
+    const r = await app.api('POST', `/api/mrs/${id}/approve`);
+    assert.equal(r.status, 200, r.text);
+    assert.equal(r.body.approvals.byMe, true);
+    assert.ok(app.state.calls.some((c) => c.method === 'POST' && /\/merge_requests\/\d+\/approve$/.test(c.path)), 'la route d’approbation de GitLab');
+    assert.equal(notesPostees().length, notesAvant, 'approuver ne poste aucun commentaire');
+    assert.equal((await app.api('GET', `/api/mrs/${id}/approvals`)).body.approvedBy.includes('testeur'), true);
+    const u = await app.api('POST', `/api/mrs/${id}/approve`, { unapprove: true });
+    assert.equal(u.status, 200);
+    assert.equal(u.body.approvals.byMe, false);
+    assert.ok(app.state.calls.some((c) => c.method === 'POST' && /\/unapprove$/.test(c.path)));
+  });
+
+  /* RÉSOUDRE UN FIL depuis l'outil : `PUT …/discussions/:id` avec `resolved`, relu dans le fil. */
+  test('résoudre un fil, puis le rouvrir, se lit dans les discussions', async () => {
+    const id = await nouvelleMr();
+    /* Un fil déjà présent sur la forge (les MR de ce fichier n'ont pas de `diff_refs`, donc pas
+       de commentaire inline à poser) : c'est lui qu'on résout. */
+    app.state.discussions[`grp/app!${iid}`] = [{ id: 'disc-a-resoudre', notes: [{ id: 640, body: 'À corriger', system: false, resolved: false, author: { name: 'Claire', username: 'claire' }, position: null }] }];
+    let discs = (await app.api('GET', `/api/mrs/${id}/discussions`)).body.discussions;
+    const fil = discs.find((d) => d.id === 'disc-a-resoudre');
+    assert.equal(fil.notes[0].resolved, false);
+    const res = await app.api('POST', `/api/mrs/${id}/discussions/${fil.id}/resolve`, { resolved: true });
+    assert.equal(res.status, 200, res.text); assert.equal(res.body.resolved, true);
+    discs = (await app.api('GET', `/api/mrs/${id}/discussions`)).body.discussions;
+    assert.equal(discs.find((d) => d.id === fil.id).notes[0].resolved, true, 'l’état vient de la forge, relu');
+    await app.api('POST', `/api/mrs/${id}/discussions/${fil.id}/resolve`, { resolved: false });
+    discs = (await app.api('GET', `/api/mrs/${id}/discussions`)).body.discussions;
+    assert.equal(discs.find((d) => d.id === fil.id).notes[0].resolved, false);
+  });
+
+  /* L'ÉTAT DE LA CI SUR LA CARTE : le dernier pipeline de chaque merge request, en un lot, avec
+     un mot normalisé — et `null` pour une MR que la forge refuse, jamais une erreur pour tout le lot. */
+  test('GET /api/mrs-ci lit le dernier pipeline de chaque MR, normalisé, et survit à un refus', async () => {
+    const a = await nouvelleMr();
+    const mrA = app.state.mrs['grp/app'][0];
+    const b = await nouvelleMr();
+    app.state.mrs['grp/app'].push(mrA);   // `nouvelleMr` ne laisse qu'une MR sur la forge : les deux doivent y être
+    const iidDe = (id) => app.db.prepare('SELECT iid FROM mr WHERE id = ?').get(id).iid;
+    app.state.pipelines[`grp/app!${iidDe(a)}`] = [{ id: 501, status: 'failed', web_url: 'http://gl/pipe/501' }];
+    app.state.pipelines[`grp/app!${iidDe(b)}`] = [{ id: 502, status: 'running', web_url: 'http://gl/pipe/502' }];
+    const { status, body } = await app.api('GET', `/api/mrs-ci?ids=${a},${b},999999`);
+    assert.equal(status, 200);
+    assert.equal(body[a].state, 'failed'); assert.equal(body[a].url, 'http://gl/pipe/501');
+    assert.equal(body[b].state, 'running');
+    assert.equal(body[999999], null, 'une MR inconnue rend null');
+    app.state.fail['/pipelines'] = { status: 403, body: { message: 'forbidden' } };
+    try {
+      const r2 = await app.api('GET', `/api/mrs-ci?ids=${a}`);
+      assert.equal(r2.status, 200); assert.equal(r2.body[a], null, 'un refus de la forge rend null, pas une erreur');
+    } finally { delete app.state.fail['/pipelines']; }
+    const sans = await nouvelleMr();
+    assert.equal((await app.api('GET', `/api/mrs-ci?ids=${sans}`)).body[sans].state, 'none', 'aucun pipeline : « none »');
+    app.state.mrs['grp/app'].push(mrA, app.state.mrs['grp/app'].find((m) => m.iid === iidDe(b)) || mrA);
+  });
 });

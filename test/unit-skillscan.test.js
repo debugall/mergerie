@@ -20,7 +20,7 @@ process.env.MERGERIE_DATA_DIR = path.join(tmp, 'data');
 process.env.MERGERIE_CLAUDE_HOME = path.join(tmp, 'home');
 
 // eslint-disable-next-line import/order
-const skillscan = require('../src/skillscan');
+const skillscan = require('../src/agent/skillscan');
 
 after(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* ignore */ } });
 

@@ -1,0 +1,12 @@
+/* Ajout en masse */
+.bulk-box { width: 760px; display: flex; flex-direction: column; max-height: 88vh; }
+.bulk-toolbar { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.bulk-toolbar .search { margin: 0; flex: 1; }
+.bulk-list { flex: 1; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px; min-height: 200px; }
+.bulk-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+.bulk-item:hover { background: var(--panel2); }
+.bulk-item.already { opacity: .55; cursor: default; }
+.bulk-path { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-footer { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.bulk-footer input { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 6px 10px; font: inherit; margin-left: 6px; }
+

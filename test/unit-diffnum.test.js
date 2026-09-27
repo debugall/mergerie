@@ -14,7 +14,7 @@
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { annoterDiff, MAX_LIGNES } = require('../src/diffnum');
+const { annoterDiff, MAX_LIGNES } = require('../src/git/diffnum');
 
 const numeroDe = (vue, motif) => {
   const l = vue.split('\n').find((x) => x.includes(motif));

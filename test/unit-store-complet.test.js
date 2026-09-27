@@ -16,9 +16,11 @@
  *   c'est ce qui fait qu'un processus tué entre la ligne et le fichier ne perd rien.
  * — UNE SUPPRESSION RETIRE LE FICHIER. Un fichier orphelin ferait revenir l'objet à la prochaine
  *   hydratation — c'est le bug qui ne se voit qu'une semaine plus tard, chez quelqu'un d'autre.
- * — L'ALLER-RETOUR COMPLET, sur la chaîne la plus profonde : dépôt → merge request → review →
- *   version → constats. C'est elle qui décide si « supprimer `reviewer.db` et tout retrouver »
- *   est vrai ou non.
+ * — L'ALLER-RETOUR COMPLET, sur la chaîne la plus profonde qui voyage : merge request → review →
+ *   version → constats. `repo`, lui, n'en fait plus partie — la liste des dépôts suivis est
+ *   locale — et c'est justement ce qui nuance « supprimer `reviewer.db` et tout retrouver » :
+ *   le travail accumulé sur un dépôt revient, la liste des dépôts qu'on suivait, elle, ne revient
+ *   que si on la retape.
  */
 
 const fs = require('node:fs');
@@ -34,8 +36,8 @@ describe('store — la base prévient, le store écrit', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    registre = require('../src/store-registry');
+    store = require('../src/data/store');
+    registre = require('../src/data/store-registry');
   });
 
   test('chaque table partagée sait aller ET revenir', () => {
@@ -58,30 +60,50 @@ describe('store — la base prévient, le store écrit', () => {
 
   test('une écriture en SQL BRUT — sans passer par le store — produit son fichier', () => {
     const now = new Date().toISOString();
-    repoId = db.prepare(`INSERT INTO repo (project, url, forge, enabled, fetch_mrs, created_at)
-      VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, 1, ?)`).run(now).lastInsertRowid;
+    const ruleId = db.prepare(`INSERT INTO review_rule (branch_match, content, enabled, created_at)
+      VALUES ('feat/', 'Vérifie les tests', 1, ?)`).run(now).lastInsertRowid;
     assert.ok(store.enRetard() > 0, 'le déclencheur doit avoir noté la ligne');
     store.ecouler();
-    const doc = JSON.parse(store.lireFichier('repos/gitlab/acme/web.json'));
-    assert.equal(doc.project, 'acme/web');
-    assert.equal(doc.url, 'https://x.test/a.git');
+    const uid = db.prepare('SELECT uid FROM review_rule WHERE id = ?').get(ruleId).uid;
+    const doc = JSON.parse(store.lireFichier(`rules/${uid}.json`));
+    assert.equal(doc.branch_match, 'feat/');
+    assert.equal(doc.content, 'Vérifie les tests');
     assert.equal(store.enRetard(), 0, 'la file doit être vide une fois écoulée');
   });
 
+  /* `repo` A REJOINT DOCKER, JENKINS, GIT ET JIRA : une machine et ce qu'elle suit, pas un
+     travail accumulé. Partagée, elle faisait apparaître chez tout le monde les dépôts ajoutés
+     par un seul, avec leur clonage et la découverte de leurs merge requests au démarrage
+     suivant — sans case à cocher pour la refuser. */
+  test('repo est locale : chacun garde sa propre liste, rien n’en part dans le dépôt d’équipe', () => {
+    const now = new Date().toISOString();
+    repoId = db.prepare(`INSERT INTO repo (project, url, forge, enabled, fetch_mrs, created_at)
+      VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, 1, ?)`).run(now).lastInsertRowid;
+    assert.equal(store.enRetard(), 0, 'aucun déclencheur ne note plus la ligne : la liste est à chacun');
+    assert.equal(registre.cheminDe('repo', { forge: 'gitlab', project: 'acme/web' }), null,
+      'repo n’a plus de gabarit de fichier');
+  });
+
   test('une ligne FILLE marque son parent : elle n’a pas de fichier à elle', () => {
-    const autre = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
-      VALUES ('acme/api', 'https://x.test/b.git', 'gitlab', 1, ?)`).run(new Date().toISOString()).lastInsertRowid;
+    const now = new Date().toISOString();
+    const verifierId = db.prepare(`INSERT INTO verifier (name, command, created_at) VALUES ('Tests unitaires', '', ?)`)
+      .run(now).lastInsertRowid;
     store.ecouler();
-    db.prepare("INSERT INTO repo_link (repo_id, linked_repo_id, branch) VALUES (?, ?, 'main')").run(repoId, autre);
+    db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?, 0, ?)').run(verifierId, 'npm test');
     assert.ok(store.enRetard() > 0);
     store.ecouler();
-    const doc = JSON.parse(store.lireFichier('repos/gitlab/acme/web.json'));
-    assert.deepEqual(doc.linked, [{ repo: 'gitlab/acme/api', branch: 'main' }]);
-    /* LES JOBS JENKINS, EUX, NE SONT PLUS DANS CE FICHIER : l'onglet Jenkins décrit une machine
-       et ses accès, pas un travail accumulé. Une ligne écrite ici ne salit donc plus rien. */
+    const uidV = db.prepare('SELECT uid FROM verifier WHERE id = ?').get(verifierId).uid;
+    assert.deepEqual(JSON.parse(store.lireFichier(`verifiers/${uidV}.json`)).commands, ['npm test']);
+  });
+
+  test('repo_link et repo_jenkins restent locaux, comme repo lui-même : rien ne se propage', () => {
+    const autre = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
+      VALUES ('acme/api', 'https://x.test/b.git', 'gitlab', 1, ?)`).run(new Date().toISOString()).lastInsertRowid;
+    db.prepare("INSERT INTO repo_link (repo_id, linked_repo_id, branch) VALUES (?, ?, 'main')").run(repoId, autre);
+    /* LES JOBS JENKINS NE SONT PLUS DANS AUCUN FICHIER : l'onglet Jenkins décrit une machine et
+       ses accès, pas un travail accumulé — et depuis, `repo` non plus. */
     db.prepare("INSERT INTO repo_jenkins (repo_id, job_path, param) VALUES (?, 'deploy/web', 'BRANCH')").run(repoId);
-    assert.equal(store.enRetard(), 0, 'une table redevenue locale ne déclenche plus rien');
-    assert.ok(!('jenkins' in JSON.parse(store.lireFichier('repos/gitlab/acme/web.json'))));
+    assert.equal(store.enRetard(), 0, 'trois tables locales : aucune n’écrit dans le dépôt d’équipe');
   });
 
   test('la chaîne complète — dépôt, merge request, review, version, constats', () => {
@@ -143,7 +165,11 @@ describe('store — la base prévient, le store écrit', () => {
   });
 
   test('effacer la base et réhydrater rend la chaîne entière', () => {
-    const T = ['repo', 'repo_link', 'mr', 'review', 'review_version', 'finding'];
+    /* `repo` ET `repo_link` N'EN FONT PLUS PARTIE : locaux, ils n'ont pas de fichier, donc pas de
+       retour possible — voir le test dédié plus bas. Ce qui reste à prouver ici, c'est que la
+       merge request, sa review, ses versions et ses constats voyagent intégralement tant que le
+       dépôt qui les ancre est encore là, ce qu'il est : ce test ne le touche pas. */
+    const T = ['mr', 'review', 'review_version', 'finding'];
     const avant = Object.fromEntries(T.map((t) => [t, db.prepare(`SELECT COUNT(*) n FROM ${t}`).get().n]));
     db.pragma('foreign_keys = OFF');
     for (const t of T) db.exec(`DELETE FROM ${t}`);
@@ -218,13 +244,41 @@ describe('store — la base prévient, le store écrit', () => {
   });
 
   test('supprimer une ligne retire son fichier — un orphelin la ferait revenir', () => {
-    const repo = db.prepare("SELECT rowid AS r FROM repo WHERE project = 'acme/api'").get();
-    assert.ok(store.existe('repos/gitlab/acme/api.json'));
-    db.prepare('DELETE FROM repo WHERE rowid = ?').run(repo.r);
+    const now = new Date().toISOString();
+    const aGarder = db.prepare(`INSERT INTO review_rule (branch_match, content, enabled, created_at)
+      VALUES ('main', 'Règle à garder', 1, ?)`).run(now).lastInsertRowid;
+    const aSupprimer = db.prepare(`INSERT INTO review_rule (branch_match, content, enabled, created_at)
+      VALUES ('hotfix/', 'Règle éphémère', 1, ?)`).run(now).lastInsertRowid;
+    store.ecouler();
+    const uidGarder = db.prepare('SELECT uid FROM review_rule WHERE id = ?').get(aGarder).uid;
+    const uidSupprimer = db.prepare('SELECT uid FROM review_rule WHERE id = ?').get(aSupprimer).uid;
+    assert.ok(store.existe(`rules/${uidSupprimer}.json`));
+
+    db.prepare('DELETE FROM review_rule WHERE id = ?').run(aSupprimer);
     const bilan = store.ecouler();
     assert.ok(bilan.supprimes >= 1);
-    assert.equal(store.existe('repos/gitlab/acme/api.json'), false);
-    assert.ok(store.existe('repos/gitlab/acme/web.json'), 'le balayage ne doit pas emporter les voisins');
+    assert.equal(store.existe(`rules/${uidSupprimer}.json`), false);
+    assert.ok(store.existe(`rules/${uidGarder}.json`), 'le balayage ne doit pas emporter les voisins');
+  });
+
+  test('repo et repo_link ne reviennent pas d’une réhydratation : ils n’ont pas de fichier', () => {
+    /* LE PENDANT EXACT DU TEST « chaîne entière » CI-DESSUS : ce qu'il exclut délibérément de T,
+       ce test le vérifie explicitement. Posé en dernier, après que tout ce qui dépendait encore
+       de `repoId` (les tâches, les passes d'agent) a fini de s'en servir : supprimer `repo` ici
+       ne doit plus rien casser derrière. */
+    db.pragma('foreign_keys = OFF');
+    db.exec('DELETE FROM repo_link');
+    db.exec('DELETE FROM repo');
+    db.pragma('foreign_keys = ON');
+    /* Les fichiers de `mr`, `review` et des sessions désignent encore ce dépôt par sa clé
+       naturelle (« gitlab/acme/web ») : sans lui, ils le SIGNALENT au lieu de le deviner — le
+       même comportement qu'une couverture de vérificateur visant un dépôt qu'un collègue n'a
+       pas ajouté. Ce n'est pas ce que ce test surveille : ce qui compte est que `repo`, lui, ne
+       revienne PAS. */
+    store.hydraterTout();
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM repo').get().n, 0,
+      'la liste des dépôts suivis est locale : rien dans le dépôt d’équipe ne la reconstitue');
+    assert.equal(db.prepare('SELECT COUNT(*) n FROM repo_link').get().n, 0);
   });
 
   test('la file survit à la coupure — elle est dans la base, pas en mémoire', () => {
@@ -241,22 +295,26 @@ describe('store — la base prévient, le store écrit', () => {
     assert.ok(store.existe(`todos/${uid}.json`));
   });
 
-  /* UNE LIGNE QUI NE SAIT PAS ENCORE DEVENIR UN FICHIER RESTE DANS LA FILE.
+  /* UNE LIGNE QUI NE SAIT PAS ENCORE CALCULER SON CHEMIN RESTE DANS LA FILE.
      C'était l'intention écrite au-dessus du `catch`, et elle ne s'appliquait pas : un
      `oublier.run()` inconditionnel suivait, et retirait la ligne de toute façon. Une passe dont
      le chemin ne se calculait pas disparaissait donc POUR TOUJOURS — pas de fichier, file vide,
      aucune trace. Vu de l'équipe : un suivi qui n'arrive jamais chez personne. Vu en vrai, sur
      une vraie base : deux suivis évaporés sur sept.
      On reproduit la panne exactement : une passe dont la session ne se résout pas (le chemin
-     `sessions/{session}/…` ne peut pas être écrit), puis la session apparaît. */
-  test('une ligne qui ne sait pas ENCORE devenir un fichier attend, elle ne s’évapore pas', () => {
+     `sessions/{session}/…` ne peut pas être écrit, PAS MÊME pour constater qu'il n'y a rien à
+     retirer), puis la session apparaît. */
+  test('une ligne qui ne sait pas ENCORE calculer son chemin attend, elle ne s’évapore pas', () => {
     const now = new Date().toISOString();
     /* LE CAS DU COMMENTAIRE, MOT POUR MOT : une passe dont la « session » ne se résout pas
-       encore. Une passe de REVIEW appartient à la merge request — produit d'équipe, donc
-       toujours partagée : rien ne la retient, et pourtant son chemin se calcule à partir de la
-       MR. Sans elle, `cheminDe` refuse de nommer le fichier. C'est le « pas encore » que la
-       file existe pour absorber. (`agent_pass` n'a pas de clé étrangère : deux tables parentes
-       possibles selon le scope — c'est ce qui rend la situation atteignable.) */
+       encore. `cheminDe` refuse de nommer le fichier tant que la MR n'existe pas — que la ligne
+       finisse ou non par se PARTAGER n'y change rien : calculer le chemin à retirer échoue tout
+       autant que calculer celui à écrire. C'est le « pas encore » que la file existe pour
+       absorber. Une passe de REVIEW ne se partage jamais (voir `sessionPartagee`) : elle sert
+       ici à isoler la mécanique de la file de celle du partage, précisément parce qu'elle est
+       toujours dans le même cas — jamais écrite, qu'elle attende ou non.
+       (`agent_pass` n'a pas de clé étrangère : deux tables parentes possibles selon le scope —
+       c'est ce qui rend la situation atteignable.) */
     const absente = 999999;
     db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
       VALUES ('review', ?, 0, 1, 'question', 'la question qui doit finir par partir', NULL, ?)`)
@@ -269,18 +327,19 @@ describe('store — la base prévient, le store écrit', () => {
     store.ecouler();
     assert.ok(enFile() >= 1, 'elle doit ATTENDRE sa merge request, pas disparaître de la file');
 
-    /* La MR apparaît : le passage suivant écrit le fichier, sans que personne ait à y penser.
-       C'est toute la promesse de la file — et elle était morte. */
+    /* La MR apparaît : le passage suivant sait enfin nommer le fichier — et n'en écrit aucun,
+       une question de review ne se partageant jamais. Ce qui compte ici : la ligne QUITTE la
+       file proprement (elle n'attend plus pour rien), sans jamais avoir écrit de fichier. */
     const dep = db.prepare("INSERT INTO repo (project, url, forge, enabled) VALUES ('grp/attente','https://x/grp/attente.git','gitlab',1)").run();
     db.prepare(`INSERT INTO mr (id, repo_id, iid, title, source_branch, target_branch, status, updated_at)
       VALUES (?, ?, 4242, 'MR retrouvée', 'feat/x', 'main', 'to_review', ?)`)
       .run(absente, dep.lastInsertRowid, now);
     store.ecouler();
-    assert.equal(enFile(), 0, 'une fois écrite, elle quitte la file');
+    assert.equal(enFile(), 0, 'une fois son chemin calculable, elle quitte la file');
     const mrUid = db.prepare('SELECT uid FROM mr WHERE id = ?').get(absente).uid;
     const passUid = db.prepare('SELECT uid FROM agent_pass WHERE rowid = ?').get(rid).uid;
-    assert.ok(store.lireFichier(`sessions/${mrUid}/pass-${passUid}.md`) !== null,
-      'et le fichier finit par exister : c’est tout ce qu’on lui demandait');
+    assert.equal(store.lireFichier(`sessions/${mrUid}/pass-${passUid}.md`), null,
+      'une question de review ne se partage jamais : aucun fichier n’est écrit');
   });
 
   /* CE QUI ATTENDAIT DANS LA FILE SURVIT À UNE HYDRATATION.

@@ -30,7 +30,7 @@ describe('local_state / local_pref — l’état et les préférences de ce post
 
   before(() => {
     db = require('../src/db');
-    ({ etat, pref } = require('../src/localstate'));
+    ({ etat, pref } = require('../src/data/localstate'));
   });
 
   test('écrire puis relire, et `null` efface au lieu de garder une ligne vide', () => {

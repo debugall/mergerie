@@ -1,18 +1,25 @@
 # Security Policy
 
-Mergerie is a **local, single-user** tool: it runs on your own machine, with your own credentials, and by
-default the server listens **only on `localhost`** (`127.0.0.1`). The full trust model — AI agent permissions
-(« yolo » mode), secret handling, no-shell execution, anti-injection guards, XSS handling, restorable
-destructive operations — is documented in the
-**[detailed security section of the guide](./docs/guide.fr.md#sécurité)** (French for now).
+Mergerie is a **local** tool: it runs on your own machine, with your own credentials. By default the server
+listens **only on `localhost`** (`127.0.0.1`); exposing it (`HOST=0.0.0.0`) **requires an access token**.
+Requests from another site are refused (`Host` allowlist against DNS rebinding, `Sec-Fetch-Site`, CSP —
+`src/app/middleware/origine.js` and `entetes.js`, mounted first by `src/server.js`). On `localhost`, a
+second, purely local token (`src/app/middleware/jeton-local.js`, mounted right after) closes the same API
+to any process on the machine that isn't the browser it was served to — an agent's own shell, a verifier
+command, a script run by a dependency under test.
+Anything that **runs code** and arrives through the shared data repository — verifier commands, agent
+permissions, automatic reviews — **waits for approval on each machine**; the sync itself runs with the same
+hardened git calls as a code clone. The AI agent runs **read-only** for reviews and explorations (or is
+refused outright rather than assumed restricted, on a backend that cannot prove it), and when it codes runs
+under a CLI-level sandbox — verified by a real test call before it is ever relied on, never a checkbox — or
+else a command allowlist; it never sees the forge token. Text from elsewhere reaches it framed as data, and
+every protocol block the agent emits (findings, questions, the repository it names, the agent it proposes)
+carries the nonce of the run that asked for it, so a crafted piece of text can't forge one.
 
-**Voice dictation** is off by default and, once on, sends audio only where the provider you picked
-sends it — the screen says which before you choose. With the recommended **local** engine
-(whisper.cpp) the audio goes from the browser to the server on `localhost`, then to the engine bound
-to `127.0.0.1`: it is never written to disk nor logged, and its WAV header is validated before any
-relay. The engine is spawned **without a shell**, with a minimal environment carrying **no token**,
-and the install button only runs the repository's own script, at a fixed path, with a model taken
-from a closed list.
+The full trust model — access, approval, agent permissions and their limits, prompt injection, verifiers,
+secrets, no-shell execution, targeted guards, served files, destructive operations — is documented in the
+**[security section of the guide](./docs/guide.en.md#security)** (also
+**[in French](./docs/guide.fr.md#sécurité)**).
 
 ## Reporting a vulnerability
 

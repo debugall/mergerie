@@ -38,6 +38,51 @@ Les deux sont **bilingues** et parcourent la même application, mais ne partagen
 fonctionnalité nouvelle doit entrer dans les deux — et les deux se lancent sur le port 4321.
 Corriger un sélecteur ici ne corrige rien là-bas.
 
+## État au 27/09/2026 : voix neuronale, et les nouveautés de septembre
+
+Refaits à la demande de l'utilisateur (« la voix fait IA », « il faut que tout soit clair pour
+un nouveau »). **157 étapes**, toujours en sombre. Ce qui a changé à cette passe :
+
+- **La voix est passée de Piper à edge-tts** (voix neuronales Microsoft, `synthese.py`,
+  `MOTEUR=edge` par défaut) : `fr-FR-RemyMultilingualNeural` et `en-US-AndrewMultilingualNeural`,
+  débit −4 %. Les « Multilingual » lisent les mots anglais glissés dans le français sans accent
+  forcé. Les respellings phonétiques de `prononciation.py` (faits pour espeak) ne s'appliquent
+  PAS à cette voix : elle passe par `FR_NEURONAL` / `EN_NEURONAL`, sigles et ponctuation
+  seulement. Piper reste en repli (`MOTEUR=piper`). Voir « Voix ».
+- **La narration est réécrite pour quelqu'un qui découvre l'outil** : chaque écran ouvre sur le
+  problème qu'il règle, tutoiement, phrases courtes, et une accroche de 30 s qui dit ce qu'est
+  Mergerie avant de montrer un bouton.
+- **Huit étapes de plus** : le sélecteur de binaire et la case « Planifier d'abord » dans la
+  modale de session ; le badge du binaire sur une carte ; la session en mode plan (la ligne,
+  « Lire le plan » avec le champ de retours, « Approuver et coder ») ; la liste des binaires
+  dans Réglages → Session IA (le défaut, « Ollama local », « Utiliser par défaut ») et les
+  bornes du jour.
+- **Deux serveurs de démo, un par langue** (`PORT_DEMO`), pour tourner les deux films en même
+  temps : le parcours modifie l'état (brouillons, recherche de MR), deux tournages sur la même
+  base se marcheraient dessus.
+
+### Ce qui a cassé le parcours à cette passe (27/09)
+
+- **Les onglets Git, Docker, Jenkins et Liens sont MASQUÉS par défaut** (menus optionnels,
+  `mergerie_nav` dans `localStorage`, `NAV_MASQUES_DEFAUT` de `public/js/transverse/menus.js`).
+  `nav button[data-tab="links"]` résolvait vers un bouton `hidden`. Le script d'init pose
+  désormais `{ ordre: [], masques: [] }` : le film montre les onze onglets que la narration compte.
+- **Le premier `[data-tgout]` de la liste n'est plus celui qu'on croit.** La session en mode
+  plan est passée en tête (son plan v2 est la mise à jour la plus récente du jeu de démo), et
+  elle porte deux `[data-tgout]` — dont « Lire le plan ». Un plan n'a pas de diff : l'étape
+  « ce que cette itération a changé » attendait un bouton absent. On vise la session qui porte
+  le badge de binaire (`.task-cli`, trois passes, un diff mesuré).
+- **Le diff de chaque review disparaissait au démarrage du serveur de démo** — un vrai bug de
+  l'application, pas du parcours : la relecture des données partagées après montée de version
+  (`recalculerCheminsReview`) mettait `diff_path` à NULL sur toutes les reviews. Sans clone, la
+  démo ne pouvait pas le recalculer : la vue plein écran d'un rapport s'ouvrait sans diff, donc
+  sans les brouillons semés, et `#fileContent .cmt-draft` attendait pour rien. Corrigé côté
+  application (`review.diff_version_uid`) ; le symptôme à reconnaître : `SELECT COUNT(*) FROM
+  review WHERE diff_path IS NULL` rend 10 sur une base tout juste semée.
+- **Les bandes de remplissage du montage étaient blanches** (`pad=…:white`) : treize pixels
+  clairs en haut et en bas d'un film sombre, visibles dès la première image. C'est sans doute ce
+  qui a fait dire que le film n'était « pas en sombre ». Elles ont la couleur du fond (`0x0f1420`).
+
 ## État au 13/09/2026 : les films longs sont refaits, en THÈME SOMBRE
 
 **151 étapes** (115 auparavant), ~28 min, dans les deux langues. Le film se tourne désormais en
@@ -57,7 +102,7 @@ le **vidage des remarques en attente**, le **tri de la file**, la **carte de dom
 une merge request, ce que la **veille** a vu (conteneurs tombés, builds terminés), **Copier pour
 le daily**, le **report d'une todo**, **Coller une adresse**, les **opérations git** dans les
 stats, **Merge** et **Comparer** dans l'onglet Git, ce que **Mergerie sait d'un ticket Jira**,
-les **tickets surveillés**, et la **dictée vocale**.
+et les **tickets surveillés**.
 
 ## Ce qui avait cassé le parcours, et qui recassera pareil
 
@@ -117,22 +162,29 @@ entendue. Les mots nouveaux de cette narration, par ordre de risque décroissant
 ```bash
 cd .claude/skills/demo-video
 
-# 1. narration → clips audio + table des durées  (~1 min)
+# 0. deux serveurs de démo, un par langue (le parcours modifie l'état de la base)
+(cd ../../.. && node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo COPILOT_DRY_RUN=1 PORT=4321 node src/server.js &)
+(cd ../../.. && MERGERIE_DATA_DIR=data-demo-en node scripts/demo-seed.js && MERGERIE_DEMO=1 MERGERIE_DATA_DIR=data-demo-en COPILOT_DRY_RUN=1 PORT=4322 node src/server.js &)
+
+# 1. narration → clips audio + table des durées  (~3 min, réseau : edge-tts)
 python3 synthese.py                 # français
 LANGUE=en python3 synthese.py       # anglais
 
-# 2. vérifier que chaque sélecteur répond, sans tenir la pose  (~3,5 min)
+# 2. vérifier que chaque sélecteur répond, sans tenir la pose  (~4 min)
 RAPIDE=1 node parcours.mjs
-LANGUE=en RAPIDE=1 node parcours.mjs
+LANGUE=en PORT_DEMO=4322 RAPIDE=1 node parcours.mjs
 
-# 3. enregistrement réel  (~15 min chacun — lancer en tâche de fond)
+# 3. enregistrement réel  (~30 min chacun — les deux en même temps, en tâche de fond)
 node parcours.mjs
-LANGUE=en node parcours.mjs
+LANGUE=en PORT_DEMO=4322 node parcours.mjs
 
 # 4. montage : la voix est recollée aux repères mesurés  (~2 min)
 python3 montage.py
 LANGUE=en python3 montage.py
 ```
+
+Après un tournage, **re-semer** la base de démo avant le suivant : le parcours a posé des
+brouillons et lancé une recherche de merge requests.
 
 **Ne jamais sauter l'étape 2.** Un sélecteur cassé se découvre en 3 minutes, ou au bout de
 quinze si on lance directement l'enregistrement.
@@ -264,7 +316,28 @@ l'autre, c'est `record-demo.js` qui doit adopter le `size`.
 
 ## Voix
 
-Modèles Piper, **hors dépôt** (~60 Mo pièce), à poser dans `travail/voix/` :
+**Depuis le 27/09/2026 : edge-tts** (voix neuronales Microsoft, gratuites, sans clé, réseau
+requis), dans `travail/venv-tts` :
+
+```bash
+python3 -m venv travail/venv-tts && travail/venv-tts/bin/pip install edge-tts
+travail/venv-tts/bin/edge-tts --list-voices | grep -E "^(fr-FR|en-US)"
+VOIX=fr-FR-HenriNeural python3 synthese.py          # essayer une autre voix (supprimer travail/voix-fr d'abord)
+```
+
+Voix retenues : `fr-FR-RemyMultilingualNeural` et `en-US-AndrewMultilingualNeural`, débit −4 %
+(`VOIX_EDGE` / `DEBIT_EDGE` dans `synthese.py`). Candidates écoutables : Henri, Denise, Vivienne
+(fr) ; Brian, Ava, Ryan (en). Changer de voix = supprimer `travail/voix-<langue>/` ET refaire le
+tournage : les durées des clips fixent la pose de chaque étape.
+
+**La voix neuronale lit l'orthographe correcte** — `git`, `commit`, `prompt`, `l'IA` passent tels
+quels. Ne PAS lui appliquer les respellings Piper ; `prononciation.py` a des listes séparées
+(`FR_NEURONAL`, `EN_NEURONAL`). Une phrase qui sonne faux se corrige par un synonyme, jamais par
+une graphie phonétique. Kokoro (local) a été essayé : son installation échoue ici et son
+français est faible — ne pas y revenir sans raison.
+
+**Repli Piper** (`MOTEUR=piper`) — modèles **hors dépôt** (~60 Mo pièce), à poser dans
+`travail/voix/` :
 
 - `fr_FR-siwis-medium.onnx` (+ `.onnx.json`)
 - `en_US-lessac-medium.onnx` (+ `.onnx.json`)
@@ -365,8 +438,10 @@ ffprobe -v error -show_entries format=duration -of csv=p=0 demo-live-real-fr.mp4
 ffmpeg -hide_banner -i demo-live-real-fr.mp4 -af volumedetect -f null - 2>&1 | grep mean_volume
 # extraire une image au milieu d'une étape et vérifier que le curseur est sur le bon élément
 ffmpeg -y -v error -ss 250 -i demo-live-real-fr.mp4 -frames:v 1 /tmp/verif.jpg
+# les bandes haut/bas doivent être de la couleur du fond, pas blanches (fdfdfd = blanc)
+ffmpeg -v error -ss 30 -i demo-live-real-fr.mp4 -frames:v 1 -vf "crop=8:8:960:0" -f rawvideo -pix_fmt rgb24 - | xxd | head -1
 ```
 
 Contrôler au moins : le curseur tombe sur l'élément commenté, l'écran correspond à ce qui est
-dit, le niveau sonore est autour de −17 dB, et **la dernière image est propre** (une erreur
+dit, le niveau sonore est autour de −18 dB (loudnorm −16 LUFS dans le montage), et **la dernière image est propre** (une erreur
 laissée à l'écran s'y voit pendant toute la fin).

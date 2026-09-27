@@ -1,0 +1,38 @@
+/* ---------- Réglages ---------- */
+.form-actions { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.danger-zone { border: 1px solid var(--red); border-radius: var(--r-lg); padding: var(--s-3) var(--s-4); margin-bottom: var(--s-6); }
+.danger-zone summary { cursor: pointer; color: var(--red); font-weight: var(--fw-sem); }
+.danger-zone p { margin: var(--s-3) 0; }
+.errhint { padding: 8px 10px; color: var(--text); font-size: var(--fs-sm); line-height: 1.5; border-bottom: 1px solid rgba(224,90,90,.3); background: var(--hover); }
+
+/* ---------- Sous-onglets des Réglages ---------- */
+.subnav { margin: var(--s-4) 0 var(--s-5); flex-wrap: wrap; }
+.subtab { display: none; }
+.subtab.active { display: block; }
+.subtab > h2:first-child { margin-top: 0; }
+/* La jauge d'occupation disque : une table courte, une barre par catégorie. */
+.disk-box { margin: 10px 0; }
+.disk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.disk-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.disk-table td { padding: 3px 8px 3px 0; vertical-align: middle; }
+.disk-table .disk-size { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.disk-table .disk-files { white-space: nowrap; }
+.disk-table .disk-bar { width: 40%; }
+.disk-table .disk-bar span { display: block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .7; }
+.disk-table tfoot td { border-top: 1px solid var(--line); font-weight: 600; }
+
+/* Les autres binaires d'agent (Réglages → Session IA) : une ligne par profil, ses actions à droite. */
+.agentcli-list { display: flex; flex-direction: column; gap: 6px; max-width: 900px; margin-bottom: 12px; }
+.agentcli-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: var(--r-lg); padding: 8px 12px; }
+.agentcli-main { min-width: 0; flex: 1; }
+.agentcli-main > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
+.agentcli-main code { font-size: 12px; word-break: break-all; }
+.agentcli-meta { font-size: var(--fs-sm); margin-left: 4px; }
+.agentcli-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; max-width: 46%; }
+.agentcli-item.is-default { border-color: var(--accent); }
+.agentcli-item .tag-accent { color: var(--accent); border-color: var(--accent); }
+.agentcli-toolbar { display: flex; align-items: center; gap: var(--s-2); }
+.agentcli-form { border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s-3) var(--s-4); margin: var(--s-3) 0; }
+.agentcli-form h3 { margin-top: 0; }
+.agentcli-avance summary { cursor: pointer; margin: var(--s-2) 0; }
+.agentcli-empty { margin: 4px 0 0; }

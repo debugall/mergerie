@@ -190,7 +190,7 @@ describe('Répertoires locaux et navigation (checkout multi-projets)', () => {
   });
 
   test('parseGitArgs : tokenise, tolère « git » de tête, refuse un guillemet ouvert', () => {
-    const lr = require('../src/localrepos');
+    const lr = require('../src/git/localrepos');
     assert.deepEqual(lr.parseGitArgs('fetch --all'), ['fetch', '--all']);
     assert.deepEqual(lr.parseGitArgs('git log --oneline -5'), ['log', '--oneline', '-5']);
     assert.deepEqual(lr.parseGitArgs('commit -m "hello world"'), ['commit', '-m', 'hello world']);
@@ -198,7 +198,7 @@ describe('Répertoires locaux et navigation (checkout multi-projets)', () => {
   });
 
   test('sécurité : les options git « exécution arbitraire » sont refusées (anti-RCE)', () => {
-    const lr = require('../src/localrepos');
+    const lr = require('../src/git/localrepos');
     // Normal : autorisé.
     assert.doesNotThrow(() => lr.assertSafeGitArgs(['fetch', '--all', '--prune']));
     assert.doesNotThrow(() => lr.assertSafeGitArgs(['log', '--oneline', '-10']));
@@ -225,6 +225,20 @@ describe('Répertoires locaux et navigation (checkout multi-projets)', () => {
       command: 'fetch --upload-pack=evil', targets: [{ root_id: rootId, name: 'api-core' }],
     });
     assert.equal(r2.status, 400, '--upload-pack → refusé');
+  });
+
+  /* LA PALETTE ENREGISTRÉE A LE MÊME FILTRE QUE L'EXÉCUTION : sinon on rangeait une commande
+     piégée, qu'un clic suffisait ensuite à lancer. */
+  test('sécurité : une entrée de palette hors liste blanche ne s’enregistre pas', async () => {
+    for (const command of ['config alias.z !ls', 'bisect run sh', 'log --output=/tmp/x', 'rebase -x sh']) {
+      const r = await app.api('POST', '/api/git-commands', { label: 'piège', command });
+      assert.equal(r.status, 400, `« ${command} » refusée à l’enregistrement`);
+    }
+    const ok = await app.api('POST', '/api/git-commands', { label: 'Statut', command: 'status --short' });
+    assert.equal(ok.status, 200, ok.text);
+    const modif = await app.api('PUT', `/api/git-commands/${ok.body.id}`, { command: 'credential fill' });
+    assert.equal(modif.status, 400, 'la modification passe par le même filtre');
+    await app.api('DELETE', `/api/git-commands/${ok.body.id}`);
   });
 
   test('retrait d’un répertoire : rien n’est supprimé sur le disque', async () => {

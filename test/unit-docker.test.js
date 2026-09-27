@@ -10,7 +10,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'proj-dock
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const docker = require('../src/docker');
+const docker = require('../src/integrations/docker');
 
 describe('Docker — drift .env (effectif vs attendu)', () => {
   test('diff nominatif : ajoutée / modifiée, valeur visible', () => {
@@ -246,16 +246,15 @@ describe('Docker — découverte compose', () => {
   });
 });
 
-/* Le filtre d'état de l'onglet Docker vit dans le front (`public/app.js`) : pas exportable,
+/* Le filtre d'état de l'onglet Docker vit dans le front (`ecrans/docker/actions.js`) : pas exportable,
    mais évaluable isolément. Ce prédicat décide de ce qui s'affiche ET de ce qui est ciblé
    par une action groupée — se tromper sur « ne tourne pas » n'est pas anodin. */
 describe('front : filtre d’état des services Docker', () => {
-  const fs2 = require('node:fs');
-  const path2 = require('node:path');
-  const src = fs2.readFileSync(path2.join(__dirname, '..', 'public', 'app.js'), 'utf8');
+  const { lireFichierFront } = require('./helpers/front');
+  const src = lireFichierFront('ecrans/docker/actions');
   const from = src.indexOf('function dactIsDrift');
   const to = src.indexOf('const DOCKER_STATE_FILTERS');
-  assert.ok(from > 0 && to > from, 'dactIsDrift et dactMatchesFilter doivent rester voisins');
+  assert.ok(from > 0 && to > from, 'dactIsDrift et dactMatchesFilter doivent rester voisins dans ecrans/docker/actions.js');
   // eslint-disable-next-line no-new-func
   const match = new Function(`${src.slice(from, to)}\nreturn dactMatchesFilter;`)();
 
@@ -314,5 +313,25 @@ describe('front : filtre d’état des services Docker', () => {
     assert.equal(match('unhealthy', svc('running', { health: 'healthy' })), false);
     assert.ok(match('drift', { container: { state: 'running' }, badge: 'drift-image' }));
     assert.ok(match('all', svc(null)), 'le filtre « tous » ne filtre rien');
+  });
+});
+
+/* UN SECRET SE RECONNAÎT AUSSI À SA VALEUR. `DATABASE_URL` n'a rien de sensible dans son nom et
+   porte `postgres://app:motdepasse@…` : le drift et la commande reconstituée le montraient. */
+describe('secrets reconnus à leur valeur', () => {
+  const d = require('../src/integrations/docker');
+  test('identifiants d’URL, préfixes de jetons, chaîne aléatoire : masqués', () => {
+    for (const v of ['postgres://app:motdepasse@db/x', 'ghp_abcdefghijklmnop', 'glpat-xyz', 'sk-proj-abc', 'Zx8vK2mQp9LrT4wY7nB3cJ6hF1sD5gA0']) {
+      assert.equal(d.isSecretValue(v), true, v);
+    }
+    for (const v of ['production', '/usr/local/bin/outil/tres/long/chemin', 'http://exemple.com/un/long/chemin/ici', '8080']) {
+      assert.equal(d.isSecretValue(v), false, v);
+    }
+  });
+  test('le drift masque une valeur secrète sous un nom anodin', () => {
+    const [diff] = d.diffEnv({ DATABASE_URL: 'postgres://app:neuf@db/x' }, { DATABASE_URL: 'postgres://app:vieux@db/x' });
+    assert.equal(diff.masked, true);
+    assert.equal(diff.from, undefined);
+    assert.equal(diff.to, undefined);
   });
 });

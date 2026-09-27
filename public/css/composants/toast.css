@@ -1,0 +1,28 @@
+/* AU-DESSUS DE TOUT, sans exception. Un toast est le seul endroit où l'application dit ce qui
+   vient d'échouer, et l'erreur naît le plus souvent DANS une modale — c'est là qu'on valide un
+   formulaire. Sous la modale (z-index 110), le message se produisait derrière l'écran qui l'avait
+   causé : on voyait un formulaire qui refuse sans jamais lire pourquoi, et le bouton « Copier »
+   restait hors d'atteinte. La valeur dépasse aussi la vue plein écran (100) et les bulles (200). */
+#toasts { position: fixed; bottom: 18px; right: 18px; z-index: 300; display: flex; flex-direction: column-reverse; gap: 8px; align-items: flex-end; }
+.toast { position: static; animation: toast-in .22s cubic-bezier(.2,.8,.3,1); max-width: 520px; background: var(--panel); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--radius); z-index: 50; display: flex; align-items: flex-start; gap: 10px; box-shadow: var(--sh-3); }
+/* Succès : liseré vert discret, texte en couleur normale — une confirmation doit se lire,
+   pas alerter. Erreur : bordure entière rouge ET texte rouge, parce qu'elle reste affichée
+   jusqu'à fermeture et qu'elle doit se distinguer d'un coup d'œil.
+   (Le texte était rouge pour TOUS les toasts : chaque confirmation ressemblait à un échec.) */
+.toast { border-left-width: 3px; border-left-color: var(--ok); }
+.toast.err { border-color: var(--red); }
+.toast .toast-msg { color: var(--text); user-select: text; white-space: pre-wrap; word-break: break-word; flex: 1; }
+.toast.err .toast-msg { color: var(--red); }
+.toast .toast-btn { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px; }
+
+.errbox { border: 1px solid var(--red); border-radius: var(--radius); background: rgba(224,90,90,.06); margin: 4px 0 10px; overflow: hidden; }
+/* `--red-text` (et non `--red`) : le rouge de marque sur le fond rosé du bloc rendait 4,36:1
+   en thème sombre, sous le seuil pour 12 px. La bordure, elle, garde la teinte de marque. */
+.errbox .errhead { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: var(--red-text); font-size: 12px; font-weight: 600; border-bottom: 1px solid rgba(224,90,90,.3); }
+.errbox .errbtns { display: flex; gap: 6px; }
+/* La pile repliée : un bandeau discret, ouvert à la demande. */
+.err-stack > summary { cursor: pointer; padding: 6px 12px; font-size: 12px; color: var(--muted); }
+.err-stack > summary:hover { color: var(--text); }
+.err-stack pre { border-top: 1px solid var(--line); }
+.errbox pre { margin: 0; padding: 10px 12px; overflow-x: auto; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; user-select: text; }
+

@@ -22,11 +22,11 @@ process.env.MERGERIE_CLAUDE_HOME = path.join(tmp, 'home');
 // eslint-disable-next-line import/order
 const db = require('../src/db');
 // eslint-disable-next-line import/order
-const agentschedule = require('../src/agentschedule');
+const agentschedule = require('../src/agent/schedule');
 // eslint-disable-next-line import/order
-const agentprofile = require('../src/agentprofile');
+const agentprofile = require('../src/agent/profile');
 // eslint-disable-next-line global-require
-const { etat } = require('../src/localstate');
+const { etat } = require('../src/data/localstate');
 
 /* L'HEURE DU DERNIER TIR A QUITTÉ LA TABLE `agent` — elle dit « CE poste a lancé cet agent »,
    ce qui n'a pas de sens pour un collègue : trois instances allumées en feraient trois runs.

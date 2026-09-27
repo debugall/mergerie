@@ -18,13 +18,13 @@ process.env.MERGERIE_DATA_DIR = DEMO_DIR;
 fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base propre
 
 const db = require('../src/db');
-const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/paths');
+const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/core/paths');
 /* LE MÊME DIFF DES DEUX CÔTÉS. L'aperçu d'une carte lit `demo-diff.js` en direct, mais la vue
    plein écran d'un rapport relit le `diff.patch` écrit ici : deux diffs différents pour une
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
    numérotées — et les commentaires en attente, qui s'accrochent à une ligne, disparaissaient. */
-const { diffPour } = require('../src/demo-diff');
-const agentpassDemo = require('../src/agentpass');
+const { diffPour } = require('../src/demo/diff');
+const agentpassDemo = require('../src/agent/pass');
 initDirs();
 
 /* Un PNG uni, fabriqué à la main : la démo a besoin d'une image, pas d'un binaire versionné.
@@ -165,16 +165,14 @@ const PROJECTS = [
 ];
 
 // ---------- config : GitLab factice, pas de token (démo hors-ligne) ----------
-/* La DICTÉE est allumée en démo, avec un glossaire et une correction déjà remplis : le moteur
-   y est simulé, si bien que le micro marche vraiment sans rien installer — et c'est le seul
-   moyen de MONTRER ce que le vocabulaire apporte, plutôt que de l'écrire dans un guide. */
-db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ?,
-    dictation_provider = 'local', dictation_vocabulary = ?, dictation_replacements = ? WHERE id = 1`)
+db.prepare(`UPDATE config SET gitlab_url = ?, access_token = '', jira_url = ?, ai_extra_instructions = ? WHERE id = 1`)
   .run('https://gitlab.demo', 'https://jira.demo',
     // Des consignes permanentes remplies : un champ vide ne montrerait pas à quoi il sert.
-    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.',
-    'astreinte\nVoxtral\nMergerie',
-    'Jean-Kim => Jenkins\ngite lab => GitLab');
+    'Commente en français.\nLance `npm run check` avant de committer.\nN’ajoute aucune dépendance sans le demander.');
+
+// Un autre binaire que le défaut : la modale de session montre alors son sélecteur « Binaire ».
+const cliOllama = db.prepare(`INSERT INTO agent_cli (name, bin, args, env, timeout_ms, backend, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 'claude', ?, ?)`)
+  .run('Ollama local', 'claude', '--model qwen3.6:35b-a3b-coding', 'ANTHROPIC_BASE_URL=http://localhost:11434\nANTHROPIC_AUTH_TOKEN=ollama', iso(20), iso(20)).lastInsertRowid;
 
 // ---------- dépôts ----------
 const repoIds = {};
@@ -189,6 +187,15 @@ db.prepare('INSERT INTO review_rule (branch_match, path_match, label, content, e
   .run('', '**/migrations/**, *.sql', 'migrations', 'Vérifier la réversibilité de la migration et le risque de lock sur les grosses tables.', at(50));
 db.prepare('INSERT INTO review_rule (branch_match, path_match, label, content, enabled, created_at) VALUES (?, ?, ?, ?, 1, ?)')
   .run('hotfix', '', '', 'Branche hotfix : vérifier qu\'un test de non-régression couvre le correctif.', at(50));
+
+// ---------- un groupe de dépôts : « backend », et ce qu'il porte ----------
+const groupeBackend = db.prepare('INSERT INTO repo_group (name, description, ai_extra_instructions, created_at) VALUES (?, ?, ?, ?)')
+  .run('backend', 'Les services de l\'API et leurs bibliothèques', 'Commente en français ; lance `npm test` avant de committer.', at(45)).lastInsertRowid;
+for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
+  if (repoIds[projet]) db.prepare('INSERT INTO repo_group_member (group_id, repo_id) VALUES (?, ?)').run(groupeBackend, repoIds[projet]);
+}
+db.prepare('INSERT INTO review_rule (branch_match, path_match, label, content, group_id, enabled, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)')
+  .run('', 'src/api/**', 'contrat API', 'Un changement de route ou de schéma de réponse met à jour le contrat OpenAPI et ses tests.', groupeBackend, at(44));
 
 // ---------- rapport Markdown réaliste ----------
 function reviewMd(mr, note, findings) {
@@ -500,11 +507,16 @@ db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (
 // ---------- sessions Dev IA ----------
 // task.branch / base_branch sont NOT NULL (schéma mono-projet historique) : on les
 // renseigne même si l'état réel vit désormais dans task_target.
-const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)')
-  .run(repoIds['groupe/api-core'], 'Ajouter un endpoint /metrics au format Prometheus', 'ai/metrics-endpoint', 'main', 'pushed', 'code', at(4), at(4));
+// Cette session a choisi l'autre binaire : sa carte porte le badge, son édition le relit.
+const t1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, cli_id, cli_name, label, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Ajouter un endpoint /metrics au format Prometheus', 'ai/metrics-endpoint', 'main', 'pushed', 'code', cliOllama, 'Ollama local', 'Endpoint /metrics', at(4), at(4));
 db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, session_key, session_backend, session_cwd, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
   .run(t1.lastInsertRowid, repoIds['groupe/api-core'], 'ai/metrics-endpoint', 'main', 'pushed', 250, 'https://gitlab.demo/groupe/api-core/-/merge_requests/250', 1,
     '6ba7b810-9dad-11d1-80b4-00c04fd430c8', 'claude', '/home/moi/clones/groupe-api-core', at(4));
+// Projet lié EN LECTURE SEULE, pour que la modale de session ait un exemple à montrer :
+// le front consomme `/metrics` que cette session ajoute, d'où le besoin de son contexte.
+db.prepare('INSERT INTO task_context_repo (task_id, repo_id, branch) VALUES (?,?,?)')
+  .run(t1.lastInsertRowid, repoIds['groupe/webapp-front'], 'main');
 /* LES ITÉRATIONS DE CETTE SESSION, avec le diff de CHACUNE. C'est ce qui rend démontrable la
    relecture d'un seul suivi : le lancement pose l'endpoint, le premier suivi ajoute un label
    par route, le second n'écrit qu'un paragraphe de README. Sans diffs séparés, relire ce
@@ -683,6 +695,39 @@ for (const [projet, statut, err] of MULTI) {
   );
 }
 
+/* Session « PLANIFIER D'ABORD » dont le plan attend son approbation : la ligne du projet montre
+   « Lire le plan », la remarque facultative et « Approuver et coder ». */
+const t6 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, plan_first, label, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?,?)')
+  .run(repoIds['groupe/api-core'], 'Ajoute un cache LRU de 5 minutes sur GET /catalog/products, invalidé à chaque écriture du catalogue.',
+    'ai/catalog-cache', 'main', 'planned', 'code', 'Cache du catalogue', at(0.2), at(0.2));
+{
+  const tg = db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
+    .run(t6.lastInsertRowid, repoIds['groupe/api-core'], 'ai/catalog-cache', 'main', 'planned', at(0.2));
+  const dir = ensureDir(path.join(TASKS_DIR, String(t6.lastInsertRowid), String(tg.lastInsertRowid)));
+  const f = path.join(dir, 'output-v1.md');
+  fs.writeFileSync(f, ['# Plan — cache du catalogue', '',
+    '1. `src/catalog/service.js` : envelopper `listProducts()` dans un cache LRU (clé = filtres, TTL 5 min) via `lru-cache`, déjà en dépendance.',
+    '2. `src/catalog/writes.js` : invalider le cache dans `createProduct`, `updateProduct`, `deleteProduct` — un seul point, `cache.clear()`.',
+    '3. `test/catalog.test.js` : deux tests — une lecture répétée ne touche la base qu’une fois ; une écriture rend la lecture suivante fraîche.', '',
+    '**Risques** : les filtres non normalisés (ordre des clés) feraient deux entrées pour la même requête — je normalise la clé en JSON trié.', '',
+    '**Question ouverte** : faut-il aussi mettre en cache `GET /catalog/products/:id` ? Je ne le fais pas sans ton accord.'].join('\n'), 'utf8');
+  db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,1,'plan',?,?,?)`)
+    .run(t6.lastInsertRowid, tg.lastInsertRowid, 'Rédige un plan d’implémentation pour : cache LRU sur le catalogue.', f, at(0.2));
+  /* UN TOUR DE RETOURS : le plan a été régénéré une fois (« pas de cache sur /:id, et un TTL
+     configurable ») — la ligne attend encore l'approbation, avec deux itérations « plan ». */
+  const f2 = path.join(dir, 'output-v2.md');
+  fs.writeFileSync(f2, ['# Plan — cache du catalogue (révisé)', '',
+    '1. `src/catalog/service.js` : envelopper `listProducts()` dans un cache LRU (clé = filtres normalisés en JSON trié) via `lru-cache`, déjà en dépendance.',
+    '2. `src/config.js` : `CATALOG_CACHE_TTL_MS`, défaut 5 min — le TTL se règle sans redéployer, comme demandé.',
+    '3. `src/catalog/writes.js` : invalider le cache dans `createProduct`, `updateProduct`, `deleteProduct` — un seul point, `cache.clear()`.',
+    '4. `test/catalog.test.js` : trois tests — lecture répétée, écriture puis lecture fraîche, TTL à 0 = pas de cache.', '',
+    '**Retiré suite à tes retours** : aucun cache sur `GET /catalog/products/:id`.', '',
+    '**Risques** : un TTL très long masque une écriture faite hors API (import batch) — documenté dans le README du service.'].join('\n'), 'utf8');
+  db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,2,'plan',?,?,?)`)
+    .run(t6.lastInsertRowid, tg.lastInsertRowid, 'Retours : pas de cache sur /catalog/products/:id, et rends le TTL configurable. Réécris le plan complet.', f2, at(0.15));
+  db.prepare('UPDATE task_target SET output_path = ? WHERE id = ?').run(f2, tg.lastInsertRowid);
+}
+
 /* Session RANGÉE + prompt LONG : les deux nouveautés de la liste réunies sur une seule fiche.
    Elle n'apparaît qu'en cochant « afficher les sessions masquées », et son prompt dépasse
    trois lignes, donc « Voir plus » s'y affiche. */
@@ -756,7 +801,7 @@ const LOCAL_PASSES = {
    montré à l'écran reste fictif (`/home/moi/dev/backup-tool`) ; celui qu'on écrit vraiment
    vit sous `data-demo/`, effacé et refait à chaque semis. Semer un patch à la main aurait
    fabriqué une forme cousine de la vraie, qui aurait fini par en diverger. */
-const localsnapshot = require('../src/localsnapshot');
+const localsnapshot = require('../src/session/localsnapshot');
 const DOSSIERS_DEMO = path.join(DEMO_DIR, 'dossiers-demo');
 const aSemer = [];
 
@@ -809,6 +854,15 @@ const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
   .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
   .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
+/* …ET PROGRAMMÉE : elle partira demain à 7:00, toute seule. La date est de poste (`local_pref`,
+   sous l'uid de la session) — c'est cette machine qui la lancera —, et c'est ce que la carte
+   montre : le badge à l'horloge et sa croix. */
+{
+  const demain = new Date(); demain.setDate(demain.getDate() + 1); demain.setHours(7, 0, 0, 0);
+  const uid = db.prepare('SELECT uid FROM local_task WHERE id = ?').get(lt0.lastInsertRowid).uid;
+  db.prepare(`INSERT INTO local_pref (kind, ref, key, value, updated_at) VALUES ('local_task', ?, 'run_at', ?, ?)`)
+    .run(uid, demain.toISOString(), at(0));
+}
 
 /* ---------- Questions libres ----------
    La quatrième saveur de Dev IA : une question posée à l'IA hors de tout dépôt, et sa réponse
@@ -867,6 +921,14 @@ if (someMr) {
   db.prepare('INSERT INTO comment_log (mr_id, body, sent_at) VALUES (?, ?, ?)').run(someMr.id, 'Merci, LGTM après le point 2.', at(3));
   db.prepare('INSERT INTO comment_log (mr_id, body, sent_at) VALUES (?, ?, ?)').run(someMr.id, 'Bien vu pour la validation MIME.', at(2));
 }
+
+/* LE DIFF DE CHAQUE REVIEW APPARTIENT À SA DERNIÈRE VERSION (`diff_version_uid`). Sans ce
+   rattachement, la relecture des données partagées au démarrage — celle qui suit une montée de
+   version — jetterait le diff de toutes les reviews, et la démo n'a pas de clone pour le
+   recalculer : plus de diff, plus de remarques posées dessus. */
+db.prepare(`UPDATE review SET diff_version_uid = (
+  SELECT uid FROM review_version WHERE review_version.mr_id = review.mr_id ORDER BY uid DESC LIMIT 1
+) WHERE diff_path IS NOT NULL AND diff_path != ''`).run();
 
 /* ---------- commentaires EN ATTENTE (mr_comment_draft) ----------
    Le geste qu'on veut montrer : on annote plusieurs endroits d'un diff sans rien publier, puis
@@ -941,10 +1003,9 @@ db.prepare(`INSERT OR IGNORE INTO jira_watch (key, summary, status, status_categ
 const verifierId = db.prepare(`INSERT INTO verifier
   (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
   VALUES (?, 'commands', '', ?,?,?,1,?)`).run('integ (démo)', 900, 1, 0, at(20)).lastInsertRowid;
-for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
-  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
-    .run(verifierId, repoIds[projet]);
-}
+/* Sa couverture passe par le GROUPE : « teste tout backend » — un dépôt ajouté au groupe demain
+   sera couvert sans retoucher le vérificateur. */
+db.prepare('INSERT INTO verifier_group (verifier_id, group_id) VALUES (?, ?)').run(verifierId, groupeBackend);
 ['npm ci', 'npm run test:integ'].forEach((c, i) => {
   db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(verifierId, i, c);
 });
@@ -1364,8 +1425,8 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
    avec un chemin non vérifié, un écart signalé par un run, une version en attente de
    validation, et un run déclenché par un HORAIRE — l'état qu'aucun clic ne produit. */
 {
-  const agentprofile = require('../src/agentprofile');
-  const { agentsDir } = require('../src/paths');
+  const agentprofile = require('../src/agent/profile');
+  const { agentsDir } = require('../src/core/paths');
   agentprofile.seedBuiltins();
 
   const doc = db.prepare("SELECT * FROM agent WHERE builtin_key = 'librarian'").get();
@@ -1584,6 +1645,31 @@ const counts = {
   });
 }
 
+
+/* ---------- un vérificateur « à approuver », venu du dépôt partagé ----------
+   Ce qui exécute du code et arrive par la synchro n'est pas lancé tant qu'on ne l'a pas vu ici.
+   Sans un exemple, l'écran des vérificateurs ne montre jamais ce bloc — on ne saurait pas qu'il
+   existe avant d'en avoir besoin. Tout le reste est repris comme approuvé (c'est ce que fait la
+   montée de version), PUIS un collègue ajoute une commande : elle attend. */
+{
+  // eslint-disable-next-line global-require
+  const approbation = require('../src/data/approbation');
+  // eslint-disable-next-line global-require
+  const { getConfig } = require('../src/data/config');
+  const e2eId = db.prepare(`INSERT INTO verifier
+    (name, kind, command, timeout_s, run_base, comment_on_forge, parse_tap, created_at)
+    VALUES (?, 'commands', '', ?,?,?,1,?)`).run('e2e navigateur (démo)', 900, 0, 0, at(9)).lastInsertRowid;
+  db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?,?,'worktree',NULL,0)")
+    .run(e2eId, repoIds['groupe/webapp-front']);
+  ['npm ci', 'npm run test:e2e'].forEach((c, i) => {
+    db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(e2eId, i, c);
+  });
+  approbation.reprendreLExistant(getConfig);
+  // …et la synchro apporte une commande de plus, jamais vue sur ce poste.
+  db.prepare('UPDATE verifier_command SET position = 2 WHERE verifier_id = ? AND command = ?').run(e2eId, 'npm run test:e2e');
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)')
+    .run(e2eId, 1, 'npx playwright install --with-deps chromium');
+}
 
 semerDiffsLocaux().then(() => {
   console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));

@@ -22,7 +22,7 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'links-col
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 
-const links = require('../src/links');
+const links = require('../src/notes/links');
 const db = require('../src/db');
 
 const MSGS = {

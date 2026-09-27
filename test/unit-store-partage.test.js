@@ -33,9 +33,9 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
-    agentprofile = require('../src/agentprofile');
-    agentknowledge = require('../src/agentknowledge');
+    store = require('../src/data/store');
+    agentprofile = require('../src/agent/profile');
+    agentknowledge = require('../src/agent/knowledge');
     const now = new Date().toISOString();
     repoId = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/web', 'https://x.test/a.git', 'gitlab', 1, ?)`).run(now).lastInsertRowid;
@@ -67,7 +67,10 @@ describe('store — règles, vérificateurs, agents et connaissance', () => {
     const doc = JSON.parse(store.lireFichier(`verifiers/${v.uid}.json`));
     assert.deepEqual(doc.commands, ['npm ci', 'npm test', 'npm run lint'],
       'l’ordre porte du sens : `npm ci` avant `npm test`');
-    assert.deepEqual(doc.repos, [{ repo: 'gitlab/acme/web', mode: 'worktree', checkout_allowed: 1 }]);
+    /* Le CONSENTEMENT (`checkout_allowed`) et le dossier de travail ne partent plus : ils sont de
+       ce poste. Un consentement donné ici ne doit rien autoriser chez un collègue — et un fichier
+       poussé ne doit rien autoriser ici. */
+    assert.deepEqual(doc.repos, [{ repo: 'gitlab/acme/web', mode: 'worktree' }]);
   });
 
   test('un agent emporte son périmètre, par clé naturelle', () => {
@@ -160,7 +163,7 @@ describe('store — une session ne part que si on la coche', () => {
 
   before(() => {
     db = require('../src/db');
-    store = require('../src/store');
+    store = require('../src/data/store');
     repoId = db.prepare("SELECT id FROM repo WHERE project = 'acme/web'").get().id;
   });
 
@@ -204,6 +207,30 @@ describe('store — une session ne part que si on la coche', () => {
     store.ecouler();
     assert.equal(store.listerFichiers(`sessions/${s.uid}`).length, 0,
       'décocher retire la session ET ses passes — sinon la case aurait menti');
+  });
+
+  /* UNE QUESTION POSÉE SUR UN RAPPORT DE REVIEW NE SE PARTAGE JAMAIS — ni la question, ni la
+     réponse — MÊME UNE FOIS SA MERGE REQUEST RÉSOLUE. Le rapport lui-même est le produit
+     d'équipe (`review`, toujours partagé) ; la curiosité de qui le lit, et ce que l'agent lui a
+     répondu, restent sur ce poste. Contrairement à une session, il n'y a même pas de case à
+     cocher : le geste n'existe pas, pour que l'absence de case ne se voie pas comme un oubli. */
+  test('une question de review ne se partage jamais, même sa merge request résolue', () => {
+    const now = new Date().toISOString();
+    const mrId = db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, updated_at)
+      VALUES (?, 777, 'Une MR à questionner', 'feat/y', 'main', 'reviewed', ?)`).run(repoId, now).lastInsertRowid;
+    db.prepare(`INSERT INTO review (mr_id, md_path, created_at, updated_at) VALUES (?, '', ?, ?)`).run(mrId, now, now);
+    const f = path.join(process.env.MERGERIE_DATA_DIR, `reponse-question-${mrId}.md`);
+    fs.writeFileSync(f, 'parce que ce cas casse la production sur les montants négatifs.');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at)
+      VALUES ('review', ?, 0, 1, 'question', 'pourquoi ce point est-il bloquant ?', ?, ?)`)
+      .run(mrId, f, now);
+    store.ecouler();
+
+    const mrUid = db.prepare('SELECT uid FROM mr WHERE id = ?').get(mrId).uid;
+    // La review, produit d'équipe, part bien — c'est la question posée dessus qui ne doit pas suivre.
+    assert.ok(store.existe(`reviews/gitlab/acme/web/777/review.json`), 'le rapport, lui, se partage toujours');
+    assert.equal(store.listerFichiers(`sessions/${mrUid}`).length, 0,
+      'aucun fichier pour la question ou sa réponse, même la merge request résolue');
   });
 
   test('l’export complet ne compte que les sessions cochées', () => {

@@ -1,0 +1,57 @@
+/* ---- Réduire une fenêtre ----
+   Le bandeau des outils est COLLANT et de hauteur nulle : le bouton reste au coin haut-droit
+   même après avoir fait défiler un long formulaire, sans réserver de ligne à lui tout seul.
+   Le titre lui cède la place à droite, sinon un titre long passerait dessous. */
+.modal-outils { position: sticky; top: 0; z-index: 2; height: 0; display: flex; justify-content: flex-end; }
+.modal-reduire { display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; margin: -6px -6px 0 0; border-radius: var(--radius);
+  background: var(--panel); border: 1px solid transparent; color: var(--muted); cursor: pointer; }
+.modal-reduire:hover { border-color: var(--line); background: var(--panel2); color: var(--text); }
+.modal-reduisible > h3:first-of-type { padding-right: 30px; }
+
+.modal-box textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 10px; font: inherit; margin: 8px 0; }
+/* JOINDRE UN FICHIER EST UNE POSSIBILITÉ, PAS UNE ÉTAPE. C'était une zone pointillée de
+   80 px, vide neuf fois sur dix, au milieu du formulaire. Une ligne : un lien à l'icône
+   trombone, sa phrase à côté. Le cadre ne revient QUE s'il y a des pièces à montrer. */
+.ticket-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0; }
+.ticket-drop:has(.task-previews > *) { border: 1px dashed var(--line); border-radius: var(--radius); padding: 10px; }
+.ticket-file { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-text, var(--accent));
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.ticket-file:hover { color: var(--accent); }
+.ticket-preview-wrap { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.ticket-preview-wrap img { max-width: 100%; max-height: 300px; border: 1px solid var(--line); border-radius: 6px; }
+/* PIED COLLANT. `.modal-box` défile (max-height 90vh) : sur un formulaire long — la session
+   de dev en fait 720 px sur un écran de 800 —, « Annuler » et le bouton principal tombaient
+   sous la ligne de flottaison. On ouvrait une fenêtre dont on ne voyait aucune issue, et il
+   fallait deviner qu'elle défilait. Le fond est opaque, sinon le contenu passe dessous. */
+.modal-actions {
+  display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;
+  position: sticky; bottom: -18px;                 /* -18 = le padding du .modal-box */
+  padding: 12px 0 0; margin-bottom: -18px; padding-bottom: 18px;
+  background: var(--panel); border-top: 1px solid var(--line); z-index: 1;
+}
+
+/* Clic sur le fond alors qu'une saisie est en cours : la modale se signale au lieu de se
+   fermer. Pas de tremblement horizontal — celui-ci dit « erreur », or rien n'est faux ici :
+   on refuse seulement d'emporter ce qui a été tapé. Une respiration suffit à montrer que le
+   clic a bien été reçu, le message d'à côté dit comment fermer pour de bon. */
+@keyframes modal-refus {
+  0%   { transform: scale(1);     box-shadow: 0 0 0 0 transparent; }
+  35%  { transform: scale(1.014); box-shadow: 0 0 0 2px var(--accent); }
+  100% { transform: scale(1);     box-shadow: 0 0 0 0 transparent; }
+}
+.modal-box.modal-refus { animation: modal-refus .24s ease-out; }
+
+/* Corps commun des modales de confirmation (merge, création de MR) : un champ ou une
+   case par ligne, alignés à gauche — plus lisible qu'une rangée quand les libellés
+   d'options sont des phrases (et que leur longueur change avec la langue). */
+/* Modale de confirmation : plus étroite que les formulaires, le texte doit se lire d'un
+   coup d'œil. `confirm-detail` porte la liste des éléments concernés (containers, refs…). */
+.modal-confirm { width: 460px; }
+/* Une confirmation qui porte un RÉCAPITULATIF (ce qui part, ce qui reste, ce que l'envoi
+   écrira) ne tient pas en 460 px : les deux colonnes s'y empilaient en une bande étroite.
+   Assez large pour deux colonnes, pas plus — au-delà, la phrase d'en-tête se lit en balayant. */
+.modal-confirm.modal-confirm-lg { width: min(760px, 95vw); }
+.confirm-text { margin: 6px 0 0; white-space: pre-line; }
+.confirm-text[hidden] { display: none; }
+

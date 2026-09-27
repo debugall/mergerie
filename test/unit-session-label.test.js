@@ -19,8 +19,9 @@ process.env.MERGERIE_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'label-'))
 
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const { lireSource } = require('./helpers/sources');
 
-const taskrunner = require('../src/taskrunner');
+const taskrunner = require('../src/session/taskrunner');
 
 const LIBELLE = 'ZZTITREDERANGEMENTZZ';
 
@@ -50,8 +51,8 @@ describe('le libellé d’une session reste un titre', () => {
      module se mette à lire le libellé pour le glisser ailleurs dans la conversation. */
   test('aucun module parlant à l’agent ne lit le libellé', () => {
     const fautifs = [];
-    for (const f of ['taskrunner.js', 'localcoder.js', 'converge.js', 'copilot.js']) {
-      const src = fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
+    for (const f of ['session/taskrunner', 'session/localcoder', 'review/converge', 'agent/copilot']) {
+      const src = lireSource(f);
       src.split('\n').forEach((ligne, i) => {
         if (/\b(task|t|lt)\.label\b/.test(ligne)) fautifs.push(`src/${f}:${i + 1}  ${ligne.trim()}`);
       });

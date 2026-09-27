@@ -22,7 +22,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { startApp, poserIdentiteGit } = require('./helpers/app');
-const verify = require('../src/verify');
+const verify = require('../src/verify/verify');
 
 describe('Verdict publié en commentaire', () => {
   let app; let repoId; let mrId; let bin; let distant;

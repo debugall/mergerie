@@ -1,0 +1,15 @@
+/* ---------- Filtre segmenté (les 3 stades d'une MR) ---------- */
+.segmented { display: inline-flex; gap: 2px; padding: 3px; margin: var(--s-3) 0 var(--s-2);
+  background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.segmented button {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; border: none; color: var(--muted);
+  padding: 6px 14px; border-radius: var(--r-sm); cursor: pointer;
+  font: inherit; font-size: var(--fs-sm);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--panel); color: var(--text); box-shadow: var(--sh-1); font-weight: var(--fw-med); }
+.seg-count { font-size: var(--fs-2xs); color: var(--muted); font-variant-numeric: tabular-nums; }
+.segmented button.active .seg-count { color: var(--accent); font-weight: var(--fw-bold); }
+
