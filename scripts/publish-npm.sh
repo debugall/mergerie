@@ -36,7 +36,7 @@ npm pack --dry-run --json 2>/dev/null | node -e '
   let s = ""; process.stdin.on("data", (d) => { s += d; }).on("end", () => {
     const [p] = JSON.parse(s); const files = p.files.map((f) => f.path);
     const requis = ["bin/mergerie.js", "src/server.js", "src/db/index.js", "public/index.html", "public/html/ecrans/reviews.html", "public/js/demarrage.js", "public/i18n/index.js", "public/vendor/mermaid.min.js", "scripts/demo-seed.js", "README.md", "LICENSE"];
-    const interdits = [/^data(-demo)?\//, /^test\//, /^docs\//, /^\.env/, /^PLAN\.md$/, /^social_network\//, /\.mp4$/, /\.gif$/];
+    const interdits = [/^data(-demo)?\//, /^test\//, /^docs\//, /^\.env/, /^PLAN\.md$/, /^social_network\//, /\.mp4$/, /\.gif$/, /\.db(-wal|-shm)?$/, /^src\/data\/shared\//];
     const manquants = requis.filter((f) => !files.includes(f));
     const fuites = files.filter((f) => interdits.some((re) => re.test(f)));
     console.log(`${files.length} fichiers, ${(p.size / 1e6).toFixed(1)} Mo archivés, ${(p.unpackedSize / 1e6).toFixed(1)} Mo décompressés`);
