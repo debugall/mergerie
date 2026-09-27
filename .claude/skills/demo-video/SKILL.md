@@ -330,10 +330,15 @@ Voix retenues : `fr-FR-RemyMultilingualNeural` et `en-US-AndrewMultilingualNeura
 (fr) ; Brian, Ava, Ryan (en). Changer de voix = supprimer `travail/voix-<langue>/` ET refaire le
 tournage : les durées des clips fixent la pose de chaque étape.
 
-**La voix neuronale lit l'orthographe correcte** — `git`, `commit`, `prompt`, `l'IA` passent tels
-quels. Ne PAS lui appliquer les respellings Piper ; `prononciation.py` a des listes séparées
-(`FR_NEURONAL`, `EN_NEURONAL`). Une phrase qui sonne faux se corrige par un synonyme, jamais par
-une graphie phonétique. Kokoro (local) a été essayé : son installation échoue ici et son
+**La voix neuronale lit presque toute l'orthographe correcte** — `commit`, `merge request`, `l'IA`
+passent tels quels. Ne PAS lui appliquer les respellings Piper ; `prononciation.py` a des listes
+séparées (`FR_NEURONAL`, `EN_NEURONAL`). Exceptions relevées à l'écoute du film FR (27/09) et
+respellées dans `FR_NEURONAL` : `git` (lu « jit »), `GitLab`/`GitHub`, `review`/`reviewer`/`Reviews`,
+`todo`, `docker`, `prompt` → `guitte`, `Guitlab`, `Guitheub`, `reviou…`, `toudou`, `dokère`, `prompte`.
+Pour en corriger une : ajouter la règle, supprimer les clips concernés de `travail/voix-fr/`
+(un `re.search` sur la narration les liste), relancer `synthese.py` puis `montage.py` — pas de
+nouveau tournage tant qu'aucun clip ne dépasse la marge avant le repère suivant (≥ 1,3 s ici). Une phrase qui sonne faux se corrige d'abord par un synonyme, sinon
+par une graphie française minimale comme ci-dessus — jamais par un respelling espeak. Kokoro (local) a été essayé : son installation échoue ici et son
 français est faible — ne pas y revenir sans raison.
 
 **Repli Piper** (`MOTEUR=piper`) — modèles **hors dépôt** (~60 Mo pièce), à poser dans
