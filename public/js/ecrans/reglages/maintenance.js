@@ -30,6 +30,10 @@ onEl($('#btnDiskMeasure'), 'click', () => mesurerDisque(true));
 onEl($('#btnRetentionRun'), 'click', async () => {
   const b = $('#btnRetentionRun');
   const note = $('#retentionBilan');
+  // Purge irréversible (rapports, diffs, dossiers de travail…) : un clic direct sur un bouton
+  // de réglages, sans le moindre rappel de ce qu'il efface, méritait la même confirmation que
+  // les autres gestes destructifs (merge, suppression, reset).
+  if (!await confirmDialog({ text: tr('confirm.retention-run'), confirmLabel: tr('settings.disk.clean') })) return;
   try {
     const r = await busy(b, () => api('/retention/run', { method: 'POST' }));
     const bl = r.bilan || {};

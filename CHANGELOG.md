@@ -510,6 +510,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   root cause as the merge dialog above: the button used to test the branch name against a bare
   “looks like a ticket key” pattern, with no idea that a fetch of that very key had already failed
   at discovery. It now reads the same, error-aware ticket key the ticket badge already used.
+- **“Clean up now” (Settings → General, disk usage) now asks for confirmation before it runs.**
+  It deletes old job logs, slims down long-closed merge requests (previous versions, stored diff,
+  questions, working folder) and compacts inactive clones — all irreversible — but a bare click
+  ran it immediately, with no more warning than any read-only button on the same screen.
 
 ### Security
 

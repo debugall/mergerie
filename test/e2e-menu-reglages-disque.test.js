@@ -44,14 +44,31 @@ describe('Menu Réglages — occupation disque et nettoyage', { skip: dispo ? fa
     assert.ok(pied.includes(d.data_dir), 'le pied nomme le dossier de données');
   });
 
-  test('« Nettoyer maintenant » lance la rétention et écrit son bilan : zéro sur une base neuve, le compte ensuite', async () => {
+  test('« Nettoyer maintenant » demande confirmation avant de lancer la purge, et l’annulation ne supprime rien', async () => {
+    // Un job vieux de deux mois : la rétention (30 j) le retirerait — sert à prouver qu’Annuler
+    // ne touche à rien.
+    const vieux = new Date(Date.now() - 60 * 86400000).toISOString();
+    app.db.prepare("INSERT INTO job (kind, status, total, done_count, started_at, finished_at) VALUES ('review', 'done', 1, 1, ?, ?)").run(vieux, vieux);
     await page.locator('#btnRetentionRun').click();
+    await page.locator('#confirmModal:not([hidden])').waitFor({ timeout: 15000 });
+    await page.locator('#confirmCancel').click();
+    await page.locator('#confirmModal:not([hidden])').waitFor({ state: 'detached' });
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM job WHERE finished_at = ?").get(vieux).c, 1, 'Annuler ne purge rien');
+    assert.equal(await page.locator('#retentionBilan').isVisible(), false, 'ni le bilan ne s’affiche');
+  });
+
+  test('« Nettoyer maintenant », confirmé, lance la rétention et écrit son bilan : zéro sur une base neuve, le compte ensuite', async () => {
+    await page.locator('#btnRetentionRun').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    await page.locator('#confirmOk').click();
     await page.waitForFunction(() => { const p = document.querySelector('#retentionBilan'); return p && !p.hidden && p.textContent.trim() !== ''; });
-    assert.match(await page.locator('#retentionBilan').textContent(), /^0 jobs? et 0 lignes|Rien à nettoyer/, 'base neuve : rien de supprimé, et l’écran le dit');
+    assert.match(await page.locator('#retentionBilan').textContent(), /^1 job /, 'le job vieux du test précédent est compté');
     // Un job vieux de deux mois : la rétention (30 j) le retire, et le bilan le compte.
     const vieux = new Date(Date.now() - 60 * 86400000).toISOString();
     app.db.prepare("INSERT INTO job (kind, status, total, done_count, started_at, finished_at) VALUES ('review', 'done', 1, 1, ?, ?)").run(vieux, vieux);
     await page.locator('#btnRetentionRun').click();
+    await page.waitForSelector('#confirmModal:not([hidden])');
+    await page.locator('#confirmOk').click();
     await page.waitForFunction(() => /1 job/.test((document.querySelector('#retentionBilan') || {}).textContent || ''));
     assert.equal(app.db.prepare("SELECT COUNT(*) c FROM job WHERE finished_at = ?").get(vieux).c, 0, 'le job a bien été retiré');
     assert.deepEqual(erreurs, []);
