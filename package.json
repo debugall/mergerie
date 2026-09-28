@@ -1,6 +1,6 @@
 {
   "name": "mergerie",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "From prompt to merge — a local AI dev cockpit for GitLab and GitHub: MR/PR review, autonomous coding sessions across many repositories, and convergence.",
   "license": "AGPL-3.0-only",
   "author": "Amady (https://github.com/debugall)",

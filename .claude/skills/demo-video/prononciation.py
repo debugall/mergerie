@@ -257,7 +257,27 @@ FR_NEURONAL = [
     (r'/10\b', ' sur 10'),
     (r'\b30 s\b', '30 secondes'),
     (r'\bj\s*/\s*k\b', 'J et K'),
-    (r'\bdocker run\b', 'docker run'),
+    # --- Mots que Rémy lit MAL, signalés à l'écoute du film du 27/09 : « git » avec le g
+    #     mouillé (« jit »), « review » et « todo » lus à l'anglaise ou à l'espagnole, « docker »
+    #     et « prompt » avec la consonne finale avalée. Respelling minimal, en graphie française,
+    #     qui reste lisible par une voix neuronale (pas les respellings espeak de `FR`). Ordre :
+    #     GitLab/GitHub avant `git`, les formes longues de `review` avant la courte. ---
+    (r'(?i)\bgitlab\b', 'Guitlab'),
+    (r'(?i)\bgithub\.com\b', 'Guitheub point com'),
+    (r'(?i)\bgithub\b', 'Guitheub'),
+    (r'(?i)\bgit\b', 'guitte'),
+    (r'(?i)\bre-reviewer\b', 're-reviouer'),
+    (r'(?i)\breviewer\b', 'reviouer'),
+    (r'(?i)\breviewées\b', 'reviouées'),
+    (r'(?i)\breviewée\b', 'reviouée'),
+    (r'(?i)\breviewe\b', 'revioue'),
+    (r'(?i)\breviews\b', 'reviouze'),
+    (r'(?i)\breview\b', 'reviou'),
+    (r'(?i)\btodos\b', 'toudouze'),
+    (r'(?i)\btodo\b', 'toudou'),
+    (r'(?i)\bdocker\b', 'dokère'),
+    (r'(?i)\bprompts\b', 'promptes'),
+    (r'(?i)\bprompt\b', 'prompte'),
     (r'«\s*', ''), (r'\s*»', ''),
 ]
 EN_NEURONAL = [

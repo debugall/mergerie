@@ -11,6 +11,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-09-28
+
+### Fixed
+
+- **An answer being typed to the agent's question no longer vanishes.** The session list redraws
+  itself when another job ends or when a sync lands, and the questions form came back empty —
+  "Reply" then refused the blank fields. What is typed or ticked now survives the redraw, cursor
+  included.
+
 ## [2.0.0] - 2026-09-27
 
 ### Added
@@ -3932,7 +3941,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/debugall/mergerie/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/debugall/mergerie/compare/v1.7.0...v2.0.0
 [1.7.0]: https://github.com/debugall/mergerie/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/debugall/mergerie/compare/v1.5.0...v1.6.0

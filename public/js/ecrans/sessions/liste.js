@@ -92,10 +92,33 @@ function captureTaskForms(racine = '#taskList') {
     const at = f.querySelector('.followup-at');
     state[`${cle}:${f.dataset[cle]}`] = { v: field ? field.value : '', auto: auto ? auto.checked : null, at: at ? at.value : null };
   });
+  /* LES RÉPONSES AUX QUESTIONS DE L'AGENT AUSSI. Le formulaire n'a pas de brouillon côté
+     serveur, et la liste se re-rend sans prévenir — fin d'un autre job, synchro des données
+     trois secondes après la dernière écriture : la réponse qu'on tapait disparaissait, et
+     « Répondre » refusait alors des champs vides. On garde ce qui est saisi, ET le champ qui
+     avait le focus, pour reposer le curseur là où il était. */
+  $$(`${racine} .questions-box`).forEach((box) => {
+    const reponses = {};
+    let focus = null;
+    $$('.q-item', box).forEach((item) => {
+      const qid = item.dataset.qid;
+      const free = $('.q-free', item);
+      const picked = box.querySelector(`input[name="${item.dataset.name}"]:checked`);
+      const other = item.querySelector('.q-other-text');
+      const r = { free: free ? free.value : null, picked: picked ? picked.value : null, other: other ? other.value : null };
+      if (r.free || r.picked || r.other) reponses[qid] = r;
+      const actif = document.activeElement;
+      if (actif && item.contains(actif) && (actif === free || actif === other)) {
+        focus = { qid, champ: actif === free ? 'free' : 'other', debut: actif.selectionStart, fin: actif.selectionEnd };
+      }
+    });
+    if (Object.keys(reponses).length || focus) state[`questions:${box.dataset.qtask}:${box.dataset.qtarget}`] = { reponses, focus };
+  });
   return state;
 }
 function restoreTaskForms(state, racine = '#taskList') {
   for (const [key, value] of Object.entries(state)) {
+    if (key.startsWith('questions:')) { restaurerReponses(key, value, racine); continue; }
     const i = key.indexOf(':');   // l'identifiant peut contenir un préfixe (« tg12 »)
     const f = $(`${racine} .mr-create[data-${key.slice(0, i)}="${key.slice(i + 1)}"]`);
     if (!f) continue;
@@ -107,6 +130,31 @@ function restoreTaskForms(state, racine = '#taskList') {
     const at = f.querySelector('.followup-at');
     if (at && value.at !== null) at.value = value.at;
     renderSuiviPreviews(f);      // les captures collées survivent au re-rendu, comme le texte
+  }
+}
+function restaurerReponses(key, { reponses, focus }, racine) {
+  const [, tache, cible] = key.split(':');
+  const box = $(`${racine} .questions-box[data-qtask="${tache}"][data-qtarget="${cible}"]`);
+  if (!box) return;          // la session a repris entre-temps : plus rien à restaurer
+  for (const [qid, r] of Object.entries(reponses)) {
+    const item = box.querySelector(`.q-item[data-qid="${qid}"]`);
+    if (!item) continue;
+    const free = $('.q-free', item);
+    if (free && r.free) free.value = r.free;
+    if (r.picked) {
+      const radio = box.querySelector(`input[name="${item.dataset.name}"][value="${r.picked}"]`);
+      if (radio) radio.checked = true;
+    }
+    const other = item.querySelector('.q-other-text');
+    if (other && r.other) other.value = r.other;
+  }
+  if (focus) {
+    const item = box.querySelector(`.q-item[data-qid="${focus.qid}"]`);
+    const champ = item && (focus.champ === 'free' ? $('.q-free', item) : item.querySelector('.q-other-text'));
+    if (champ) {
+      champ.focus();
+      try { champ.setSelectionRange(focus.debut, focus.fin); } catch { /* champ sans sélection */ }
+    }
   }
 }
 
