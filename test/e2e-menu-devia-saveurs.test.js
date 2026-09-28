@@ -163,6 +163,13 @@ describe('Menu Dev IA — exploration, hors dépôt, question libre', { skip: di
     if (await radios.count()) await radios.first().click();
     const libres = page.locator(`${carte} .questions-box .q-free`);
     for (let i = 0; i < await libres.count(); i += 1) await libres.nth(i).fill('Oui, par mois');
+    /* La liste se re-rend sans prévenir — fin d'un autre job, synchro des données trois secondes
+       après la dernière écriture. Sur le runner de la CI, ce re-rendu tombait entre la saisie et
+       le clic : les champs revenaient vides, « Répondre » refusait, et l'attente expirait. Ce qui
+       est saisi doit survivre au re-rendu, choix fermé comme texte libre. */
+    await page.evaluate(() => renderTasks());
+    if (await radios.count()) assert.ok(await page.locator(`${carte} .questions-box .q-opts input[type="radio"]`).first().isChecked(), 'le choix survit au re-rendu');
+    for (let i = 0; i < await libres.count(); i += 1) assert.equal(await page.locator(`${carte} .questions-box .q-free`).nth(i).inputValue(), 'Oui, par mois', 'la réponse survit au re-rendu');
     await page.locator(`${carte} [data-qsubmit]`).click();
     await attendreServeur(async () => (await exploration(ids.exploreQ)).status !== 'needs_input', 'l’exploration a repris', 60000);
     await waitForJobs(app.api, { timeout: 60000 });

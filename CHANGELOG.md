@@ -11,6 +11,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **An answer being typed to the agent's question no longer vanishes.** The session list redraws
+  itself when another job ends or when a sync lands, and the questions form came back empty —
+  "Reply" then refused the blank fields. What is typed or ticked now survives the redraw, cursor
+  included.
+
 ## [2.0.0] - 2026-09-27
 
 ### Added
