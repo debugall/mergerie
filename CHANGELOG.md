@@ -11,6 +11,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Ask the AI" on a merge's conflicts no longer fails with `spawn E2BIG` on a large conflicted
+  file.** The content of every conflicted file was packed into the command line used to launch the
+  agent; a big enough file (or several at once) overflowed what the OS accepts there. Conflicted
+  files already sit on disk in the merge's own workspace, where the agent runs — it now reads them
+  itself, and only their paths travel in the request.
+
 ## [2.0.1] - 2026-09-28
 
 ### Fixed
