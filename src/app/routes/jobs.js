@@ -193,8 +193,8 @@ app.post('/api/reports/reset', wrap((req, res) => {
     fs.mkdirSync(REVIEWS_DIR, { recursive: true });
   } catch { /* dossier absent : rien à faire */ }
   const del = db.prepare('DELETE FROM review').run();
-  db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, last_error = NULL, updated_at = ?")
-    .run(new Date().toISOString());
+  db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, last_error = NULL, updated_at = ?, status_at = ?")
+    .run(new Date().toISOString(), new Date().toISOString());
   db.prepare('DELETE FROM job_log').run();
   db.prepare('DELETE FROM job').run();
   res.json({ ok: true, deleted: del.changes });

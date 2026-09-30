@@ -1330,6 +1330,10 @@ function hydraterFichiers(relatifs) {
          nom recevait ainsi ses reviews (posées avant) mais ni ses sessions, ni ses notes, ni
          même les pointeurs vers ses rapports, calculés tout à la fin. On le signale comme
          orphelin — c'est visible dans l'état de la synchro — et on continue. */
+      /* Une entrée peut ARBITRER entre ce qui arrive et ce qu'elle tient déjà (`fusionner`,
+         voir `mr` dans le registre) : elle rend la ligne à écrire, éventuellement amputée des
+         colonnes que la version locale, plus récente, garde. */
+      if (e.fusionner) row = e.fusionner(row, db) || row;
       let ligne;
       try {
         ligne = upsert(item.table, row);

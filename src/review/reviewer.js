@@ -650,8 +650,8 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     // Suivi de résolution : compare aux constats de la passe précédente.
     await trackResolution({ cwd, mr, version, findings, newSha: mr.current_sha, onLog });
 
-    db.prepare(`UPDATE mr SET reviewed_sha = current_sha, status = 'reviewed', last_error = NULL, updated_at = ? WHERE id = ?`)
-      .run(now, mr.id);
+    db.prepare(`UPDATE mr SET reviewed_sha = current_sha, status = 'reviewed', last_error = NULL, updated_at = ?, status_at = ? WHERE id = ?`)
+      .run(now, now, mr.id);
 
     /* Publication automatique, si — et seulement si — le réglage le demande. Elle a lieu APRÈS
        l'enregistrement : le rapport est acquis, et une forge injoignable ne doit pas le faire

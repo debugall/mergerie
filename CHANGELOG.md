@@ -27,6 +27,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A merge request you reviewed no longer comes back to "To review" after a team sync.** A
+  colleague's machine rewrites the merge request's shared file for reasons that carry no decision
+  (a title or an author re-read from the forge) with *its* status, still "to review"; when both
+  machines had touched the file, the remote version won as a whole and undid your review. The
+  status now travels with the instant it was decided, and the most recent decision wins on every
+  machine — a status decided earlier, or never decided, no longer overwrites yours.
 - **The "no AI agent found" banner no longer flashes for a binary that is there.** Detection used to run
   `<binary> --version` with a five-second limit and remember the answer for a minute: under load — an
   agent working alongside — the probe timed out, the banner said "not found", and worse, a review

@@ -223,7 +223,7 @@ const REGISTRE = [
        (ce qui demande un jeton valide), et le délai de cycle n'a ni début ni fin — `merged_at`
        est du même bois : l'instant que la FORGE donne, le même pour toute l'équipe, là où la
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
-    partagees: ['status', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
+    partagees: ['status', 'status_at', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
       'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
       /* CES QUATRE-LÀ SONT UN REPLI, PAS UNE VÉRITÉ — voir `toFile` : la découverte locale les
          réécrit depuis la forge, et le fichier ne sert qu'au poste qui n'a pas encore vu la MR
@@ -246,6 +246,7 @@ const REGISTRE = [
         forge: m.forge,
         project: m.project,
         status: r.status,
+        status_at: r.status_at || null,
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
@@ -303,6 +304,7 @@ const REGISTRE = [
       repo_id: ctx.repoId(doc.repo),
       iid: doc.iid,
       status: doc.status || 'to_review',
+      status_at: doc.status_at || null,
       web_url: doc.web_url || null,
       gitlab_created_at: doc.gitlab_created_at || null,
       merged_at: doc.merged_at || null,
@@ -320,6 +322,22 @@ const REGISTRE = [
       /* Pas d'`updated_at` non plus au retour : le fichier n'en porte plus, et la valeur locale
          — la dernière fois que CE poste a vu la MR bouger — n'a pas à être écrasée. */
     }),
+    /* LA DÉCISION LA PLUS RÉCENTE GAGNE — pas le fichier le plus récemment écrit. Le poste d'un
+       collègue réécrit ce fichier pour des raisons sans décision (un titre, un auteur relus chez
+       la forge) avec SON statut, encore « à traiter » : en conflit git, la version distante gagne
+       en bloc, et une merge request reviewée ici retournait dans « À traiter ». On compare donc
+       `status_at` : un statut daté d'avant celui qu'on tient — ou pas daté du tout, un poste qui
+       n'a jamais décidé — ne l'écrase pas ; la ligne locale, réécrite, repart avec sa date, et
+       l'autre poste s'aligne à son tour. Une décision plus récente venue d'ailleurs (« à relire »,
+       « traitée ») passe, comme avant. */
+    fusionner: (row, db2) => {
+      if (row.repo_id == null) return row;
+      const locale = db2.prepare('SELECT status, status_at, reviewed_sha FROM mr WHERE repo_id = ? AND iid = ?').get(row.repo_id, row.iid);
+      if (!locale || !locale.status_at) return row;
+      if (row.status_at && row.status_at >= locale.status_at) return row;
+      const { status, status_at, reviewed_sha, ...reste } = row;
+      return reste;
+    },
     referencesDifferees: ['repo_id'],
     refSource: { repo_id: 'repo' },
     listes: [

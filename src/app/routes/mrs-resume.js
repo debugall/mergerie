@@ -152,15 +152,15 @@ app.post('/api/mrs/:id/clear-error', wrap((req, res) => {
 app.post('/api/mrs/:id/done', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  db.prepare(`UPDATE mr SET status = 'done', updated_at = ? WHERE id = ?`).run(new Date().toISOString(), mr.id);
+  db.prepare(`UPDATE mr SET status = 'done', updated_at = ?, status_at = ? WHERE id = ?`).run(new Date().toISOString(), new Date().toISOString(), mr.id);
   res.json({ ok: true });
 }));
 app.post('/api/mrs/:id/reopen', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const rev = db.prepare('SELECT 1 FROM review WHERE mr_id = ?').get(mr.id);
-  db.prepare(`UPDATE mr SET status = ?, updated_at = ? WHERE id = ?`)
-    .run(rev ? 'reviewed' : 'to_review', new Date().toISOString(), mr.id);
+  db.prepare(`UPDATE mr SET status = ?, updated_at = ?, status_at = ? WHERE id = ?`)
+    .run(rev ? 'reviewed' : 'to_review', new Date().toISOString(), new Date().toISOString(), mr.id);
   res.json({ ok: true });
 }));
 // Supprime le rapport d'une MR (fichiers + ligne en base) et la remet « à reviewer ».
@@ -179,8 +179,8 @@ app.post('/api/mrs/:id/delete-review', wrap((req, res) => {
      parentes selon le scope), donc le ménage est explicite — comme pour les sessions. */
   agentpass.removeTask('review', mr.id);
   try { fs.rmSync(path.join(TASKS_DIR, 'review', String(mr.id)), { recursive: true, force: true }); } catch { /* rien */ }
-  db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, updated_at = ? WHERE id = ?")
-    .run(new Date().toISOString(), mr.id);
+  db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, updated_at = ?, status_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), new Date().toISOString(), mr.id);
   res.json({ ok: true });
 }));
 app.post('/api/mrs/:id/comment', wrap(async (req, res) => {

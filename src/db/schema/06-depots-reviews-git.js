@@ -144,6 +144,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS feed (
 )`);
 // Flag : MR ouverte connue qui a disparu de GitLab (mergée/fermée) déjà signalée.
 try { db.exec('ALTER TABLE mr ADD COLUMN closed_seen INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* L'INSTANT DE LA DÉCISION SUR LE STATUT (reviewée, traitée, à relire). `updated_at` ne
+   convient pas : la découverte le réécrit à chaque tour. Celui-ci ne bouge qu'avec `status`, et
+   c'est lui que la synchro compare : la décision la plus récente gagne, jamais la ligne la plus
+   récemment relue chez la forge. */
+try { db.exec('ALTER TABLE mr ADD COLUMN status_at TEXT'); } catch { /* déjà présente */ }
+/* LES DÉCISIONS DÉJÀ PRISES SONT DATÉES UNE FOIS : une review faite avant cette colonne prend la
+   date de sa dernière passe ; une MR traitée, celle de sa dernière modification. Sans ça, une
+   ligne reviewée hier resterait écrasable par le premier fichier « à traiter » venu. Idempotent :
+   seules les lignes sans date sont touchées. */
+try {
+  db.exec(`UPDATE mr SET status_at = (SELECT MAX(created_at) FROM review_version WHERE review_version.mr_id = mr.id)
+    WHERE status_at IS NULL AND status = 'reviewed'`);
+  db.exec("UPDATE mr SET status_at = updated_at WHERE status_at IS NULL AND status IN ('reviewed', 'done') AND updated_at IS NOT NULL");
+} catch { /* review_version pas encore créée sur une base neuve : rien à dater */ }
 
 /* Journal des opérations Git multi-dépôts (onglet Git).
    Sert à deux choses : l'historique consultable, et surtout la RESTAURATION.
