@@ -279,6 +279,23 @@ describe('agentpolicy : copilot', () => {
     assert.equal(r.note, null);
   });
 
+  /* Le prompt et le lanceur doivent dire la même chose. Avec `--deny-tool write`, une
+     exploration ne peut pas écrire son fichier : la consigne demande alors la réponse finale —
+     comme pour claude, codex et gemini. La mise à jour de connaissance d'un agent de domaine
+     sur Copilot recevait « écris UNIQUEMENT dans le fichier » et un lanceur qui refusait chaque
+     écriture : réponse vide, et le journal pris pour la connaissance. */
+  test('lecture : la réponse tient lieu de fichier dès que --deny-tool borne l’écriture, pas avant', () => {
+    pol.oublierBackend();
+    const avecDenyTool = fauxAide('copilot', '--deny-tool <t>\n--allow-tool <t>');
+    assert.equal(pol.backendDe(avecDenyTool), 'copilot');
+    assert.equal(pol.sortieSurStdout('explore', avecDenyTool), true, 'write refusé : rien à écrire, la réponse tient lieu');
+    assert.equal(pol.sortieSurStdout('code', avecDenyTool), false, 'un codage écrit toujours');
+    pol.oublierBackend(); pol.oublierCapacites();
+    const sansDenyTool = fauxAide('copilot', '--verbose');
+    assert.equal(pol.sortieSurStdout('explore', sansDenyTool), false, 'sans --deny-tool le fichier reste possible : l’agent l’écrit comme avant');
+    pol.oublierBackend();
+  });
+
   /* plan_secure.md, lot A, S4 : `--allow-all-tools` est l'équivalent Copilot du mode large —
      `LARGES` le connaît nommément. COPILOT_ARGS ne doit pas pouvoir le rouvrir alors que
      policy.js le ferme partout ailleurs. */

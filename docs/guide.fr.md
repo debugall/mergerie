@@ -968,7 +968,9 @@ entre humains.
 - **Enquêteur d'incident** — on lui colle une trace, un log, un extrait de ticket. Il la cherche dans
   **tous les clones** avec un sous-agent `chercheur` par dépôt, puis nomme le dépôt, le fichier et la
   ligne, avec une hypothèse de cause et les commits récents qui ont touché ces lignes. S'il ne trouve
-  rien, il le dit en toutes lettres au lieu de proposer un dépôt plausible. Son rapport se termine par
+  rien, il le dit en toutes lettres au lieu de proposer un dépôt plausible. Les sous-agents n'existent
+  que chez Claude Code (`--agents`) : sur un autre backend, la demande ne les nomme pas et l'agent
+  cherche lui-même. Son rapport se termine par
   un bloc de service qui alimente le bouton **« Corriger sur *dépôt* »** : un clic ouvre une session de
   codage sur le bon dépôt, avec le rapport en demande.
 - **Documentaliste** — il relit tous les dépôts et écrit la **carte des services** dans une page de
@@ -2869,7 +2871,10 @@ ce poste — « Tester le sandbox »), **déclaré** (le CLI sait se restreindre
 après coup fait foi), **allégé** (rien de tout cela : le contrôle après coup est le seul filet,
 et le journal de chaque run l'écrit en première ligne). Aucun niveau ne bloque un CLI ; ce qui
 n'est jamais allégé : le jeton de forge hors du clone, l'API fermée par le jeton local,
-l'environnement en liste blanche, le mode large retiré des arguments.
+l'environnement en liste blanche, le mode large retiré des arguments. Dès qu'une lecture (review,
+exploration, mise à jour de connaissance) tourne sur un backend qui lui refuse l'écriture — Claude,
+Codex, Gemini, et Copilot quand il connaît `--deny-tool` —, la consigne demande la réponse finale
+au lieu d'un fichier que l'agent ne pourrait pas écrire.
 
 Deux fichiers `.env` sont lus au démarrage, du plus faible au plus fort : `~/.mergerie/.env`, puis
 **celui du dossier d'où la commande est lancée** (la racine du clone avec `npm start`, le répertoire

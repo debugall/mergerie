@@ -932,7 +932,8 @@ between humans.
 - **Incident investigator** — paste a trace, a log, a ticket excerpt. It searches **every clone** with
   one `chercheur` subagent per repository, then names the repository, the file and the line, with a
   likely cause and the recent commits that touched those lines. If it finds nothing, it says so in plain
-  words instead of offering a plausible repository. Its report ends with a service block that feeds the
+  words instead of offering a plausible repository. Subagents exist only with Claude Code (`--agents`):
+  on another backend the request does not name them and the agent searches by itself. Its report ends with a service block that feeds the
   **“Fix in *repository*”** button: one click opens a coding session on the right repository, with the
   report as the request.
 - **Librarian** — it reads every repository and writes the **service map** into a note page: what each
@@ -2768,7 +2769,9 @@ sandbox”), **declared** (the CLI can restrict itself — `--restricted`, `--sa
 **lightened** (none of that: the after-the-fact check is the only net, and every run's journal
 says so on its first line). No level blocks a CLI; what is never lightened: the forge token out
 of the clone, the API closed by the local token, the allowlisted environment, the wide-open mode
-stripped from the arguments.
+stripped from the arguments. Whenever a read-only run (review, exploration, knowledge update) lands
+on a backend that denies it writes — Claude, Codex, Gemini, and Copilot when it knows `--deny-tool` —
+the instruction asks for the final answer instead of a file the agent could not write.
 
 Two `.env` files are read at startup, weakest first: `~/.mergerie/.env`, then **the one in the
 folder the command is run from** (the root of the clone with `npm start`, the current directory

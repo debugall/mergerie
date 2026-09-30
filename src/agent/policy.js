@@ -402,8 +402,18 @@ function argvYolo({ extra, kind, addDirs, backend }) {
 
 /** Vrai quand ce lancement ne pourra PAS écrire son document : saveur de lecture, en mode
     sécurisé, sur un backend qui borne sa lecture. Le prompt demande alors la réponse finale comme
-    résultat, au lieu d'un fichier refusé d'avance. En yolo, l'agent écrit son fichier comme avant. */
-const sortieSurStdout = (kind, bin) => modeSecurise() && saveurDe(kind) === 'lecture' && ['claude', 'codex', 'gemini'].includes(backendDe(bin));
+    résultat, au lieu d'un fichier refusé d'avance. En yolo, l'agent écrit son fichier comme avant.
+    COPILOT COMPTE AUSSI, dès que le CLI connaît `--deny-tool` : `argvCopilot` lui retire alors
+    `write` et `shell(*)`. Il manquait ici — la mise à jour de connaissance d'un agent de domaine,
+    sur ce backend, recevait « écris UNIQUEMENT dans le fichier, ne duplique rien sur la sortie »
+    et un lanceur qui refusait chaque écriture : l'agent rendait une réponse vide, et le repli sur
+    la sortie standard prenait son journal pour la connaissance. */
+function sortieSurStdout(kind, bin) {
+  if (!modeSecurise() || saveurDe(kind) !== 'lecture') return false;
+  const be = backendDe(bin);
+  if (be === 'copilot') return !!capacites(bin).denyTool;
+  return ['claude', 'codex', 'gemini'].includes(be);
+}
 
 /* ---------------------------------------------------------------- les bornes */
 

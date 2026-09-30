@@ -39,6 +39,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Updating a domain agent's knowledge on Copilot CLI no longer comes back empty.** In secure mode,
+  the launcher denies the agent every write, but its instruction still said "write the answer ONLY
+  in this file, do not repeat it on the output": the agent obeyed both, produced nothing, and its
+  session log was taken for the knowledge. As with Claude, Codex and Gemini, a read-only run on
+  Copilot is now asked for its final answer instead of a file it cannot write.
+- **A profile's subagents are only named in the request when the CLI will receive them.** Only
+  Claude Code takes `--agents`; on another backend the cartographer was told to hand the search to
+  a `chercheur` subagent, could not find it, and said so instead of answering.
 - **A merge request you reviewed no longer comes back to "To review" after a team sync.** A
   colleague's machine rewrites the merge request's shared file for reasons that carry no decision
   (a title or an author re-read from the forge) with *its* status, still "to review"; when both
