@@ -8,7 +8,7 @@
  *   - cocher des branches → « Supprimer la sélection » ouvre Actions sur l'aperçu ;
  *   - « Créer la MR » (la MR existe sur la forge), l'auteur d'un tag lu à la demande ;
  *   - « Vérifier », « Coder dessus », « Ajouter aux todos » depuis la ligne ;
- *   - la mémoire des dépôts cochés ;
+ *   - les dépôts cochés ne sont PAS retenus au rechargement ;
  *   - Trouver une ref : tag, branche, rien, dépôt inaccessible, auteur, mémoire.
  *
  * Un seul `startApp()`, un seul navigateur ; les tests s'enchaînent dans l'ordre. */
@@ -235,11 +235,16 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
     await page.waitForSelector('#taskModal', { state: 'hidden' });
   });
 
-  test('les dépôts cochés sont retenus au rechargement', async () => {
+  test('les dépôts cochés ne sont pas retenus au rechargement', async () => {
+    /* Une analyse porte sur les dépôts du moment : retrouver cochés ceux de la veille faisait
+       lancer sans le vouloir une analyse sur trois dépôts au lieu d'un. Une ancienne mémoire
+       posée dans le navigateur est effacée, pas relue. */
+    await page.evaluate(() => localStorage.setItem('aidevtools_git_explorer', JSON.stringify([1, 2])));
     await page.reload();
     await allerGit('explore');
-    assert.equal(await caseDepot(idAlpha).isChecked(), true);
+    assert.equal(await caseDepot(idAlpha).isChecked(), false);
     assert.equal(await caseDepot(idBeta).isChecked(), false);
+    assert.equal(await page.evaluate(() => localStorage.getItem('aidevtools_git_explorer')), null, 'l’ancienne clé est effacée');
   });
 
   describe('Trouver une ref', () => {

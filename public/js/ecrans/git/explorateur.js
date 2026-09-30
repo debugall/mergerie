@@ -194,7 +194,6 @@ async function gitAnalyze() {
   // Multi-projets : on analyse tous les dépôts cochés. Chaque résultat va dans son
   // propre bloc <details>, REPLIÉ par défaut (on ouvre celui qu'on veut inspecter).
   const ids = $$('#gitExploreRepoBox .git-multi-pick:checked').map((c) => Number(c.value));
-  retenirDepotsExplorer(ids);
   if (!ids.length) { toast(tr('git.explorer.pick-one'), true); return; }
   const btn = $('#gitExploreGo');
   const wrap = $('#gitExploreBox');
@@ -252,26 +251,14 @@ function findRefBranchesHtml(branches) {
       + '</div>';
   }).join('') + '</div>';
 }
-/* CE QU'ON CHERCHAIT LA DERNIÈRE FOIS. « Trouver une ref » et l'explorateur étaient les deux
-   seuls sous-onglets de Git sans mémoire : on retapait `v2.14.0` à chaque visite, alors qu'on y
-   revient précisément pour suivre la même ref de dépôt en dépôt. */
+/* CE QU'ON CHERCHAIT LA DERNIÈRE FOIS. « Trouver une ref » retient la ref : on y revient
+   précisément pour suivre la même `v2.14.0` de dépôt en dépôt.
+   L'EXPLORATEUR, lui, ne retient PAS les dépôts cochés : une analyse porte sur les dépôts du
+   moment, et retrouver cochés ceux de la veille faisait lancer sans le vouloir une analyse
+   sur trois dépôts au lieu d'un. La mémoire a existé (`aidevtools_git_explorer`) ; on efface
+   la clé qu'un navigateur peut encore porter. */
 const MEMO_FINDREF = 'aidevtools_findref';
-/* …et les dépôts de l'EXPLORATEUR, pour la même raison : on y revient sur les mêmes deux ou
-   trois dépôts, et il fallait les recocher à chaque visite. On ne recoche que ce qui existe
-   encore — un dépôt retiré des réglages ne doit pas réapparaître en fantôme. */
-const MEMO_EXPLORER = 'aidevtools_git_explorer';
-function poserMemoireExplorer() {
-  let ids = [];
-  try { ids = JSON.parse(localStorage.getItem(MEMO_EXPLORER) || '[]'); } catch { ids = []; }
-  if (!Array.isArray(ids) || !ids.length) return;
-  const cases = $$('#gitExploreRepoBox .git-multi-pick');
-  if (!cases.length || cases.some((c) => c.checked)) return;   // déjà un choix à l'écran : on n'y touche pas
-  cases.forEach((c) => { if (ids.includes(Number(c.value))) c.checked = true; });
-  gitExploreMajCompte();   // cocher par le code ne déclenche pas `change`
-}
-function retenirDepotsExplorer(ids) {
-  try { localStorage.setItem(MEMO_EXPLORER, JSON.stringify(ids || [])); } catch { /* stockage indisponible */ }
-}
+try { localStorage.removeItem('aidevtools_git_explorer'); } catch { /* stockage indisponible */ }
 
 function poserMemoireFindRef() {
   let m = {};

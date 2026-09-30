@@ -13,6 +13,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The branch explorer no longer remembers the repositories you ticked.** An analysis is about the
+  repositories of the moment; finding yesterday's still ticked launched, without meaning to, an
+  analysis on three repositories instead of one. Each visit starts unticked.
 - **Git → Merge puts the work first.** The open merge now sits at the top of the tab — above the list of
   running merges, where its row says "open above", and above the form, which becomes "Prepare another
   merge" — instead of starting below the fold behind three blocks repeating the same branches. Its banner
