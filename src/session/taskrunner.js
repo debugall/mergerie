@@ -638,7 +638,11 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     agentpass.attacherDiff('task', task.id, tg.id, passeN, { baseSha: shaDepart, headSha: sha, diff: dePasse });
   }
 
-  const pushCommand = `git push -u origin ${tg.branch}`;
+  /* Une cible marquée « push forcé » (créée pour réécrire l'historique, ou rattrapée depuis)
+     montre la commande qui passera vraiment : un `git push -u` affiché puis refusé enverrait
+     chercher comment forcer, alors que le bouton le fera de lui-même. */
+  const forcerPush = !!(db.prepare('SELECT force_push FROM task_target WHERE id = ?').get(tg.id) || {}).force_push;
+  const pushCommand = forcerPush ? `git push --force-with-lease origin ${tg.branch}` : `git push -u origin ${tg.branch}`;
   setTarget(tg.id, {
     base_branch: base, commit_sha: sha, diff_path: dpath, push_command: pushCommand,
     last_error: null, status: 'committed', questions_json: null, // questions soldées

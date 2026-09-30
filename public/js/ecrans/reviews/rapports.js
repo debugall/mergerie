@@ -382,8 +382,30 @@ function badgeConflit(m) {
   if (!m || !m.has_conflicts) return '';
   return `<button type="button" class="tag conflit" data-mr-conflit="${m.id}"`
     + ` title="${esc(tr('mr.tag.conflict-title', { target: m.target_branch || '' }))}">`
-    + `${svgIco('alert')} ${esc(tr('mr.tag.conflict'))}</button>`;
+    + `${svgIco('alert')} ${esc(tr('mr.tag.conflict'))}</button>`
+    /* …ET LA VOIE PAR L'IA, à côté. Résoudre soi-même dans Git → Merge est une voie ; l'autre est
+       de confier à l'agent la mise à jour de la branche — rejouer ses changements par-dessus la
+       cible, en comprenant ce qu'ils voulaient — et de relire avant de pousser. Le bouton ouvre la
+       modale de session pré-remplie : rien n'est lancé ni poussé sans le clic suivant. */
+    + ` <button type="button" class="btn btn-sm mr-rebase-ia" data-mr-rebase="${m.id}"`
+    + ` title="${esc(tr('mr.rebase.button-title', { target: m.target_branch || '' }))}">`
+    + `${svgIco('bot')} ${esc(tr('mr.rebase.button'))}</button>`;
 }
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-mr-rebase]');
+  if (!b) return;
+  const m = (toReviewRows.concat(reportRows)).find((x) => String(x.id) === b.dataset.mrRebase);
+  if (!m) return;
+  const vars = { iid: m.iid, branch: m.source_branch || '', target: m.target_branch || '' };
+  openTaskForMr(m, {
+    prompt: tr('mr.rebase.prompt', vars),
+    title: tr('mr.rebase.title', vars),
+    commitMessage: tr('mr.rebase.commit', vars),
+    autoPush: false,
+    forcePush: true,
+    fromMrText: tr('task.from-mr-rebase', vars),
+  }).catch((err) => toast(tr('toast.ouverture-impossible', { message: err.message }), true));
+});
 /* BROUILLON : « je n'ai pas fini ». Le badge ne bloque rien — le bouton « Reviewer » reste là,
    relire un brouillon exprès est une décision — mais il change ce qu'on attend du rapport, et
    il explique pourquoi la review automatique a laissé cette merge request de côté. */

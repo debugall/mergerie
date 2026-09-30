@@ -74,18 +74,20 @@ function insertContextRepos(taskId, list) {
   for (const c of list) ins.run(taskId, c.repo_id, c.branch);
 }
 
-function insertTargets(taskId, list, sessionId) {
+function insertTargets(taskId, list, sessionId, forcePush = false) {
   /* `sessionId` : session d'agent EXISTANTE fournie à la création. On la range comme si la
      première passe l'avait créée — les exécutants reprennent déjà une session dès qu'un
      handle est présent, il n'y a donc rien à changer chez eux. `session_cwd` reste NULL à
      dessein : on ignore d'où vient cette session, et le garde-fou « même cwd » ne doit pas
      refuser ce que l'utilisateur a explicitement demandé. Si la reprise échoue, le repli
      existant repart sur une session neuve avec le contexte réinjecté. */
-  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at)
-    VALUES (?, ?, ?, ?, 'new', ?)`);
+  /* `forcePush` : la session va réécrire l'historique de sa branche (mise à jour d'une merge
+     request en conflit) — « Pousser » forcera avec `--force-with-lease`, comme après un rattrapage. */
+  const ins = db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at, force_push)
+    VALUES (?, ?, ?, ?, 'new', ?, ?)`);
   const now = new Date().toISOString();
   for (const cible of list) {
-    const rowid = ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, now).lastInsertRowid;
+    const rowid = ins.run(taskId, cible.repo_id, cible.branch, cible.base_branch || null, now, forcePush ? 1 : 0).lastInsertRowid;
     /* Le handle vit dans `local_session` : il ne vaut que sur cette machine, alors que le
        projet de session, lui, se partage. */
     if (sessionId) {
@@ -101,7 +103,7 @@ function creerTask(champs) {
   const {
     kind, prompt, branch, commitMessage, autoPush, askQuestions, verifierId, label,
     notifyJira, reviewAfter, targets, contextRepos, sessionId, agentId, agentName, triggeredBy, agentQuestion,
-    agentDraft, shared, planFirst, cliId, cliName,
+    agentDraft, shared, planFirst, cliId, cliName, forcePush,
   } = champs;
   const now = new Date().toISOString();
   /* `shared` À LA CRÉATION : décoché par défaut, ici comme à l'écran. Un agent planifié passe par
@@ -126,7 +128,7 @@ function creerTask(champs) {
   const taskId = info.lastInsertRowid;
   // Une session fournie est rangée avec le backend du binaire CHOISI, pas celui du défaut.
   const cli = require('./cli');
-  cli.avec(cliId ? require('../data/agentcli').parId(cliId) : null, () => insertTargets(taskId, targets, sessionId));
+  cli.avec(cliId ? require('../data/agentcli').parId(cliId) : null, () => insertTargets(taskId, targets, sessionId, !!forcePush));
   if (contextRepos && contextRepos.length) insertContextRepos(taskId, contextRepos);
   return taskId;
 }

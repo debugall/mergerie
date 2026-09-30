@@ -75,8 +75,14 @@ in the database. The tool merges nothing; it says how many merge requests are on
 decision.
 
 **A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
-direction that unblocks it (the target branch into the MR's branch). *Update with main* only ever
-existed for merge requests born from a session; a colleague's had nothing.
+direction that unblocks it (the target branch into the MR's branch). Next to it, **`Update with the AI`**
+opens the coding session modal already filled in: the MR's branch, its target branch as the base,
+automatic push unticked, and the instruction — first understand what the branch changes and why, replay
+those changes on top of the target's current state (`git rebase`), resolve each conflict keeping what
+the target brings and the branch's intent, check, commit, **do not push**. You re-read the instruction,
+launch, re-read the diff, then `Push` — which forces by itself (`--force-with-lease`), the history
+having been rewritten. It works on a colleague's merge request as well as yours; *Update with main* on
+a project line stays the shortcut with no instruction to re-read, for merge requests born from a session.
 
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.

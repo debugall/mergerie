@@ -80,8 +80,15 @@ verdict vert non périmé, aucun ticket qui s'y oppose — trois colonnes déjà
 rien ; il dit combien de merge requests n'attendent plus qu'une décision.
 
 **Une merge request en conflit le dit sur sa carte**, et le badge ouvre `Git → Merge` pré-rempli dans le
-sens qui débloque (la branche cible dans la branche de la MR). *Mettre à jour avec main* n'existe que
-pour les merge requests nées d'une session ; celle d'un collègue n'avait rien.
+sens qui débloque (la branche cible dans la branche de la MR). À côté, **`Mettre à jour avec l'IA`**
+ouvre la modale de session de codage déjà remplie : la branche de la MR, sa branche cible pour base, le
+push automatique décoché, et la consigne — comprendre d'abord ce que la branche change et pourquoi,
+rejouer ces changements par-dessus l'état actuel de la cible (`git rebase`), résoudre chaque conflit en
+gardant ce que la cible apporte et l'intention de la branche, vérifier, commiter, **ne pas pousser**.
+Tu relis la consigne, tu lances, tu relis le diff, puis `Pousser` — qui forcera de lui-même
+(`--force-with-lease`), l'historique ayant été réécrit. Cela vaut pour la merge request d'un collègue
+comme pour la tienne ; *Mettre à jour avec main* sur une ligne de projet reste le raccourci sans
+consigne à relire, pour les merge requests nées d'une session.
 
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
@@ -413,7 +420,7 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
 
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
-**mini-carte** des changements, navigation entre modifications, panneaux repliables.
+**mini-carte** des changements, navigation entre modifications, panneaux repliables .
 
 **L'arbre dit ce que chaque fichier porte** : le nombre de constats non résolus (en rouge s'il y a un
 bloquant), de fils de discussion, de remarques en brouillon, et de lignes changées. Sur une merge

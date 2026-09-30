@@ -11,6 +11,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **"Update with the AI" on a merge request in conflict.** Next to the "in conflict" badge, a button
+  opens the coding session modal already filled in: the merge request's branch, its target branch as
+  the base, automatic push unticked, and the instruction — understand what the branch changes and why,
+  replay those changes on top of the target with `git rebase`, resolve each conflict keeping what the
+  target brings and the branch's intent, check, commit, and do not push. You review the instruction,
+  launch, review the diff, then push: the session is marked for a forced push (`--force-with-lease`),
+  the history having been rewritten. Works on a colleague's merge request as well as yours.
+
 ### Changed
 
 - **The branch explorer no longer remembers the repositories you ticked.** An analysis is about the
