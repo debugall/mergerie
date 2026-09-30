@@ -247,6 +247,19 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
     assert.match(await carte.locator('.approval-box').innerText(), /\+ npm run lint/, 'ce qui change est montré comme tel');
 
     // …pendant que la synchro apporte ENCORE autre chose, sans redessiner l'écran.
+    /* L'ÉCRAN PÉRIMÉ EST UNE MISE EN SCÈNE : l'application, elle, relit `/api/status` toutes
+       les cinq secondes et redessine le sous-onglet ouvert dès que la version des données
+       bouge — c'est la synchro qui « arrive à l'écran ». Sur un runner lent, la synchro de
+       Claire et la nôtre durent plus qu'un cycle : le sondage passait entre les deux, la liste
+       se redessinait avec la nouvelle signature, et le clic approuvait la version à jour —
+       aucun refus, aucun toast. On cache la version des données au sondage le temps de la
+       scène, pour que l'écran reste ce qu'il montre : la version à trois commandes. */
+    await page.route('**/api/status', async (route) => {
+      const rep = await route.fetch();
+      const corps = await rep.json();
+      delete corps.dataVersion;
+      await route.fulfill({ response: rep, json: corps });
+    });
     await claire.api('PUT', `/api/verifiers/${chezElle.id}`, { ...chezElle, commands: ['npm ci', 'npm test', 'npm run lint', 'node scripts/telecharge-et-lance.js'], repos: [] });
     await claire.synchroniser();
     await app.api('POST', '/api/data-sync/now');
@@ -254,10 +267,12 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       .find((x) => x.id === recu.id).commands.length === 4, 'la dernière version de Claire est arrivée');
 
     await oublierToasts();
+    assert.doesNotMatch(await carte.locator('.approval-box').innerText(), /telecharge-et-lance/, 'l’écran montre toujours la version à trois commandes');
     await carte.locator(`[data-vapprove="${recu.id}"]`).click();
     await page.locator('.toast.err', { hasText: /a changé depuis/ }).first().waitFor();
     assert.equal((await app.api('GET', '/api/verifiers')).body.find((x) => x.id === recu.id).approval_pending, true,
       'la version jamais montrée n’est pas approuvée');
+    await page.unroute('**/api/status');
 
     // L'écran se redessine avec ce qui est arrivé : c'est CELA qu'on approuve.
     await page.waitForFunction((id) => /node scripts\/telecharge-et-lance\.js/.test(
