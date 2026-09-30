@@ -27,6 +27,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The "no AI agent found" banner no longer flashes for a binary that is there.** Detection used to run
+  `<binary> --version` with a five-second limit and remember the answer for a minute: under load — an
+  agent working alongside — the probe timed out, the banner said "not found", and worse, a review
+  launched during that minute came back as a simulated report. A binary is now available when it
+  resolves — an existing executable path, or a name found on the server's PATH — with no process, no
+  delay and nothing to expire.
 - **"Ask the AI" on a merge's conflicts no longer fails with `spawn E2BIG` on a large conflicted
   file.** The content of every conflicted file was packed into the command line used to launch the
   agent; a big enough file (or several at once) overflowed what the OS accepts there. Conflicted
