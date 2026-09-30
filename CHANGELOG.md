@@ -13,6 +13,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The code explorer can hide the code too.** Next to "Report" and "Tree", a "Code" button hides the
+  file panel so the report takes the full width of the screen; one panel always stays visible.
 - **"Update with the AI" on a merge request in conflict.** Next to the "in conflict" badge, a button
   opens the coding session modal already filled in: the merge request's branch, its target branch as
   the base, automatic push unticked, and the instruction — understand what the branch changes and why,

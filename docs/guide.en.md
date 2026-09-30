@@ -408,7 +408,9 @@ overridden at launch**. A
 
 ### ⛶ Open the code (full-screen explorer)
 Project tree plus the file shown **in full with the diff in place**, syntax highlighting, a **mini-map** of
-the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
+the changes, navigation between modifications, collapsible panels: three buttons at the top — `Report`,
+`Tree`, `Code` — each hide their panel. Hiding the **code** gives the report the full width, to read it
+comfortably; one panel always stays, the last one refuses to go. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
 
 **The tree says what each file carries**: the number of unresolved findings (in red when one of them

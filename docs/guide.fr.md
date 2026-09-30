@@ -420,7 +420,10 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
 
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
-**mini-carte** des changements, navigation entre modifications, panneaux repliables .
+**mini-carte** des changements, navigation entre modifications, panneaux repliables : trois boutons
+en tête — `Rapport`, `Arbre`, `Code` — masquent chacun leur panneau. Masquer le **code** donne
+toute la largeur au rapport, pour le lire à l'aise ; un panneau reste toujours visible, le dernier
+refuse de partir.
 
 **L'arbre dit ce que chaque fichier porte** : le nombre de constats non résolus (en rouge s'il y a un
 bloquant), de fils de discussion, de remarques en brouillon, et de lignes changées. Sur une merge
