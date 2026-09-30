@@ -1466,12 +1466,20 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   poussé** : le merge est préparé dans un **espace de travail à part**, jamais dans le clone partagé — une
   review, une session de codage ou une vérification qui tourne à côté ne doit pas trouver le dépôt à moitié
   fusionné. Un merge **se reprend** après un redémarrage de l'outil.
+  - **Le merge ouvert passe en tête de l'onglet**, au-dessus de la liste des merges en cours (où sa ligne
+    dit « ouvert ci-dessus ») et du formulaire, qui devient « Préparer un autre merge ». Son bandeau porte
+    les trois étapes `Résoudre › Commiter › Pousser`, celle en cours en évidence, les faites cochées ; à
+    gauche, les fichiers encore en conflit, puis, cochés, ceux déjà prêts à commiter. Un merge dont le
+    **dossier de travail a disparu** (préparé sur un autre poste, ménage du disque) le dit en clair et ne
+    propose que de l'abandonner, au lieu d'un panneau vide.
   - **Les conflits se résolvent à l'écran, un par un.** Pour chaque conflit : la **version de la
     destination** et la **version entrante**, l'une sous l'autre — chacune avec la **date et l'heure** du
     dernier commit de ce fichier sur sa branche, pour ne plus deviner laquelle est la plus récente (deux
     commits du même jour se ressemblaient) —, avec `Garder` sur chacune et `Garder les deux : main puis
     feature` en dessous, qui nomme les deux branches et l'ordre dans lequel il les applique ; le côté
-    retenu est mis en évidence, pour voir où l'on en est sans relire les boutons. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
+    retenu porte une barre de couleur et la mention **« gardée »**, pour voir où l'on en est sans relire
+    les boutons — la destination l'est d'office — et **chaque version se clique en entier**, pas seulement
+    son `Garder`. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
     ne convient, `Écrire moi-même` donne le **résultat de tes choix** dans un champ texte libre et
     enregistre ce que tu écris.
   - **`Demander à l'IA` propose une résolution pour chaque conflit de chaque fichier, en une fois — tu

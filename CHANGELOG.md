@@ -11,6 +11,17 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Changed
+
+- **Git → Merge puts the work first.** The open merge now sits at the top of the tab — above the list of
+  running merges, where its row says "open above", and above the form, which becomes "Prepare another
+  merge" — instead of starting below the fold behind three blocks repeating the same branches. Its banner
+  shows the three steps `Resolve › Commit › Push` with the current one highlighted; each version of a
+  conflict can be clicked as a whole and the kept one says "kept" (the destination is kept by default);
+  the files already ready to commit stay listed, ticked, next to those still in conflict; once resolved, a
+  note says what "ready to commit" means and that nothing reaches the branch before "Push". A merge whose
+  working folder is gone says so instead of showing an empty panel.
+
 ### Fixed
 
 - **"Ask the AI" on a merge's conflicts no longer fails with `spawn E2BIG` on a large conflicted

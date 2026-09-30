@@ -84,6 +84,11 @@
              Le travail se fait dans un worktree dédié (cf. src/gitmerge.js) : le clone partagé
              n'est jamais laissé à moitié fusionné pendant qu'on résout. -->
         <div id="gsub-merge" class="subtab">
+            <!-- Le travail d'abord : quand un merge est ouvert, CSS (order) place #mergeWork en tête,
+                 puis la liste des merges en cours, puis ce formulaire — qui prend alors le titre
+                 « Préparer un autre merge ». L'ordre du DOM ne change pas : les tests et les ids non plus. -->
+            <div class="merge-form-box" id="mergeFormBox">
+            <h4 class="merge-form-title" data-i18n="git.merge.form-other">Préparer un autre merge</h4>
             <p class="muted" style="max-width:900px" data-i18n="git.merge.intro">Fusionne une branche dans une autre. Les conflits se résolvent ici, fichier par fichier : tu vois les deux versions, tu choisis celle que tu gardes — ou tu écris la tienne. Rien n'est commité ni poussé sans ton clic.</p>
             <div class="form" style="max-width:900px">
                 <div class="target-row merge-pick" data-row="0">
@@ -101,6 +106,7 @@
                     <button id="mergeStart" class="btn btn-primary" data-i18n-title="git.merge.start-title"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="git.merge.start">Préparer le merge</span></button>
                     <span id="mergeStartInfo" class="muted"></span>
                 </div>
+            </div>
             </div>
             <!-- Refus « historiques sans ancêtre commun » : une question, pas une panne. Le bloc
                  n'apparaît qu'après le refus, pour ne pas encombrer un formulaire de trois champs. -->

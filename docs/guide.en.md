@@ -1413,10 +1413,17 @@ Operations across **several repositories at once**, and branch exploration.
   committed or pushed**: the merge is prepared in a **workspace of its own**, never in the shared clone — a
   review, a coding session or a verification running alongside must not find the repository half-merged. A
   merge **can be resumed** after the tool restarts.
+  - **The open merge moves to the top of the tab**, above the list of running merges (where its row says
+    "open above") and the form, which becomes "Prepare another merge". Its banner carries the three steps
+    `Resolve › Commit › Push`, the current one highlighted, the done ones ticked; on the left, the files still
+    in conflict, then, ticked, those already ready to commit. A merge whose **working folder is gone**
+    (prepared on another machine, disk clean-up) says so plainly and only offers to abandon it, instead of
+    an empty panel.
   - **Conflicts are resolved on screen, one at a time.** For each conflict: the **destination's version**
     and the **incoming version**, one under the other, with `Keep` on each and `Keep both: <destination> then <source>` — the button names the two
-    branches and the order it applies them in — below them; the side you keep is highlighted, so you can see where you stand without re-reading the
-    buttons. **You never see a `<<<<<<<` marker.** When neither side fits, `Write it myself` hands you the
+    branches and the order it applies them in — below them; the side you keep carries a coloured bar and the word
+    **"kept"**, so you can see where you stand without re-reading the buttons — the destination is kept by
+    default — and **each version can be clicked as a whole**, not only its `Keep`. **You never see a `<<<<<<<` marker.** When neither side fits, `Write it myself` hands you the
     **result of your choices** in a plain text field and saves what you write.
   - **Then two separate gestures, in that order.** `Commit` — the message is already filled in with the one
     git itself wrote — then `Push`, each behind its own confirmation. `Commit` refuses while a conflict

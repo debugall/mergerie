@@ -152,8 +152,27 @@ describe('Menu Git : Merge depuis l’écran, et la mémoire de Comparer', { ski
     assert.match(tete, /grp\/app — feature\/double → main/);
     assert.match(tete, /2 fichiers en conflit/);
     assert.deepEqual((await page.locator('#mergeWork [data-mfile]').evaluateAll((els) => els.map((e) => e.dataset.mfile))).sort(), ['a.txt', 'b.txt']);
-    // Le merge en cours est aussi listé, pour le reprendre plus tard.
+    // Le merge en cours est aussi listé, pour le reprendre plus tard — et sa ligne dit qu'il est ouvert.
     assert.match(await page.locator('#mergeRunning').innerText(), /feature\/double[\s\S]*conflits à résoudre/);
+    await page.locator('#mergeRunning .merge-run-row.current').waitFor();
+    /* LE TRAVAIL D'ABORD : le merge ouvert passe en tête de l'onglet, au-dessus de la liste et du
+       formulaire (qui prend le titre « Préparer un autre merge »), et ses étapes disent où l'on en est. */
+    assert.equal(await page.locator('#gsub-merge.merge-ouvert').count(), 1);
+    assert.ok(await page.evaluate(() => document.querySelector('#mergeWork').getBoundingClientRect().top
+      < document.querySelector('#mergeFormBox').getBoundingClientRect().top), 'l’écran de travail est au-dessus du formulaire');
+    assert.ok(await page.locator('#gsub-merge .merge-form-title').isVisible());
+    assert.equal(await page.locator('#mergeWork .merge-step.on').innerText(), 'Résoudre');
+    assert.equal(await page.locator('#mergeWork .merge-step.ok').count(), 0);
+  });
+
+  test('cliquer une version entière la garde, et la version retenue le dit', async () => {
+    // « ours » d'office : la destination est déjà marquée « gardée ».
+    await page.locator('#mergePane .cf-ours.cf-keep .cf-kept').first().waitFor();
+    assert.equal(await page.locator('#mergePane .cf-theirs .cf-kept').count(), 0);
+    // Le texte de la version entrante, pas son bouton : le bloc entier est la cible.
+    await page.locator('#mergePane .cf-theirs pre').first().click();
+    await page.locator('#mergePane .cf-theirs.cf-keep .cf-kept').first().waitFor();
+    assert.equal(await page.locator('#mergePane .cf-hunk').first().locator('.cf-ours.cf-keep').count(), 0, 'la destination n’est plus gardée sur ce conflit');
   });
 
   test('passer d’un fichier à l’autre, et en résoudre un en écrivant soi-même', async () => {
@@ -180,6 +199,12 @@ describe('Menu Git : Merge depuis l’écran, et la mémoire de Comparer', { ski
     const etat = (await app.api('GET', `/api/git/merges/${mergeId}`)).body;
     assert.equal(etat.status, 'ready');
     assert.deepEqual(etat.conflits, []);
+    // Les étapes avancent, ce qui reste à faire est dit, et les fichiers prêts restent listés, cochés.
+    assert.equal(await page.locator('#mergeWork .merge-step.on').innerText(), 'Commiter');
+    assert.equal(await page.locator('#mergeWork .merge-step.ok').count(), 1);
+    await page.locator('#mergeWork .merge-hint.note-ok').waitFor();
+    assert.deepEqual((await page.locator('#mergeWork .mf-ok').allInnerTexts()).map((s) => s.trim()).sort(), ['a.txt', 'b.txt']);
+    assert.equal(await page.locator('#mergeWork .mf-item').count(), 0, 'plus rien en conflit');
   });
 
   test('commiter avec son propre message, puis relire le diff du commit', async () => {
@@ -236,6 +261,24 @@ describe('Menu Git : Merge depuis l’écran, et la mémoire de Comparer', { ski
     await confirmer(true);
     await attendreServeur(async () => (await merges()).length === 0, 'le merge est abandonné');
     await page.waitForSelector('#mergeWork', { state: 'hidden' });
+  });
+
+  test('un merge dont le dossier de travail a disparu le dit, au lieu d’un panneau vide', async () => {
+    scenarioConflit('feature/perdu', ['a.txt']);
+    await page.reload();
+    await allerGit('merge');
+    await formulaire('grp/app', 'feature/perdu', 'main');
+    await m('#mergeStart').click();
+    await page.waitForSelector('#mergeWork:not([hidden]) .cf-hunk', { timeout: 60000 });
+    const [merge] = await merges();
+    fs.rmSync((await app.api('GET', `/api/git/merges/${merge.id}`)).body.dir, { recursive: true, force: true });
+    await page.locator(`#mergeRunning [data-mopen="${merge.id}"]`).click();
+    await page.locator('#mergeWork .merge-hint.note-bad').waitFor();
+    assert.match(await page.locator('#mergeWork .merge-hint.note-bad').innerText(), /dossier de travail/);
+    assert.equal(await page.locator('#mergeWork .mf-item').count(), 0);
+    await page.locator('#mergeAbandon').click();
+    await confirmer(true);
+    await attendreServeur(async () => (await merges()).length === 0, 'le merge perdu est abandonné');
   });
 
   test('deux histoires sans ancêtre commun : l’écran explique, puis fusionne sur demande explicite', async () => {
