@@ -90,6 +90,16 @@ Tu relis la consigne, tu lances, tu relis le diff, puis `Pousser` — qui forcer
 comme pour la tienne ; *Mettre à jour avec main* sur une ligne de projet reste le raccourci sans
 consigne à relire, pour les merge requests nées d'une session.
 
+**Une merge request en retard sur sa cible le dit aussi**, sans attendre le conflit : la carte porte
+« N commit(s) de retard » — ce que la branche cible a reçu et que cette branche n'a jamais vu. Elle se
+merge encore, mais son code n'a pas tourné avec ces commits ; le badge ouvre `Git → Merge` comme pour un
+conflit, et **`Mettre à jour avec l'IA`** est là aussi, avec une consigne qui dit le retard plutôt qu'un
+conflit inexistant — et rebase de la même façon. Le compte vient de la forge (le nombre de commits
+divergents chez GitLab, la comparaison `cible...source` chez GitHub), relevé à la découverte — un appel
+par merge request ouverte, plafonné par tour — et à l'ouverture de la modale de merge. « Pas encore su »
+n'affiche rien : une branche venue d'un fork, ou une forge muette, ne devient jamais « à jour » par
+défaut.
+
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
 

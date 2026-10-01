@@ -84,6 +84,15 @@ launch, re-read the diff, then `Push` — which forces by itself (`--force-with-
 having been rewritten. It works on a colleague's merge request as well as yours; *Update with main* on
 a project line stays the shortcut with no instruction to re-read, for merge requests born from a session.
 
+**A merge request behind its target says so too**, without waiting for a conflict: the card carries
+"N commit(s) behind" — what the target branch received and this branch never saw. It still merges, but
+its code never ran with those commits; the badge opens `Git → Merge` as a conflict does, and
+**`Update with the AI`** is there as well, with an instruction that states the delay rather than a
+conflict that does not exist — and rebases the same way. The count comes from the forge (GitLab's
+diverged commits count, GitHub's `base...head` comparison), read at discovery — one call per open merge
+request, capped per round — and when the merge modal opens. "Not known yet" shows nothing: a branch
+from a fork, or a silent forge, never becomes "up to date" by default.
+
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
 

@@ -19,7 +19,7 @@ const { startApp, poserIdentiteGit, navigateurDispo, lancerNavigateur, MSG_NAVIG
 const { dispo } = navigateurDispo();
 
 describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => {
-  let app; let repoId; let mrId; let navigateur; let page;
+  let app; let repoId; let mrId; let mrRetardId; let mrAJourId; let navigateur; let page;
   const erreurs = [];
   const git = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
@@ -35,6 +35,12 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
     mrId = app.db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, has_conflicts, web_url, updated_at)
       VALUES (?, 77, 'Paiement 3×', 'feat/paiement', 'main', 'to_review', 1, 'https://gitlab.test/grp/app/-/merge_requests/77', ?)`)
       .run(repoId, new Date().toISOString()).lastInsertRowid;
+    /* EN RETARD SANS CONFLIT : la cible a avancé de trois commits que la branche n'a pas. Ça se
+       merge, mais le même bouton s'impose. Et une merge request À JOUR, qui ne porte rien. */
+    const ins = app.db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, has_conflicts, behind_by, web_url, updated_at)
+      VALUES (?, ?, ?, ?, 'main', 'to_review', ?, ?, ?, ?)`);
+    mrRetardId = ins.run(repoId, 78, 'Export CSV', 'feat/export', 0, 3, 'https://gitlab.test/grp/app/-/merge_requests/78', new Date().toISOString()).lastInsertRowid;
+    mrAJourId = ins.run(repoId, 79, 'Typo', 'fix/typo', 0, 0, 'https://gitlab.test/grp/app/-/merge_requests/79', new Date().toISOString()).lastInsertRowid;
   });
   after(async () => {
     if (navigateur) await navigateur.close();
@@ -90,6 +96,29 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
       assert.equal(tg.branch, 'feat/paiement');
       assert.equal(tg.base_branch, 'main');
       assert.equal(tg.force_push, 1, 'l’historique sera réécrit : « Pousser » forcera');
+    });
+
+    test('en retard sans conflit : le badge dit le retard, et le même bouton est là ; à jour : rien', async () => {
+      const retard = page.locator(`#mrList .tag.retard[data-mr-conflit="${mrRetardId}"], .tag.retard[data-mr-conflit="${mrRetardId}"]`).first();
+      await retard.waitFor({ state: 'visible' });
+      assert.match(await retard.innerText(), /3 commit/);
+      assert.equal(await page.locator(`[data-mr-rebase="${mrRetardId}"]`).count(), 1, 'le bouton IA, comme pour un conflit');
+      assert.equal(await page.locator(`.tag.conflit[data-mr-conflit="${mrRetardId}"]`).count(), 0, 'pas de badge « en conflit » pour un simple retard');
+      assert.equal(await page.locator(`[data-mr-rebase="${mrAJourId}"]`).count(), 0, 'une branche à jour n’a rien à mettre à jour');
+      assert.equal(await page.locator(`[data-mr-conflit="${mrAJourId}"]`).count(), 0);
+    });
+
+    test('en retard : la consigne dit le retard, pas un conflit, et rebase quand même', async () => {
+      await page.locator(`[data-mr-rebase="${mrRetardId}"]`).click();
+      await page.waitForSelector('#taskModal:not([hidden])');
+      await page.waitForFunction(() => /!78/.test(document.querySelector('#taskForm [name="prompt"]').value));
+      const prompt = await page.locator('#taskForm [name="prompt"]').inputValue();
+      assert.match(prompt, /3 commit\(s\) de retard sur main/);
+      assert.doesNotMatch(prompt, /est en conflit/);
+      assert.match(prompt, /git rebase origin\/main/);
+      assert.match(prompt, /NE POUSSE PAS/);
+      assert.equal(await page.locator('#taskForm [name="auto_push"]').isChecked(), false);
+      await page.locator("#taskCancel").click();
     });
 
     test('aucune erreur JavaScript pendant ce parcours', () => {

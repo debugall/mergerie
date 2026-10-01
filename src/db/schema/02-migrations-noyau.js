@@ -61,6 +61,12 @@ try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /*
    Relevé au moment où l'on ouvre la modale de merge : on est alors à un clic d'une action
    irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
 try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* EN RETARD SUR SA CIBLE : le nombre de commits que la branche cible porte et que la branche de
+   la merge request n'a pas — 0 à jour, NULL pas encore su. Relevé à la découverte (un appel par
+   merge request ouverte, plafonné) et à l'ouverture de la modale de merge. Une branche en retard
+   sans conflit se merge, mais elle n'a jamais tourné avec ce que la cible a apporté : le bouton
+   « Mettre à jour avec l'IA » s'affiche pour elle comme pour un conflit. */
+try { db.exec('ALTER TABLE mr ADD COLUMN behind_by INTEGER'); } catch { /* déjà présente */ }
 /* BROUILLON (« Draft »/« WIP ») et REVIEWERS DEMANDÉS, relevés à la découverte. Les deux
    viennent de la liste déjà parcourue — on les jetait. Un brouillon n'est pas prêt à être
    relu : la review automatique lui dépensait un appel IA, et rien à l'écran ne disait

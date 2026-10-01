@@ -173,6 +173,9 @@ app.get('/api/mrs', wrap((req, res) => {
          ouvertures de la modale de merge. Une MR en conflit ne se merge pas : le savoir en
          lisant la file évite de l'ouvrir pour l'apprendre. */
       has_conflicts: r.has_conflicts == null ? null : !!r.has_conflicts,
+      /* EN RETARD SUR SA CIBLE : combien de commits de la cible la branche n'a pas — 0 à jour,
+         `null` pas encore su. Le badge et « Mettre à jour avec l'IA » en vivent. */
+      behind_by: r.behind_by == null ? null : Number(r.behind_by),
       /* A/Réglages 3 — À QUELS LOTS CETTE MERGE REQUEST APPARTIENT. On la vérifie « ensemble »
          avec quatre autres, puis trois jours plus tard on ouvre sa carte et rien ne dit
          qu'elle ne tient pas seule. Une requête pour toute la liste, pas une par carte. */

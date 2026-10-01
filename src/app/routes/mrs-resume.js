@@ -210,18 +210,28 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
  * pointent la même branche aussi — leur bouton « Mettre à jour avec … » apparaît donc sans
  * attendre la prochaine découverte. */
 async function etatFusion(mr) {
-  const reponse = (c) => ({
+  const reponse = (c, retard) => ({
     has_conflicts: c === null || c === undefined ? null : !!c,
+    behind_by: Number.isInteger(retard) ? retard : null,
     target_branch: mr.target_branch,
   });
   // En démo, la forge n'existe pas : on rend ce qui est en base plutôt qu'une erreur.
-  if (demoDocker.isDemo()) return reponse(mr.has_conflicts);
-  const m = await forge.clientFor(mr).getMergeRequest(getConfig(), mr.project, mr.iid);
+  if (demoDocker.isDemo()) return reponse(mr.has_conflicts, mr.behind_by);
+  const client = forge.clientFor(mr);
+  const m = await client.getMergeRequest(getConfig(), mr.project, mr.iid);
   const c = m && m.has_conflicts === true ? 1 : (m && m.has_conflicts === false ? 0 : null);
   db.prepare('UPDATE mr SET has_conflicts = ? WHERE id = ?').run(c, mr.id);
   db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE repo_id = ? AND branch = ?')
     .run(c, mr.repo_id, mr.source_branch);
-  return { ...reponse(c), target_branch: (m && m.target_branch) || mr.target_branch };
+  /* LE RETARD SUR LA CIBLE, au même moment. GitLab le rend avec le détail déjà lu ; GitHub demande
+     une comparaison de plus. Best-effort : la forge muette laisse la valeur connue. */
+  let retard = m && Number.isInteger(m.behind_by) ? m.behind_by : null;
+  if (retard === null) {
+    try { const d = await client.divergence(getConfig(), mr.project, mr); retard = d && Number.isInteger(d.behind_by) ? d.behind_by : null; }
+    catch { /* la forge n'a pas répondu */ }
+  }
+  if (retard !== null) db.prepare('UPDATE mr SET behind_by = ? WHERE id = ?').run(retard, mr.id);
+  return { ...reponse(c, retard === null ? mr.behind_by : retard), target_branch: (m && m.target_branch) || mr.target_branch };
 }
 app.get('/api/mrs/:id/merge-check', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));

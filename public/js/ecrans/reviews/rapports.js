@@ -378,11 +378,22 @@ document.addEventListener('click', (e) => {
    deux ouvertures : on ouvrait la modale pour apprendre qu'on ne pouvait pas merger. Le badge
    porte le geste qui débloque — résoudre dans Git → Merge — parce qu'un badge qui constate
    sans offrir de suite ne fait qu'ajouter une mauvaise nouvelle. */
+/* …ET EN RETARD, sans conflit : la cible a avancé de N commits que la branche n'a jamais vus. Ça se
+   merge, mais le code n'a pas tourné avec ce que la cible apporte — le même geste de mise à jour
+   vaut, avec la même voie par l'IA. `null` (pas encore su) n'affiche rien : on ne devine pas. */
 function badgeConflit(m) {
-  if (!m || !m.has_conflicts) return '';
-  return `<button type="button" class="tag conflit" data-mr-conflit="${m.id}"`
-    + ` title="${esc(tr('mr.tag.conflict-title', { target: m.target_branch || '' }))}">`
-    + `${svgIco('alert')} ${esc(tr('mr.tag.conflict'))}</button>`
+  if (!m) return '';
+  const conflit = !!m.has_conflicts;
+  const retard = !conflit && Number(m.behind_by) > 0;
+  if (!conflit && !retard) return '';
+  const n = Number(m.behind_by) || 0;
+  return (conflit
+    ? `<button type="button" class="tag conflit" data-mr-conflit="${m.id}"`
+      + ` title="${esc(tr('mr.tag.conflict-title', { target: m.target_branch || '' }))}">`
+      + `${svgIco('alert')} ${esc(tr('mr.tag.conflict'))}</button>`
+    : `<button type="button" class="tag retard" data-mr-conflit="${m.id}"`
+      + ` title="${esc(tr('mr.tag.behind-title', { n, target: m.target_branch || '' }))}">`
+      + `${svgIco('clock')} ${esc(tr('mr.tag.behind', { n }))}</button>`)
     /* …ET LA VOIE PAR L'IA, à côté. Résoudre soi-même dans Git → Merge est une voie ; l'autre est
        de confier à l'agent la mise à jour de la branche — rejouer ses changements par-dessus la
        cible, en comprenant ce qu'ils voulaient — et de relire avant de pousser. Le bouton ouvre la
@@ -396,9 +407,10 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   const m = (toReviewRows.concat(reportRows)).find((x) => String(x.id) === b.dataset.mrRebase);
   if (!m) return;
-  const vars = { iid: m.iid, branch: m.source_branch || '', target: m.target_branch || '' };
+  const vars = { iid: m.iid, branch: m.source_branch || '', target: m.target_branch || '', n: Number(m.behind_by) || 0 };
   openTaskForMr(m, {
-    prompt: tr('mr.rebase.prompt', vars),
+    // Sans conflit, la consigne dit le retard plutôt qu'un conflit qui n'existe pas — le reste est le même.
+    prompt: tr(m.has_conflicts ? 'mr.rebase.prompt' : 'mr.rebase.prompt-behind', vars),
     title: tr('mr.rebase.title', vars),
     commitMessage: tr('mr.rebase.commit', vars),
     autoPush: false,

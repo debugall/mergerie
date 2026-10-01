@@ -962,10 +962,15 @@ db.prepare(`UPDATE review SET diff_version_uid = (
 {
   const mrConflit = db.prepare("SELECT id, repo_id, source_branch FROM mr WHERE source_branch = 'feat/PROJ-720-checkout' LIMIT 1").get();
   if (mrConflit) {
-    db.prepare('UPDATE mr SET has_conflicts = 1 WHERE id = ?').run(mrConflit.id);
+    db.prepare('UPDATE mr SET has_conflicts = 1, behind_by = 6 WHERE id = ?').run(mrConflit.id);
     db.prepare('UPDATE task_target SET mr_conflicts = 1 WHERE repo_id = ? AND branch = ?')
       .run(mrConflit.repo_id, mrConflit.source_branch);
   }
+  /* …ET UNE EN RETARD SANS CONFLIT : la cible a avancé, la branche se merge encore, mais son code
+     n'a jamais tourné avec ces commits. C'est le second cas où « Mettre à jour avec l'IA »
+     apparaît ; les autres merge requests du décor sont à jour (0), pas « pas encore su ». */
+  db.prepare("UPDATE mr SET behind_by = 0 WHERE behind_by IS NULL AND closed_seen = 0").run();
+  db.prepare("UPDATE mr SET behind_by = 4 WHERE source_branch = 'feat/PROJ-701-dark'").run();
 }
 
 /* ---------- tickets Jira surveillés ----------

@@ -15,6 +15,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **The code explorer can hide the code too.** Next to "Report" and "Tree", a "Code" button hides the
   file panel so the report takes the full width of the screen; one panel always stays visible.
+- **"Update with the AI" also on a merge request that is behind its target.** Each open merge
+  request now carries how many commits its target branch has that the branch does not (GitLab's
+  diverged commits count, GitHub's `base...head` comparison), read at discovery and when the merge
+  modal opens. A branch behind by one commit or more shows a "N commit(s) behind" badge — it still
+  merges, but its code never ran with what the target brought — with the same "Update with the AI"
+  button as a conflict; the instruction says the delay instead of a conflict, and rebases the same
+  way. "Not known yet" shows nothing: the tool does not guess.
 - **"Update with the AI" on a merge request in conflict.** Next to the "in conflict" badge, a button
   opens the coding session modal already filled in: the merge request's branch, its target branch as
   the base, automatic push unticked, and the instruction — understand what the branch changes and why,

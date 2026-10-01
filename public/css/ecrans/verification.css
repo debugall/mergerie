@@ -16,6 +16,10 @@ button.tag { font: inherit; font-size: 11px; line-height: 1.5; background: none;
 .tag.conflit { color: var(--red); border-color: var(--red); cursor: pointer; }
 .tag.conflit:hover { background: var(--panel2); }
 .tag.conflit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* EN RETARD sur la cible, sans conflit : même geste (Git → Merge), couleur d'avertissement. */
+.tag.retard { color: var(--warn); border-color: var(--warn); cursor: pointer; }
+.tag.retard:hover { background: var(--panel2); }
+.tag.retard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tag.verify[data-vreport] { cursor: pointer; }
 .tag.verify[data-vreport]:hover { background: var(--panel2); }
 .tag.verify[data-vreport]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
