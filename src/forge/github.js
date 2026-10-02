@@ -542,6 +542,7 @@ async function listTags(cfg, project) {
     message: '',
     annotated: false,
     committed_date: null,
+    created_at: null,
     author: '',
   }));
 }

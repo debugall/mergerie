@@ -167,8 +167,9 @@ demandent de traverser des dossiers.
   conflit de chaque fichier en un seul job, avec sa raison, que tu valides une par une ; une vue **plein
   écran** met les versions côte à côte et saute de conflit en conflit ; puis commit et push, chacun derrière
   sa confirmation),
-  explorateur de branches, recherche de refs et **comparaison de deux dépôts** (sans histoire commune
-  nécessaire), suppressions **restaurables**, tout **avec aperçu**.
+  explorateur de branches, recherche de refs, **tags par période** (tous les tags posés entre deux dates,
+  tous dépôts confondus, copiés en tableau prêt pour Teams) et **comparaison de deux dépôts** (sans histoire
+  commune nécessaire), suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
 - **Jenkins** — l'état de tes jobs CI et leur lancement, sans quitter l'outil : tous les jobs que ton compte

@@ -13,6 +13,13 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Tags by period, in the Git tab.** "What did we ship these two weeks?" used to mean opening every
+  repository. The new *Tags by period* sub-tab takes two dates (last 7 or 30 days in one click) and lists
+  every tag created between them across all active repositories: repository, tag, date, first line
+  of the message. *Copy the table* puts it in the clipboard as a real table **and** as tab-separated
+  text, so it pastes as is into Teams, an email or a spreadsheet. A tag's date is its creation date
+  when the forge gives it (GitLab, annotated tags), otherwise the date of the commit it points to;
+  GitHub tags are dated from the local clone. A tag the tool cannot date is counted, never guessed.
 - **Technical brief of a Jira ticket.** A ticket written by a Product Owner says what, never where
   nor how. From the ticket's detail, "Technical brief" lets you pick the repositories involved, attach
   the epic and its tickets, one or several Confluence pages and a complement of your own; the AI
@@ -56,6 +63,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Yolo is yolo everywhere, and a write always comes with the rights to write.** Yolo means "no
+  restriction", yet a CLI run non-interactively refuses every tool it was not explicitly allowed: on a
+  Copilot machine the review ended with "I could not write review.md" as its whole report. In yolo mode
+  Mergerie now sets the CLI's own wide-open flag itself (`--dangerously-skip-permissions`,
+  `--allow-all-tools`, `--dangerously-bypass-approvals-and-sandbox`, `--yolo`) when the agent's
+  arguments say nothing about permissions, and says so in the run's journal. In secure mode, a Copilot
+  too old for `--allow-tool` gets `--allow-all-tools` on write runs instead of nothing at all, and a
+  Copilot read run is always asked for its answer on the standard output, never for a file the launcher
+  would refuse.
 - **Copilot CLI can code again in secure mode.** Non-interactive Copilot refuses every tool it was not
   allowed to run, and Mergerie only passed it denials: a coding session could neither write a file nor run
   `git rebase`, and "Update with the AI" failed with "no approval possible". It now receives the same

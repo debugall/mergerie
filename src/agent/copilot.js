@@ -148,7 +148,13 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
     backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs, cwd,
   });
   const be = require('./backends').pour(backend);
-  if (pol.note) onLog(t(pol.note === 'backend-non-restreint' ? 'agents.log.backend-not-restricted' : 'agents.log.copilot-not-restricted'));
+  if (pol.note) {
+    const NOTES = {
+      'backend-non-restreint': 'agents.log.backend-not-restricted', 'yolo-sans-restriction': 'agents.log.yolo-unrestricted',
+      'copilot-ecriture-non-restreinte': 'agents.log.copilot-write-not-restricted',
+    };
+    onLog(t(NOTES[pol.note] || 'agents.log.copilot-not-restricted', pol.noteVars || {}));
+  }
   onLog(t(`agents.log.level.${agentpolicy.niveauDe(COPILOT_BIN)}`, { backend: be.label }));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
   const flags = [...pol.extra, ...pol.args];

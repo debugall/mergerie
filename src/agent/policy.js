@@ -100,6 +100,7 @@ function capacites(bin) {
     settings: /--settings\b/.test(aide),
     denyTool: /--deny-tool\b/.test(aide),
     allowTool: /--allow-tool\b/.test(aide),
+    allowAllTools: /--allow-all-tools\b/.test(aide),
     /* Ce que les AUTRES CLI savent dire (backends/codex.js, backends/gemini.js). */
     sandboxOpt: /--sandbox\b/.test(aide),
     fullAuto: /--full-auto\b/.test(aide),
@@ -361,11 +362,20 @@ function argvCopilot({ extra, kind, bin }) {
     /* Écriture : restreindre ce qui fuit, quand le binaire le sait faire — sondé une fois via
        `--help` (lot A, point 7). Un CLI qui ne connaît pas `--deny-tool` reçoit `extra` (mode
        large excepté) intact : c'est la limite documentée du backend Copilot (`SECURITY.md`). */
-    if (!cap.denyTool) return { extra: sansLarge, args: [], lecture, note: 'copilot-ecriture-non-restreinte', mode: 'copilot' };
-    const args = ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"];
-    // Ce qu'il a le DROIT de lancer sans approbation — sinon, en `-p`, il ne lance rien du tout.
-    if (cap.allowTool) for (const o of allowToolsCopilot()) args.push('--allow-tool', o);
-    return { extra: sansLarge, args, lecture, note: null, mode: 'copilot' };
+    /* UNE ÉCRITURE DOIT POUVOIR ÉCRIRE. En `-p`, Copilot refuse tout outil qu'on ne lui a pas
+       autorisé : des refus seuls, ou rien du tout, font une session de codage qui ne peut ni
+       écrire un fichier ni lancer git. La liste blanche quand le CLI la connaît ; sinon
+       `--allow-all-tools`, dit au journal ; sans aucune des deux, le CLI est trop ancien pour
+       qu'on y puisse quoi que ce soit — dit aussi. */
+    const args = cap.denyTool
+      ? ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"]
+      : [];
+    if (cap.allowTool) {
+      for (const o of allowToolsCopilot()) args.push('--allow-tool', o);
+      return { extra: sansLarge, args, lecture, note: cap.denyTool ? null : 'copilot-ecriture-non-restreinte', mode: 'copilot' };
+    }
+    if (cap.allowAllTools) args.push('--allow-all-tools');
+    return { extra: sansLarge, args, lecture, note: 'copilot-ecriture-non-restreinte', mode: 'copilot' };
   }
   /* Lecture : sans `--deny-tool`, ce backend ne sait pas se restreindre. On ne REFUSE plus (la
      sonde ne bloque aucun CLI) : niveau `allege`, dit au journal, et le contrôle d'intégrité
@@ -413,12 +423,40 @@ function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDi
    l'échappatoire NOMMÉE que `npm run check` reconnaît, comme `mode: 'large'`. */
 function argvYolo({ extra, kind, addDirs, backend }) {
   const args = [];
+  let note = null;
+  let noteVars = null;
   for (const d of addDirs || []) args.push('--add-dir', String(d));
   /* « PLANIFIER D'ABORD » N'EST PAS UNE RESTRICTION DE SÉCURITÉ, c'est ce que la session demande :
      un plan, pas du code. Le mode plan de Claude est ce qui le garantit, yolo ou non ; un autre
      backend s'en remet à la consigne (et la passe suivante repart d'un clone propre). */
   if (kind === 'plan' && backend === 'claude') args.push('--permission-mode', 'plan');
-  return { extra: [...(extra || [])], args, lecture: saveurDe(kind) === 'lecture', note: null, mode: 'yolo' };
+  /* YOLO SANS PERMISSION N'EST PAS UN CHOIX, c'est un état incohérent : en non-interactif, chaque
+     CLI refuse ce qu'on ne lui a pas autorisé — « je n'ai pas pu écrire review.md », et le repli
+     sur la sortie standard prenait cette phrase pour le rapport. Yolo veut dire « sans
+     restriction » : on pose le mode large du backend nous-mêmes quand les arguments ne disent
+     rien des permissions. Claude en « planifier d'abord » garde son mode plan, qui en tient lieu. */
+  const a = extra || [];
+  const large = modeLargeDe(backend);
+  const dejaDit = large && large.dits.some((d) => a.some((x) => x === d || String(x).startsWith(`${d}=`)));
+  if (large && !dejaDit && !(kind === 'plan' && backend === 'claude')) {
+    args.push(large.flag);
+    note = 'yolo-sans-restriction';
+    noteVars = { flag: large.flag };
+  }
+  return { extra: [...a], args, lecture: saveurDe(kind) === 'lecture', note, noteVars, mode: 'yolo' };
+}
+
+/* Le mode large de chaque CLI connu, et les options qui disent déjà quelque chose des permissions
+   (on ne pose rien par-dessus un choix explicite). Les mêmes drapeaux que `modelarge.js` retire
+   en sécurisé — ici, c'est en yolo qu'on les AJOUTE. */
+function modeLargeDe(backend) {
+  switch (backend) {
+    case 'claude': return { flag: '--dangerously-skip-permissions', dits: ['--dangerously-skip-permissions', '--allow-dangerously-skip-permissions', '--permission-mode', '--allowedTools'] };
+    case 'copilot': return { flag: '--allow-all-tools', dits: ['--allow-all-tools', '--allow-tool'] };
+    case 'codex': return { flag: '--dangerously-bypass-approvals-and-sandbox', dits: ['--dangerously-bypass-approvals-and-sandbox', '--full-auto', '--sandbox', '--ask-for-approval', '-a'] };
+    case 'gemini': return { flag: '--yolo', dits: ['--yolo', '-y', '--approval-mode'] };
+    default: return null;
+  }
 }
 
 /** Vrai quand ce lancement ne pourra PAS écrire son document : saveur de lecture, en mode
@@ -432,8 +470,9 @@ function argvYolo({ extra, kind, addDirs, backend }) {
 function sortieSurStdout(kind, bin) {
   if (!modeSecurise() || saveurDe(kind) !== 'lecture') return false;
   const be = backendDe(bin);
-  if (be === 'copilot') return !!capacites(bin).denyTool;
-  return ['claude', 'codex', 'gemini'].includes(be);
+  /* Copilot : avec `--deny-tool write` l'écriture est refusée ; SANS `--deny-tool`, le CLI ne
+     reçoit aucune permission et refuse tout outil en `-p` — dans les deux cas, pas de fichier. */
+  return ['claude', 'codex', 'gemini', 'copilot'].includes(be);
 }
 
 /* ---------------------------------------------------------------- les bornes */

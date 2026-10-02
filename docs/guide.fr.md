@@ -1648,6 +1648,15 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   lien vers la forge, date,
   branche(s) portant le tag, auteur — avec le même bouton `Auteur du tag`. Un dépôt injoignable est
   signalé à part, jamais confondu avec « absente ».
+- **Tags par période** — « qu'a-t-on livré ces deux semaines ? ». Deux dates (raccourcis *7* et *30
+  derniers jours* ; les 30 derniers sont posés à l'ouverture) et l'outil liste **tous les tags créés entre
+  ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date,
+  première ligne du message. **`Copier le tableau`** le pose dans le presse-papiers sous deux formes à la
+  fois — un vrai tableau HTML, que Teams, un mail ou Word rendent en tableau, et du texte tabulé pour un
+  tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne
+  (GitLab, tag annoté), sinon celle du commit pointé ; les tags GitHub, que l'API ne date pas, sont lus
+  dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
+  hasard ; un dépôt injoignable est nommé.
 
 > ⚠️ **L'origine d'une branche est une inférence, pas une donnée.** Git n'enregistre nulle part de
 > quelle branche une branche a été créée. L'outil la déduit (`merge-base`), sauf quand une merge
@@ -3352,7 +3361,13 @@ l'autorisation d'y travailler « in place » ne voyagent pas. Chaque règle de r
 d'une installation qui n'a rien touché, l'agent tourne **sans restriction du lanceur**, toutes saveurs
 et tous backends confondus : `AGENT_ARGS` intact (mode large compris), ni `--disallowedTools`, ni sandbox,
 ni liste blanche, ni contrôle d'intégrité après coup — l'ancien comportement, tel quel ; le journal de
-chaque run l'écrit en première ligne. En **sécurisé**, tout
+chaque run l'écrit en première ligne. Une seule chose est **ajoutée** : le mode large du CLI lui-même
+(`--dangerously-skip-permissions` pour Claude, `--allow-all-tools` pour Copilot,
+`--dangerously-bypass-approvals-and-sandbox` pour Codex, `--yolo` pour Gemini), quand les arguments de
+l'agent ne disent rien des permissions — sans lui, un CLI non interactif refuse tout outil et une review
+« sans restriction » ne pouvait pas écrire son rapport ; le journal le dit avec le drapeau posé. Un
+argument qui en parle déjà (`--permission-mode`, `--allow-tool`, `--sandbox`, `--approval-mode`…) est
+respecté tel quel, et une passe « planifier d'abord » garde le mode plan de Claude. En **sécurisé**, tout
 ce que ce paragraphe et les suivants décrivent s'applique. Ce que le mode yolo ne lève JAMAIS, parce que
 ce sont les limites du serveur et non celles de l'agent : le jeton local sur `/api/`, le `Host`
 allowlist, le nonce des blocs de protocole, l'approbation par poste de ce qui arrive par la synchro, et
@@ -3389,9 +3404,11 @@ via `--help`) : en écriture, `git push`/`curl`/`wget`/`ssh`/`scp` sont refusés
 blanche que Claude** lui est accordée (`--allow-tool write`, `shell(git status|log|show|diff|blame|add|commit|stash|checkout|rebase|merge*)`,
 les commandes des vérificateurs approuvés, ce que tu ajoutes dans Réglages → Session IA) — sans elle, en
 mode non interactif, Copilot ne lançait rien du tout, « aucune approbation possible » ; en lecture,
-`write` et `shell(*)` sont refusés. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
+`write` et `shell(*)` sont refusés, et le rapport est demandé comme réponse finale — jamais comme un
+fichier que le lanceur refuse. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
 le journal du run l'écrit en première ligne, en lecture comme en écriture — plutôt que de laisser croire
-à une restriction qui n'a pas lieu. **Limite, à ne
+à une restriction qui n'a pas lieu ; une écriture y reçoit `--allow-all-tools` s'il le connaît, car une
+session de codage qui ne peut rien écrire n'est pas une restriction, c'est une panne. **Limite, à ne
 pas oublier** : un agent qui écrit du code peut écrire un code qui fuit ; ce qui borne les dégâts, c'est ce
 qu'il n'a plus sous la main.
 

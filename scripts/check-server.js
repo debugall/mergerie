@@ -377,7 +377,7 @@ if (registre) {
       /* Lire git (fetch d'un dépôt DÉCLARÉ, diff, liste des branches) est admis en GET pour ces
          routes-là, nommément : ce sont des lectures, derrière la garde Host + Sec-Fetch-Site. Une
          nouvelle route qui lit git en GET s'ajoute ici en connaissance de cause. */
-      const LECTURES_GIT = ['/api/mrs/:id/diffview', '/api/git/compare/file', '/api/git/branches', '/api/git/tag-author', '/api/git/find-ref'];
+      const LECTURES_GIT = ['/api/mrs/:id/diffview', '/api/git/compare/file', '/api/git/branches', '/api/git/tag-author', '/api/git/find-ref', '/api/git/tags-period'];
       const route = (corps.match(/^\s*app\.get\('([^']+)'/) || [])[1];
       const motif = LECTURES_GIT.includes(route) ? /\b(spawn\(|startJob\(|start\w+Job\()/ : /\b(spawn\(|git\.run\(|ensureRepo\(|startJob\(|start\w+Job\()/;
       const m = corps.match(motif);

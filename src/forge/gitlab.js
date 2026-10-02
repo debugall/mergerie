@@ -452,6 +452,8 @@ async function listTags(cfg, project) {
     message: tag.message || '',
     annotated: !!(tag.message && tag.message.trim()),
     committed_date: tag.commit && tag.commit.committed_date,
+    // Date de CRÉATION du tag (celle du tagger) : GitLab la donne pour un tag annoté, null sinon.
+    created_at: tag.created_at || null,
     // Auteur du commit pointé par le tag (donnée exposée par l'API tags).
     author: (tag.commit && tag.commit.author_name) || '',
   }));

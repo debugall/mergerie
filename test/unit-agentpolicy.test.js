@@ -277,6 +277,24 @@ describe('agentpolicy : copilot', () => {
     assert.ok(!pol.argvPermissions({ backend: 'copilot', bin: sansAllow, extra: [], kind: 'code' }).args.includes('--allow-tool'));
   });
 
+  /* UNE ÉCRITURE DOIT POUVOIR ÉCRIRE, quel que soit l'âge du CLI : sans `--allow-tool`, des refus
+     seuls faisaient une session qui ne lançait rien. Alors `--allow-all-tools` s'il est connu —
+     et dit au journal, car la liste blanche n'y est pas ; sans lui non plus, rien à poser. */
+  test('écriture, sans --allow-tool : --allow-all-tools quand le CLI le connaît, les refus par-dessus, dit au journal', () => {
+    pol.oublierCapacites();
+    const vieux = fauxAide('copilot', '--deny-tool <t>\n--allow-all-tools');
+    const r = pol.argvPermissions({ backend: 'copilot', bin: vieux, extra: [], kind: 'code' });
+    assert.ok(r.args.includes('--allow-all-tools'), r.args.join(' '));
+    assert.ok(r.args.includes('shell(git push*)'), 'les refus restent posés par-dessus');
+    assert.equal(r.note, 'copilot-ecriture-non-restreinte');
+    pol.oublierCapacites();
+    const sansRien = fauxAide('copilot', '--verbose');
+    const r2 = pol.argvPermissions({ backend: 'copilot', bin: sansRien, extra: [], kind: 'code' });
+    assert.deepEqual(r2.args, [], 'rien à poser sur un CLI qui ne connaît aucun drapeau');
+    assert.equal(r2.note, 'copilot-ecriture-non-restreinte');
+    pol.oublierCapacites();
+  });
+
   test('la liste blanche de Claude admet aussi git rebase et git merge (mise à jour d’une branche)', () => {
     const l = pol.allowlistEcriture();
     assert.ok(l.includes('Bash(git rebase:*)') && l.includes('Bash(git merge:*)'), l.join(' '));
@@ -306,7 +324,7 @@ describe('agentpolicy : copilot', () => {
      comme pour claude, codex et gemini. La mise à jour de connaissance d'un agent de domaine
      sur Copilot recevait « écris UNIQUEMENT dans le fichier » et un lanceur qui refusait chaque
      écriture : réponse vide, et le journal pris pour la connaissance. */
-  test('lecture : la réponse tient lieu de fichier dès que --deny-tool borne l’écriture, pas avant', () => {
+  test('lecture : la réponse tient lieu de fichier, avec ou sans --deny-tool — en -p, Copilot n’écrit jamais sans permission', () => {
     pol.oublierBackend();
     const avecDenyTool = fauxAide('copilot', '--deny-tool <t>\n--allow-tool <t>');
     assert.equal(pol.backendDe(avecDenyTool), 'copilot');
@@ -314,7 +332,7 @@ describe('agentpolicy : copilot', () => {
     assert.equal(pol.sortieSurStdout('code', avecDenyTool), false, 'un codage écrit toujours');
     pol.oublierBackend(); pol.oublierCapacites();
     const sansDenyTool = fauxAide('copilot', '--verbose');
-    assert.equal(pol.sortieSurStdout('explore', sansDenyTool), false, 'sans --deny-tool le fichier reste possible : l’agent l’écrit comme avant');
+    assert.equal(pol.sortieSurStdout('explore', sansDenyTool), true, 'sans --deny-tool il ne reçoit AUCUNE permission : le fichier est tout aussi impossible');
     pol.oublierBackend();
   });
 
@@ -338,15 +356,49 @@ describe('agentpolicy : le mode yolo rend tout, le mode sécurisé retire — et
   test('yolo : AGENT_ARGS intact, aucune option ajoutée, en lecture comme en écriture, sur chaque backend', () => {
     updateConfig({ agent_mode: 'yolo' });
     try {
-      for (const backend of ['claude', 'copilot', 'codex', 'unknown']) {
+      // Claude avec son mode large déjà dans AGENT_ARGS, et un CLI inconnu : rien d'ajouté.
+      for (const backend of ['claude', 'unknown']) {
         for (const kind of ['review', 'explore', 'code', 'local']) {
           const r = pol.argvPermissions({ backend, bin: COMPLET, extra: YOLO, kind, addDirs: ['/lie'] });
           assert.deepEqual(r.extra, YOLO, `${backend}/${kind} : les arguments passent tels quels`);
           assert.deepEqual(r.args, ['--add-dir', '/lie'], `${backend}/${kind} : rien d'ajouté hormis les dossiers liés`);
           assert.equal(r.mode, 'yolo');
+          assert.equal(r.note, null);
           assert.equal(r.lecture, kind === 'review' || kind === 'explore');
         }
       }
+      /* YOLO, C'EST YOLO PARTOUT : en non-interactif, chaque CLI refuse ce qu'on ne lui a pas
+         autorisé — une review « sans restriction » qui ne peut pas écrire son rapport. Quand les
+         arguments ne disent rien des permissions, le mode large du backend est posé, et dit au
+         journal avec son drapeau. Des arguments qui en parlent déjà sont respectés tels quels. */
+      const LARGE = { claude: '--dangerously-skip-permissions', copilot: '--allow-all-tools', codex: '--dangerously-bypass-approvals-and-sandbox', gemini: '--yolo' };
+      for (const [backend, flag] of Object.entries(LARGE)) {
+        for (const kind of ['review', 'code']) {
+          const r = pol.argvPermissions({ backend, bin: COMPLET, extra: ['--verbose'], kind, addDirs: ['/lie'] });
+          assert.deepEqual(r.extra, ['--verbose']);
+          assert.deepEqual(r.args, ['--add-dir', '/lie', flag], `${backend}/${kind} : ${flag} posé`);
+          assert.equal(r.note, 'yolo-sans-restriction');
+          assert.deepEqual(r.noteVars, { flag });
+          assert.equal(r.mode, 'yolo');
+        }
+      }
+      const dits = {
+        claude: [['--dangerously-skip-permissions'], ['--permission-mode', 'acceptEdits'], ['--allowedTools', 'Edit']],
+        copilot: [['--allow-all-tools'], ['--allow-tool', 'write'], ['--allow-tool=write']],
+        codex: [['--full-auto'], ['--sandbox', 'workspace-write']],
+        gemini: [['--yolo'], ['--approval-mode=auto_edit']],
+      };
+      for (const [backend, cas] of Object.entries(dits)) {
+        for (const extra of cas) {
+          const r = pol.argvPermissions({ backend, bin: COMPLET, extra, kind: 'code' });
+          assert.deepEqual(r.args, [], `${backend} ${extra.join(' ')} : déjà dit, rien d'ajouté`);
+          assert.equal(r.note, null);
+        }
+      }
+      // « Planifier d'abord » : le mode plan de Claude tient lieu de permission, pas de mode large par-dessus.
+      const plan = pol.argvPermissions({ backend: 'claude', bin: COMPLET, extra: [], kind: 'plan' });
+      assert.deepEqual(plan.args, ['--permission-mode', 'plan']);
+      assert.equal(plan.note, null);
       assert.equal(pol.sortieSurStdout('review', COMPLET), false, 'en yolo, l’agent écrit son fichier comme avant');
       assert.equal(pol.niveauDe(COMPLET), 'yolo');
       assert.equal(pol.modeSecurise(), false);

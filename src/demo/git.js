@@ -168,6 +168,24 @@ function findRef(name, type, repos) {
   return { name, type, repos: out };
 }
 
+// --- /api/git/tags-period (les tags posés entre deux jours, tous dépôts confondus) ---
+function tagsPeriod(from, to, repos) {
+  const D = dataset();
+  const debut = Date.parse(`${from}T00:00:00`);
+  const fin = Date.parse(`${to}T23:59:59.999`);
+  return {
+    from, to,
+    repos: repos.map((r) => {
+      const p = D[r.project];
+      const tags = (p ? p.tags : [])
+        .map((t) => ({ name: t.name, date: iso(t.days), message: t.message || '', author: t.annotated ? (t.tagger || t.author) : t.author, url: refUrl(r.project, 'tag', t.name) }))
+        .filter((t) => { const d = Date.parse(t.date); return d >= debut && d <= fin; })
+        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+      return { project: r.project, repo_id: r.id, forge: 'gitlab', tags, undated: 0, error: null };
+    }),
+  };
+}
+
 // --- Aperçu d'action (gitops.preview) : fournit les listes dans les formes que renvoie
 // gitlab.js, pour réutiliser TELLE QUELLE la logique d'états/commandes de gitops. ---
 function listsFor(project) {
@@ -266,4 +284,4 @@ function compareFile(projetA, coteA, projetB, coteB, chemin) {
   };
 }
 
-module.exports = { isDemo, refs, branches, tagAuthor, findRef, listsFor, compare, compareFile };
+module.exports = { isDemo, refs, branches, tagAuthor, findRef, tagsPeriod, listsFor, compare, compareFile };

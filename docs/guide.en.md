@@ -1580,6 +1580,15 @@ Operations across **several repositories at once**, and branch exploration.
   repository** (GitLab and GitHub alike), which ones have it: type, commit + link to the forge, date, the
   branch(es) carrying the tag, the author — with the same `Tag author` button. An unreachable repository is
   reported separately, never confused with “absent”.
+- **Tags by period** — “what did we ship these two weeks?”. Two dates (shortcuts *Last 7* and *Last 30
+  days*; the last 30 are set when the sub-tab opens) and the tool lists **every tag created between those
+  two days, both included, across all active repositories**: repository, tag (link to the forge), date,
+  first line of the message. **`Copy the table`** puts it in the clipboard in two forms at once — a real
+  HTML table, which Teams, an email or Word render as a table, and tab-separated text for a spreadsheet or
+  a plain editor. A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
+  otherwise the date of the commit it points to; GitHub tags, which the API does not date, are read from
+  the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
+  unreachable repository is named.
 
 > ⚠️ **A branch's origin is an inference, not a fact.** Git records nowhere which branch a branch was
 > created from. The tool infers it (`merge-base`), except when a merge request attests to it — the only
@@ -3231,7 +3240,13 @@ review rule shows who set it.
 installation that touched nothing, the agent runs **with no restriction from the launcher**, every
 flavour and every backend alike: `AGENT_ARGS` intact (wide-open mode included), no `--disallowedTools`,
 no sandbox, no allowlist, no after-the-fact integrity check — the old behaviour, as it was; every run's
-journal opens with it. In **secured** mode, everything this paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
+journal opens with it. One single thing is **added**: the CLI's own wide-open mode
+(`--dangerously-skip-permissions` for Claude, `--allow-all-tools` for Copilot,
+`--dangerously-bypass-approvals-and-sandbox` for Codex, `--yolo` for Gemini), when the agent's arguments say
+nothing about permissions — without it, a non-interactive CLI refuses every tool and an “unrestricted”
+review could not write its report; the journal says so, with the flag it set. An argument that already
+speaks of them (`--permission-mode`, `--allow-tool`, `--sandbox`, `--approval-mode`…) is kept as is, and a
+“plan first” pass keeps Claude's plan mode. In **secured** mode, everything this paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
 limits and not the agent's: the local token on `/api/`, the `Host` allowlist, the nonce on protocol
 blocks, the per-machine approval of what arrives through the sync, and the agent's allowlisted
 environment.
@@ -3264,8 +3279,11 @@ made on screen:
 `--help`): when writing, `git push`/`curl`/`wget`/`ssh`/`scp` are refused on that basis, and the **same allowlist
 as Claude** is granted (`--allow-tool write`, `shell(git status|log|show|diff|blame|add|commit|stash|checkout|rebase|merge*)`,
 the approved verifiers' commands, what you add in Settings → AI session) — without it, non-interactive
-Copilot ran nothing at all, "no approval possible"; when reading, `write` and `shell(*)` are refused. An older binary that does not know them is no longer refused: the run goes at
-the **lightened** level, reading as writing, and the journal says so on its first line. **A limit to keep in mind**: an agent that writes code
+Copilot ran nothing at all, "no approval possible"; when reading, `write` and `shell(*)` are refused and the
+report is asked for as the final answer — never as a file the launcher refuses. An older binary that does not know them is no longer refused: the run goes at
+the **lightened** level, reading as writing, and the journal says so on its first line; a write run there
+gets `--allow-all-tools` when the binary knows it, because a coding session that cannot write anything is
+not a restriction, it is a breakdown. **A limit to keep in mind**: an agent that writes code
 can write code that leaks; what bounds the damage is what it no longer has at hand.
 
 **Text from elsewhere is data, and is said to be.** MR title and description, Jira ticket, previous

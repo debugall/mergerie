@@ -213,6 +213,7 @@ function showGitSub(name) {
   }
   if (name === 'history') gitLoadHistory();
   if (name === 'findref') poserMemoireFindRef();
+  if (name === 'tags') tagsPeriodeInit();
   if (name === 'commands') loadGitCommands();
   if (name === 'compare') renderCompareCotes();
   if (name === 'merge') mergeLoad();

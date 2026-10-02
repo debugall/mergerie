@@ -9,6 +9,7 @@
  *   - « Créer la MR » (la MR existe sur la forge), l'auteur d'un tag lu à la demande ;
  *   - « Vérifier », « Coder dessus », « Ajouter aux todos » depuis la ligne ;
  *   - les dépôts cochés ne sont PAS retenus au rechargement ;
+ *   - Tags par période : la période posée, le tableau, sa copie HTML + texte, le vide ;
  *   - Trouver une ref : tag, branche, rien, dépôt inaccessible, auteur, mémoire.
  *
  * Un seul `startApp()`, un seul navigateur ; les tests s'enchaînent dans l'ordre. */
@@ -65,6 +66,15 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
     page.on('pageerror', (e) => erreurs.push(e.message));
     await afficherMenusOptionnels(page);
+    /* Le presse-papiers d'un Chromium sans tête ne se relit pas : un double garde ce qu'on y
+       écrit, dans les deux formes (ClipboardItem pour le tableau, texte pour le reste). */
+    await page.addInitScript(() => {
+      window.__copieItems = [];
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { write: async (items) => { window.__copieItems = items; }, writeText: async () => {}, readText: async () => '' },
+      });
+    });
     await page.goto(app.base);
   });
 
@@ -245,6 +255,64 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
     assert.equal(await caseDepot(idAlpha).isChecked(), false);
     assert.equal(await caseDepot(idBeta).isChecked(), false);
     assert.equal(await page.evaluate(() => localStorage.getItem('aidevtools_git_explorer')), null, 'l’ancienne clé est effacée');
+  });
+
+  describe('Tags par période', () => {
+    const chercher = async (from, to) => {
+      await page.evaluate(() => { document.querySelector('#tagsPeriodBox').innerHTML = ''; });
+      await page.locator('#tagsPeriodFrom').fill(from);
+      await page.locator('#tagsPeriodTo').fill(to);
+      await page.locator('#tagsPeriodGo').click();
+      await page.waitForFunction(() => {
+        const b = document.querySelector('#tagsPeriodBox');
+        return b.textContent.trim() && !b.querySelector('.sk');
+      });
+    };
+
+    test('à l’ouverture, la période est posée (30 jours) ; un raccourci la change', async () => {
+      await allerGit('tags');
+      const from = await page.locator('#tagsPeriodFrom').inputValue();
+      const to = await page.locator('#tagsPeriodTo').inputValue();
+      assert.match(from, /^\d{4}-\d{2}-\d{2}$/);
+      assert.ok(from < to, 'du plus ancien au plus récent');
+      await page.locator('[data-tags-preset="7"]').click();
+      const from7 = await page.locator('#tagsPeriodFrom').inputValue();
+      assert.ok(from7 > from, 'sept jours commencent après trente');
+    });
+
+    test('le tableau : un tag par ligne avec son dépôt, et le compte au-dessus', async () => {
+      await chercher('2026-07-01', '2026-08-31');
+      assert.match(await page.locator('#tagsPeriodInfo').innerText(), /1 tag du 01\/07\/2026 au 31\/08\/2026, dans 1 dépôt/);
+      const lignes = page.locator('#tagsPeriodBox tbody tr');
+      assert.equal(await lignes.count(), 1);
+      assert.match(await lignes.first().innerText(), /grp\/alpha\s+v1\.0\.0 ↗\s+01\/08\/2026\s+Première livraison/);
+    });
+
+    test('« Copier le tableau » pose un vrai tableau HTML et sa version tabulée', async () => {
+      await page.locator('#tagsPeriodCopy').click();
+      await toast(/Tableau copié : 1 ligne/);
+      const copie = await page.evaluate(async () => {
+        const item = window.__copieItems[0];
+        return { html: await (await item.getType('text/html')).text(), text: await (await item.getType('text/plain')).text() };
+      });
+      assert.match(copie.html, /^<table[\s\S]*<th[^>]*>Dépôt<\/th><th[^>]*>Tag<\/th><th[^>]*>Date<\/th><th[^>]*>Message<\/th>/);
+      assert.match(copie.html, /<td[^>]*>grp\/alpha<\/td><td[^>]*><a href="[^"]*\/-\/tags\/v1\.0\.0">v1\.0\.0<\/a><\/td><td[^>]*>01\/08\/2026<\/td><td[^>]*>Première livraison<\/td>/);
+      assert.equal(copie.text, 'Dépôt\tTag\tDate\tMessage\ngrp/alpha\tv1.0.0\t01/08/2026\tPremière livraison');
+    });
+
+    test('une période sans tag : un vide qui le dit, sans bouton copier', async () => {
+      await chercher('2026-09-01', '2026-09-30');
+      assert.match(await page.locator('#tagsPeriodBox').innerText(), /Aucun tag du 01\/09\/2026 au 30\/09\/2026/);
+      assert.equal(await page.locator('#tagsPeriodCopy').count(), 0);
+    });
+
+    test('dates inversées : refusé à l’écran, sans appel', async () => {
+      await page.locator('#tagsPeriodFrom').fill('2026-09-30');
+      await page.locator('#tagsPeriodTo').fill('2026-09-01');
+      await page.locator('#tagsPeriodGo').click();
+      await page.locator('#tagsPeriodBox .errbox, #tagsPeriodBox .err').first().waitFor();
+      assert.match(await page.locator('#tagsPeriodBox').innerText(), /La date de début est après la date de fin/);
+    });
   });
 
   describe('Trouver une ref', () => {
