@@ -167,7 +167,10 @@ app.put('/api/repos/:id', wrap((req, res) => {
 }));
 app.delete('/api/repos/:id', wrap((req, res) => {
   store.verserEnMarge(req.params.id);
+  const parti = db.prepare('SELECT id, project FROM repo WHERE id = ?').get(Number(req.params.id));
   db.prepare('DELETE FROM repo WHERE id = ?').run(Number(req.params.id));
+  // Les plugins qui tiennent une table rattachée à un dépôt en font le ménage sur cet événement.
+  if (parti) require('../../core/events').emit('repo.deleted', { id: parti.id, project: parti.project }).catch(() => {});
   res.json({ ok: true });
 }));
 /* ---------- Répertoires locaux (Réglages → Dépôts) ----------

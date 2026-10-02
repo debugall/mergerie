@@ -79,6 +79,7 @@ const copilot = require('./agent/copilot');
 const agentprofile = require('./agent/profile');
 const agentschedule = require('./agent/schedule');
 const jobs = require('./jobs');
+const events = require('./core/events');
 
 /* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (réorganisation de src/ par couches). Chaque fichier de
    `app/middleware/` s'accroche à l'application quand on le charge : la ligne où il est chargé
@@ -262,6 +263,8 @@ const server = app.listen(PORT, HOST, () => {
      n'est demandé à Jenkins tant qu'aucun lancement n'est attendu. */
   if (!demoDocker.isDemo()) veille.demarrer({ getConfig, periodeMs: 60000 });
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
+  /* Le bus : le serveur est prêt. Un plugin qui attend « tout est en place » s'abonne ici. */
+  events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoDocker.isDemo() }).catch(() => {});
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -275,7 +278,8 @@ module.exports = {
      clone — la passer par un faux GitLab pour vérifier trois annotations n'éprouverait que le
      faux GitLab. */
   nommerBranches,
-  close() {
+  async close() {
+    await events.emit('app.shutdown', {}).catch(() => {});
     planification.arreterAutoRefresh();
     // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
     arreterJiraWatch();

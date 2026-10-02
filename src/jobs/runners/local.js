@@ -4,6 +4,7 @@
 const db = require('../../db');
 const proc = require('../../core/proc');
 const notify = require('../../core/notify');
+const events = require('../../core/events');
 const localcoder = require('../../session/localcoder');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestionLocal } = require('../apres-session');
@@ -16,6 +17,8 @@ async function runLocalJob(jobId, taskId, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   logLine(jobId, null, t('log.job.local-start', { id: jobId }));
   const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  events.emit('session.started', { kind: 'local', id: taskId, action: 'run' }).catch(() => {});
+  let fin = 'done';
   try {
     // Le binaire choisi par la session (`local_task.cli_id`), posé sur le contexte du job.
     await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog, () => localcoder.runLocal(taskId, onLog, opts));
@@ -23,6 +26,7 @@ async function runLocalJob(jobId, taskId, opts = {}) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
       logLine(jobId, null, t('log.job.stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      fin = 'stopped';
       return;
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
@@ -32,6 +36,7 @@ async function runLocalJob(jobId, taskId, opts = {}) {
        restée sans réponse. */
     const attente = db.prepare("SELECT COUNT(*) c FROM local_task_dir WHERE task_id = ? AND status = 'needs_input'").get(taskId).c;
     if (attente) {
+      fin = 'needs_input';
       notify.push('needs_input', { local_task_id: taskId });
       todoQuestionLocal(taskId);
     } else if (!suiviAutomatique('local', taskId, onLog)) {
@@ -41,8 +46,10 @@ async function runLocalJob(jobId, taskId, opts = {}) {
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      fin = 'stopped';
       return;
     }
+    fin = 'error';
     const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
     db.prepare("UPDATE local_task SET status = 'error', last_error = ?, updated_at = ? WHERE id = ?").run(full, new Date().toISOString(), taskId);
     logLine(jobId, null, t('log.job.local-error', { message: e.message }));
@@ -50,6 +57,7 @@ async function runLocalJob(jobId, taskId, opts = {}) {
     notify.push('job_failed', { local_task_id: taskId, message: String(e.message).slice(0, 200) });
   } finally {
     marquerFinExecution('local_task', taskId);
+    events.emit('session.finished', { kind: 'local', id: taskId, action: 'run', status: fin }).catch(() => {});
   }
 }
 

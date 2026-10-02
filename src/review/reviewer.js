@@ -661,6 +661,7 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     if (noteValue == null) onLog(t('log.review.note-missing'));
     // Note pour la notif « review sous un seuil » (le client décide selon SON seuil).
     notify.push('review_done', { mr_id: mr.id, iid: mr.iid, note10: noteValue == null ? null : Math.round(noteValue * 1000) / 100 });
+    require('../core/events').emit('review.completed', { mr_id: mr.id, iid: mr.iid, note10: noteValue == null ? null : Math.round(noteValue * 1000) / 100 }).catch(() => {});
 
     // Suivi de résolution : compare aux constats de la passe précédente.
     await trackResolution({ cwd, mr, version, findings, newSha: mr.current_sha, onLog });
