@@ -9,6 +9,8 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jira = require('../../integrations/jira');
+const jiraspec = require('../../integrations/jiraspec');
+const specTicket = require('../../session/spec');
 const notes = require('../../notes/notes');
 const links = require('../../notes/links');
 const demoDocker = require('../../demo/docker');
@@ -89,10 +91,20 @@ app.get('/api/jira/issue/:key', wrap(async (req, res) => {
     mrs: engagementsSurTicket(key).mrs.filter((m) => !m.closed && m.web_url)
       .map((m) => ({ iid: m.iid, url: m.web_url })),
   };
-  if (demoDocker.isDemo()) return res.json({ issue: { ...demoJira.issue(key), mergerie } });
-  const cfg = getConfig();
-  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
-  res.json({ issue: { ...(await jira.issueDetail(cfg, key)), mergerie } });
+  const issue = demoDocker.isDemo() ? demoJira.issue(key) : await (async () => {
+    const cfg = getConfig();
+    if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+    return jira.issueDetail(cfg, key);
+  })();
+  /* LA SPEC A-T-ELLE ENCORE UN SENS ? Le ticket vient d'être relu : si son titre ou sa
+     description ne sont plus ceux de la photo prise à l'analyse, la proposition parle d'un
+     ticket qui n'existe plus — on la marque « à revoir » ici même, sans appel de plus. Un
+     changement d'état n'est pas un changement de sens. */
+  const s = specTicket.specByKey(key);
+  if (s && ['proposed', 'edited', 'posted'].includes(s.status) && jiraspec.perimee(s.ticket_snapshot, issue)) {
+    specTicket.poser(s.id, { status: 'stale' });
+  }
+  res.json({ issue: { ...issue, mergerie } });
 }));
 // Poster un commentaire sur un ticket Jira.
 app.post('/api/jira/issue/:key/comment', wrap(async (req, res) => {

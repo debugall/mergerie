@@ -68,3 +68,57 @@ try { db.exec('ALTER TABLE task ADD COLUMN md_path TEXT'); } catch { /* déjà p
 
 // Une session peut porter sur PLUSIEURS projets : l'état d'exécution (commit, diff,
 // push, MR, merge) est donc par projet, pas par tâche.
+
+/* ---------- PRÉCISION TECHNIQUE D'UN TICKET JIRA (« spec ») ----------
+   Un ticket écrit par un PO dit le quoi, jamais le où ni le comment. La spec est ce que l'IA
+   propose après avoir lu le ticket, son epic, des pages Confluence et le code des dépôts
+   choisis : UNE ligne par ticket (l'unicité est l'identité — deux postes qui précisent le même
+   ticket précisent le même objet), des VERSIONS empilées comme celles d'une review (IA, suivi,
+   édition à la main), et l'id du commentaire Jira posté — pour le METTRE À JOUR plutôt que
+   d'en empiler un nouveau à chaque relance. Le markdown vit en fichier, jamais en colonne,
+   comme les rapports. `nonce` est le repère du bloc <<<SPEC>>> demandé à l'agent ; il n'est
+   pas un secret (il apparaît dans le prompt), il empêche seulement une donnée du ticket de
+   fabriquer un bloc que le parseur prendrait pour la réponse. */
+db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec (
+  id INTEGER PRIMARY KEY,
+  ticket_key TEXT NOT NULL,
+  epic_key TEXT,
+  batch_id INTEGER,
+  task_id INTEGER REFERENCES task(id) ON DELETE SET NULL,
+  repo_ids_json TEXT NOT NULL DEFAULT '[]',
+  complement TEXT DEFAULT '',
+  confluence_json TEXT DEFAULT '[]',
+  detail TEXT DEFAULT 'synthese',
+  include_epic INTEGER DEFAULT 1,
+  ask_questions INTEGER DEFAULT 1,
+  ticket_snapshot TEXT,
+  status TEXT DEFAULT 'new',
+  nonce TEXT,
+  comment_id TEXT,
+  posted_version INTEGER,
+  last_error TEXT,
+  created_at TEXT,
+  updated_at TEXT
+)`);
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_spec_key ON ticket_spec(ticket_key)');
+db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec_version (
+  id INTEGER PRIMARY KEY,
+  spec_id INTEGER NOT NULL REFERENCES ticket_spec(id) ON DELETE CASCADE,
+  ticket_key TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  origin TEXT NOT NULL,
+  md_path TEXT,
+  instruction TEXT,
+  ready_score INTEGER,
+  created_at TEXT
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_ticket_spec_version_spec ON ticket_spec_version(spec_id)');
+/* Un lot = les tickets d'une epic précisés d'un coup. Commodité d'écran de CE poste : les specs,
+   elles, voyagent une par une. */
+db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec_batch (
+  id INTEGER PRIMARY KEY,
+  epic_key TEXT NOT NULL,
+  status TEXT DEFAULT 'running',
+  created_at TEXT,
+  updated_at TEXT
+)`);

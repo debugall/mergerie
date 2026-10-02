@@ -48,6 +48,7 @@ const ALLOWED = [
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
+  'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
 
@@ -266,6 +267,9 @@ function updateConfig(patch) {
       ai_extra_instructions = @ai_extra_instructions,
       jira_test_key = @jira_test_key,
       verify_jira_comment = @verify_jira_comment,
+      confluence_url = @confluence_url,
+      spec_marker = @spec_marker,
+      spec_team_instructions = @spec_team_instructions,
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,
       auto_post_blocking_only = @auto_post_blocking_only,
@@ -293,6 +297,7 @@ function updateConfig(patch) {
       language = @language,
       jira_email = @jira_email,
       jira_token = @jira_token,
+      confluence_token = @confluence_token,
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,

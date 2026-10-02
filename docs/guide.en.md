@@ -1392,6 +1392,59 @@ yours, and you want to know **when it moves**, not to think about it three times
 - A ticket that was **deleted or became invisible** (rights lost) is reported **on its row**, without
   interrupting the check of the others, and **without erasing** the last known state.
 
+#### Technical brief of a ticket
+A ticket written by a Product Owner says the functional *what*, never the *where* (which repositories,
+which modules) nor the *how* (the steps, the constraints of the existing code). The developer redoes that
+translation in their head for every ticket, and it lands nowhere. The **"Technical brief"** button of a
+ticket's detail opens the **Technical brief** section, where the AI does that work and proposes it as a
+comment.
+
+- **What you give it.** One or more **repositories** (the list filters as you type: the filter hides
+  without unticking), the ticket's **epic** and its other tickets as context (ticked by default when the
+  ticket has one — a ticket often makes sense in the light of its neighbours), one or several **Confluence
+  pages** (five at most; Cloud is read with the Jira account, Server / Data Center needs an address and a
+  token in Settings → Jira), a free **complement** ("it is the billing service, not crm; the legacy stays
+  untouched"), the level of detail (**summary**, thirty lines at most, or **detailed**) and the box
+  **"The AI may ask me questions"**.
+- **What it does.** An ordinary **exploration session**, read-only, on the chosen repositories: it reads the
+  ticket, its comments and linked tickets, the epic, the pages, then the code. Everything coming from Jira
+  or Confluence enters the prompt as fenced **data**, never as an instruction; only your complement is read
+  as one. A page that is refused (rights) or too long is **said so**, in the proposal and on screen, and
+  blocks nothing.
+- **Two kinds of questions.** What **only you** know (which service, which convention) is asked **before**
+  proposing, through the usual mechanism: the session goes to *waiting for your answers*, you answer in AI
+  Dev, the analysis resumes. What **only the PO** knows becomes the proposal's last section, *Open
+  questions for the PO* — often the first thing the PO reads.
+- **The proposal.** Six sections, always in the same order: *Repositories involved*, *Existing code we
+  build on* (named files and modules, no code), *What has to be done*, *Points of attention*, *Out of
+  scope*, *Open questions for the PO*. It shows up in the section without reloading the page.
+- **Adjusting it.** A **follow-up** ("detail the migration part", "too long") has the agent rewrite the
+  whole proposal, in the same session; **"Edit"** opens it for hand editing, without calling the AI. Every
+  pass is a **version** (AI, follow-up, edit), and the screen says when changes are not posted yet.
+- **Posting.** **"Post as a comment"** shows what leaves and asks for confirmation: the comment starts with
+  a **marker line** (set in Settings → Jira) and the version number. Next time — new analysis, follow-up,
+  touch-up — the button reads **"Update the comment"** and **the same comment** is rewritten, never a
+  second one. If Jira refuses (the comment was posted by a teammate from another account, or the right to
+  edit was removed), nothing leaves silently: the screen offers to post a new version under your name.
+  Deleted on Jira in the meantime, a new one is created, and the screen says so.
+- **To review.** When the ticket **changes meaning** (title or description rewritten by the PO) after the
+  analysis, the brief turns **"to review"** as soon as the ticket is opened. A mere status change expires
+  nothing. **"Run the analysis again"** rereads everything (ticket, pages, code) in a fresh session; the
+  versions and the posted comment stay.
+- **Towards the code.** **"Start a session"** opens the AI Dev modal prefilled: the brief's repositories
+  as targets, the proposal as the instruction — the loop ticket → brief → session → MR.
+- **A whole epic.** **"Brief the epic's tickets"** lists its tickets, tickable (already briefed and done
+  ones are unticked by default, a filter hides without unticking), and starts **one analysis per ticked
+  ticket** with the repositories, pages and complement of the current form. Each ticket then keeps its own
+  brief: follow-up, edit, post, ticket by ticket.
+- **In the list**, every ticket carries a *brief proposed / posted / to review / waiting for your answers*
+  chip. **In AI Dev**, the analysis session carries the *Brief PROJ-123* tag (which opens the ticket), and
+  a *with / without / only ticket briefs* chip hides those sessions in one gesture — remembered per
+  machine, nothing archived; an analysis waiting for an answer stays visible whatever the filter.
+- **Settings → Jira**: address and token of a Confluence Server / Data Center, the comment's marker line,
+  and **team guidelines** added to every analysis ("our endpoints follow `/v2/<resource>`", "never a
+  destructive migration") — guidance, not protocol: the proposal's format itself is not editable.
+
 ### Git
 Operations across **several repositories at once**, and branch exploration.
 

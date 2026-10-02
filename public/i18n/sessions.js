@@ -10,6 +10,11 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "session.filter.spec.with": "Avec les analyses de tickets",
+      "session.filter.spec.without": "Sans les analyses de tickets",
+      "session.filter.spec.only": "Analyses de tickets seulement",
+      "task.card.spec": "Spec {key}",
+      "task.card.spec-title": "Session d'analyse de la précision technique du ticket {key} — ouvrir le ticket",
       "session.share": "Partager avec l'équipe",
       "session.unshare": "Ne plus partager",
       "session.share-title": "Envoyer cette session à l'équipe : la demande, les itérations et les pièces jointes. Les sessions ne sont pas partagées par défaut.",
@@ -439,6 +444,11 @@
       "task.ctx.hint": "L'IA peut lire ces projets mais ne peut modifier aucun de leurs fichiers.",
     },
     en: {
+      "session.filter.spec.with": "With ticket briefs",
+      "session.filter.spec.without": "Without ticket briefs",
+      "session.filter.spec.only": "Ticket briefs only",
+      "task.card.spec": "Brief {key}",
+      "task.card.spec-title": "Analysis session of ticket {key}'s technical brief — open the ticket",
       "session.share": "Share with the team",
       "session.unshare": "Stop sharing",
       "session.share-title": "Send this session to the team: the request, its iterations and its attachments. Sessions are not shared by default.",

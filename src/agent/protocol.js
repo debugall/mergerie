@@ -74,7 +74,7 @@ function extraireTous(text, nom, nonce) {
    si un bloc fait foi (nonce du run), seulement qu'un canal de service ne s'affiche jamais et ne
    se réinjecte jamais tel quel dans un prompt (le résultat part de toute façon sous `nonFiable`,
    quand il est réutilisé : `taskrunner.redigerTranscription`, `partage.js`). */
-const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE'];
+const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE', 'SPEC'];
 function nettoyer(text) {
   let s = String(text || '');
   for (const n of NOMS) {

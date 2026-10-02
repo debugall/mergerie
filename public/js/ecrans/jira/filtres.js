@@ -283,7 +283,7 @@ function renderJiraList() {
   }
   if (!items.length) { box.innerHTML = `<p class="muted jira-empty">${esc(tr('jira.no-match'))}</p>`; return; }
   box.innerHTML = items.map((it) => `<button class="jira-item jira-cat-${JIRA_CAT[it.statusCategory] || 'todo'}${it.key === JIRA.selectedKey ? ' active' : ''}" data-jira="${esc(it.key)}">
-      <div class="jira-item-row1"><code class="jira-key">${esc(it.key)}</code> ${jiraStatusChip(it)}</div>
+      <div class="jira-item-row1"><code class="jira-key">${esc(it.key)}</code> ${jiraStatusChip(it)} <span class="jira-spec-chip" data-spec-chip="${esc(it.key)}" hidden></span></div>
       ${it.epic ? `<span class="jira-item-epic" title="${esc(tr('jira.epic-of', { key: it.epic.key, summary: it.epic.summary }))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg><code>${esc(it.epic.key)}</code> ${esc(it.epic.summary)}</span>` : ''}
       <div class="jira-item-summary">${esc(it.summary)}</div>
       <div class="jira-item-foot muted">${esc(it.type || '')}${it.priority ? ` · ${esc(it.priority)}` : ''} · ${esc(fmtDate(it.updated))}</div>
@@ -292,5 +292,6 @@ function renderJiraList() {
       <div class="jira-item-eng muted" data-eng-key="${esc(it.key)}" hidden></div>
     </button>`).join('');
   majEngagementsListe(items.map((x) => x.key));
+  majSpecsListe(items.map((x) => x.key));
 }
 

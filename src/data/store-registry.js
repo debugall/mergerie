@@ -55,6 +55,9 @@ const INTERDITS = [/token/i, /_key$/i, /password/i, /secret/i, /^path$/i, /_path
    Une exception se justifie ici, pas dans un coin du code. */
 const EXCEPTIONS = {
   'jira_watch.key': 'la clé du ticket Jira (PROJ-1408), l’identité même de la ligne',
+  'ticket_spec.ticket_key': 'la clé du ticket Jira précisé, l’identité même de la spec',
+  'ticket_spec.epic_key': 'la clé de l’epic jointe en contexte, pas un secret',
+  'ticket_spec_version.ticket_key': 'la clé du ticket, reprise pour nommer le dossier du fichier',
   'agent.builtin_key': 'le nom d’un profil livré avec l’outil, pas un secret',
   'config.jira_test_key': 'la clé d’un ticket de test, saisie à la main',
   'config.review_skill': 'le nom d’une compétence (« git-review »)',
@@ -1589,6 +1592,103 @@ const REGISTRE = [
      ça décrit une façon de travailler, pas un produit. */
   { table: 'jira_watch', famille: 'L', note: 'les tickets que CE poste surveille' },
 
+  /* ── Précision technique d'un ticket Jira (spec) ───────────────────────────────────────── */
+  {
+    /* UNE SPEC PAR TICKET (`UNIQUE(ticket_key)`) : c'est la clé du ticket qui fait l'identité.
+       Deux postes qui précisent le même ticket précisent le même objet — et le commentaire
+       Jira posté par l'un est celui que l'autre mettra à jour. */
+    table: 'ticket_spec', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['ticket_key'],
+    chemin: 'specs/{ticket_key}.json', fusion: 'last-writer',
+    locales: ['batch_id', 'last_error'],
+    ligneDuChemin: (db, v) => db.prepare('SELECT ticket_spec.rowid AS r, ticket_spec.* FROM ticket_spec WHERE ticket_key = ?').get(v.ticket_key),
+    note: 'la précision technique d’un ticket : ce qu’une équipe se dit sur le ticket, d’où le partage ; '
+      + 'le lot d’epic et la dernière erreur sont des commodités de poste',
+    commitMessage: (r) => `spec ${r.ticket_key}`,
+    toFile: (r, ctx) => ({
+      uid: r.uid,
+      ticket_key: r.ticket_key,
+      epic_key: r.epic_key || null,
+      task: r.task_id ? ctx.uid('task', r.task_id) : null,
+      // Les dépôts par leur clé naturelle : un id entier ne désigne rien chez le voisin.
+      repos: (() => { try { return JSON.parse(r.repo_ids_json || '[]').map((id) => ctx.repoRef(id)).filter(Boolean); } catch { return []; } })(),
+      complement: r.complement || '',
+      confluence: (() => { try { return JSON.parse(r.confluence_json || '[]'); } catch { return []; } })(),
+      detail: r.detail || 'synthese',
+      include_epic: r.include_epic ? 1 : 0,
+      ask_questions: r.ask_questions ? 1 : 0,
+      ticket_snapshot: r.ticket_snapshot || null,
+      status: r.status || 'new',
+      nonce: r.nonce || null,
+      comment_id: r.comment_id || null,
+      posted_version: r.posted_version == null ? null : r.posted_version,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }),
+    fromFile: (doc, ctx) => ({
+      uid: doc.uid,
+      ticket_key: doc.ticket_key,
+      epic_key: doc.epic_key || null,
+      task_id: doc.task ? ctx.id('task', doc.task) : null,
+      repo_ids_json: JSON.stringify((doc.repos || []).map((ref) => ctx.repoId(ref)).filter(Boolean)),
+      complement: doc.complement || '',
+      confluence_json: JSON.stringify(Array.isArray(doc.confluence) ? doc.confluence : []),
+      detail: doc.detail || 'synthese',
+      include_epic: doc.include_epic ? 1 : 0,
+      ask_questions: doc.ask_questions ? 1 : 0,
+      ticket_snapshot: doc.ticket_snapshot || null,
+      status: doc.status || 'new',
+      nonce: doc.nonce || null,
+      comment_id: doc.comment_id || null,
+      posted_version: doc.posted_version == null ? null : doc.posted_version,
+      created_at: doc.created_at,
+      updated_at: doc.updated_at,
+    }),
+    referencesDifferees: ['task_id'],
+    refSource: { task_id: 'task' },
+  },
+  {
+    table: 'ticket_spec_version', famille: 'P', uidPropre: true, cle: 'uid',
+    chemin: 'specs/{ticket_key}/{uid}.md', fusion: 'append-only',
+    locales: ['md_path', 'version'],
+    fichiers: ['{uid}.md', '{uid}.json (origine, instruction)'],
+    note: '`version` est DÉRIVÉE : renumérotée dans l’ordre des uid à l’hydratation. AJOUT SEUL — '
+      + 'deux postes qui relancent la même spec donnent v2 et v3, jamais deux v2.',
+    commitMessage: (r) => `spec ${r.ticket_key} v${r.version}`,
+    corps: 'content',
+    toFile: (r, ctx) => ({
+      uid: r.uid,
+      ticket_key: r.ticket_key,
+      spec: r.spec_id ? ctx.uid('ticket_spec', r.spec_id) : null,
+      content: ctx.lireDisque(r.md_path),
+      origin: r.origin,
+      instruction: r.instruction || null,
+      ready_score: r.ready_score == null ? null : r.ready_score,
+      created_at: r.created_at,
+    }),
+    fromFile: (doc, ctx) => ({
+      uid: doc.uid,
+      ticket_key: doc.ticket_key,
+      spec_id: doc.spec ? ctx.id('ticket_spec', doc.spec) : null,
+      version: ctx.sequence(),        // provisoire ; renumérotée dans l'ordre des uid
+      md_path: ctx.ecrireDisque(`specs/${String(doc.ticket_key || 'inconnu')}`, `spec-${doc.uid}.md`, doc.content || ''),
+      origin: doc.origin || 'ai',
+      instruction: doc.instruction || null,
+      ready_score: doc.ready_score == null ? null : doc.ready_score,
+      created_at: doc.created_at,
+    }),
+    referencesDifferees: ['spec_id'],
+    refSource: { spec_id: 'ticket_spec' },
+    apresHydratation: (db2) => {
+      // `version` est un compteur PAR SPEC, local par nature : renuméroté dans l'ordre des uid.
+      for (const s of db2.prepare('SELECT DISTINCT spec_id FROM ticket_spec_version WHERE spec_id IS NOT NULL').all()) {
+        const lignes = db2.prepare('SELECT id FROM ticket_spec_version WHERE spec_id = ? ORDER BY uid').all(s.spec_id);
+        const maj = db2.prepare('UPDATE ticket_spec_version SET version = ? WHERE id = ?');
+        lignes.forEach((l, i) => maj.run(i + 1, l.id));
+      }
+    },
+  },
+  { table: 'ticket_spec_batch', famille: 'L', note: 'un lot d’epic lancé depuis CE poste — les specs, elles, voyagent une par une' },
+
   /* ── Lots, environnements, services ──────────────────────────────────────────────────── */
   {
     table: 'lot', famille: 'P', uidPropre: true, cle: 'uid', chemin: 'lots/{uid}.json', fusion: 'last-writer',
@@ -1647,7 +1747,7 @@ const REGISTRE = [
     locales: ['id',
       // Secrets. Un secret commité dans git est définitif : l'historique est immuable, chaque
       // clone le garde, la forge le garde. Il ne suffit pas de les retirer, il faut révoquer.
-      'access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token',
+      'access_token', 'github_token', 'jira_email', 'jira_token', 'confluence_token', 'jenkins_user', 'jenkins_token',
       // Propre au poste : où sont les clones, dans quelle langue on lit, à quelle cadence CE
       // poste interroge Jenkins.
       'clone_path', 'language', 'jenkins_refresh_minutes', 'git_commands_seeded',
@@ -1672,7 +1772,9 @@ const REGISTRE = [
       'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless'],
     partagees: [
       // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
-      'gitlab_url', 'github_url', 'jira_url', 'jenkins_url',
+      'gitlab_url', 'github_url', 'jira_url', 'jenkins_url', 'confluence_url',
+      // La précision technique d'un ticket : la ligne repère et les consignes se décident à plusieurs.
+      'spec_marker', 'spec_team_instructions',
       // Ce qu'on demande à l'IA. D'équipe, et c'est le point : deux reviews de la même MR
       // faites avec des consignes différentes ne sont pas comparables.
       'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'review_skill',

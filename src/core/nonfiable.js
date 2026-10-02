@@ -35,7 +35,7 @@ const MARQUE = '<<<DONNEE';
    rendu dangereux pour les heredocs (`<<<sql` neutralisé pour rien) — une liste FERMÉE, elle, n'a
    plus aucune raison de le perdre : `<<<findings`/`<<<fin donnee` doivent rester neutralisés
    autant que leur forme en majuscules. */
-const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE)\b/gi;
+const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE|SPEC)\b/gi;
 
 const neutraliser = (texte) => String(texte == null ? '' : texte).replace(IMITATION, '‹‹‹$1$2');
 
@@ -60,7 +60,7 @@ function avecPreambule(prompt) {
 /* LE NONCE DE PROTOCOLE D'UN RUN (plan_secure.md, lot D, point 1) — distinct de celui d'une
    donnée : celui-ci identifie le RUN entier, posé une fois par le module qui compose le prompt
    (reviewer.js, questions.js, profile/apres.js…) et redemandé à l'agent pour CHAQUE bloc de
-   sortie qu'il produit (FINDINGS, QUESTIONS, REPO, AGENT, STALE, PAGE). Une donnée ne le connaît
+   sortie qu'il produit (FINDINGS, QUESTIONS, REPO, AGENT, STALE, PAGE, SPEC). Une donnée ne le connaît
    jamais — elle ne peut donc pas fabriquer un bloc que le parseur accepterait comme venant de
    CE run. Plus court que celui d'une donnée (6 car. hex) : il apparaît en clair dans le prompt
    et dans la sortie attendue, ce n'est pas un secret. */
