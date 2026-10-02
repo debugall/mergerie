@@ -56,6 +56,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Copilot CLI can code again in secure mode.** Non-interactive Copilot refuses every tool it was not
+  allowed to run, and Mergerie only passed it denials: a coding session could neither write a file nor run
+  `git rebase`, and "Update with the AI" failed with "no approval possible". It now receives the same
+  allowlist as Claude (`--allow-tool write`, the git subset, approved verifier commands), and that git
+  subset admits `rebase` and `merge` for both backends.
 - **The code explorer shows the whole merge request after an incremental re-review.** The diff stored
   next to the report was the delta sent to the AI, so "Open the code" only listed the files of the
   last commits; it is now the full `target...source` diff, the delta staying what the AI reads.

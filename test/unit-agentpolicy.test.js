@@ -261,6 +261,28 @@ describe('agentpolicy : copilot', () => {
     assert.ok(r.args.includes('shell(git push*)'), r.args.join(' '));
   });
 
+  /* SANS `--allow-tool`, COPILOT NE LANCE RIEN EN `-p` : « aucune approbation possible en mode non
+     interactif ». Une session d'écriture ne pouvait ni écrire un fichier ni faire `git rebase` —
+     la mise à jour d'une branche par l'IA échouait là où Claude recevait sa liste blanche. */
+  test('écriture, avec --allow-tool connu : la même liste blanche que Claude, dans la grammaire de Copilot', () => {
+    const avecAllowTool = fauxAide('copilot', '--deny-tool <t>\n--allow-tool <t>');
+    const r = pol.argvPermissions({ backend: 'copilot', bin: avecAllowTool, extra: [], kind: 'code' });
+    const admis = r.args.filter((a, i) => r.args[i - 1] === '--allow-tool');
+    assert.ok(admis.includes('write'), 'les fichiers');
+    for (const c of ['status', 'diff', 'add', 'commit', 'checkout', 'rebase', 'merge']) assert.ok(admis.includes(`shell(git ${c}*)`), `git ${c}`);
+    assert.ok(!admis.some((a) => /push|curl|wget|remote|config/.test(a)), 'ce qui fuit n’est jamais admis');
+    assert.ok(r.args.includes('shell(git push*)'), 'et reste refusé explicitement');
+    // Sans --allow-tool dans l'aide, rien n'est ajouté : on ne promet pas un drapeau que le binaire ignore.
+    const sansAllow = fauxAide('copilot', '--deny-tool <t>');
+    assert.ok(!pol.argvPermissions({ backend: 'copilot', bin: sansAllow, extra: [], kind: 'code' }).args.includes('--allow-tool'));
+  });
+
+  test('la liste blanche de Claude admet aussi git rebase et git merge (mise à jour d’une branche)', () => {
+    const l = pol.allowlistEcriture();
+    assert.ok(l.includes('Bash(git rebase:*)') && l.includes('Bash(git merge:*)'), l.join(' '));
+    assert.ok(!l.some((x) => /git push|git remote|git config/.test(x)));
+  });
+
   /* La sonde ne bloque plus aucun CLI : une lecture sur un Copilot sans `--deny-tool` part au
      niveau « allégé », dite telle au journal — le contrôle d'intégrité après coup fait foi. Le
      mode large de COPILOT_ARGS, lui, reste retiré. */

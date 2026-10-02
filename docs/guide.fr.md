@@ -3385,8 +3385,11 @@ choix fait dans l'écran :
 - **bornes** : `--max-turns` par défaut (Réglages → IA, 200) et un plafond de dépense par jour — deux réglages **de ce poste**, qui ne voyagent pas avec ceux de l'équipe.
 
 **Copilot CLI connaît `--allow-tool`/`--deny-tool`** quand le binaire installé les propose (sondé une fois
-via `--help`) : en écriture, `git push`/`curl`/`wget`/`ssh`/`scp` sont refusés à ce titre ; en lecture,
-`write` et `shell(*)` le sont. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
+via `--help`) : en écriture, `git push`/`curl`/`wget`/`ssh`/`scp` sont refusés à ce titre, et la **même liste
+blanche que Claude** lui est accordée (`--allow-tool write`, `shell(git status|log|show|diff|blame|add|commit|stash|checkout|rebase|merge*)`,
+les commandes des vérificateurs approuvés, ce que tu ajoutes dans Réglages → Session IA) — sans elle, en
+mode non interactif, Copilot ne lançait rien du tout, « aucune approbation possible » ; en lecture,
+`write` et `shell(*)` sont refusés. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
 le journal du run l'écrit en première ligne, en lecture comme en écriture — plutôt que de laisser croire
 à une restriction qui n'a pas lieu. **Limite, à ne
 pas oublier** : un agent qui écrit du code peut écrire un code qui fuit ; ce qui borne les dégâts, c'est ce

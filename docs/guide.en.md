@@ -3261,8 +3261,10 @@ made on screen:
 - **bounds**: a default `--max-turns` (Settings → AI, 200) and a daily spend cap — two settings of **this machine**, which do not travel with the team's.
 
 **Copilot CLI knows `--allow-tool`/`--deny-tool`** when the installed binary offers them (probed once via
-`--help`): when writing, `git push`/`curl`/`wget`/`ssh`/`scp` are refused on that basis; when reading,
-`write` and `shell(*)` are. An older binary that does not know them is no longer refused: the run goes at
+`--help`): when writing, `git push`/`curl`/`wget`/`ssh`/`scp` are refused on that basis, and the **same allowlist
+as Claude** is granted (`--allow-tool write`, `shell(git status|log|show|diff|blame|add|commit|stash|checkout|rebase|merge*)`,
+the approved verifiers' commands, what you add in Settings → AI session) — without it, non-interactive
+Copilot ran nothing at all, "no approval possible"; when reading, `write` and `shell(*)` are refused. An older binary that does not know them is no longer refused: the run goes at
 the **lightened** level, reading as writing, and the journal says so on its first line. **A limit to keep in mind**: an agent that writes code
 can write code that leaks; what bounds the damage is what it no longer has at hand.
 

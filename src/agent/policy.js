@@ -254,7 +254,10 @@ function commandesVerificateursApprouves() {
 /* Le sous-ensemble de git qu'une écriture sans sandbox peut lancer sans surveillance : jamais
    `push`, `remote` ni `config` (déjà dans `INTERDITS_ECRITURE`, répété nulle part ici — une
    seule liste qui dit ce qui fuit). */
-const GIT_ALLOWLIST = ['status', 'log', 'show', 'diff', 'blame', 'add', 'commit', 'stash', 'checkout'];
+/* `rebase` et `merge` : la mise à jour d'une branche par l'IA (« Mettre à jour avec l'IA ») lui
+   demande `git rebase origin/<cible>` puis `git rebase --continue` — le fetch, lui, est fait par le
+   pipeline avant le lancement. Sans eux, le flux échouait en sécurisé sur un refus de permission. */
+const GIT_ALLOWLIST = ['status', 'log', 'show', 'diff', 'blame', 'add', 'commit', 'stash', 'checkout', 'rebase', 'merge'];
 
 /** La liste blanche du mode `allowlist` (repli quand le sandbox manque ou n'est pas vérifié) :
  *  fichiers, le sous-ensemble de git, les commandes des vérificateurs approuvés, et ce que
@@ -270,6 +273,24 @@ function allowlistEcriture() {
     ...commandesVerificateursApprouves(),
     ...dits,
   ])];
+}
+
+/* LA MÊME LISTE BLANCHE, DANS LA GRAMMAIRE DE COPILOT (`--allow-tool`). En mode non interactif,
+   Copilot refuse tout outil qu'il n'est pas autorisé à lancer — « aucune approbation possible » :
+   sans ces `--allow-tool`, une session d'écriture ne pouvait ni écrire un fichier ni lancer la
+   moindre commande git, alors que Claude recevait sa liste (`allowlistEcriture`). `write` pour les
+   fichiers, `shell(git <cmd>*)` pour le sous-ensemble de git, les commandes des vérificateurs
+   approuvés telles quelles, et ce que `agent_write_allow` ajoute — `Bash(x)` traduit en `shell(x)`. */
+function allowToolsCopilot() {
+  const out = ['write', ...GIT_ALLOWLIST.map((s) => `shell(git ${s}*)`)];
+  try {
+    for (const c of commandesVerificateursApprouves()) out.push(c.replace(/^Bash\((.*)\)$/, 'shell($1)'));
+    const { getConfig } = require('../data/config');
+    for (const c of String(getConfig().agent_write_allow || '').split(/[,\n]/).map((s) => s.trim()).filter(Boolean)) {
+      out.push(c.replace(/^Bash\((.*)\)$/, 'shell($1)').replace(/:\*\)$/, '*)'));
+    }
+  } catch { /* base absente : la liste de base suffit */ }
+  return [...new Set(out)];
 }
 
 /**
@@ -341,10 +362,10 @@ function argvCopilot({ extra, kind, bin }) {
        `--help` (lot A, point 7). Un CLI qui ne connaît pas `--deny-tool` reçoit `extra` (mode
        large excepté) intact : c'est la limite documentée du backend Copilot (`SECURITY.md`). */
     if (!cap.denyTool) return { extra: sansLarge, args: [], lecture, note: 'copilot-ecriture-non-restreinte', mode: 'copilot' };
-    return {
-      extra: sansLarge, args: ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"],
-      lecture, note: null, mode: 'copilot',
-    };
+    const args = ["--deny-tool", "shell(git push*)", "--deny-tool", "shell(curl*)", "--deny-tool", "shell(wget*)", "--deny-tool", "shell(nc*)", "--deny-tool", "shell(ssh*)", "--deny-tool", "shell(scp*)"];
+    // Ce qu'il a le DROIT de lancer sans approbation — sinon, en `-p`, il ne lance rien du tout.
+    if (cap.allowTool) for (const o of allowToolsCopilot()) args.push('--allow-tool', o);
+    return { extra: sansLarge, args, lecture, note: null, mode: 'copilot' };
   }
   /* Lecture : sans `--deny-tool`, ce backend ne sait pas se restreindre. On ne REFUSE plus (la
      sonde ne bloque aucun CLI) : niveau `allege`, dit au journal, et le contrôle d'intégrité
