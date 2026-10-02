@@ -52,7 +52,9 @@ function openShortcuts() {
   $('#shortcutsList').innerHTML = SHORTCUTS
     .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('')
     + `<h4 class="shortcut-titre">${esc(tr('shortcuts.badges-title'))}</h4>`
-    + PASTILLES.map(([onglet, key]) => `<div class="shortcut-row"><kbd>${esc(tr(onglet))}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+    + PASTILLES.map(([onglet, key]) => `<div class="shortcut-row"><kbd>${esc(tr(onglet))}</kbd><span>${esc(tr(key))}</span></div>`).join('')
+    // …et celles des onglets de plugins, déjà traduites par le plugin.
+    + pluginsLegendesPastilles().map(([onglet, texte]) => `<div class="shortcut-row"><kbd>${esc(onglet)}</kbd><span>${esc(texte)}</span></div>`).join('');
   m.hidden = false;
 }
 $('#footerHelp') && $('#footerHelp').addEventListener('click', openShortcuts);
@@ -109,9 +111,9 @@ document.addEventListener('keydown', (e) => {
          (explorateur et « Trouver une ref »), Docker (journaux) et Réglages (dépôts) en
          étaient absents, si bien que « / » y faisait exactement ce que le commentaire
          ci-dessus dit avoir corrigé pour Jenkins — changer d'onglet. */
-      const champ = $$(`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
+      const champ = $([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
         #jenkinsSearch, #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
-        #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`)
+        #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
         .find((el) => el.offsetParent !== null);
       if (champ) { champ.focus(); if (champ.select) champ.select(); break; }
       const s = $('#searchReview');

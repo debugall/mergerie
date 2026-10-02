@@ -1,0 +1,2 @@
+{ "name": "hostile", "version": "0.0.1", "apiVersion": "1", "displayName": "Hostile", "description": "Essaie tout ce qui est interdit.", "main": "index.js",
+  "permissions": ["db", "http", "settings"], "events": { "emits": [] } }

@@ -1,0 +1,16 @@
+/* Réglages → Plugins : les cartes, l'état, les permissions, le formulaire généré. */
+.plugin-card { margin-bottom: 10px; }
+.plugin-card .card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.plugin-details { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 12.5px; }
+.plugin-details dt { color: var(--muted); }
+.plugin-details dd { margin: 0; }
+.plugin-details dd .tag { margin-right: 4px; }
+.plugin-error { margin: 6px 0; }
+.plugin-warn { margin: 6px 0; padding: 6px 10px; border-radius: var(--r); background: var(--warn-bg, rgba(255, 170, 0, .12)); color: var(--warn-fg, inherit); display: flex; align-items: center; gap: 6px; }
+.plugin-dep-missing { text-decoration: line-through; color: var(--err, #c33); }
+.plugin-settings { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.plugin-settings-form { max-width: 520px; }
+.plugin-install { max-width: 720px; margin-bottom: 14px; }
+.plugin-install [data-source] { display: block; }
+.plugin-install .plugin-install-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.plugin-install .plugin-install-row label { flex: 1; min-width: 220px; }

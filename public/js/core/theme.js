@@ -45,6 +45,10 @@
   apply(read());
 })();
 
+/* Les listes que `j`/`k` parcourent, dans l'ordre de priorité. Un plugin y ajoute la sienne
+   (`js/transverse/plugins.js`) : le tableau est le point d'extension, la fonction ne change pas. */
+const LISTES_CLAVIER = ['#toReviewList', '#reportList', '#taskList', '#localList', '#askList',
+  '#jiraList', '#jiraWatchList', '#jenkinsBox', '#todoList', '#lotList'];
 /* Liste actuellement visible : celle dans laquelle `j`/`k` se déplacent. */
 function listeCourante() {
   /* C12 — `j`/`k` ne connaissaient que quatre listes : Jira, Jenkins, les todos et les lots
@@ -52,8 +56,7 @@ function listeCourante() {
      ligne. L'ordre compte : la PREMIÈRE liste visible et non vide gagne, donc une liste d'un
      autre onglet ne capte jamais les touches. */
   // `#askList` manquait : les questions libres étaient la seule saveur de Dev IA à la souris.
-  for (const sel of ['#toReviewList', '#reportList', '#taskList', '#localList', '#askList',
-    '#jiraList', '#jiraWatchList', '#jenkinsBox', '#todoList', '#lotList']) {
+  for (const sel of LISTES_CLAVIER) {
     const el = $(sel);
     if (el && !el.hidden && el.offsetParent !== null && el.querySelector('.card')) return el;
   }

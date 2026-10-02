@@ -1,0 +1,1 @@
+{ "name": "needs-other", "version": "1.0.0", "apiVersion": "1", "displayName": "Needs other", "description": "dépend d'un plugin absent", "main": "index.js", "requires": ["absent-plugin"], "permissions": ["http"] }

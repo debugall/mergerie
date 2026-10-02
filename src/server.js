@@ -80,6 +80,7 @@ const agentprofile = require('./agent/profile');
 const agentschedule = require('./agent/schedule');
 const jobs = require('./jobs');
 const events = require('./core/events');
+const plugins = require('./plugins');
 
 /* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (réorganisation de src/ par couches). Chaque fichier de
    `app/middleware/` s'accroche à l'application quand on le charge : la ligne où il est chargé
@@ -123,6 +124,7 @@ require('./app/routes/mrs-commentaires');
 require('./app/routes/mrs-resume');
 require('./app/routes/notes');
 require('./app/routes/pieces');
+require('./app/routes/plugins');
 require('./app/routes/programmation');
 require('./app/routes/questions');
 require('./app/routes/repos');
@@ -263,8 +265,12 @@ const server = app.listen(PORT, HOST, () => {
      n'est demandé à Jenkins tant qu'aucun lancement n'est attendu. */
   if (!demoDocker.isDemo()) veille.demarrer({ getConfig, periodeMs: 60000 });
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
-  /* Le bus : le serveur est prêt. Un plugin qui attend « tout est en place » s'abonne ici. */
-  events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoDocker.isDemo() }).catch(() => {});
+  /* LES PLUGINS, puis le bus : `app.ready` part quand tout — cœur et plugins — est en place.
+     Un plugin qui lève à l'activation est marqué en erreur et le serveur continue. */
+  plugins.demarrer({ log: (m) => console.log(m) })
+    .then((liste) => { const actifs = liste.filter((p) => p.active).map((p) => p.name); if (actifs.length) console.log(`  plugins : ${actifs.join(', ')}`); })
+    .catch((e) => console.log(`[plugins] ${e.message}`))
+    .then(() => events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoDocker.isDemo() }).catch(() => {}));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -280,6 +286,7 @@ module.exports = {
   nommerBranches,
   async close() {
     await events.emit('app.shutdown', {}).catch(() => {});
+    await plugins.arreter().catch(() => {});
     planification.arreterAutoRefresh();
     // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
     arreterJiraWatch();

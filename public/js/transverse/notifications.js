@@ -34,7 +34,8 @@ const NOTIF_DEFAULTS = {
   threshold: 5,       // seuil « note basse » (sur 10)
   muted: false,       // mode silencieux global (toggle footer)
 };
-function notifPrefs() { try { return { ...NOTIF_DEFAULTS, ...JSON.parse(localStorage.getItem(NOTIF_KEY) || '{}') }; } catch { return { ...NOTIF_DEFAULTS }; } }
+// Les genres déclarés par les plugins actifs, avec leur défaut, AVANT la préférence enregistrée.
+function notifPrefs() { try { return { ...NOTIF_DEFAULTS, ...pluginsNotifDefauts(), ...JSON.parse(localStorage.getItem(NOTIF_KEY) || '{}') }; } catch { return { ...NOTIF_DEFAULTS, ...pluginsNotifDefauts() }; } }
 function setNotifPrefs(p) { try { localStorage.setItem(NOTIF_KEY, JSON.stringify(p)); } catch { /* stockage indisponible */ } }
 const notifSupported = () => typeof Notification !== 'undefined';
 const notifPermission = () => (notifSupported() ? Notification.permission : 'unsupported');

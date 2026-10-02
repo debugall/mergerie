@@ -1,6 +1,10 @@
 'use strict';
 /* Le brief « Aujourd'hui ». */
-// @expose loadBrief
+// @expose loadBrief, rafraichirBrief
+let dernierBrief = null;
+/* Redessine le brief avec les dernières données reçues : un plugin dont la section arrive après
+   coup (une liste chargée en retard) l'appelle, sans refaire la requête. */
+function rafraichirBrief() { if (dernierBrief && $('#briefBox') && $('#tab-notes').classList.contains('active')) renderBrief(dernierBrief); }
 /* ---------- Le brief « Aujourd'hui » ---------- */
 
 async function loadBrief() {
@@ -13,6 +17,7 @@ async function loadBrief() {
   /* Le seuil du filtre « prêtes à merger » de l'onglet Reviews vient d'ICI : le brief est la
      seule source de cette règle, et les deux écrans doivent compter la même chose. */
   if (d.ready_threshold) seuilPret = Number(d.ready_threshold) || 8;
+  dernierBrief = d;
   renderBrief(d);
   /* B4 — LA LISTE JENKINS ARRIVE APRÈS, ET LE BRIEF SE REDESSINE. On ne fait pas attendre le
      brief pour une CI : il s'affiche d'abord, et la section « CI rouge » apparaît quand la
@@ -274,6 +279,8 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
+    // Les sections des plugins, après celles du cœur.
+    pluginsBriefSections(d),
   ].join('');
 
   box.innerHTML = `<header class="brief-head">

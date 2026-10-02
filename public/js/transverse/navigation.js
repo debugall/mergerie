@@ -27,6 +27,8 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'notes') loadNotes();
   if (b.dataset.tab === 'links') loadLinks();
   if (b.dataset.tab === 'jenkins') loadJenkins();
+  // Un onglet de plugin : son bundle a enregistré ce qu'il charge à l'ouverture.
+  pluginsOnglet(b.dataset.tab);
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 

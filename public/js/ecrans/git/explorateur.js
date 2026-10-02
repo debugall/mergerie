@@ -98,6 +98,7 @@ function gitRenderExplorer(d, box) {
         + ((b.jenkins || []).slice(0, 1).map((j) => '<button class="btn btn-sm btn-ghost" data-mr-jenkins="' + esc(j.path)
           + '" data-param="' + esc(j.param) + '" data-branch="' + esc(b.name) + '" title="'
           + esc(tr('git.br.jenkins-title', { job: j.path, branch: b.name })) + '">' + svgIco('pipeline') + '</button>').join(''))
+        + pluginsHtml('branch', { branch: b, repo_id: d.repo_id })
         + addTodoBtn('branch', d.repo_id + ':' + b.name, tr('notes.add-todo.branch', { branch: b.name }));
       const mrBtn = b.open_mr
         ? '<a class="btn btn-sm" href="' + esc(safeUrl(b.open_mr.url)) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'

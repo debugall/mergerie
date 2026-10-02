@@ -113,7 +113,7 @@ const NAV_TOUJOURS = 'admin';
 
    Ce défaut ne vaut que pour qui n'a JAMAIS touché sa barre. Une préférence enregistrée fait
    foi, fût-elle antérieure : on ne retire pas ses menus à quelqu'un qui les a rangés lui-même. */
-const NAV_MASQUES_DEFAUT = ['git', 'docker', 'jenkins', 'links'];
+const NAV_MASQUES_DEFAUT = ['git', 'docker', 'jenkins', 'links', ...pluginsOngletsReplies()];
 
 function lireNav() {
   try {

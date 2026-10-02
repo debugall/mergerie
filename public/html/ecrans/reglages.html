@@ -16,6 +16,9 @@
             <button data-sub="datasync" role="tab" title="Le dépôt git où l'équipe partage son travail accumulé" data-i18n-title="datasync.sub-title" data-i18n="datasync.head">Données partagées</button>
             <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
             <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
+            <!-- Les sous-onglets des plugins actifs. -->
+            <!--@plugins:settings-nav-->
+            <button data-sub="plugins" role="tab" title="Les plugins installés : activer, désactiver, régler, installer" data-i18n-title="plugins.settings.title" data-i18n="plugins.settings.sub">Plugins</button>
             <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
         </div>
 
@@ -286,6 +289,8 @@
                 <label class="inline-check"><input type="checkbox" data-notif="docker_down" /> <span data-i18n="settings.notif.docker-down">Un conteneur Docker est tombé</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="restore_error" /> <span data-i18n="settings.notif.restore-error">Un dossier de travail n'a pas été rendu dans son état</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="cap_reached" /> <span data-i18n="settings.notif.cap-reached">Un plafond automatique a laissé du travail de côté</span></label>
+                <!-- Les genres de notification déclarés par les plugins actifs (js/transverse/plugins.js). -->
+                <div id="notifPluginKinds"></div>
             </div>
         </div>
 
@@ -762,4 +767,29 @@
             <div id="aiSessionResult"></div>
             </details>
         </div><!-- /sub-aisession -->
+
+        <!-- Sous-onglet : Plugins — la liste, activer/désactiver à chaud, installer. -->
+        <div id="sub-plugins" class="subtab">
+        <h2 data-i18n="plugins.settings.sub">Plugins</h2>
+        <p class="muted" style="max-width:760px" data-i18n="plugins.intro">Un plugin ajoute un onglet, des actions, des tâches de fond — sans toucher au cœur.</p>
+        <div class="form-actions">
+            <button type="button" class="btn" id="pluginRescan" data-i18n-title="plugins.rescan.title" title="Relit les dossiers de plugins"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="plugins.rescan">Rescanner</span></button>
+            <label class="inline-check"><input type="checkbox" id="pluginUninstallDeleteData" /> <span data-i18n="plugins.uninstall.delete-data">Supprimer aussi ses données à la désinstallation</span></label>
+        </div>
+        <details class="plugin-install">
+            <summary data-i18n="plugins.install.title">Installer un plugin</summary>
+            <form id="pluginInstallForm" class="form" autocomplete="off">
+                <label class="inline-check"><input type="radio" name="source" value="path" checked /> <span data-i18n="plugins.install.source-path">Depuis un dossier local</span></label>
+                <label class="inline-check"><input type="radio" name="source" value="git" /> <span data-i18n="plugins.install.source-git">Depuis une adresse git</span></label>
+                <div class="plugin-install-row" data-source="path"><label><span data-i18n="plugins.install.path">Chemin du dossier</span> <input name="path" placeholder="/chemin/vers/mergerie-plugin-x" /></label></div>
+                <div class="plugin-install-row" data-source="git" hidden><label><span data-i18n="plugins.install.url">Adresse git</span> <input name="url" placeholder="https://github.com/x/mergerie-plugin-x.git" /></label><label><span data-i18n="plugins.install.ref">Branche ou tag (optionnel)</span> <input name="ref" placeholder="main" /></label></div>
+                <p class="field-note" data-i18n="plugins.install.hint">Le manifeste est vérifié avant la copie. Rien n’est activé tout seul.</p>
+                <div class="form-actions"><button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="plugins.install.go">Installer</span></button></div>
+            </form>
+        </details>
+        <div id="pluginList" class="list"></div>
+        </div><!-- /sub-plugins -->
+
+        <!-- Les sous-onglets de réglages des plugins actifs. -->
+        <!--@plugins:settings-panels-->
     </section>

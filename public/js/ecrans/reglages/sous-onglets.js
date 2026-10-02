@@ -11,7 +11,7 @@
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
 /* Le panneau Dépôts porte aussi les GROUPES de dépôts : deux listes, un écran. */
 function loadReposEtGroupes() { loadRepos(); loadGroupes(); }
-const ADMIN_SUBS = { rules: loadRules, repos: loadReposEtGroupes, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, datasync: loadConfig };
+const ADMIN_SUBS = { rules: loadRules, repos: loadReposEtGroupes, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, datasync: loadConfig, plugins: loadPlugins };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
@@ -30,7 +30,7 @@ function loadVerifiersEtPlafond() { loadConfig(); loadVerifiers(); }
    visible : un menu replié n'a pas à occuper une place dans les Réglages de qui ne s'en sert pas.
    Déplier le menu (Réglages → Général → Menus, ou une porte contextuelle) le rend. Le sous-onglet
    courant qui disparaît ramène sur le premier. */
-const SOUS_ONGLETS_PAR_MENU = { jenkinscfg: 'jenkins' };
+const SOUS_ONGLETS_PAR_MENU = { jenkinscfg: 'jenkins', ...pluginsSousOngletsParMenu() };
 function replierSousOngletsSelonMenus() {
   for (const [sub, tab] of Object.entries(SOUS_ONGLETS_PAR_MENU)) {
     const b = $(`#tab-admin .subnav [data-sub="${sub}"]`);
@@ -49,7 +49,9 @@ function replierSousOngletsSelonMenus() {
 }
 function showAdminSub(sub) {
   if (!sub) { try { sub = localStorage.getItem('aidevtools_admin_sub') || 'gitcfg'; } catch { sub = 'gitcfg'; } }
-  if (!ADMIN_SUBS[sub]) sub = 'gitcfg';
+  // Un sous-onglet porté par un plugin : il existe dans la page, et son bundle sait le charger.
+  const dePlugin = !ADMIN_SUBS[sub] && !!$(`#tab-admin .subnav [data-sub="${sub}"]`) && pluginsSettingsTabs().some((t) => t.id === sub);
+  if (!ADMIN_SUBS[sub] && !dePlugin) sub = 'gitcfg';
   /* Un sous-onglet demandé NOMMÉMENT (une porte contextuelle, une adresse) déplie son menu. */
   const menu = SOUS_ONGLETS_PAR_MENU[sub];
   if (menu && typeof devoilerMenus === 'function') { const b = $(`nav button[data-tab="${menu}"]`); if (b && b.hidden) devoilerMenus([menu]); }
@@ -57,7 +59,7 @@ function showAdminSub(sub) {
   $$('#tab-admin .subnav [data-sub]').forEach((b) => b.classList.toggle('active', b.dataset.sub === sub));
   $$('#tab-admin .subtab').forEach((p) => p.classList.toggle('active', p.id === `sub-${sub}`));
   try { localStorage.setItem('aidevtools_admin_sub', sub); } catch { /* ignore */ }
-  try { ADMIN_SUBS[sub](); } catch { /* chargement best-effort */ }
+  try { if (dePlugin) pluginsSousOnglet(sub); else ADMIN_SUBS[sub](); } catch { /* chargement best-effort */ }
   // Le souvenir des tests de connexion : il ne coûte qu'une lecture en base, et il répond à
   // « est-ce que ça marchait, la dernière fois que quelqu'un a regardé ? ».
   if (sub === 'gitcfg' || sub === 'jiracfg' || sub === 'jenkinscfg') majEtatsConnexions();

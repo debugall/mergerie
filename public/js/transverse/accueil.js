@@ -69,6 +69,7 @@ function onboardingHtml() {
         <label class="inline-check"><input type="checkbox" data-outil="jenkins" /> <span>${esc(tr('onboard.s3.jenkins'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="docker" /> <span>${esc(tr('onboard.s3.docker'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="links" /> <span>${esc(tr('onboard.s3.links'))}</span></label>
+        ${pluginsOnboarding().map((o) => `<label class="inline-check"><input type="checkbox" data-outil="${esc(o.tab)}" /> <span>${esc(o.label)}</span></label>`).join('')}
         <label class="onboard-mode"><span>${esc(tr('onboard.s3.mode'))}</span>
           <select data-agent-mode>
             <option value="yolo" ${s.agentMode === 'secure' ? '' : 'selected'}>${esc(tr('onboard.s3.mode-yolo'))}</option>

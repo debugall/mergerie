@@ -372,7 +372,8 @@ avantDecl.length
     if (/(?<![\w-])(href|src)="'\s*\+(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}  URL concaténée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
     if (/target="_blank"/.test(l) && !/rel=/.test(l)) soucis.push(`${nom}  target="_blank" sans rel : ${l.trim().slice(0, 90)}`);
   }
-  const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/g)].length;
+  // Un <script type="application/json"> est du TEXTE (les déclarations des plugins) : la CSP ne l'exécute pas, il ne compte pas.
+  const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>/g)].length;
   if (enLigne) soucis.push(`public/index.html  ${enLigne} <script> en ligne — la CSP les refuse, mettez le code dans un fichier`);
   soucis.length
     ? fail('Verrous de sécurité de l’écran (guard.md)', soucis)

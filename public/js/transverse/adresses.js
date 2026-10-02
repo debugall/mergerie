@@ -211,7 +211,8 @@ function handleNotifEvent(e, p) {
       if (p.mr_merged) showNotif(tr('notif.mr-merged.title', { iid: e.iid, project: e.project }), e.title || '',
         () => (e.mr_id ? navMrReport(e.mr_id) : navReviews('reviewed')));
       break;
-    default: break;
+    // Un genre déclaré par un plugin : c'est lui qui compose le titre, le corps et le clic.
+    default: pluginsNotif(e, p); break;
   }
 }
 

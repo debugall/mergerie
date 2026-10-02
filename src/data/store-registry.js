@@ -1735,6 +1735,16 @@ const REGISTRE = [
      des démons qui n'existent que là. Les partager imposerait à chacun la palette du voisin et
      ferait voyager un journal d'actions que personne d'autre ne peut ni rejouer ni défaire.
      Comme l'onglet Liens et l'onglet Jenkins : ça reste à soi. */
+  /* ── Plugins ─────────────────────────────────────────────────────────────────────────── */
+  /* L'ÉTAT, LES RÉGLAGES ET LES SECRETS DES PLUGINS SONT DE POSTE. Un plugin activé ici ne l'est
+     pas forcément chez le voisin, ses réglages portent des adresses et des jetons, et ses
+     migrations ont été jouées sur CETTE base. Les tables d'un plugin (`plugin_<nom>_*`) sont
+     créées par lui, hors de ce schéma ; leur classement est déclaré par `ctx.db.classify`
+     (L ou C en V1 : rien d'un plugin ne part dans le dépôt d'équipe). */
+  { table: 'plugin_state', famille: 'L', note: 'quel plugin est activé sur CE poste, sa version, son erreur' },
+  { table: 'plugin_setting', famille: 'L', note: 'les réglages des plugins de CE poste' },
+  { table: 'plugin_secret', famille: 'L', note: 'les secrets des plugins de CE poste' },
+  { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
   { table: 'docker_backup', famille: 'L', uidPropre: true, note: 'les conteneurs sauvegardés sur CE poste' },

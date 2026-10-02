@@ -97,6 +97,9 @@ function todoLinkHtml(t) {
   if (t.link_kind === 'container') {
     return `<button type="button" class="note-link" data-todo-container="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('inbox')} ${esc(t.link_ref)}</button>`;
   }
+  // Un genre déclaré par un plugin : rendu et ouverture par lui.
+  const dePlugin = pluginsLienHtml(t);
+  if (dePlugin) return dePlugin;
   return `<span class="muted">${svgIco('branch')} ${esc(tr('notes.todo.link.repo', { project: t.link_ref }))}</span>`;
 }
 

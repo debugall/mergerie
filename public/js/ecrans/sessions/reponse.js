@@ -187,6 +187,7 @@ function targetLine(t, tg) {
            title="${esc(tr('task.title.followup-ci', { job: ci.path, n: ci.number }))}">${svgIco('bot')}${esc(tr('task.btn.followup-ci'))}</button>`
       : '';
   })()}
+    ${pluginsHtml('session-target', { task: t, target: tg })}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;

@@ -198,6 +198,12 @@ $('#configForm').addEventListener('submit', async (e) => {
    par type. Tout est local (localStorage) — aucun aller-retour serveur. */
 function renderNotifSettings() {
   const p = notifPrefs();
+  /* Les genres déclarés par les plugins actifs : une case chacun, posée une fois dans la liste. */
+  const zone = $('#notifPluginKinds');
+  if (zone && !zone.childElementCount) {
+    zone.innerHTML = pluginsNotifKinds().map((k) => `<label class="inline-check"><input type="checkbox" data-notif="${esc(k.type)}" /> <span>${esc(k.i18n ? tr(k.i18n) : k.label)}</span></label>`).join('');
+    $$('#notifPluginKinds [data-notif]').forEach((cb) => cb.addEventListener('change', () => { const q = notifPrefs(); q[cb.dataset.notif] = cb.checked; setNotifPrefs(q); updateMuteBtn(); }));
+  }
   $$('#sub-notif [data-notif]').forEach((cb) => { cb.checked = !!p[cb.dataset.notif]; });
   const th = $('#notifThreshold'); if (th) th.value = p.threshold;
   const status = $('#notifPermStatus');

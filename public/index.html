@@ -69,6 +69,9 @@
     <link rel="stylesheet" href="/css/ecrans/reglages-partage-etat.css" />
     <link rel="stylesheet" href="/css/ecrans/notes-histoire.css" />
     <link rel="stylesheet" href="/css/ecrans/reviews-approbation.css" />
+    <link rel="stylesheet" href="/css/ecrans/reglages-plugins.css" />
+    <!-- LES PLUGINS ACTIFS posent ici leurs feuilles de style (src/plugins/pageplugins.js). -->
+    <!--@plugins:styles-->
     <!-- Le thème avant le premier rendu. Un FICHIER et non un script en ligne : la politique
          de contenu n'admet que les scripts servis par l'application. -->
     <script src="/js/theme-early.js"></script>
@@ -120,6 +123,9 @@
     <!--@include html/ecrans/liens.html-->
 
     <!--@include html/ecrans/reglages.html-->
+
+    <!-- Les onglets des plugins actifs. -->
+    <!--@plugins:tabs-->
 </main>
 </div><!-- /.shell -->
 
@@ -161,6 +167,9 @@
 
 <!--@include html/modales/reviews-vue.html-->
 
+<!-- Les modales des plugins actifs, après celles du cœur. -->
+<!--@plugins:modals-->
+
 <!--@include html/pied.html-->
 
 <script src="/i18n/_socle.js"></script>
@@ -179,6 +188,10 @@
 <script src="/i18n/jenkins.js"></script>
 <script src="/i18n/stats.js"></script>
 <script src="/i18n/jobs.js"></script>
+<script src="/i18n/plugins.js"></script>
+<!-- Les dictionnaires des plugins actifs, AVANT le moteur qui les lit ; puis leurs déclarations d'écran, en JSON (pas un script : du texte que js/transverse/plugins.js lit). -->
+<!--@plugins:i18n-->
+<!--@plugins:meta-->
 <script src="/runtime/i18n-runtime.js"></script>
 <script src="/runtime/ansi-runtime.js"></script>
 <script src="/runtime/notes-runtime.js"></script>
@@ -196,6 +209,7 @@
 <script src="/js/core/infobulle.js"></script>
 <script src="/js/core/theme.js"></script>
 <script src="/js/core/redessin.js"></script>
+<script src="/js/transverse/plugins.js"></script>
 <script src="/js/transverse/erreurs.js"></script>
 <script src="/js/transverse/modale.js"></script>
 <script src="/js/transverse/signature.js"></script>
@@ -213,6 +227,7 @@
 <script src="/js/transverse/notifications.js"></script>
 <script src="/js/transverse/adresses.js"></script>
 <script src="/js/transverse/palette.js"></script>
+<script src="/js/transverse/kit.js"></script>
 <script src="/js/ecrans/reviews/liste.js"></script>
 <script src="/js/ecrans/reviews/merge.js"></script>
 <script src="/js/ecrans/reviews/rapports.js"></script>
@@ -238,6 +253,7 @@
 <script src="/js/ecrans/reglages/connexions.js"></script>
 <script src="/js/ecrans/reglages/sandbox.js"></script>
 <script src="/js/ecrans/reglages/groupes.js"></script>
+<script src="/js/ecrans/reglages/plugins.js"></script>
 <script src="/js/ecrans/sessions/liste.js"></script>
 <script src="/js/ecrans/sessions/converger.js"></script>
 <script src="/js/ecrans/sessions/cibles.js"></script>
@@ -305,6 +321,8 @@
 <script src="/js/ecrans/reglages/sous-onglets.js"></script>
 <script src="/js/ecrans/reglages/maintenance.js"></script>
 <script src="/js/ecrans/reglages/clis.js"></script>
+<!-- Le bundle de chaque plugin actif (/plugins/<nom>/bundle.js) : après tous les écrans, avant le câblage. -->
+<!--@plugins:scripts-->
 <script src="/js/demarrage.js"></script>
 </body>
 </html>

@@ -37,6 +37,8 @@ async function ficheDepotHtml(d) {
       `<button type="button" class="lien-reglage" data-sheet-agent="${a.id}">${esc(a.name)}</button>`
       + ` <span class="muted">${esc(tr(`agents.role.${a.role}`))}</span>`,
     ))),
+    // Ce qu'un plugin rattache à ce dépôt (cible « repo-sheet »).
+    pluginsHtml('repo-sheet', d),
   ].filter(Boolean).join('') || `<p class="muted">${esc(tr('settings.repo.sheet.empty'))}</p>`;
 }
 

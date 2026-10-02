@@ -475,6 +475,8 @@ function mrCard(m) {
         ${(m.verification && m.verification.verdict === 'verified_pass' && !m.verification.stale)
     ? (m.jenkins_jobs || []).map((j) => `<button role="menuitem" data-mr-jenkins="${esc(j.path)}" data-param="${esc(j.param || '')}" data-branch="${esc(m.source_branch)}" title="${esc(tr('mr.title.jenkins-run'))}">${esc(tr('mr.btn.jenkins-run', { job: j.path }))}</button>`).join('')
     : ''}
+        ${/* Les actions qu'un plugin ajoute au menu d'une merge request (cible « mr »). */''}
+        ${pluginsHtml('mr', m)}
         <button role="menuitem" data-copy-ref="${m.id}">${tr('mr.btn.copy-ref')}</button>
         ${/* C11 — SURVEILLER LE TICKET DE CETTE MR. La clé est déjà déduite (elle est écrite
               sur la carte) ; il fallait pourtant aller dans Jira → Surveillés et la retaper.
