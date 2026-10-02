@@ -1447,6 +1447,65 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
 - Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre
   la vérification des autres, et **sans effacer** le dernier état connu.
 
+#### Préciser un ticket techniquement
+Un ticket écrit par un Product Owner dit le *quoi* fonctionnel, jamais le *où* (quels dépôts, quels
+modules) ni le *comment* (les étapes, les contraintes de l'existant). Le développeur refait cette
+traduction de tête à chaque ticket, et elle ne se dépose nulle part. Le bouton **« Préciser
+techniquement »** du détail d'un ticket ouvre la section **Précision technique**, où l'IA fait ce travail
+et le propose en commentaire.
+
+- **Ce qu'on lui donne.** Un ou plusieurs **dépôts** (la liste se filtre à la frappe : le filtre masque
+  sans rien décocher), **l'epic** du ticket et ses autres tickets en contexte (cochée d'office quand le
+  ticket en a une — un ticket prend souvent son sens à la lumière des voisins), une ou plusieurs
+  **pages Confluence** (cinq au plus ; Cloud se lit avec le compte Jira, Server / Data Center demande une
+  adresse et un jeton dans Réglages → Jira ; une page qui n'est pas sur ce Jira ou ce Confluence est refusée :
+  les identifiants ne partent nulle part ailleurs), un **complément** libre (« c'est le service billing, pas crm ;
+  on ne touche pas au legacy »), le niveau de détail (**synthèse**, trente lignes au plus, ou
+  **détaillé**) et la case **« l'IA peut me poser des questions »**.
+- **Ce qu'elle fait.** Une **session d'exploration** ordinaire, en lecture seule, sur les dépôts choisis :
+  elle lit le ticket, ses commentaires et ses liés, l'epic, les pages, puis le code. Tout ce qui vient de
+  Jira ou de Confluence entre dans le prompt comme **donnée** balisée, jamais comme consigne ; seul ton
+  complément est lu comme une consigne. Une page refusée (droits) ou trop longue est **dite**, dans la
+  proposition comme à l'écran, et n'empêche rien.
+- **Deux sortes de questions.** Ce que **toi seul** sais (quel service, quelle convention) est demandé
+  **avant** de proposer, par le mécanisme habituel : la session passe en *attend tes réponses*, tu réponds
+  dans Dev IA, l'analyse reprend. Ce que **seul le PO** sait devient la dernière section de la
+  proposition, *Questions ouvertes pour le PO* — c'est souvent ce que le PO lit en premier.
+- **La proposition.** Six sections, toujours dans le même ordre : *Dépôts concernés*, *Existant sur lequel
+  on s'appuie* (des fichiers et modules nommés, pas de code), *Ce qu'il faut faire*, *Points d'attention*,
+  *Hors périmètre*, *Questions ouvertes pour le PO*. Elle arrive dans la section sans recharger la page.
+- **L'ajuster.** Un **suivi** (« détaille la partie migration », « trop long ») fait réécrire la proposition
+  entière par l'agent, dans la même session ; **« Modifier »** l'ouvre en édition, sans rappeler l'IA.
+  Chaque passage est une **version** (IA, suivi, édition), et l'écran dit quand des modifications ne
+  sont pas encore postées.
+- **Poster.** **« Poster en commentaire »** montre ce qui part et demande confirmation : le commentaire
+  commence par une **ligne repère** (réglable dans Réglages → Jira) et le numéro de version. La fois
+  d'après — nouvelle analyse, suivi, retouche — le bouton devient **« Mettre à jour le commentaire »** et
+  c'est **le même commentaire** qui est réécrit, jamais un deuxième. Si Jira refuse (le commentaire a été
+  posté par un collègue depuis un autre compte, ou le droit d'éditer a été retiré), rien ne part en
+  silence : l'écran propose de poster une nouvelle version sous ton nom. Supprimé entre-temps sur Jira,
+  un nouveau est créé, et l'écran le dit.
+- **À revoir.** Quand le ticket **change de sens** (titre ou description réécrits par le PO) après
+  l'analyse, la précision passe **« à revoir »** dès qu'on ouvre le ticket. Un simple changement d'état
+  ne périme rien. **« Relancer l'analyse »** relit tout (ticket, pages, code), dans une session neuve ;
+  les versions et le commentaire posté restent.
+- **Vers le code.** **« Lancer une session »** ouvre le modal Dev IA pré-rempli : les dépôts de la
+  précision en cibles, la proposition en consigne — la boucle ticket → précision → session → MR.
+- **Une epic d'un coup.** **« Préciser les tickets de l'epic »** liste ses tickets, cochables (ceux déjà
+  précisés et les terminés sont décochés d'office, un filtre masque sans décocher), et lance **une
+  analyse par ticket coché** avec les dépôts, pages et complément du formulaire courant — le lot se prépare en
+  arrière-plan, les pastilles de la liste suivent. Chaque ticket
+  garde ensuite sa précision propre : suivi, édition, post, ticket par ticket.
+- **Dans la liste**, chaque ticket porte une pastille *spec proposée / postée / à revoir / attend tes
+  réponses*. **Dans Dev IA**, la session d'analyse porte l'étiquette *Spec PROJ-123* (qui ramène au
+  ticket), et une pastille *avec / sans / seulement les analyses de tickets* masque ces sessions d'un
+  geste — mémorisée par poste, sans rien ranger ; une analyse qui attend une réponse reste visible quel
+  que soit le filtre.
+- **Réglages → Jira** : adresse et jeton d'un Confluence Server / Data Center, la ligne repère du
+  commentaire, et des **consignes d'équipe** ajoutées à chaque analyse (« nos endpoints suivent
+  `/v2/<ressource>` », « jamais de migration destructive ») — de la consigne, pas du protocole : le format
+  de la proposition, lui, n'est pas éditable.
+
 ### Git
 Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 

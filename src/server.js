@@ -113,6 +113,7 @@ require('./app/routes/groupes');
 require('./app/routes/maintenance');
 require('./app/routes/jenkins');
 require('./app/routes/jira');
+require('./app/routes/jira-spec');
 require('./app/routes/jobs');
 require('./app/routes/links');
 require('./app/routes/local-tasks');

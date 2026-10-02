@@ -154,6 +154,9 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
                 dans douze clones. Le bouton n'apparaît QUE si le texte porte une trace —
                 sinon c'est un bouton qui ne sert à rien sur les neuf tickets sur dix. */''}
           ${detecterTrace(`${it.summary || ''}\n${it.descriptionMd || ''}`) ? `<button type="button" class="btn btn-sm btn-jira-investigate" data-jirakey="${esc(it.key)}" title="${esc(tr('jira.investigate-title'))}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('jira.investigate'))}</button>` : ''}
+          ${/* PRÉCISER TECHNIQUEMENT : l'IA lit le ticket, l'epic, des pages Confluence et le code,
+                et propose une précision à poster en commentaire. Le bouton mène à la section. */''}
+          <button type="button" class="btn btn-sm" data-spec-goto="${esc(it.key)}" title="${esc(tr('jira.spec.btn.open-title'))}"><svg class="ico ico-sm"><use href="#i-edit"/></svg>${esc(tr('jira.spec.btn.open'))}</button>
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
@@ -167,6 +170,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
       ${/* Le ticket a un dépôt PROBABLE — celui de la merge request ou de la session qui porte
             sa clé : les mêmes boutons y mènent aux mêmes environnements. */''}
       <div class="jira-section jira-liens" data-liens-ticket="${esc(it.key)}"></div>
+      ${sectionSpecHtml(it)}
       <div class="jira-section"><h4>${esc(tr('jira.description'))}</h4>
         <div class="jira-card md-body">${it.descriptionMd ? mdToHtml(it.descriptionMd) : `<p class="muted">${esc(tr('jira.no-description'))}</p>`}</div>
       </div>
@@ -176,6 +180,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
       ${comments}
     </article>`;
   chargerEngagements(it.key);
+  chargerSpec(it.key, box);      // la précision technique, si elle existe
   remplirLiensDifferes(box);     // les boutons contextuels du ticket
   /* C8 — le champ de commentaire se souvient et part à Ctrl+Entrée, comme celui de la
      surveillance. Armé APRÈS le rendu : le textarea vient d'être recréé. */

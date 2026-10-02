@@ -97,6 +97,7 @@ function taskHead(t) {
       <span class="task-projects">${tr('task.projects', { n: nb, count: nb })}</span>
       ${t.agent_name ? `<span class="tag tag-agent" title="${esc(tr('agents.card.ran-by'))}">${svgIco('zap')} ${esc(t.agent_name)}</span>` : ''}
       ${t.cli_name ? `<span class="tag task-cli" title="${esc(tr('task.card.cli'))}">${svgIco('bot')} ${esc(t.cli_name)}</span>` : ''}
+      ${t.spec_key ? `<button type="button" class="tag task-spec" data-spec-open="${esc(t.spec_key)}" title="${esc(tr('task.card.spec-title', { key: t.spec_key }))}">${svgIco('tag')} ${esc(tr('task.card.spec', { key: t.spec_key }))}</button>` : ''}
       ${t.triggered_by === 'schedule' ? `<span class="tag" title="${esc(tr('agents.card.by-schedule'))}">${svgIco('clock')}</span>` : ''}
       ${badgeProgrammation(t, '')}
       ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une

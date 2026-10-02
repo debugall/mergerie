@@ -13,6 +13,16 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Technical brief of a Jira ticket.** A ticket written by a Product Owner says what, never where
+  nor how. From the ticket's detail, "Technical brief" lets you pick the repositories involved, attach
+  the epic and its tickets, one or several Confluence pages and a complement of your own; the AI
+  explores the code in a read-only session, asks you what only you can answer, and proposes a short
+  brief in six fixed sections (repositories, existing code, what to do, points of attention, out of
+  scope, open questions for the PO). You send follow-ups to have it rewritten, edit it by hand, then
+  post it as a comment on the ticket — and reposting after a new analysis **updates the same comment**
+  instead of piling up a new one. The brief turns stale when the ticket's title or description changes,
+  can prefill a coding session, and an epic launches one analysis per ticket you tick. In AI Dev, these
+  analysis sessions carry the ticket's key and a chip hides them in one gesture.
 - **The code explorer can hide the code too.** Next to "Report" and "Tree", a "Code" button hides the
   file panel so the report takes the full width of the screen; one panel always stays visible.
 - **"Update with the AI" also on a merge request that is behind its target.** Each open merge
@@ -45,6 +55,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   working folder is gone says so instead of showing an empty panel.
 
 ### Fixed
+
+- **The code explorer shows the whole merge request after an incremental re-review.** The diff stored
+  next to the report was the delta sent to the AI, so "Open the code" only listed the files of the
+  last commits; it is now the full `target...source` diff, the delta staying what the AI reads.
 
 - **Updating a domain agent's knowledge on Copilot CLI no longer comes back empty.** In secure mode,
   the launcher denies the agent every write, but its instruction still said "write the answer ONLY
