@@ -104,7 +104,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     try {
       diffComplet = enDemo ? demoDiff.diffPour(mr)
         : await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
-    } catch (e) { onLog(t('log.review.diff-fallback', { raison: String(e.message).split('\n')[0] })); diffComplet = diff; }
+    } catch (e) { onLog(t('log.review.diff-store-fallback', { raison: String(e.message).split('\n')[0] })); diffComplet = diff; }
   }
 
   const outDir = reviewDirFor(repo, mr);
