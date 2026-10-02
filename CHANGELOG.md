@@ -56,6 +56,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The code explorer shows the whole merge request after an incremental re-review.** The diff stored
+  next to the report was the delta sent to the AI, so "Open the code" only listed the files of the
+  last commits; it is now the full `target...source` diff, the delta staying what the AI reads.
+
 - **Updating a domain agent's knowledge on Copilot CLI no longer comes back empty.** In secure mode,
   the launcher denies the agent every write, but its instruction still said "write the answer ONLY
   in this file, do not repeat it on the output": the agent obeyed both, produced nothing, and its

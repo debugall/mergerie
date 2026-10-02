@@ -92,6 +92,21 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       : await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
   }
 
+  /* L'EXPLORATEUR VOIT TOUTE LA MERGE REQUEST. Le delta n'est que ce qu'on DONNE À L'IA pour
+     qu'elle ne relise pas ce qu'elle a déjà jugé ; le diff rangé à côté du rapport, lui, sert
+     « Ouvrir le code » et l'arbre des fichiers modifiés. Y ranger le delta faisait disparaître
+     de l'explorateur, après chaque re-review incrémentale, tous les fichiers des commits
+     précédents — on cherchait le diff d'un guide touché deux commits plus tôt, il n'y était
+     plus. Un `git diff` de plus par re-review incrémentale, celui qu'on calcule de toute façon
+     en repli ; s'il échoue, le delta vaut mieux qu'un fichier absent. */
+  let diffComplet = diff;
+  if (usedIncremental) {
+    try {
+      diffComplet = enDemo ? demoDiff.diffPour(mr)
+        : await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
+    } catch (e) { onLog(t('log.review.diff-fallback', { raison: String(e.message).split('\n')[0] })); diffComplet = diff; }
+  }
+
   const outDir = reviewDirFor(repo, mr);
   // IMPORTANT : les fichiers d'échange (diff + sorties) doivent être DANS le clone
   // (cwd de copilot), sinon copilot (bac à sable) ne peut ni les lire ni les écrire.
@@ -100,7 +115,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   const diffName = `${workRel}/diff.patch`;
   fs.writeFileSync(path.join(cwd, diffName), diff, 'utf8');
   const diffStorePath = path.join(outDir, 'diff.patch');
-  fs.writeFileSync(diffStorePath, diff, 'utf8');
+  fs.writeFileSync(diffStorePath, diffComplet, 'utf8');
 
   /* LE MÊME DIFF, NUMÉROTÉ. Un patch ne porte ses numéros que dans les en-têtes `@@` : citer
      « ligne 137 » demande à l'IA de compter à la main, ce qu'elle réussit souvent et rate

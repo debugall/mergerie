@@ -138,7 +138,7 @@ La review d’une merge request et sa convergence.
 |---|---|
 | `review/converge.js` | **« Converger »** : orchestrateur (machine à états) review → correction IA (commit + push) → re-review incrémentale, jusqu'au seuil / à la régression / au plafond ; **`convergeSession`** : depuis une session de dev (dev → push → crée la MR → upsert → `convergeRun`), par projet en série |
 | `review/note.js` | extraction de la note globale d'un rapport (texte libre) |
-| `review/reviewer.js` | pipeline de review : clone → diff → prompt(s) → écriture fichier → BDD ; contexte ticket + règles ; modif IA ; re-review incrémentale |
+| `review/reviewer.js` | pipeline de review : clone → diff → prompt(s) → écriture fichier → BDD ; contexte ticket + règles ; modif IA ; re-review incrémentale — le **delta** n'est que ce que l'IA reçoit, le `diff.patch` rangé à côté du rapport (lu par « Ouvrir le code ») est toujours le diff **complet** `target...source` |
 
 ### `session/`
 
