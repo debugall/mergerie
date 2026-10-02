@@ -1403,7 +1403,8 @@ comment.
   without unticking), the ticket's **epic** and its other tickets as context (ticked by default when the
   ticket has one — a ticket often makes sense in the light of its neighbours), one or several **Confluence
   pages** (five at most; Cloud is read with the Jira account, Server / Data Center needs an address and a
-  token in Settings → Jira), a free **complement** ("it is the billing service, not crm; the legacy stays
+  token in Settings → Jira; a page that is not on that Jira or that Confluence is refused: credentials go
+  nowhere else), a free **complement** ("it is the billing service, not crm; the legacy stays
   untouched"), the level of detail (**summary**, thirty lines at most, or **detailed**) and the box
   **"The AI may ask me questions"**.
 - **What it does.** An ordinary **exploration session**, read-only, on the chosen repositories: it reads the
@@ -1435,7 +1436,8 @@ comment.
   as targets, the proposal as the instruction — the loop ticket → brief → session → MR.
 - **A whole epic.** **"Brief the epic's tickets"** lists its tickets, tickable (already briefed and done
   ones are unticked by default, a filter hides without unticking), and starts **one analysis per ticked
-  ticket** with the repositories, pages and complement of the current form. Each ticket then keeps its own
+  ticket** with the repositories, pages and complement of the current form — the batch prepares in the
+  background, the list chips follow. Each ticket then keeps its own
   brief: follow-up, edit, post, ticket by ticket.
 - **In the list**, every ticket carries a *brief proposed / posted / to review / waiting for your answers*
   chip. **In AI Dev**, the analysis session carries the *Brief PROJ-123* tag (which opens the ticket), and

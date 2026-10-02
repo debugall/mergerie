@@ -101,8 +101,8 @@ app.get('/api/jira/issue/:key', wrap(async (req, res) => {
      ticket qui n'existe plus — on la marque « à revoir » ici même, sans appel de plus. Un
      changement d'état n'est pas un changement de sens. */
   const s = specTicket.specByKey(key);
-  if (s && ['proposed', 'edited', 'posted'].includes(s.status) && jiraspec.perimee(s.ticket_snapshot, issue)) {
-    specTicket.poser(s.id, { status: 'stale' });
+  if (s && !s.stale && ['proposed', 'edited', 'posted'].includes(s.status) && jiraspec.perimee(s.ticket_snapshot, issue)) {
+    specTicket.poser(s.id, { stale: 1 });   // un drapeau : l'état (proposée, postée…) reste ce qu'il est
   }
   res.json({ issue: { ...issue, mergerie } });
 }));

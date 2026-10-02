@@ -17,6 +17,7 @@ const { t } = require('../core/i18n');
 const { DATA_DIR, ensureDir } = require('../core/paths');
 const { getConfig } = require('../data/config');
 const jiraspec = require('../integrations/jiraspec');
+const confluence = require('../integrations/confluence');
 const tasks = require('../agent/tasks');
 
 const STATUTS = ['new', 'running', 'needs_input', 'proposed', 'edited', 'posted', 'stale', 'error'];
@@ -48,6 +49,12 @@ function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, deta
   if (!repos.length) throw new Error(t('err.spec.repo-required'));
   for (const id of repos) if (!db.prepare('SELECT 1 FROM repo WHERE id = ?').get(id)) throw new Error(t('err.depot-introuvable'));
   const urls = [...new Set((confluenceUrls || []).map((u) => String(u || '').trim()).filter((u) => /^https?:\/\//i.test(u)))].slice(0, 5);
+  /* UNE PAGE D'UNE AUTRE ORIGINE EST REFUSÉE ICI, pas seulement à la lecture : les identifiants ne
+     partent que vers le Jira ou le Confluence configurés, et une URL qui ne les vise pas n'a rien
+     à faire sur la spec — elle y resterait, et un collègue la relirait. */
+  const cfg = getConfig();
+  const hors = urls.filter((u) => !confluence.urlAdmise(cfg, u));
+  if (hors.length) throw new Error(t('err.spec.page-host', { url: hors[0] }));
   const champs = {
     repo_ids_json: JSON.stringify(repos),
     complement: String(complement || '').trim().slice(0, 4000),
@@ -70,9 +77,9 @@ function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, deta
 /* Prépare la session d'exploration d'une spec : lit le contexte (Jira, Confluence), compose la
    question, crée la tâche. Rend la tâche ; la route la programme. Le contexte est relu à chaque
    lancement — rien de Jira ni de Confluence n'est gardé entre deux analyses. */
-async function preparerAnalyse(spec, { cfg = getConfig() } = {}) {
+async function preparerAnalyse(spec, { cfg = getConfig(), enfantsConnus = null } = {}) {
   const urls = jsonOu(spec.confluence_json, []).map((p) => (typeof p === 'string' ? p : p && p.url)).filter(Boolean);
-  const ctx = await jiraspec.assembler(cfg, { ticketKey: spec.ticket_key, includeEpic: !!spec.include_epic, confluenceUrls: urls });
+  const ctx = await jiraspec.assembler(cfg, { ticketKey: spec.ticket_key, includeEpic: !!spec.include_epic, confluenceUrls: urls, enfantsConnus });
   const nonce = jiraspec.nonceRun();
   const question = jiraspec.composerQuestion({
     ticket: ctx.ticket, epic: ctx.epic, enfants: ctx.enfants, epicErreur: ctx.epicErreur, pages: ctx.pages,
@@ -87,7 +94,7 @@ async function preparerAnalyse(spec, { cfg = getConfig() } = {}) {
   /* La photo du ticket et des pages : ce qui sera comparé plus tard pour dire « à revoir », et
      ce que l'écran affiche (titre, taille, erreur de lecture) sans relire Confluence. */
   poser(spec.id, {
-    task_id: taskId, nonce, status: 'running', last_error: null,
+    task_id: taskId, nonce, status: 'running', last_error: null, stale: 0, pending_instruction: null,
     epic_key: ctx.epic && ctx.epic.key ? ctx.epic.key : spec.epic_key,
     ticket_snapshot: jiraspec.snapshotDe(ctx.ticket),
     confluence_json: JSON.stringify(ctx.pages.map((p) => ({ url: p.url, title: p.title, chars: p.chars, truncated: p.truncated, fetched_at: p.fetched_at, error: p.error }))),
@@ -129,14 +136,18 @@ function apresRun(task, onLog = () => {}) {
   if (task.status !== 'done') { poser(spec.id, { status: 'error', last_error: String(task.last_error || task.status).slice(0, 500) }); return spec; }
   const brut = lireMd(task.md_path);
   const md = jiraspec.extraireSpec(brut, spec.nonce);
-  if (!md) {
-    poser(spec.id, { status: 'error', last_error: t('jira.spec.no-block') });
+  /* LE GABARIT N'EST PAS UNE PROPOSITION. La question archivée en tête du fichier montre les
+     balises avec le VRAI nonce autour de « …la proposition en Markdown… » : un agent qui n'a pas
+     rendu de bloc laisserait ce gabarit comme dernier bloc, et il partirait sur Jira. Une vraie
+     proposition porte ses sections `## ` ; sans la moindre, c'est une absence de réponse. */
+  if (!md || !/^## /m.test(md)) {
+    poser(spec.id, { status: 'error', last_error: t('jira.spec.no-block'), pending_instruction: null });
     onLog(t('jira.spec.log.no-block', { key: spec.ticket_key }));
     return specById(spec.id);
   }
   const avait = versionCourante(spec.id);
-  ajouterVersion(spec, md, avait ? 'followup' : 'ai', null);
-  poser(spec.id, { status: 'proposed', last_error: null });
+  ajouterVersion(spec, md, avait ? 'followup' : 'ai', avait ? spec.pending_instruction : null);
+  poser(spec.id, { status: 'proposed', last_error: null, pending_instruction: null });
   onLog(t('jira.spec.log.proposed', { key: spec.ticket_key }));
   return specById(spec.id);
 }
@@ -162,7 +173,7 @@ function vue(spec) {
     detail: spec.detail || 'synthese',
     include_epic: !!spec.include_epic,
     ask_questions: !!spec.ask_questions,
-    status: spec.status, last_error: spec.last_error || null,
+    status: spec.status, stale: !!spec.stale, last_error: spec.last_error || null,
     comment_id: spec.comment_id || null, posted_version: spec.posted_version,
     unposted: !!(courante && (spec.posted_version == null || courante.version > spec.posted_version)),
     version: courante ? courante.version : 0,

@@ -76,14 +76,16 @@ const extrait = (md, lignes = 3) => String(md || '').split('\n').map((l) => l.tr
 
 /** Lit tout ce que l'analyse doit connaître. Chaque source manquante est DITE, jamais fatale —
     sauf le ticket lui-même, sans lequel il n'y a rien à préciser. */
-async function assembler(cfg, { ticketKey, includeEpic = true, confluenceUrls = [] }) {
+async function assembler(cfg, { ticketKey, includeEpic = true, confluenceUrls = [], enfantsConnus = null }) {
   const cle = normaliserCle(ticketKey);
   const ticket = await jira.issueDetail(cfg, cle);
   let enfants = [];
   let epicErreur = null;
   const epic = ticket.epic || (ticket.type && /epic|epique|epopee/i.test(ticket.type) ? { key: cle, summary: ticket.summary } : null);
   if (includeEpic && epic && epic.key) {
-    try { enfants = (await jira.epicChildren(cfg, epic.key)).filter((e) => e.key !== cle).slice(0, MAX_ENFANTS_EPIC); } catch (e) { epicErreur = e.message; }
+    // Un lot lit l'epic UNE fois et passe ses enfants : trente tickets ne la relisent pas trente fois.
+    if (enfantsConnus && enfantsConnus.epicKey === epic.key) enfants = enfantsConnus.enfants.filter((e) => e.key !== cle).slice(0, MAX_ENFANTS_EPIC);
+    else { try { enfants = (await jira.epicChildren(cfg, epic.key)).filter((e) => e.key !== cle).slice(0, MAX_ENFANTS_EPIC); } catch (e) { epicErreur = e.message; } }
   }
   const pages = await confluence.lirePages(cfg, confluenceUrls);
   return { ticket, epic, enfants, epicErreur, pages };

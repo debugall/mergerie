@@ -1599,7 +1599,7 @@ const REGISTRE = [
        Jira posté par l'un est celui que l'autre mettra à jour. */
     table: 'ticket_spec', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['ticket_key'],
     chemin: 'specs/{ticket_key}.json', fusion: 'last-writer',
-    locales: ['batch_id', 'last_error'],
+    locales: ['batch_id', 'last_error', 'pending_instruction'],
     ligneDuChemin: (db, v) => db.prepare('SELECT ticket_spec.rowid AS r, ticket_spec.* FROM ticket_spec WHERE ticket_key = ?').get(v.ticket_key),
     note: 'la précision technique d’un ticket : ce qu’une équipe se dit sur le ticket, d’où le partage ; '
       + 'le lot d’epic et la dernière erreur sont des commodités de poste',
@@ -1618,6 +1618,7 @@ const REGISTRE = [
       ask_questions: r.ask_questions ? 1 : 0,
       ticket_snapshot: r.ticket_snapshot || null,
       status: r.status || 'new',
+      stale: r.stale ? 1 : 0,
       nonce: r.nonce || null,
       comment_id: r.comment_id || null,
       posted_version: r.posted_version == null ? null : r.posted_version,
@@ -1637,6 +1638,7 @@ const REGISTRE = [
       ask_questions: doc.ask_questions ? 1 : 0,
       ticket_snapshot: doc.ticket_snapshot || null,
       status: doc.status || 'new',
+      stale: doc.stale ? 1 : 0,
       nonce: doc.nonce || null,
       comment_id: doc.comment_id || null,
       posted_version: doc.posted_version == null ? null : doc.posted_version,
@@ -1681,9 +1683,10 @@ const REGISTRE = [
     apresHydratation: (db2) => {
       // `version` est un compteur PAR SPEC, local par nature : renuméroté dans l'ordre des uid.
       for (const s of db2.prepare('SELECT DISTINCT spec_id FROM ticket_spec_version WHERE spec_id IS NOT NULL').all()) {
-        const lignes = db2.prepare('SELECT id FROM ticket_spec_version WHERE spec_id = ? ORDER BY uid').all(s.spec_id);
+        const lignes = db2.prepare('SELECT id, version FROM ticket_spec_version WHERE spec_id = ? ORDER BY uid').all(s.spec_id);
         const maj = db2.prepare('UPDATE ticket_spec_version SET version = ? WHERE id = ?');
-        lignes.forEach((l, i) => maj.run(i + 1, l.id));
+        // Seules les lignes dont le numéro diffère sont écrites : une synchro ne réécrit pas tout le volume.
+        lignes.forEach((l, i) => { if (l.version !== i + 1) maj.run(i + 1, l.id); });
       }
     },
   },

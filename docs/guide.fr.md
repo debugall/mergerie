@@ -1458,7 +1458,8 @@ et le propose en commentaire.
   sans rien décocher), **l'epic** du ticket et ses autres tickets en contexte (cochée d'office quand le
   ticket en a une — un ticket prend souvent son sens à la lumière des voisins), une ou plusieurs
   **pages Confluence** (cinq au plus ; Cloud se lit avec le compte Jira, Server / Data Center demande une
-  adresse et un jeton dans Réglages → Jira), un **complément** libre (« c'est le service billing, pas crm ;
+  adresse et un jeton dans Réglages → Jira ; une page qui n'est pas sur ce Jira ou ce Confluence est refusée :
+  les identifiants ne partent nulle part ailleurs), un **complément** libre (« c'est le service billing, pas crm ;
   on ne touche pas au legacy »), le niveau de détail (**synthèse**, trente lignes au plus, ou
   **détaillé**) et la case **« l'IA peut me poser des questions »**.
 - **Ce qu'elle fait.** Une **session d'exploration** ordinaire, en lecture seule, sur les dépôts choisis :
@@ -1492,7 +1493,8 @@ et le propose en commentaire.
   précision en cibles, la proposition en consigne — la boucle ticket → précision → session → MR.
 - **Une epic d'un coup.** **« Préciser les tickets de l'epic »** liste ses tickets, cochables (ceux déjà
   précisés et les terminés sont décochés d'office, un filtre masque sans décocher), et lance **une
-  analyse par ticket coché** avec les dépôts, pages et complément du formulaire courant. Chaque ticket
+  analyse par ticket coché** avec les dépôts, pages et complément du formulaire courant — le lot se prépare en
+  arrière-plan, les pastilles de la liste suivent. Chaque ticket
   garde ensuite sa précision propre : suivi, édition, post, ticket par ticket.
 - **Dans la liste**, chaque ticket porte une pastille *spec proposée / postée / à revoir / attend tes
   réponses*. **Dans Dev IA**, la session d'analyse porte l'étiquette *Spec PROJ-123* (qui ramène au

@@ -10,6 +10,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "err.spec.page-host": "Page refusée : {url} n'est pas sur le Jira ou le Confluence configurés — les identifiants ne partent nulle part ailleurs.",
       "err.spec.not-found": "Précision technique introuvable.",
       "err.spec.repo-required": "Choisis au moins un dépôt : c'est dans son code que l'IA va chercher les précisions.",
       "err.spec.no-ticket": "Aucun ticket coché.",
@@ -365,6 +366,7 @@
       "err.budget.daily": "Plafond de dépense du jour atteint ({spent} $ sur {cap} $) : aucun agent ne part plus aujourd’hui. Relevez-le dans Réglages → IA si c’est voulu.",
     },
     en: {
+      "err.spec.page-host": "Page refused: {url} is not on the configured Jira or Confluence — credentials go nowhere else.",
       "err.spec.not-found": "Technical brief not found.",
       "err.spec.repo-required": "Pick at least one repository: that is where the AI looks for the technical details.",
       "err.spec.no-ticket": "No ticket selected.",

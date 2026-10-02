@@ -184,10 +184,13 @@ describe('Précision technique d’un ticket Jira', () => {
     assert.equal(vue.status, 'posted');
     app.state.jiraIssues['PROJ-10'].fields.status = etat('En cours', 'indeterminate');
     await app.api('GET', '/api/jira/issue/PROJ-10');
-    assert.equal((await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec.status, 'posted', 'un état qui bouge ne périme rien');
+    assert.equal((await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec.stale, false, 'un état qui bouge ne périme rien');
     app.state.jiraIssues['PROJ-10'].fields.description = adf('Le client peut payer en QUATRE fois, avec frais.');
     await app.api('GET', '/api/jira/issue/PROJ-10');
-    assert.equal((await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec.status, 'stale', 'la description a changé : à revoir');
+    const perimee = (await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec;
+    assert.equal(perimee.stale, true, 'la description a changé : à revoir');
+    assert.equal(perimee.status, 'posted', '…mais « postée » reste vrai : à revoir est un drapeau, pas un état');
+    assert.equal((await app.api('GET', '/api/jira/specs?keys=PROJ-10')).body.specs['PROJ-10'].stale, true);
     // Relancer relit le ticket : nouvelle photo, nouvelle session, les versions restent.
     const r = await app.api('POST', `/api/jira/spec/${vue.id}/rerun`, { ask_questions: false });
     assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -199,7 +202,53 @@ describe('Précision technique d’un ticket Jira', () => {
     assert.ok(apres.comment_id, 'le commentaire posté n’est pas oublié');
     assert.equal(apres.unposted, true);
     await app.api('GET', '/api/jira/issue/PROJ-10');
-    assert.equal((await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec.status, 'proposed', 'la nouvelle photo est à jour');
+    assert.equal((await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec.stale, false, 'la nouvelle photo est à jour');
+  });
+
+  test('un suivi garde son instruction sur la version produite ; une relance pendant la session est refusée', async () => {
+    const vue = (await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec;
+    const r = await app.api('POST', `/api/jira/spec/${vue.id}/followup`, { instruction: 'Nomme les endpoints.' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal((await app.api('POST', `/api/jira/spec/${vue.id}/rerun`, {})).status, 400, 'la session tourne : pas de doublon');
+    await waitForJobs(app.api);
+    const apres = (await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec;
+    assert.equal(apres.versions.at(-1).origin, 'followup');
+    assert.equal(apres.versions.at(-1).instruction, 'Nomme les endpoints.', 'l’historique dit ce qui avait été demandé');
+  });
+
+  test('sans bloc SPEC — ou avec le seul gabarit du prompt — pas de proposition', async () => {
+    const specLib = require('../src/session/spec');
+    const vue = (await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec;
+    const ligne = app.db.prepare('SELECT * FROM ticket_spec WHERE id = ?').get(vue.id);
+    const tache = app.db.prepare('SELECT * FROM task WHERE id = ?').get(ligne.task_id);
+    /* Le fichier archivé commence par la QUESTION, qui montre les balises avec le vrai nonce
+       autour de « …la proposition en Markdown… » ; l'agent n'a rien rendu derrière. */
+    const faux = path.join(app.dataDir, 'sans-bloc.md');
+    fs.writeFileSync(faux, `# ${tache.prompt}\n> Exploration\n\nJe n’ai pas pu conclure.\n`, 'utf8');
+    const avant = vue.version;
+    specLib.apresRun({ ...tache, status: 'done', md_path: faux });
+    const apres = (await app.api('GET', '/api/jira/spec/PROJ-10')).body.spec;
+    assert.equal(apres.status, 'error');
+    assert.match(apres.last_error, /bloc SPEC/);
+    assert.equal(apres.version, avant, 'aucune version : le gabarit n’est pas une proposition');
+    // On remet la spec dans l'état d'avant pour la suite.
+    app.db.prepare("UPDATE ticket_spec SET status = 'proposed', last_error = NULL WHERE id = ?").run(vue.id);
+  });
+
+  test('les identifiants ne partent que vers l’origine configurée, et le jeton Confluence ne redescend jamais', async () => {
+    const r = await app.api('POST', '/api/jira/spec', { key: 'PROJ-11', repo_ids: [repoId], confluence_urls: ['https://ailleurs.example/wiki/spaces/X/pages/123/Piege'] });
+    assert.equal(r.status, 400, 'une page hors du Jira/Confluence configurés est refusée à la création');
+    assert.match(r.body.error, /ailleurs\.example/);
+    assert.ok(!app.state.calls.some((c) => /Piege/.test(c.path)), 'aucun appel n’est parti');
+    await app.api('PUT', '/api/config', { confluence_url: 'https://confluence.corp.example', confluence_token: 'secret-dc' });
+    const cfg = (await app.api('GET', '/api/config')).body;
+    assert.equal(cfg.confluence_token, '***', 'le jeton Confluence est masqué comme les autres');
+    assert.ok(!JSON.stringify(cfg).includes('secret-dc'));
+    await app.api('PUT', '/api/config', { confluence_token: '***' });
+    // Changer l'adresse Confluence invalide le jeton, comme pour Jira.
+    await app.api('PUT', '/api/config', { confluence_url: 'https://autre.corp.example' });
+    assert.equal((await app.api('GET', '/api/config')).body.confluence_token, '', 'une autre origine : le jeton est vidé');
+    await app.api('PUT', '/api/config', { confluence_url: '' });
   });
 
   test('sans dépôt, pas d’analyse ; une clé invalide est refusée', async () => {
@@ -212,13 +261,17 @@ describe('Précision technique d’un ticket Jira', () => {
     const enfants = (await app.api('GET', '/api/jira/spec/epic/PROJ-100/children')).body;
     assert.deepEqual(enfants.children.map((c) => c.key).sort(), ['PROJ-10', 'PROJ-11', 'PROJ-12']);
     assert.ok(enfants.specs['PROJ-10'], 'le ticket déjà précisé est signalé');
+    const avantEpic = appels(/\/rest\/api\/3\/search/).filter((c) => /parent/.test(decodeURIComponent(c.path))).length;
     const r = await app.api('POST', '/api/jira/spec/epic', { epic_key: 'PROJ-100', keys: ['PROJ-11', 'PROJ-12'], repo_ids: [repoId, repoId2], ask_questions: false, detail: 'detaille' });
     assert.equal(r.status, 200, JSON.stringify(r.body));
-    assert.equal(r.body.specs.length, 2);
+    assert.equal(r.body.queued, 2, 'la réponse part tout de suite : le lot se prépare en arrière-plan');
     assert.deepEqual(r.body.errors, []);
+    await attendreServeur(async () => (await app.api('GET', `/api/jira/spec/batch/${r.body.batch_id}`)).body.batch.status !== 'running', 'le lot préparé', 60000);
     await waitForJobs(app.api);
     const lot = (await app.api('GET', `/api/jira/spec/batch/${r.body.batch_id}`)).body;
+    assert.equal(lot.batch.status, 'done', 'le statut du lot suit');
     assert.equal(lot.specs.length, 2);
+    assert.equal(appels(/\/rest\/api\/3\/search/).filter((c) => /parent/.test(decodeURIComponent(c.path))).length - avantEpic, 1, 'l’epic est lue une fois pour tout le lot');
     for (const s of lot.specs) {
       assert.equal(s.status, 'proposed', `${s.ticket_key} : ${s.last_error || s.status}`);
       assert.equal(s.epic_key, 'PROJ-100');

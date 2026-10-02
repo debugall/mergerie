@@ -45,9 +45,9 @@ function analyserEnDemo(s) {
 }
 
 /* Lance (ou relance) l'analyse d'une spec : contexte relu, session créée, job programmé. */
-async function lancer(s, body = {}) {
+async function lancer(s, body = {}, { enfantsConnus = null } = {}) {
   if (demoDocker.isDemo()) return { spec: analyserEnDemo(s), job: null };
-  const { task } = await spec.preparerAnalyse(s, { cfg: getConfig() });
+  const { task } = await spec.preparerAnalyse(s, { cfg: getConfig(), enfantsConnus });
   const imageIds = savePiecesEtImages('task', task.id, body || {});
   const job = jobs.startTaskJob(task.id, 'run', imageIds.length ? { imageIds } : {});
   return { spec: spec.specById(s.id), job };
@@ -61,7 +61,7 @@ app.get('/api/jira/specs', wrap((req, res) => {
     const s = spec.specByKey(cle);
     if (!s) continue;
     const v = spec.versionCourante(s.id);
-    out[cle] = { id: s.id, status: s.status, version: v ? v.version : 0, posted_version: s.posted_version, unposted: !!(v && (s.posted_version == null || v.version > s.posted_version)) };
+    out[cle] = { id: s.id, status: s.status, stale: !!s.stale, version: v ? v.version : 0, posted_version: s.posted_version, unposted: !!(v && (s.posted_version == null || v.version > s.posted_version)) };
   }
   res.json({ specs: out });
 }));
@@ -78,8 +78,34 @@ app.get('/api/jira/spec/epic/:key/children', wrap(async (req, res) => {
   res.json({ epic: cle, children: enfants, specs: existantes, max: MAX_LOT });
 }));
 
-/* Un lot : une spec et une session par ticket coché, programmées à la suite. */
-app.post('/api/jira/spec/epic', wrap(async (req, res) => {
+/* UN LOT : une spec et une session par ticket coché. Les specs sont créées tout de suite (l'écran
+   les voit « à lancer »), la réponse part aussitôt, et la PRÉPARATION — relire chaque ticket, les
+   pages Confluence, créer la session — se fait en arrière-plan, trois tickets de front : trente
+   tickets, c'est des dizaines d'appels réseau, trop pour une requête HTTP. L'epic est lue UNE fois
+   pour tout le lot. Le statut du lot dit où il en est : running → done (ou partial si un ticket
+   n'a pas pu partir), et chaque spec porte sa propre erreur. */
+const LOT_PARALLELE = 3;
+async function traiterLot(batchId, specIds, { epicKey, cfg }) {
+  let enfantsConnus = null;
+  if (!demoDocker.isDemo()) {
+    try { enfantsConnus = { epicKey, enfants: await jira.epicChildren(cfg, epicKey) }; } catch { enfantsConnus = null; }
+  }
+  const file = specIds.slice();
+  let erreurs = 0;
+  const un = async () => {
+    for (;;) {
+      const id = file.shift();
+      if (!id) return;
+      const s = spec.specById(id);
+      if (!s) continue;
+      try { await lancer(s, {}, { enfantsConnus }); }
+      catch (e) { erreurs += 1; spec.poser(s.id, { status: 'error', last_error: String(e.message || e).slice(0, 500) }); }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(LOT_PARALLELE, specIds.length) }, un));
+  db.prepare('UPDATE ticket_spec_batch SET status = ?, updated_at = ? WHERE id = ?').run(erreurs ? 'partial' : 'done', new Date().toISOString(), batchId);
+}
+app.post('/api/jira/spec/epic', wrap((req, res) => {
   const b = req.body || {};
   const epicKey = jiraspec.normaliserCle(b.epic_key);
   if (!jiraspec.cleValide(epicKey)) throw new Error(t('err.jira.invalid-key'));
@@ -87,18 +113,22 @@ app.post('/api/jira/spec/epic', wrap(async (req, res) => {
   if (!cles.length) throw new Error(t('err.spec.no-ticket'));
   const now = new Date().toISOString();
   const batchId = db.prepare('INSERT INTO ticket_spec_batch (epic_key, status, created_at, updated_at) VALUES (?, ?, ?, ?)').run(epicKey, 'running', now, now).lastInsertRowid;
-  const lancees = []; const erreurs = [];
+  const creees = []; const erreurs = [];
   for (const cle of cles) {
     try {
       const s = spec.creerOuReprendre({
         ticketKey: cle, repoIds: b.repo_ids, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
         includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey, batchId,
       });
-      const r = await lancer(s);
-      lancees.push(vueComplete(r.spec));
+      // Une session qui tourne encore n'est pas doublée : le ticket est écarté du lot, et dit.
+      const tache = s.task_id ? db.prepare('SELECT status FROM task WHERE id = ?').get(s.task_id) : null;
+      if (tache && ['running', 'needs_input'].includes(tache.status)) throw new Error(t('err.spec.session-busy'));
+      creees.push(s.id);
     } catch (e) { erreurs.push({ key: cle, error: e.message }); }
   }
-  res.json({ batch_id: batchId, epic_key: epicKey, specs: lancees, errors: erreurs });
+  if (!creees.length) db.prepare('UPDATE ticket_spec_batch SET status = ?, updated_at = ? WHERE id = ?').run('partial', now, batchId);
+  else setImmediate(() => { traiterLot(batchId, creees, { epicKey, cfg: getConfig() }).catch(() => { /* chaque spec porte déjà son erreur */ }); });
+  res.json({ batch_id: batchId, epic_key: epicKey, queued: creees.length, errors: erreurs });
 }));
 
 app.get('/api/jira/spec/batch/:id', wrap((req, res) => {
@@ -132,6 +162,9 @@ app.post('/api/jira/spec', wrap(async (req, res) => {
 app.post('/api/jira/spec/:id/rerun', wrap(async (req, res) => {
   const s = specOu404(req.params.id);
   const b = req.body || {};
+  // Une session qui tourne (ou attend des réponses) n'est pas doublée : la première perdrait sa spec.
+  const enCours = s.task_id ? db.prepare('SELECT status FROM task WHERE id = ?').get(s.task_id) : null;
+  if (enCours && ['running', 'needs_input'].includes(enCours.status)) throw new Error(t('err.spec.session-busy'));
   if (b.repo_ids || b.complement != null || b.confluence_urls || b.detail || b.include_epic != null || b.ask_questions != null) {
     spec.creerOuReprendre({
       ticketKey: s.ticket_key, repoIds: b.repo_ids || JSON.parse(s.repo_ids_json || '[]'), complement: b.complement != null ? b.complement : s.complement,
@@ -163,9 +196,8 @@ app.post('/api/jira/spec/:id/followup', wrap((req, res) => {
   const texte = spec.instructionSuivi(s, instruction);
   const imageIds = savePiecesEtImages('task', tache.id, req.body || {}, { followup: 1 });
   const job = jobs.startTaskJob(tache.id, 'followup', { instruction: texte, ...(imageIds.length ? { imageIds } : {}) });
-  spec.poser(s.id, { status: 'running', last_error: null });
-  // La version qui sortira portera ce qu'on a demandé : on le garde pour l'écrire sur elle.
-  db.prepare('UPDATE ticket_spec SET last_error = NULL WHERE id = ?').run(s.id);
+  // La version qui sortira portera ce qu'on a demandé : gardé jusqu'à ce qu'`apresRun` l'écrive sur elle.
+  spec.poser(s.id, { status: 'running', last_error: null, pending_instruction: instruction.slice(0, 2000) });
   res.json({ spec: vueComplete(spec.specById(s.id)), job, instruction });
 }));
 
@@ -208,8 +240,9 @@ app.post('/api/jira/spec/:id/post', wrap(async (req, res) => {
   let commentId = forceNew ? null : s.comment_id;
   if (!commentId && !forceNew) {
     try {
-      const [detail, moi] = await Promise.all([jira.issueDetail(cfg, s.ticket_key), jira.myself(cfg).catch(() => null)]);
-      const c = jiraspec.commentaireRepere(detail.comments, rep, moi ? moi.accountId : null);
+      // Les plus récents d'abord : sur un ticket très commenté, le sien est rarement parmi les cent premiers.
+      const [coms, moi] = await Promise.all([jira.listComments(cfg, s.ticket_key), jira.myself(cfg).catch(() => null)]);
+      const c = jiraspec.commentaireRepere(coms, rep, moi ? moi.accountId : null);
       if (c) commentId = c.id;
     } catch { /* la recherche est un confort : on créera */ }
   }

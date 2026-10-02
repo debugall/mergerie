@@ -101,6 +101,11 @@ db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec (
   updated_at TEXT
 )`);
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_spec_key ON ticket_spec(ticket_key)');
+/* « À revoir » est un DRAPEAU, pas un état : le ticket a changé de sens depuis l'analyse, mais la
+   spec reste proposée / modifiée / postée — remplacer `status` perdait « déjà postée ». */
+try { db.exec('ALTER TABLE ticket_spec ADD COLUMN stale INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+// L'instruction d'un suivi en cours : écrite sur la version qu'il produira, puis effacée. De poste.
+try { db.exec('ALTER TABLE ticket_spec ADD COLUMN pending_instruction TEXT'); } catch { /* déjà présente */ }
 db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec_version (
   id INTEGER PRIMARY KEY,
   spec_id INTEGER NOT NULL REFERENCES ticket_spec(id) ON DELETE CASCADE,

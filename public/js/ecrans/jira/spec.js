@@ -81,6 +81,7 @@ function propositionHtml(cle, vue) {
   const pages = (vue.confluence || []).filter((p) => p.title || p.error);
   const entete = `<div class="jira-spec-head">
       ${statutChip(vue)}
+      ${vue.stale ? `<span class="jira-spec-status is-stale">${esc(tr('jira.spec.status.stale'))}</span>` : ''}
       ${vue.version ? `<span class="jira-chip">${esc(tr('jira.spec.version', { n: vue.version }))}</span>` : ''}
       ${vue.posted_version ? `<span class="jira-chip">${esc(tr('jira.spec.posted-v', { n: vue.posted_version }))}</span>` : ''}
       ${vue.unposted && vue.version ? `<span class="jira-chip jira-spec-unposted">${esc(tr('jira.spec.unposted'))}</span>` : ''}
@@ -93,7 +94,7 @@ function propositionHtml(cle, vue) {
   let conseil = '';
   if (enCours) conseil = `<p class="muted jira-spec-hint"><span class="spin"></span> ${esc(tr('jira.spec.running-hint'))}</p>`;
   else if (attend) conseil = `<p class="jira-spec-hint is-warn">${esc(tr('jira.spec.needs-input-hint'))}</p>`;
-  else if (vue.status === 'stale') conseil = `<p class="jira-spec-hint is-warn">${esc(tr('jira.spec.stale-hint'))}</p>`;
+  else if (vue.stale) conseil = `<p class="jira-spec-hint is-warn">${esc(tr('jira.spec.stale-hint'))}</p>`;
   else if (vue.status === 'error') conseil = `<p class="jira-spec-hint is-err">${esc(tr('jira.spec.error-hint'))} ${esc(vue.last_error || '')}</p>`;
   const pagesHtml = pages.length ? `<ul class="jira-spec-lues muted">${pages.map((p) => `<li>${esc(p.title || p.url)}${p.truncated ? ` (${esc(tr('jira.spec.page-truncated-ui'))})` : ''}${p.error ? ` — ${esc(p.error)}` : ''}</li>`).join('')}</ul>` : '';
   let corps = '';
@@ -173,8 +174,9 @@ async function majSpecsListe(cles) {
     const s = d.specs[el.dataset.specChip];
     el.hidden = !s;
     if (!s) continue;
-    el.className = `jira-spec-chip is-${s.status}`;
-    el.textContent = tr('jira.spec.badge', { status: tr(`jira.spec.status.${s.status}`) });
+    const etat = s.stale ? 'stale' : s.status;
+    el.className = `jira-spec-chip is-${etat}`;
+    el.textContent = tr('jira.spec.badge', { status: tr(`jira.spec.status.${etat}`) });
   }
 }
 
@@ -364,10 +366,16 @@ async function ouvrirLotEpic(epicKey, f, box) {
   if (!f.repos.length) { toast(tr('err.spec.repo-required'), true); return; }
   try {
     const r = await api('/jira/spec/epic', { method: 'POST', body: { ...corpsDe(null, f), epic_key: epicKey, keys: cles } });
-    toast(tr('jira.spec.batch-launched', { n: r.specs.length }) + (r.errors.length ? ` ${tr('jira.spec.batch-errors', { n: r.errors.length })}` : ''), !!r.errors.length);
-    for (const s of r.specs) SPEC.parCle[s.ticket_key] = s;
-    majSpecsListe(cles);
-    if (box) chargerSpec(box.dataset.specBox, conteneurDe(box));
+    toast(tr('jira.spec.batch-launched', { n: r.queued }) + (r.errors.length ? ` ${tr('jira.spec.batch-errors', { n: r.errors.length })}` : ''), !!r.errors.length);
+    /* Le lot se PRÉPARE en arrière-plan : on relit les pastilles tant qu'il tourne, puis une dernière fois. */
+    const suivre = async () => {
+      let b = null;
+      try { b = (await api(`/jira/spec/batch/${r.batch_id}`)).batch; } catch { return; }
+      majSpecsListe(cles);
+      if (box && document.contains(box)) chargerSpec(box.dataset.specBox, conteneurDe(box));
+      if (b && b.status === 'running') setTimeout(suivre, 3000);
+    };
+    suivre();
   } catch (err) { toast(explainError(err.message), true); }
 }
 document.addEventListener('input', (e) => {

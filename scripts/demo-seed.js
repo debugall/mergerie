@@ -1691,8 +1691,8 @@ const counts = {
   };
   const photo = (cle) => { const i = demoJira.issue(cle); return JSON.stringify({ summary: i.summary, description: i.descriptionMd || '', updated: i.updated || '' }); };
   const insSpec = db.prepare(`INSERT INTO ticket_spec (ticket_key, epic_key, repo_ids_json, complement, confluence_json, detail, include_epic, ask_questions,
-      ticket_snapshot, status, nonce, comment_id, posted_version, created_at, updated_at)
-    VALUES (@ticket_key, @epic_key, @repo_ids_json, @complement, @confluence_json, @detail, 1, 1, @ticket_snapshot, @status, 'd3m0aa', @comment_id, @posted_version, @created_at, @updated_at)`);
+      ticket_snapshot, status, stale, nonce, comment_id, posted_version, created_at, updated_at)
+    VALUES (@ticket_key, @epic_key, @repo_ids_json, @complement, @confluence_json, @detail, 1, 1, @ticket_snapshot, @status, @stale, 'd3m0aa', @comment_id, @posted_version, @created_at, @updated_at)`);
   const insVersion = db.prepare('INSERT INTO ticket_spec_version (spec_id, ticket_key, version, origin, md_path, instruction, created_at) VALUES (?,?,?,?,?,?,?)');
 
   const panierV1 = `## Dépôts concernés
@@ -1774,7 +1774,7 @@ const counts = {
         { url: 'https://confluence.demo/wiki/spaces/FIN/pages/777/Grille-tarifaire', title: '', chars: 0, truncated: false, fetched_at: at(0.3), error: 'non lue : 403' }],
       status: 'proposed', comment_id: null, posted_version: null, versions: [['ai', paiementV1, null, at(0.3)]], created: at(0.3), updated: at(0.3) },
     { cle: 'PROJ-1390', epic: 'PROJ-1050', repos: ['groupe/api-core', 'groupe/batch-jobs'], complement: '',
-      pages: [], status: 'stale', comment_id: '30077', posted_version: 1, versions: [['ai', logsV1, null, at(9)]], created: at(9), updated: at(9),
+      pages: [], status: 'posted', stale: 1, comment_id: '30077', posted_version: 1, versions: [['ai', logsV1, null, at(9)]], created: at(9), updated: at(9),
       photoPerimee: JSON.stringify({ summary: 'Migrer les logs vers le nouveau format JSON', description: 'Ancienne description, avant que le PO ne la réécrive.', updated: at(12) }) },
   ];
   for (const sp of specs) {
@@ -1782,7 +1782,7 @@ const counts = {
     const id = insSpec.run({
       ticket_key: sp.cle, epic_key: sp.epic, repo_ids_json: JSON.stringify(repos), complement: sp.complement,
       confluence_json: JSON.stringify(sp.pages), detail: 'synthese', ticket_snapshot: sp.photoPerimee || photo(sp.cle),
-      status: sp.status, comment_id: sp.comment_id, posted_version: sp.posted_version, created_at: sp.created, updated_at: sp.updated,
+      status: sp.status, stale: sp.stale ? 1 : 0, comment_id: sp.comment_id, posted_version: sp.posted_version, created_at: sp.created, updated_at: sp.updated,
     }).lastInsertRowid;
     sp.versions.forEach(([origin, md, instruction, quand], i) => insVersion.run(id, sp.cle, i + 1, origin, ecrireSpec(sp.cle, i + 1, md), instruction, quand));
   }

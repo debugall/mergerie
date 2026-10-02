@@ -730,6 +730,21 @@ async function updateComment(cfg, key, commentId, text, opts = {}) {
   return ecrireCommentaire(cfg, key, corps, { markdown: !!opts.markdown, commentId });
 }
 
+/* Les commentaires d'un ticket, les plus RÉCENTS d'abord, avec leur id et l'auteur : ce qu'il faut
+   pour retrouver le sien quand l'id mémorisé manque. `issueDetail` lit les 100 plus anciens — sur
+   un ticket très commenté, le commentaire cherché n'y est pas. */
+async function listComments(cfg, key, { max = 100 } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const c = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}/comment?maxResults=${Math.min(Math.max(1, max), 100)}&orderBy=-created`);
+  return (c.comments || []).map((cm) => ({
+    id: cm.id == null ? null : String(cm.id),
+    author: cm.author ? (cm.author.displayName || cm.author.name || '') : '',
+    authorId: cm.author ? (cm.author.accountId || cm.author.name || '') : '',
+    created: cm.created || '',
+    bodyMd: adfToMarkdown(cm.body),
+  })).reverse();
+}
+
 /* ---------- Les tickets d'une epic ----------
    Jira Cloud a unifié la hiérarchie : les enfants d'une epic sont ceux dont `parent` est
    l'epic. On rend les mêmes métadonnées que la liste, plus la description en Markdown — c'est
@@ -817,4 +832,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, epicChildren, updateComment, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

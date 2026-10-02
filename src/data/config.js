@@ -83,6 +83,7 @@ function updateConfig(patch) {
   if (next.github_url) next.github_url = next.github_url.trim().replace(/\/+$/, '');
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
   if (next.jenkins_url) next.jenkins_url = next.jenkins_url.trim().replace(/\/+$/, '');
+  if (next.confluence_url) next.confluence_url = next.confluence_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
   /* UNE ADRESSE QUI CHANGE INVALIDE LE JETON STOCKÉ (plan_secure.md, lot B, S1). */
   const invaliderSiOrigineChangee = (champUrl, champJeton, defaut = '') => {
@@ -93,6 +94,7 @@ function updateConfig(patch) {
   invaliderSiOrigineChangee('github_url', 'github_token', 'https://github.com');
   invaliderSiOrigineChangee('jira_url', 'jira_token');
   invaliderSiOrigineChangee('jenkins_url', 'jenkins_token');
+  invaliderSiOrigineChangee('confluence_url', 'confluence_token');
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
   if ('auto_refresh_minutes' in patch) {
     let m = parseInt(patch.auto_refresh_minutes, 10);

@@ -10,6 +10,10 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "jira.spec.page-host": "origine non configurée : les identifiants ne partent que vers le Jira ou le Confluence réglés",
+      "jira.spec.batch-status.running": "lot en cours",
+      "jira.spec.batch-status.done": "lot terminé",
+      "jira.spec.batch-status.partial": "lot terminé, avec des échecs",
       "jira.spec.marker": "🔧 Précision technique — Mergerie",
       "jira.spec.task-label": "Spec {key} — {title}",
       "jira.spec.prefill": "Implémente le ticket {key} selon la précision technique ci-dessous.",
@@ -247,6 +251,10 @@
       "jira.investigate-title": "Ce ticket contient une trace : demander à l'enquêteur d'incident où est le code",
     },
     en: {
+      "jira.spec.page-host": "origin not configured: credentials only go to the configured Jira or Confluence",
+      "jira.spec.batch-status.running": "batch running",
+      "jira.spec.batch-status.done": "batch done",
+      "jira.spec.batch-status.partial": "batch done, with failures",
       "jira.spec.marker": "🔧 Technical brief — Mergerie",
       "jira.spec.task-label": "Brief {key} — {title}",
       "jira.spec.prefill": "Implement ticket {key} following the technical brief below.",

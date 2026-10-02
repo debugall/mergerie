@@ -80,16 +80,35 @@ function tronquer(md, max = MAX_CHARS_PAGE) {
   return { markdown: `${texte.slice(0, max)}\n\n[${t('jira.spec.page-truncated', { n: texte.length - max })}]`, truncated: true };
 }
 
-/* Où et comment lire : DC si une adresse à part est posée, Cloud sinon. */
+const origineDe = (u) => { try { return new URL(String(u || '').trim()).origin; } catch { return null; } };
+
+/** Les origines auxquelles on accepte d'envoyer des identifiants : le Jira configuré (Cloud) et
+    le Confluence Server/DC configuré. Jamais une autre. */
+function originesAdmises(cfg) {
+  const out = [];
+  if (cfg && cfg.confluence_url && cfg.confluence_token) out.push(origineDe(cfg.confluence_url));
+  if (cfg && cfg.jira_url && cfg.jira_email && cfg.jira_token) out.push(origineDe(cfg.jira_url));
+  return out.filter(Boolean);
+}
+/** Une URL de page est admise si son origine est l'une des origines configurées. */
+const urlAdmise = (cfg, url) => { const o = origineDe(url); return !!o && originesAdmises(cfg).includes(o); };
+
+/* OÙ ET COMMENT LIRE — ET SURTOUT À QUI PARLER. Les identifiants (Basic Jira, Bearer Confluence)
+   ne partent QUE vers l'origine configurée : l'URL d'une page vient d'un formulaire, ou d'une spec
+   reçue par la synchro d'équipe, et `https://ailleurs.example/wiki/pages/1` recevrait sinon
+   l'email et le jeton Jira (et servirait de rebond vers le réseau interne). La racine du wiki
+   est donc TOUJOURS dérivée de la configuration, jamais de l'URL de la page ; une page d'une
+   autre origine est refusée avant tout appel. */
 function cible(cfg, url) {
-  if (cfg.confluence_url && cfg.confluence_token) {
+  const o = origineDe(url);
+  if (cfg.confluence_url && cfg.confluence_token && o === origineDe(cfg.confluence_url)) {
     return { racine: base(cfg.confluence_url), headers: { Authorization: `Bearer ${cfg.confluence_token}`, Accept: 'application/json' }, cloud: false };
   }
-  const b64 = Buffer.from(`${cfg.jira_email}:${cfg.jira_token}`).toString('base64');
-  // Cloud : l'URL de la page dit où est le wiki ; sinon, celui du Jira configuré.
-  let racine = `${base(cfg.jira_url)}/wiki`;
-  try { const u = new URL(url); if (/\/wiki(\/|$)/.test(u.pathname)) racine = `${u.origin}/wiki`; } catch { /* URL invalide : lue plus loin */ }
-  return { racine, headers: { Authorization: `Basic ${b64}`, Accept: 'application/json' }, cloud: true };
+  if (cfg.jira_url && cfg.jira_email && cfg.jira_token && o === origineDe(cfg.jira_url)) {
+    const b64 = Buffer.from(`${cfg.jira_email}:${cfg.jira_token}`).toString('base64');
+    return { racine: `${base(cfg.jira_url)}/wiki`, headers: { Authorization: `Basic ${b64}`, Accept: 'application/json' }, cloud: true };
+  }
+  return null;
 }
 
 /** Lit UNE page. Rend toujours un objet : `{ url, id, title, markdown, chars, truncated, fetched_at, error }`. */
@@ -99,7 +118,9 @@ async function lirePage(cfg, url) {
   if (!id) { out.error = t('jira.spec.page-no-id'); return out; }
   out.id = id;
   if (!isConfigured(cfg)) { out.error = t('jira.spec.page-not-configured'); return out; }
-  const { racine, headers, cloud } = cible(cfg, out.url);
+  const c = cible(cfg, out.url);
+  if (!c) { out.error = t('jira.spec.page-host'); return out; }
+  const { racine, headers, cloud } = c;
   const tentatives = cloud
     ? [`${racine}/api/v2/pages/${id}?body-format=storage`, `${racine}/rest/api/content/${id}?expand=body.storage`]
     : [`${racine}/rest/api/content/${id}?expand=body.storage`];
@@ -140,4 +161,4 @@ async function lirePages(cfg, urls) {
   return out;
 }
 
-module.exports = { isConfigured, pageIdDe, storageToMarkdown, lirePage, lirePages, MAX_PAGES, MAX_CHARS_PAGE, MAX_CHARS_TOTAL };
+module.exports = { isConfigured, pageIdDe, storageToMarkdown, lirePage, lirePages, urlAdmise, originesAdmises, MAX_PAGES, MAX_CHARS_PAGE, MAX_CHARS_TOTAL };
