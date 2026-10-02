@@ -167,6 +167,7 @@ function sansSecrets(c) {
     jira_token: c.jira_token ? '***' : '',
     github_token: c.github_token ? '***' : '',
     jenkins_token: c.jenkins_token ? '***' : '',
+    confluence_token: c.confluence_token ? '***' : '',
   };
 }
 app.get('/api/config', wrap((req, res) => {
@@ -202,6 +203,7 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
   if (patch.jenkins_token === '***') delete patch.jenkins_token;
+  if (patch.confluence_token === '***') delete patch.confluence_token;
   const avant = getConfig();
   const c = updateConfig(patch);
   i18n.setLang(c.language);   // les messages d'erreur suivent la nouvelle langue

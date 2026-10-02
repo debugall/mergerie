@@ -31,6 +31,7 @@ const COLONNES_LOCALES = [
   ["github_token", "TEXT DEFAULT ''"],
   ["jira_email", "TEXT DEFAULT ''"],
   ["jira_token", "TEXT DEFAULT ''"],
+  ["confluence_token", "TEXT DEFAULT ''"],
   ["jenkins_user", "TEXT DEFAULT ''"],
   ["jenkins_token", "TEXT DEFAULT ''"],
   ["clone_path", "TEXT DEFAULT ''"],

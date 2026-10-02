@@ -18,7 +18,7 @@ process.env.MERGERIE_DATA_DIR = DEMO_DIR;
 fs.rmSync(DEMO_DIR, { recursive: true, force: true }); // repart d'une base propre
 
 const db = require('../src/db');
-const { REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/core/paths');
+const { DATA_DIR, REVIEWS_DIR, TASKS_DIR, ensureDir, slugify, initDirs } = require('../src/core/paths');
 /* LE MÊME DIFF DES DEUX CÔTÉS. L'aperçu d'une carte lit `demo-diff.js` en direct, mais la vue
    plein écran d'un rapport relit le `diff.patch` écrit ici : deux diffs différents pour une
    même merge request donnaient un fichier « non modifié » dans le viewer, donc pas de lignes
@@ -1674,6 +1674,119 @@ const counts = {
   db.prepare('UPDATE verifier_command SET position = 2 WHERE verifier_id = ? AND command = ?').run(e2eId, 'npm run test:e2e');
   db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)')
     .run(e2eId, 1, 'npx playwright install --with-deps chromium');
+}
+
+/* ---------- Précision technique de tickets (onglet Jira → détail) ----------
+   Trois états que l'écran doit savoir montrer : une spec POSTÉE (v2, commentaire mémorisé),
+   une PROPOSÉE pas encore postée (avec une page Confluence lue et une refusée), et une À REVOIR
+   (le ticket a changé depuis). Les clés existent dans le jeu Jira fictif (`src/demo/jira.js`) :
+   la photo du ticket vient de là, c'est elle que la péremption compare. */
+{
+  const demoJira = require('../src/demo/jira');
+  const specDir = (cle) => ensureDir(path.join(DATA_DIR, 'specs', cle));
+  const ecrireSpec = (cle, version, md) => {
+    const chemin = path.join(specDir(cle), `v${version}-demo.md`);
+    fs.writeFileSync(chemin, `${md.trim()}\n`, 'utf8');
+    return chemin;
+  };
+  const photo = (cle) => { const i = demoJira.issue(cle); return JSON.stringify({ summary: i.summary, description: i.descriptionMd || '', updated: i.updated || '' }); };
+  const insSpec = db.prepare(`INSERT INTO ticket_spec (ticket_key, epic_key, repo_ids_json, complement, confluence_json, detail, include_epic, ask_questions,
+      ticket_snapshot, status, stale, nonce, comment_id, posted_version, created_at, updated_at)
+    VALUES (@ticket_key, @epic_key, @repo_ids_json, @complement, @confluence_json, @detail, 1, 1, @ticket_snapshot, @status, @stale, 'd3m0aa', @comment_id, @posted_version, @created_at, @updated_at)`);
+  const insVersion = db.prepare('INSERT INTO ticket_spec_version (spec_id, ticket_key, version, origin, md_path, instruction, created_at) VALUES (?,?,?,?,?,?,?)');
+
+  const panierV1 = `## Dépôts concernés
+- \`groupe/api-core\` : la session et le panier (\`src/cart/\`)
+- \`groupe/webapp-front\` : l'écran panier et le rafraîchissement après connexion
+
+## Existant sur lequel on s'appuie
+- \`src/cart/store.js\` : le panier est écrit en session serveur, jamais rattaché au compte
+- \`src/auth/login.js\` : la reconnexion régénère l'identifiant de session (rotation anti-fixation)
+- \`web/src/pages/Cart.vue\` : relit le panier au montage, pas après le retour de connexion
+
+## Ce qu'il faut faire
+1. Persister le panier par compte (\`cart\` existe déjà en base, colonne \`user_id\` nullable) au moment du login
+2. Fusionner panier de session et panier du compte à la reconnexion — les quantités s'additionnent, pas d'écrasement
+3. Côté front, recharger le panier au retour de \`/login\` (événement \`auth:changed\` déjà émis)
+
+## Points d'attention
+- La rotation de session est voulue : ne pas la retirer, migrer le panier avant
+- Deux onglets ouverts : le dernier login gagne, c'est acceptable
+
+## Hors périmètre
+- Le panier anonyme conservé 30 jours (ticket PROJ-1375)
+
+## Questions ouvertes pour le PO
+- Un article devenu indisponible entre-temps : retiré silencieusement, ou signalé ?`;
+  const panierV2 = panierV1.replace('- Deux onglets ouverts : le dernier login gagne, c\'est acceptable', '- Deux onglets ouverts : le dernier login gagne, c\'est acceptable\n- Journaliser la fusion (quantités avant/après) pour le support N2');
+
+  const paiementV1 = `## Dépôts concernés
+- \`groupe/api-core\` : le tunnel de paiement (\`src/payment/\`)
+- \`groupe/facturation\` : l'échéancier et les factures
+
+## Existant sur lequel on s'appuie
+- \`src/payment/psp.js\` : un seul appel au PSP par commande ; l'API du PSP sait créer un plan en N échéances
+- \`src/payment/rules.js\` : les seuils par pays, à étendre d'un \`installments\`
+- \`facturation/src/schedule.js\` : l'échéancier existe pour les abonnements — réutilisable tel quel
+
+## Ce qu'il faut faire
+1. Exposer \`installments: 3\` sur la commande quand le montant dépasse le seuil du pays
+2. Créer le plan chez le PSP et enregistrer les trois échéances dans \`facturation\`
+3. Afficher les trois dates et montants dans le récapitulatif (page Confluence « Règles 3× »)
+
+## Points d'attention
+- Pas de frais : l'arrondi va sur la dernière échéance, jamais sur la première
+- Un échec de la 2e échéance : relance J+3 puis blocage du compte — déjà prévu pour les abonnements
+
+## Hors périmètre
+- Le paiement en 4× et 10× (une autre grille de seuils)
+
+## Questions ouvertes pour le PO
+- Le 3× est-il proposé aux clients professionnels ?
+- Montant minimum : 100 € comme en page Confluence, ou 150 € comme dans le ticket ?`;
+
+  const logsV1 = `## Dépôts concernés
+- \`groupe/api-core\`, \`groupe/batch-jobs\` : les deux producteurs de logs
+
+## Existant sur lequel on s'appuie
+- \`src/log/format.js\` : le format texte actuel, un seul point de sortie
+- \`batch-jobs/lib/log.js\` : une copie du précédent, à faire converger
+
+## Ce qu'il faut faire
+1. Un formateur JSON commun (un paquet partagé ou le même fichier recopié, à trancher)
+2. Basculer via une variable \`LOG_FORMAT\` pour pouvoir revenir en arrière
+
+## Points d'attention
+- Les dashboards Kibana lisent le format texte : les migrer avant la bascule
+
+## Hors périmètre
+- Les logs du front
+
+## Questions ouvertes pour le PO
+- —`;
+
+  const specs = [
+    { cle: 'PROJ-1421', epic: 'PROJ-1100', repos: ['groupe/api-core', 'groupe/webapp-front'], complement: 'Le panier est en session serveur, pas en cookie — c’est le point de départ.',
+      pages: [{ url: 'https://confluence.demo/wiki/spaces/DEV/pages/1001/Panier-et-sessions', title: 'Panier et sessions', chars: 2140, truncated: false, fetched_at: at(2), error: null }],
+      status: 'posted', comment_id: '31001', posted_version: 2, versions: [['ai', panierV1, null, at(2.1)], ['followup', panierV2, 'Ajoute ce que le support doit voir dans les logs.', at(2)]], created: at(2.2), updated: at(2) },
+    { cle: 'PROJ-1408', epic: 'PROJ-1100', repos: ['groupe/api-core', 'groupe/facturation'], complement: '',
+      pages: [{ url: 'https://confluence.demo/wiki/spaces/PROD/pages/2048/Regles-3x', title: 'Règles 3×', chars: 3900, truncated: false, fetched_at: at(0.3), error: null },
+        { url: 'https://confluence.demo/wiki/spaces/FIN/pages/777/Grille-tarifaire', title: '', chars: 0, truncated: false, fetched_at: at(0.3), error: 'non lue : 403' }],
+      status: 'proposed', comment_id: null, posted_version: null, versions: [['ai', paiementV1, null, at(0.3)]], created: at(0.3), updated: at(0.3) },
+    { cle: 'PROJ-1390', epic: 'PROJ-1050', repos: ['groupe/api-core', 'groupe/batch-jobs'], complement: '',
+      pages: [], status: 'posted', stale: 1, comment_id: '30077', posted_version: 1, versions: [['ai', logsV1, null, at(9)]], created: at(9), updated: at(9),
+      photoPerimee: JSON.stringify({ summary: 'Migrer les logs vers le nouveau format JSON', description: 'Ancienne description, avant que le PO ne la réécrive.', updated: at(12) }) },
+  ];
+  for (const sp of specs) {
+    const repos = sp.repos.map((p2) => repoIds[p2]).filter(Boolean);
+    const id = insSpec.run({
+      ticket_key: sp.cle, epic_key: sp.epic, repo_ids_json: JSON.stringify(repos), complement: sp.complement,
+      confluence_json: JSON.stringify(sp.pages), detail: 'synthese', ticket_snapshot: sp.photoPerimee || photo(sp.cle),
+      status: sp.status, stale: sp.stale ? 1 : 0, comment_id: sp.comment_id, posted_version: sp.posted_version, created_at: sp.created, updated_at: sp.updated,
+    }).lastInsertRowid;
+    sp.versions.forEach(([origin, md, instruction, quand], i) => insVersion.run(id, sp.cle, i + 1, origin, ecrireSpec(sp.cle, i + 1, md), instruction, quand));
+  }
+  counts.ticket_spec = specs.length;
 }
 
 semerDiffsLocaux().then(() => {

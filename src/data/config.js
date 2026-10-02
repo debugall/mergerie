@@ -48,6 +48,7 @@ const ALLOWED = [
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
+  'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
 
@@ -82,6 +83,7 @@ function updateConfig(patch) {
   if (next.github_url) next.github_url = next.github_url.trim().replace(/\/+$/, '');
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
   if (next.jenkins_url) next.jenkins_url = next.jenkins_url.trim().replace(/\/+$/, '');
+  if (next.confluence_url) next.confluence_url = next.confluence_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
   /* UNE ADRESSE QUI CHANGE INVALIDE LE JETON STOCKÉ (plan_secure.md, lot B, S1). */
   const invaliderSiOrigineChangee = (champUrl, champJeton, defaut = '') => {
@@ -92,6 +94,7 @@ function updateConfig(patch) {
   invaliderSiOrigineChangee('github_url', 'github_token', 'https://github.com');
   invaliderSiOrigineChangee('jira_url', 'jira_token');
   invaliderSiOrigineChangee('jenkins_url', 'jenkins_token');
+  invaliderSiOrigineChangee('confluence_url', 'confluence_token');
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
   if ('auto_refresh_minutes' in patch) {
     let m = parseInt(patch.auto_refresh_minutes, 10);
@@ -266,6 +269,9 @@ function updateConfig(patch) {
       ai_extra_instructions = @ai_extra_instructions,
       jira_test_key = @jira_test_key,
       verify_jira_comment = @verify_jira_comment,
+      confluence_url = @confluence_url,
+      spec_marker = @spec_marker,
+      spec_team_instructions = @spec_team_instructions,
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,
       auto_post_blocking_only = @auto_post_blocking_only,
@@ -293,6 +299,7 @@ function updateConfig(patch) {
       language = @language,
       jira_email = @jira_email,
       jira_token = @jira_token,
+      confluence_token = @confluence_token,
       jenkins_user = @jenkins_user,
       jenkins_token = @jenkins_token,
       jenkins_refresh_minutes = @jenkins_refresh_minutes,

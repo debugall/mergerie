@@ -61,8 +61,12 @@ app.get('/api/tasks', wrap((req, res) => {
   const prog = programmations('task');
   const parQui = auteurs('task', rows);
   const passes = agentpass.countsFor('task');
+  /* LA SESSION D'UNE SPEC DE TICKET porte sa clé : la carte l'affiche, et la liste peut masquer
+     ces sessions-là d'un geste — leur vrai écran est Jira. */
+  const specParTache = new Map(db.prepare('SELECT task_id, ticket_key FROM ticket_spec WHERE task_id IS NOT NULL').all().map((r) => [r.task_id, r.ticket_key]));
   res.json(rows.map((tache) => ({
     author: parQui.get(tache.id) || null,
+    spec_key: specParTache.get(tache.id) || null,
     ...avecRangement('task', tache, range, prog),
     image_count: db.prepare('SELECT COUNT(*) c FROM piece_jointe WHERE scope = ? AND owner_id = ?').get('task', tache.id).c,
     // Le chapeau ne sert qu'aux explorations : une session de codage se lit à ses projets.

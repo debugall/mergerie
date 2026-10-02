@@ -639,7 +639,8 @@ describe('API de bout en bout', () => {
     const cAdd = await app.api('POST', '/api/jira/issue/PROJ-500/comment', { text: 'Mon retour\nsur deux lignes' });
     assert.equal(cAdd.status, 200);
     assert.equal(cAdd.body.comment.author, 'Testeur');
-    assert.match(cAdd.body.comment.bodyMd, /Nouveau commentaire/);
+    // Le faux Jira rend le commentaire POSTÉ, comme le vrai : le corps relu est celui envoyé, sauts de ligne compris.
+    assert.match(cAdd.body.comment.bodyMd, /Mon retour\nsur deux lignes/);
     assert.equal((await app.api('POST', '/api/jira/issue/PROJ-500/comment', { text: '   ' })).status, 400, 'commentaire vide refusé');
     // Pièces jointes : métadonnées dans le détail, contenu via le proxy (auth côté serveur).
     assert.equal(dd.body.issue.attachments.length, 1);

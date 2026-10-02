@@ -160,7 +160,7 @@ demandent de traverser des dossiers.
   attente de réponse, vérifications en échec, MR fraîches et MR dormantes, le tout calculé en local et **sans
   aucun appel IA**. `!214` et `PROJ-720` écrits dans une note deviennent des liens, et une merge request ou un
   ticket s'ajoute aux todos d'un clic.
-- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, tickets liés (groupés par relation, ouverts sans quitter l'onglet), changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours.
+- **Jira** — tes tickets récupérés automatiquement, détail + pièces jointes, tickets liés (groupés par relation, ouverts sans quitter l'onglet), changement d'état et commentaires ; **tickets surveillés** (affectés ou non) avec notification à chaque changement d'état, et une pastille au menu = tes tickets en cours. **Précision technique** : pour un ticket que le PO a écrit sans le où ni le comment, l'IA lit le ticket, son epic, des pages Confluence et le code des dépôts que tu choisis, te pose les questions que toi seul peux trancher, et propose une précision en six sections que tu ajustes (suivi ou à la main) et postes en commentaire — reposter met à jour le même commentaire ; une epic précise tous les tickets cochés, et une précision validée pré-remplit une session de codage.
 - **Git** — opérations multi-dépôts (branches, tags, commandes git) sur les deux forges, un **merge de
   branche à branche avec résolution des conflits à l'écran** (les deux versions l'une sous l'autre, datées à l'heure
   près, garder l'une, garder les deux, écrire soi-même — ou **demander à l'IA** une proposition pour chaque

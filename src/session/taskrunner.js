@@ -14,6 +14,8 @@ const protocolesecret = require('../core/protocolesecret');
 const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
+const specTicket = require('./spec');
+const jiraspec = require('../integrations/jiraspec');
 const { avecConsignes } = require('../core/prompts');
 const agentpass = require('../agent/pass');
 const protocol = require('../agent/protocol');
@@ -870,6 +872,16 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
          n'apparaître nulle part — carte à « — tokens », footer de télémétrie muet, démo qui
          montre un écran vide de la seule mesure qu'il porte. L'estimation ne demande aucune
          IA : le prompt est vrai, la sortie est celle du décor. */
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
+    } else if (copilot.isDryRun() && specTicket.specDeTache(task.id) && (apresReponses || previous || !task.ask_questions)) {
+      /* DRY-RUN + SPEC DE TICKET : la sortie est un bloc <<<SPEC>>> complet au nonce que le
+         prompt demande — c'est ce qu'exerce la chaîne entière (job → extraction → version →
+         commentaire) sans binaire d'IA. Le mock générique rendrait un rapport de revue. Avant
+         la branche des questions : un SUIVI de spec ne repose pas ses questions, il réécrit. */
+      const sp = specTicket.specDeTache(task.id);
+      onLog('$ (DRY-RUN — proposition de spec simulée)');
+      stdout = jiraspec.sortieDryRun(sp.nonce, sp.ticket_key);
+      fs.writeFileSync(outAbs, stdout, 'utf8');
       copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
       /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les

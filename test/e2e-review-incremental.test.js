@@ -62,10 +62,18 @@ describe('Re-review incrémentale (delta)', () => {
     assert.equal(job.body.kind, 'rereview');
     await waitForJobs(app.api);
 
+    /* CE QUE L'IA A REÇU, c'est le delta — le journal du job le dit : `git diff sha1..sha2`,
+       pas `target...source`. CE QUE L'EXPLORATEUR VOIT, c'est toute la merge request : le diff
+       rangé à côté du rapport couvre les fichiers déjà reviewés comme le nouveau. Ranger le delta
+       faisait disparaître de « Ouvrir le code » tout ce que les commits précédents touchaient. */
+    const journal = JSON.stringify((await app.api('GET', `/api/jobs/${job.body.id}/log`)).body);
+    assert.match(journal, new RegExp(`git diff ${repo.branchSha.slice(0, 8)}\\.\\.${sha2.slice(0, 8)}`), 'l’IA ne relit que le delta');
     const diff = (await app.api('GET', `/api/mrs/${mrId}/diff`)).body.diff;
-    assert.match(diff, /src\/delta\.js/, 'le delta contient le nouveau fichier');
-    assert.doesNotMatch(diff, /src\/app\.js/, 'le delta NE re-diffuse PAS les fichiers déjà reviewés');
-    assert.doesNotMatch(diff, /db\/migration\.sql/, 'idem pour la migration inchangée depuis la dernière review');
+    assert.match(diff, /src\/delta\.js/, 'le diff rangé contient le nouveau fichier');
+    assert.match(diff, /src\/app\.js/, '…et les fichiers déjà reviewés : l’explorateur voit toute la MR');
+    assert.match(diff, /db\/migration\.sql/);
+    const vue = (await app.api('GET', `/api/mrs/${mrId}/diffview`)).body;
+    assert.ok(vue.files.some((f) => f.path === 'src/app.js' && f.changed), 'l’arbre marque aussi les fichiers des commits précédents');
 
     const detail = (await app.api('GET', `/api/mrs/${mrId}`)).body;
     assert.equal(detail.mr.reviewed_sha, sha2, 'reviewed_sha avance jusqu’au SHA courant après la re-review');

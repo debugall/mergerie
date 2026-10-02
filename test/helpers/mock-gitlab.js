@@ -29,6 +29,8 @@ function freshState() {
     jiraFail: null,          // { status, body } pour forcer un refus Jira
     jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
     jiraProjectStatuses: {}, // clé projet -> [{ id, name, statuses:[…] }] (par type de ticket)
+    jiraCommentDenied: false, // vrai = Jira refuse la mise à jour d'un commentaire (403), comme pour celui d'un collègue
+    confluencePages: {},     // id de page -> { title, storage } servis sous /wiki/api/v2/pages/:id
     calls: [],               // journal { method, path, body } pour les assertions
     fail: {},                // path fragment -> { status, body } pour forcer une erreur
     mergeRefuses: false,     // vrai = GitLab répond 200 sans merger (cas réel à couvrir)
@@ -293,6 +295,12 @@ function handleJira(req, res, pathname, body = {}) {
       const set = new Set(prj[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '')));
       issues = issues.filter((i) => i.fields && i.fields.project && set.has(i.fields.project.key));
     }
+    /* `parent = "KEY"` : les enfants d'une epic (hiérarchie unifiée de Jira Cloud). */
+    const par = /parent\s*=\s*"?([A-Z][A-Z0-9]+-\d+)"?/i.exec(jql);
+    if (par) {
+      const cle = par[1].toUpperCase();
+      issues = issues.filter((i) => i.fields && i.fields.parent && String(i.fields.parent.key).toUpperCase() === cle);
+    }
     const nonStat = /status\s+NOT\s+IN\s*\(([^)]*)\)/i.exec(jql);
     if (nonStat) {
       const exclus = new Set(nonStat[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
@@ -318,13 +326,27 @@ function handleJira(req, res, pathname, body = {}) {
   const am = /^\/rest\/api\/3\/attachment\/(\d+)$/.exec(pathname);
   if (am) return json(res, 200, { id: am[1], filename: `fichier-${am[1]}.txt`, mimeType: 'text/plain', size: 12 });
   // Commentaires d'un ticket (avant /issue/:key, dont c'est un sous-chemin).
-  const cm = /^\/rest\/api\/3\/issue\/([^/?]+)\/comment/.exec(pathname);
+  const cm = /^\/rest\/api\/3\/issue\/([^/?]+)\/comment(?:\/(\d+))?/.exec(pathname);
   if (cm) {
-    if (req.method === 'POST') {
-      // Commentaire créé : on renvoie un ADF simple (le vrai serveur renvoie le commentaire posté).
-      return json(res, 201, { id: '99', author: { displayName: 'Testeur' }, created: '2026-07-25T12:00:00.000+0000', body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Nouveau commentaire' }] }] } });
-    }
     const issue = state.jiraIssues[decodeURIComponent(cm[1])];
+    if (req.method === 'POST') {
+      /* Commentaire créé : RANGÉ sur le ticket avec un id, comme le vrai serveur — c'est ce
+         qui permet de prouver qu'une relance MET À JOUR ce commentaire-là au lieu d'en empiler
+         un autre. Le corps rendu est celui posté (le test de régression historique lit les
+         octets envoyés, pas ceci). */
+      state.jiraCommentSeq = (state.jiraCommentSeq || 100) + 1;
+      const cree = { id: String(state.jiraCommentSeq), author: { displayName: 'Testeur', accountId: 'me-test' }, created: '2026-07-25T12:00:00.000+0000', body: body.body || { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Nouveau commentaire' }] }] } };
+      if (issue) { issue.comments = issue.comments || []; issue.comments.push(cree); }
+      return json(res, 201, cree);
+    }
+    if (req.method === 'PUT') {
+      if (state.jiraCommentDenied) return json(res, 403, { errorMessages: ['You do not have permission to edit this comment'] });
+      const existant = issue && (issue.comments || []).find((c) => String(c.id) === String(cm[2]));
+      if (!existant) return json(res, 404, { errorMessages: ['Comment does not exist'] });
+      existant.body = body.body || existant.body;
+      existant.updated = '2026-07-26T12:00:00.000+0000';
+      return json(res, 200, existant);
+    }
     return json(res, 200, { comments: (issue && issue.comments) || [] });
   }
   // Transitions (changement d'état) : GET liste, POST applique (204).
@@ -353,6 +375,19 @@ function handleJira(req, res, pathname, body = {}) {
   return json(res, 200, issue);
 }
 
+/* Confluence Cloud, le strict nécessaire : une page par id, en `storage` (XHTML), avec le même
+   compte que Jira. Absente → 404 ; `state.confluencePages[id] = { status: 403 }` force un refus. */
+function handleConfluence(req, res, pathname) {
+  const auth = req.headers.authorization || '';
+  if (!auth.startsWith('Basic ') && !auth.startsWith('Bearer ')) return json(res, 401, { message: 'unauthorized' });
+  const m = /^\/wiki\/(?:api\/v2\/pages|rest\/api\/content)\/(\d+)/.exec(pathname);
+  if (!m) return json(res, 404, { message: 'no route' });
+  const page = state.confluencePages[m[1]];
+  if (!page) return json(res, 404, { message: 'No page' });
+  if (page.status && page.status !== 200) return json(res, page.status, { message: 'forbidden' });
+  return json(res, 200, { id: m[1], title: page.title || `Page ${m[1]}`, body: { storage: { value: page.storage || '', representation: 'storage' } } });
+}
+
 // Démarre le faux serveur sur un port libre. Renvoie { url, close }.
 function start() {
   const srv = http.createServer((req, res) => {
@@ -366,6 +401,7 @@ function start() {
       try {
         if (u.pathname.startsWith('/api/v4')) return handleGitlab(req, res, u.pathname, u.searchParams, body);
         if (u.pathname.startsWith('/rest/api')) return handleJira(req, res, u.pathname, body);
+        if (u.pathname.startsWith('/wiki/')) return handleConfluence(req, res, u.pathname);
         return json(res, 404, { message: 'no route' });
       } catch (e) {
         return json(res, 500, { message: e.message });
