@@ -42,7 +42,7 @@ function poser(id, champs) {
 /* Crée la spec d'un ticket, ou REPREND celle qui existe : une seule par ticket, c'est l'identité.
    Les choix (dépôts, pages, complément, détail) sont réécrits ; l'id du commentaire posté et
    les versions restent — c'est ce qui fait qu'une relance met à jour le même commentaire. */
-function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, detail, includeEpic, askQuestions, epicKey, batchId }) {
+function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, detail, includeEpic, askQuestions, epicKey, batchId, verifierOrigine = true }) {
   const cle = jiraspec.normaliserCle(ticketKey);
   if (!jiraspec.cleValide(cle)) throw new Error(t('err.jira.invalid-key'));
   const repos = [...new Set((repoIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
@@ -52,8 +52,9 @@ function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, deta
   /* UNE PAGE D'UNE AUTRE ORIGINE EST REFUSÉE ICI, pas seulement à la lecture : les identifiants ne
      partent que vers le Jira ou le Confluence configurés, et une URL qui ne les vise pas n'a rien
      à faire sur la spec — elle y resterait, et un collègue la relirait. */
-  const cfg = getConfig();
-  const hors = urls.filter((u) => !confluence.urlAdmise(cfg, u));
+  /* Sauf en démo (`verifierOrigine` : la route le dit) — rien n'y est configuré ni lu : la page
+     est un décor, aucun identifiant ne part. */
+  const hors = verifierOrigine ? urls.filter((u) => !confluence.urlAdmise(getConfig(), u)) : [];
   if (hors.length) throw new Error(t('err.spec.page-host', { url: hors[0] }));
   const champs = {
     repo_ids_json: JSON.stringify(repos),

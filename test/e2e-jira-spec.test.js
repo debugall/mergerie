@@ -251,6 +251,18 @@ describe('Précision technique d’un ticket Jira', () => {
     await app.api('PUT', '/api/config', { confluence_url: '' });
   });
 
+  test('en démo, une page Confluence quelconque est acceptée : rien n’est lu, rien ne part', async () => {
+    process.env.MERGERIE_DEMO = '1';
+    try {
+      const avant = app.state.calls.length;
+      const r = await app.api('POST', '/api/jira/spec', { key: 'PROJ-13', repo_ids: [repoId], confluence_urls: ['https://confluence.demo/wiki/spaces/DEV/pages/42/Decor'] });
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.equal(r.body.spec.status, 'proposed', 'la démo range la proposition sur-le-champ');
+      assert.equal(app.state.calls.length, avant, 'aucun appel réseau : la page est un décor');
+      await app.api('DELETE', `/api/jira/spec/${r.body.spec.id}`);
+    } finally { delete process.env.MERGERIE_DEMO; }
+  });
+
   test('sans dépôt, pas d’analyse ; une clé invalide est refusée', async () => {
     assert.equal((await app.api('POST', '/api/jira/spec', { key: 'PROJ-11', repo_ids: [] })).status, 400);
     assert.equal((await app.api('POST', '/api/jira/spec', { key: 'nimporte', repo_ids: [repoId] })).status, 400);
