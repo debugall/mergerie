@@ -26,8 +26,11 @@ function convertir(p, v) {
   if (p.type === 'boolean') return v === true || v === 'true' || v === '1' || v === 1 || v === 'on';
   if (p.type === 'number' || p.type === 'integer') {
     if (v === '' || v === null) return p.default !== undefined ? p.default : 0;
+    /* Une saisie illisible (« x ») ne lève pas : elle retombe sur le minimum du schéma, ou 0 — ce que
+       font les réglages du cœur (`parseInt` puis repli), et ce qu'attend un champ qui dit « 0 = jamais ». */
     const n = Number(v);
-    return Number.isFinite(n) ? (p.type === 'integer' ? Math.round(n) : n) : NaN;
+    if (!Number.isFinite(n)) return p.minimum != null ? p.minimum : 0;
+    return p.type === 'integer' ? Math.round(n) : n;
   }
   return v === null ? '' : String(v);
 }

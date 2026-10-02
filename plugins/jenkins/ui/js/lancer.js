@@ -1,6 +1,5 @@
 'use strict';
 /* Jenkins : ce que la fiche propose à l'ouverture, relancer, confirmer, masquer. */
-// @expose openJenkinsJob
 /* ---------- Ce que la fiche propose À L'OUVERTURE ----------
    Le formulaire s'ouvrait sur les défauts DU JOB. Or on relance presque toujours ce qu'on
    vient de lancer : il fallait déplier l'historique et cliquer « reprendre » pour retrouver
@@ -69,7 +68,7 @@ async function openJenkinsJob(chemin, { siParams = false } = {}) {
   if (!siParams) modal.hidden = false;
   const jeton = ++jkOuvertures;
   try {
-    const d = await api(`/jenkins/job?path=${encodeURIComponent(chemin)}`);
+    const d = await api(`/plugins/jenkins/job?path=${encodeURIComponent(chemin)}`);
     /* FERMÉE PENDANT LE CHARGEMENT, ELLE LE RESTE. La fiche s'ouvre avant la réponse ; si l'on
        fait Échap entre-temps, la réponse la rouvrait d'office, par-dessus l'écran suivant. Même
        chose si une autre fiche a été demandée depuis : la plus récente gagne. */
@@ -151,7 +150,7 @@ async function relancerJenkins(chemin, params, caches) {
   if (!ok) return false;
   try {
     const avant = (JENKINS.jobs.find((x) => x.path === chemin) || {}).lastNumber || 0;
-    await api('/jenkins/build', { method: 'POST', body: {
+    await api('/plugins/jenkins/build', { method: 'POST', body: {
       path: chemin, parameters: Object.fromEntries(liste.map((p) => [p.name, p.value])), since: avant,
     } });
     jkPoserLance(chemin);
@@ -176,7 +175,7 @@ async function lancerJenkins(chemin, parametres, { confirmer = true } = {}) {
   })) return false;
   try {
     const avant = (JENKINS.jobs.find((x) => x.path === chemin) || {}).lastNumber || 0;
-    await api('/jenkins/build', { method: 'POST', body: { path: chemin, parameters: parametres || {}, since: avant } });
+    await api('/plugins/jenkins/build', { method: 'POST', body: { path: chemin, parameters: parametres || {}, since: avant } });
     jkPoserLance(chemin);
     toast(tr('jenkins.queued', { job: chemin }));
     // Jenkins met en file : l'état ne change pas dans la seconde, on redemande quand même.
@@ -194,14 +193,14 @@ async function openJenkinsLog(chemin, numero) {
   $('#jenkinsLogInvestigate').hidden = true;
   $('#jenkinsLogModal').hidden = false;
   try {
-    const d = await api(`/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`);
+    const d = await api(`/plugins/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`);
     $('#jenkinsLogBody').textContent = (d.truncated ? `${tr('jenkins.log.truncated')}\n\n` : '') + (d.text || '');
     $('#jenkinsLogBody').scrollTop = $('#jenkinsLogBody').scrollHeight;   // l'erreur est en bas
     /* B9 — ON NE PROPOSE D'ENQUÊTER QUE S'IL Y A DE QUOI. La même règle que sur un ticket
        (`detecterTrace`) : un build vert dont la console dit « BUILD SUCCESS » n'a rien à
        confier à l'enquêteur, et un bouton qui ouvre une session vide fait perdre deux gestes. */
     jkLogVu = { chemin, numero, texte: d.text || '' };
-    $('#jenkinsLogInvestigate').hidden = !detecterTrace(jkLogVu.texte);
+    $('#jenkinsLogInvestigate').hidden = !agents.detectTrace(jkLogVu.texte);
   } catch (e) {
     $('#jenkinsLogBody').textContent = explainError(e.message);
   }
@@ -213,7 +212,7 @@ $('#jenkinsLogInvestigate') && $('#jenkinsLogInvestigate').addEventListener('cli
   // pour du bruit de compilation, et l'erreur est en bas.
   const lignes = String(jkLogVu.texte).split('\n').filter((l) => l.trim()).slice(-30).join('\n');
   $('#jenkinsLogModal').hidden = true;
-  await enqueterSurTexte(tr('jenkins.investigate.prompt', { job: jkLogVu.chemin, n: jkLogVu.numero, log: lignes }));
+  await agents.investigate(tr('jenkins.investigate.prompt', { job: jkLogVu.chemin, n: jkLogVu.numero, log: lignes }));
 });
 
 $('#jenkinsSearch') && $('#jenkinsSearch').addEventListener('input', (e) => { JENKINS.q = e.target.value; jkMemoriserFiltres(); renderJenkins(); });

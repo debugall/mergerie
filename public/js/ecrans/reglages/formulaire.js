@@ -5,7 +5,7 @@
 // itèrent dessus (une divergence entre les deux = un champ qui ne s'enregistre pas,
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
-  'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
+  'github_url', 'github_token',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days', 'mr_retention_days', 'clone_blobless',
   'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
@@ -26,7 +26,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
  * quelques dizaines de millisecondes plus tard. Entre les deux, l'utilisateur peut déjà avoir
  * commencé à taper : la réponse écrase alors ses champs avec ce que le serveur avait, sans un
  * mot. Sur une machine chargée, la fenêtre s'élargit — c'est ainsi qu'un test collait son
- * jeton Jenkins et cliquait « Tester » sur trois champs redevenus vides.
+ * jeton et cliquait « Tester » sur trois champs redevenus vides.
  *
  * On note donc l'instant de la dernière frappe : si elle est postérieure au DÉPART de la
  * requête, on ne touche à rien.
@@ -47,7 +47,7 @@ document.addEventListener('input', (e) => {
    marque TOUS, pour que l'avertissement suive celui qui change d'écran. */
 let configSale = false;
 const boutonsConfig = () => $$('button[form="configForm"][type="submit"]');
-const mentionsConfig = () => $$('#configInfo, #configInfoGeneral, #configInfoMr, #configInfoGit, #configInfoGithub, #configInfoJira, #configInfoJenkins, #configInfoAi, #configInfoVerif').filter(Boolean);
+const mentionsConfig = () => $$('#configInfo, #configInfoGeneral, #configInfoMr, #configInfoGit, #configInfoGithub, #configInfoJira, #configInfoAi, #configInfoVerif').filter(Boolean);
 
 function marquerConfig(sale) {
   configSale = sale;
@@ -151,7 +151,6 @@ function corpsConfig(f) {
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
   if (body.github_token === '***') delete body.github_token;
-  if (body.jenkins_token === '***') delete body.jenkins_token;
   return body;
 }
 /* N'ENVOYER QUE CE QUI A CHANGÉ. Le formulaire renvoyait TOUS ses champs : resté ouvert pendant

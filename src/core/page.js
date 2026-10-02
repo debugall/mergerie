@@ -33,7 +33,7 @@ const MARQUEUR = /^[ \t]*<!--@include ([^\s>]+)-->[ \t]*\r?$/;
    la ligne du marqueur restant en place. Sans fragments (contrôles, tests sans plugin), le
    marqueur reste seul : la page est celle du cœur. `nav` admet des positions nommées
    (`before:links`), résolues contre les boutons `data-tab` de la coquille. */
-const MARQUEUR_PLUGINS = /^([ \t]*)<!--@plugins:([a-z-]+)-->[ \t]*\r?$/;
+const MARQUEUR_PLUGINS = /^([ \t]*)<!--@plugins:([a-z0-9-]+)-->[ \t]*\r?$/;
 
 /* Le chemin d'un morceau, vérifié : relatif, sous `public/`, jamais au-dessus. */
 function cheminMorceau(base, rel, ou) {

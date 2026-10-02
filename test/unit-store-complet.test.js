@@ -96,13 +96,14 @@ describe('store — la base prévient, le store écrit', () => {
     assert.deepEqual(JSON.parse(store.lireFichier(`verifiers/${uidV}.json`)).commands, ['npm test']);
   });
 
-  test('repo_link et repo_jenkins restent locaux, comme repo lui-même : rien ne se propage', () => {
+  test('repo_link et la table de jobs liés du plugin Jenkins restent locaux, comme repo lui-même : rien ne se propage', () => {
     const autre = db.prepare(`INSERT INTO repo (project, url, forge, enabled, created_at)
       VALUES ('acme/api', 'https://x.test/b.git', 'gitlab', 1, ?)`).run(new Date().toISOString()).lastInsertRowid;
     db.prepare("INSERT INTO repo_link (repo_id, linked_repo_id, branch) VALUES (?, ?, 'main')").run(repoId, autre);
     /* LES JOBS JENKINS NE SONT PLUS DANS AUCUN FICHIER : l'onglet Jenkins décrit une machine et
        ses accès, pas un travail accumulé — et depuis, `repo` non plus. */
-    db.prepare("INSERT INTO repo_jenkins (repo_id, job_path, param) VALUES (?, 'deploy/web', 'BRANCH')").run(repoId);
+    db.exec('CREATE TABLE IF NOT EXISTS plugin_jenkins_link (id INTEGER PRIMARY KEY, repo_id INTEGER NOT NULL, job_path TEXT NOT NULL, param TEXT, UNIQUE(repo_id, job_path))');
+    db.prepare("INSERT INTO plugin_jenkins_link (repo_id, job_path, param) VALUES (?, 'deploy/web', 'BRANCH')").run(repoId);
     assert.equal(store.enRetard(), 0, 'trois tables locales : aucune n’écrit dans le dépôt d’équipe');
   });
 

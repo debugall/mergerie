@@ -113,7 +113,6 @@ require('./app/routes/git-compare');
 require('./app/routes/git-merge');
 require('./app/routes/groupes');
 require('./app/routes/maintenance');
-require('./app/routes/jenkins');
 require('./app/routes/jira');
 require('./app/routes/jira-spec');
 require('./app/routes/jobs');
@@ -260,9 +259,9 @@ const server = app.listen(PORT, HOST, () => {
   );
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
-  /* La veille de fond : conteneurs tombés, builds Jenkins lancés d'ici et terminés depuis.
-     Une minute — la cadence de ce qu'on surveille, pas celle d'un tableau de bord —, et rien
-     n'est demandé à Jenkins tant qu'aucun lancement n'est attendu. */
+  /* La veille de fond : les conteneurs tombés. Une minute — la cadence de ce qu'on surveille,
+     pas celle d'un tableau de bord. (La fin des builds lancés d'ici est veillée par le plugin
+     qui les lance, par `ctx.schedule`.) */
   if (!demoDocker.isDemo()) veille.demarrer({ getConfig, periodeMs: 60000 });
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
   /* LES PLUGINS, puis le bus : `app.ready` part quand tout — cœur et plugins — est en place.
@@ -280,7 +279,7 @@ module.exports = {
   app,
   server,
   /* Exportée pour les tests : elle ANNOTE des lignes de branches avec ce que la base sait
-     (ticket, verdict, session, job Jenkins). La route complète, elle, parle à la forge et au
+     (ticket, verdict, session). La route complète, elle, parle à la forge et au
      clone — la passer par un faux GitLab pour vérifier trois annotations n'éprouverait que le
      faux GitLab. */
   nommerBranches,

@@ -88,10 +88,8 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
     }];
     jenkins.state.details['/job/ci-app'] = { name: 'ci-app', color: 'red', builds: [] };
     jenkins.state.console['/job/ci-app/42'] = 'npm test\nError: Module not found: ./cache\nFinished: FAILURE';
-    await app.configure({
-      jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira',
-      jenkins_url: srvJenkins.url, jenkins_user: jenkins.state.user, jenkins_token: jenkins.state.token,
-    });
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira' });
+    await app.configureJenkins({ jenkins_url: srvJenkins.url, jenkins_user: jenkins.state.user, jenkins_token: jenkins.state.token });
     repoApp = (await app.api('POST', '/api/repos', { url: r1.url, project: 'grp/app' })).body.id;
     repoLib = (await app.api('POST', '/api/repos', { url: r2.url, project: 'grp/lib' })).body.id;
 

@@ -66,7 +66,6 @@ function onboardingHtml() {
   const outilsHtml = `
       <span class="onboard-outils">
         <label class="inline-check"><input type="checkbox" data-outil="jira" /> <span>${esc(tr('onboard.s3.jira'))}</span></label>
-        <label class="inline-check"><input type="checkbox" data-outil="jenkins" /> <span>${esc(tr('onboard.s3.jenkins'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="docker" /> <span>${esc(tr('onboard.s3.docker'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="links" /> <span>${esc(tr('onboard.s3.links'))}</span></label>
         ${pluginsOnboarding().map((o) => `<label class="inline-check"><input type="checkbox" data-outil="${esc(o.tab)}" /> <span>${esc(o.label)}</span></label>`).join('')}
@@ -136,7 +135,6 @@ document.addEventListener('click', (e) => {
     case 'seg-to-review': loadSegment('to_review'); break;
     case 'seg-reviewed': loadSegment('reviewed'); break;
     case 'go-jira-config': go('admin'); showAdminSub('jiracfg'); viser('[name="jira_url"]'); break;
-    case 'jenkins-config': go('admin'); showAdminSub('jenkinscfg'); viser('[name="jenkins_url"]'); break;
     case 'clear-search': $('#searchReview').value = ''; loadSegment(currentSeg); break;
     case 'clear-auteur': filtreAuteur = 'tous'; try { localStorage.setItem('aidevtools_mr_auteur', 'tous'); } catch { /* ignore */ } renderFiltreAuteur(); loadSegment(currentSeg); break;
     case 'clear-note-filter': reinitFiltreNote(); break;

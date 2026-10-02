@@ -265,3 +265,4 @@
 .jk-param select[multiple] { min-height: 92px; padding: 4px; }
 /* La barre d'outils ne doit pas casser le libellé de la case en deux lignes. */
 #tab-jenkins .toolbar .inline-check { white-space: nowrap; }
+#jenkinsCount { white-space: nowrap; }

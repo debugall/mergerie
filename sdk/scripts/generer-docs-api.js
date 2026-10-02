@@ -46,7 +46,9 @@ Une erreur dans \`activate(ctx)\` met le plugin **en erreur** (le message est af
 | \`mr\` | le menu « ⋯ » d'une carte de merge request | la merge request (\`id\`, \`iid\`, \`repo_id\`, \`source_branch\`, \`verification\`…) |
 | \`mr-badge\` | les badges d'une carte de merge request | idem |
 | \`session-target\` | le formulaire de suivi d'un projet d'une session | \`{ task, target }\` |
+| \`session-target-badge\` | les badges d'un projet d'une session | \`{ task, target }\` |
 | \`branch\` | une ligne de l'explorateur Git | \`{ branch, repo_id }\` |
+| \`branch-badge\` | les badges d'une ligne de l'explorateur Git | \`{ branch, repo_id }\` |
 | \`verification\` | la suite d'un verdict vert, dans le rapport de vérification | la merge request, \`ctx.verification\` |
 | \`repo-sheet\` | la fiche d'un dépôt dans Réglages → Dépôts | la fiche (\`id\`, \`project\`, \`verifiers\`…) |`,
     exemples: '## Exemples',
@@ -90,7 +92,9 @@ An error in \`activate(ctx)\` puts the plugin **in error** (the message shows in
 | \`mr\` | the "⋯" menu of a merge request card | the merge request (\`id\`, \`iid\`, \`repo_id\`, \`source_branch\`, \`verification\`…) |
 | \`mr-badge\` | the badges of a merge request card | same |
 | \`session-target\` | the follow-up form of a session's project | \`{ task, target }\` |
+| \`session-target-badge\` | the badges of a session's project | \`{ task, target }\` |
 | \`branch\` | a row of the Git explorer | \`{ branch, repo_id }\` |
+| \`branch-badge\` | the badges of a Git explorer row | \`{ branch, repo_id }\` |
 | \`verification\` | what follows a green verdict, in the verification report | the merge request, \`ctx.verification\` |
 | \`repo-sheet\` | a repository's sheet in Settings → Repositories | the sheet (\`id\`, \`project\`, \`verifiers\`…) |`,
     exemples: '## Examples',

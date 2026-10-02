@@ -1,25 +1,10 @@
 'use strict';
-/* Les jobs Jenkins liés à un dépôt, le souvenir des tests de connexion, la ligne de configuration et ses valeurs par défaut, la palette git.
+/* Le souvenir des tests de connexion, la ligne de configuration et ses valeurs par défaut, la palette git.
    Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
 const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT } = require('../../core/prompts');
 const { DEFAULT_CLONE_DIR } = require('../../core/paths');
-
-/* ---------- B8 : quel job Jenkins déploie quel dépôt ----------
-   « La QA veut !217 en recette » : on ouvrait Jenkins, on cherchait `api-deploy-recette` dans
-   deux cents jobs, on recopiait la branche sans faute de frappe. Le lien dépôt ↔ job se
-   déclare une fois — comme service ↔ dépôt dans Liens — et la carte d'une merge request
-   VÉRIFIÉE VERTE propose alors le job, la branche pré-remplie. `param` : le nom du paramètre
-   Jenkins qui reçoit la branche (souvent `BRANCH`, parfois `VERSION`) ; vide, on ne
-   pré-remplit rien et la fiche s'ouvre telle quelle. */
-db.exec(`CREATE TABLE IF NOT EXISTS repo_jenkins (
-  id INTEGER PRIMARY KEY,
-  repo_id INTEGER NOT NULL REFERENCES repo(id) ON DELETE CASCADE,
-  job_path TEXT NOT NULL,
-  param TEXT,
-  UNIQUE(repo_id, job_path)
-)`);
 
 /* Cocher une todo liée quand sa merge request est mergée. Coché par défaut : la todo perd sa
    raison d'être au merge, et la cocher soi-même après coup est le geste qu'on oublie. */
@@ -43,7 +28,7 @@ try { db.exec("ALTER TABLE config ADD COLUMN prompt_fix TEXT DEFAULT ''"); } cat
    fois. Une ligne par service, écrite par le test lui-même ; rien n'est sondé en fond, c'est le
    souvenir d'un geste, pas une surveillance. */
 db.exec(`CREATE TABLE IF NOT EXISTS conn_test (
-  service TEXT PRIMARY KEY,            -- gitlab | github | jira | jenkins
+  service TEXT PRIMARY KEY,            -- gitlab | github | jira
   ok INTEGER NOT NULL,
   detail TEXT,                         -- ce que le service a répondu (compte, login, nb de jobs)
   tested_at TEXT NOT NULL

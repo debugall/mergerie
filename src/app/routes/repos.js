@@ -11,7 +11,6 @@ const { t } = i18n;
 const links = require('../../notes/links');
 const forge = require('../../forge');
 const git = require('../../git/git');
-const jenkins = require('../../integrations/jenkins');
 const localrepos = require('../../git/localrepos');
 const path = require('path');
 const fs = require('fs');
@@ -78,7 +77,6 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
         .filter((v) => !db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?').get(v.id, id))
         .map((v) => ({ ...v, mode: 'worktree', via_group: true })),
     ],
-    jenkins: db.prepare('SELECT id, job_path, param FROM repo_jenkins WHERE repo_id = ? ORDER BY job_path').all(id),
     /* Les règles LIMITÉES à ce dépôt. Celles qui valent partout ne sont pas « rattachées » :
        les lister ici ferait croire qu'elles disparaîtraient avec lui. */
     rules: db.prepare(`SELECT id, label, branch_match, path_match, enabled, group_id FROM review_rule

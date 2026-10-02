@@ -19,14 +19,6 @@ async function loadBrief() {
   if (d.ready_threshold) seuilPret = Number(d.ready_threshold) || 8;
   dernierBrief = d;
   renderBrief(d);
-  /* B4 — LA LISTE JENKINS ARRIVE APRÈS, ET LE BRIEF SE REDESSINE. On ne fait pas attendre le
-     brief pour une CI : il s'affiche d'abord, et la section « CI rouge » apparaît quand la
-     liste est là. Un seul appel par page (`assurerJenkinsPourCI` se garde lui-même), et rien
-     n'est sondé — c'est la même liste que celle de l'onglet Jenkins. */
-  if (!(JENKINS.jobs || []).length) {
-    await assurerJenkinsPourCI();
-    if ((JENKINS.jobs || []).length && $('#briefBox')) renderBrief(d);
-  }
 }
 
 /* A/Notes 3 — LE TEXTE DU DAILY. Composé à partir de ce que le brief affiche DÉJÀ : rien
@@ -169,29 +161,6 @@ function renderBrief(d) {
       <button type="button" class="btn btn-primary" data-brief-branches>${esc(tr('notes.brief.branches.go'))}</button>
     </div>` : '';
 
-  /* B4 — CE QUE JENKINS A CASSÉ SUR MES BRANCHES. Le brief listait les vérifications rouges
-     de l'outil et ignorait la CI de l'équipe : le nightly cassait à 23 h et on l'apprenait à
-     11 h par un collègue. Calculé À L'OUVERTURE, depuis la liste que l'onglet Jenkins charge
-     déjà — aucun sondage, aucune requête de plus : on croise les jobs rouges avec les branches
-     de mes merge requests ouvertes. Sans Jenkins configuré, la section n'existe pas. */
-  const rougesCI = (JENKINS.jobs || []).length
-    ? toReviewRows.concat(reportRows)
-      .filter((m) => !m.closed_seen)
-      .map((m) => ({ m, ci: ciDeLaBranche(m.source_branch) }))
-      .filter((x) => x.ci && x.ci.statut === 'echec' && !x.ci.enCours)
-      // une même branche peut porter deux MR : on ne le dit qu'une fois
-      .filter((x, i, tous) => tous.findIndex((y) => y.ci.path === x.ci.path && y.m.source_branch === x.m.source_branch) === i)
-      .slice(0, 8)
-    : [];
-  const ciCasse = rougesCI.map(({ m, ci }) => `<div class="brief-item">
-      <div class="brief-item-main">
-        <div class="brief-item-title">${esc(ci.path)} <span class="muted">#${esc(String(ci.number))}</span></div>
-        <div class="brief-item-meta muted">${esc(tr('notes.brief.ci.on', { branch: m.source_branch, iid: m.iid }))}</div>
-      </div>
-      <button type="button" class="btn btn-primary" data-ci-job="${esc(ci.path)}">${esc(tr('notes.brief.ci.details'))}</button>
-      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
-    </div>`).join('');
-
   /* B11 — CE QUE JE PEUX MERGER MAINTENANT. Une ligne, un nombre, une porte : le brief ne
      refait pas la file, il dit combien ne demandent plus rien. Rien n'est mergé d'ici. */
   const pretes = d.ready_to_merge ? `<div class="brief-item">
@@ -274,7 +243,6 @@ function renderBrief(d) {
     briefSection(tr('agents.brief.title'), agentsBrief, { icon: 'zap', hint: tr('agents.brief.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
-    briefSection(tr('notes.brief.sec.ci'), ciCasse, { icon: 'alert' }),
     briefSection(tr('notes.brief.sec.docker'), dockerBas, { icon: 'inbox', hint: tr('notes.brief.docker.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),

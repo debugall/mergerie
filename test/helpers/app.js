@@ -107,6 +107,11 @@ async function startApp() {
 
   // Connexion GitHub (faux serveur) — à appeler en plus de configure() pour les
   // dépôts GitHub. Les deux forges peuvent être configurées en même temps.
+  /* La connexion Jenkins vit dans les réglages du plugin, pas dans /api/config. */
+  async function configureJenkins(extra = {}) {
+    return api('PUT', '/api/plugins/jenkins/settings', extra);
+  }
+
   async function configureGithub(extra = {}) {
     return api('PUT', '/api/config', {
       github_url: github.url,
@@ -117,7 +122,7 @@ async function startApp() {
   }
 
   return {
-    base, api, configure, configureGithub, dataDir, db, localToken,
+    base, api, configure, configureGithub, configureJenkins, dataDir, db, localToken,
     gitlabUrl: gitlab.url, githubUrl: github.url,
     state: mock.state, ghState: mockGh.state,
     async stop() {
@@ -252,7 +257,7 @@ async function waitForJobs(api, { timeout = 60000 } = {}) {
   }
 }
 
-/* LES QUATRE MENUS OPTIONNELS — Git, Docker, Jenkins, Liens — DÉMARRENT REPLIÉS : la barre
+/* LES MENUS OPTIONNELS — Git, Docker, Liens, et les onglets de plugins comme Jenkins — DÉMARRENT REPLIÉS : la barre
    ne porte d'office que le travail de tous les jours. Un test qui va sur l'un de ces écrans
    commence donc par les afficher, exactement comme l'utilisateur le fait dans Réglages →
    Menus : la préférence vit dans le stockage du navigateur, on l'y pose.

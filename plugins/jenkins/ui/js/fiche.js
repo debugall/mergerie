@@ -1,6 +1,5 @@
 'use strict';
 /* Jenkins : le détail d'un job — paramètres, historique, console. */
-// @expose jkPoserParams
 /* ---------- Le détail d'un job : paramètres, historique, console ---------- */
 
 const jkPastilleBuild = (b) => (b.building ? 'succes encours'
@@ -33,7 +32,7 @@ function jkBuildLigne(chemin, b, choisi) {
         <button type="button" class="btn btn-sm" data-jkrerunbuild="${b.number}" title="${esc(tr('jenkins.rerun.title-build', { n: b.number }))}"><svg class="ico ico-sm"><use href="#i-refresh"/></svg></button>
         ${/* B16 — « ce build casse une fois sur trois » : la note se prend là où on le
               constate, et la todo rouvre la fiche du job. */''}
-        ${addTodoBtn('build', `${chemin}#${b.number}`, tr('notes.add-todo.build', { job: chemin, n: b.number }))}
+        ${notes.todoButton('build', `${chemin}#${b.number}`, tr('jenkins.todo.add', { job: chemin, n: b.number }))}
       </span>
     </div>
     ${jkParamPastilles(params, params.map((p) => p.name))}
@@ -47,7 +46,7 @@ const cacheTail = new Map();
 async function chargerTailJenkins(chemin, numero, el) {
   const cle = `${chemin}#${numero}`;
   if (!cacheTail.has(cle)) {
-    cacheTail.set(cle, api(`/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`)
+    cacheTail.set(cle, api(`/plugins/jenkins/console?path=${encodeURIComponent(chemin)}&build=${encodeURIComponent(numero)}`)
       .then((d) => String(d.text || '').split('\n').filter((l) => l.trim()).slice(-30).join('\n'))
       .catch(() => ''));
   }
@@ -178,7 +177,7 @@ async function approfondirFiche() {
   const d = JENKINS.job;
   if (!d) return;
   try {
-    const profond = await api(`/jenkins/job?path=${encodeURIComponent(d.path)}&builds=${JK_HISTO_PROFOND}`);
+    const profond = await api(`/plugins/jenkins/job?path=${encodeURIComponent(d.path)}&builds=${JK_HISTO_PROFOND}`);
     JENKINS.job = { ...d, builds: profond.builds || d.builds, depth: profond.depth || JK_HISTO_PROFOND };
   } catch (e) { toast(explainError(e.message), true); }
 }

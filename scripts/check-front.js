@@ -73,9 +73,15 @@ const ou = (l) => `${nomDe(l.f)}:${l.i}`;
    String.replace transforme silencieusement tous les `$$` en `$`. */
 const singleOnList = [];
 lignes.forEach((l) => {
-  const m = l.texte.match(/(?<!\$)\$\((['"`][^'"`]*['"`][^)]*)\)\s*\.\s*(forEach|map|filter|some|every|slice|reduce)\b/);
+  const m = l.texte.match(/(?<!\$)\$\((['"`][^'"`]*['"`][^)]*)\)\s*\.\s*(forEach|map|filter|find|some|every|slice|reduce)\b/);
   if (m) singleOnList.push(`${ou(l)}  $(…).${m[2]} — devrait être $$(…)`);
 });
+/* La même faute sur PLUSIEURS lignes : `$([…].join(', '))` suivi de `.find(…)` à la ligne
+   d'après — passée une troisième fois, par un sélecteur assemblé depuis un tableau. */
+for (const f of man.scripts.filter(existe)) {
+  const m = lirePublic(f).match(/(?<!\$)\$\(\[[\s\S]{0,800}?\]\.join\([^)]*\)\)\s*\.\s*(forEach|map|filter|find|some|every|slice|reduce)\b/);
+  if (m) singleOnList.push(`${nomDe(f)}  $([…].join(…)).${m[1]} — devrait être $$(…)`);
+}
 singleOnList.length ? fail('Sélecteur $ utilisé comme une liste', singleOnList) : ok('Aucun $(…) traité comme un tableau');
 
 /* 2. Sous-onglets sans la classe qui les habille.

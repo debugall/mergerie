@@ -27,7 +27,10 @@ const garde = require('./garde-require');
 const pageplugins = require('./pageplugins');
 
 const RACINE = path.join(__dirname, '..', '..');
-const EMBARQUES = path.join(RACINE, 'plugins');
+/* Le dossier des plugins embarqués : celui du dépôt — ou, pour les tests d'extériorité, un autre
+   (`MERGERIE_BUILTIN_PLUGINS_DIR`, par exemple un dossier vide : le plugin embarqué est alors
+   installé comme un tiers, et doit se comporter pareil). */
+const EMBARQUES = process.env.MERGERIE_BUILTIN_PLUGINS_DIR ? path.resolve(process.env.MERGERIE_BUILTIN_PLUGINS_DIR) : path.join(RACINE, 'plugins');
 
 /** @type {Map<string, any>} nom → fiche { manifeste, dir, origin, erreurs, enabled, actif, error, instance, ctx, sortie, hote }  */
 const fiches = new Map();
@@ -76,7 +79,9 @@ function decouvrir() {
     fiche.manifeste = t.manifeste; fiche.dir = t.dir; fiche.origin = t.origin; fiche.erreurs = t.erreurs; fiche.valide = t.ok;
     const etat = lireEtat(nom);
     if (!etat) {
-      ecrireEtat(nom, { enabled: t.origin === 'builtin' ? 1 : 0, version: (t.manifeste && t.manifeste.version) || '', origin: t.origin });
+      // Un embarqué est activé d'office — sauf s'il dit le contraire (`enabledByDefault: false`, comme hello) ; un tiers, jamais.
+      const dOffice = t.origin === 'builtin' && !(t.manifeste && t.manifeste.enabledByDefault === false);
+      ecrireEtat(nom, { enabled: dOffice ? 1 : 0, version: (t.manifeste && t.manifeste.version) || '', origin: t.origin });
     }
     const e = lireEtat(nom);
     fiche.enabled = !!e.enabled;

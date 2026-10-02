@@ -91,13 +91,6 @@ function gitRenderExplorer(d, box) {
            bouton « Ajouter aux todos » n'existait que sur une merge request et un ticket, et
            une branche sans merge request (le cas justement intéressant) restait hors de
            portée. La todo garde `<dépôt>:<branche>` et sait donc y revenir. */
-        /* TOP 15 — ET LE JOB JENKINS DU DÉPÔT, avec la branche déjà posée. Le bouton n'existait
-           que sur une merge request vérifiée verte : une branche qu'on veut justement déployer
-           en recette AVANT d'en faire une merge request n'y avait pas droit. On ouvre la fiche,
-           jamais un lancement. */
-        + ((b.jenkins || []).slice(0, 1).map((j) => '<button class="btn btn-sm btn-ghost" data-mr-jenkins="' + esc(j.path)
-          + '" data-param="' + esc(j.param) + '" data-branch="' + esc(b.name) + '" title="'
-          + esc(tr('git.br.jenkins-title', { job: j.path, branch: b.name })) + '">' + svgIco('pipeline') + '</button>').join(''))
         + pluginsHtml('branch', { branch: b, repo_id: d.repo_id })
         + addTodoBtn('branch', d.repo_id + ':' + b.name, tr('notes.add-todo.branch', { branch: b.name }));
       const mrBtn = b.open_mr
@@ -114,14 +107,13 @@ function gitRenderExplorer(d, box) {
              sont en base, et ce sont elles qui font d'une ligne un plan de travail. */
           (b.mr_note != null ? ' <span class="git-ex-note">' + esc(fmtNote10(b.mr_note * 10)) + '</span>' : '') +
           /* TOP 15 — …ET LE RESTE DE CE QUE LA BASE SAIT : le TITRE de la merge request (chargé
-             puis jeté jusqu'ici), le ticket, le dernier verdict de vérification, le dernier
-             build. Un nom de branche ne dit pas ce qu'elle fait ; son titre, si. */
+             puis jeté jusqu'ici), le ticket, le dernier verdict de vérification. Un nom de branche ne dit pas ce qu'elle fait ; son titre, si. */
           (b.mr && b.mr.title ? ' <span class="git-ex-titre muted" title="' + esc(b.mr.title) + '">' + esc(String(b.mr.title).slice(0, 60)) + '</span>' : '') +
           (b.mr && b.mr.draft ? ' <span class="tag draft">' + esc(tr('mr.tag.draft')) + '</span>' : '') +
           (b.mr && b.mr.conflicts ? ' <span class="tag conflit">' + esc(tr('mr.tag.conflict')) + '</span>' : '') +
           (b.ticket ? ' <span class="tag" title="' + esc(b.ticket.status || '') + '">' + esc(b.ticket.key) + '</span>' : '') +
           (b.verification ? ' ' + verifyBadge({ verdict: b.verification.verdict }) : '') +
-          badgeCI(b.name) +
+          pluginsHtml('branch-badge', { branch: b, repo_id: d.repo_id }) +
           (b.session ? ' <button type="button" class="lien-reglage git-ex-sess" data-git-sess="' + b.session.id + '" data-git-sess-kind="' + esc(b.session.kind || 'code') + '" title="'
             + esc(tr('git.branch.session-title')) + '">' + svgIco('bot') + ' ' + esc(String(b.session.label || '').slice(0, 40)) + '</button>' : '') + '</td>' +
         '<td>' + ab + '</td><td>' + gitOriginCell(b) + '</td><td>' + merged + '</td>' +

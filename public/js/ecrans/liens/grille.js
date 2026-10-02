@@ -67,7 +67,7 @@ function renderLinkGrid() {
     return `<tr class="link-grid-row${s.pinned ? ' epingle' : ''}${premierLibre ? ' apres-epingles' : ''}" data-service="${s.id}" data-pinned="${s.pinned ? 1 : 0}">
       <td class="link-svc"><span class="link-svc-in">
         <span class="link-move" draggable="true" title="${esc(tr('links.service.move'))}" aria-hidden="true">${svgIco('grip')}</span>
-        <span class="link-ava la-c${jkTeinte(s.name)}" aria-hidden="true">${esc(initiale(s.name))}</span>
+        <span class="link-ava la-c${teinteDe(s.name)}" aria-hidden="true">${esc(initiale(s.name))}</span>
         <span class="link-svc-txt">
           <button type="button" class="link-svc-btn" data-editservice="${s.id}" title="${esc(tr('links.service.edit'))}">${esc(s.name)}</button>
           ${s.project ? `<span class="link-svc-repo" title="${esc(tr('links.service.repo'))}">${esc(s.project)}</span>` : ''}

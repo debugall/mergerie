@@ -38,6 +38,7 @@ window.mergerie = {
   placerMenu,
   dateHtml,
   depuis,
+  teinteDe,
   fmtDate,
   fmtHour,
   fmtDateTime: (...a) => fmtDateTime(...a),
@@ -60,7 +61,7 @@ window.mergerie = {
     openReport: (...a) => openReport(...a),
     rows: () => toReviewRows.concat(reportRows),
     isMine: (m) => estDeMoi(m),
-    me: () => moiSurLesForges(),
+    me: () => moiSurLesForges,
     reload: () => { if ($('#tab-review').classList.contains('active')) loadSegment(currentSeg); },
   },
   notes: {

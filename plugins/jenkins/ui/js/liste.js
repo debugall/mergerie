@@ -1,6 +1,5 @@
 'use strict';
 /* Onglet Jenkins : la liste, les jobs épinglés, le badge, la recherche, les paramètres, les MR croisées, les filtres. */
-// @expose JENKINS, amorcerBadgeJenkins, loadJenkins
 /* ============ Onglet Jenkins : voir l'état des jobs, et les lancer ============
 
    RIEN N'EST SONDÉ. L'écran demande quand on l'ouvre ou quand on clique « Rafraîchir » —
@@ -85,7 +84,7 @@ async function loadJenkins({ silencieux = false } = {}) {
   // clignoterait toutes les trente secondes sous les yeux de quelqu'un qui lit.
   if (!silencieux) box.innerHTML = skeleton(4);
   try {
-    const [d] = await Promise.all([api('/jenkins/jobs'), assurerMrsJenkins()]);
+    const [d] = await Promise.all([api('/plugins/jenkins/jobs'), assurerMrsJenkins()]);
     JENKINS.jobs = d.jobs || [];
     JENKINS.configured = d.configured !== false;
   } catch (e) {
@@ -125,22 +124,13 @@ const jkAujourdhui = (jobs) => jkDuJour(jobs).length;
      chacun. Compter les exécutions demanderait d'interroger l'historique de chaque job à chaque
      rafraîchissement, pour dire quelque chose que la ligne dit déjà mieux. */
 function majBadgeJenkins() {
-  const bleu = $('#navCountJenkins');
-  const rouge = $('#navJenkinsFail');
-  if (!bleu || !rouge) return;
   const duJour = jkDuJour(JENKINS.jobs);
   const n = duJour.length;
-  bleu.textContent = String(n);
-  bleu.hidden = !n;
-  bleu.title = tr('jenkins.nav.today', { n, count: n });
-
   const rates = duJour.filter((j) => !j.enCours && j.statut === 'echec').length;
-  rouge.textContent = String(rates);
-  rouge.hidden = !rates;
-  const libelle = tr('jenkins.nav.failed-today', { n: rates, count: rates });
-  rouge.dataset.tip = libelle;                 // bulle de l'app, immédiate et thémée
-  rouge.title = '';                            // …et jamais celle du bouton parent par-dessus
-  rouge.setAttribute('aria-label', libelle);
+  ui.setBadge('jenkins', {
+    count: n, countTip: tr('jenkins.nav.today', { n, count: n }),
+    failed: rates, failedTip: tr('jenkins.nav.failed-today', { n: rates, count: rates }),
+  });
 }
 
 /* Une fois au démarrage, pour que le badge existe sans avoir ouvert l'onglet — comme celui de
@@ -149,7 +139,7 @@ function majBadgeJenkins() {
    injoignable ou lent ne doit rien afficher ni rien signaler au démarrage. */
 async function amorcerBadgeJenkins() {
   try {
-    const d = await api('/jenkins/jobs');
+    const d = await api('/plugins/jenkins/jobs');
     if (d.configured === false) return;
     JENKINS.jobs = d.jobs || [];
     majBadgeJenkins();
@@ -332,9 +322,9 @@ function jkRow(j, colonnes = []) {
    pastilles `!iid` n'apparaissaient pas. On les lit donc ici si Reviews ne l'a pas fait, sans
    toucher à son état. */
 let jkMrsConnues = [];
-const mrsPourJenkins = () => (toReviewRows.length || reportRows.length ? toReviewRows.concat(reportRows) : jkMrsConnues);
+const mrsPourJenkins = () => (reviews.rows().length ? reviews.rows() : jkMrsConnues);
 async function assurerMrsJenkins() {
-  if (toReviewRows.length || reportRows.length || jkMrsConnues.length) return;
+  if (reviews.rows().length || jkMrsConnues.length) return;
   try {
     const [a, b] = await Promise.all([api('/mrs?status=to_review'), api('/mrs?status=reviewed')]);
     jkMrsConnues = (a || []).concat(b || []);
@@ -342,7 +332,7 @@ async function assurerMrsJenkins() {
 }
 function mesBranchesOuvertes() {
   const rows = mrsPourJenkins().filter((m) => !m.closed_seen);
-  const miennes = moiSurLesForges ? rows.filter(estDeMoi) : rows;
+  const miennes = reviews.me() ? rows.filter((m) => reviews.isMine(m)) : rows;
   return new Set(miennes.map((m) => String(m.source_branch || '').trim()).filter(Boolean));
 }
 
@@ -355,7 +345,7 @@ async function assurerLiensJenkins() {
   if (jenkinsLiensParJob) return jenkinsLiensParJob;
   jenkinsLiensParJob = new Map();
   try {
-    const d = await api('/jenkins/links');
+    const d = await api('/plugins/jenkins/links');
     for (const l of (d.links || [])) jenkinsLiensParJob.set(l.job_path, l);
   } catch { /* pas de lien : la colonne reste vide, c'est le cas courant */ }
   return jenkinsLiensParJob;
@@ -386,7 +376,7 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-jk-mr]');
   if (!b) return;
   navTab('review');
-  openReport(Number(b.dataset.jkMr));
+  reviews.openReport(Number(b.dataset.jkMr));
 });
 
 async function remplirLiensJenkins() {
@@ -400,7 +390,7 @@ async function remplirLiensJenkins() {
     const valeurs = new Set((j.lastParams || []).map((p) => String(p.value || '').trim().toLowerCase()).filter(Boolean));
     if (!valeurs.size) continue;
     if (!cacheLiensJob.has(chemin)) {
-      cacheLiensJob.set(chemin, api(`/jenkins/build-links?path=${encodeURIComponent(chemin)}`).catch(() => ({ envs: [] })));
+      cacheLiensJob.set(chemin, api(`/plugins/jenkins/build-links?path=${encodeURIComponent(chemin)}`).catch(() => ({ envs: [] })));
     }
     const d = await cacheLiensJob.get(chemin);
     const cases = (d.envs || []).filter((c) => valeurs.has(String(c.env || '').trim().toLowerCase()));

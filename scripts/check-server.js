@@ -140,7 +140,7 @@ const texteDb = lignesDb.map((l) => l.texte).join('\n');
 /* UN CHAMP DE CONFIG SE DÉCLARE À DEUX ENDROITS dans config.js : la liste `ALLOWED`, qui
    dit ce qu'on accepte du client, et l'UPDATE, qui dit ce qu'on écrit. Manquer le second
    donne le pire des deux mondes : la route répond 200, l'écran affiche « enregistré », et la
-   valeur n'est nulle part. Ça s'est produit en ajoutant Jenkins ; ce contrôle le rattrape. */
+   valeur n'est nulle part. Ça s'est produit en ajoutant une connexion ; ce contrôle le rattrape. */
 if (F_CONFIG && registre) {
   const conf = lire(F_CONFIG);
   const bloc = (nom) => (conf.match(new RegExp(`UPDATE ${nom} SET([\\s\\S]*?)WHERE id = 1`)) || [])[1] || '';

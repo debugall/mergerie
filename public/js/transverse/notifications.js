@@ -16,12 +16,11 @@ const NOTIF_DEFAULTS = {
   converge_done: true, // boucle de convergence terminée — actionnable par excellence
   jira_status: true,  // un ticket surveillé change d'état — c'est LA raison de le surveiller
   verify_done: true,  // un verdict objectif est tombé — c'est ce qu'on attendait pour merger
-  jenkins_done: true, // un job Jenkins QUE J'AI LANCÉ s'est terminé — on ne reste pas devant
   mr_new: false,      // nouvelle MR — utile pour certains, spam pour d'autres
   mr_merged: false,   // MR mergée — informatif, pas actionnable
   /* B14/B15 — LES TROIS FAMILLES QUI NE DISAIENT RIEN. Une opération git est le geste le plus
      irréversible de l'outil et ne notifiait ni succès ni échec ; un conteneur qui tombe ne
-     réveillait personne ; un build Jenkins n'était vu que si l'onglet était ouvert. Docker est
+     réveillait personne ; un build de CI n'était vu que si l'onglet était ouvert. Docker est
      DÉCOCHÉ par défaut : sur une machine de développement, des conteneurs s'arrêtent tous les
      jours pour de bonnes raisons, et une alarme qui sonne toujours n'est plus lue. */
   git_done: true,     // une opération git a abouti — on est déjà parti voir ailleurs

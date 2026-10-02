@@ -63,7 +63,7 @@ const pluginsUi = {
   onAction: (id, { render, run } = {}) => { PLUGINS_FRONT.actions.set(id, { render, run }); },
   onDecorator: (id, render) => { PLUGINS_FRONT.decorators.set(id, render); },
   onBriefSection: (id, render) => { PLUGINS_FRONT.brief.set(id, render); },
-  onLinkKind: (kind, open) => { PLUGINS_FRONT.linkKinds.set(kind, open); },
+  onLinkKind: (kind, spec) => { PLUGINS_FRONT.linkKinds.set(kind, typeof spec === 'function' ? { open: spec } : (spec || {})); },
   onNotif: (type, fn) => { PLUGINS_FRONT.notifs.set(type, fn); },
   onPaletteResult: (plugin, fn) => { PLUGINS_FRONT.palette.set(plugin, fn); },
   registerPaletteAction: (a) => { if (a && a.label && typeof a.run === 'function') PLUGINS_FRONT.paletteActions.push(a); },
@@ -163,6 +163,8 @@ function pluginsLienHtml(t) {
   for (const m of Object.values(PLUGINS_META)) {
     const k = (m.linkKinds || []).find((x) => x.kind === t.link_kind);
     if (!k) continue;
+    const spec = PLUGINS_FRONT.linkKinds.get(k.kind);
+    if (spec && typeof spec.render === 'function') { try { return spec.render(t) || ''; } catch (e) { console.error(`[plugins] lien ${k.kind} : ${e.message}`); return ''; } }
     return `<button type="button" class="note-link" data-plugin-link="${esc(k.kind)}" data-plugin-ref="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco(k.icon || 'link')} ${esc(t.link_ref)}</button>`;
   }
   return '';
@@ -170,10 +172,10 @@ function pluginsLienHtml(t) {
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-plugin-link]');
   if (!b) return;
-  const open = PLUGINS_FRONT.linkKinds.get(b.dataset.pluginLink);
-  if (!open) return;
+  const spec = PLUGINS_FRONT.linkKinds.get(b.dataset.pluginLink);
+  if (!spec || typeof spec.open !== 'function') return;
   e.preventDefault(); e.stopPropagation();
-  try { open(b.dataset.pluginRef); } catch (err) { toast(err.message, true); }
+  try { spec.open(b.dataset.pluginRef); } catch (err) { toast(err.message, true); }
 });
 
 /* Une notification d'un genre déclaré par un plugin : vrai si prise en charge. */

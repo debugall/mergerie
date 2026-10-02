@@ -1577,12 +1577,6 @@ db.prepare(`UPDATE mr SET ticket_jira_key = 'PROJ-1408', ticket_jira_status = 'E
     'error', 'protected branch cannot be deleted', 1);
   op.run(`${lot}-tag`, at(2), 'create_tag', repoIds['groupe/webapp-front'], 'groupe/webapp-front', 'v2.0.1', 'main', 'done', null, 1);
 
-  /* Les jobs Jenkins d'un dépôt. La démo servait déjà une liste de jobs (module `demo-jenkins`),
-     mais AUCUN n'était rattaché à un dépôt : le bouton « Lancer <job> » d'une merge request
-     verte et l'entrée de palette n'avaient donc rien à proposer. */
-  const jk = db.prepare('INSERT OR IGNORE INTO repo_jenkins (repo_id, job_path, param) VALUES (?,?,?)');
-  jk.run(repoIds['groupe/api-core'], 'boutique/api-build', 'BRANCHE');
-  jk.run(repoIds['groupe/webapp-front'], 'boutique/front-build', 'BRANCHE');
 }
 
 const counts = {
@@ -1789,6 +1783,17 @@ const counts = {
   counts.ticket_spec = specs.length;
 }
 
-semerDiffsLocaux().then(() => {
+/* CE QUE LES PLUGINS SÈMENT (`ctx.demo.seed`) : les plugins embarqués sont activés le temps de
+   semer, sur la même base, puis arrêtés — `npm run demo` les réactivera au démarrage du serveur. */
+async function semerPlugins() {
+  // eslint-disable-next-line global-require
+  const plugins = require('../src/plugins');
+  await plugins.demarrer({ log: () => {} });
+  const semes = await plugins.semerDemo();
+  await plugins.arreter();
+  for (const [nom, n] of Object.entries(semes)) counts[`plugin:${nom}`] = n;
+}
+
+semerDiffsLocaux().then(semerPlugins).then(() => {
   console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
 });

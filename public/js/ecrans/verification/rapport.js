@@ -54,10 +54,7 @@ function renderSuiteApresVerdict(d) {
   const mrs = toReviewRows.concat(reportRows).filter((m) => ids.includes(m.id) && !m.closed_seen);
   if (!mrs.length) return;
   zone.innerHTML = mrs.slice(0, 3).map((m) => {
-    const jobs = (m.jenkins_jobs || []).slice(0, 1).map((j) => `<button type="button" class="btn"
-        data-mr-jenkins="${esc(j.path)}" data-param="${esc(j.param || '')}" data-branch="${esc(m.source_branch)}"
-        title="${esc(tr('mr.title.jenkins-run'))}">${esc(tr('mr.btn.jenkins-run', { job: j.path }))}</button>`).join('');
-    return `<button type="button" class="btn btn-danger" data-merge="${m.id}">${esc(tr('report.btn.merge', { iid: m.iid }))}</button>${jobs}${pluginsHtml('verification', m, { verification: d })}`;
+    return `<button type="button" class="btn btn-danger" data-merge="${m.id}">${esc(tr('report.btn.merge', { iid: m.iid }))}</button>${pluginsHtml('verification', m, { verification: d })}`;
   }).join('');
 }
 

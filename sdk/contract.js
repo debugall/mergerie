@@ -41,7 +41,7 @@ const PERMISSIONS = {
 };
 
 /* Les cibles d'une action ou d'une décoration (`target`). */
-const CIBLES_UI = ['mr', 'mr-badge', 'session-target', 'branch', 'verification', 'repo-sheet'];
+const CIBLES_UI = ['mr', 'mr-badge', 'session-target', 'session-target-badge', 'branch', 'branch-badge', 'verification', 'repo-sheet'];
 
 /* LES PRIMITIVES DU CTX — la liste fermée. Une primitive absente d'ici n'existe pas, et le
    chargeur refuse d'en exposer une autre. `permission: null` = toujours présente. */
@@ -110,7 +110,7 @@ const EVENTS = {
 /* Les champs obligatoires et la forme de `plugin.json`. */
 const MANIFESTE = {
   requis: ['name', 'version', 'apiVersion', 'displayName', 'description', 'main'],
-  optionnels: ['author', 'homepage', 'license', 'ui', 'events', 'requires', 'permissions', 'settingsSchema', 'i18n', 'builtin'],
+  optionnels: ['author', 'homepage', 'license', 'ui', 'events', 'requires', 'permissions', 'settingsSchema', 'i18n', 'builtin', 'enabledByDefault'],
   nom: /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
   semver: /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/,
 };

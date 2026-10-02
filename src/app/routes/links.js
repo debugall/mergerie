@@ -10,7 +10,7 @@ const jira = require('../../integrations/jira');
 const links = require('../../notes/links');
 const docker = require('../../integrations/docker');
 const demoDocker = require('../../demo/docker');
-const jenkins = require('../../integrations/jenkins');
+const plugins = require('../../plugins');
 const { mrById, wrap } = require('../http');
 
 /* ---------- Liens (plan_add_links.md) --------------------------------------
@@ -69,10 +69,17 @@ app.delete('/api/free-links', wrap((req, res) => { res.json(links.supprimerTousF
 app.post('/api/free-links/to-service', wrap((req, res) => { res.json(links.rangerDansService(req.body || {}, msgLinks())); }));
 /* La palette. Les actions de navigation viennent du CLIENT : lui seul sait ce qu'il sait
    faire, et les lister côté serveur aurait fait deux endroits à tenir d'accord. */
-app.post('/api/launcher', wrap((req, res) => {
+/* LES ADRESSES D'UN DÉPÔT, pour les plugins (un job de CI lié à un dépôt veut savoir où le
+   service est déployé) : la même résolution que sur une merge request, sans `{branch}`. Un
+   service nommé — Liens est un onglet du cœur aujourd'hui, un plugin demain, la porte est la même. */
+plugins.services.register('links.forRepo', ({ repo_id }) => ({ envs: (links.liensDeMr({ repo_id: Number(repo_id) }) || {}).envs || [] }));
+
+app.post('/api/launcher', wrap(async (req, res) => {
   const body = req.body || {};
-  res.json({
-    results: links.launcher(body.q, {
+  /* Les entrées des plugins actifs (calculées sans réseau) — sur une REQUÊTE seulement : à vide,
+     la palette montre ses trois sections (actions, merge requests, sessions récentes), rien d'autre. */
+  const desPlugins = String(body.q || '').trim() ? await plugins.palette(body.q, 30) : [];
+  const results = links.launcher(body.q, {
       jiraConfigure: demoDocker.isDemo() || jira.isConfigured(getConfig()),
       actions: Array.isArray(body.actions) ? body.actions.slice(0, 60) : [],
       // Les libellés d'agent sont traduits ICI : `links.js` ne charge pas le dictionnaire.
@@ -82,12 +89,15 @@ app.post('/api/launcher', wrap((req, res) => {
       dockerProjets: demoDocker.isDemo() ? ['boutique', 'monitoring'] : docker.nomsConnus(),
       msgs: {
         verify: t('palette.act.verify', { name: '{name}' }),
-        jenkins: t('palette.act.jenkins', { job: '{job}' }),
         compose: t('palette.act.compose', { name: '{name}' }),
         gitcmd: t('palette.act.gitcmd', { label: '{label}' }),
       },
-    }),
-  });
+    });
+  /* Les entrées des plugins rejoignent la section « actions » du cœur, à sa suite — pas une
+     section de plus en fin de liste : l'écran titre chaque groupe contigu. */
+  const dernier = results.map((r) => r.group).lastIndexOf('actions');
+  if (dernier === -1) results.push(...desPlugins); else results.splice(dernier + 1, 0, ...desPlugins);
+  res.json({ results });
 }));
 app.post('/api/launcher/used', wrap((req, res) => {
   const b = req.body || {};

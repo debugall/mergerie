@@ -1,6 +1,5 @@
 'use strict';
 /* Jenkins : rafraîchissement automatique, et fin de mes lancements. */
-// @expose jkAutoRelance, jkPeriodeMs
 /* ---------- Rafraîchissement automatique, et fin de MES lancements ----------
 
    TOUTES LES 30 SECONDES, et seulement quand on REGARDE : l'onglet doit être ouvert et la

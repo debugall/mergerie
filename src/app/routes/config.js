@@ -166,7 +166,6 @@ function sansSecrets(c) {
     access_token: c.access_token ? '***' : '',
     jira_token: c.jira_token ? '***' : '',
     github_token: c.github_token ? '***' : '',
-    jenkins_token: c.jenkins_token ? '***' : '',
     confluence_token: c.confluence_token ? '***' : '',
   };
 }
@@ -202,7 +201,6 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
-  if (patch.jenkins_token === '***') delete patch.jenkins_token;
   if (patch.confluence_token === '***') delete patch.confluence_token;
   const avant = getConfig();
   const c = updateConfig(patch);

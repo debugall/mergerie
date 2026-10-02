@@ -40,7 +40,7 @@ const MAX_PAGE = 200 * 1024;
 
 const PRIORITES = ['high', 'normal', 'low'];
 /* B16 — quatre objets de plus : une branche (`<dépôt>:<branche>`), une vérification, un build
-   Jenkins (`<job>#<numéro>`) et un conteneur. La liste doit rester alignée sur le `CHECK` de
+   de CI (`<job>#<numéro>`, ouvert par le plugin qui le connaît) et un conteneur. La liste doit rester alignée sur le `CHECK` de
    la table (`db.js`, migration B16) : ce qui passe ici et que la table refuse ferait une
    erreur SQLite brute à l'écran. */
 const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification', 'build', 'container'];

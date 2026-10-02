@@ -64,7 +64,7 @@ async function openReport(id, opts = {}) {
           ${badgeSeverites(mLigne)}
           ${badgeCartes({ cards: d.cards || mLigne.cards })}
           ${badgeConflit(mLigne)}
-          ${badgeCI(m.source_branch)}
+          ${pluginsHtml('mr-badge', m)}
           ${verifyBadge(d.verification)}
           ${/* A11 — LE BADGE « PÉRIMÉ » LANCE LA RE-REVIEW DELTA. Il annonçait « 3 commits
                 depuis » et laissait aller la chercher dans le menu ⋯, deux clics plus loin. */''}

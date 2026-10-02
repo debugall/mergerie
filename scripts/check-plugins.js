@@ -53,7 +53,8 @@ const plugins = pageplugins.embarques();
 {
   const soucis = [];
   for (const p of plugins) {
-    for (const f of tous(p.dir, '.js')) {
+    // Les tests d'un plugin (`test/`) importent le SDK et node:test : ce ne sont pas le plugin.
+    for (const f of tous(p.dir, '.js').filter((x) => !x.includes(`${path.sep}test${path.sep}`))) {
       const rel = path.relative(ROOT, f);
       depouiller(fs.readFileSync(f, 'utf8')).split('\n').forEach((l, i) => {
         for (const m of l.matchAll(/require\((['"])([^'"]+)\1\)/g)) {

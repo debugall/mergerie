@@ -195,7 +195,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
        marche sur une machine rapide et perd l'enregistrement sur un runner chargé : la page
        repart alors sans jeton, la liste reste vide, et l'échec accuse le jeton au lieu du
        chronomètre. */
-    await attendreServeur(async () => (await app.api('GET', '/api/config')).body.jenkins_url === srv.url,
+    await attendreServeur(async () => (await app.api('GET', '/api/plugins/jenkins/settings')).body.jenkins_url === srv.url,
       'les identifiants Jenkins sont enregistrés côté serveur');
     await page.reload();
     await allerJenkins();
@@ -1008,7 +1008,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsReload').click();
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 4);
 
-    const badge = page.locator('#navCountJenkins');
+    const badge = page.locator('#nav-jenkins-count');
     assert.equal(await badge.textContent(), '2',
       'deux jobs ce matin ; celui de la semaine dernière et celui qui n’a jamais tourné ne comptent pas');
     assert.equal(await badge.isHidden(), false);
@@ -1016,7 +1016,7 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     // Rien aujourd'hui : pas de badge du tout — un « 0 » dans le menu n'apprend rien.
     mock.state.jobs = [{ name: 'c', color: 'blue', buildable: true, lastBuild: { number: 3, timestamp: hier, actions: [] } }];
     await page.locator('#jenkinsReload').click();
-    await page.waitForFunction(() => document.querySelector('#navCountJenkins').hidden);
+    await page.waitForFunction(() => document.querySelector('#nav-jenkins-count').hidden);
 
     mock.state.jobs = decor;
     await page.locator('#jenkinsReload').click();
@@ -1047,18 +1047,18 @@ describe('Onglet Jenkins', { skip: dispo ? false : 'chromium absent — npx play
     await page.locator('#jenkinsReload').click();
     await page.waitForFunction(() => document.querySelectorAll('#jenkinsBox .jk-row').length === 6);
 
-    const rouge = page.locator('#navJenkinsFail');
-    await page.waitForFunction(() => document.querySelector('#navJenkinsFail').textContent === '2');
+    const rouge = page.locator('#nav-jenkins-err');
+    await page.waitForFunction(() => document.querySelector('#nav-jenkins-err').textContent === '2');
     assert.equal(await rouge.isHidden(), false);
     assert.match(await rouge.getAttribute('data-tip'), /2/, 'la bulle dit de quoi le chiffre est fait');
     // Le compte bleu, lui, tient tout ce qui a tourné : cinq jobs, échecs compris.
-    assert.equal(await page.locator('#navCountJenkins').textContent(), '5');
+    assert.equal(await page.locator('#nav-jenkins-count').textContent(), '5');
 
     // Plus rien de cassé aujourd'hui : la pastille disparaît au lieu d'afficher « 0 ».
     mock.state.jobs = [{ name: 'vert', color: 'blue', buildable: true, lastBuild: { number: 6, timestamp: cesMatin, actions: [] } }];
     await page.locator('#jenkinsReload').click();
-    await page.waitForFunction(() => document.querySelector('#navJenkinsFail').hidden);
-    assert.equal(await page.locator('#navCountJenkins').textContent(), '1', 'le compte du jour, lui, reste');
+    await page.waitForFunction(() => document.querySelector('#nav-jenkins-err').hidden);
+    assert.equal(await page.locator('#nav-jenkins-count').textContent(), '1', 'le compte du jour, lui, reste');
   });
 
   /* LE LIEN VERS JENKINS. Il s'ouvre dans un nouvel onglet, et il ne relaie que du http(s) :

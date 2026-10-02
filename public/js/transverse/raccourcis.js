@@ -103,16 +103,16 @@ document.addEventListener('keydown', (e) => {
   }
   switch (e.key) {
     /* C12 — « / » CHERCHE LÀ OÙ ON EST. Il éjectait vers Reviews : appuyer sur « / » dans
-       Jenkins pour filtrer deux cents jobs changeait d'onglet. Chaque onglet a sa recherche ;
+       un onglet pour filtrer deux cents lignes changeait d'onglet. Chaque onglet a sa recherche ;
        on prend celle qui est visible, et on ne retombe sur Reviews que faute de mieux. */
     case '/': {
       e.preventDefault();
       /* …et « là où on est » couvre TOUS les onglets qui ont une recherche : Agents, Git
          (explorateur et « Trouver une ref »), Docker (journaux) et Réglages (dépôts) en
          étaient absents, si bien que « / » y faisait exactement ce que le commentaire
-         ci-dessus dit avoir corrigé pour Jenkins — changer d'onglet. */
-      const champ = $([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
-        #jenkinsSearch, #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
+         ci-dessus dit avoir corrigé — changer d'onglet. */
+      const champ = $$([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
+        #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
         #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
         .find((el) => el.offsetParent !== null);
       if (champ) { champ.focus(); if (champ.select) champ.select(); break; }

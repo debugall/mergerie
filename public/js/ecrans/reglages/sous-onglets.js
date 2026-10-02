@@ -11,7 +11,7 @@
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
 /* Le panneau Dépôts porte aussi les GROUPES de dépôts : deux listes, un écran. */
 function loadReposEtGroupes() { loadRepos(); loadGroupes(); }
-const ADMIN_SUBS = { rules: loadRules, repos: loadReposEtGroupes, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, jenkinscfg: loadJenkinsConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, datasync: loadConfig, plugins: loadPlugins };
+const ADMIN_SUBS = { rules: loadRules, repos: loadReposEtGroupes, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, datasync: loadConfig, plugins: loadPlugins };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */
@@ -19,18 +19,15 @@ function loadAiSessionSettings() { loadConfig(); renderAiSessionSettings(); rend
 /* « Général » porte les réglages de l'outil ET l'arrangement de la barre de menus, qui vit dans
    le navigateur : deux sources, un seul panneau, donc les deux chargements. */
 function loadGeneralSettings() { loadConfig(); renderNavPrefs(); }
-/* Le panneau Jenkins porte AUSSI la liste des jobs liés aux dépôts (B8) : deux sources, un
-   seul écran, donc les deux chargements — comme « Général » et sa barre de menus. */
-function loadJenkinsConfig() { loadConfig(); loadJenkinsLinks(); }
 /* Le panneau des vérificateurs porte AUSSI un champ de #configForm (le plafond des
    vérifications automatiques, venu de Merge Request rejoindre son interrupteur) : sans
    `loadConfig` il s'afficherait vide quoi qu'il y ait en base. */
 function loadVerifiersEtPlafond() { loadConfig(); loadVerifiers(); }
-/* LES RÉGLAGES SUIVENT LE MENU. Le sous-onglet Jenkins n'apparaît que si le menu Jenkins est
+/* LES RÉGLAGES SUIVENT LE MENU. Le sous-onglet d'un plugin (`followsTab`) n'apparaît que si son menu est
    visible : un menu replié n'a pas à occuper une place dans les Réglages de qui ne s'en sert pas.
    Déplier le menu (Réglages → Général → Menus, ou une porte contextuelle) le rend. Le sous-onglet
    courant qui disparaît ramène sur le premier. */
-const SOUS_ONGLETS_PAR_MENU = { jenkinscfg: 'jenkins', ...pluginsSousOngletsParMenu() };
+const SOUS_ONGLETS_PAR_MENU = { ...pluginsSousOngletsParMenu() };
 function replierSousOngletsSelonMenus() {
   for (const [sub, tab] of Object.entries(SOUS_ONGLETS_PAR_MENU)) {
     const b = $(`#tab-admin .subnav [data-sub="${sub}"]`);
@@ -62,7 +59,7 @@ function showAdminSub(sub) {
   try { if (dePlugin) pluginsSousOnglet(sub); else ADMIN_SUBS[sub](); } catch { /* chargement best-effort */ }
   // Le souvenir des tests de connexion : il ne coûte qu'une lecture en base, et il répond à
   // « est-ce que ça marchait, la dernière fois que quelqu'un a regardé ? ».
-  if (sub === 'gitcfg' || sub === 'jiracfg' || sub === 'jenkinscfg') majEtatsConnexions();
+  if (sub === 'gitcfg' || sub === 'jiracfg') majEtatsConnexions();
 }
 $$('#tab-admin .subnav [data-sub]').forEach((b) => b.addEventListener('click', () => showAdminSub(b.dataset.sub)));
 

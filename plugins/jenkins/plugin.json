@@ -1,0 +1,39 @@
+{
+  "name": "jenkins",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Jenkins",
+  "description": "Voir l’état des jobs Jenkins et les lancer, lier un job à un dépôt, suivre la fin des builds lancés d’ici — sans quitter Mergerie.",
+  "author": "Mergerie",
+  "homepage": "https://mergerie.dev",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "builtin": true,
+  "permissions": ["events", "settings", "secrets", "db", "http", "schedule", "net", "repos", "ui.tab", "ui.actions", "ui.palette", "notify", "demo", "env", "services"],
+  "events": {
+    "listens": ["repo.deleted"],
+    "emits": ["jenkins.job.started", "jenkins.job.finished"]
+  },
+  "requires": [],
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "jenkins_url": { "type": "string", "format": "uri", "default": "", "x-i18n": "jenkins.settings.url", "x-required": true },
+      "jenkins_user": { "type": "string", "default": "", "maxLength": 200, "x-i18n": "jenkins.settings.user", "x-required": true },
+      "jenkins_token": { "type": "string", "x-secret": true, "x-bound-to": "jenkins_url", "x-i18n": "jenkins.settings.token", "x-required": true },
+      "jenkins_refresh_minutes": { "type": "integer", "minimum": 0, "maximum": 60, "default": 1, "x-i18n": "jenkins.settings.refresh" },
+      "last_test": { "type": "string", "default": "", "maxLength": 400, "x-hidden": true }
+    }
+  },
+  "ui": {
+    "styles": ["ui/jenkins.css"],
+    "i18n": ["ui/i18n.js"],
+    "scripts": ["ui/js/liste.js", "ui/js/rafraichissement.js", "ui/js/fiche.js", "ui/js/lancer.js", "ui/js/reglages.js", "ui/js/integration.js"],
+    "html": {
+      "tabs": ["ui/html/onglet.html"],
+      "modals": ["ui/html/modales.html"],
+      "settings": ["ui/html/reglages.html"],
+      "sprite": ["ui/html/sprite.html"]
+    }
+  }
+}

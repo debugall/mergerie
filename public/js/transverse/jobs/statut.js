@@ -219,12 +219,6 @@ async function refreshStatus() {
     marquerEnCours(s.running ? s.targets : null);
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin
-    /* Cadence Jenkins : relue à chaque état, donc changer le réglage s'applique tout de suite.
-       Absente (vieux serveur) → on garde la valeur en cours plutôt que de couper le sondage. */
-    if (s.jenkinsRefreshMinutes !== undefined) {
-      const ms = Number(s.jenkinsRefreshMinutes) > 0 ? Number(s.jenkinsRefreshMinutes) * 60000 : 0;
-      if (ms !== jkPeriodeMs) { jkPeriodeMs = ms; jkAutoRelance(); }
-    }
     $('#dryBadge').hidden = !s.dryRun;
     const job = s.job;
     const running = s.running;

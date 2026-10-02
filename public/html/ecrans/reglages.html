@@ -3,7 +3,7 @@
             <!-- L'ORDRE SUIT LE PARCOURS, et non l'ordre dans lequel les fonctionnalités ont été
                  écrites : connecter (Git) → choisir le code (Dépôts) → régler la review (Merge
                  Request, Règles, Vérificateurs) → régler l'outil (Notifications, Général) → les
-                 intégrations optionnelles (Jira, Jenkins) → le banc d'essai. « Règles de review »
+                 intégrations optionnelles (Jira, puis les plugins) → le banc d'essai. « Règles de review »
                  ouvrait la barre alors que son contenu ne s'applique à rien tant qu'aucun dépôt
                  n'est suivi, et l'onboarding envoie lui-même son étape 1 sur Git. -->
             <button data-sub="gitcfg" class="active" role="tab" title="Connexion GitLab et GitHub, dossier de clonage et palette de commandes git" data-i18n-title="settings.title.git" data-i18n="settings.sub.git">Git</button>
@@ -15,7 +15,6 @@
             <button data-sub="config" role="tab" title="Apparence, langue, brief du matin, conservation des données et zone dangereuse" data-i18n-title="settings.title.general" data-i18n="settings.btn.general">Général</button>
             <button data-sub="datasync" role="tab" title="Le dépôt git où l'équipe partage son travail accumulé" data-i18n-title="datasync.sub-title" data-i18n="datasync.head">Données partagées</button>
             <button data-sub="jiracfg" role="tab" title="Connexion Jira : URL, email et jeton d'API" data-i18n-title="settings.title.jira" data-i18n="settings.sub.jira">Jira</button>
-            <button data-sub="jenkinscfg" role="tab" title="Connexion Jenkins : URL, utilisateur et jeton d'API" data-i18n-title="settings.title.jenkins" data-i18n="settings.sub.jenkins">Jenkins</button>
             <!-- Les sous-onglets des plugins actifs. -->
             <!--@plugins:settings-nav-->
             <button data-sub="plugins" role="tab" title="Les plugins installés : activer, désactiver, régler, installer" data-i18n-title="plugins.settings.title" data-i18n="plugins.settings.sub">Plugins</button>
@@ -282,7 +281,6 @@
                 <label class="inline-check"><input type="checkbox" data-notif="jira_status" /> <span data-i18n="settings.notif.jira-status">Un ticket Jira surveillé change d'état</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="reminder" /> <span data-i18n="settings.notif.reminder">Rappels de todos</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.notif.reminder-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input type="checkbox" data-notif="verify_done" /> <span data-i18n="settings.notif.verify-done">Une vérification objective a rendu son verdict</span></label>
-                <label class="inline-check"><input type="checkbox" data-notif="jenkins_done" /> <span data-i18n="settings.notif.jenkins-done">Un job Jenkins que j'ai lancé s'est terminé</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_new" /> <span data-i18n="settings.notif.mr-new">Nouvelle MR découverte</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="mr_merged" /> <span data-i18n="settings.notif.mr-merged">MR mergée par quelqu'un</span></label>
                 <label class="inline-check"><input type="checkbox" data-notif="git_done" /> <span data-i18n="settings.notif.git-done">Une opération Git (branche, tag) s'est terminée</span></label>
@@ -506,49 +504,6 @@
             </div>
         </div>
         </div><!-- /sub-jiracfg -->
-
-        <!-- Sous-onglet : Jenkins — connexion au serveur d'intégration continue. -->
-        <div id="sub-jenkinscfg" class="subtab">
-        <h2 data-i18n="settings.sub.jenkins">Jenkins</h2>
-        <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.intro">Sert à l'onglet Jenkins : voir l'état des jobs et les lancer. Jenkins authentifie le couple utilisateur + jeton d'API — le jeton seul ne suffit pas.</p>
-        <p class="muted" style="max-width:560px" data-i18n="settings.jenkins.tls">Certificat d'entreprise : si la connexion échoue sur « unable to get local issuer certificate », lance le serveur avec JENKINS_CA_CERT=/chemin/ca.pem (recommandé) ou JENKINS_INSECURE_TLS=1 en dépannage.</p>
-        <div class="form" style="max-width:520px">
-            <label><span class="req" data-i18n="settings.lbl.jenkins-url">URL Jenkins</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-url" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_url" placeholder="https://jenkins.mon-entreprise.fr" /></label>
-            <label><span class="req" data-i18n="settings.lbl.jenkins-user">Utilisateur Jenkins</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-user" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_user" placeholder="prenom.nom" data-i18n-placeholder="settings.ph.jenkins-user" /></label>
-            <label><span class="req" data-i18n="settings.lbl.jenkins-token">Jeton d'API Jenkins</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-token" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jenkins_token" type="password" autocomplete="off" placeholder="11a2b3…" data-i18n-placeholder="settings.ph.jenkins-token" /></label>
-            <label><span data-i18n="settings.lbl.jenkins-refresh">Rafraîchir la liste des jobs toutes les (minutes, 0 = jamais)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jenkins-refresh" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                <input form="configForm" name="jenkins_refresh_minutes" type="number" min="0" max="60" step="1" placeholder="1" />
-            </label>
-            <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
-            <div class="form-actions">
-                <button class="btn btn-primary" type="button" id="btnTestJenkins" data-i18n-title="settings.title.tester-jenkins" title="Vérifier l'accès Jenkins"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.btn.save-test">Enregistrer et tester</span></button>
-                <button class="btn" type="submit" form="configForm" title="Enregistrer sans vérifier la connexion" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
-                <span id="configInfoJenkins" class="muted"></span>
-            </div>
-        </div>
-
-        <!-- B8 : quel job déploie quel dépôt. Déclaré une fois ici, proposé sur les merge
-             requests vérifiées vertes du dépôt — comme service ↔ dépôt dans Liens. -->
-        <h2 data-i18n="settings.jenkins.links.title">Jobs liés aux dépôts</h2>
-        <p class="muted" style="max-width:760px" data-i18n="settings.jenkins.links.intro">Un job déclaré ici est proposé sur les merge requests vérifiées vertes du dépôt, avec la branche pré-remplie.</p>
-        <form id="jenkinsLinkForm" class="form repo-add" autocomplete="off">
-            <label class="repo-add-url"><span data-i18n="settings.jenkins.links.repo">Dépôt</span>
-                <div id="jenkinsLinkRepo" class="repo-add-field"></div>
-            </label>
-            <!-- C10 : la liste des jobs et leurs paramètres sont DÉJÀ chargés par l'onglet
-                 Jenkins. On tapait pourtant `boutique/api-deploy-recette` et `BRANCH` à
-                 l'aveugle, à la lettre près, sans rien pour dire qu'on s'était trompé. Le
-                 champ reste libre à la saisie (recherche), mais il PROPOSE ce qui existe. -->
-            <label class="repo-add-wide"><span data-i18n="settings.jenkins.links.job">Job Jenkins</span>
-                <div class="repo-add-field" id="jenkinsLinkJobBox"></div>
-            </label>
-            <label><span data-i18n="settings.jenkins.links.param">Paramètre qui reçoit la branche (optionnel)</span>
-                <div class="repo-add-field" id="jenkinsLinkParamBox"></div>
-            </label>
-            <button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="settings.jenkins.links.add">Lier</span></button>
-        </form>
-        <div id="jenkinsLinkList" class="list"></div>
-        </div><!-- /sub-jenkinscfg -->
 
         <!-- Sous-onglet : Merge Request (review, convergence, templates) -->
         <!-- Les champs restent rattachés à #configForm via l'attribut form= : ils sont

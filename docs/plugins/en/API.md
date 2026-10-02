@@ -83,10 +83,12 @@ The `target` of an action or a decoration, and the object the browser passes to 
 
 | Target | Where | Object received by `render(obj, ctx)` |
 |---|---|---|
-| `mr` | the "⋯" menu of a merge request card | the merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `branch`, `verification`, `repo-sheet`)) |
+| `mr` | the "⋯" menu of a merge request card | the merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `session-target-badge`, `branch`, `branch-badge`, `verification`, `repo-sheet`)) |
 | `mr-badge` | the badges of a merge request card | same |
 | `session-target` | the follow-up form of a session's project | `{ task, target }` |
+| `session-target-badge` | the badges of a session's project | `{ task, target }` |
 | `branch` | a row of the Git explorer | `{ branch, repo_id }` |
+| `branch-badge` | the badges of a Git explorer row | `{ branch, repo_id }` |
 | `verification` | what follows a green verdict, in the verification report | the merge request, `ctx.verification` |
 | `repo-sheet` | a repository's sheet in Settings → Repositories | the sheet (`id`, `project`, `verifiers`…) |
 

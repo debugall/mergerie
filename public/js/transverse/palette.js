@@ -21,7 +21,6 @@ const PALETTE_ACTIONS = [
   { key: 'palette.go.jira', tab: 'jira', run: () => $('nav button[data-tab="jira"]').click() },
   { key: 'palette.go.git', tab: 'git', run: () => $('nav button[data-tab="git"]').click() },
   { key: 'palette.go.docker', tab: 'docker', run: () => $('nav button[data-tab="docker"]').click() },
-  { key: 'palette.go.jenkins', tab: 'jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
   { key: 'palette.go.stats', tab: 'dashboard', run: () => $('nav button[data-tab="dashboard"]').click() },
   { key: 'palette.go.agents', tab: 'agents', run: () => $('nav button[data-tab="agents"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
@@ -103,10 +102,9 @@ function ouvrirResultatPalette(r) {
   if (r.kind === 'agent' || r.kind === 'agent-investigate') { lancerAgentDepuisPalette(r); return; }
   const n = r.nav || {};
   /* B13/TOP 12 — LES QUATRE GESTES. Chacun ouvre l'écran qui sait le faire et y pose ce qu'on
-     vient de désigner ; aucun ne lance quoi que ce soit tout seul — un job Jenkins et une
+     vient de désigner ; aucun ne lance quoi que ce soit tout seul — un job de CI et une
      commande git se lancent en connaissance de cause, pas au clavier depuis une liste. */
   if (n.verifier_id) { ouvrirVerifBranche(Number(n.verifier_id)); return; }
-  if (n.jenkins_path) { navTab('jenkins'); loadJenkins().then(() => openJenkinsJob(n.jenkins_path)); return; }
   if (n.compose) { navTab('docker'); showDockerSub('compose'); return; }
   if (n.git_command) {
     navTab('git'); showGitSub('commands');

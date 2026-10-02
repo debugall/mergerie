@@ -8,7 +8,7 @@
 const NOTES = {
   sub: 'today',
   /* C6 — LE SEUL FILTRE QUOTIDIEN DE L'APPLICATION QUI REPARTAIT À ZÉRO. Reviews, Docker,
-     Jenkins et Git retiennent le leur ; celui des todos revenait à « À faire » à chaque
+     Git et les plugins retiennent le leur ; celui des todos revenait à « À faire » à chaque
      visite, y compris pour qui vit dans « Faites » en fin de semaine. Mémoire de navigateur :
      la perdre ne perd qu'un confort. */
   filter: (() => { try { return localStorage.getItem('aidevtools_todo_filtre') || 'open'; } catch { return 'open'; } })(),

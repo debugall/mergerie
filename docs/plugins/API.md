@@ -83,10 +83,12 @@ Déclarées dans `plugin.json` → `permissions`. Réglages → Plugins les affi
 
 | Cible | Où | Objet reçu par `render(obj, ctx)` |
 |---|---|---|
-| `mr` | le menu « ⋯ » d'une carte de merge request | la merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `branch`, `verification`, `repo-sheet`)) |
+| `mr` | le menu « ⋯ » d'une carte de merge request | la merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `session-target-badge`, `branch`, `branch-badge`, `verification`, `repo-sheet`)) |
 | `mr-badge` | les badges d'une carte de merge request | idem |
 | `session-target` | le formulaire de suivi d'un projet d'une session | `{ task, target }` |
+| `session-target-badge` | les badges d'un projet d'une session | `{ task, target }` |
 | `branch` | une ligne de l'explorateur Git | `{ branch, repo_id }` |
+| `branch-badge` | les badges d'une ligne de l'explorateur Git | `{ branch, repo_id }` |
 | `verification` | la suite d'un verdict vert, dans le rapport de vérification | la merge request, `ctx.verification` |
 | `repo-sheet` | la fiche d'un dépôt dans Réglages → Dépôts | la fiche (`id`, `project`, `verifiers`…) |
 
