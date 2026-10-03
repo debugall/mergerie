@@ -4,6 +4,8 @@
 .plugin-card { display: block; margin-bottom: 10px; }
 .plugin-card .card-actions { justify-content: flex-start; margin-top: 10px; }
 .plugin-card .card-head { margin-bottom: 4px; }
+/* La description se lit EN ENTIER : la règle des listes (une ligne, « … ») couperait ce qu'on vient chercher ici. */
+.list .plugin-card .card-head .meta { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .plugin-hint { margin: 10px 0 0; font-size: 12.5px; }
 .plugin-card .card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .plugin-details { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 12.5px; }

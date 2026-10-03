@@ -57,5 +57,15 @@ describe('Plugins — installer un plugin dont l’état persisté dit « activ�
       await Promise.all([page.waitForEvent('load'), page.locator('#pluginInstallForm button[type="submit"]').click()]);
       await page.waitForSelector('nav button[data-tab="hello"]', { state: 'attached' });
     });
+
+    test('la description d’un plugin se lit en entier : à la ligne, jamais coupée par « … »', async () => {
+      await page.locator('nav button[data-tab="admin"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="plugins"]').click();
+      const meta = page.locator('#pluginList [data-plugin="hello-fixture"] .card-head .meta');
+      await meta.waitFor();
+      const css = await meta.evaluate((e) => { const c = getComputedStyle(e); return [c.whiteSpace, c.textOverflow, c.overflow]; });
+      assert.deepEqual(css, ['normal', 'clip', 'visible']);
+      assert.ok(await meta.evaluate((e) => e.scrollWidth <= e.clientWidth + 1), 'rien ne dépasse de la carte');
+    });
   });
 });

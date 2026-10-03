@@ -120,6 +120,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A plugin's description is shown in full in Settings → Plugins.** It was cut with "…" on one line like a list row; it now wraps.
 - **A plugin the upgrade had already marked enabled now comes up the moment you install it.** On a machine that had the Docker, Jenkins or Links tab, the upgrade
   keeps the plugin "enabled"; installing it from Settings → Plugins used to leave it showing as "in error" until the next restart, with its data back but its tab
   missing. It is activated at once, and a plugin with no earlier state still stays disabled until you enable it. The page reloads by itself when the install activated the plugin (and after an uninstall), so its menu appears without a manual refresh.
