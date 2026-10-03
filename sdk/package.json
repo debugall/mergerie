@@ -1,0 +1,19 @@
+{
+  "name": "@mergerie/plugin-sdk",
+  "version": "1.0.0",
+  "description": "Write and test a Mergerie plugin without starting Mergerie: the ctx contract, TypeScript types, an in-memory test context and a plugin generator.",
+  "license": "AGPL-3.0-only",
+  "author": "Amady (https://github.com/debugall)",
+  "homepage": "https://mergerie.dev",
+  "repository": { "type": "git", "url": "git+https://github.com/debugall/mergerie.git", "directory": "sdk" },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "bin": { "create-mergerie-plugin": "scripts/creer-plugin.js" },
+  "files": ["index.js", "index.d.ts", "contract.js", "lib", "scripts", "README.md"],
+  "scripts": {
+    "generate": "node scripts/generer-types.js && node scripts/generer-docs-api.js && node scripts/generer-docs-events.js"
+  },
+  "peerDependencies": { "better-sqlite3": "^11.8.1" },
+  "peerDependenciesMeta": { "better-sqlite3": { "optional": false } },
+  "engines": { "node": ">=22.9.0" }
+}
