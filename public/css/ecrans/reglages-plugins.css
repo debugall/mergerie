@@ -2,7 +2,7 @@
 /* La carte d'un plugin se lit de haut en bas : titre, détails, gestes, réglages. Le `.card` du cœur est une rangée qui
    passe à la ligne — un formulaire s'y retrouvait à DROITE des permissions, avec un grand vide à gauche. */
 /* Le trait entre deux plugins : la bordure d'une carte (`--line`) se fondait dans le fond ; on la tire vers le texte, dans les deux thèmes. */
-.plugin-card { display: block; margin-bottom: 14px; border-color: color-mix(in srgb, var(--muted) 55%, var(--line)); box-shadow: 0 1px 0 color-mix(in srgb, var(--muted) 25%, transparent); }
+.plugin-card { display: block; margin-bottom: 26px; border-color: color-mix(in srgb, var(--muted) 55%, var(--line)); box-shadow: 0 1px 0 color-mix(in srgb, var(--muted) 25%, transparent); }
 .plugin-card .card-actions { justify-content: flex-start; margin-top: 10px; }
 .plugin-card .card-head { margin-bottom: 4px; }
 /* La description se lit EN ENTIER : la règle des listes (une ligne, « … ») couperait ce qu'on vient chercher ici. */
