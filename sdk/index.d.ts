@@ -227,8 +227,8 @@ export interface PluginContext {
   jobs: {
     /** inscrit un genre de job ; `runner` reçoit un `job` (`log(line)`, `message(text)`, `progress(done, total)`, `exec(bin, args, options)` → `{ code, tail }`, dont la sortie va au journal et que « Stop » arrête, `isCancelled()`) ; une exception met le job en erreur — permission `jobs` */
     register: (kind: string, runner: (job: JobHandle, payload: unknown) => void | Promise<void>) => void;
-    /** met un job du plugin dans la file du cœur (voie séquentielle, parallélisable à tout : il ne touche aucun clone) ; le journal, le « Stop » et l’écran des jobs sont ceux du cœur — permission `jobs` */
-    start: (kind: string, payload?: unknown, options?: { label?: string }) => { id: number, status: string };
+    /** met un job du plugin dans la file du cœur (voie séquentielle ; `repoIds` et `dirs` DÉCLARENT les dépôts et dossiers qu’il va toucher — il est alors sérialisé avec les reviews, sessions et vérifications du même clone ; sans déclaration il ne touche aucun clone et tourne avec tout) ; le journal, le « Stop » et l’écran des jobs sont ceux du cœur — permission `jobs` */
+    start: (kind: string, payload?: unknown, options?: { label?: string, repoIds?: number[], dirs?: string[] }) => { id: number, status: string };
   };
   ui: {
     /** un onglet dans la barre (icône, position, replié d’office, recherche, raccourci, onboarding) — permission `ui.tab` */

@@ -14,7 +14,12 @@ function demarrerJobPlugin(plugin, kind, payload, options) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES (?, 'queued', 1, 0, ?, ?)`).run(`plugin:${plugin}`, String(options.label || 'en file').slice(0, 180), new Date().toISOString());
   const jobId = info.lastInsertRowid;
-  queue.push({ jobId, kind: `plugin:${plugin}`, payload: { plugin, kind, data: payload } });
+  /* CE QUE LE JOB TOUCHE, déclaré par le plugin (`repoIds`, `dirs`) : ces clés le sérialisent avec les reviews, sessions et vérifications qui travaillent dans le même clone ou le même dossier. Rien de déclaré = aucun clone touché (Docker). */
+  const touches = {
+    repoIds: [...new Set((Array.isArray(options.repoIds) ? options.repoIds : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))],
+    dirs: [...new Set((Array.isArray(options.dirs) ? options.dirs : []).map(String).filter(Boolean))],
+  };
+  queue.push({ jobId, kind: `plugin:${plugin}`, payload: { plugin, kind, data: payload, touches } });
   setImmediate(() => require('../ordonnanceur').pump());
   return db.prepare('SELECT id, kind, status, message FROM job WHERE id = ?').get(jobId);
 }
