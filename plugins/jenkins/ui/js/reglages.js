@@ -57,7 +57,7 @@ async function enregistrerJenkins(info) {
   const f = $('#jenkinsConfigForm');
   const s = await ui.settings.save('jenkins', corpsJenkins(f));
   f.jenkins_token.value = s.jenkins_token || '';
-  if (info) info.textContent = tr('plugins.settings.saved');
+  if (info) info.textContent = tr('jenkins.ui.saved');
   return s;
 }
 $('#jenkinsConfigForm') && $('#jenkinsConfigForm').addEventListener('submit', async (e) => {
@@ -121,7 +121,7 @@ async function loadJenkinsLinks() {
           ${l.param ? `<div class="meta muted">${esc(tr('jenkins.settings.links.param'))} : <code>${esc(l.param)}</code></div>` : ''}
         </div>
         <div class="spacer"></div>
-        <button class="btn btn-icon btn-sm btn-danger" data-jl-del="${l.id}" title="${esc(tr('ui.delete'))}"><svg class="ico"><use href="#i-close"/></svg></button>
+        <button class="btn btn-icon btn-sm btn-danger" data-jl-del="${l.id}" title="${esc(tr('jenkins.ui.delete'))}"><svg class="ico"><use href="#i-close"/></svg></button>
         </div></div>`).join('')
     : `<p class="muted">${esc(tr('jenkins.settings.links.empty'))}</p>`;
 }
@@ -130,7 +130,7 @@ $('#jenkinsLinkForm') && $('#jenkinsLinkForm').addEventListener('submit', async 
   const f = e.target;
   viderErreursChamps(f);
   const repoId = Number(($('#jenkinsLinkRepo .jl-repo') || {}).value || 0);
-  if (!repoId) { toast(tr('err.depot-introuvable'), true); return; }
+  if (!repoId) { toast(tr('jenkins.err.repo-not-found'), true); return; }
   /* LE COMBO PROPOSE, IL N'IMPOSE PAS. Un job que le compte ne voit pas (droits, dossier
      filtré) doit rester saisissable : on prend la valeur choisie, à défaut ce qui est TAPÉ. */
   const saisi = (cls, box) => {

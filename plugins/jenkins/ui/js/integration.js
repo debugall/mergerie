@@ -159,8 +159,8 @@ document.addEventListener('click', async (e) => {
     const lignes = String((d && d.text) || '').split('\n').filter((l) => l.trim()).slice(-30).join('\n');
     if (!lignes) { toast(tr('jenkins.build.tail-empty'), true); return; }
     if (champ.value.trim() && !await confirmDialog({
-      title: tr('confirm.followup-review.title'),
-      text: tr('confirm.followup-review.text'),
+      title: tr('jenkins.followup.confirm.title'),
+      text: tr('jenkins.followup.confirm.text'),
       confirmLabel: tr('jenkins.followup.btn'),
       danger: false,
     })) return;
@@ -193,7 +193,7 @@ ui.onBriefSection('ci-rouge', () => {
         <div class="brief-item-meta muted">${esc(tr('jenkins.brief.on', { branch: m.source_branch, iid: m.iid }))}</div>
       </div>
       <button type="button" class="btn btn-primary" data-ci-job="${esc(ci.path)}">${esc(tr('jenkins.brief.details'))}</button>
-      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
+      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('jenkins.brief.review-btn'))}</button>
     </div>`).join('');
 });
 
@@ -201,7 +201,7 @@ ui.onBriefSection('ci-rouge', () => {
 ui.onLinkKind('build', {
   render: (t) => {
     const [chemin, num] = String(t.link_ref).split('#');
-    return `<button type="button" class="note-link" data-todo-build="${esc(chemin)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('pipeline')} ${esc(tr('jenkins.todo.link', { job: chemin, n: num || '' }))}</button>`;
+    return `<button type="button" class="note-link" data-todo-build="${esc(chemin)}" title="${esc(tr('jenkins.todo.link-title'))}">${svgIco('pipeline')} ${esc(tr('jenkins.todo.link', { job: chemin, n: num || '' }))}</button>`;
   },
 });
 document.addEventListener('click', async (e) => {

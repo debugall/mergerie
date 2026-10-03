@@ -92,3 +92,34 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
     db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 1, ?)").run(maintenant);
   }
 }
+
+/* `todo.link_kind` N'EST PLUS CONTRAINT PAR LA TABLE. Le `CHECK (link_kind IN ('mr', …))` obligeait
+   tout plugin qui veut accrocher une todo à ce qu'il connaît (un build, un ticket d'un autre
+   outil) à demander une migration au cœur. La liste vit désormais là où elle se décide : les
+   genres du cœur (`notes.js`) plus ceux que les plugins ACTIFS déclarent (`registerLinkKind`),
+   vérifiés à l'écriture par la route. Une todo dont le plugin est désactivé garde son lien —
+   la table ne refuse plus rien, c'est le plugin qui sait l'ouvrir.
+
+   SQLite ne sait pas retirer une contrainte : on RECONSTRUIT la table. Le texte du `CREATE TABLE`
+   est relu tel quel depuis `sqlite_master` (donc toutes les colonnes ajoutées depuis, `shared`,
+   `position`, `auto_*`…), seul le `CHECK` de `link_kind` en est retiré ; index et déclencheurs
+   sont recréés d'après leur propre texte. Une base neuve passe ici aussi — une fois. */
+{
+  const ligne = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'todo'").get();
+  const motif = /(\blink_kind\s+TEXT)\s+CHECK\s*\(\s*link_kind\s+IN\s*\([^)]*\)\s*\)/i;
+  if (ligne && ligne.sql && motif.test(ligne.sql)) {
+    const annexes = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name = 'todo' AND type IN ('index', 'trigger') AND sql IS NOT NULL").all().map((r) => r.sql);
+    const copie = 'todo_sans_check';   // nom en variable : la copie temporaire n'est pas une table « retouchée » au sens du contrôle d'ordre
+    const neuve = ligne.sql.replace(motif, '$1').replace(/^CREATE TABLE\s+("?)todo\1/i, `CREATE TABLE ${copie}`);
+    db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        db.exec(neuve);
+        db.exec(`INSERT INTO ${copie} SELECT * FROM todo`);
+        db.exec('DROP TABLE todo');
+        db.exec(`ALTER TABLE ${copie} RENAME TO todo`);
+        for (const sql of annexes) db.exec(sql);
+      })();
+    } finally { db.pragma('foreign_keys = ON'); }
+  }
+}

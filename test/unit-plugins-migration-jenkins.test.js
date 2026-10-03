@@ -26,6 +26,36 @@ function ouvrirSchema(dir, instructions = []) {
 }
 
 describe('Plugins — migration des données Jenkins du cœur vers le plugin', () => {
+  test('todo.link_kind perd son CHECK sans rien perdre : lignes, colonnes ajoutées après coup, déclencheurs', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-migr-todo-'));
+    const lire = (sql) => JSON.parse(execFileSync(process.execPath, ['-e',
+      'const d=require("better-sqlite3")(process.argv[1],{readonly:true});console.log(JSON.stringify(d.prepare(process.argv[2]).all()))',
+      path.join(dir, 'reviewer.db'), sql], { cwd: ROOT, encoding: 'utf8' }));
+    const sqlTodo = () => lire("SELECT sql FROM sqlite_master WHERE name = 'todo'")[0].sql;
+    ouvrirSchema(dir);
+    const declencheurs = lire("SELECT name FROM sqlite_master WHERE tbl_name = 'todo' AND type = 'trigger' ORDER BY name").map((r) => r.name);
+    assert.ok(declencheurs.length >= 1, 'le schéma du jour pose des déclencheurs sur todo');
+    // La forme d'AVANT : la même table, le CHECK en plus, une ligne remplie — comme sur un vrai poste.
+    const avant = sqlTodo().replace(/(\blink_kind\s+TEXT)/i, "$1 CHECK (link_kind IN ('mr','ticket','repo','branch','verification','build','container'))");
+    assert.notEqual(avant, sqlTodo(), 'le CHECK a bien été remis');
+    ouvrirSchema(dir, ["INSERT INTO todo (title, link_kind, link_ref, shared, position, auto_kind, created_at, updated_at) VALUES ('a', 'build', 'job#1', 1, 5, 'k', '2026', '2026')"]);
+    const copie = avant.replace(/^CREATE TABLE\s+("?)todo\1/i, 'CREATE TABLE todo_avant');
+    ouvrirSchema(dir, [
+      copie.replace(/--[^\n]*/g, '').replace(/\s+/g, ' '),
+      'INSERT INTO todo_avant SELECT * FROM todo',
+      'DROP TABLE todo',
+      'ALTER TABLE todo_avant RENAME TO todo',
+    ]);
+    assert.match(sqlTodo(), /CHECK \(link_kind/, 'la forme d’avant est en place');
+    ouvrirSchema(dir); // un démarrage : le schéma se rejoue
+    assert.doesNotMatch(sqlTodo(), /CHECK \(link_kind/, 'le CHECK de link_kind est parti');
+    assert.deepEqual(lire('SELECT title, link_kind, link_ref, shared, position, auto_kind FROM todo'),
+      [{ title: 'a', link_kind: 'build', link_ref: 'job#1', shared: 1, position: 5, auto_kind: 'k' }], 'la ligne et ses colonnes sont intactes');
+    assert.deepEqual(lire("SELECT name FROM sqlite_master WHERE tbl_name = 'todo' AND type = 'trigger' ORDER BY name").map((r) => r.name), declencheurs, 'les déclencheurs sont recréés');
+    ouvrirSchema(dir, ["INSERT INTO todo (title, link_kind, link_ref, created_at, updated_at) VALUES ('b', 'genre-de-plugin', 'x', '2026', '2026')"]);
+    assert.equal(lire('SELECT COUNT(*) n FROM todo')[0].n, 2, 'un genre inconnu de la table s’écrit');
+  });
+
   test('URL, compte, jeton, cadence, jobs liés et dernier test passent au plugin ; les colonnes du cœur s’en vont', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-migr-jk-'));
     // La forme d'AVANT : les colonnes, la table, le souvenir — remplis comme sur un vrai poste.

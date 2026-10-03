@@ -59,7 +59,7 @@ list is in `public/js/transverse/kit.js` (one key per line); it is covered by th
 | `ui.onAction(id, { render(obj, ctx) } \| { run(obj, ctx, button) })` | the rendering of an action declared by `ctx.ui.registerAction` (an HTML string), or a default button and the click handler |
 | `ui.onDecorator(id, render(obj, ctx))` | the rendering of a decoration (`registerDecorator`) |
 | `ui.onBriefSection(id, render(brief))` | the body of a section of the "Today" brief (empty = no section) |
-| `ui.onLinkKind(kind, { render(todo), open(ref) })` | a todo link of a kind declared by `registerLinkKind` |
+| `ui.onLinkKind(kind, { render(todo), open(ref) })` | a todo link of a kind declared by `registerLinkKind` — the `todo` table does not constrain `link_kind`: the kind is accepted on write while the plugin is active |
 | `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | a notification of a kind declared by `notify.registerKind` |
 | `ui.onPaletteResult(plugin, (nav, result) => …)` | opening a result returned by the plugin's palette provider |
 | `ui.registerPaletteAction({ label, tab, run })` | a palette action ("Go to …") |

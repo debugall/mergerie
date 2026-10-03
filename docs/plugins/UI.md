@@ -59,7 +59,7 @@ dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit
 | `ui.onAction(id, { render(obj, ctx) } \| { run(obj, ctx, bouton) })` | le rendu d'une action déclarée par `ctx.ui.registerAction` (une chaîne HTML), ou un bouton par défaut et le geste au clic |
 | `ui.onDecorator(id, render(obj, ctx))` | le rendu d'une décoration (`registerDecorator`) |
 | `ui.onBriefSection(id, render(brief))` | le corps d'une section du brief « Aujourd'hui » (vide = pas de section) |
-| `ui.onLinkKind(kind, { render(todo), open(ref) })` | un lien de todo d'un genre déclaré par `registerLinkKind` |
+| `ui.onLinkKind(kind, { render(todo), open(ref) })` | un lien de todo d'un genre déclaré par `registerLinkKind` — la table `todo` ne contraint pas `link_kind` : le genre est accepté à l'écriture tant que le plugin est actif |
 | `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | une notification d'un genre déclaré par `notify.registerKind` |
 | `ui.onPaletteResult(plugin, (nav, resultat) => …)` | l'ouverture d'un résultat rendu par le fournisseur de palette du plugin |
 | `ui.registerPaletteAction({ label, tab, run })` | une action de palette (« Aller à … ») |

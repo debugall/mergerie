@@ -98,6 +98,19 @@ describe('Plugin Jenkins — embarqué, à chaud, sans régression', () => {
     assert.ok((await app.api('GET', '/')).text.includes('data-tab="jenkins"'));
   });
 
+  test('un genre de lien de todo vient du plugin ACTIF : « build » passe, un genre inconnu non, et plus de « build » une fois le plugin éteint', async () => {
+    const creer = (kind) => app.api('POST', '/api/todos', { title: 'Relancer', link_kind: kind, link_ref: 'equipe/deploy#42' });
+    const ok = await creer('build');
+    assert.equal(ok.status, 200, 'le genre déclaré par registerLinkKind est accepté sans que la table le connaisse');
+    assert.equal(ok.body.link_kind, 'build');
+    assert.notEqual((await creer('inconnu')).status, 200, 'un genre que personne ne déclare reste refusé');
+    await app.api('POST', '/api/plugins/jenkins/disable');
+    assert.notEqual((await creer('build')).status, 200, 'plugin éteint : son genre n’est plus accepté en écriture');
+    assert.equal((await app.api('GET', '/api/todos')).body.todos.find((x) => x.id === ok.body.id).link_kind, 'build', 'mais la todo déjà liée garde son lien');
+    assert.equal((await app.api('POST', '/api/plugins/jenkins/enable')).body.ok, true);
+    assert.equal((await creer('build')).status, 200, 'réactivé : accepté de nouveau');
+  });
+
   test('un dépôt retiré emporte ses jobs liés — l’événement remplace la clé étrangère', async () => {
     const repo = (await app.api('POST', '/api/repos', { url: 'https://gitlab.test/grp/autre', project: 'grp/autre' })).body;
     await app.api('POST', '/api/plugins/jenkins/links', { repo_id: repo.id, job_path: 'autre/job' });

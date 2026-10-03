@@ -10,6 +10,15 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "jenkins.ui.loading": "chargement…",
+      "jenkins.ui.delete": "Supprimer",
+      "jenkins.ui.saved": "enregistré",
+      "jenkins.err.repo-not-found": "Dépôt introuvable.",
+      "jenkins.err.fresh-token": "L’adresse a changé : retapez le jeton pour tester. Le jeton enregistré n’est jamais envoyé à une autre adresse que la sienne.",
+      "jenkins.followup.confirm.title": "Remplacer ce qui est écrit ?",
+      "jenkins.followup.confirm.text": "Le champ contient déjà un texte. Le remplacer par le prompt du rapport de review ?",
+      "jenkins.brief.review-btn": "Reviewer",
+      "jenkins.todo.link-title": "Ouvrir l’objet lié",
       "jenkins.nav": "Jenkins",
       "jenkins.onboard": "Jenkins",
       "jenkins.badge.legend": "rouge : builds du jour en échec · bleu : builds du jour",
@@ -174,6 +183,15 @@
       "jenkins.investigate.prompt": "Le job Jenkins « {job} » a échoué au build #{n}. Voici la fin de la console :\n\n{log}\n\nTrouve dans le code d’où vient cette erreur.",
     },
     en: {
+      "jenkins.ui.loading": "loading…",
+      "jenkins.ui.delete": "Delete",
+      "jenkins.ui.saved": "saved",
+      "jenkins.err.repo-not-found": "Repository not found.",
+      "jenkins.err.fresh-token": "The address changed: type the token again to test. The saved token is never sent to any address but its own.",
+      "jenkins.followup.confirm.title": "Replace what is written?",
+      "jenkins.followup.confirm.text": "The field already has text in it. Replace it with the review report prompt?",
+      "jenkins.brief.review-btn": "Review",
+      "jenkins.todo.link-title": "Open the linked object",
       "jenkins.nav": "Jenkins",
       "jenkins.onboard": "Jenkins",
       "jenkins.badge.legend": "red: today's failed builds · blue: today's builds",

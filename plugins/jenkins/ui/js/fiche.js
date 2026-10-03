@@ -79,7 +79,7 @@ function jkBuildDetail(d, b) {
               retournait dans Jenkins à la main pour la suite. */''}
         <button type="button" class="btn btn-sm btn-ghost" data-jk-tail-copy="${b.number}" title="${esc(tr('jenkins.tail.copy'))}">${svgIco('copy')}</button>
         ${b.url ? `<a class="btn btn-sm btn-ghost" href="${esc(safeUrl(b.url))}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jenkins.build.open'))}">${svgIco('external')}</a>` : ''}
-      </h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('ui.combo.loading'))}</pre>` : ''}
+      </h4><pre class="jk-tail verify-log" data-jk-tail="${b.number}">${esc(tr('jenkins.ui.loading'))}</pre>` : ''}
   </div>`;
 }
 

@@ -12,6 +12,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jira = require('../../integrations/jira');
 const notes = require('../../notes/notes');
+const plugins = require('../../plugins');
 const brief = require('../../notes/brief');
 const demoDocker = require('../../demo/docker');
 const veille = require('../../integrations/veille');
@@ -237,8 +238,10 @@ app.get('/api/todos', wrap((req, res) => {
     })),
   });
 }));
+/* Les genres de lien que les plugins ACTIFS ont déclarés : la table ne contraint plus `link_kind`. */
+const genresDePlugins = () => Object.values(plugins.declarations()).flatMap((d) => (d.linkKinds || []).map((k) => k.kind));
 app.post('/api/todos', wrap((req, res) => {
-  res.json(notes.creerTodo(req.body || {}, msgNotes()));
+  res.json(notes.creerTodo(req.body || {}, msgNotes(), genresDePlugins()));
 }));
 /* Réordonner la liste « à faire » : l'écran envoie l'ordre complet de ce qu'il affiche. */
 app.post('/api/todos/reorder', wrap((req, res) => {
@@ -258,7 +261,7 @@ app.put('/api/todos/:id', wrap((req, res) => {
     delete body.snooze;
   }
   exigerAuteurSiRetrait('todo', db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(req.params.id) || 0), body);
-  res.json(notes.majTodo(req.params.id, body, msgNotes()));
+  res.json(notes.majTodo(req.params.id, body, msgNotes(), genresDePlugins()));
 }));
 app.delete('/api/todos/:id', wrap((req, res) => {
   exigerAuteurSiRetrait('todo', db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(req.params.id) || 0), null);

@@ -57,7 +57,7 @@ function monterRoutes(ctx, { client, demo, veille, cfg }) {
     if (estDemo()) return demo.tester();
     const test = { ...cfg() };
     const b = req.body || {};
-    if (b.jenkins_url && ctx.secrets.freshRequired(b.jenkins_url, test.jenkins_url, b.jenkins_token, test.jenkins_token)) throw erreur(t('err.test.fresh-token'));
+    if (b.jenkins_url && ctx.secrets.freshRequired(b.jenkins_url, test.jenkins_url, b.jenkins_token, test.jenkins_token)) throw erreur(t('jenkins.err.fresh-token'));
     if (b.jenkins_url) test.jenkins_url = String(b.jenkins_url).replace(/\/+$/, '');
     if (b.jenkins_user) test.jenkins_user = b.jenkins_user;
     if (b.jenkins_token && b.jenkins_token !== '***') test.jenkins_token = b.jenkins_token;
@@ -104,7 +104,7 @@ function monterRoutes(ctx, { client, demo, veille, cfg }) {
   router.post('/links', (req) => {
     const repoId = Number((req.body && req.body.repo_id) || 0);
     const job = String((req.body && req.body.job_path) || '').trim();
-    if (!repoId || !ctx.repos.byId(repoId)) throw erreur(t('err.depot-introuvable'));
+    if (!repoId || !ctx.repos.byId(repoId)) throw erreur(t('jenkins.err.repo-not-found'));
     if (!job) throw erreur(t('jenkins.err.job-required'));
     ctx.db.prepare('INSERT OR REPLACE INTO plugin_jenkins_link (repo_id, job_path, param) VALUES (?,?,?)')
       .run(repoId, job, String((req.body && req.body.param) || '').trim() || null);
