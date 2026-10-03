@@ -50,6 +50,16 @@ function ecrireEtat(nom, patch) {
     .run({ name: nom, enabled: next.enabled ? 1 : 0, version: String(next.version || ''), origin: next.origin || 'user', error: next.error || null, updated_at: next.updated_at });
 }
 
+/** D'où le plugin a été installé — ce que « Mettre à jour » rejoue. `null` : inconnu (installé avant que l'adresse soit gardée). */
+function lireSource(nom) {
+  const e = lireEtat(nom);
+  try { const v = e && e.source ? JSON.parse(e.source) : null; return v && (v.url || v.path) ? v : null; } catch { return null; }
+}
+function ecrireSource(nom, source) {
+  if (!lireEtat(nom)) ecrireEtat(nom, {});
+  db().prepare('UPDATE plugin_state SET source = ? WHERE name = ?').run(source ? JSON.stringify(source) : null, nom);
+}
+
 /** Le dossier des plugins de l'utilisateur, sous le dossier de données. */
 function dossierUser() {
   if (dossierUtilisateur) return dossierUtilisateur;
@@ -228,7 +238,7 @@ function copierDossier(src, dst) {
 }
 
 /** Installe depuis un dossier local : manifeste vérifié AVANT copie. Désactivé par défaut. */
-function installerDepuisDossier(source) {
+function installerDepuisDossier(source, { memoriser = true } = {}) {
   const src = path.resolve(String(source || ''));
   if (!src || !fs.existsSync(src) || !fs.statSync(src).isDirectory()) throw Object.assign(new Error('dossier introuvable'), { status: 400 });
   const lu = manifesteMod.lire(src);
@@ -244,26 +254,58 @@ function installerDepuisDossier(source) {
   }
   copierDossier(src, dst);
   decouvrir();
+  if (memoriser) ecrireSource(nom, { path: src });
   return fiches.get(nom);
 }
 
-/** Installe depuis une URL git : clone SANS shell dans un dossier temporaire, manifeste vérifié, puis copie. */
-async function installerDepuisGit(url, ref) {
+/** Clone SANS shell dans un dossier temporaire ; rend la racine du plugin (à la racine du dépôt, ou dans un sous-dossier `plugin/`) et de quoi nettoyer. */
+async function cloner(url, ref) {
   const u = String(url || '').trim();
   if (!/^(https?:\/\/|git@|ssh:\/\/|file:\/\/|\/)/.test(u)) throw Object.assign(new Error('adresse git attendue (https://, ssh://, git@ ou chemin local)'), { status: 400 });
   const os = require('os');
   const git = require('../git/git');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-plugin-'));
+  const nettoyer = () => fs.rmSync(tmp, { recursive: true, force: true });
   try {
     const args = ['clone', '--depth', '1', '--no-local', '--', u, tmp];
     if (ref) args.splice(1, 0, '--branch', String(ref));
     await git.run('git', args, { cwd: os.tmpdir() });
-    // Le plugin peut vivre à la racine du dépôt, ou dans un sous-dossier `plugin/`.
-    const racine = fs.existsSync(path.join(tmp, 'plugin.json')) ? tmp : path.join(tmp, 'plugin');
-    return installerDepuisDossier(racine);
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
+    return { racine: fs.existsSync(path.join(tmp, 'plugin.json')) ? tmp : path.join(tmp, 'plugin'), nettoyer, url: u, ref: ref ? String(ref) : '' };
+  } catch (e) { nettoyer(); throw e; }
+}
+
+/** Installe depuis une URL git : clone, manifeste vérifié, puis copie. L'adresse est gardée pour « Mettre à jour ». */
+async function installerDepuisGit(url, ref) {
+  const c = await cloner(url, ref);
+  try {
+    const f = installerDepuisDossier(c.racine, { memoriser: false });
+    ecrireSource(f.nom, { url: c.url, ref: c.ref });
+    return f;
+  } finally { c.nettoyer(); }
+}
+
+/** METTRE À JOUR : rejoue l'installation depuis la même source — clone d'abord (un échec réseau laisse le plugin intact), puis désactive, remplace le dossier,
+    réactive s'il l'était. Données, réglages et secrets ne bougent pas ; les migrations du plugin en attente se jouent à l'activation. */
+async function mettreAJour(nom) {
+  const f = fiches.get(nom);
+  if (!f) throw Object.assign(new Error(`plugin inconnu : ${nom}`), { status: 404 });
+  if (f.origin === 'builtin') throw Object.assign(new Error('un plugin embarqué se met à jour avec Mergerie'), { status: 409 });
+  const source = lireSource(nom);
+  if (!source) throw Object.assign(new Error('adresse d’installation inconnue : installe-le de nouveau une fois (depuis git), elle sera gardée'), { status: 409 });
+  const avant = (f.manifeste && f.manifeste.version) || '';
+  const etaitActif = !!f.actif;
+  const voulaitEtreActif = etaitActif || !!(lireEtat(nom) && lireEtat(nom).enabled);
+  const c = source.url ? await cloner(source.url, source.ref) : { racine: source.path, nettoyer: () => {} };
+  try {
+    const lu = manifesteMod.lire(c.racine);
+    if (!lu.ok) throw Object.assign(new Error(`mise à jour refusée : ${lu.erreurs.join(' ; ')}`), { status: 400 });
+    if (lu.manifeste.name !== nom) throw Object.assign(new Error(`la source est le plugin « ${lu.manifeste.name} », pas « ${nom} »`), { status: 400 });
+    if (etaitActif) await desactiver(nom, { persister: false, raison: 'mise à jour' });
+    installerDepuisDossier(c.racine, { memoriser: false });
+    if (voulaitEtreActif) await activer(nom);
+  } finally { c.nettoyer(); }
+  const g = fiches.get(nom);
+  return { fiche: g, from: avant, to: (g.manifeste && g.manifeste.version) || '', wasActive: etaitActif };
 }
 
 /** Désinstalle un plugin utilisateur. `garderDonnees` : ses tables, réglages et secrets restent. */
@@ -315,6 +357,8 @@ function liste() {
       updateAvailable: !!f.updateAvailable,
       ui: d ? { tabs: d.tabs.map((t) => t.id), settingsTabs: d.settingsTabs.map((t) => t.id), actions: d.actions.length, decorators: d.decorators.length } : null,
       schedules: f.actif ? horloge.tachesDe(f.nom).length : 0,
+      source: f.origin === 'builtin' ? null : lireSource(f.nom),
+      canUpdate: f.origin !== 'builtin' && !!lireSource(f.nom),
     };
   });
 }
@@ -388,7 +432,7 @@ function ecrireReglages(nom, patch) {
 function reset() { fiches.clear(); dossierUtilisateur = null; }
 
 module.exports = {
-  decouvrir, activer, desactiver, demarrer, arreter, installerDepuisDossier, installerDepuisGit, desinstaller,
+  decouvrir, activer, desactiver, demarrer, arreter, installerDepuisDossier, installerDepuisGit, mettreAJour, desinstaller,
   fiche, liste, actifsPourPage, routesDe, semerDemo, reglagesPourEcran, lireSecretPourCopie, ecrireReglages, dossierUser, reset,
   EMBARQUES, pageplugins,
 };

@@ -16,6 +16,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_state (
   error TEXT,
   updated_at TEXT
 )`);
+// D'où le plugin a été installé (JSON : { url, ref } pour git, { path } pour un dossier) : c'est ce que « Mettre à jour » rejoue.
+try { db.exec('ALTER TABLE plugin_state ADD COLUMN source TEXT'); } catch { /* déjà là */ }
 db.exec(`CREATE TABLE IF NOT EXISTS plugin_setting (
   plugin TEXT NOT NULL,
   key TEXT NOT NULL,

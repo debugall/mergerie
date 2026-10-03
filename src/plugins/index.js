@@ -20,7 +20,7 @@ module.exports = {
   demarrer: chargeur.demarrer, arreter: chargeur.arreter,
   liste: chargeur.liste, fiche: chargeur.fiche, decouvrir: chargeur.decouvrir,
   activer: chargeur.activer, desactiver: chargeur.desactiver,
-  installerDepuisDossier: chargeur.installerDepuisDossier, installerDepuisGit: chargeur.installerDepuisGit, desinstaller: chargeur.desinstaller,
+  installerDepuisDossier: chargeur.installerDepuisDossier, installerDepuisGit: chargeur.installerDepuisGit, mettreAJour: chargeur.mettreAJour, desinstaller: chargeur.desinstaller,
   routesDe: chargeur.routesDe, semerDemo: chargeur.semerDemo,
   reglagesPourEcran: chargeur.reglagesPourEcran, lireSecretPourCopie: chargeur.lireSecretPourCopie, ecrireReglages: chargeur.ecrireReglages,
   fragmentsDePage, uiPourNavigateur, bundle: (nom) => { const f = chargeur.fiche(nom); return f && f.actif ? pageplugins.bundle(f) : null; },

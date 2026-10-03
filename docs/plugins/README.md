@@ -44,6 +44,11 @@ plante ne tue jamais le serveur), et ses permissions s'affichent avant qu'on l'a
 propose de garder ou de supprimer ses données. Il n'y a ni registre central ni téléchargement
 automatique.
 
+**Mettre à jour** : installé depuis git (ou depuis un dossier), un plugin garde son adresse d'installation, et le bouton **« Mettre à jour »** de sa carte la rejoue — il clone
+d'abord (un échec réseau laisse le plugin intact), puis le désactive, remplace son dossier et le réactive s'il l'était. Ses données, ses réglages et ses secrets ne bougent pas ; les
+migrations de tables en attente se jouent à l'activation. Augmentez `version` dans `plugin.json` avant de publier, c'est ce que l'écran affiche (`1.0.0 → 1.0.1`). Un plugin installé
+avant que l'adresse soit gardée n'a pas le bouton : l'installer une fois de plus depuis git suffit. Un plugin embarqué se met à jour avec Mergerie.
+
 ## Lire ensuite
 
 | Page | Pour |

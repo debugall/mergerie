@@ -35,6 +35,9 @@ function pluginCarteHtml(p) {
       ${p.state === 'incompatible' ? '' : (p.active || p.enabled
     ? `<button type="button" class="btn" data-plugin-disable="${esc(p.name)}">${svgIco('pause')}${esc(tr('plugins.disable'))}</button>`
     : `<button type="button" class="btn btn-primary" data-plugin-enable="${esc(p.name)}">${svgIco('play')}${esc(tr('plugins.enable'))}</button>`)}
+      ${p.builtin ? '' : (p.canUpdate
+    ? `<button type="button" class="btn" data-plugin-update="${esc(p.name)}" title="${esc(tr('plugins.update.title'))}">${svgIco('refresh')}${esc(tr('plugins.update'))}</button>`
+    : `<button type="button" class="btn" disabled title="${esc(tr('plugins.update.no-source'))}">${svgIco('refresh')}${esc(tr('plugins.update'))}</button>`)}
       ${aSonOnglet ? `<button type="button" class="btn" data-plugin-settings-tab="${esc(p.ui.settingsTabs[0])}">${svgIco('sliders')}${esc(tr('plugins.open-settings'))}</button>` : ''}
       ${!p.builtin ? `<button type="button" class="btn btn-danger" data-plugin-uninstall="${esc(p.name)}">${svgIco('trash')}${esc(tr('plugins.uninstall'))}</button>` : ''}
     </div>
@@ -66,6 +69,17 @@ document.addEventListener('click', async (e) => {
       if (r.ok) { toast(tr('plugins.enabled', { name: on.dataset.pluginEnable })); setTimeout(() => window.location.reload(), 300); }
       else { toast(r.error || tr('plugins.enable-failed'), true); loadPlugins(); }
     } catch (err) { toast(explainError(err.message), true); }
+    return;
+  }
+  const maj = e.target.closest && e.target.closest('[data-plugin-update]');
+  if (maj) {
+    const nom = maj.dataset.pluginUpdate;
+    try {
+      const r = await busy(maj, () => api(`/plugins/${nom}/update`, { method: 'POST' }));
+      toast(r.from && r.from !== r.to ? tr('plugins.updated', { name: nom, from: r.from, to: r.to }) : tr('plugins.updated.same', { name: nom, to: r.to }));
+      // Un plugin actif a pu changer d'onglet, de réglages, de scripts : la page se recharge, comme après « Activer ».
+      if (r.wasActive || r.active) setTimeout(() => window.location.reload(), 300); else loadPlugins();
+    } catch (err) { toast(tr('plugins.update.failed', { name: nom, error: explainError(err.message) }), true); loadPlugins(); }
     return;
   }
   const off = e.target.closest && e.target.closest('[data-plugin-disable]');

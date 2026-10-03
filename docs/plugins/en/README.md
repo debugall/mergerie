@@ -43,6 +43,11 @@ plugin never kills the server), and its permissions are shown before you enable 
 programs) triggers an explicit warning. **Uninstall** deletes the folder and offers to keep or delete
 its data. There is no central registry and no automatic download.
 
+**Updating**: installed from git (or from a folder), a plugin keeps its install address, and the **"Update"** button on its card replays it — it clones first (a network failure leaves the
+plugin untouched), then disables it, replaces its folder and enables it again if it was. Its data, settings and secrets are not touched; pending table migrations run at activation. Raise
+`version` in `plugin.json` before publishing: that is what the screen shows (`1.0.0 → 1.0.1`). A plugin installed before the address was kept has no button: installing it once more from git is
+enough. A built-in plugin is updated with Mergerie.
+
 ## Read next
 
 | Page | For |

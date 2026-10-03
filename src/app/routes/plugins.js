@@ -28,6 +28,10 @@ app.post('/api/plugins/install', wrap(async (req, res) => {
 }));
 
 /* Les actions sur UN plugin : des chemins littéraux, déclarés AVANT la porte `/api/plugins/:name/*`. */
+app.post('/api/plugins/:name/update', wrap(async (req, res) => {
+  const r = await plugins.mettreAJour(exigerNom(req.params.name));
+  res.json({ ok: true, name: r.fiche.nom, from: r.from, to: r.to, wasActive: r.wasActive, active: !!r.fiche.actif, error: r.fiche.error || null, plugins: plugins.liste() });
+}));
 app.post('/api/plugins/:name/enable', wrap(async (req, res) => {
   const nom = exigerNom(req.params.name);
   const f = await plugins.activer(nom);
