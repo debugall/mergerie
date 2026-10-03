@@ -11,7 +11,6 @@ const { t } = i18n;
 const links = require('../../notes/links');
 const forge = require('../../forge');
 const git = require('../../git/git');
-const jenkins = require('../../integrations/jenkins');
 const localrepos = require('../../git/localrepos');
 const path = require('path');
 const fs = require('fs');
@@ -78,7 +77,6 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
         .filter((v) => !db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?').get(v.id, id))
         .map((v) => ({ ...v, mode: 'worktree', via_group: true })),
     ],
-    jenkins: db.prepare('SELECT id, job_path, param FROM repo_jenkins WHERE repo_id = ? ORDER BY job_path').all(id),
     /* Les règles LIMITÉES à ce dépôt. Celles qui valent partout ne sont pas « rattachées » :
        les lister ici ferait croire qu'elles disparaîtraient avec lui. */
     rules: db.prepare(`SELECT id, label, branch_match, path_match, enabled, group_id FROM review_rule
@@ -167,7 +165,10 @@ app.put('/api/repos/:id', wrap((req, res) => {
 }));
 app.delete('/api/repos/:id', wrap((req, res) => {
   store.verserEnMarge(req.params.id);
+  const parti = db.prepare('SELECT id, project FROM repo WHERE id = ?').get(Number(req.params.id));
   db.prepare('DELETE FROM repo WHERE id = ?').run(Number(req.params.id));
+  // Les plugins qui tiennent une table rattachée à un dépôt en font le ménage sur cet événement.
+  if (parti) require('../../core/events').emit('repo.deleted', { id: parti.id, project: parti.project }).catch(() => {});
   res.json({ ok: true });
 }));
 /* ---------- Répertoires locaux (Réglages → Dépôts) ----------

@@ -1,0 +1,1 @@
+{ "name": "throws", "version": "1.0.0", "apiVersion": "1", "displayName": "Throws", "description": "lève au activate", "main": "index.js", "permissions": ["http"] }

@@ -52,7 +52,9 @@ function openShortcuts() {
   $('#shortcutsList').innerHTML = SHORTCUTS
     .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('')
     + `<h4 class="shortcut-titre">${esc(tr('shortcuts.badges-title'))}</h4>`
-    + PASTILLES.map(([onglet, key]) => `<div class="shortcut-row"><kbd>${esc(tr(onglet))}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+    + PASTILLES.map(([onglet, key]) => `<div class="shortcut-row"><kbd>${esc(tr(onglet))}</kbd><span>${esc(tr(key))}</span></div>`).join('')
+    // …et celles des onglets de plugins, déjà traduites par le plugin.
+    + pluginsLegendesPastilles().map(([onglet, texte]) => `<div class="shortcut-row"><kbd>${esc(onglet)}</kbd><span>${esc(texte)}</span></div>`).join('');
   m.hidden = false;
 }
 $('#footerHelp') && $('#footerHelp').addEventListener('click', openShortcuts);
@@ -101,17 +103,17 @@ document.addEventListener('keydown', (e) => {
   }
   switch (e.key) {
     /* C12 — « / » CHERCHE LÀ OÙ ON EST. Il éjectait vers Reviews : appuyer sur « / » dans
-       Jenkins pour filtrer deux cents jobs changeait d'onglet. Chaque onglet a sa recherche ;
+       un onglet pour filtrer deux cents lignes changeait d'onglet. Chaque onglet a sa recherche ;
        on prend celle qui est visible, et on ne retombe sur Reviews que faute de mieux. */
     case '/': {
       e.preventDefault();
       /* …et « là où on est » couvre TOUS les onglets qui ont une recherche : Agents, Git
          (explorateur et « Trouver une ref »), Docker (journaux) et Réglages (dépôts) en
          étaient absents, si bien que « / » y faisait exactement ce que le commentaire
-         ci-dessus dit avoir corrigé pour Jenkins — changer d'onglet. */
-      const champ = $$(`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
-        #jenkinsSearch, #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
-        #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`)
+         ci-dessus dit avoir corrigé — changer d'onglet. */
+      const champ = $$([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
+        #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
+        #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
         .find((el) => el.offsetParent !== null);
       if (champ) { champ.focus(); if (champ.select) champ.select(); break; }
       const s = $('#searchReview');

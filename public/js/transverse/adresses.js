@@ -182,15 +182,6 @@ function handleNotifEvent(e, p) {
           tr('notif.verify.body'), () => openVerifyReport(e.verification_id));
       }
       break;
-    /* TOP 14 — la fin d'un build QUE J'AI LANCÉ. L'événement vient du serveur : il arrive donc
-       l'onglet fermé, l'onglet Jenkins jamais ouvert, ou la page rechargée entre-temps. */
-    case 'jenkins_done':
-      if (p.jenkins_done) {
-        showNotif(tr('jenkins.notif.title', { job: e.path }),
-          tr(`notif.jenkins-done.${e.ok ? 'ok' : 'ko'}`, { number: e.number || '', result: e.result || '' }),
-          () => { navTab('jenkins'); openJenkinsJob(e.path); });
-      }
-      break;
     /* B12 — le dossier de l'utilisateur laissé détaché : on ouvre LE rapport qui le dit. */
     case 'restore_error':
       if (p.restore_error) {
@@ -211,7 +202,8 @@ function handleNotifEvent(e, p) {
       if (p.mr_merged) showNotif(tr('notif.mr-merged.title', { iid: e.iid, project: e.project }), e.title || '',
         () => (e.mr_id ? navMrReport(e.mr_id) : navReviews('reviewed')));
       break;
-    default: break;
+    // Un genre déclaré par un plugin : c'est lui qui compose le titre, le corps et le clic.
+    default: pluginsNotif(e, p); break;
   }
 }
 

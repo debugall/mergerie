@@ -69,7 +69,8 @@ describe('Menu Jenkins — la liste des jobs', { skip: dispo ? false : MSG_NAVIG
     for (const [chemin, nom] of [['/job/outils/job/lint', 'lint'], ['/job/outils/job/vieux', 'vieux']]) {
       mock.state.details[chemin] = { name: nom, color: 'blue', buildable: true, property: [], builds: [] };
     }
-    await app.configure({ jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token });
+    await app.configure();
+    await app.configureJenkins({ jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token  });
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });

@@ -58,7 +58,6 @@ pollReminders();        // rattrapage des rappels échus pendant que l'onglet é
    lien qu'on vient de cliquer. Sans hash, rien ne change : la restauration habituelle a lieu. */
 ouvrirDepuisAdresse();
 refreshDockerBadges(); // badge santé Docker visible dès le démarrage, sans ouvrir l'onglet
-amorcerBadgeJenkins();  // « combien de jobs ont tourné aujourd'hui », sans ouvrir l'onglet
 // Rafraîchissement PÉRIODIQUE du badge santé Docker : on voit un container qui bascule en
 // restarting/unhealthy (rouge/orange dans le titre du menu) même sans être sur l'onglet Docker.
 // Léger : /docker/summary = un seul `docker ps -a` (pas d'inspect/compose config). En pause

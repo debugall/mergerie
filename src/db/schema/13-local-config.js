@@ -32,11 +32,8 @@ const COLONNES_LOCALES = [
   ["jira_email", "TEXT DEFAULT ''"],
   ["jira_token", "TEXT DEFAULT ''"],
   ["confluence_token", "TEXT DEFAULT ''"],
-  ["jenkins_user", "TEXT DEFAULT ''"],
-  ["jenkins_token", "TEXT DEFAULT ''"],
   ["clone_path", "TEXT DEFAULT ''"],
   ["language", "TEXT DEFAULT 'fr'"],
-  ['jenkins_refresh_minutes', 'INTEGER DEFAULT 1'],
   ['git_commands_seeded', 'INTEGER DEFAULT 0'],
   /* LE DÉPÔT DE DONNÉES PARTAGÉ. De poste, et non d'équipe : c'est l'adresse par laquelle CE
      poste rejoint l'équipe, et elle doit être renseignée avant que quoi que ce soit soit

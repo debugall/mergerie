@@ -137,7 +137,7 @@ function detecterTrace(texte) {
    l'enquêteur, avec le TEXTE DU TICKET en demande. */
 /* B9 — L'ENQUÊTEUR, DEPUIS N'IMPORTE QUELLE TRACE. Il n'était atteignable que depuis un
    ticket Jira, alors que les deux endroits où l'on LIT une trace dans cet outil sont la
-   console Jenkins et le rapport d'une vérification rouge. Le geste est le même partout : la
+   console d'un serveur de CI et le rapport d'une vérification rouge. Le geste est le même partout : la
    modale de session s'ouvre en exploration, portée par l'enquêteur, le texte en demande. */
 async function enqueterSurTexte(texte) {
   const enq = agents.find((a) => a.builtin_key === 'investigator') || (await chargerAgents()).find((a) => a.builtin_key === 'investigator');

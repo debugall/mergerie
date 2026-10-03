@@ -19,10 +19,6 @@ async function ficheDepotHtml(d) {
       + (v.mode === 'in_place' ? ` <span class="tag warn">${esc(tr('verify.mode.in-place-short'))}</span>` : '')
       + (v.via_group ? ` <span class="muted">${esc(tr('settings.repo.sheet.via-group'))}</span>` : ''),
     ))),
-    section(tr('settings.repo.sheet.jenkins'), (d.jenkins || []).map((j) => li(
-      `<button type="button" class="lien-reglage" data-sheet-jenkins="${esc(j.job_path)}">${esc(j.job_path)}</button>`
-      + (j.param ? ` <span class="muted">${esc(j.param)}</span>` : ''),
-    ))),
     section(tr('settings.repo.sheet.rules'), (d.rules || []).map((r) => li(
       `<button type="button" class="lien-reglage" data-sheet-rule="${r.id}">${esc(r.label || r.branch_match || r.path_match || `#${r.id}`)}</button>`
       + (r.enabled ? '' : ` <span class="muted">${esc(tr('rules.disabled'))}</span>`),
@@ -37,6 +33,8 @@ async function ficheDepotHtml(d) {
       `<button type="button" class="lien-reglage" data-sheet-agent="${a.id}">${esc(a.name)}</button>`
       + ` <span class="muted">${esc(tr(`agents.role.${a.role}`))}</span>`,
     ))),
+    // Ce qu'un plugin rattache à ce dépôt (cible « repo-sheet »).
+    pluginsHtml('repo-sheet', d),
   ].filter(Boolean).join('') || `<p class="muted">${esc(tr('settings.repo.sheet.empty'))}</p>`;
 }
 
@@ -58,8 +56,6 @@ async function ouvrirFicheDepot(b) {
 document.addEventListener('click', async (e) => {
   const v = e.target.closest && e.target.closest('[data-sheet-verifier]');
   if (v) { showAdminSub('verifiers'); return; }
-  const j = e.target.closest && e.target.closest('[data-sheet-jenkins]');
-  if (j) { navTab('jenkins'); await loadJenkins(); openJenkinsJob(j.dataset.sheetJenkins); return; }
   const r = e.target.closest && e.target.closest('[data-sheet-rule]');
   if (r) { showAdminSub('rules'); return; }
   const sv = e.target.closest && e.target.closest('[data-sheet-service]');
@@ -101,7 +97,7 @@ async function loadRepos() {
         <label class="muted" title="${esc(tr('settings.repo.fetch-mrs-title'))}"><input type="checkbox" data-fetch="${r.id}" ${r.fetch_mrs == null || r.fetch_mrs ? 'checked' : ''}/> ${tr('settings.repo.fetch-mrs')}</label>
         <label class="muted" title="${esc(tr('settings.repo.enabled-title'))}"><input type="checkbox" data-toggle="${r.id}" ${r.enabled ? 'checked' : ''}/> ${tr('settings.repo.enabled')}</label>
         ${/* B17 — LA FICHE. La ligne dit ce qui concerne le dépôt ; la fiche dit ce qui est
-              ACCROCHÉ à lui — vérificateurs, jobs Jenkins, règles limitées, services de la
+              ACCROCHÉ à lui — vérificateurs, règles limitées, services de la
               grille, projets liés par défaut, agents. Six portes, chargées à la demande. */''}
         <button class="btn btn-sm" data-sheet="${r.id}" title="${esc(tr('settings.repo.sheet-title'))}"><svg class="ico"><use href="#i-link"/></svg>${esc(tr('settings.repo.sheet'))}</button>
         <button class="btn btn-sm" data-edit="${r.id}" title="${tr('settings.repo.edit-title')}"><svg class="ico"><use href="#i-edit"/></svg>${tr('settings.repo.edit')}</button>

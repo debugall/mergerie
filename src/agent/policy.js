@@ -193,7 +193,7 @@ function argvLecture({ bin, extra, addDirs, allowedToolsProfil, kind }) {
 /* ---------------------------------------------------------------- écriture : sandbox du CLI */
 
 /* Les fichiers qu'un agent en écriture ne doit JAMAIS pouvoir lire, sandbox ou pas : la base
-   (jetons de forge/Jira/Jenkins), le jeton de session local (lot B), le `.env` du serveur, les
+   (jetons de forge, de Jira et des plugins), le jeton de session local (lot B), le `.env` du serveur, les
    identifiants du poste. Séparé de `interditsDonnees()` (une règle `Read(//chemin)` du CLI, qui
    ne connaît que Claude) : ici c'est la forme `denyRead` du réglage `--settings` du sandbox. */
 function sandboxDenyRead() {

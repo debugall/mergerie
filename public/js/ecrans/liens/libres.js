@@ -8,7 +8,7 @@
    Vingt-huit pixels, une lettre, le nom, l'hôte abrégé, les tags — et les actions au survol. */
 const ligneFreeLink = (l) => `<div class="link-free-row" data-free="${l.id}">
       <input type="checkbox" class="lfr-pick" data-freepick="${l.id}"${LINKS.selection.has(l.id) ? ' checked' : ''} aria-label="${esc(tr('links.free.pick'))}" />
-      <span class="link-ava la-c${jkTeinte(l.label || l.url)}" aria-hidden="true">${esc(initiale(l.label))}</span>
+      <span class="link-ava la-c${teinteDe(l.label || l.url)}" aria-hidden="true">${esc(initiale(l.label))}</span>
       <a class="link-free-label" href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer"
          data-usekind="free_link" data-useref="${l.id}" title="${esc(l.url)}">${esc(l.label)}</a>
       <span class="link-free-url muted">${esc(urlCourte(l.url))}</span>

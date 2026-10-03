@@ -119,6 +119,7 @@ async function discoverAll() {
           mrId = info.lastInsertRowid;
           insertFeed.run('mr_opened', m.iid, repo.project, m.author || '', m.title || '', now); // 🆕 vient d'arriver
           notify.push('mr_new', { mr_id: info.lastInsertRowid, iid: m.iid, project: repo.project, title: m.title || '' });
+          require('../core/events').emit('mr.created', { mr_id: Number(info.lastInsertRowid), iid: m.iid, project: repo.project, title: m.title || '' }).catch(() => {});
           // Projets liés par défaut du dépôt → copiés sur la nouvelle MR (zéro clic).
           const defaults = db.prepare('SELECT linked_repo_id, branch FROM repo_link WHERE repo_id = ?').all(repo.id);
           if (defaults.length) {
@@ -324,6 +325,7 @@ async function upsertMrFromApi(repoId, m) {
   db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)')
     .run('mr_opened', m.iid, (repo && repo.project) || '', author, m.title || '', now);
   notify.push('mr_new', { mr_id: id, iid: m.iid, project: (repo && repo.project) || '', title: m.title || '' });
+  require('../core/events').emit('mr.created', { mr_id: Number(id), iid: m.iid, project: (repo && repo.project) || '', title: m.title || '' }).catch(() => {});
 
   // Projets liés par défaut du dépôt → copiés sur la nouvelle MR (le reviewer les lit).
   const defaults = db.prepare('SELECT linked_repo_id, branch FROM repo_link WHERE repo_id = ?').all(repoId);

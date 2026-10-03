@@ -1,0 +1,17 @@
+{
+  "name": "hidden-state",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Hidden state",
+  "description": "Un réglage visible et un état que le plugin garde lui-même (x-hidden) : sert à prouver que le formulaire généré ne montre ni n'écrase le second.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["settings"],
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "visible": { "type": "string", "title": "Visible", "default": "" },
+      "etat": { "type": "string", "default": "initial", "x-hidden": true }
+    }
+  }
+}

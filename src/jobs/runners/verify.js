@@ -3,6 +3,7 @@
    Extrait de jobs.js (réorganisation de src/ par couches) : les corps sont ceux d'origine, au mot près. */
 const db = require('../../db');
 const notify = require('../../core/notify');
+const events = require('../../core/events');
 const verifyrun = require('../../verify/verifyrun');
 const { getConfig, updateConfig } = require('../../data/config');
 const { t } = require('../../core/i18n');
@@ -34,12 +35,14 @@ async function runVerifyJob(jobId, verificationId) {
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
     logLine(jobId, null, t('log.job.verify-end', { verdict }));
     notify.push('verify_done', { verification_id: verificationId, verdict });
+    events.emit('verify.finished', { verification_id: verificationId, verdict }).catch(() => {});
   } catch (e) {
     logLine(jobId, null, t('log.job.verify-error', { message: e.message }));
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     db.prepare("UPDATE verification SET status = 'error', verdict = 'verify_error', finished_at = ? WHERE id = ?")
       .run(new Date().toISOString(), verificationId);
     notify.push('verify_done', { verification_id: verificationId, verdict: 'verify_error' });
+    events.emit('verify.finished', { verification_id: verificationId, verdict: 'verify_error' }).catch(() => {});
   }
 }
 

@@ -95,10 +95,8 @@ describe('Menu Jenkins — la fiche d’un job et sa console', { skip: dispo ? f
     mock.state.console['/job/app/job/deploy/4'] = 'BUILD SUCCESS\nFinished: SUCCESS';
     mock.state.console['/job/app/job/gele/1'] = '';
 
-    await app.configure({
-      jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token,
-      jenkins_refresh_minutes: '0',
-    });
+    await app.configure();
+    await app.configureJenkins({ jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token, jenkins_refresh_minutes: '0' });
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });

@@ -66,9 +66,8 @@ describe('Menu Jenkins — dépôts liés, merge requests, environnements et « 
       ...m, state: 'opened', target_branch: 'main', sha: `sha${m.iid}`,
       web_url: `https://gitlab.test/grp/app/-/merge_requests/${m.iid}`, created_at: `2026-03-${m.iid - 10}T10:00:00.000Z`,
     }));
-    await app.configure({
-      jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token, jenkins_refresh_minutes: '0',
-    });
+    await app.configure();
+    await app.configureJenkins({ jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token, jenkins_refresh_minutes: '0' });
     const repoId = (await app.api('POST', '/api/repos', { url: 'https://gitlab.test/grp/app', project: 'grp/app' })).body.id;
     assert.ok(repoId, 'le dépôt est suivi');
     await app.api('POST', '/api/discover');
@@ -76,14 +75,14 @@ describe('Menu Jenkins — dépôts liés, merge requests, environnements et « 
     assert.ok(idMr[31] && idMr[32], 'les deux merge requests sont connues');
 
     for (const job of ['boutique/deploy-recette', 'boutique/deploy-casse']) {
-      const r = await app.api('POST', '/api/jenkins/links', { repo_id: repoId, job_path: job, param: 'BRANCH' });
+      const r = await app.api('POST', '/api/plugins/jenkins/links', { repo_id: repoId, job_path: job, param: 'BRANCH' });
       assert.equal(r.status, 200);
     }
     const recette = (await app.api('POST', '/api/environments', { name: 'recette', color: '#2f6fe0' })).body;
     await app.api('POST', '/api/environments', { name: 'prod', color: '#d23' });
     const svc = (await app.api('POST', '/api/services', { name: 'boutique-api', repo_id: repoId })).body;
     await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: recette.id, url: URL_RECETTE });
-    const liens = (await app.api('GET', '/api/jenkins/build-links?path=boutique%2Fdeploy-recette')).body;
+    const liens = (await app.api('GET', '/api/plugins/jenkins/build-links?path=boutique%2Fdeploy-recette')).body;
     assert.deepEqual(liens.envs.map((e) => e.env), ['recette'], 'le décor : une adresse de recette pour le service du dépôt');
 
     navigateur = await lancerNavigateur();

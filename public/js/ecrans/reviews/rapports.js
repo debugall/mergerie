@@ -1,6 +1,6 @@
 'use strict';
 /* Rapports : filtre couleur, sélecteur de version, B7, B2, B3, conflit, TOP 1, « périmé ». */
-// @expose assurerJenkinsPourCI, badgeCI, badgeTicket, ciDeLaBranche, loadReports, passeFiltreNote, reinitFiltreNote, reportRows, selectedMr, seuilPret
+// @expose badgeTicket, loadReports, passeFiltreNote, reinitFiltreNote, reportRows, selectedMr, seuilPret
 /* ---------- Rapports ---------- */
 let selectedMr = null;
 let reportRows = [];
@@ -126,7 +126,7 @@ function renderReports() {
           ${badgeCartes(m)}
           ${badgeTicket(m)}
           ${badgeConflit(m)}
-          ${badgeCI(m.source_branch)}
+          ${pluginsHtml('mr-badge', m)}
           ${badgeCIForge(m)}
           ${verifyBadge(m.verification)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
@@ -264,70 +264,8 @@ document.addEventListener('click', (e) => {
   toast(tr('toast.conflict-to-merge', { iid: m.iid, base: m.target_branch || '' }));
 });
 
-/* B8 — ouvrir le job Jenkins avec la branche de la merge request. On ouvre la FICHE (jamais
-   un lancement direct) : les paramètres se lisent, et le bouton « Lancer avec ces paramètres »
-   reste à cliquer. Le paramètre qui reçoit la branche est celui déclaré dans le lien ; sans
-   lui, la fiche s'ouvre telle quelle — mieux qu'un pré-remplissage deviné. */
-document.addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-mr-jenkins]');
-  if (!b) return;
-  e.preventDefault(); e.stopPropagation();
-  navTab('jenkins');
-  await openJenkinsJob(b.dataset.mrJenkins);
-  const nom = b.dataset.param;
-  if (!nom) return;
-  const champ = $(`#jenkinsModalBody [data-jkparam="${CSS.escape(nom)}"]`);
-  if (champ) jkPoserParams([{ name: nom, value: b.dataset.branch }]);
-});
-
-/* ---------- B2 : le dernier build Jenkins qui porte CETTE branche ----------
-   On pousse depuis la session, `front-build` casse sur la branche, et la carte de !219 dit
-   « vérifié » — le vérificateur de Mergerie est vert, Jenkins fait autre chose. On le
-   découvrait une heure plus tard en ouvrant l'onglet.
-
-   Aucun appel de plus : la liste Jenkins est déjà chargée (ouverture de l'onglet ou intervalle
-   réglé), et chaque job porte la branche de son dernier build. On croise sur le NOM DE BRANCHE,
-   et on l'écrit sur la carte — sans jamais le confondre avec le verdict objectif, qui est un
-   autre badge, d'une autre couleur, avec un autre mot. */
-/* La liste Jenkins est chargée à l'ouverture de SON onglet. Pour que le badge existe sur une
-   carte de merge request sans y être passé, on la demande UNE FOIS par chargement de page —
-   et seulement si Jenkins est configuré. C'est le même appel que fait l'onglet, fait plus tôt :
-   pas un sondage, et rien de plus quand on ouvre ensuite Jenkins (la liste est déjà là). */
-let jenkinsPourCI = false;
-async function assurerJenkinsPourCI() {
-  if (jenkinsPourCI || (JENKINS.jobs || []).length) return;
-  jenkinsPourCI = true;
-  try {
-    const d = await api('/jenkins/jobs');
-    if (!d || !d.configured) return;
-    JENKINS.jobs = d.jobs || [];
-    JENKINS.configured = true;
-    // La file est peut-être déjà affichée : elle se redessine avec les badges.
-    if ($('#tab-review').classList.contains('active')) loadSegment(currentSeg);
-  } catch { /* Jenkins injoignable : pas de badge, et rien à signaler ici */ }
-}
-
-function ciDeLaBranche(branche) {
-  const b = String(branche || '').trim();
-  if (!b || !(JENKINS.jobs || []).length) return null;
-  const j = (JENKINS.jobs || []).find((x) => String(x.ref || '').trim() === b);
-  if (!j || !j.lastNumber) return null;
-  return { path: j.path, number: j.lastNumber, statut: j.statut, enCours: !!j.enCours };
-}
-function badgeCI(branche) {
-  const ci = ciDeLaBranche(branche);
-  if (!ci) return '';
-  /* LE VOCABULAIRE DE JENKINS, PAS UN AUTRE. `jenkins.js` normalise les couleurs de l'API en
-     `succes` / `echec` / `instable` / `desactive` / `inconnu` ; comparer à « ok » et « ko »
-     ne matchait JAMAIS — un build vert portait donc une croix, et sans couleur. */
-  const ok = ci.statut === 'succes';
-  const rouge = ci.statut === 'echec';
-  const cls = ci.enCours ? 'to_review' : (ok ? 'done' : (rouge ? 'stale' : (ci.statut === 'instable' ? 'to_review' : '')));
-  const signe = ci.enCours ? '⋯' : (ok ? '✓' : (rouge ? '✗' : '~'));
-  return `<button type="button" class="tag ${cls}" data-ci-job="${esc(ci.path)}" title="${esc(tr('mr.ci.title', { job: ci.path }))}">CI #${ci.number} ${signe}</button>`;
-}
 /* ---------- L'état de la CI DE LA FORGE (pipelines GitLab, check-runs GitHub) ----------
-   Le badge Jenkins ci-dessus ne vaut que pour qui a Jenkins. Tout le monde a une CI sur sa forge,
+   Le badge d'un serveur de CI (un plugin, cible « mr-badge ») ne vaut que pour qui en a un. Tout le monde a une CI sur sa forge,
    et rien ne la lisait : un point vert / rouge / en cours sur la carte, avec le lien. Demandé en
    un lot pour les cartes affichées, gardé une minute, jamais dans le polling. */
 const CI_FORGE = new Map();   // mrId -> { state, url, label, at }
@@ -357,13 +295,6 @@ function badgeCIForge(m) {
   return c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" class="tag-link">${html}</a>` : html;
 }
 
-document.addEventListener('click', (e) => {
-  const b = e.target.closest && e.target.closest('[data-ci-job]');
-  if (!b) return;
-  e.preventDefault(); e.stopPropagation();
-  navTab('jenkins');
-  openJenkinsJob(b.dataset.ciJob);
-});
 
 /* ---------- B3 : ce que le TICKET dit de cette merge request ----------
    Vendredi la QA passe PROJ-1408 en « En revue » : la merge request attend depuis trois jours

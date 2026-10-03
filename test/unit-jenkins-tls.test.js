@@ -59,10 +59,14 @@ describe('Jenkins derrière un certificat auto-signé', { skip: dispo ? false : 
   const client = (env) => {
     for (const k of ['JENKINS_CA_CERT', 'JENKINS_INSECURE_TLS']) delete process.env[k];
     Object.assign(process.env, env);
-    delete require.cache[require.resolve('../src/integrations/jenkins')];
+    /* L'agent TLS est calculé par CTX (`ctx.net`, depuis `core/httpreq` du serveur) : un ctx neuf relit
+       l'environnement — exactement ce que fait le serveur en construisant le ctx du plugin au démarrage. */
     delete require.cache[require.resolve('../src/core/httpreq')];
-    // eslint-disable-next-line global-require
-    return require('../src/integrations/jenkins');
+    delete require.cache[require.resolve('../src/plugins/contexte')];
+    /* eslint-disable global-require */
+    const ctx = require('../src/plugins/contexte').creerContexte(require('../plugins/jenkins/plugin.json'), { log: () => {} });
+    return require('../plugins/jenkins/src/client').creerClient(ctx);
+    /* eslint-enable global-require */
   };
   const cfg = () => ({ jenkins_url: url, jenkins_user: 'moi', jenkins_token: 'x' });
 
@@ -102,7 +106,7 @@ describe('Jenkins derrière un certificat auto-signé', { skip: dispo ? false : 
 
   after(() => {
     for (const k of ['JENKINS_CA_CERT', 'JENKINS_INSECURE_TLS']) delete process.env[k];
-    delete require.cache[require.resolve('../src/integrations/jenkins')];
     delete require.cache[require.resolve('../src/core/httpreq')];
+    delete require.cache[require.resolve('../src/plugins/contexte')];
   });
 });

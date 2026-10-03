@@ -21,7 +21,8 @@ app.use(express.json({ limit: '20mb' })); // marge pour les captures de ticket (
    un morceau modifié est servi sans redémarrage. */
 app.get(['/', '/index.html'], (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
-  res.type('html').send(assemblerPage(INDEX));
+  // Les plugins ACTIFS apportent leurs morceaux : relus à chaque requête, une bascule se voit au rechargement.
+  res.type('html').send(assemblerPage(INDEX, { fragments: require('../../plugins').fragmentsDePage() }));
 });
 app.use(express.static(PUBLIC, {
   index: false,

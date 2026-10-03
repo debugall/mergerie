@@ -36,3 +36,8 @@
 .agentcli-form h3 { margin-top: 0; }
 .agentcli-avance summary { cursor: pointer; margin: var(--s-2) 0; }
 .agentcli-empty { margin: 4px 0 0; }
+
+/* Un jeton et son bouton « copier » : le champ prend la place, le bouton reste à côté. */
+.secret-row { display: flex; gap: 6px; align-items: center; }
+.secret-row input { flex: 1; min-width: 0; }
+.secret-copy.copied { color: var(--ok, #3fa66b); border-color: var(--ok, #3fa66b); }

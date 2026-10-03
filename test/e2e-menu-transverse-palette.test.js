@@ -63,11 +63,8 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     app.state.changes['grp/app!41'] = [{ new_path: 'src/app.js' }];
     app.state.jiraIssues['PROJ-77'] = { key: 'PROJ-77', fields: { summary: 'Ticket surveillé de la palette', status: { name: 'À faire' } } };
 
-    await app.configure({
-      jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira', jira_watch_minutes: '0',
-      jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token,
-      jenkins_refresh_minutes: '0',
-    });
+    await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira', jira_watch_minutes: '0' });
+    await app.configureJenkins({ jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token, jenkins_refresh_minutes: '0' });
     repoId = (await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' })).body.id;
     await app.api('POST', '/api/discover');
     await waitForJobs(app.api);
@@ -87,7 +84,7 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     });
     assert.ok(verif.status < 300, verif.text);
     ids.verif = verif.body.id;
-    app.db.prepare('INSERT INTO repo_jenkins (repo_id, job_path) VALUES (?,?)').run(repoId, 'app/deploy');
+    app.db.prepare('INSERT INTO plugin_jenkins_link (repo_id, job_path) VALUES (?,?)').run(repoId, 'app/deploy');
     assert.equal((await app.api('POST', '/api/git-commands', { label: 'Statut maison okapi', command: 'status -s' })).status, 200);
     assert.equal((await app.api('POST', '/api/jira/watch', { key: 'PROJ-77' })).status < 300, true);
     const agent = await app.api('POST', '/api/agents', { name: 'Agent capybara', kind: 'explore' });

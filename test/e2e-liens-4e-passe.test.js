@@ -132,12 +132,12 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   test('la palette propose un vérificateur, un job Jenkins et une commande git, chacun avec son geste', async () => {
     const d = app.db;
     d.prepare("INSERT INTO verifier (name, command, kind, created_at) VALUES ('Tests liens','','commands',datetime('now'))").run();
-    d.prepare('INSERT INTO repo_jenkins (repo_id, job_path) VALUES (?,?)').run(repoId, 'equipe/liens-deploy');
+    d.prepare('INSERT INTO plugin_jenkins_link (repo_id, job_path) VALUES (?,?)').run(repoId, 'equipe/liens-deploy');
 
     const cherche = async (q) => (await app.api('POST', '/api/launcher', { q })).body.results;
     const v = (await cherche('Tests liens')).find((r) => r.kind === 'verifier');
     assert.ok(v && v.nav && v.nav.verifier_id, `le vérificateur porte son geste : ${JSON.stringify(v)}`);
-    const j = (await cherche('liens-deploy')).find((r) => r.kind === 'jenkins');
+    const j = (await cherche('liens-deploy')).find((r) => r.kind === 'plugin:jenkins');
     assert.equal(j && j.nav.jenkins_path, 'equipe/liens-deploy');
     const g = (await cherche('fetch')).find((r) => r.kind === 'gitcmd');
     assert.ok(g && /fetch/.test(g.nav.git_command), 'la commande git est posée telle quelle');
@@ -189,8 +189,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
     assert.equal(br.ticket && br.ticket.key, 'PROJ-77');
     assert.equal(br.ticket.status, 'En cours');
     assert.equal(br.verification && br.verification.verdict, 'verified_fail');
-    assert.deepEqual((br.jenkins || []).map((j) => j.path), ['equipe/liens-deploy']);
-    assert.equal(lignes[1].jenkins, undefined, 'pas de déploiement proposé depuis la branche par défaut');
+    // Le job du dépôt est posé sur la ligne par le plugin Jenkins, côté navigateur (cible « branch »).
   });
 
   /* A7 — LES CONSTATS DEVIENNENT DES BROUILLONS INLINE. Trois règles, et chacune se casse en
@@ -420,7 +419,6 @@ describe('Les liens manquants · 4ᵉ passe', () => {
 
     const f = (await app.api('GET', `/api/repos/${repoId}/sheet`)).body;
     assert.ok(f.verifiers.some((v) => v.name === 'V fiche'));
-    assert.ok(f.jenkins.some((j) => j.job_path === 'equipe/liens-deploy'));
     assert.ok(f.rules.some((r) => r.label === 'Ma règle'), 'les règles LIMITÉES à ce dépôt');
     assert.ok(f.links.some((l) => l.project === 'grp/lie' && l.branch === 'main'));
     assert.ok(f.agents.some((a) => a.name === 'Agent fiche' && a.role === 'readonly'));

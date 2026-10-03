@@ -13,7 +13,9 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const mock = require('./helpers/mock-jenkins');
-const jenkins = require('../src/integrations/jenkins');
+/* Le client vit dans le plugin et se construit sur un ctx : celui du SDK de test suffit (net + i18n). */
+const { createTestContext } = require('../sdk');
+const jenkins = require('../plugins/jenkins/src/client').creerClient(createTestContext({ manifest: require('../plugins/jenkins/plugin.json') }).ctx);
 
 describe('Client Jenkins', () => {
   let srv;

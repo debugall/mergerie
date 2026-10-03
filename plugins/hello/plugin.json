@@ -1,0 +1,58 @@
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "displayName": "Hello",
+  "description": "Hello — un plugin Mergerie.",
+  "author": "",
+  "homepage": "",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "builtin": true,
+  "enabledByDefault": false,
+  "permissions": [
+    "events",
+    "settings",
+    "db",
+    "http",
+    "ui.tab"
+  ],
+  "events": {
+    "listens": [
+      "app.ready",
+      "session.finished",
+      "review.completed",
+      "verify.finished",
+      "mr.created",
+      "converge.finished",
+      "repo.deleted",
+      "app.shutdown"
+    ],
+    "emits": []
+  },
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "greeting": {
+        "type": "string",
+        "title": "Salutation",
+        "description": "Ce que /ping répond.",
+        "default": "hello",
+        "maxLength": 80
+      }
+    }
+  },
+  "ui": {
+    "scripts": [
+      "ui/main.js"
+    ],
+    "i18n": [
+      "ui/i18n.js"
+    ],
+    "html": {
+      "tabs": [
+        "ui/html/onglet.html"
+      ]
+    }
+  }
+}

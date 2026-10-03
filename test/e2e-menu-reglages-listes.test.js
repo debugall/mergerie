@@ -57,7 +57,7 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs 
         actions: [{ causes: [{ userName: 'Alice' }] }, { parameters: [{ name: 'BRANCHE', value: 'main', _class: 'hudson.model.StringParameterValue' }] }],
       } },
     ] }];
-    assert.equal((await app.api('PUT', '/api/config', {
+    assert.equal((await app.configureJenkins({
       jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token,
     })).status, 200);
 
@@ -437,7 +437,7 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs 
   /* ------------------------------------------------- Jobs liés (Jenkins) ---- */
 
   test('un job Jenkins se lie à un dépôt en le CHOISISSANT, avec son paramètre, et se délie', async () => {
-    const liens = async () => (await app.api('GET', '/api/jenkins/links')).body.links || [];
+    const liens = async () => (await app.api('GET', '/api/plugins/jenkins/links')).body.links || [];
     const cible = await depot('grp/reel');
     await ouvrir('jenkinscfg');
     await page.waitForSelector('#jenkinsLinkRepo [data-repo-combo]');

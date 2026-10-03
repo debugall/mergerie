@@ -116,8 +116,9 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       ['gitcfg', { access_token: SECRETS.access_token, github_url: 'https://github.equipe.test', github_token: SECRETS.github_token,
         clone_path: path.join(app.dataDir, 'CLONES-DE-CE-POSTE') }],
       ['jiracfg', { jira_url: 'https://jira.equipe.test', jira_email: SECRETS.jira_email, jira_token: SECRETS.jira_token }],
-      ['jenkinscfg', { jenkins_url: 'https://jenkins.equipe.test', jenkins_user: SECRETS.jenkins_user, jenkins_token: SECRETS.jenkins_token }],
     ];
+    // Jenkins est un plugin : ses réglages et son jeton vont dans les tables de plugin, de poste elles aussi.
+    await app.api('PUT', '/api/plugins/jenkins/settings', { jenkins_url: 'https://jenkins.equipe.test', jenkins_user: SECRETS.jenkins_user, jenkins_token: SECRETS.jenkins_token });
     for (const [sub, champs] of groupes) {
       await ouvrirReglages(sub);
       for (const [nom, v] of Object.entries(champs)) {

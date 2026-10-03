@@ -3,9 +3,6 @@
 .notif-status { font-size: 13px; }
 .notif-status.notif-granted { color: var(--ok, #2e7d46); }
 .notif-status.notif-denied { color: var(--danger, #c0392b); }
-/* « 8 jobs sur 8 » : quatre lignes à 1280 px, la barre d'outils étant serrée. Un compteur
-   court n'a aucune raison d'être coupé — c'est au reste de la barre de céder. */
-#jenkinsCount { white-space: nowrap; }
 /* Un compteur en attente de sa donnée : il garde sa place (sinon l'onglet s'élargit d'un
    demi-caractère quand le chiffre arrive) mais n'affirme rien. */
 .seg-count.is-waiting { min-width: 1.2em; color: transparent; }

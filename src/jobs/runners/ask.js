@@ -4,6 +4,7 @@
 const db = require('../../db');
 const proc = require('../../core/proc');
 const notify = require('../../core/notify');
+const events = require('../../core/events');
 const asker = require('../../session/asker');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique } = require('../apres-session');
@@ -13,12 +14,15 @@ async function runAskJob(jobId, questionId, opts = {}) {
   setJob(jobId, { status: 'running', total: 1, done_count: 0, started_at: new Date().toISOString(), message: t('job.msg.starting') });
   logLine(jobId, null, t('log.job.ask-start', { id: jobId }));
   const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
+  events.emit('session.started', { kind: 'ask', id: questionId, action: 'run' }).catch(() => {});
+  let fin = 'done';
   try {
     await asker.runQuestion(questionId, onLog, opts);
     if (proc.isCancelled()) {
       db.prepare("UPDATE question SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), questionId);
       logLine(jobId, null, t('log.job.stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      fin = 'stopped';
       return;
     }
     setJob(jobId, { status: 'done', done_count: 1, finished_at: new Date().toISOString(), message: '' });
@@ -28,8 +32,10 @@ async function runAskJob(jobId, questionId, opts = {}) {
     if (proc.isCancelled()) {
       db.prepare("UPDATE question SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), questionId);
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      fin = 'stopped';
       return;
     }
+    fin = 'error';
     const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
     db.prepare("UPDATE question SET status = 'error', last_error = ?, updated_at = ? WHERE id = ?")
       .run(full, new Date().toISOString(), questionId);
@@ -38,6 +44,7 @@ async function runAskJob(jobId, questionId, opts = {}) {
     notify.push('job_failed', { question_id: questionId, message: String(e.message).slice(0, 200) });
   } finally {
     marquerFinExecution('question', questionId);
+    events.emit('session.finished', { kind: 'ask', id: questionId, action: 'run', status: fin }).catch(() => {});
   }
 }
 

@@ -30,7 +30,7 @@ const { startApp } = require('./helpers/app');
  * par les tests s'y accumulent. Ce fichier l'a fait, et il a fallu réparer la base à la main.
  *
  * D'où ces trois variables remplies dans le `before`, après le démarrage. */
-let veille; let docker; let jenkins; let notify;
+let veille; let docker; let jenkins; let notify; let jkVeille;
 
 // Les événements poussés depuis le dernier appel — `notify` est un buffer global.
 let curseur = 0;
@@ -55,7 +55,10 @@ describe('Veille de fond', () => {
     /* eslint-disable global-require */
     veille = require('../src/integrations/veille');
     docker = require('../src/integrations/docker');
-    jenkins = require('../src/integrations/jenkins');
+    /* La veille des builds vit dans le plugin Jenkins (embarqué, en processus) : même instance que celle
+       qu'il a configurée à l'activation, et son client se remplace comme avant. */
+    jkVeille = require('../plugins/jenkins/src/veille');
+    jenkins = jkVeille.client;
     notify = require('../src/core/notify');
     /* eslint-enable global-require */
     vraiStatus = docker.status; vraiListe = docker.listContainers;
@@ -119,39 +122,39 @@ describe('Veille de fond', () => {
     before(() => { jenkins.isConfigured = () => true; });
 
     test('rien n’est demandé à Jenkins tant qu’aucun build n’est attendu', async () => {
-      veille.oublierTout();
+      jkVeille.oublierTout();
       let appels = 0;
       jenkins.detail = async () => { appels += 1; return { builds: [] }; };
-      await veille.tourJenkins({});
+      await jkVeille.tourJenkins({});
       assert.equal(appels, 0, 'un outil local ne martèle pas le CI de l’équipe');
     });
 
     test('le build ATTENDU, terminé, fait l’événement — et l’attente s’efface', async () => {
-      veille.oublierTout();
+      jkVeille.oublierTout();
       nouveaux();
-      veille.attendreJenkins('dossier/deploy', 41);
+      jkVeille.attendreJenkins('dossier/deploy', 41);
       // Encore en cours, et le numéro d'avant : deux raisons de se taire.
       jenkins.detail = async () => ({ builds: [{ number: 41, result: 'SUCCESS', building: false }] });
-      assert.equal(await veille.tourJenkins({}), 0);
+      assert.equal(await jkVeille.tourJenkins({}), 0);
       jenkins.detail = async () => ({ builds: [{ number: 42, result: null, building: true }] });
-      assert.equal(await veille.tourJenkins({}), 0);
+      assert.equal(await jkVeille.tourJenkins({}), 0);
       assert.deepEqual(nouveaux('jenkins_done'), []);
 
       jenkins.detail = async () => ({ builds: [{ number: 42, result: 'FAILURE', building: false }] });
-      assert.equal(await veille.tourJenkins({}), 1);
+      assert.equal(await jkVeille.tourJenkins({}), 1);
       const [e] = nouveaux('jenkins_done');
       assert.equal(e.path, 'dossier/deploy');
       assert.equal(e.number, 42);
       assert.equal(e.ok, false, 'un rouge est justement ce qu’on veut apprendre sans regarder');
-      assert.deepEqual(veille.attendus(), [], 'l’attente est close');
+      assert.deepEqual(jkVeille.attendus(), [], 'l’attente est close');
     });
 
     test('un Jenkins injoignable ne perd pas l’attente', async () => {
-      veille.oublierTout();
-      veille.attendreJenkins('dossier/deploy', 1);
+      jkVeille.oublierTout();
+      jkVeille.attendreJenkins('dossier/deploy', 1);
       jenkins.detail = async () => { throw new Error('ECONNREFUSED'); };
-      await veille.tourJenkins({});
-      assert.deepEqual(veille.attendus(), ['dossier/deploy'], 'on retentera au tour suivant');
+      await jkVeille.tourJenkins({});
+      assert.deepEqual(jkVeille.attendus(), ['dossier/deploy'], 'on retentera au tour suivant');
     });
   });
 
