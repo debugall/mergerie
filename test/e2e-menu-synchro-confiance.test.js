@@ -257,11 +257,16 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
        se redessinait avec la nouvelle signature, et le clic approuvait la version à jour —
        aucun refus, aucun toast. On cache la version des données au sondage le temps de la
        scène, pour que l'écran reste ce qu'il montre : la version à trois commandes. */
+    /* UN SONDAGE EN VOL AU MOMENT DE `unroute` (ou de la fermeture de la page) : son `route.fetch()` revient APRÈS, et `route.fulfill()` lève « Route is already
+       handled! » — une rejection que rien n'attend, que Node attribue au `before` du fichier et qui fait échouer tout le fichier sur un runner lent. La réponse
+       n'a plus de destinataire : on l'abandonne sans bruit. */
     await page.route('**/api/status', async (route) => {
-      const rep = await route.fetch();
-      const corps = await rep.json();
-      delete corps.dataVersion;
-      await route.fulfill({ response: rep, json: corps });
+      try {
+        const rep = await route.fetch();
+        const corps = await rep.json();
+        delete corps.dataVersion;
+        await route.fulfill({ response: rep, json: corps });
+      } catch { /* la route a été retirée ou la page fermée pendant le fetch */ }
     });
     await claire.api('PUT', `/api/verifiers/${chezElle.id}`, { ...chezElle, commands: ['npm ci', 'npm test', 'npm run lint', 'node scripts/telecharge-et-lance.js'], repos: [] });
     await claire.synchroniser();
@@ -275,7 +280,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
     await page.locator('.toast.err', { hasText: /a changé depuis/ }).first().waitFor();
     assert.equal((await app.api('GET', '/api/verifiers')).body.find((x) => x.id === recu.id).approval_pending, true,
       'la version jamais montrée n’est pas approuvée');
-    await page.unroute('**/api/status');
+    await page.unroute('**/api/status', { behavior: 'ignoreErrors' });   // les sondages encore en vol finissent sans erreur
 
     // L'écran se redessine avec ce qui est arrivé : c'est CELA qu'on approuve.
     await page.waitForFunction((id) => /node scripts\/telecharge-et-lance\.js/.test(
