@@ -205,7 +205,7 @@ export interface PluginContext {
   schedule: (intervalMs: number, fn: () => void | Promise<void>, options?: { immediate?: boolean, inDemo?: boolean }) => number;
   /** arrête une tâche — permission `schedule` */
   unschedule: (id: number) => void;
-  /** lance SANS shell, sous-commande en liste blanche (non éprouvé en V1) — permission `exec` */
+  /** lance SANS shell, sous-commande en liste blanche ; `env` s’ajoute à un environnement minimal, sans PATH, HOME, LD_*, DYLD_*, NODE_OPTIONS, GIT_*, SHELL, BASH_ENV… — permission `exec` */
   exec: (bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>;
   net: {
     /** HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s — permission `net` */

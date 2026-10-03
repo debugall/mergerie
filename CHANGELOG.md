@@ -102,6 +102,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   `LIKE` whose `_` is a wildcard). A table now belongs to the plugin with the longest matching prefix among the known plugins, in the
   SQL guard, in `ctx.db.tables()` and when uninstalling.
 - **A plugin's routes are built once per activation, not once per request**, and are rebuilt when it is reactivated.
+- **`ctx.exec` no longer lets a plugin set `PATH`, `LD_PRELOAD`, `NODE_OPTIONS`, `GIT_*`…** through its `env` option, which bypassed the
+  sub-command allowlist.
 - **The linked projects you add in a merge request's Context are kept.** Saving the Context sent an empty list, so reopening it showed no
   linked project: a rename made for the Links screen had changed the class of the rows without changing the code that reads them.
   The Context modal now saves and shows them again, and a test does the whole gesture in a browser.

@@ -58,6 +58,27 @@ describe('SDK — préfixes de tables qui se chevauchent', () => {
   });
 });
 
+describe('SDK — ctx.exec : l’environnement ne contourne pas la liste blanche', () => {
+  const fs = require('node:fs'); const os = require('node:os');
+  const script = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'exec-env-')), 's.js');
+  fs.writeFileSync(script, "process.stdout.write(JSON.stringify({ d: process.env.DISPLAY || null, p: process.env.PATH_PLUGIN || null }))");
+  const ctx = () => sdk.createTestContext({ manifest: { name: 'p', version: '1.0.0', apiVersion: '1', displayName: 'P', description: '', main: 'index.js', permissions: ['exec'] } });
+  const lancer = (t, env) => t.ctx.exec(process.execPath, [script], { allowlist: [script], timeoutMs: 15000, env });
+  test('PATH, LD_PRELOAD, DYLD_*, NODE_OPTIONS, GIT_*, SHELL, BASH_ENV… sont refusés, quelle que soit la casse', async () => {
+    const t = ctx();
+    for (const k of ['PATH', 'path', 'HOME', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_INSERT_LIBRARIES', 'NODE_OPTIONS', 'GIT_SSH_COMMAND', 'GIT_EXTERNAL_DIFF', 'GIT_CONFIG_COUNT', 'SHELL', 'BASH_ENV', 'ENV', 'IFS']) {
+      await assert.rejects(() => lancer(t, { [k]: 'x' }), /variable d'environnement .* refusée/, k);
+    }
+    t.close();
+  });
+  test('les variables d’un outil passent : DISPLAY, PLAYWRIGHT_BROWSERS_PATH, NODE_PATH, et celles du plugin', async () => {
+    const t = ctx();
+    const r = await lancer(t, { DISPLAY: ':9', PLAYWRIGHT_BROWSERS_PATH: '/x', NODE_PATH: '/y', PATH_PLUGIN: 'ok' });
+    assert.deepEqual(JSON.parse(r.stdout), { d: ':9', p: 'ok' });
+    t.close();
+  });
+});
+
 describe('SDK — ctx.dataDir (permission storage)', () => {
   const manifeste = (permissions) => ({ name: 'p', version: '1.0.0', apiVersion: '1', displayName: 'P', description: '', main: 'index.js', permissions });
   test('avec « storage » : un dossier existant et privé ; sans, la primitive n’existe pas', () => {

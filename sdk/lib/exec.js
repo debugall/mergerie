@@ -4,6 +4,12 @@
    la forme est celle que `src/git/git.js` applique déjà à git. */
 const { spawn } = require('node:child_process');
 
+/* LES VARIABLES D'ENVIRONNEMENT QU'UN PLUGIN NE POSE PAS. `env` s'ajoute à un environnement minimal ; certaines clés changent CE QUE le binaire
+   exécute malgré la liste blanche de sous-commandes (`git` obéit à GIT_SSH_COMMAND, GIT_EXTERNAL_DIFF, GIT_CONFIG_* ; tout binaire à PATH, LD_PRELOAD,
+   DYLD_*, NODE_OPTIONS…) — le même but que `-c` ou `--upload-pack` refusés plus bas. Passent : les variables d'un outil (DISPLAY,
+   PLAYWRIGHT_BROWSERS_PATH, NODE_PATH…). */
+const ENV_REFUSEES = /^(PATH|HOME|SHELL|IFS|ENV|BASH_ENV|LD_.*|DYLD_.*|NODE_OPTIONS|GIT_.*)$/i;
+
 const DRAPEAUX_REFUSES = [/^-c$/, /^--exec(?:=|$)/, /^--config(?:=|$)/, /^--upload-pack(?:=|$)/, /^--receive-pack(?:=|$)/, /^-e$/, /^--eval(?:=|$)/, /^--?ext-diff$/, /^--textconv$/];
 
 /* `fournisseur` : { options(opts) → options de spawn (groupe de processus du cœur), tuer(child, signal) }.
@@ -17,6 +23,7 @@ function executer(plugin, bin, args, { cwd, timeoutMs = 60_000, allowlist, denyF
     if (!Array.isArray(allowlist) || !allowlist.length) return reject(new Error(`${plugin} : exec — allowlist de sous-commandes requise`));
     const sous = args.find((a) => !a.startsWith('-'));
     if (!sous || !allowlist.includes(sous)) return reject(new Error(`${plugin} : exec — sous-commande « ${sous || '(aucune)'} » hors liste blanche (${allowlist.join(', ')})`));
+    for (const k of Object.keys(env || {})) if (ENV_REFUSEES.test(k)) return reject(new Error(`${plugin} : exec — variable d'environnement ${k} refusée`));
     const refuses = [...DRAPEAUX_REFUSES, ...denyFlags.map((d) => (d instanceof RegExp ? d : new RegExp(`^${String(d).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:=|$)`)))];
     for (const a of args) if (refuses.some((re) => re.test(a))) return reject(new Error(`${plugin} : exec — drapeau refusé : ${a}`));
     const envMinimal = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG || 'C.UTF-8', ...env };
@@ -36,4 +43,4 @@ function executer(plugin, bin, args, { cwd, timeoutMs = 60_000, allowlist, denyF
   });
 }
 
-module.exports = { executer, DRAPEAUX_REFUSES };
+module.exports = { executer, DRAPEAUX_REFUSES, ENV_REFUSEES };

@@ -22,7 +22,7 @@ ce dont vous avez lu le code.
 | `db` | ses tables `plugin_<nom>_*` | toute autre table (les jetons sont dans `local_config`, inaccessible), `sqlite_master`, `ATTACH` |
 | `http` / `sse` | des routes sous `/api/plugins/<nom>/`, derrière les mêmes gardes que le cœur (origine, jeton local, CSP) | un chemin hors de ce préfixe |
 | `net` | des requêtes HTTP(S) sortantes, avec la convention TLS du cœur (`<NOM>_CA_CERT`, `<NOM>_INSECURE_TLS`) | — (un plugin peut joindre n'importe quelle adresse : c'est à vous de lire ce qu'il appelle) |
-| `exec` | un binaire, SANS shell, avec une **liste blanche de sous-commandes** et des drapeaux refusés (`-c`, `--exec`, `--config`, `--upload-pack`…), environnement minimal, délai | un shell, un drapeau à exécution arbitraire |
+| `exec` | un binaire, SANS shell, avec une **liste blanche de sous-commandes** et des drapeaux refusés (`-c`, `--exec`, `--config`, `--upload-pack`…), environnement minimal (l'option `env` ne peut poser ni `PATH`, `HOME`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `GIT_*`, `SHELL`, `BASH_ENV`), délai | un shell, un drapeau à exécution arbitraire |
 | `secrets` | ses propres secrets, masqués `***` vers l'écran — ils ne s'en copient que par le bouton « copier » de l'écran, sur un geste explicite, si le schéma les déclare `x-secret` | les secrets du cœur ou d'un autre plugin |
 | `settings` | ses réglages, validés par son schéma | les réglages du cœur |
 | `env` | les variables `<NOM>_*` de l'environnement du serveur | `PATH`, `HOME`, les jetons du `.env` |
