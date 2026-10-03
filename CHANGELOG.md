@@ -114,6 +114,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A plugin the upgrade had already marked enabled now comes up the moment you install it.** On a machine that had the Docker, Jenkins or Links tab, the upgrade
+  keeps the plugin "enabled"; installing it from Settings → Plugins used to leave it showing as "in error" until the next restart, with its data back but its tab
+  missing. It is activated at once, and a plugin with no earlier state still stays disabled until you enable it.
 - **A plugin's SQL may use `ON CONFLICT … DO UPDATE SET`.** The plugin SQL guard read the `UPDATE` of an upsert as a table named `set` and refused the
   statement; it now reads the upsert for what it is, and still refuses a foreign table inside it.
 - **An open report that becomes stale updates on screen.** "Relancer (delta)" and the stale badge only appeared after reloading the page: a

@@ -21,6 +21,9 @@ app.post('/api/plugins/rescan', wrap((req, res) => { res.json({ plugins: plugins
 app.post('/api/plugins/install', wrap(async (req, res) => {
   const b = req.body || {};
   const f = b.url ? await plugins.installerDepuisGit(b.url, b.ref) : plugins.installerDepuisDossier(b.path);
+  /* Un plugin dont l'état persisté dit déjà « activé » — un poste monté de version dont l'onglet (Docker, Jenkins, Liens…) est devenu un plugin tiers — s'active
+     À L'INSTALLATION : sinon il resterait « en erreur » jusqu'au redémarrage, et les données qu'il retrouve seraient là sans l'écran qui les montre. */
+  if (f && f.enabled && f.valide && !f.actif) await plugins.activer(f.nom);
   res.json({ ok: true, name: f && f.nom, plugins: plugins.liste() });
 }));
 
