@@ -296,6 +296,17 @@ describe('store — la base prévient, le store écrit', () => {
     assert.ok(store.existe(`todos/${uid}.json`));
   });
 
+  test('une todo liée à un genre DE PLUGIN (la table ne le contraint plus) se partage avec son lien intact', () => {
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO todo (title, status, priority, shared, link_kind, link_ref, created_at, updated_at)
+      VALUES ('Relancer le déploiement', 'open', 'normal', 1, 'build', 'equipe/deploy#42', ?, ?)`).run(now, now);
+    store.ecouler();
+    const uid = db.prepare("SELECT uid FROM todo WHERE title = 'Relancer le déploiement'").get().uid;
+    const doc = JSON.parse(fs.readFileSync(path.join(require('../src/core/paths').SHARED_DIR, `todos/${uid}.json`), 'utf8'));
+    assert.equal(doc.link_kind, 'build', 'le genre voyage tel quel : le fichier d’équipe ne le filtre pas');
+    assert.equal(doc.link_ref, 'equipe/deploy#42', 'et sa référence aussi (un job n’a pas d’identifiant local à traduire)');
+  });
+
   /* UNE LIGNE QUI NE SAIT PAS ENCORE CALCULER SON CHEMIN RESTE DANS LA FILE.
      C'était l'intention écrite au-dessus du `catch`, et elle ne s'appliquait pas : un
      `oublier.run()` inconditionnel suivait, et retirait la ligne de toute façon. Une passe dont
