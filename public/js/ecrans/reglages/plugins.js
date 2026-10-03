@@ -87,7 +87,8 @@ document.addEventListener('click', async (e) => {
     try {
       await busy(un, () => api(`/plugins/${nom}/uninstall`, { method: 'POST', body: { deleteData: !garder } }));
       toast(tr('plugins.uninstalled', { name: nom }));
-      loadPlugins();
+      // Retiré, un plugin actif laisse son onglet dans la barre jusqu'au rechargement (comme après « Désactiver »).
+      setTimeout(() => window.location.reload(), 300);
     } catch (err) { toast(explainError(err.message), true); }
   }
 });
@@ -107,7 +108,10 @@ onEl($('#pluginInstallForm'), 'submit', async (e) => {
     const d = await busy(f.querySelector('button[type=submit]'), () => api('/plugins/install', { method: 'POST', body }));
     toast(tr('plugins.installed', { name: d.name || '' }));
     f.reset();
-    loadPlugins();
+    /* Un plugin que l'installation a activé tout seul (un poste monté de version qui l'avait déjà) pose son onglet, ses réglages et ses scripts :
+       la page se recharge, comme après « Activer ». Un plugin neuf reste désactivé : la liste suffit. */
+    if ((d.plugins || []).some((p) => p.name === d.name && p.active)) setTimeout(() => window.location.reload(), 300);
+    else loadPlugins();
   } catch (err) { toast(explainError(err.message), true); }
 });
 onEl($('#pluginInstallForm'), 'change', (e) => {

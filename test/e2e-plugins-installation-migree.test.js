@@ -5,7 +5,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { startApp } = require('./helpers/app');
+const { startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR } = require('./helpers/app');
 
 const FIXTURES = path.join(__dirname, 'fixtures', 'plugins');
 
@@ -31,5 +31,31 @@ describe('Plugins — installer un plugin dont l’état persisté dit « activ�
     const f = await de('onglet-replie');
     assert.deepEqual([f.enabled, f.active, f.state], [true, true, 'active'], 'activé sans « Activer » et sans redémarrage');
     assert.ok((await app.api('GET', '/')).text.includes('data-tab="replie"'), 'son onglet est dans la page');
+  });
+
+  /* L'écran : installer depuis Réglages → Plugins un plugin que la migration avait marqué « activé » pose son menu SANS rafraîchir la page à la main. */
+  describe('dans le navigateur', { skip: navigateurDispo().dispo ? false : MSG_NAVIGATEUR }, () => {
+    let navigateur; let page;
+    before(async () => {
+      navigateur = await lancerNavigateur();
+      page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
+      await page.addInitScript(() => { try { localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] })); } catch { /* stockage refusé */ } });
+      await page.goto(app.base);
+      await page.waitForSelector('nav button[data-tab="admin"]');
+    });
+    after(async () => { if (navigateur) await navigateur.close(); });
+
+    test('le formulaire d’installation recharge la page quand le plugin s’est activé, et son onglet apparaît', async () => {
+      app.db.prepare("INSERT OR REPLACE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('hello-fixture', 1, '', 'user', ?)").run(new Date().toISOString());
+      assert.equal(await page.locator('nav button[data-tab="hello"]').count(), 0, 'avant : pas d’onglet');
+      await page.locator('nav button[data-tab="admin"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="plugins"]').click();
+      await page.locator('.plugin-install > summary').click();
+      await page.waitForSelector('#pluginInstallForm', { state: 'visible' });
+      await page.locator('#pluginInstallForm [name="source"][value="path"]').check();
+      await page.fill('#pluginInstallForm [name="path"]', path.join(FIXTURES, 'hello-fixture'));
+      await Promise.all([page.waitForEvent('load'), page.locator('#pluginInstallForm button[type="submit"]').click()]);
+      await page.waitForSelector('nav button[data-tab="hello"]', { state: 'attached' });
+    });
   });
 });
