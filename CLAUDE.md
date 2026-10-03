@@ -51,6 +51,27 @@
   `MERGERIE_DATA_DIR`. Pieces keep the old file's text order — for modals it is the stacking
   order — so a screen can have several modal files.
 
+- **A plugin is code outside `src/`, fed by a closed `ctx`** (`plugins/<name>/` built-in,
+  `<dataDir>/plugins/<name>/` third-party; loader in `src/plugins/`, shared pure parts in `sdk/lib/`).
+  **`sdk/contract.js` is the single source** of the API: a primitive, a permission, an event, a
+  manifest field exists there or not at all; `docs/plugins/API.md`, `EVENTS.md` and `sdk/index.d.ts`
+  are generated from it (`npm run plugins:docs`), and `npm run check:plugins` fails when they
+  diverge. Jenkins is a plugin: a new need in a plugin is a new ctx primitive (contract, then
+  `sdk/lib/contexte.js`, then its core provider in `src/plugins/contexte.js`), never a
+  `require` into `src/` — refused at load time and by the check. Core never imports
+  `plugins/` either: it emits an event (`src/core/events.js`) or asks the registries
+  (`src/plugins/registre.js`), and the front asks `js/transverse/plugins.js` (`pluginsHtml`…).
+  A plugin's tables are `plugin_<name>_*`, its routes relative under `/api/plugins/<name>/`, its
+  translation keys `<name>.*`, its front scripts see only the names of the kit
+  (`js/transverse/kit.js`, one key per line — a core helper a plugin needs is added there). Its
+  HTML lands on the `<!--@plugins:…-->` markers of `index.html`, `sidebar.html`, `sprite.html`
+  and `reglages.html`. Built-in plugins run in-process, third-party in a worker: a primitive must
+  work through the RPC (no live object, no callback kept by the core). A plugin's tests use
+  `createTestContext()` from `sdk/`; a core test that needs Jenkins calls `configureJenkins()`
+  from `test/helpers/app.js`. **One Jenkins-era rule still applies to core migrations**: the move
+  of Jenkins data lives in `src/db/schema/18-plugins.js` and must stay replayable on a database
+  from before it.
+
 - **A new settings field lives in three places**; `npm run check` fails on each omission:
   `#configForm` (`public/index.html`); `CONFIG_FIELDS` (`public/app.js`), the whitelist load and
   save both iterate — missing there, the field displays, accepts input and is silently never

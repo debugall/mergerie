@@ -13,6 +13,24 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Plugin system.** Mergerie can now be extended by plugins: a folder with a `plugin.json` and an
+  `index.js` that declares what it needs (permissions) and receives a closed, documented `ctx` —
+  settings and secrets, its own prefixed tables, routes under `/api/plugins/<name>/`, periodic tasks,
+  events, a tab, actions on merge request cards, a section of the morning brief, desktop
+  notifications. *Settings → Plugins* lists them with their version, state, permissions and events,
+  enables or disables them **without restarting** (the page reloads, data is kept), and installs a
+  third-party plugin from a local folder or a git address — third-party plugins run in their own
+  worker, disabled until you enable them, and `exec` shows an explicit warning. A developer kit
+  (`sdk/`, `@mergerie/plugin-sdk`) gives the TypeScript types, an in-memory test context and a
+  generator (`npm create mergerie-plugin`); `plugins/hello` is the generated example, shipped
+  disabled. Documentation in `docs/plugins/` (fr and en), every example of which the CI runs.
+- **Jenkins becomes a built-in plugin** (`plugins/jenkins`) — **no functional change**: the tab, the
+  job sheet, the launches, the linked jobs, the badges, the end-of-build notification, the
+  « CI red » section of the brief and the console in a session's follow-up are exactly as before. On
+  upgrade, the connection (URL, user, token, refresh cadence), the linked jobs and the last
+  connection test move to the plugin with nothing lost; the Jenkins settings now live in
+  *Settings → Jenkins* as the plugin's own settings (the URL is a per-machine setting, like the
+  rest of the connection), and the API moved from `/api/jenkins/*` to `/api/plugins/jenkins/*`.
 - **Tags by period, in the Git tab.** "What did we ship these two weeks?" used to mean opening every
   repository. The new *Tags by period* sub-tab takes two dates (last 7 or 30 days in one click) and lists
   every tag created between them across all active repositories: repository, tag, date, first line
