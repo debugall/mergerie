@@ -14,8 +14,7 @@ const jira = require('../../integrations/jira');
 const notes = require('../../notes/notes');
 const plugins = require('../../plugins');
 const brief = require('../../notes/brief');
-const demoDocker = require('../../demo/docker');
-const veille = require('../../integrations/veille');
+const demoMode = require('../../demo/mode');
 const path = require('path');
 const fs = require('fs');
 const { servirFichierNonFiable } = require('../fichiers');
@@ -281,15 +280,13 @@ app.post('/api/todos/:id/reminded', wrap((req, res) => {
    iid → dépôts, pas la liste des MR. Un même numéro pouvant exister sur plusieurs dépôts,
    on rend tous les candidats et le front décide (lien direct ou recherche pré-remplie). */
 app.get('/api/notes-index', wrap((req, res) => {
-  res.json({ mrs: notes.indexAutolink(), jira: demoDocker.isDemo() || jira.isConfigured(getConfig()) });
+  res.json({ mrs: notes.indexAutolink(), jira: demoMode.isDemo() || jira.isConfigured(getConfig()) });
 }));
 app.get('/api/brief', wrap((req, res) => {
   const cfgB = getConfig();
   const d = brief.construire({
     staleDays: cfgB.stale_mr_days,
     seuilPret: cfgB.converge_threshold,
-    // Ce que la veille a vu au dernier tour : le brief n'appelle jamais Docker lui-même.
-    dockerDown: demoDocker.isDemo() ? demoDocker.briefTombes() : veille.dockerTombes(),
   });
   /* Les lignes de todo du brief sont les MÊMES que celles de la liste : elles portent donc le
      même état de merge request. Enrichi ici et pas dans `brief.js`, qui compose le brief et

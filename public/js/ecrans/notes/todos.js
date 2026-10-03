@@ -89,9 +89,6 @@ function todoLinkHtml(t) {
     const branche = reste.join(':');
     return `<button type="button" class="note-link" data-todo-branch="${esc(repoId)}" data-todo-branch-name="${esc(branche)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('branch')} ${esc(branche)}</button>`;
   }
-  if (t.link_kind === 'container') {
-    return `<button type="button" class="note-link" data-todo-container="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('inbox')} ${esc(t.link_ref)}</button>`;
-  }
   // Un genre déclaré par un plugin : rendu et ouverture par lui.
   const dePlugin = pluginsLienHtml(t);
   if (dePlugin) return dePlugin;
@@ -119,8 +116,6 @@ document.addEventListener('click', async (e) => {
     toast(tr('notes.todo.branch-go', { branch: br.dataset.todoBranchName || '' }));
     return;
   }
-  const c = e.target.closest && e.target.closest('[data-todo-container]');
-  if (c) { navTab('docker'); showDockerSub('compose'); return; }
 });
 
 // L'iid affiché vient de l'index d'autolink : la todo ne stocke que l'id interne, et un

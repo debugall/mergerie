@@ -1596,6 +1596,8 @@ Operations across **several repositories at once**, and branch exploration.
 > never as a fact.
 
 ### Docker
+> **Docker is a plugin**: the tab lives in its own repository ([docker-mergerie](https://gitlab.com/amady/docker-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the “Containers down” brief section, the state of the services before an “in place” verification) exists. Everything below describes its screen.
+
 Two sub-views, like Coding/Exploration in AI Dev.
 
 **What the compose already knows.** A service publishing a port **opens it in one click** (`:3000`), and

@@ -9,7 +9,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const { pMap } = require('../../core/pmap');
 const forge = require('../../forge');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const { repoById, wrap } = require('../http');
 const { auteurs } = require('../lib/partage');
 
@@ -107,7 +107,7 @@ app.get('/api/dashboard/activity', wrap(async (req, res) => {
   const mois = derniersMois(6);
   /* En démo, l'activité est SEMÉE en base : on la lit telle quelle sans appeler de forge —
      il n'y en a pas, et l'écran doit montrer quelque chose de parlant. */
-  const demo = demoDocker.isDemo();
+  const demo = demoMode.isDemo();
   if (!demo && !forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) {
     return res.json({ configured: false, months: mois, projects: [] });
   }
@@ -158,7 +158,7 @@ app.get('/api/dashboard/activity/:repoId', wrap(async (req, res) => {
   if (!repo) throw new Error(t('err.projet-inconnu'));
   const cfg = getConfig();
   const mois = derniersMois(12);
-  const demo = demoDocker.isDemo();
+  const demo = demoMode.isDemo();
   let erreur = null;
   if (!demo) {
     try { await majActiviteDepot(cfg, repo, mois); }

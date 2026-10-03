@@ -1,7 +1,7 @@
 # Les prochains plugins : Liens, Docker, Git — et ce qui reste dans le cœur
 
-Étape 0 bis. Relevé **en lecture seule** (rien n'est extrait ici) des trois onglets qui suivront
-Jenkins, pour dimensionner le ctx **une fois** : chaque extraction suivante doit être un
+Étape 0 bis. Relevé **en lecture seule** des trois onglets qui suivaient
+Jenkins (Docker a depuis été extrait : voir plus bas), pour dimensionner le ctx **une fois** : chaque extraction suivante doit être un
 déplacement, pas une primitive de plus. Même grille que `JENKINS-INVENTORY.md`.
 
 ---
@@ -29,27 +29,21 @@ frécence `launcher_usage`, raccourci Ctrl+K) — elle sert tous les écrans ; L
 fournisseur parmi sept. `liensDeMr` doit devenir une **requête de service** entre plugins (Jenkins
 → Liens) ou un décorateur de MR fourni par Liens.
 
-## 2. Docker (`docker`)
+## 2. Docker (`docker`) — fait : un plugin tiers, `docker-mergerie`
 
-| Volet | Contenu |
+L'onglet Docker a quitté le cœur. Il vit dans son propre dépôt ([`docker-mergerie`](https://gitlab.com/amady/docker-mergerie)), s'installe comme n'importe quel
+plugin tiers et tourne dans un worker. Ce que l'extraction a demandé au contrat — des **ajouts**, même `apiVersion` (voir [MIGRATION.md](./MIGRATION.md)) :
+
+| Besoin | Réponse |
 |---|---|
-| Serveur | `integrations/docker.js` (~810 l. : `docker ps/inspect/compose`, `spawn` sans shell via `git/git.run`, **cibles Makefile en liste blanche** l. 379, `spawnLogs` = processus long `docker logs -f`, `summary`, `estTombe`, `nomsConnus`), `app/routes/docker.js` (21 routes dont **`GET /api/docker/logs/stream` en SSE** l. 223, `bulk-action`, `preview-down`, `make/run`), `demo/docker.js`, `jobs/runners/docker.js` (actions compose exécutées **dans la file de jobs** du cœur) |
-| Tables | `docker_backup` (**L**, `06-depots-reviews-git.js:17`) ; `local_root` (répertoires locaux, partagée avec Git/Dépôts) |
-| Front | `js/ecrans/docker/` (ports `loadDocker`, `showDockerSub`, `refreshDockerBadges`, `marquerDockerVu`, `dockerStateLabel`, `dlogStop`), **poll santé 30 s** dans `demarrage.js:66` (pastilles err/warn du menu), logs multi-conteneurs en flux |
-| Tâches de fond | `veille.tourDocker` (60 s, transition « tournait → tombé » → `notify.push('docker_down')`, décochée par défaut) ; `dockerTombes()` lu par le **brief** (`notes/brief.js:362-408`, section Docker sans réseau) |
-| Secrets | aucun ; opérations **destructrices avec aperçu** (`preview-down` → confirmation) |
-| Tissages **sortants** (Docker → noyau) : 18 importateurs de `integrations/docker.js` | `lib/decouverte.js`, `lib/jira.js`, `routes/{activite,git,jira,jira-spec,links,mrs-resume,notes,verifications}.js`, `jobs/{index,ordonnanceur}.js`, `veille.js`, `server.js` — à relire un par un : la plupart n'utilisent que `isDemo()`/`nomsConnus()`/`gitDuRepertoire()` ; les **vérificateurs** peuvent cibler un compose (`routes/verifications.js`) ; la **file de jobs** porte un runner docker |
-| Démo | `demo/docker.js` (statique), `demo-seed.js` (sauvegardes) |
-| Tests | `e2e-docker*`, `e2e-veille` (bloc Docker, bouchonne `docker.status/listContainers` **dans le processus**), `unit-docker*` |
+| actions longues dans la file de jobs (journal, Stop, parallélisme, écran des jobs) | `ctx.jobs` (`register`, `start`) ; le `job` du runner lance ses commandes par le garde de `exec` et rend `{ code, tail }` |
+| `docker logs -f` : un processus qui dure, fermé à la déconnexion | `ctx.execStream` + `ctx.http.sse` **depuis un worker** |
+| les répertoires locaux où l'on cherche des fichiers compose | `ctx.repos.localRoots()` |
+| une cible `make` arbitraire, un binaire à résoudre (`DOCKER_BIN`) | pas de primitive de plus : `allowlist: [<la cible>]` après lecture du Makefile, candidats essayés un à un |
+| la fiche d'un dépôt qui porte un compose ; l'état des services avant une vérification | cibles `repo-row` et `verify-launch` ; service `docker.dirState` appelé par le cœur |
+| la veille de fond, le brief, la palette, la notification, le lien de todo | `schedule`, `registerBriefSection`, `registerPaletteProvider`, `notify.registerKind`, `registerLinkKind` — déjà là |
 
-**Primitives nécessaires** : `db`, `http.router`, **`http.sse(path, producer)`** (logs), **`exec(bin,
-args, {cwd, timeout, allowlist})`** (docker, docker compose, make), `schedule` (veille 60 s),
-`ui.registerTab` (avec **deux pastilles** err/warn et **poll 30 s** côté front), **`ui.confirm({preview})`**,
-`notify.registerKind('docker_down', default:false)`, **`ui.registerBriefSection`**, `demo.seed` +
-`demo.isDemo`, `events.emit('docker.container.down')`, `i18n.register`, et **`jobs.enqueue`** ⚠
-(les actions compose passent aujourd'hui par la file de jobs du cœur — soit la file devient une
-primitive publique `ctx.jobs.run({label, fn})`, soit le plugin exécute hors file et perd « Stop »,
-le journal et la sérialisation ; décision à prendre avant Docker, pas avant Jenkins).
+Les tables `docker_backup` et `make_run` sont **renommées** (`plugin_docker_backup`, `plugin_docker_make_run`) par `src/db/schema/18-plugins.js`, une fois, comme `repo_jenkins`.
 
 ## 3. Git (`git`) — l'onglet, pas la couche
 

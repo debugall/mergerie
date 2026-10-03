@@ -10,7 +10,7 @@ const { t } = i18n;
 const jira = require('../../integrations/jira');
 const notify = require('../../core/notify');
 const notes = require('../../notes/notes');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const tasks = require('../../agent/tasks');
 const { dernieresVerificationsParMr } = require('./verifications');
@@ -88,7 +88,7 @@ async function faireCheckJiraWatch() {
 
   let etats = [];
   try {
-    etats = demoDocker.isDemo()
+    etats = demoMode.isDemo()
       ? rows.map((r) => { const d = demoJira.issue(r.key); return d && { key: r.key, summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }).filter(Boolean)
       : await jira.statusOfKeys(getConfig(), rows.map((r) => r.key));
   } catch (e) {
@@ -223,7 +223,7 @@ async function prevenirJira(cible) {
   if (!iid) throw new Error(t('err.jira.no-mr-yet'));
   const cfg = getConfig();
   const texte = t('jira.notify.body', { iid, project: cible.project, url: cible.mr_url || '' });
-  if (demoDocker.isDemo()) return { demo: true, key: cle, commented: true, transitioned: true };
+  if (demoMode.isDemo()) return { demo: true, key: cle, commented: true, transitioned: true };
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   await jira.addComment(cfg, cle, texte);
   let transitioned = false;

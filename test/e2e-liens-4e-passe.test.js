@@ -156,9 +156,9 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   /* B16 — UNE TODO S'ACCROCHE AUX QUATRE NOUVEAUX OBJETS. Le `CHECK` de la table et la liste
      du module doivent dire la même chose : ce que l'un accepte et que l'autre refuse sort en
      erreur SQLite brute à l'écran. */
-  test('une todo se lie à une branche, une vérification, un build, un conteneur', async () => {
+  test('une todo se lie à une branche, une vérification, un build (le conteneur est un genre du plugin Docker)', async () => {
     for (const [kind, ref] of [['branch', `${repoId}:feature/x`], ['verification', '12'],
-      ['build', 'equipe/deploy#42'], ['container', 'api-core']]) {
+      ['build', 'equipe/deploy#42']]) {
       const r = await app.api('POST', '/api/todos', { title: `todo ${kind}`, link_kind: kind, link_ref: ref });
       assert.equal(r.status, 200, `${kind} refusé : ${r.text}`);
       assert.equal(r.body.link_kind, kind);

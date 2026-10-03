@@ -72,8 +72,7 @@ const retention = require('./session/retention');
 const notes = require('./notes/notes');
 const { t } = i18n;
 const git = require('./git/git');
-const demoDocker = require('./demo/docker');
-const veille = require('./integrations/veille');
+const demoMode = require('./demo/mode');
 const verifyrun = require('./verify/verifyrun');
 const copilot = require('./agent/copilot');
 const agentprofile = require('./agent/profile');
@@ -107,7 +106,6 @@ require('./app/routes/agent-passes');
 require('./app/routes/agents');
 require('./app/routes/config');
 require('./app/routes/data-sync');
-require('./app/routes/docker');
 require('./app/routes/git');
 require('./app/routes/git-compare');
 require('./app/routes/git-merge');
@@ -259,17 +257,13 @@ const server = app.listen(PORT, HOST, () => {
   );
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
-  /* La veille de fond : les conteneurs tombés. Une minute — la cadence de ce qu'on surveille,
-     pas celle d'un tableau de bord. (La fin des builds lancés d'ici est veillée par le plugin
-     qui les lance, par `ctx.schedule`.) */
-  if (!demoDocker.isDemo()) veille.demarrer({ getConfig, periodeMs: 60000 });
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
   /* LES PLUGINS, puis le bus : `app.ready` part quand tout — cœur et plugins — est en place.
      Un plugin qui lève à l'activation est marqué en erreur et le serveur continue. */
   plugins.demarrer({ log: (m) => console.log(m) })
     .then((liste) => { const actifs = liste.filter((p) => p.active).map((p) => p.name); if (actifs.length) console.log(`  plugins : ${actifs.join(', ')}`); })
     .catch((e) => console.log(`[plugins] ${e.message}`))
-    .then(() => events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoDocker.isDemo() }).catch(() => {}));
+    .then(() => events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoMode.isDemo() }).catch(() => {}));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -291,7 +285,6 @@ module.exports = {
     arreterJiraWatch();
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
-    veille.arreter();
     // Même raison pour le tic des horaires d'agents.
     agentschedule.arreter();
     jobs.programmation.arreter();

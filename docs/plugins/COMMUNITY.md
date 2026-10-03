@@ -17,7 +17,7 @@ avant d'activer.
 
 | Plugin | Rôle | Licence | apiVersion | Permissions |
 |---|---|---|---|---|
+| [`docker`](https://gitlab.com/amady/docker-mergerie) | l'ancien onglet Docker : projets compose et dérive de configuration, conteneurs hors-compose, actions groupées, cibles Makefile, journaux en direct, alerte de chute | AGPL-3.0-only | 1 | events, db, http, sse, schedule, exec, repos, jobs, env, ui.*, notify, demo, services |
 | [`jenkins-teams-notify`](https://gitlab.com/amady/jenkins-teams-notify) | publie un message dans un canal Teams quand un job Jenkins démarre ou se termine, par automatisation du navigateur (Playwright) | AGPL-3.0-only | 1 | events, settings, db, http, exec, storage, ui.tab, ui.actions, demo, services |
 
-Les onglets Liens, Docker et Git du cœur deviendront des plugins embarqués dans les prochaines versions
-([PLUGIN-CANDIDATES.md](./PLUGIN-CANDIDATES.md)).
+Les onglets Liens et Git du cœur pourraient suivre ([PLUGIN-CANDIDATES.md](./PLUGIN-CANDIDATES.md)) ; Docker l'a fait, en plugin tiers.

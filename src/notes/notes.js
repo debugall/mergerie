@@ -40,10 +40,10 @@ const MAX_PAGE = 200 * 1024;
 
 const PRIORITES = ['high', 'normal', 'low'];
 /* Les genres d'objet que le CŒUR sait ouvrir : une MR, un ticket, un dépôt, une branche
-   (`<dépôt>:<branche>`), une vérification, un conteneur. La table ne les contraint plus (cf.
+   (`<dépôt>:<branche>`), une vérification. La table ne les contraint plus (cf.
    `db/schema/18-plugins.js`) : un plugin déclare les siens (`ctx.ui.registerLinkKind`, par exemple
-   le build de CI `<job>#<numéro>`) et la route les passe en `genresExtra` tant qu'il est actif. */
-const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification', 'container'];
+   le build de CI `<job>#<numéro>`, ou le conteneur `container` du plugin Docker) et la route les passe en `genresExtra` tant qu'il est actif. */
+const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification'];
 // Combien de temps une todo faite reste visible, barrée, avant de s'archiver.
 const JOURS_AVANT_ARCHIVE = 7;
 

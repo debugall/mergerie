@@ -265,8 +265,8 @@ async function refreshStatus() {
         // Et le brief, qui compte les MR fraîches et les rapports qui attendent une décision.
         if ($('#tab-notes').classList.contains('active')) loadBrief();
         if ($('#tab-task').classList.contains('active')) loadTasks();
-        // action Docker terminée (up/restart/down…) → recharger la liste pour voir le nouvel état
-        if ($('#tab-docker').classList.contains('active')) loadDocker();
+        // Un job fini intéresse aussi les plugins (une action Docker terminée recharge sa liste) : le bus front le dit.
+        pluginsEvenements.emit('job.finished', { id: job.id, kind: job.kind, status: job.status });
         // `keep` : ne réécrit l'écran que si quelque chose d'affiché a changé.
         if (selectedMr) {
           const rendu = openReport(selectedMr, { keep: true });

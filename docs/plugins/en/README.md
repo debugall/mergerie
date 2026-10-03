@@ -58,5 +58,5 @@ its data. There is no central registry and no automatic download.
 | [COMMUNITY.md](./COMMUNITY.md) | known plugins |
 
 For the history of the work: [../JENKINS-INVENTORY.md](../JENKINS-INVENTORY.md) (the inventory that
-sized the API) and [../PLUGIN-CANDIDATES.md](../PLUGIN-CANDIDATES.md) (Links, Docker and Git, next in
+sized the API) and [../PLUGIN-CANDIDATES.md](../PLUGIN-CANDIDATES.md) (Links, Docker — done, as a third-party plugin — and Git, next in
 line) — in French.

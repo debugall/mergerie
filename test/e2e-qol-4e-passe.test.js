@@ -34,7 +34,7 @@ describe('Qualité de vie · 4ᵉ passe', () => {
      au milieu de libellés en clair. Un libellé manquant se voit ici, pas à l'écran. */
   test('toutes les saveurs de job et d’appel ont un libellé, dans les deux langues', () => {
     const rt = require('../public/runtime/i18n-runtime.js');
-    const jobs = ['review', 'rereview', 'modify', 'explain', 'task', 'local', 'gitops', 'docker',
+    const jobs = ['review', 'rereview', 'modify', 'explain', 'task', 'local', 'gitops',
       'converge', 'verify', 'ask', 'ask-review', 'reconcile'];
     const appels = ['review', 'explain', 'modify', 'task', 'explore', 'ask', 'question'];
     for (const lang of ['fr', 'en']) {
@@ -106,14 +106,6 @@ describe('Qualité de vie · 4ᵉ passe', () => {
     assert.equal(j.can_retry, false);
     assert.ok(j.no_retry_reason, 'la raison est donnée');
     assert.ok(!/^job\./.test(j.no_retry_reason), `clé brute : ${j.no_retry_reason}`);
-  });
-
-  /* C25 — les noms de conteneurs servent à filtrer les liens (routes/links.js).
-     On ne sonde pas Docker pour autant : on lit ce que le badge de santé a déjà vu. */
-  test('les noms de conteneurs déjà vus se lisent sans sonder Docker', () => {
-    const docker = require('../src/integrations/docker');
-    assert.deepEqual(docker.nomsConnus(), [], 'rien tant que Docker n’a pas été regardé');
-    assert.doesNotThrow(() => docker.nomsConnus());
   });
 
   describe('à l’écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {

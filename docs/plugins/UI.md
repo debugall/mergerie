@@ -43,8 +43,8 @@ Le bundle d'un plugin est évalué dans une **portée privée** où chaque clé 
 `window.mergerie` est en portée : `$`, `$$`, `api`, `tr`, `esc`, `safeUrl`, `toast`, `busy`, `skeleton`,
 `svgIco`, `emptyState`, `comboHtml`/`wireCombo` (les combos avec recherche), `repoComboHtml`/`wireRepoCombos`,
 `confirmDialog`, `navTab`, `fermerAuFond`, `errorBox`, `explainError`, `fmtDateTime`, `dateHtml`, `depuis`,
-`mdToHtml`, `showNotif`, `i18n`, et des objets : `repos`, `reviews`, `notes`, `agents`, `sessions`,
-`settings`, `ui`, `events`. **Rien d'autre du cœur** n'est accessible : `npm run check:plugins` refuse,
+`mdToHtml`, `ANSI` (lire les couleurs d’un journal), `showNotif`, `toastUndo`, `chipBranche`, `navMasque`, `i18n`, et des objets : `repos`, `reviews`, `notes`, `agents`, `sessions`,
+`settings`, `ui`, `events`, `jobs` (`jobs.refresh()` : relire la file après avoir lancé un job). **Rien d'autre du cœur** n'est accessible : `npm run check:plugins` refuse,
 dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit. La liste exacte est dans
 `public/js/transverse/kit.js` (une clé par ligne) ; elle est couverte par l'`apiVersion`.
 
@@ -68,7 +68,7 @@ dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit
 | `ui.settings.renderForm(plugin, conteneur)` | le formulaire généré depuis `settingsSchema` (aussi posé sur tout `[data-plugin-settings-form="<plugin>"]` d'un sous-onglet) |
 | `ui.tabButton(tabId)`, `ui.openTab(tabId)`, `ui.meta(plugin)`, `ui.reloadPage()` | utilitaires |
 
-`events.on('settings.changed' \| 'tab.opened', fn)` : un petit bus front.
+`events.on('settings.changed' \| 'tab.opened' \| 'job.finished', fn)` : un petit bus front (`job.finished` : `{ id, kind, status }`, `kind` vaut `plugin:<nom>` pour un job de plugin).
 
 ### Les cibles (`target`) des actions et décorations
 
@@ -82,6 +82,8 @@ dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit
 | `branch-badge` | les badges d'une ligne de l'explorateur | `{ branch, repo_id }` |
 | `verification` | ce qui suit un verdict vert, dans le rapport | la merge request, `ctx.verification` |
 | `repo-sheet` | la fiche d'un dépôt (Réglages → Dépôts) | la fiche |
+| `repo-row` | la ligne d'un dépôt dans Réglages → Dépôts (de petits liens à côté de son état) | le dépôt (dont `has_compose`) |
+| `verify-launch` | la fenêtre de lancement d'une vérification, quand un répertoire « in place » est en jeu | `{ dirs }` — les dossiers de travail |
 
 Le cœur ne connaît aucun plugin : il appelle « que rendez-vous pour cette cible ? » et insère ce qui
 revient. Le plugin pose ses propres `data-*` et écoute ses propres clics (délégation sur `document`).

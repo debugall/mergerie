@@ -40,7 +40,7 @@ describe('Plugin Jenkins — embarqué, à chaud, sans régression', () => {
     assert.ok(html.includes('<symbol id="i-pipeline"'), 'le symbole du sprite');
     assert.ok(html.includes('/plugins/jenkins/bundle.js') && html.includes('/plugins/jenkins/ui/i18n.js'), 'bundle et dictionnaire');
     const ordre = [...html.matchAll(/<button data-tab="([a-z-]+)"/g)].map((m) => m[1]);
-    assert.deepEqual(ordre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'], 'à sa place d’avant, avant Liens');
+    assert.deepEqual(ordre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'jenkins', 'links', 'dashboard', 'admin'], 'à sa place d’avant, avant Liens');
   });
 
   test('non-régression : lancer puis finir un build produit la même notification et les événements documentés', async () => {

@@ -1,18 +1,15 @@
 'use strict';
 /* LA VEILLE DE FOND (B14/B15) — ce que le serveur remarque pendant qu'on regarde ailleurs.
  *
- * Deux événements ne se produisaient pour personne : la fin d'un build Jenkins lancé d'ici
- * (guettée par le NAVIGATEUR, donc seulement l'onglet Jenkins ouvert) et la chute d'un
- * conteneur (rien du tout). Ce fichier tient les trois règles qui rendent cette veille
- * supportable, parce que ce sont elles qu'on casse sans s'en apercevoir :
+ * La fin d'un build Jenkins lancé d'ici n'était guettée que par le NAVIGATEUR, donc seulement l'onglet Jenkins
+ * ouvert. (La chute d'un conteneur a sa veille dans le plugin Docker, testée chez lui.) Ce fichier tient les règles
+ * qui rendent cette veille supportable, parce que ce sont elles qu'on casse sans s'en apercevoir :
  *
- *   1. une TRANSITION, jamais un état — sinon le conteneur arrêté la semaine dernière
- *      redonne l'alerte à chaque tour, et on coupe tout au bout de deux jours ;
+ *   1. une TRANSITION, jamais un état — sinon le même build redonne l'alerte à chaque tour, et on coupe tout au bout de deux jours ;
  *   2. on ne sonde QUE ce qu'on attend — sans lancement en cours, Jenkins n'est pas appelé ;
  *   3. ce qui n'aboutit pas s'oublie — un build qui ne revient jamais ne se sonde pas sans fin.
  *
- * Docker et Jenkins sont remplacés par des doublures : ces tests doivent tourner sur une
- * machine sans démon et sans CI, ce qui est le cas du runner.
+ * Jenkins est remplacé par une doublure : ces tests doivent tourner sur une machine sans CI, ce qui est le cas du runner.
  *
  * Un seul `startApp()` pour tout le fichier — il sert la partie brief.
  */
@@ -24,13 +21,13 @@ const { startApp } = require('./helpers/app');
 /* LES MODULES DE `src/` SE CHARGENT APRÈS `startApp()`, JAMAIS EN TÊTE DE FICHIER.
  *
  * `paths.js` lit `MERGERIE_DATA_DIR` AU CHARGEMENT, et c'est `startApp()` qui le pose. Un
- * `require('../src/integrations/veille')` en tête de fichier charge donc toute la chaîne — jusqu'à `db.js` —
+ * `require('../src/…')` en tête de fichier charge donc toute la chaîne — jusqu'à `db.js` —
  * sur le dossier `data/` du projet, c'est-à-dire sur la base de PRODUCTION : le serveur de test
  * s'y connecte ensuite, la configuration du faux GitLab y est écrite, et les lignes fabriquées
  * par les tests s'y accumulent. Ce fichier l'a fait, et il a fallu réparer la base à la main.
  *
  * D'où ces trois variables remplies dans le `before`, après le démarrage. */
-let veille; let docker; let jenkins; let notify; let jkVeille;
+let jenkins; let notify; let jkVeille;
 
 // Les événements poussés depuis le dernier appel — `notify` est un buffer global.
 let curseur = 0;
@@ -40,82 +37,26 @@ function nouveaux(type) {
   return evts;
 }
 
-const conteneur = (name, state, status) => ({
-  id: name, name, state, status, image: 'x', project: null, service: null, running: state === 'running',
-});
-
 describe('Veille de fond', () => {
   let app;
   // Les vraies implémentations, remises en place à la fin (les doublures sont posées par test).
-  let vraiStatus; let vraiListe; let vraiDetail; let vraiConfigure;
+  let vraiDetail; let vraiConfigure;
 
   before(async () => {
     app = await startApp();
     await app.configure();
     /* eslint-disable global-require */
-    veille = require('../src/integrations/veille');
-    docker = require('../src/integrations/docker');
     /* La veille des builds vit dans le plugin Jenkins (embarqué, en processus) : même instance que celle
        qu'il a configurée à l'activation, et son client se remplace comme avant. */
     jkVeille = require('../plugins/jenkins/src/veille');
     jenkins = jkVeille.client;
     notify = require('../src/core/notify');
     /* eslint-enable global-require */
-    vraiStatus = docker.status; vraiListe = docker.listContainers;
     vraiDetail = jenkins.detail; vraiConfigure = jenkins.isConfigured;
   });
   after(async () => {
-    docker.status = vraiStatus; docker.listContainers = vraiListe;
     jenkins.detail = vraiDetail; jenkins.isConfigured = vraiConfigure;
-    veille.arreter();
     if (app) await app.stop();
-  });
-
-  describe('Docker', () => {
-    before(() => { docker.status = async () => ({ ok: true }); });
-
-    test('le premier relevé cale l’état sans rien annoncer', async () => {
-      veille.oublierTout();
-      nouveaux();
-      docker.listContainers = async () => [conteneur('api', 'exited', 'Exited (1) 2 minutes ago')];
-      assert.equal(await veille.tourDocker(), 0);
-      assert.deepEqual(nouveaux('docker_down'), [], 'un conteneur déjà tombé au démarrage n’est pas un événement');
-    });
-
-    test('un conteneur qui TOMBE entre deux tours annonce, une seule fois', async () => {
-      veille.oublierTout();
-      docker.listContainers = async () => [conteneur('api', 'running', 'Up 3 hours')];
-      await veille.tourDocker();
-      nouveaux();
-
-      docker.listContainers = async () => [conteneur('api', 'exited', 'Exited (1) 3 seconds ago')];
-      assert.equal(await veille.tourDocker(), 1);
-      const [e] = nouveaux('docker_down');
-      assert.ok(e && e.names.includes('api'), 'le nom est dans l’événement');
-
-      // Toujours tombé au tour suivant : ce n'est plus une nouvelle.
-      assert.equal(await veille.tourDocker(), 0);
-      assert.deepEqual(nouveaux('docker_down'), []);
-    });
-
-    test('un arrêt DEMANDÉ ne réveille personne', async () => {
-      veille.oublierTout();
-      docker.listContainers = async () => [conteneur('api', 'running', 'Up 3 hours')];
-      await veille.tourDocker();
-      nouveaux();
-      // 143 = SIGTERM non piégé, la signature d'un `docker stop` — pas une chute.
-      docker.listContainers = async () => [conteneur('api', 'exited', 'Exited (143) 1 second ago')];
-      assert.equal(await veille.tourDocker(), 0);
-      assert.deepEqual(nouveaux('docker_down'), []);
-    });
-
-    test('sans démon, la veille ne dit rien et ne casse rien', async () => {
-      veille.oublierTout();
-      docker.status = async () => ({ ok: false, error: 'démon absent' });
-      assert.equal(await veille.tourDocker(), 0);
-      assert.deepEqual(nouveaux('docker_down'), []);
-      docker.status = async () => ({ ok: true });
-    });
   });
 
   describe('Jenkins', () => {
@@ -190,14 +131,6 @@ describe('Veille de fond', () => {
       assert.ok(g.errors >= 1, 'l’échec du lot précédent est compté');
       const supp = g.byAction.find((a) => a.action === 'delete_branch');
       assert.ok(supp && supp.errors === supp.n, 'la suppression a échoué autant de fois qu’elle a été tentée');
-    });
-
-    test('sans relevé Docker, le brief n’affirme rien', async () => {
-      const brief = require('../src/notes/brief');
-      assert.equal(brief.construire({}).docker, null, 'pas de section plutôt qu’un « 0 conteneur tombé » qui n’a rien regardé');
-      const avec = brief.construire({ dockerDown: { at: '2026-09-12T08:00:00Z', containers: [{ name: 'api', state: 'exited' }] } });
-      assert.equal(avec.docker.containers.length, 1);
-      assert.equal(avec.docker.at, '2026-09-12T08:00:00Z', 'le relevé est DATÉ : ce n’est pas un direct');
     });
   });
 });

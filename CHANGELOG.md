@@ -83,6 +83,15 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Docker tab is now a plugin**, in its own repository (https://gitlab.com/amady/docker-mergerie), installed from Settings → Plugins (from git)
+  and enabled like any third-party plugin. Nothing changes on screen once it is on: compose projects and `.env` drift, containers outside compose,
+  group actions, `make` targets, live logs, the health badge, the "container went down" notification and the brief section all come with it.
+  A Mergerie that already had the tab keeps its data — saved container inspects and the last `make` runs move to the plugin's tables on
+  upgrade — and the plugin comes up **enabled** the day you install it; until you do, the tab is simply absent. The plugin API gains,
+  additively and on the same `apiVersion`: jobs in the core queue (`ctx.jobs`, with the live log and **Stop**), long-lived processes
+  (`ctx.execStream`), `http.sse` from a worker, the declared local folders (`ctx.repos.localRoots()`), the `repo-row` and `verify-launch`
+  screen targets, and a `job.finished` browser event. Offering a service's `docker compose` variants in the verifier's command suggestions
+  and reading the `Makefile` stay in the core.
 - **The branch explorer no longer remembers the repositories you ticked.** An analysis is about the
   repositories of the moment; finding yesterday's still ticked launched, without meaning to, an
   analysis on three repositories instead of one. Each visit starts unticked.

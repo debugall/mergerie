@@ -144,63 +144,6 @@ describe('API de bout en bout', () => {
     assert.match(apres.d, /claude|dry-run/i);
   });
 
-  test('Docker : les endpoints répondent proprement (démon dispo OU non — jamais un crash)', async () => {
-    // Robuste que le démon soit joignable ou éteint : on vérifie la FORME, pas la présence
-    // de containers. Le point de vigilance = un démon injoignable devient une erreur portée.
-    const st = await app.api('GET', '/api/docker/status');
-    assert.equal(st.status, 200);
-    assert.equal(typeof st.body.ok, 'boolean');
-    if (!st.body.ok) assert.ok(st.body.error, 'démon injoignable → message actionnable');
-
-    const comp = await app.api('GET', '/api/docker/compose');
-    assert.equal(comp.status, 200);
-    assert.ok(Array.isArray(comp.body.projects), 'toujours un tableau de projets (vide si démon absent)');
-
-    const orph = await app.api('GET', '/api/docker/orphans');
-    assert.equal(orph.status, 200);
-    assert.ok(Array.isArray(orph.body.orphans), 'toujours un tableau de containers hors-compose');
-
-    // Garde-fous d'action : action inconnue / répertoire manquant → 400 explicite.
-    assert.equal((await app.api('POST', '/api/docker/compose/action', { dir: '/x', action: 'nope' })).status, 400);
-    assert.equal((await app.api('POST', '/api/docker/compose/action', { action: 'up' })).status, 400);
-    /* Le dossier doit être celui d'un compose trouvé sous les répertoires déclarés : sinon
-       `docker compose up --build` ou `make` partaient dans n'importe quel dossier de la machine. */
-    for (const [route, corps] of [
-      ['/api/docker/compose/action', { dir: '/tmp', action: 'up' }],
-      ['/api/docker/make/run', { dir: '/tmp', target: 'all' }],
-      ['/api/docker/bulk-action', { action: 'up', targets: [{ dir: '/tmp', service: 'x' }] }],
-      ['/api/docker/compose/preview-down', { dir: '/tmp' }],
-    ]) {
-      const r = await app.api('POST', route, corps);
-      assert.equal(r.status, 400, `${route} : ${r.text}`);
-      assert.match(r.body.error || '', /\/tmp/, `${route} : le refus nomme le dossier`);
-    }
-    // « build » est une action valide (au moins la validation passe — dir manquant sinon).
-    assert.equal((await app.api('POST', '/api/docker/compose/action', { action: 'build' })).status, 400, 'build sans dir → 400 (dir requis), pas action inconnue');
-
-    // Affichage progressif : la liste légère et le détail répondent toujours par une forme stable.
-    const clist = await app.api('GET', '/api/docker/compose/list');
-    assert.equal(clist.status, 200);
-    assert.ok(Array.isArray(clist.body.files), 'liste = tableau de fichiers compose (vide si démon absent)');
-    // dir inconnu : soit 200 { error/project:null } (démon absent), soit 400 « fichier inconnu »
-    // (démon présent → la validation refuse un dossier non déclaré). Jamais un crash.
-    const cone = await app.api('GET', '/api/docker/compose/one?dir=%2Fnope&file=compose.yaml');
-    assert.ok([200, 400].includes(cone.status), 'détail : réponse maîtrisée, pas de 500');
-
-    // Onglet Logs : la liste des containers répond toujours par un tableau (vide si démon absent).
-    const cont = await app.api('GET', '/api/docker/containers');
-    assert.equal(cont.status, 200);
-    assert.ok(Array.isArray(cont.body.containers), 'toujours un tableau de containers');
-
-    // Le flux SSE refuse une demande sans container (400) au lieu d'ouvrir un flux vide.
-    assert.equal((await app.api('GET', '/api/docker/logs/stream')).status, 400);
-    assert.equal((await app.api('GET', '/api/docker/logs/stream?ids=')).status, 400);
-
-    // Action groupée : garde-fous — action inconnue et sélection vide → 400 explicites.
-    assert.equal((await app.api('POST', '/api/docker/bulk-action', { action: 'nope', targets: [{ dir: '/x', service: 'a' }] })).status, 400);
-    assert.equal((await app.api('POST', '/api/docker/bulk-action', { action: 'recreate', targets: [] })).status, 400);
-    assert.equal((await app.api('POST', '/api/docker/bulk-action', { action: 'recreate' })).status, 400);
-  });
 
   test('PUT /api/config enregistre la configuration et masque les secrets', async () => {
     const { status, body } = await app.configure();

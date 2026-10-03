@@ -24,20 +24,18 @@ const {
   startApp, makeRemoteRepo, attendreServeur, waitForJobs,
   navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
-const { installerFauxDocker, scenarioDocker } = require('./helpers/fake-docker');
 const { preparerChantier, jobServeur } = require('./helpers/journal');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
 
 describe('Panneau de journal — Activité et relance', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let faux; let chantier;
+  let app; let navigateur; let page; let chantier;
   const erreurs = [];
   const mr = {};        // iid → id de la merge request en base
   const job = {};       // nom lisible → id de job
 
   before(async () => {
-    faux = installerFauxDocker(scenarioDocker());
     app = await startApp();
     const repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'remote-')));
     app.state.mrs['grp/app'] = [200, 201].map((iid, i) => ({
@@ -71,7 +69,6 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
     if (app) { try { await waitForJobs(app.api, { timeout: 30000 }); } catch { /* on arrête quand même */ } }
     if (navigateur) await navigateur.close();
     if (app) await app.stop();
-    if (faux) faux.nettoyer();
   });
 
   /* ---------------------------------------------------------------- outils ---- */
@@ -145,7 +142,7 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
 
   test('une review annulée avant de démarrer propose « Relancer » dans le bandeau, et la relance aboutit', async () => {
     /* Un échec (sans relance possible), puis une review mise en file et retirée. Une review ne
-       touche aucun des jobs Docker : elle ne les attend pas — elle n'attend que le PLAFOND de
+       touche aucun des jobs de plugin : elle ne les attend pas — elle n'attend que le PLAFOND de
        jobs simultanés, d'où trois portes ouvertes avant elle. */
     job.casse = await chantier.lancer('casse');
     await attendreStatutServeur(job.casse, 'error');
@@ -194,7 +191,7 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
 
     // Statut et type en clair.
     assert.equal(await ligneHist(job.casse).locator('.note').innerText(), 'échec');
-    assert.equal(await ligneHist(job.casse).locator('.tag').innerText(), 'Docker');
+    assert.equal(await ligneHist(job.casse).locator('.tag').innerText(), 'Jobs pilotables');
     assert.equal(await ligneHist(job.review201).locator('.note').innerText(), 'arrêté');
     assert.equal(await ligneHist(job.review200).locator('.tag').innerText(), 'Review');
     // La raison de l'échec, telle que le serveur l'a notée.
@@ -218,7 +215,7 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
     const tous = [job.review200, job.casse, job.porte, job.porteC, job.porteD, job.review201, job.relance];
     await attendreLignes(tous);
 
-    await page.locator('#histFilter').fill('docker');
+    await page.locator('#histFilter').fill('pilotables');
     await attendreLignes([job.casse, job.porte, job.porteC, job.porteD]);
     await page.locator('#histFilter').fill('!201');
     await attendreLignes([job.review201, job.relance]);

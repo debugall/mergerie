@@ -230,7 +230,6 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     ['Notes — pages', '#tab-notes.active #notesSubPages:not([hidden])'],
     ['Aller à Jira', '#tab-jira.active'],
     ['Aller à Git', '#tab-git.active'],
-    ['Aller à Docker', '#tab-docker.active'],
     ['Aller à Jenkins', '#tab-jenkins.active'],
     ['Aller aux statistiques', '#tab-dashboard.active'],
     ['Aller aux Agents', '#tab-agents.active'],

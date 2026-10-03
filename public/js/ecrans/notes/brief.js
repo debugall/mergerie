@@ -213,17 +213,6 @@ function renderBrief(d) {
       <button type="button" class="btn" data-brief-gitop="${esc(g.project)}">${esc(tr('notes.brief.git.op.go'))}</button>
     </div>`)).join('');
 
-  /* TOP 14 — LES CONTENEURS TOMBÉS, tels que la veille de fond les a vus. Daté : c'est un
-     relevé, pas un direct, et le dire évite de prendre une minute de retard pour une panne. */
-  const dk = d.docker;
-  const dockerBas = dk && (dk.containers || []).length ? (dk.containers.map((c) => `<div class="brief-item">
-      <div class="brief-item-main">
-        <div class="brief-item-title">${esc(c.name)}</div>
-        <div class="brief-item-meta muted">${c.project ? `${esc(c.project)} · ` : ''}${esc(c.status || c.state)}</div>
-      </div>
-      <button type="button" class="btn" data-brief-docker="${esc(c.name)}" data-brief-project="${esc(c.project || '')}">${esc(tr('notes.brief.docker.go'))}</button>
-    </div>`).join('') + `<p class="brief-item-meta muted">${esc(tr('notes.brief.docker.seen'))} <span data-when="${esc(dk.at)}">${esc(depuis(dk.at))}</span></p>`) : '';
-
   const a = d.activity;
   const activite = a ? `<p class="brief-activity">${[
     a.merged ? esc(tr('notes.brief.activity.merged', { n: a.merged, count: a.merged })) : '',
@@ -243,7 +232,6 @@ function renderBrief(d) {
     briefSection(tr('agents.brief.title'), agentsBrief, { icon: 'zap', hint: tr('agents.brief.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
-    briefSection(tr('notes.brief.sec.docker'), dockerBas, { icon: 'inbox', hint: tr('notes.brief.docker.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
@@ -373,11 +361,6 @@ document.addEventListener('click', async (e) => {
     filtrerHistoriqueGit();
     return;
   }
-  /* Un conteneur tombé : l'onglet Docker, sur le sous-onglet où il VIT — un service compose
-     n'est pas au même endroit qu'un container lancé à la main, et arriver sur le mauvais des
-     deux oblige à chercher ce qu'on venait de trouver. */
-  const bdk = e.target.closest && e.target.closest('[data-brief-docker]');
-  if (bdk) { navTab('docker'); showDockerSub(bdk.dataset.briefProject ? 'compose' : 'orphans'); return; }
   /* B7 — la carte du domaine touché : on l'ouvre, en lecture, là où elle vit. */
   const mc = e.target.closest && e.target.closest('[data-mr-card]');
   if (mc) {

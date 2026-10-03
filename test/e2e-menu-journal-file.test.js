@@ -9,7 +9,7 @@
  *
  * Les jobs sont des cibles `make` qui attendent un feu vert posé par le test
  * (helpers/journal.js) : ils durent exactement le temps qu'on décide, sur toute machine. Un job
- * docker ne touche aucun dépôt, donc aucun conflit n'interdit la voie parallèle.
+ * de plugin ne touche aucun dépôt, donc aucun conflit n'interdit la voie parallèle.
  */
 
 const { test, before, after, describe } = require('node:test');
@@ -20,19 +20,17 @@ const {
   startApp, attendreServeur, waitForJobs,
   navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
-const { installerFauxDocker, scenarioDocker } = require('./helpers/fake-docker');
 const { preparerChantier, jobServeur } = require('./helpers/journal');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
 
 describe('Panneau de journal — file d’attente et jobs parallèles', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let faux; let chantier;
+  let app; let navigateur; let page; let chantier;
   const erreurs = [];
   const ids = {};
 
   before(async () => {
-    faux = installerFauxDocker(scenarioDocker());
     app = await startApp();
     await app.configure();
     const racine = path.join(app.dataDir, 'stacks');
@@ -50,7 +48,6 @@ describe('Panneau de journal — file d’attente et jobs parallèles', { skip: 
     if (app) { try { await waitForJobs(app.api, { timeout: 30000 }); } catch { /* on arrête quand même */ } }
     if (navigateur) await navigateur.close();
     if (app) await app.stop();
-    if (faux) faux.nettoyer();
   });
 
   /* ---------------------------------------------------------------- outils ---- */
@@ -164,7 +161,7 @@ describe('Panneau de journal — file d’attente et jobs parallèles', { skip: 
     const ligne = ligneFile(ids.e);
     await ligne.waitFor({ timeout: ATTENTE });
     assert.equal(await page.locator('#logQueue .log-queue-row').count(), 1);
-    assert.equal(await ligne.locator('.tag').innerText(), 'Docker');
+    assert.equal(await ligne.locator('.tag').innerText(), 'Jobs pilotables');
     assert.match(await ligne.innerText(), new RegExp(`#${ids.e}`));
     await page.waitForFunction((j) => {
       const r = [...document.querySelectorAll('#logQueue .log-queue-row')].find((x) => x.querySelector(`[data-jobcancel="${j}"]`));

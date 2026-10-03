@@ -66,7 +66,6 @@ function onboardingHtml() {
   const outilsHtml = `
       <span class="onboard-outils">
         <label class="inline-check"><input type="checkbox" data-outil="jira" /> <span>${esc(tr('onboard.s3.jira'))}</span></label>
-        <label class="inline-check"><input type="checkbox" data-outil="docker" /> <span>${esc(tr('onboard.s3.docker'))}</span></label>
         <label class="inline-check"><input type="checkbox" data-outil="links" /> <span>${esc(tr('onboard.s3.links'))}</span></label>
         ${pluginsOnboarding().map((o) => `<label class="inline-check"><input type="checkbox" data-outil="${esc(o.tab)}" /> <span>${esc(o.label)}</span></label>`).join('')}
         <label class="onboard-mode"><span>${esc(tr('onboard.s3.mode'))}</span>

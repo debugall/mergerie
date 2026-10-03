@@ -1,9 +1,9 @@
 'use strict';
 /* LES MENUS REPLIÉS SE DÉCOUVRENT PAR L'USAGE.
  *
- * Git, Docker, Jenkins et Liens démarrent repliés, et l'outil y mène de partout : « Résoudre
- * dans Git → Merge » sur une merge request en conflit, un dépôt qui porte un compose, un
- * sous-onglet des Réglages. Ce fichier prouve qu'une de ces portes DÉPLIE le menu pour de bon —
+ * Git, Jenkins et Liens démarrent repliés, et l'outil y mène de partout : « Résoudre
+ * dans Git → Merge » sur une merge request en conflit, un sous-onglet des Réglages (et, pour le
+ * plugin Docker, un dépôt qui porte un compose : voir son propre dépôt). Ce fichier prouve qu'une de ces portes DÉPLIE le menu pour de bon —
  * comme si la case des Réglages avait été cochée — et que les Réglages suivent le menu : le
  * sous-onglet Jenkins n'existe que si le menu Jenkins est visible.
  *
@@ -52,8 +52,8 @@ describe('Portes contextuelles vers les menus repliés', { skip: dispo ? false :
     if (app) await app.stop();
   });
 
-  test('d’office, Git, Docker, Jenkins et Liens sont repliés, et le sous-onglet Jenkins des Réglages avec eux', async () => {
-    for (const t of ['git', 'docker', 'jenkins', 'links']) assert.ok(await nav$(t).isHidden(), `${t} replié`);
+  test('d’office, Git, Jenkins et Liens sont repliés, et le sous-onglet Jenkins des Réglages avec eux', async () => {
+    for (const t of ['git', 'jenkins', 'links']) assert.ok(await nav$(t).isHidden(), `${t} replié`);
     await nav$('admin').click();
     await page.waitForSelector('#tab-admin.active');
     assert.ok(await page.locator('#tab-admin .subnav [data-sub="jenkinscfg"]').isHidden(), 'pas de réglages Jenkins sans menu Jenkins');
@@ -67,30 +67,7 @@ describe('Portes contextuelles vers les menus repliés', { skip: dispo ? false :
     assert.ok(!(await masques()).includes('git'), 'la préférence a suivi');
     await page.reload();
     await page.waitForSelector('nav button[data-tab="git"]:not([hidden])');
-    assert.ok(await nav$('docker').isHidden(), 'les autres restent repliés');
-  });
-
-  test('« Afficher Docker » n’apparaît que sur un dépôt qui porte un compose, et déplie le menu', async () => {
-    await nav$('admin').click();
-    await page.evaluate(() => showAdminSub('repos'));
-    await page.waitForSelector(`#repoList .repo-row[data-repo="${repo.id}"]`);
-    assert.equal(await page.locator(`#repoList .repo-row[data-repo="${repo.id}"] [data-docker-porte]`).count(), 0, 'sans compose, pas de porte');
-    // On clone (« Re-cloner », confirmé), on pose un compose dans le clone, et la liste le dit.
-    const depot = async () => (await app.api('GET', '/api/repos')).body.find((x) => x.id === repo.id);
-    await page.locator(`#repoList .repo-row[data-repo="${repo.id}"] [data-reclone="${repo.id}"]`).click();
-    await page.waitForSelector('#confirmModal:not([hidden])');
-    await page.locator('#confirmOk').click();
-    await page.waitForSelector('#confirmModal', { state: 'hidden' });
-    await attendreServeur(async () => (await depot()).clone_state === 'present', 'le clone est posé', 60000);
-    fs.writeFileSync(path.join((await depot()).clone_dir, 'docker-compose.yml'), 'services: {}\n');
-    assert.equal((await depot()).has_compose, true, 'GET /api/repos porte has_compose');
-    await page.evaluate(() => showAdminSub('repos'));
-    const porte = page.locator(`#repoList .repo-row[data-repo="${repo.id}"] [data-docker-porte]`);
-    await porte.waitFor({ state: 'visible' });
-    await porte.click();
-    await page.waitForSelector('#tab-docker.active');
-    assert.ok(await nav$('docker').isVisible(), 'le menu Docker est déplié');
-    assert.ok(!(await masques()).includes('docker'));
+    assert.ok(await nav$('links').isHidden(), 'les autres restent repliés');
   });
 
   test('le sous-onglet Jenkins suit son menu : demandé nommément, il déplie Jenkins ; masqué, il repart', async () => {

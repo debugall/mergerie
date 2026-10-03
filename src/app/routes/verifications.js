@@ -8,7 +8,7 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const git = require('../../git/git');
-const docker = require('../../integrations/docker');
+const { makefileFor } = require('../../verify/makefile');
 const verifyrun = require('../../verify/verifyrun');
 const path = require('path');
 const fs = require('fs');
@@ -235,7 +235,7 @@ function suggestionsDeDepot(cfg, repo) {
     out.push({ command: 'dotnet build', source: '.NET' }, { command: 'dotnet test', source: '.NET' });
     tests.push('dotnet test');
   }
-  const mk = docker.makefileFor(dir);
+  const mk = makefileFor(dir);
   for (const cible of (mk && mk.targets) || []) out.push({ command: `make ${cible.name}`, source: 'Makefile', desc: cible.desc || '' });
   /* Un compose dans le clone : la variante « dans le conteneur » de chaque commande de test, pour
      le premier service — c'est la forme à copier, le nom du service se corrige d'un mot. */

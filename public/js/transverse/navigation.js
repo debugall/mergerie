@@ -21,8 +21,6 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'review') { loadSegment(); decouvrirSiPerime(); }
   if (b.dataset.tab === 'dashboard') loadDashboard();
   if (b.dataset.tab === 'git') loadGit();
-  if (b.dataset.tab === 'docker') { marquerDockerVu(); loadDocker(); }
-  else dlogStop(); // en quittant Docker, on coupe le tail live (et ses process serveur)
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
   if (b.dataset.tab === 'links') loadLinks();

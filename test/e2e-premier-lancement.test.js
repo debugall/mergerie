@@ -297,19 +297,19 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     assert.equal(await page.locator('#toReviewList .step.done').count(), 3);
   });
 
-  /* « CE QUE TON ÉQUIPE UTILISE » : cocher Jira et Docker déplie ces deux menus — repliés d'office —
+  /* « CE QUE TON ÉQUIPE UTILISE » : cocher Jira et Liens déplie ces deux menus — repliés d'office —
      et la préférence est celle des Réglages → Général → Menus, écrite comme si on y avait coché. */
   test('l’étape « ton équipe utilise » déplie les menus cochés et se coche', async () => {
     /* Le harnais avait déplié tous les menus (pour les épreuves de l'onglet Git) : on remet
-       l'état du DÉPART — les quatre commodités repliées — sans recharger, par la fonction
+       l'état du DÉPART — les trois commodités repliées — sans recharger, par la fonction
        qu'applique l'écran lui-même. */
     await page.evaluate(() => {
-      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['git', 'docker', 'jenkins', 'links'] }));
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['git', 'jenkins', 'links'] }));
       appliquerNav();
     });
     await page.locator('nav button[data-tab="review"]').click();
-    await page.waitForSelector('#toReviewList .step[data-step="3"] [data-outil="docker"]', { timeout: ATTENTE });
-    await page.locator('#toReviewList [data-outil="docker"]').check();
+    await page.waitForSelector('#toReviewList .step[data-step="3"] [data-outil="links"]', { timeout: ATTENTE });
+    await page.locator('#toReviewList [data-outil="links"]').check();
     await page.locator('#toReviewList [data-outil="jira"]').check();
     /* « Sécurisé ou yolo ? » se pose ici, une fois : on choisit yolo (le harnais avait forcé le
        sécurisé) et on relit le réglage sur le serveur, pas à l'écran. */
@@ -322,10 +322,10 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
       () => document.querySelectorAll('#toReviewList .step.done').length === 4,
       null, { timeout: ATTENTE },
     );
-    assert.equal(await page.locator('nav button[data-tab="docker"]').evaluate((b) => b.hidden), false, 'Docker sort des menus repliés');
+    assert.equal(await page.locator('nav button[data-tab="links"]').evaluate((b) => b.hidden), false, 'Liens sort des menus repliés');
     assert.equal(await page.locator('nav button[data-tab="jenkins"]').evaluate((b) => b.hidden), true, 'Jenkins, non coché, reste replié');
     const pref = await page.evaluate(() => JSON.parse(localStorage.getItem('mergerie_nav') || '{}'));
-    assert.ok(Array.isArray(pref.masques) && !pref.masques.includes('docker') && pref.masques.includes('jenkins'),
+    assert.ok(Array.isArray(pref.masques) && !pref.masques.includes('links') && pref.masques.includes('jenkins'),
       'la préférence est celle des Réglages, pas un état d’écran');
   });
 

@@ -101,6 +101,30 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
   })();
 }
 
+/* ---------- LE PASSAGE DE DOCKER AU PLUGIN, une fois, sans perte ----------
+ *
+ * L'onglet Docker a quitté le cœur : il est le plugin `docker` (dépôt `docker-mergerie`, installé comme n'importe quel plugin tiers). Il avait deux
+ * tables, que le plugin déclare sous ses propres noms — `docker_backup` (l'inspect sauvegardé avant chaque suppression d'un conteneur hors-compose,
+ * la seule trace pour le refaire) et `make_run` (la dernière exécution de chaque cible `make`). Elles sont RENOMMÉES, pas copiées : le
+ * `CREATE TABLE IF NOT EXISTS` du plugin ne fait alors rien, et il retrouve ses sauvegardes telles quelles. Sur une base neuve, il n'y a rien à renommer.
+ *
+ * Un poste qui montait de version avait l'onglet : l'état `docker` est posé ACTIVÉ, pour que le plugin s'active tout seul le jour où on l'installe — rien ne
+ * disparaît à la montée de version, sauf à ne jamais l'installer. Le marqueur `_core` 2 garantit que ce passage ne se joue qu'une fois. */
+{
+  const fait = db.prepare("SELECT 1 FROM plugin_migration WHERE plugin = '_core' AND version = 2").get();
+  if (!fait) db.transaction(() => {
+    const existe = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+    /* Les noms de l'ancienne table sont des VARIABLES, à dessein : `npm run check` exige qu'une modification de table suive la création de cette
+       table dans le schéma — ici elle n'est plus créée nulle part, c'est tout l'objet. */
+    const renommages = [['docker_backup', 'plugin_docker_backup'], ['make_run', 'plugin_docker_make_run']];
+    for (const [ancienne, nouvelle] of renommages) if (existe(ancienne) && !existe(nouvelle)) db.exec(`ALTER TABLE ${ancienne} RENAME TO ${nouvelle}`);
+    if (db.baseExistante) {
+      db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('docker', 1, '', 'user', ?)").run(new Date().toISOString());
+    }
+    db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 2, ?)").run(new Date().toISOString());
+  })();
+}
+
 /* `todo.link_kind` N'EST PLUS CONTRAINT PAR LA TABLE. Le `CHECK (link_kind IN ('mr', …))` obligeait
    tout plugin qui veut accrocher une todo à ce qu'il connaît (un build, un ticket d'un autre
    outil) à demander une migration au cœur. La liste vit désormais là où elle se décide : les

@@ -84,7 +84,7 @@ describe('Menu Notes · Todos', { skip: dispo ? false : MSG_NAVIGATEUR }, () => 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 950 } });
     page.on('pageerror', (e) => erreurs.push(e.message));
-    // Les liens de todo mènent à Git, Jenkins et Docker : trois menus repliés par défaut.
+    // Les liens de todo mènent à Git et Jenkins : deux menus repliés par défaut.
     await afficherMenusOptionnels(page);
     await page.goto(app.base);
   });
@@ -463,12 +463,11 @@ describe('Menu Notes · Todos', { skip: dispo ? false : MSG_NAVIGATEUR }, () => 
     await page.locator('.toast', { hasText: 'feature/PROJ-42' }).first().waitFor();
   });
 
-  test('une todo liée à un build mène à Jenkins, une liée à un conteneur mène à Docker', async () => {
+  test('une todo liée à un build mène à Jenkins', async () => {
     await viderTodos();
     await creer({ title: 'Relancer le déploiement', link_kind: 'build', link_ref: 'equipe/deploy#42' });
-    await creer({ title: 'Redémarrer l’API', link_kind: 'container', link_ref: 'api-core' });
     await allerTodos('open');
-    await attendreLignes(2);
+    await attendreLignes(1);
     const build = ligne('Relancer le déploiement').locator('[data-todo-build]');
     assert.match(await build.innerText(), /equipe\/deploy/);
     await build.click();
@@ -479,12 +478,6 @@ describe('Menu Notes · Todos', { skip: dispo ? false : MSG_NAVIGATEUR }, () => 
     await page.keyboard.press('Escape');
     await page.waitForSelector('#jenkinsModal', { state: 'hidden' });
 
-    await allerTodos('open');
-    await attendreLignes(2);
-    const conteneur = ligne('Redémarrer l’API').locator('[data-todo-container="api-core"]');
-    assert.match(await conteneur.innerText(), /api-core/);
-    await conteneur.click();
-    await page.waitForSelector('#tab-docker.active');
   });
 
   /* LE BOUTON « PARTAGER » D'UNE TODO DÉPEND DE `partageEtMoi`, que seul `partageActif()`

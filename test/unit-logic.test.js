@@ -820,7 +820,7 @@ describe('jobs : conflit entre deux jobs (autorisation du parallèle)', () => {
   test('des périmètres disjoints l’autorisent', () => {
     assert.equal(keysClash(['repo:1'], ['repo:2']), false);
     assert.equal(keysClash(['dir:/a'], ['dir:/b']), false);
-    // Un job Docker ne touche aucun dépôt : il est parallélisable avec tout.
+    // Un job de plugin (Docker…) ne touche aucun dépôt : il est parallélisable avec tout.
     assert.equal(keysClash([], ['repo:1', 'repo:2']), false);
     assert.equal(keysClash([], []), false);
   });
@@ -863,7 +863,7 @@ describe('jobs : objets marqués « en cours »', () => {
   });
 
   test('un job sans cible identifiable ne marque rien plutôt que n’importe quoi', () => {
-    assert.deepEqual(jobTargets({ kind: 'docker' }), seaux());
+    assert.deepEqual(jobTargets({ kind: 'plugin:docker' }), seaux());
     assert.deepEqual(jobTargets(null), seaux());
   });
 

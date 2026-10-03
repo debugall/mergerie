@@ -1,6 +1,6 @@
 'use strict';
 /* Onglet Git : opérations multi-dépôts (créer, supprimer, aperçu), B7 supprimer les branches de MR mergées. */
-// @expose brMergees, gitDoPreview, gitDropPreview, gitFillRow, gitLoadRefs, gitRenderTargets, gitSameName, gitTargets
+// @expose brMergees, gitLoadRefs
 /* ---------- Onglet Git : opérations multi-dépôts + explorateur ----------
    Deux principes structurent cet écran :
    - on ne SAISIT un nom que s'il n'existe pas encore ; dès qu'il existe, on le

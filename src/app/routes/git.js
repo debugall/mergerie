@@ -13,7 +13,7 @@ const jobs = require('../../jobs');
 const forge = require('../../forge');
 const git = require('../../git/git');
 const demoGit = require('../../demo/git');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const aisession = require('../../agent/aisession');
 const localrepos = require('../../git/localrepos');
 const { wrap } = require('../http');
@@ -29,11 +29,11 @@ const DEMO_GIT_COMMANDS = [
 ];
 // Palette (Réglages → Git) : CRUD. Le `command` = arguments git figés (sans le mot « git »).
 app.get('/api/git-commands', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json(DEMO_GIT_COMMANDS);
+  if (demoMode.isDemo()) return res.json(DEMO_GIT_COMMANDS);
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command ORDER BY sort_order, id').all());
 }));
 app.post('/api/git-commands', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ demo: true });
+  if (demoMode.isDemo()) return res.json({ demo: true });
   const label = String((req.body && req.body.label) || '').trim();
   const command = String((req.body && req.body.command) || '').trim();
   if (!label || !command) throw new Error(t('err.gitcmd.label-command-required'));
@@ -45,7 +45,7 @@ app.post('/api/git-commands', wrap((req, res) => {
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command WHERE id = ?').get(info.lastInsertRowid));
 }));
 app.put('/api/git-commands/:id', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ demo: true });
+  if (demoMode.isDemo()) return res.json({ demo: true });
   const cur = db.prepare('SELECT * FROM git_command WHERE id = ?').get(Number(req.params.id));
   if (!cur) throw new Error(t('err.gitcmd.unknown'));
   const label = String((req.body && req.body.label) != null ? req.body.label : cur.label).trim();
@@ -56,7 +56,7 @@ app.put('/api/git-commands/:id', wrap((req, res) => {
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command WHERE id = ?').get(cur.id));
 }));
 app.delete('/api/git-commands/:id', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ demo: true });
+  if (demoMode.isDemo()) return res.json({ demo: true });
   db.prepare('DELETE FROM git_command WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
 }));

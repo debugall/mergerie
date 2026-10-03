@@ -343,8 +343,8 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 11);
-    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'docker', 'jenkins', 'links', 'dashboard', 'admin'],
+    assert.equal(barre.length, 10);
+    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'jenkins', 'links', 'dashboard', 'admin'],
       'le cœur · ce que j’ai à faire · ma machine, son intégration et ses liens · le méta');
 
     /* Les neuf premiers sur leur chiffre ; le DERNIER sur « 0 », faute de touche « 10 » — et

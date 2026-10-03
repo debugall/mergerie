@@ -84,7 +84,6 @@ const PASTILLES = [
   ['nav.agents', 'shortcuts.badge.agents'],
   ['nav.notes', 'shortcuts.badge.notes'],
   ['nav.jira', 'shortcuts.badge.jira'],
-  ['nav.docker', 'shortcuts.badge.docker'],
 ];
 /* ---------- La barre de menus : ordre et visibilité ----------
    Préférence de ce NAVIGATEUR, comme le thème et la densité : c'est un arrangement d'écran,
@@ -112,7 +111,7 @@ const NAV_TOUJOURS = 'admin';
 
    Ce défaut ne vaut que pour qui n'a JAMAIS touché sa barre. Une préférence enregistrée fait
    foi, fût-elle antérieure : on ne retire pas ses menus à quelqu'un qui les a rangés lui-même. */
-const NAV_MASQUES_DEFAUT = ['git', 'docker', 'links', ...pluginsOngletsReplies()];
+const NAV_MASQUES_DEFAUT = ['git', 'links', ...pluginsOngletsReplies()];
 
 function lireNav() {
   try {

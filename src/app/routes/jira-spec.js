@@ -12,7 +12,7 @@ const jiraspec = require('../../integrations/jiraspec');
 const confluence = require('../../integrations/confluence');
 const spec = require('../../session/spec');
 const jobs = require('../../jobs');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const { wrap } = require('../http');
 const { savePiecesEtImages } = require('../lib/pieces');
@@ -46,7 +46,7 @@ function analyserEnDemo(s) {
 
 /* Lance (ou relance) l'analyse d'une spec : contexte relu, session créée, job programmé. */
 async function lancer(s, body = {}, { enfantsConnus = null } = {}) {
-  if (demoDocker.isDemo()) return { spec: analyserEnDemo(s), job: null };
+  if (demoMode.isDemo()) return { spec: analyserEnDemo(s), job: null };
   const { task } = await spec.preparerAnalyse(s, { cfg: getConfig(), enfantsConnus });
   const imageIds = savePiecesEtImages('task', task.id, body || {});
   const job = jobs.startTaskJob(task.id, 'run', imageIds.length ? { imageIds } : {});
@@ -70,7 +70,7 @@ app.get('/api/jira/specs', wrap((req, res) => {
 app.get('/api/jira/spec/epic/:key/children', wrap(async (req, res) => {
   const cle = jiraspec.normaliserCle(req.params.key);
   if (!jiraspec.cleValide(cle)) throw new Error(t('err.jira.invalid-key'));
-  const enfants = demoDocker.isDemo()
+  const enfants = demoMode.isDemo()
     ? demoJira.tickets([], true).filter((i) => i.epic && i.epic.key === cle).map((i) => ({ key: i.key, summary: i.summary, status: i.status, statusCategory: i.statusCategory, type: i.type, isSubtask: false }))
     : (await jira.epicChildren(getConfig(), cle)).map((e) => ({ key: e.key, summary: e.summary, status: e.status, statusCategory: e.statusCategory, type: e.type, isSubtask: e.isSubtask }));
   const existantes = {};
@@ -87,7 +87,7 @@ app.get('/api/jira/spec/epic/:key/children', wrap(async (req, res) => {
 const LOT_PARALLELE = 3;
 async function traiterLot(batchId, specIds, { epicKey, cfg }) {
   let enfantsConnus = null;
-  if (!demoDocker.isDemo()) {
+  if (!demoMode.isDemo()) {
     try { enfantsConnus = { epicKey, enfants: await jira.epicChildren(cfg, epicKey) }; } catch { enfantsConnus = null; }
   }
   const file = specIds.slice();
@@ -124,7 +124,7 @@ app.post('/api/jira/spec/epic', wrap((req, res) => {
       if (tache && ['running', 'needs_input'].includes(tache.status)) throw new Error(t('err.spec.session-busy'));
       const s = spec.creerOuReprendre({
         ticketKey: cle, repoIds: b.repo_ids, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
-        includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey, batchId, verifierOrigine: !demoDocker.isDemo(),
+        includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey, batchId, verifierOrigine: !demoMode.isDemo(),
       });
       creees.push(s.id);
     } catch (e) { erreurs.push({ key: cle, error: e.message }); }
@@ -146,7 +146,7 @@ app.get('/api/jira/spec/:key', wrap((req, res) => {
   const cle = jiraspec.normaliserCle(req.params.key);
   if (!jiraspec.cleValide(cle)) throw new Error(t('err.jira.invalid-key'));
   const s = spec.specByKey(cle);
-  res.json({ spec: s ? vueComplete(s) : null, confluence_configured: demoDocker.isDemo() || confluence.isConfigured(getConfig()) });
+  res.json({ spec: s ? vueComplete(s) : null, confluence_configured: demoMode.isDemo() || confluence.isConfigured(getConfig()) });
 }));
 
 /* Créer (ou reprendre) la spec d'un ticket et lancer son analyse. */
@@ -154,7 +154,7 @@ app.post('/api/jira/spec', wrap(async (req, res) => {
   const b = req.body || {};
   const s = spec.creerOuReprendre({
     ticketKey: b.key, repoIds: b.repo_ids, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
-    includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey: b.epic_key, verifierOrigine: !demoDocker.isDemo(),
+    includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey: b.epic_key, verifierOrigine: !demoMode.isDemo(),
   });
   const r = await lancer(s, b);
   res.json({ spec: vueComplete(r.spec), job: r.job });
@@ -173,7 +173,7 @@ app.post('/api/jira/spec/:id/rerun', wrap(async (req, res) => {
       ticketKey: s.ticket_key, repoIds: b.repo_ids || JSON.parse(s.repo_ids_json || '[]'), complement: b.complement != null ? b.complement : s.complement,
       confluenceUrls: b.confluence_urls || JSON.parse(s.confluence_json || '[]').map((p) => p.url), detail: b.detail || s.detail,
       includeEpic: b.include_epic != null ? b.include_epic : s.include_epic, askQuestions: b.ask_questions != null ? b.ask_questions : s.ask_questions,
-      epicKey: s.epic_key, batchId: s.batch_id, verifierOrigine: !demoDocker.isDemo(),
+      epicKey: s.epic_key, batchId: s.batch_id, verifierOrigine: !demoMode.isDemo(),
     });
   }
   const r = await lancer(spec.specById(s.id), b);
@@ -186,7 +186,7 @@ app.post('/api/jira/spec/:id/followup', wrap((req, res) => {
   const instruction = String((req.body || {}).instruction || '').trim();
   if (!instruction) throw new Error(t('err.spec.instruction-required'));
   if (!spec.versionCourante(s.id)) throw new Error(t('err.spec.no-proposal'));
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     const v = spec.versionCourante(s.id);
     spec.ajouterVersion(s, `${spec.lireMd(v.md_path).trim()}\n\n_${t('jira.spec.demo-followup', { instruction })}_`, 'followup', instruction);
     spec.poser(s.id, { status: 'proposed' });
@@ -234,7 +234,7 @@ app.post('/api/jira/spec/:id/post', wrap(async (req, res) => {
   const rep = marker(cfg);
   const texte = jiraspec.corpsCommentaire(rep, v.version, spec.lireMd(v.md_path));
   const forceNew = !!(req.body && req.body.force_new);
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     const id = s.comment_id && !forceNew ? s.comment_id : String(Date.now());
     spec.poser(s.id, { comment_id: id, posted_version: v.version, status: 'posted' });
     res.json({ comment: { id, author: t('jira.demo.me'), created: new Date().toISOString(), bodyMd: texte }, spec: vueComplete(spec.specById(s.id)), updated: id === s.comment_id, recreated: false });

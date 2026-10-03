@@ -1664,6 +1664,8 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 > confiance** (*probable* / *ambigu*), jamais comme un fait.
 
 ### Docker
+> **Docker est un plugin** : l'onglet vit dans son propre dépôt ([docker-mergerie](https://gitlab.com/amady/docker-mergerie)), à installer depuis Réglages → Plugins (depuis git) puis à activer. Tant qu'il ne l'est pas, ni l'onglet ni ce qui s'y rattache (la section « Conteneurs tombés » du brief, l'état des services avant une vérification « in place ») n'existent. Tout ce qui suit décrit son écran.
+
 Deux sous-vues, comme Codage/Exploration en Dev IA.
 
 **Ce que le compose sait déjà.** Un service qui publie un port l'**ouvre d'un clic** (`:3000`), et propose

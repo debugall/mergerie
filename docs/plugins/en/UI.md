@@ -43,8 +43,8 @@ A plugin's bundle is evaluated in a **private scope** where every top-level key 
 is in scope: `$`, `$$`, `api`, `tr`, `esc`, `safeUrl`, `toast`, `busy`, `skeleton`, `svgIco`,
 `emptyState`, `comboHtml`/`wireCombo` (searchable combos), `repoComboHtml`/`wireRepoCombos`,
 `confirmDialog`, `navTab`, `fermerAuFond`, `errorBox`, `explainError`, `fmtDateTime`, `dateHtml`,
-`depuis`, `mdToHtml`, `showNotif`, `i18n`, and objects: `repos`, `reviews`, `notes`, `agents`,
-`sessions`, `settings`, `ui`, `events`. **Nothing else of the core** is reachable:
+`depuis`, `mdToHtml`, `ANSI` (reading the colours of a log), `showNotif`, `toastUndo`, `chipBranche`, `navMasque`, `i18n`, and objects: `repos`, `reviews`, `notes`, `agents`,
+`sessions`, `settings`, `ui`, `events`, `jobs` (`jobs.refresh()`: re-read the queue after starting a job). **Nothing else of the core** is reachable:
 `npm run check:plugins` refuses, in a built-in plugin's front, any core name outside the kit. The exact
 list is in `public/js/transverse/kit.js` (one key per line); it is covered by the `apiVersion`.
 
@@ -68,7 +68,7 @@ list is in `public/js/transverse/kit.js` (one key per line); it is covered by th
 | `ui.settings.renderForm(plugin, container)` | the form generated from `settingsSchema` (also placed on any `[data-plugin-settings-form="<plugin>"]` of a sub-tab) |
 | `ui.tabButton(tabId)`, `ui.openTab(tabId)`, `ui.meta(plugin)`, `ui.reloadPage()` | utilities |
 
-`events.on('settings.changed' \| 'tab.opened', fn)`: a small front-side bus.
+`events.on('settings.changed' \| 'tab.opened' \| 'job.finished', fn)`: a small front-side bus (`job.finished`: `{ id, kind, status }`, `kind` is `plugin:<name>` for a plugin job).
 
 ### Action and decoration targets
 
@@ -82,6 +82,8 @@ list is in `public/js/transverse/kit.js` (one key per line); it is covered by th
 | `branch-badge` | the badges of a Git explorer row | `{ branch, repo_id }` |
 | `verification` | what follows a green verdict, in the report | the merge request, `ctx.verification` |
 | `repo-sheet` | a repository's sheet (Settings → Repositories) | the sheet |
+| `repo-row` | a repository's row in Settings → Repositories (small links next to its state) | the repository (with `has_compose`) |
+| `verify-launch` | the verification launch window, when an « in place » directory is involved | `{ dirs }` — the working directories |
 
 The core knows no plugin: it asks "what do you render for this target?" and inserts what comes back.
 The plugin sets its own `data-*` attributes and listens to its own clicks (delegation on `document`).

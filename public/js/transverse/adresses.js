@@ -147,14 +147,6 @@ function handleNotifEvent(e, p) {
           () => { navTab('git'); showGitSub('history'); });
       }
       break;
-    /* B15 — un conteneur tombé. Décoché par défaut : sur une machine de développement, des
-       conteneurs s'arrêtent tous les jours pour de bonnes raisons. */
-    case 'docker_down':
-      if (p.docker_down) {
-        showNotif(tr('notif.docker-down.title', { n: e.n || 1, count: e.n || 1 }), e.names || '',
-          () => navTab('docker'));
-      }
-      break;
     case 'converge_done':
       if (p.converge_done) {
         showNotif(

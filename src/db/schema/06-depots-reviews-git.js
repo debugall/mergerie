@@ -1,5 +1,5 @@
 'use strict';
-/* Les répertoires locaux, les sauvegardes Docker, les versions d’une review et ses constats, le flux, les opérations git restaurables.
+/* Les répertoires locaux, les versions d’une review et ses constats, le flux, les opérations git restaurables.
    Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
@@ -8,19 +8,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS local_root (
   id INTEGER PRIMARY KEY,
   path TEXT NOT NULL UNIQUE,
   label TEXT,
-  created_at TEXT
-)`);
-
-// Onglet Docker : avant tout `docker rm` d'un container HORS-COMPOSE, on sauvegarde son
-// `docker inspect` complet ici — filet de restauration (sans définition déclarative, ce JSON
-// est la seule trace pour régénérer un `docker run` équivalent). Esprit des branches restaurables.
-db.exec(`CREATE TABLE IF NOT EXISTS docker_backup (
-  id INTEGER PRIMARY KEY,
-  container_id TEXT,
-  name TEXT,
-  image TEXT,
-  inspect_json TEXT NOT NULL,
-  run_command TEXT,
   created_at TEXT
 )`);
 

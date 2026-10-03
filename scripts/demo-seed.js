@@ -489,16 +489,6 @@ for (let d = 55; d >= 0; d -= 2) {
   }
 }
 
-/* UNE SAUVEGARDE DE CONTAINER HORS-COMPOSE, pour que le bloc « de quoi les refaire » existe :
-   il ne s'affiche que s'il y a quelque chose à restaurer, et la démo ne supprime rien. */
-db.prepare(`INSERT INTO docker_backup (container_id, name, image, inspect_json, run_command, created_at)
-  VALUES (?,?,?,?,?,?)`).run(
-  'a1b2c3d4e5f6', 'redis-perso', 'redis:7-alpine',
-  JSON.stringify({ Name: '/redis-perso', Config: { Image: 'redis:7-alpine', Env: ['REDIS_PASSWORD=demo'] },
-    HostConfig: { PortBindings: { '6379/tcp': [{ HostPort: '6379' }] }, RestartPolicy: { Name: 'unless-stopped' } }, Mounts: [] }),
-  'docker run -d \\\n  --name redis-perso \\\n  --restart unless-stopped \\\n  -p 6379:6379 \\\n  -e REDIS_PASSWORD=*** \\\n  redis:7-alpine',
-  iso(2));
-
 // ---------- feed (footer vivant) ----------
 db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)').run('mr_opened', 201, 'groupe/api-core', 'lina', 'Ajout endpoint /health', at(0.1));
 db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)').run('mr_merged', 190, 'groupe/webapp-front', 'sofia', 'Accessibilité : labels et focus', at(0.5));
@@ -1608,17 +1598,6 @@ const counts = {
   for (const m of db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all()) fermer.run(m.id);
 }
 
-/* ---------- dernières exécutions des cibles Makefile (décor Docker) ----------
-   « Ai-je déjà passé les migrations ce matin ? » n'a de sens que si quelque chose a tourné. */
-{
-  const mk = db.prepare('INSERT INTO make_run (dir, target, started_at, finished_at, ok) VALUES (?,?,?,?,?)');
-  const dir = '/home/moi/dev/boutique';
-  const ilYA = (min) => new Date(Date.now() - min * 60000).toISOString();
-  mk.run(dir, 'migrate', ilYA(42), ilYA(41), 1);
-  mk.run(dir, 'up', ilYA(180), ilYA(179), 1);
-  mk.run(dir, 'test', ilYA(1500), ilYA(1480), 0);
-}
-
 /* ---------- ce que CHAQUE session a coûté ----------
    Les lignes ci-dessus comptent par FAMILLE ; celles-ci se rattachent à une session précise.
    C'est ce qui fait exister « les cinq sessions les plus coûteuses » dans Stats, et la ligne
@@ -1792,6 +1771,12 @@ async function semerPlugins() {
   /* Les plugins embarqués sont désactivés sur une base neuve. La démo, elle, MONTRE Jenkins (son onglet, ses décors) : on l'active
      — l'état est gardé, `npm run demo` le retrouvera. Les autres restent éteints, comme sur toute installation. */
   for (const nom of ['jenkins']) { if (plugins.fiche(nom)) await plugins.activer(nom); }
+  /* Les plugins TIERS que la démo montre aussi (Docker n'est plus dans le cœur) : les dossiers de `MERGERIE_DEMO_PLUGINS` (séparés par `:`), ou, à défaut,
+     le dépôt voisin `../docker-mergerie` s'il est là. Installés dans le dossier de données de la démo puis activés ; absents, la démo se passe de leur onglet. */
+  const tiers = (process.env.MERGERIE_DEMO_PLUGINS ? process.env.MERGERIE_DEMO_PLUGINS.split(':') : [path.join(__dirname, '..', '..', 'docker-mergerie')]).filter((d) => d && fs.existsSync(path.join(d, 'plugin.json')));
+  for (const dossier of tiers) {
+    try { const f = plugins.installerDepuisDossier(dossier); await plugins.activer(f.nom); } catch (e) { console.log(`[demo] plugin ${dossier} ignoré : ${e.message}`); }
+  }
   const semes = await plugins.semerDemo();
   await plugins.arreter();
   for (const [nom, n] of Object.entries(semes)) counts[`plugin:${nom}`] = n;

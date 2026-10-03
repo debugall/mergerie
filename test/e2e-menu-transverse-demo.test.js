@@ -14,10 +14,9 @@
  * Ce qu'on regarde :
  *   - la bannière de démo et le badge dry-run sont visibles ;
  *   - chaque menu montre son décor : merge requests à traiter et rapports (un rapport s'ouvre),
- *     sessions, tickets Jira, jobs Jenkins, projets Docker ;
+ *     sessions, tickets Jira, jobs Jenkins (le décor Docker est celui du plugin, éprouvé chez lui) ;
  *   - « Chercher les nouvelles MR » ne part pas sur le réseau et ne lève aucune erreur ;
  *   - une nouvelle session propose d'office le SEUL dépôt réellement clonable ;
- *   - la palette propose un projet compose du décor, et y mène ;
  *   - aucune erreur JavaScript. */
 
 const { test, before, after, describe } = require('node:test');
@@ -127,30 +126,11 @@ describe('Transverse — le mode démo, parcouru au navigateur', { skip: dispo ?
     await page.waitForFunction(() => [...document.querySelectorAll('#taskModal input')].some((i) => i.value === 'groupe/tarification'));
   });
 
-  test('Jira, Jenkins et Docker montrent leur décor', async () => {
+  test('Jira et Jenkins montrent leur décor', async () => {
     await aller('jira');
     await page.waitForSelector('#jiraList .jira-item');
     await aller('jenkins');
     await page.waitForSelector('#jenkinsBox .jk-row');
-    await aller('docker');
-    await page.waitForFunction(() => /boutique/.test(document.querySelector('#tab-docker').textContent));
-  });
-
-  test('la palette propose un projet compose du décor, et mène à Docker → Compose', async () => {
-    // Docker sur un AUTRE sous-onglet, puis ailleurs : la palette doit ramener sur Compose.
-    await aller('docker');
-    await page.locator('#tab-docker .subnav [data-dsub="orphans"]').click();
-    await page.waitForSelector('#dsub-orphans.active');
-    await aller('review');
-    await page.locator('#paletteTrigger').click();
-    await page.waitForSelector('#paletteModal:not([hidden])');
-    await page.locator('#paletteInput').fill('boutique');
-    const entree = page.locator('#paletteList .palette-item')
-      .filter({ has: page.locator('.palette-label', { hasText: /^Docker : projet boutique$/ }) }).first();
-    await entree.click();
-    await page.waitForSelector('#tab-docker.active');
-    await page.waitForSelector('#tab-docker .subnav [data-dsub="compose"].active');
-    await page.waitForSelector('#dsub-compose.active');
   });
 
   test('aucune erreur JavaScript pendant tout le parcours', () => {

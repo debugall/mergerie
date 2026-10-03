@@ -719,7 +719,7 @@ function preFiltre(requete, colonnes) {
 /* `agentsMsgs` : les deux libellés d'agent, déjà traduits par l'appelant. Ce module ne charge
    PAS `i18n-runtime` — il utilise `t` comme nom de variable locale à trois endroits, et le
    garde-fou de `check-server` refuse (à raison) qu'un fichier qui traduit masque `t`. */
-function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, dockerProjets = [], msgs = {} } = {}) {
+function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, msgs = {} } = {}) {
   const requete = String(q || '').trim();
   const use = usages();
   const out = [];
@@ -838,15 +838,6 @@ function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, d
       label: String(msgs.verify || '{name}').replace('{name}', r.name), detail: '',
       nav: { verifier_id: r.id },
       texte: `${r.name} verifier verification`,
-    });
-  }
-  // Les projets compose DÉJÀ VUS par la veille (aucun `docker ps` déclenché par la palette).
-  for (const nom of dockerProjets.slice(0, PAR_SOURCE)) {
-    pousser({
-      kind: 'compose', ref: String(nom), group: 'actions',
-      label: String(msgs.compose || '{name}').replace('{name}', nom), detail: '',
-      nav: { compose: String(nom) },
-      texte: `${nom} docker compose conteneur container`,
     });
   }
   const fCmd = preFiltre(requete, ['label', 'command']);

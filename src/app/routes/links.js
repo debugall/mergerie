@@ -8,9 +8,11 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jira = require('../../integrations/jira');
 const links = require('../../notes/links');
-const docker = require('../../integrations/docker');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const plugins = require('../../plugins');
+const db = require('../../db');
+const verifyLib = require('../../verify/verify');
+const { origineDuDossier } = require('../../git/origine-dossier');
 const { mrById, wrap } = require('../http');
 
 /* ---------- Liens (plan_add_links.md) --------------------------------------
@@ -80,16 +82,12 @@ app.post('/api/launcher', wrap(async (req, res) => {
      la palette montre ses trois sections (actions, merge requests, sessions récentes), rien d'autre. */
   const desPlugins = String(body.q || '').trim() ? await plugins.palette(body.q, 30) : [];
   const results = links.launcher(body.q, {
-      jiraConfigure: demoDocker.isDemo() || jira.isConfigured(getConfig()),
+      jiraConfigure: demoMode.isDemo() || jira.isConfigured(getConfig()),
       actions: Array.isArray(body.actions) ? body.actions.slice(0, 60) : [],
       // Les libellés d'agent sont traduits ICI : `links.js` ne charge pas le dictionnaire.
       agentsMsgs: { ask: t('agents.palette.ask', { name: '{name}' }), investigate: t('agents.palette.investigate') },
-      /* B13 — les projets compose DÉJÀ VUS. La palette ne déclenche aucun `docker ps` : elle
-         lit ce que le badge de santé et la veille de fond ont relevé. */
-      dockerProjets: demoDocker.isDemo() ? ['boutique', 'monitoring'] : docker.nomsConnus(),
       msgs: {
         verify: t('palette.act.verify', { name: '{name}' }),
-        compose: t('palette.act.compose', { name: '{name}' }),
         gitcmd: t('palette.act.gitcmd', { label: '{label}' }),
       },
     });
@@ -129,4 +127,23 @@ app.get('/api/mrs/:id/links', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw Object.assign(new Error(t('err.links.unknown')), { status: 404 });
   res.json(links.liensDeMr(mr));
+}));
+
+/* B8 — LA CASE « LOCAL » QUE LE COMPOSE CONNAÎT DÉJÀ. On ajoute `webapp-front` à la grille et on tape `localhost:3000` — que le projet compose affiché
+   juste à côté (plugin Docker) sait déjà, puisqu'il publie ce port. On relie le dossier à son dépôt par le remote lu dans `.git/config`, le dépôt à son
+   service dans la grille, et on rend l'environnement « local » où poser l'adresse. Rien n'est écrit sans clic : on PROPOSE, la grille reste la vérité. */
+app.get('/api/links/local-suggestion', wrap((req, res) => {
+  const dir = String(req.query.dir || '').trim();
+  if (!dir) return res.json({ service: null, ports: [] });
+  const remote = origineDuDossier(dir);
+  if (!remote) return res.json({ service: null, ports: [] });
+  const cible = db.prepare('SELECT id, project, url FROM repo').all().find((r) => verifyLib.memeDepot(r.url, remote));
+  if (!cible) return res.json({ service: null, ports: [] });
+  const service = db.prepare('SELECT id, name FROM service WHERE repo_id = ? ORDER BY id LIMIT 1').get(cible.id);
+  if (!service) return res.json({ service: null, ports: [] });
+  /* L'environnement « local » de la grille, s'il existe : c'est celui que le compose renseigne. Sans lui, il n'y a pas de case à remplir — et en créer un
+     d'office réarrangerait la grille de quelqu'un sans qu'il l'ait demandé. */
+  const env = db.prepare("SELECT id, name FROM environment WHERE LOWER(name) IN ('local','localhost') ORDER BY id LIMIT 1").get();
+  const dejaLa = env ? db.prepare('SELECT COUNT(*) c FROM service_url WHERE service_id = ? AND environment_id = ?').get(service.id, env.id).c : 0;
+  res.json({ service: { id: service.id, name: service.name, project: cible.project }, environment: env || null, filled: !!dejaLa });
 }));

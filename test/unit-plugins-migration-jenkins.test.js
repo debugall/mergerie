@@ -134,8 +134,41 @@ describe('Plugins — migration des données Jenkins du cœur vers le plugin', (
     const db = new Database(path.join(dir, 'reviewer.db'), { readonly: true });
     assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_setting WHERE plugin = 'jenkins'").get().c, 0);
     assert.equal(db.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('repo_jenkins', 'plugin_jenkins_link')").get().c, 0, 'la table du plugin n’existe qu’une fois le plugin activé');
-    assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core'").get().c, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core'").get().c, 2, 'les deux passages du cœur (Jenkins, Docker) sont notés');
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('Plugins — migration des données Docker du cœur vers le plugin', () => {
+  const lireDans = (dir, sql) => JSON.parse(execFileSync(process.execPath, ['-e',
+    'const d=require("better-sqlite3")(process.argv[1],{readonly:true});console.log(JSON.stringify(d.prepare(process.argv[2]).all()))',
+    path.join(dir, 'reviewer.db'), sql], { cwd: ROOT, encoding: 'utf8' }));
+
+  test('base NEUVE : ni table ni état Docker ; base EXISTANTE : sauvegardes et dernières cibles make RENOMMÉES, lignes intactes, plugin activé d’office — une seule fois', () => {
+    const neuve = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-docker-neuve-'));
+    ouvrirSchema(neuve);
+    assert.deepEqual(lireDans(neuve, "SELECT name FROM sqlite_master WHERE name LIKE '%docker%' OR name = 'make_run'"), [], 'le cœur ne crée plus aucune table Docker');
+    assert.deepEqual(lireDans(neuve, "SELECT * FROM plugin_state WHERE name = 'docker'"), [], 'le plugin n’est pas activé d’office sur une première installation');
+
+    // Un poste qui tournait : les deux anciennes tables, remplies, et le marqueur du passage pas encore posé.
+    const ancienne = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-docker-ancienne-'));
+    ouvrirSchema(ancienne);
+    ouvrirSchema(ancienne, [
+      "CREATE TABLE docker_backup (id INTEGER PRIMARY KEY, container_id TEXT, name TEXT, image TEXT, inspect_json TEXT NOT NULL, run_command TEXT, created_at TEXT)",
+      "INSERT INTO docker_backup (container_id, name, image, inspect_json, run_command, created_at) VALUES ('abc', 'redis-perso', 'redis:7', '{}', 'docker run redis', '2026-01-01')",
+      "CREATE TABLE make_run (dir TEXT NOT NULL, target TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, ok INTEGER, PRIMARY KEY (dir, target))",
+      "INSERT INTO make_run (dir, target, started_at, finished_at, ok) VALUES ('/p', 'migrate', '2026-01-01', '2026-01-01', 1)",
+      "DELETE FROM plugin_migration WHERE plugin = '_core' AND version = 2",
+    ]);
+    ouvrirSchema(ancienne);
+    assert.deepEqual(lireDans(ancienne, 'SELECT container_id, name, image FROM plugin_docker_backup'), [{ container_id: 'abc', name: 'redis-perso', image: 'redis:7' }]);
+    assert.deepEqual(lireDans(ancienne, 'SELECT dir, target, ok FROM plugin_docker_make_run'), [{ dir: '/p', target: 'migrate', ok: 1 }]);
+    assert.deepEqual(lireDans(ancienne, "SELECT name FROM sqlite_master WHERE name IN ('docker_backup', 'make_run')"), [], 'les anciennes tables ont changé de nom, pas de contenu');
+    assert.deepEqual(lireDans(ancienne, "SELECT enabled, origin FROM plugin_state WHERE name = 'docker'"), [{ enabled: 1, origin: 'user' }], 'le plugin s’active tout seul le jour où on l’installe');
+    // Pas rejoué : désactivé par la personne, il le reste.
+    ouvrirSchema(ancienne, ["UPDATE plugin_state SET enabled = 0 WHERE name = 'docker'"]);
+    ouvrirSchema(ancienne);
+    assert.equal(lireDans(ancienne, "SELECT enabled FROM plugin_state WHERE name = 'docker'")[0].enabled, 0);
   });
 });

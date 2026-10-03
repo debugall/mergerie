@@ -22,6 +22,14 @@ function chipBranche(nom, { cible = false } = {}) {
   if (!nom) return '';
   return `<code class="branch-chip${cible ? ' branch-chip-cible' : ''}" data-copy-branch="${esc(nom)}" role="button" tabindex="0" title="${esc(tr('branch.copy.title'))}">${esc(nom)}</code>`;
 }
+/* « Copier » une valeur d'un clic : une clé de ticket, une adresse, une commande — `data-copy-txt` sur le bouton, le texte à copier dedans. */
+document.addEventListener('click', (e) => {
+  const txt = e.target.closest && e.target.closest('[data-copy-txt]');
+  if (!txt) return;
+  e.preventDefault(); e.stopPropagation();
+  copyText(txt.dataset.copyTxt, null);
+  toast(tr('toast.copied-value', { valeur: txt.dataset.copyTxt }));
+});
 document.addEventListener('click', (e) => {
   const c = e.target.closest && e.target.closest('[data-copy-branch]');
   if (!c) return;

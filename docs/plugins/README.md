@@ -59,5 +59,5 @@ automatique.
 | [COMMUNITY.md](./COMMUNITY.md) | les plugins connus |
 
 Pour l'histoire du chantier : [JENKINS-INVENTORY.md](./JENKINS-INVENTORY.md) (l'inventaire qui a
-dimensionné l'API) et [PLUGIN-CANDIDATES.md](./PLUGIN-CANDIDATES.md) (Liens, Docker et Git, les
+dimensionné l'API) et [PLUGIN-CANDIDATES.md](./PLUGIN-CANDIDATES.md) (Liens, Docker — fait, en plugin tiers — et Git, les
 prochains).

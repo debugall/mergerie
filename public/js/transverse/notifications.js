@@ -20,11 +20,10 @@ const NOTIF_DEFAULTS = {
   mr_merged: false,   // MR mergée — informatif, pas actionnable
   /* B14/B15 — LES TROIS FAMILLES QUI NE DISAIENT RIEN. Une opération git est le geste le plus
      irréversible de l'outil et ne notifiait ni succès ni échec ; un conteneur qui tombe ne
-     réveillait personne ; un build de CI n'était vu que si l'onglet était ouvert. Docker est
-     DÉCOCHÉ par défaut : sur une machine de développement, des conteneurs s'arrêtent tous les
-     jours pour de bonnes raisons, et une alarme qui sonne toujours n'est plus lue. */
+     réveillait personne ; un build de CI n'était vu que si l'onglet était ouvert. (Les genres de
+     notification des plugins — la chute d'un conteneur Docker, la fin d'un build Jenkins — sont
+     déclarés par eux, avec leur défaut.) */
   git_done: true,     // une opération git a abouti — on est déjà parti voir ailleurs
-  docker_down: false, // un conteneur est tombé — opt-in : une machine de dev en voit passer
   /* B12 — les deux silences du serveur. Un dossier de l'utilisateur laissé détaché est le
      pire état que l'outil puisse laisser et ne se voyait qu'en ouvrant le rapport ; un plafond
      atteint se lit comme « tout a été fait » alors que du travail attend un clic. */

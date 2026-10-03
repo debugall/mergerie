@@ -1,15 +1,14 @@
 'use strict';
 /* MENU NOTES → AUJOURD'HUI : les sections qui viennent d'AILLEURS que la base.
  *
- * Trois sections du brief ne se remplissent qu'avec un tiers ou un autre écran :
- *   - « Conteneurs tombés » — ce que la veille de fond a relevé chez Docker ;
+ * Deux sections du brief ne se remplissent qu'avec un tiers ou un autre écran :
  *   - « CI rouge sur mes branches » — la liste Jenkins croisée avec les branches de mes MR ;
  *   - « À nettoyer » — le nombre de branches de MR mergées, lu par l'onglet Git.
  * Et deux saveurs de session qui attendent une réponse sans avoir de dépôt : hors dépôt et
  * question libre. Chacune mène à son écran, et c'est ce que ce fichier éprouve par l'écran.
  *
- * Docker est remplacé par une doublure posée sur le module (comme dans e2e-veille) : le runner
- * n'a pas de démon. Jenkins est le faux serveur de test/helpers/mock-jenkins.
+ * (« Conteneurs tombés » est la section du plugin Docker : elle est éprouvée chez lui.) Jenkins est le
+ * faux serveur de test/helpers/mock-jenkins.
  *
  * Un seul `startApp()` ; `src/` n'est chargé qu'APRÈS lui (voir e2e-veille). */
 
@@ -22,19 +21,13 @@ const mockJenkins = require('./helpers/mock-jenkins');
 
 const { dispo } = navigateurDispo();
 
-describe('Menu Notes · Aujourd’hui — Docker, Jenkins, Git et sessions sans dépôt', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+describe('Menu Notes · Aujourd’hui — Jenkins, Git et sessions sans dépôt', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
   let app; let navigateur; let page; let jenkins;
-  let docker; let veille; let vraiStatus; let vraiListe;
   const erreurs = [];
   const s = {};
 
   before(async () => {
     app = await startApp();
-    /* eslint-disable global-require */
-    docker = require('../src/integrations/docker');
-    veille = require('../src/integrations/veille');
-    /* eslint-enable global-require */
-
     // Jenkins : un job ROUGE dont le dernier build porte la branche d'une de mes MR.
     jenkins = await mockJenkins.start();
     mockJenkins.reset();
@@ -80,16 +73,6 @@ describe('Menu Notes · Aujourd’hui — Docker, Jenkins, Git et sessions sans 
     s.ask = app.db.prepare(`INSERT INTO question (prompt, status, created_at, updated_at)
       VALUES ('Pourquoi le cache expire ?', 'needs_input', ?, ?)`).run(now, now).lastInsertRowid;
 
-    // Docker : la veille a vu tomber un service compose et un conteneur lancé à la main.
-    vraiStatus = docker.status; vraiListe = docker.listContainers;
-    const conteneur = (name, project) => ({
-      id: name, name, state: 'exited', status: 'Exited (1) 2 minutes ago', image: 'x',
-      project, service: project ? 'api' : null, running: false,
-    });
-    docker.status = async () => ({ ok: true });
-    docker.listContainers = async () => [conteneur('boutique-api-1', 'boutique'), conteneur('redis-seul', null)];
-    await veille.tourDocker();
-
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
     page.on('pageerror', (e) => erreurs.push(e.message));
@@ -100,8 +83,6 @@ describe('Menu Notes · Aujourd’hui — Docker, Jenkins, Git et sessions sans 
   });
 
   after(async () => {
-    if (docker) { docker.status = vraiStatus; docker.listContainers = vraiListe; }
-    if (veille) veille.arreter();
     if (navigateur) await navigateur.close();
     if (jenkins) await jenkins.close();
     if (app) await app.stop();
@@ -115,25 +96,6 @@ describe('Menu Notes · Aujourd’hui — Docker, Jenkins, Git et sessions sans 
     await page.waitForSelector('#notesSubToday:not([hidden]) #briefBox .brief-head');
   };
   const section = (titre) => page.locator('#briefBox .brief-sec').filter({ has: page.locator('h3', { hasText: titre }) });
-
-  test('les conteneurs tombés sont listés, datés, et chacun mène à son sous-onglet Docker', async () => {
-    await allerBrief();
-    const sec = section('Conteneurs tombés');
-    await sec.waitFor();
-    const texte = await sec.innerText();
-    assert.match(texte, /boutique-api-1/);
-    assert.match(texte, /redis-seul/);
-    assert.match(texte, /Relevé/, 'un relevé, pas un direct');
-
-    await sec.locator('[data-brief-docker="boutique-api-1"]').click();
-    await page.waitForSelector('#tab-docker.active');
-    await page.waitForSelector('#dsub-compose.active');
-
-    await allerBrief();
-    await section('Conteneurs tombés').locator('[data-brief-docker="redis-seul"]').click();
-    await page.waitForSelector('#tab-docker.active');
-    await page.waitForSelector('#dsub-orphans.active');
-  });
 
   test('un job Jenkins rouge sur la branche d’une de mes MR apparaît, et « Détails » ouvre sa fiche', async () => {
     await allerBrief();

@@ -307,4 +307,30 @@ describe('Vérificateurs automatiques sur les nouvelles MR', () => {
     assert.deepEqual(r.auto_verify, { lancees: 0, ignorees: 0, plafonnees: 0, services_arretes: 0 });
     assert.equal(verifications().length, avant, 'aucune vérification créée');
   });
+
+  /* A28 — LE PRÉ-VOL DES SERVICES. L'état des services compose d'un répertoire est le service `docker.dirState` du plugin Docker : sans lui (absent ou
+     désactivé), il n'y a rien à dire et la vérification part ; avec lui, des services arrêtés la retiennent ; un plugin qui échoue ne bloque rien. */
+  test('le pré-vol passe par le service docker.dirState du plugin, et ne bloque que sur une certitude', async () => {
+    const { servicesPretsPour } = require('../src/app/lib/decouverte');
+    const repoId = app.db.prepare('SELECT id FROM repo ORDER BY id LIMIT 1').get().id;
+    const vid = app.db.prepare("INSERT INTO verifier (name, command, created_at) VALUES ('pre-vol', '', datetime('now'))").run().lastInsertRowid;
+    app.db.prepare("INSERT INTO verifier_repo (verifier_id, repo_id, mode, workdir, checkout_allowed) VALUES (?, ?, 'in_place', '/chantier/compose', 1)").run(vid, repoId);
+    const v = { id: vid, name: 'pre-vol' };
+    const dits = [];
+    const log = (m) => dits.push(m);
+
+    assert.equal(await servicesPretsPour(v, log), true, 'sans le service, on lance comme avant');
+    const registre = require('../src/plugins/registre');
+    registre.registerService('coeur', 'docker.dirState', async ({ dir }) => ({ found: true, dir, project: 'chantier', services: [{ name: 'db', state: 'exited' }, { name: 'api', state: 'running' }] }));
+    assert.equal(await servicesPretsPour(v, log), false, 'des services déclarés et arrêtés retiennent la vérification');
+    assert.match(dits.join('\n'), /db/);
+    assert.ok(!/api/.test(dits.join('\n')), 'seul ce qui est arrêté est nommé');
+    registre.oublier('coeur');
+    registre.registerService('coeur', 'docker.dirState', async () => ({ found: true, project: 'chantier', services: [{ name: 'db', state: 'running' }] }));
+    assert.equal(await servicesPretsPour(v, log), true, 'tout tourne : on lance');
+    registre.oublier('coeur');
+    registre.registerService('coeur', 'docker.dirState', async () => { throw new Error('plugin en panne'); });
+    assert.equal(await servicesPretsPour(v, log), true, 'un plugin qui échoue est une incertitude : on lance');
+    registre.oublier('coeur');
+  });
 });

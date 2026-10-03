@@ -112,8 +112,8 @@ document.addEventListener('keydown', (e) => {
          étaient absents, si bien que « / » y faisait exactement ce que le commentaire
          ci-dessus dit avoir corrigé — changer d'onglet. */
       const champ = $$([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
-        #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
-        #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
+        #pageSearch, #linkSearch, #todoQuickAdd,
+        #agentFilter, #repoSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
         .find((el) => el.offsetParent !== null);
       if (champ) { champ.focus(); if (champ.select) champ.select(); break; }
       const s = $('#searchReview');

@@ -83,7 +83,6 @@ button.dlog-cname { font: inherit; background: none; border: 0; padding: 0; colo
   cursor: pointer; text-align: left; }
 button.dlog-cname:hover { text-decoration: underline; }
 button.dlog-cname:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Les sauvegardes Docker : une ligne par container refaisable, la commande en petit. */
 /* Les raccourcis d'insertion sous le champ de commentaire Jira : discrets, alignés. */
 /* Une surveillance en échec doit se voir : sinon le ticket paraît simplement immobile. */
 /* Ce qui se copie d'un clic doit RESTER ce qu'il est à l'œil : une clé, un SHA, une commande.

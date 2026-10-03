@@ -75,7 +75,7 @@ describe('Front découpé — manifeste chargé entier, chaque écran s’ouvre 
 
   test('chaque onglet, et chaque sous-onglet des réglages et des agents, s’ouvre sans erreur', async () => {
     const onglets = await page.$$eval('nav button[data-tab]', (bs) => bs.map((b) => b.dataset.tab));
-    assert.ok(onglets.length >= 11, `onze onglets attendus, ${onglets.length} trouvés`);
+    assert.ok(onglets.length >= 10, `dix onglets attendus, ${onglets.length} trouvés`);
     for (const tab of onglets) {
       await page.locator(`nav button[data-tab="${tab}"]`).click();
       await page.waitForSelector(`#tab-${tab}.active`);

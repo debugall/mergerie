@@ -1,6 +1,6 @@
 'use strict';
 /* Explorateur de branches, trouver une ref, historique et restauration. */
-// @expose GIT_ACTION_LABEL, filtrerHistoriqueGit, gitAnalyze
+// @expose GIT_ACTION_LABEL, filtrerHistoriqueGit
 /* ---- Explorateur de branches ---- */
 /* La session qui a créé la branche mène À ELLE, pas à l'onglet : on arrivait sur Dev IA, sur
    le sous-onglet consulté la dernière fois, à charge de retrouver la session parmi douze. */

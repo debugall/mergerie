@@ -1726,7 +1726,7 @@ const REGISTRE = [
   },
   { table: 'lot_member', famille: 'P', uidPropre: false /* pas de clé primaire propre : (lot, genre, référence) la décrit entièrement */, parent: 'lot', liste: 'members', fusion: 'parent' },
 
-  /* ── Git, Docker : deux onglets qui décrivent CE POSTE ───────────────────────────────── */
+  /* ── Git (et Docker, devenu plugin : ses sauvegardes sont `plugin_docker_backup`, classées L par lui) : des onglets qui décrivent CE POSTE ───────────────────────────────── */
   /* La palette de commandes git, le journal des refs créées ou supprimées, les conteneurs
      sauvegardés : ce sont des gestes d'outillage, faits depuis une machine, sur des clones et
      des démons qui n'existent que là. Les partager imposerait à chacun la palette du voisin et
@@ -1744,7 +1744,6 @@ const REGISTRE = [
   { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
-  { table: 'docker_backup', famille: 'L', uidPropre: true, note: 'les conteneurs sauvegardés sur CE poste' },
 
   /* ── Réglages ────────────────────────────────────────────────────────────────────────── */
   /* `config` est la seule table dont CHAQUE colonne est classée nommément, et dont les deux
@@ -1884,7 +1883,6 @@ const REGISTRE = [
   { table: 'feed', famille: 'C', note: 'relu de la forge' },
   { table: 'job', famille: 'C', note: 'la file de CE poste' },
   { table: 'job_log', famille: 'C', note: 'la console des jobs de ce poste — 58 % du poids de la base' },
-  { table: 'make_run', famille: 'C', note: 'relu du disque' },
   { table: 'conn_test', famille: 'C', note: 'le dernier test de connexion de ce poste' },
   { table: 'git_merge', famille: 'C', note: 'un worktree en cours sur CE poste ; git fait foi du reste' },
 ];

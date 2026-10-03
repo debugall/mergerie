@@ -509,14 +509,6 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     assert.match(await page.locator('.palette-hint').textContent(), /⌘K|o/);
   });
 
-  test('l’onglet Docker n’accuse rien avant d’avoir été ouvert', async () => {
-    await ecranPropre();
-    await page.goto(app.base);              // profil neuf : le drapeau « déjà vu » est vierge
-    await page.waitForSelector('nav button[data-tab="docker"]', { timeout: ATTENTE });
-    assert.equal(await page.locator('#dockerErrBadge').evaluate((e) => e.hidden), true);
-    assert.equal(await page.locator('#dockerUnhealthyBadge').evaluate((e) => e.hidden), true);
-  });
-
   test('le filtre de l’ajout en masse reçoit le focus', async () => {
     await ouvrirReglages('repos');
     await page.click('#btnBrowseProjects');

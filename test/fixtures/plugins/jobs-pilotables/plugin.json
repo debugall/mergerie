@@ -1,0 +1,10 @@
+{
+  "name": "jobs-pilotables",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Jobs pilotables",
+  "description": "Lance une cible `make` d'un dossier comme job de plugin (ctx.jobs) : sert aux tests du panneau de journal, qui ont besoin de jobs qu'ils tiennent en main (un job qui tourne tant qu'on ne l'a pas libéré, un job qui échoue, un job bavard).",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["jobs", "http"]
+}

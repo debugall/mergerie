@@ -21,7 +21,7 @@ nav button:hover { color: var(--text); background: var(--hover); }
   background: var(--accent-btn); color: var(--on-accent);
   font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; text-align: center;
 }
-/* Badges santé du menu Docker : ROUGE = en erreur (restarting/dead), ORANGE = unhealthy. */
+/* Badges santé d'un menu (celui d'un plugin : Docker, Jenkins…) : ROUGE = en erreur, ORANGE = à surveiller. */
 .nav-health {
   min-width: 18px; height: 18px; margin-left: 4px; padding: 0 5px; border-radius: var(--r-full);
   color: var(--on-accent); font-size: var(--fs-2xs); font-weight: var(--fw-bold); line-height: 18px; text-align: center;

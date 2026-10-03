@@ -156,8 +156,8 @@ function jobLogPayload(job, after) {
        par l'aperçu, est exactement ce qu'il ne faut pas permettre. Le choix était assumé dans
        le code et muet à l'écran — le bouton disparaissait, sans un mot. */
     no_retry_reason: (job && !jobs.canRetry(job) && ['stopped', 'error', 'interrupted'].includes(job.status)
-      && ['gitops', 'docker', 'verify'].includes(job.kind))
-      ? t(`job.no-retry.${job.kind}`) : null,
+      && (['gitops', 'verify'].includes(job.kind) || String(job.kind).startsWith('plugin:')))
+      ? t(String(job.kind).startsWith('plugin:') ? 'job.no-retry.plugin' : `job.no-retry.${job.kind}`) : null,
     /* CE QUE LE JOB A PRODUIT, pour que le bandeau puisse y mener. Un job qui se terminait
        s'effaçait tout seul six secondes plus tard sans laisser de lien vers son résultat : il
        ne restait qu'une pastille de onze pixels dans le pied de page. */

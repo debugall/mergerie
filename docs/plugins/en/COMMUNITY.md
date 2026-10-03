@@ -16,7 +16,7 @@ automatically, and Mergerie does not check the code of the plugins listed here: 
 
 | Plugin | Role | Licence | apiVersion | Permissions |
 |---|---|---|---|---|
+| [`docker`](https://gitlab.com/amady/docker-mergerie) | the former Docker tab: compose projects and configuration drift, containers outside compose, group actions, Makefile targets, live logs, a heads-up when a container goes down | AGPL-3.0-only | 1 | events, db, http, sse, schedule, exec, repos, jobs, env, ui.*, notify, demo, services |
 | [`jenkins-teams-notify`](https://gitlab.com/amady/jenkins-teams-notify) | posts a message in a Teams channel when a Jenkins job starts or finishes, by browser automation (Playwright) | AGPL-3.0-only | 1 | events, settings, db, http, exec, storage, ui.tab, ui.actions, demo, services |
 
-The core's Links, Docker and Git tabs will become built-in plugins in the next versions
-([../PLUGIN-CANDIDATES.md](../PLUGIN-CANDIDATES.md), in French).
+The core's Links and Git tabs could follow ([../PLUGIN-CANDIDATES.md](../PLUGIN-CANDIDATES.md), in French); Docker already did, as a third-party plugin.

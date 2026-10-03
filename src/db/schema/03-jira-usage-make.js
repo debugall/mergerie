@@ -36,19 +36,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS usage (
   tokens_est INTEGER,
   created_at TEXT
 )`);
-/* ---------- La dernière exécution d'une cible Makefile ----------
-   « Ai-je déjà passé les migrations ce matin ? » se répondait en relisant un journal de jobs.
-   Une ligne par (répertoire, cible), écrasée à chaque lancement : ce qui compte est le
-   DERNIER, pas l'historique. Purement local — Docker et make n'en savent rien. */
-db.exec(`CREATE TABLE IF NOT EXISTS make_run (
-  dir TEXT NOT NULL,
-  target TEXT NOT NULL,
-  started_at TEXT NOT NULL,
-  finished_at TEXT,
-  ok INTEGER,
-  PRIMARY KEY (dir, target)
-)`);
-
 /* À QUOI SE RATTACHE UNE DÉPENSE. La table comptait des tokens PAR FAMILLE (review, task,
    explore…) : on savait combien coûtaient les sessions, jamais LESQUELLES. Deux colonnes
    suffisent — l'objet et son identifiant —, et le classement des sessions les plus chères
