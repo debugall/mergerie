@@ -87,10 +87,11 @@ export interface VerifyFinishedPayload {
   verdict: string;
 }
 
-/** un build est lancé depuis Mergerie (plugin jenkins) */
+/** un build démarre : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui (plugin jenkins) */
 export interface JenkinsJobStartedPayload {
   /** la version de l'événement dans le contrat */
   version: number;
+  source: mergerie" | "jenkins";
   path: string;
   since: number;
   parameters: Record<string, string>;
@@ -98,10 +99,11 @@ export interface JenkinsJobStartedPayload {
   startedBy: string;
 }
 
-/** un build lancé depuis Mergerie s’est terminé (plugin jenkins) */
+/** un build s’est terminé : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui (plugin jenkins) */
 export interface JenkinsJobFinishedPayload {
   /** la version de l'événement dans le contrat */
   version: number;
+  source: mergerie" | "jenkins";
   path: string;
   number: number;
   result: string;

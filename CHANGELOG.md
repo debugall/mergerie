@@ -13,6 +13,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **The Jenkins plugin can announce EVERY job, not only the builds you started from Mergerie.** A new setting, *Announce ALL jobs* (off by default), makes it ask Jenkins once a
+  minute (one call for the whole job tree) and emit `jenkins.job.started` / `jenkins.job.finished` for every build, whoever started it. Each event now carries `source`
+  (`"mergerie"` or `"jenkins"`) so a listener can tell them apart; plugins such as Jenkins Teams Notify use it to post about a chosen list of jobs whoever launched them.
 - **A "copy" button next to every token in Settings** — GitLab, GitHub, Jira, Confluence and Jenkins. Tokens still never reach the page
   (the field keeps showing `***`): the button asks the server for the value on that click, writes it to the clipboard and keeps it out
   of the screen. A token you just typed and have not saved is copied as is. A plugin gets the same button for any setting its schema

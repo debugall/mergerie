@@ -15,8 +15,8 @@ Un événement est un nom (`domaine.action`) et un payload **sérialisable** qui
 | [`review.completed`](#reviewcompleted) | 1 | cœur | un rapport de review est enregistré |
 | [`converge.finished`](#convergefinished) | 1 | cœur | une boucle de convergence s’arrête |
 | [`verify.finished`](#verifyfinished) | 1 | cœur | une vérification objective a rendu son verdict (ou échoué) |
-| [`jenkins.job.started`](#jenkinsjobstarted) | 1 | plugin jenkins | un build est lancé depuis Mergerie |
-| [`jenkins.job.finished`](#jenkinsjobfinished) | 1 | plugin jenkins | un build lancé depuis Mergerie s’est terminé |
+| [`jenkins.job.started`](#jenkinsjobstarted) | 1 | plugin jenkins | un build démarre : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui |
+| [`jenkins.job.finished`](#jenkinsjobfinished) | 1 | plugin jenkins | un build s’est terminé : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui |
 
 ## `app.ready`
 
@@ -188,10 +188,11 @@ _(aucun champ en dehors de `version`)_
 
 ## `jenkins.job.started`
 
-**Quand** : un build est lancé depuis Mergerie. **Source** : plugin jenkins. **Version** : 1.
+**Quand** : un build démarre : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui. **Source** : plugin jenkins. **Version** : 1.
 
 | Champ | Type |
 |---|---|
+| `source` | `"mergerie" | "jenkins"` |
 | `path` | `string` |
 | `since` | `number` |
 | `parameters` | `Record<string, string>` |
@@ -201,6 +202,7 @@ _(aucun champ en dehors de `version`)_
 ```json
 {
   "version": 1,
+  "source": "mergerie",
   "path": "path-example",
   "since": 42,
   "parameters": {
@@ -213,10 +215,11 @@ _(aucun champ en dehors de `version`)_
 
 ## `jenkins.job.finished`
 
-**Quand** : un build lancé depuis Mergerie s’est terminé. **Source** : plugin jenkins. **Version** : 1.
+**Quand** : un build s’est terminé : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui. **Source** : plugin jenkins. **Version** : 1.
 
 | Champ | Type |
 |---|---|
+| `source` | `"mergerie" | "jenkins"` |
 | `path` | `string` |
 | `number` | `number` |
 | `result` | `string` |
@@ -228,6 +231,7 @@ _(aucun champ en dehors de `version`)_
 ```json
 {
   "version": 1,
+  "source": "mergerie",
   "path": "path-example",
   "number": 42,
   "result": "result-example",
