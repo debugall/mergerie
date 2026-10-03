@@ -51,13 +51,13 @@ app.put('/api/plugins/:name/settings', wrap((req, res) => { res.json(plugins.ecr
    choisi À CHAQUE requête : désactivé, le plugin rend 404 « plugin inactif ». Le handler du
    plugin reçoit une requête SIMPLE (méthode, chemin, query, params, corps, en-têtes, langue) et
    un `reply` ; ce qu'il rend part en JSON, ce qu'il lève devient `{ error }` avec son statut. */
-const routeurs = new Map();   // nom → { signature, router }
+const routeurs = new Map();   // nom → { signature, router, source }
 function routeurDe(nom) {
   const r = plugins.routesDe(nom);
   if (!r) return null;
   const signature = r.routes.map((x) => `${x.method} ${x.path}`).concat(r.sse.map((x) => `SSE ${x.path}`)).join('\n');
   const deja = routeurs.get(nom);
-  if (deja && deja.signature === signature && deja.source === r) return deja.router;
+  if (deja && deja.signature === signature && deja.source === r.source) return deja.router;
   const router = express.Router();
   for (const { method, path: chemin, handler } of r.routes) {
     router[method.toLowerCase()](chemin, (req, res) => {
@@ -93,7 +93,7 @@ function routeurDe(nom) {
       req.on('close', () => { ferme = true; try { nettoyage(); } catch { /* best-effort */ } });
     });
   }
-  routeurs.set(nom, { signature, router, source: r });
+  routeurs.set(nom, { signature, router, source: r.source });
   return router;
 }
 app.use('/api/plugins/:name', (req, res, next) => {
@@ -119,3 +119,6 @@ app.use('/plugins/:name/ui', (req, res, next) => {
   if (!fs.existsSync(dir)) return next();
   return express.static(dir, { index: false, setHeaders: (r) => r.setHeader('Cache-Control', 'no-cache') })(req, res, next);
 });
+
+/* Pour les tests : le routeur mis en cache d'un plugin. */
+module.exports = { routeurDe };

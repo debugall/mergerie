@@ -326,7 +326,9 @@ function actifsPourPage() {
 function routesDe(nom) {
   const f = fiches.get(nom);
   if (!f || !f.actif || !f.sortie) return null;
-  return { routes: f.sortie.routes || [], sse: f.sortie.sse || [] };
+  /* `source` : l'objet de sortie de l'activation COURANTE. Il change à chaque (ré)activation — c'est ce qui dit au routeur mis en cache que
+     ses handlers sont ceux d'un ctx périmé — et reste le même tant que le plugin reste actif. */
+  return { routes: f.sortie.routes || [], sse: f.sortie.sse || [], source: f.sortie };
 }
 
 /** Sème la démo de chaque plugin actif. */

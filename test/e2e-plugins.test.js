@@ -160,6 +160,23 @@ describe('Plugins — chargeur et isolation', () => {
     assert.equal((await app.api('GET', '/api/plugins/shares-prefix-child/own')).body.tables.length, 1);
   });
 
+  test('le routeur d’un plugin est mis en cache tant qu’il reste actif — et refait à chaque réactivation (ses handlers sont ceux du nouveau ctx)', async () => {
+    const { routeurDe } = require('../src/app/routes/plugins'); // eslint-disable-line global-require
+    const avant = routeurDe('shares-prefix-child');
+    assert.ok(avant);
+    assert.equal(routeurDe('shares-prefix-child'), avant, 'même routeur d’une requête à l’autre');
+    await app.api('GET', '/api/plugins/shares-prefix-child/own');
+    assert.equal(routeurDe('shares-prefix-child'), avant, 'et après une requête');
+    await app.api('POST', '/api/plugins/shares-prefix-child/disable');
+    assert.equal(routeurDe('shares-prefix-child'), null, 'inactif : pas de routeur');
+    await app.api('POST', '/api/plugins/shares-prefix-child/enable');
+    const apres = routeurDe('shares-prefix-child');
+    assert.notEqual(apres, avant, 'réactivé : un routeur neuf, pas celui des handlers périmés');
+    assert.equal((await app.api('GET', '/api/plugins/shares-prefix-child/own')).status, 200);
+    await app.api('POST', '/api/plugins/shares-prefix-child/disable');
+    await app.api('POST', '/api/plugins/shares-prefix-child/uninstall', { deleteData: true });
+  });
+
   test('ctx.exec depuis un worker : sans shell, le message arrive intact, l’environnement demandé est transmis — et lui seul', async () => {
     process.env.RUNS_EXEC_SECRET = 'ne-doit-pas-fuiter';
     try {
