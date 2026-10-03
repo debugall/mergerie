@@ -27,7 +27,8 @@ function depouiller(sql) {
 
 /** Les noms de table qu'une requête touche, hors alias et CTE. */
 function tablesDe(sql) {
-  const s = depouiller(sql);
+  /* `ON CONFLICT (…) DO UPDATE SET …` : le `UPDATE` n'y désigne pas une table (c'est la suite d'un `INSERT INTO <table>`), le garde ne le lit donc pas comme tel. */
+  const s = depouiller(sql).replace(/\bdo\s+update\s+set\b/gi, 'DO SET');
   if (MOTS_INTERDITS.test(s)) throw new Error(`requête refusée : ${s.match(MOTS_INTERDITS)[0].toUpperCase()} n'est pas permis à un plugin`);
   const alias = new Set();
   for (const m of s.matchAll(/\bwith\s+(?:recursive\s+)?([A-Za-z_]\w*)\s*(?:\([^)]*\))?\s+as\b/gi)) alias.add(m[1].toLowerCase());

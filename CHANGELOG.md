@@ -97,6 +97,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A plugin's SQL may use `ON CONFLICT … DO UPDATE SET`.** The plugin SQL guard read the `UPDATE` of an upsert as a table named `set` and refused the
+  statement; it now reads the upsert for what it is, and still refuses a foreign table inside it.
 - **An open report that becomes stale updates on screen.** "Relancer (delta)" and the stale badge only appeared after reloading the page: a
   discovery (the Search button, the discovery on opening the tab, the automatic poll) reloaded the lists but not the report you were reading.
   Only a finished job, or a team sync, refreshed it. The discovery now refreshes the open report itself.

@@ -25,6 +25,11 @@ describe('SDK — préfixes de tables qui se chevauchent', () => {
     assert.equal(dbp.proprietaire('plugin_inconnu_x', noms), null);
     assert.equal(dbp.proprietaire('repo', noms), null);
   });
+  test('un upsert `ON CONFLICT … DO UPDATE SET` n’est pas lu comme une mise à jour de la table « set » ; une vraie autre table reste refusée', () => {
+    const upsert = 'INSERT INTO plugin_x_t (a, b) VALUES (?, ?) ON CONFLICT(a) DO UPDATE SET b = excluded.b';
+    assert.deepEqual(dbp.tablesDe(upsert), ['plugin_x_t']);
+    assert.throws(() => dbp.verifier('plugin_x_', 'INSERT INTO plugin_x_t (a) VALUES (1) ON CONFLICT(a) DO UPDATE SET a = (SELECT 1 FROM repo)'), /repo/);
+  });
   test('le garde refuse au plugin « court » la table du plugin « long » CONNU — et rien d’autre ne change', () => {
     const t = sdk.createTestContext({ manifest: manifeste('jenkins'), otherPlugins: ['jenkins-teams-notify'] });
     t.db.exec('CREATE TABLE plugin_jenkins_link (id INTEGER)');
