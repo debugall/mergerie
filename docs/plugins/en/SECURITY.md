@@ -30,6 +30,7 @@ read.
 | `repos` | **reading** the repository registry (id, project, URL, forge) | forge tokens, clones |
 | `events` | listening to core events, emitting its own (declared, prefixed) | emitting a core or another plugin's event |
 | `schedule` | periodic tasks (≥ 1 s, never overlapping, stopped on deactivation) | — |
+| `storage` | a private folder, `<dataDir>/plugin-data/<name>/` (`ctx.dataDir`): a browser profile, a cache | plugin code, the database, another plugin's folder; it enters neither the team repository nor the backup |
 | `ui.*`, `notify`, `demo`, `services` | screen declarations, notifications of a declared kind, a demo seed, named services `<name>.<service>` | — |
 
 Always present: `log`, `i18n`.

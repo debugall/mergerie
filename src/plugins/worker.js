@@ -8,7 +8,7 @@
 const path = require('path');
 const { parentPort, workerData, receiveMessageOnPort } = require('worker_threads');
 
-const { dir, manifeste, sab, port, racine } = workerData;
+const { dir, manifeste, sab, port, racine, dataDir } = workerData;
 const int32 = new Int32Array(sab);
 const nom = manifeste.name;
 const permissions = new Set(Array.isArray(manifeste.permissions) ? manifeste.permissions : []);
@@ -120,6 +120,7 @@ if (permissions.has('ui.actions')) Object.assign(ctx.ui, { registerAction: (a) =
 if (permissions.has('ui.palette')) ctx.ui.registerPaletteProvider = (fn) => { handlers.palette.push(fn); if (handlers.palette.length === 1) rpc('ui.registerPaletteProvider', []); };
 if (permissions.has('notify')) ctx.notify = { registerKind: (k) => rpc('notify.registerKind', [k]), push: (t, d) => rpc('notify.push', [t, d]) };
 if (permissions.has('demo')) ctx.demo = { isDemo: () => rpc('demo.isDemo', []), seed: (fn) => { handlers.seeds.push(fn); rpc('demo.seed', []); } };
+if (permissions.has('storage')) ctx.dataDir = dataDir;
 if (permissions.has('env')) ctx.env = { get: (n) => rpc('env.get', [n]) };
 if (permissions.has('services')) {
   ctx.services = {

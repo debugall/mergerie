@@ -13,6 +13,27 @@ const sdk = require('../sdk');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'plugins', 'hello-fixture');
 
+describe('SDK — ctx.dataDir (permission storage)', () => {
+  const manifeste = (permissions) => ({ name: 'p', version: '1.0.0', apiVersion: '1', displayName: 'P', description: '', main: 'index.js', permissions });
+  test('avec « storage » : un dossier existant et privé ; sans, la primitive n’existe pas', () => {
+    const fs = require('node:fs');
+    const avec = sdk.createTestContext({ manifest: manifeste(['storage']) });
+    assert.equal(typeof avec.ctx.dataDir, 'string');
+    assert.ok(fs.statSync(avec.ctx.dataDir).isDirectory(), 'le dossier est créé');
+    fs.writeFileSync(path.join(avec.ctx.dataDir, 'x'), 'y');
+    avec.close();
+    const sans = sdk.createTestContext({ manifest: manifeste(['settings']) });
+    assert.equal(sans.ctx.dataDir, undefined);
+    sans.close();
+  });
+  test('le contrat la décrit : permission, primitive, et l’option env de ctx.exec', () => {
+    const c = require('../sdk/contract');
+    assert.ok(c.PERMISSIONS.storage);
+    assert.equal(c.CTX.dataDir.permission, 'storage');
+    assert.match(c.CTX.exec.signature, /env\?: Record<string, string>/);
+  });
+});
+
 describe('SDK — createTestContext', () => {
   test('le ctx ne porte QUE les primitives des permissions déclarées, et il est gelé', () => {
     const t = sdk.createTestContext({ manifest: { name: 'p', version: '1.0.0', apiVersion: '1', displayName: 'P', description: '', main: 'index.js', permissions: ['settings', 'http'] } });

@@ -8,6 +8,8 @@
  * (`http.call(method, path, { query, body })`) ou qu'on monte sur Express (`http.express()`).
  *
  * Ce que le test prouve avec ce ctx vaut pour le serveur : il n'y a pas de seconde API. */
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const contrat = require('./contract');
@@ -154,6 +156,7 @@ function createTestContext(options = {}) {
     net: { request: options.request || requestNode, makeAgentFactory },
     notify: { push: (type, data) => notifications.push({ type, data, at: new Date().toISOString() }) },
     exec: {},
+    dataDir: () => options.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), `mergerie-plugin-${m.name}-`)),
     env: options.env || {},
     isDemo: () => !!options.demo,
   });

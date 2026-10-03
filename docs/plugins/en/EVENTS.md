@@ -195,6 +195,8 @@ _(aucun champ en dehors de `version`)_
 | `path` | `string` |
 | `since` | `number` |
 | `parameters` | `Record<string, string>` |
+| `url` | `string` |
+| `startedBy` | `string` |
 
 ```json
 {
@@ -203,7 +205,9 @@ _(aucun champ en dehors de `version`)_
   "since": 42,
   "parameters": {
     "BRANCH": "main"
-  }
+  },
+  "url": "url-example",
+  "startedBy": "startedBy-example"
 }
 ```
 
@@ -217,6 +221,9 @@ _(aucun champ en dehors de `version`)_
 | `number` | `number` |
 | `result` | `string` |
 | `ok` | `boolean` |
+| `url` | `string` |
+| `duration` | `number` |
+| `startedBy` | `string` |
 
 ```json
 {
@@ -224,7 +231,10 @@ _(aucun champ en dehors de `version`)_
   "path": "path-example",
   "number": 42,
   "result": "result-example",
-  "ok": true
+  "ok": true,
+  "url": "url-example",
+  "duration": 42,
+  "startedBy": "startedBy-example"
 }
 ```
 

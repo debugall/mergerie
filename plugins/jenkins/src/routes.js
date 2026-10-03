@@ -40,7 +40,10 @@ function monterRoutes(ctx, { client, demo, veille, cfg }) {
       catch { since = 0; }
     }
     veille.attendreJenkins(chemin, since);
-    ctx.events.emit('jenkins.job.started', { path: chemin, since, parameters: Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v == null ? '' : v)])) }).catch(() => {});
+    ctx.events.emit('jenkins.job.started', {
+      path: chemin, since, parameters: Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v == null ? '' : v)])),
+      url: client.urlDuJob(cfg(), chemin), startedBy: String(cfg().jenkins_user || ''),
+    }).catch(() => {});
     return r;
   });
   router.get('/console', async (req) => {

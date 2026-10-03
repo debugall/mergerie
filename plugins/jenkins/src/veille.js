@@ -51,7 +51,10 @@ async function tourJenkins(cfg) {
     const fait = { path: chemin, number: b.number, result: b.result || 'UNKNOWN', ok: b.result === 'SUCCESS' };
     if (etat.ctx) {
       etat.ctx.notify.push('jenkins_done', fait);
-      etat.ctx.events.emit('jenkins.job.finished', fait).catch(() => {});
+      /* L'événement porte de quoi parler du build à un tiers (adresse, durée, qui l'a lancé) ; la
+         notification du navigateur, elle, garde sa forme d'avant. */
+      const par = b.by || {};
+      etat.ctx.events.emit('jenkins.job.finished', { ...fait, url: b.url || '', duration: Number(b.duration) || 0, startedBy: String(par.user || par.trigger || par.label || cfg.jenkins_user || '') }).catch(() => {});
     }
   }
   return finis;

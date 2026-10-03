@@ -277,6 +277,7 @@ async function desinstaller(nom, { garderDonnees = true } = {}) {
     d.prepare('DELETE FROM plugin_setting WHERE plugin = ?').run(nom);
     d.prepare('DELETE FROM plugin_secret WHERE plugin = ?').run(nom);
     d.prepare('DELETE FROM plugin_migration WHERE plugin = ?').run(nom);
+    require('./donnees').effacer(nom);
   }
   return { ok: true, dataKept: garderDonnees };
 }

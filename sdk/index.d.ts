@@ -2,7 +2,7 @@
 // Types du ctx d'un plugin Mergerie, de son manifeste et des payloads d'événements.
 
 export type ApiVersion = '1';
-export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services';
+export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services' | 'storage';
 export type Target = 'mr' | 'mr-badge' | 'session-target' | 'session-target-badge' | 'branch' | 'branch-badge' | 'verification' | 'repo-sheet';
 export type EventName = 'app.ready' | 'app.shutdown' | 'repo.deleted' | 'session.started' | 'session.finished' | 'mr.created' | 'review.completed' | 'converge.finished' | 'verify.finished' | 'jenkins.job.started' | 'jenkins.job.finished' | (string & {});
 
@@ -94,6 +94,8 @@ export interface JenkinsJobStartedPayload {
   path: string;
   since: number;
   parameters: Record<string, string>;
+  url: string;
+  startedBy: string;
 }
 
 /** un build lancé depuis Mergerie s’est terminé (plugin jenkins) */
@@ -104,6 +106,9 @@ export interface JenkinsJobFinishedPayload {
   number: number;
   result: string;
   ok: boolean;
+  url: string;
+  duration: number;
+  startedBy: string;
 }
 
 export interface EventPayloads {
@@ -201,7 +206,7 @@ export interface PluginContext {
   /** arrête une tâche — permission `schedule` */
   unschedule: (id: number) => void;
   /** lance SANS shell, sous-commande en liste blanche (non éprouvé en V1) — permission `exec` */
-  exec: (bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[] }) => Promise<{ stdout, stderr, code }>;
+  exec: (bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>;
   net: {
     /** HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s — permission `net` */
     request: (url: string, options?: { method?, headers?, body? }) => Promise<{ status, statusText, headers, body }>;
@@ -244,6 +249,8 @@ export interface PluginContext {
     /** ce que le plugin sème dans une base de démo — permission `demo` */
     seed: (fn: (ctx) => void) => void;
   };
+  /** le dossier privé du plugin (<dataDir>/plugin-data/<name>/), créé à l’activation ; ni son code, ni celui d’un autre plugin — supprimé avec ses données à la désinstallation si on le demande — permission `storage` */
+  dataDir: string;
   env: {
     /** une variable <NAME>_* de l’environnement du serveur — permission `env` */
     get: (name: string) => string | undefined;

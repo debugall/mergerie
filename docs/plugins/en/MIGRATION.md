@@ -44,6 +44,7 @@ another version during the transition.
 | apiVersion | Mergerie | Changes |
 |---|---|---|
 | `1` | 2.1 | first public version: the ctx, the events, the kit, the SDK |
+| `1` (additions) | 2.1 | **additive, same version**: the `storage` permission and `ctx.dataDir`; the `url` and `startedBy` fields of `jenkins.job.started`, `url`, `duration` and `startedBy` of `jenkins.job.finished`; the `env` option of `ctx.exec` |
 
 Primitives present but **not yet proven** by a built-in plugin in `1` (their shape may still change
 without a breaking change, until Links, Docker and Git exercise them): `http.sse` (unavailable from a

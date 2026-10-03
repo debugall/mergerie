@@ -39,6 +39,7 @@ function creerContexte(manifeste, options = {}) {
     net: require('../core/httpreq'),
     notify: { push: (type, data) => require('../core/notify').push(type, data) },
     exec: { options: (o) => require('../core/proc').options(o), tuer: (child, signal) => require('../core/proc').tuerGroupe(child, signal) },
+    dataDir: (n) => require('./donnees').dossierDe(n),
     env: process.env,
     isDemo: options.isDemo || (() => process.env.MERGERIE_DEMO === '1'),
   });

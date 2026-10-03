@@ -56,6 +56,10 @@ async function activate(ctx) {
   ctx.ui.registerDecorator({ id: 'ci-badge-session', target: 'session-target-badge' });
   ctx.ui.registerDecorator({ id: 'repo-sheet-jobs', target: 'repo-sheet' });
   ctx.ui.registerBriefSection({ id: 'ci-rouge', label: 'CI rouge sur mes branches', icon: 'alert', i18n: 'jenkins.brief.title' });
+  /* Un service de PRÉSENCE : tant que Jenkins est actif, `jenkins.status` existe (le nom du plugin est ajouté par `register`) ; le chargeur le retire
+     à la désactivation. Un plugin qui vit des événements jenkins.job.* (jenkins-teams-notify) sait ainsi
+     dire « Jenkins est éteint » dans ses réglages, sans dépendre d'autre chose que de ce nom. */
+  ctx.services.register('status', () => ({ active: true, configured: ctx.settings.get('jenkins_url') ? true : false }));
   ctx.ui.registerLinkKind({ kind: 'build', label: 'Build Jenkins', icon: 'pipeline' });
   ctx.notify.registerKind({ type: 'jenkins_done', label: 'Un job Jenkins que j’ai lancé s’est terminé', default: true, i18n: 'jenkins.notif.setting' });
   /* La palette : les jobs RATTACHÉS à un dépôt — la seule liste de jobs que le serveur connaisse

@@ -38,6 +38,7 @@ const PERMISSIONS = {
   demo: 'semer le mode démo (ctx.demo)',
   env: 'lire les variables d’environnement préfixées par son nom (ctx.env)',
   services: 'exposer et appeler des services nommés entre plugins et cœur (ctx.services)',
+  storage: 'un dossier privé où écrire des fichiers — un profil de navigateur, un cache — qui survit aux mises à jour du plugin (ctx.dataDir)',
 };
 
 /* Les cibles d'une action ou d'une décoration (`target`). */
@@ -67,7 +68,7 @@ const CTX = {
   'http.sse': { permission: 'sse', signature: '(path: string, producer: (req, send, close) => () => void) => void', description: 'un flux SSE sous /api/plugins/<name>/ (non éprouvé en V1)' },
   'schedule': { permission: 'schedule', signature: '(intervalMs: number, fn: () => void | Promise<void>, options?: { immediate?: boolean, inDemo?: boolean }) => number', description: 'une tâche périodique ; arrêtée à la désactivation, jamais en recouvrement, inactive en démo sauf inDemo' },
   'unschedule': { permission: 'schedule', signature: '(id: number) => void', description: 'arrête une tâche' },
-  'exec': { permission: 'exec', signature: '(bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[] }) => Promise<{ stdout, stderr, code }>', description: 'lance SANS shell, sous-commande en liste blanche (non éprouvé en V1)' },
+  'exec': { permission: 'exec', signature: '(bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>', description: 'lance SANS shell, sous-commande en liste blanche (non éprouvé en V1)' },
   'net.request': { permission: 'net', signature: '(url: string, options?: { method?, headers?, body? }) => Promise<{ status, statusText, headers, body }>', description: 'HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s' },
   'repos.list': { permission: 'repos', signature: '() => Repo[]', description: 'les dépôts suivis sur ce poste' },
   'repos.byId': { permission: 'repos', signature: '(id: number) => Repo | null', description: 'un dépôt' },
@@ -84,6 +85,7 @@ const CTX = {
   'notify.push': { permission: 'notify', signature: '(type: string, data: object) => void', description: 'un fait, que le navigateur affiche selon les préférences' },
   'demo.isDemo': { permission: 'demo', signature: '() => boolean', description: 'MERGERIE_DEMO=1 ?' },
   'demo.seed': { permission: 'demo', signature: '(fn: (ctx) => void) => void', description: 'ce que le plugin sème dans une base de démo' },
+  dataDir: { permission: 'storage', signature: 'string', description: 'le dossier privé du plugin (<dataDir>/plugin-data/<name>/), créé à l’activation ; ni son code, ni celui d’un autre plugin — supprimé avec ses données à la désinstallation si on le demande' },
   'env.get': { permission: 'env', signature: '(name: string) => string | undefined', description: 'une variable <NAME>_* de l’environnement du serveur' },
   'services.register': { permission: 'services', signature: '(name: string, fn: (payload) => unknown) => void', description: 'expose un service nommé <plugin>.<nom>' },
   'services.call': { permission: 'services', signature: '(name: string, payload?) => Promise<unknown>', description: 'appelle un service du cœur ou d’un autre plugin' },
@@ -103,8 +105,8 @@ const EVENTS = {
   'review.completed': { version: 1, source: 'cœur', when: 'un rapport de review est enregistré', payload: { mr_id: 'number', iid: 'number', note10: 'number | null' } },
   'converge.finished': { version: 1, source: 'cœur', when: 'une boucle de convergence s’arrête', payload: { mr_id: 'number', iid: 'number', status: 'string', note10: 'number | null', passes: 'number' } },
   'verify.finished': { version: 1, source: 'cœur', when: 'une vérification objective a rendu son verdict (ou échoué)', payload: { verification_id: 'number', verdict: 'string' } },
-  'jenkins.job.started': { version: 1, source: 'plugin jenkins', when: 'un build est lancé depuis Mergerie', payload: { path: 'string', since: 'number', parameters: 'Record<string, string>' } },
-  'jenkins.job.finished': { version: 1, source: 'plugin jenkins', when: 'un build lancé depuis Mergerie s’est terminé', payload: { path: 'string', number: 'number', result: 'string', ok: 'boolean' } },
+  'jenkins.job.started': { version: 1, source: 'plugin jenkins', when: 'un build est lancé depuis Mergerie', payload: { path: 'string', since: 'number', parameters: 'Record<string, string>', url: 'string', startedBy: 'string' } },
+  'jenkins.job.finished': { version: 1, source: 'plugin jenkins', when: 'un build lancé depuis Mergerie s’est terminé', payload: { path: 'string', number: 'number', result: 'string', ok: 'boolean', url: 'string', duration: 'number', startedBy: 'string' } },
 };
 
 /* Les champs obligatoires et la forme de `plugin.json`. */

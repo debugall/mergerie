@@ -29,6 +29,7 @@ Declared in `plugin.json` → `permissions`. Settings → Plugins shows them bef
 | `demo` | semer le mode démo (ctx.demo) |
 | `env` | lire les variables d’environnement préfixées par son nom (ctx.env) |
 | `services` | exposer et appeler des services nommés entre plugins et cœur (ctx.services) |
+| `storage` | un dossier privé où écrire des fichiers — un profil de navigateur, un cache — qui survit aux mises à jour du plugin (ctx.dataDir) |
 
 ## Primitives
 
@@ -55,7 +56,7 @@ Declared in `plugin.json` → `permissions`. Settings → Plugins shows them bef
 | `ctx.http.sse` | `sse` | `(path: string, producer: (req, send, close) => () => void) => void` | un flux SSE sous /api/plugins/<name>/ (non éprouvé en V1) |
 | `ctx.schedule` | `schedule` | `(intervalMs: number, fn: () => void \| Promise<void>, options?: { immediate?: boolean, inDemo?: boolean }) => number` | une tâche périodique ; arrêtée à la désactivation, jamais en recouvrement, inactive en démo sauf inDemo |
 | `ctx.unschedule` | `schedule` | `(id: number) => void` | arrête une tâche |
-| `ctx.exec` | `exec` | `(bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[] }) => Promise<{ stdout, stderr, code }>` | lance SANS shell, sous-commande en liste blanche (non éprouvé en V1) |
+| `ctx.exec` | `exec` | `(bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>` | lance SANS shell, sous-commande en liste blanche (non éprouvé en V1) |
 | `ctx.net.request` | `net` | `(url: string, options?: { method?, headers?, body? }) => Promise<{ status, statusText, headers, body }>` | HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s |
 | `ctx.repos.list` | `repos` | `() => Repo[]` | les dépôts suivis sur ce poste |
 | `ctx.repos.byId` | `repos` | `(id: number) => Repo \| null` | un dépôt |
@@ -72,6 +73,7 @@ Declared in `plugin.json` → `permissions`. Settings → Plugins shows them bef
 | `ctx.notify.push` | `notify` | `(type: string, data: object) => void` | un fait, que le navigateur affiche selon les préférences |
 | `ctx.demo.isDemo` | `demo` | `() => boolean` | MERGERIE_DEMO=1 ? |
 | `ctx.demo.seed` | `demo` | `(fn: (ctx) => void) => void` | ce que le plugin sème dans une base de démo |
+| `ctx.dataDir` | `storage` | `string` | le dossier privé du plugin (<dataDir>/plugin-data/<name>/), créé à l’activation ; ni son code, ni celui d’un autre plugin — supprimé avec ses données à la désinstallation si on le demande |
 | `ctx.env.get` | `env` | `(name: string) => string \| undefined` | une variable <NAME>_* de l’environnement du serveur |
 | `ctx.services.register` | `services` | `(name: string, fn: (payload) => unknown) => void` | expose un service nommé <plugin>.<nom> |
 | `ctx.services.call` | `services` | `(name: string, payload?) => Promise<unknown>` | appelle un service du cœur ou d’un autre plugin |

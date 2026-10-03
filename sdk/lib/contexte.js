@@ -171,6 +171,11 @@ function creerContexte(manifeste, f) {
     ctx.exec = (bin, args, opts) => exec.executer(nom, bin, args, opts, f.exec || {});
   }
 
+  if (permissions.has('storage')) {
+    if (!f.dataDir) throw new Error(`${nom} : la permission storage demande un fournisseur dataDir`);
+    ctx.dataDir = f.dataDir(nom);
+  }
+
   if (permissions.has('net')) {
     const tlsAgent = f.net.makeAgentFactory(`${NOM_ENV(nom)}_CA_CERT`, `${NOM_ENV(nom)}_INSECURE_TLS`);
     ctx.net = {

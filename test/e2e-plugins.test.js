@@ -140,6 +140,27 @@ describe('Plugins — chargeur et isolation', () => {
     assert.deepEqual((await de('needs-other')).missing, ['absent-plugin']);
   });
 
+  test('ctx.dataDir : un dossier privé HORS du code du plugin, dans le worker aussi, qui suit « supprimer aussi ses données »', async () => {
+    const inst = await app.api('POST', '/api/plugins/install', { path: path.join(FIXTURES, 'stores-files') });
+    assert.equal(inst.status, 200, JSON.stringify(inst.body));
+    assert.equal((await app.api('POST', '/api/plugins/stores-files/enable')).body.ok, true);
+    const prive = path.join(app.dataDir, 'plugin-data', 'stores-files');
+    const dir = (await app.api('GET', '/api/plugins/stores-files/dir')).body.dir;
+    assert.equal(dir, prive, 'le dossier privé, pas le dossier du code (plugins/<nom>)');
+    assert.notEqual(dir, path.join(app.dataDir, 'plugins', 'stores-files'));
+    assert.equal(fs.readFileSync(path.join(prive, 'marque.txt'), 'utf8'), 'ici', 'écrit depuis le worker');
+    await app.api('POST', '/api/plugins/stores-files/disable');
+    assert.equal(fs.existsSync(prive), true, 'désactiver ne touche pas aux données');
+    // Désinstaller en GARDANT les données : le code part, le dossier privé reste — c'est le choix de la personne.
+    assert.equal((await app.api('POST', '/api/plugins/stores-files/uninstall', { deleteData: false })).status, 200);
+    assert.equal(fs.existsSync(path.join(app.dataDir, 'plugins', 'stores-files')), false);
+    assert.equal(fs.existsSync(prive), true, 'données gardées');
+    // Réinstaller (mise à jour du code) retrouve le profil ; désinstaller en SUPPRIMANT les données l'efface.
+    await app.api('POST', '/api/plugins/install', { path: path.join(FIXTURES, 'stores-files') });
+    assert.equal((await app.api('POST', '/api/plugins/stores-files/uninstall', { deleteData: true })).status, 200);
+    assert.equal(fs.existsSync(prive), false, 'données supprimées avec le plugin');
+  });
+
   test('désinstaller : avec ou sans ses données ; un embarqué ne se désinstalle pas ; un nom invalide est refusé', async () => {
     await app.api('POST', '/api/plugins/hostile/disable');
     const u = await app.api('POST', '/api/plugins/hostile/uninstall', { deleteData: false });

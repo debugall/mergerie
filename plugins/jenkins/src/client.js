@@ -534,8 +534,15 @@ function creerClient(ctx) {
     return { ok: true, user: d.fullName || d.id || cfg.jenkins_user, jobs: jobs.length };
   }
 
+  /* L'adresse d'un job, calculée SANS appeler Jenkins : l'URL configurée plus le chemin d'URL du job.
+     Elle voyage dans `jenkins.job.started` — un événement ne doit pas coûter un aller-retour réseau. */
+  function urlDuJob(cfg, chemin) {
+    const base = String((cfg && cfg.jenkins_url) || '').replace(/\/+$/, '');
+    return base ? `${base}${cheminUrl(chemin)}/` : '';
+  }
+
   return {
-    isConfigured, lister, detail, lancer, console: console_, tester,
+    isConfigured, lister, detail, lancer, console: console_, tester, urlDuJob,
     // exportés pour les tests : ce sont les deux traductions qui portent tout le reste
     lireCouleur, aplatir, cheminUrl, lireParametres, auteurDe, refDe, paramsDuBuild, paramsCachesDe, choixDe, lireChoixHtml,
   };

@@ -52,17 +52,17 @@ describe('Plugin Jenkins — embarqué, à chaud, sans régression', () => {
     assert.equal(r.status, 200);
     assert.equal(r.body.queued, true);
     assert.deepEqual(jkVeille.attendus(), ['dossier/deploy'], 'le serveur attend la fin du build');
-    assert.deepEqual(vus[0], { version: 1, path: 'dossier/deploy', since: 41, parameters: { BRANCH: 'feat/x' } });
+    assert.deepEqual(vus[0], { version: 1, path: 'dossier/deploy', since: 41, parameters: { BRANCH: 'feat/x' }, url: `${srv.url}/job/dossier/job/deploy/`, startedBy: mock.state.user }, 'les champs d’avant, plus l’adresse du job et le compte (ajouts : même version)');
 
     // Le build suivant finit en échec : le tour de veille le voit.
-    mock.state.details['/job/dossier/job/deploy'].builds.unshift({ number: 42, result: 'FAILURE', building: false, timestamp: 2, duration: 10, url: '' });
+    mock.state.details['/job/dossier/job/deploy'].builds.unshift({ number: 42, result: 'FAILURE', building: false, timestamp: 2, duration: 83000, url: `${srv.url}/job/dossier/job/deploy/42/` });
     const cfg = { jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token };
     assert.equal(await jkVeille.tourJenkins(cfg), 1);
     const notifs = notify.since(curseur).filter((e) => e.type === 'jenkins_done');
     assert.equal(notifs.length, 1);
     const { id, at, ...fait } = notifs[0];
     assert.deepEqual(fait, { type: 'jenkins_done', path: 'dossier/deploy', number: 42, result: 'FAILURE', ok: false }, 'la notification d’avant, champ pour champ');
-    assert.deepEqual(vus[1], { version: 1, path: 'dossier/deploy', number: 42, result: 'FAILURE', ok: false });
+    assert.deepEqual(vus[1], { version: 1, path: 'dossier/deploy', number: 42, result: 'FAILURE', ok: false, url: `${srv.url}/job/dossier/job/deploy/42/`, duration: 83000, startedBy: mock.state.user }, 'l’événement dit de quoi parler du build : adresse, durée, qui l’a lancé');
     assert.deepEqual(jkVeille.attendus(), []);
     off1(); off2();
   });

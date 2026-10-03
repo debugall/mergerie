@@ -29,6 +29,7 @@ ce dont vous avez lu le code.
 | `repos` | la **lecture** du registre des dépôts (id, projet, URL, forge) | les jetons de forge, les clones |
 | `events` | écouter les événements du cœur, émettre les siens (déclarés, préfixés) | émettre un événement du cœur ou d'un autre plugin |
 | `schedule` | des tâches périodiques (≥ 1 s, jamais en recouvrement, arrêtées à la désactivation) | — |
+| `storage` | un dossier privé, `<dataDir>/plugin-data/<name>/` (`ctx.dataDir`) : un profil de navigateur, un cache | le code des plugins, la base, le dossier d'un autre plugin ; il n'entre ni dans le dépôt d'équipe ni dans la sauvegarde |
 | `ui.*`, `notify`, `demo`, `services` | des déclarations d'écran, des notifications d'un genre déclaré, une seed de démo, des services nommés `<nom>.<service>` | — |
 
 Toujours présents : `log`, `i18n`.

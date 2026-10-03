@@ -44,6 +44,7 @@ reconnaître un payload d'une autre version pendant la transition.
 | apiVersion | Mergerie | Changements |
 |---|---|---|
 | `1` | 2.1 | première version publique : le ctx, les événements, le kit, le SDK |
+| `1` (ajouts) | 2.1 | **additifs, même version** : la permission `storage` et `ctx.dataDir` ; les champs `url` et `startedBy` de `jenkins.job.started`, `url`, `duration` et `startedBy` de `jenkins.job.finished` ; l'option `env` de `ctx.exec` |
 
 Primitives présentes mais **non éprouvées** par un plugin embarqué en `1` (leur forme peut encore
 changer sans rupture, le temps que Liens, Docker et Git les exercent) : `http.sse` (indisponible depuis

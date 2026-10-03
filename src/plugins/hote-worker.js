@@ -48,7 +48,7 @@ class HoteWorker {
     const sab = new SharedArrayBuffer(8);
     this.int32 = new Int32Array(sab);
     this.worker = new Worker(path.join(__dirname, 'worker.js'), {
-      workerData: { dir: this.fiche.dir, manifeste: this.fiche.manifeste, sab, port: port2, racine: path.join(__dirname, '..', '..') },
+      workerData: { dir: this.fiche.dir, manifeste: this.fiche.manifeste, dataDir: (this.fiche.manifeste.permissions || []).includes('storage') ? require('./donnees').dossierDe(this.fiche.nom) : null, sab, port: port2, racine: path.join(__dirname, '..', '..') },
       transferList: [port2],
       resourceLimits: { maxOldGenerationSizeMb: 256 },
     });
