@@ -193,7 +193,7 @@ Le cœur du système : découvrir, valider, activer À CHAUD, isoler. Un plugin 
 
 Côté navigateur : `js/transverse/plugins.js` (ce que les plugins ont déclaré, ce que leurs bundles enregistrent, et ce que les écrans du cœur demandent — `pluginsHtml(cible, objet)`, `pluginsBriefSections`, `pluginsNotif`, `pluginsLienHtml`…), `js/transverse/kit.js` (`window.mergerie`, UNE clé par ligne : la liste que le bundle met en portée et que `check:plugins` fait respecter), `js/ecrans/reglages/plugins.js` (Réglages → Plugins). Les marqueurs `<!--@plugins:…-->` de `index.html`, `sidebar.html`, `sprite.html` et `reglages.html` sont les points d'insertion (`src/core/page.js`, `poserFragments`).
 
-**Plugins embarqués** : `plugins/jenkins/` (l'ancien onglet, extrait sans changement de comportement — `plugins/jenkins/README.md`) `plugins/hello/` (produit par le générateur, désactivé d'office) et `plugins/jenkins-teams-notify/` (second exemple public : un message Teams quand un job Jenkins démarre ou finit, par Playwright lancé en processus enfant sans shell — `docs/plugins/jenkins-teams-notify.md`). Les suivants : Liens, Docker, Git (docs/plugins/PLUGIN-CANDIDATES.md).
+**Plugins embarqués** : `plugins/jenkins/` (l'ancien onglet, extrait sans changement de comportement — `plugins/jenkins/README.md`) `plugins/hello/` (produit par le générateur, désactivé d'office) ; un plugin TIERS vit dans son propre dépôt (`jenkins-teams-notify`, https://gitlab.com/amady/jenkins-teams-notify) et s'installe depuis Réglages → Plugins. Les suivants : Liens, Docker, Git (docs/plugins/PLUGIN-CANDIDATES.md).
 
 ### `integrations/`
 

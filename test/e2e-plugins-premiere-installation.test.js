@@ -1,5 +1,5 @@
 'use strict';
-/* UNE PREMIÈRE INSTALLATION DÉMARRE SANS AUCUN PLUGIN. Jenkins, hello, jenkins-teams-notify : tous les plugins embarqués sont
+/* UNE PREMIÈRE INSTALLATION DÉMARRE SANS AUCUN PLUGIN. Jenkins, hello : tous les plugins embarqués sont
  * désactivés sur une base neuve — rien dans la page, aucune route, aucune tâche — et s'activent à la demande, à chaud.
  * (Un poste qui MONTE DE VERSION, lui, garde Jenkins activé : c'est `unit-plugins-migration-jenkins.test.js`.)
  *
@@ -22,7 +22,7 @@ describe('Première installation — tous les plugins embarqués désactivés', 
 
   test('la page ne montre ni onglet, ni sous-onglet, ni script de plugin ; leurs routes n’existent pas', async () => {
     const html = (await app.api('GET', '/')).text;
-    for (const marque of ['data-tab="jenkins"', 'data-sub="jenkinscfg"', 'data-tab="jenkins-teams-notify"', '/plugins/jenkins/bundle.js']) assert.ok(!html.includes(marque), marque);
+    for (const marque of ['data-tab="jenkins"', 'data-sub="jenkinscfg"', '/plugins/jenkins/bundle.js']) assert.ok(!html.includes(marque), marque);
     assert.equal((await app.api('GET', '/api/plugins/jenkins/jobs')).status, 404);
   });
 

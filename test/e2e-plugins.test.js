@@ -140,6 +140,21 @@ describe('Plugins — chargeur et isolation', () => {
     assert.deepEqual((await de('needs-other')).missing, ['absent-plugin']);
   });
 
+  test('ctx.exec depuis un worker : sans shell, le message arrive intact, l’environnement demandé est transmis — et lui seul', async () => {
+    process.env.RUNS_EXEC_SECRET = 'ne-doit-pas-fuiter';
+    try {
+      assert.equal((await app.api('POST', '/api/plugins/install', { path: path.join(FIXTURES, 'runs-exec') })).status, 200);
+      assert.equal((await app.api('POST', '/api/plugins/runs-exec/enable')).body.ok, true);
+      const r = await app.api('GET', '/api/plugins/runs-exec/run');
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.equal(r.body.code, 0);
+      assert.deepEqual(r.body.out.argv, ['--message=a; touch PWN | $(touch PWN2) `id` "q"'], 'un seul argument, métacaractères intacts');
+      assert.equal(r.body.out.x, 'transmis', 'l’option env de ctx.exec traverse le worker');
+      assert.equal(r.body.out.secret, null, 'l’environnement du serveur ne fuit pas vers le script');
+      assert.ok(!fs.existsSync(path.join(process.cwd(), 'PWN')) && !fs.existsSync(path.join(process.cwd(), 'PWN2')), 'rien n’a été exécuté');
+    } finally { delete process.env.RUNS_EXEC_SECRET; }
+  });
+
   test('ctx.dataDir : un dossier privé HORS du code du plugin, dans le worker aussi, qui suit « supprimer aussi ses données »', async () => {
     const inst = await app.api('POST', '/api/plugins/install', { path: path.join(FIXTURES, 'stores-files') });
     assert.equal(inst.status, 200, JSON.stringify(inst.body));

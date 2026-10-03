@@ -13,12 +13,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
-- **Teams plugin** (`plugins/jenkins-teams-notify`, disabled by default): notifies a Microsoft Teams channel when a Jenkins
+- **Jenkins Teams Notify**, a plugin in its own repository (https://gitlab.com/amady/jenkins-teams-notify): notifies a Microsoft Teams channel when a Jenkins
   job started from Mergerie starts or finishes. Teams webhooks and the Graph API not being an option, it drives a
   browser with Playwright — a persistent profile, or your own Chrome over CDP — and posts as you. Per-type message
   templates, a job filter (glob on the full name), a send log kept as long as you choose, and a "sign-in required" state
-  (tab badge, brief) that stops sending until a manual test succeeds. Written like a third-party plugin and
-  documented in `docs/plugins/jenkins-teams-notify.md`, with its manual checklist. To support it the plugin API gains,
+  (tab badge, brief) that stops sending until a manual test succeeds. A third-party plugin, installed from
+  Settings → Plugins (from git), disabled until you enable it. To support it the plugin API gains,
   additively and on the same `apiVersion`: a private folder for a plugin's files (`ctx.dataDir`, permission `storage`),
   the build address, duration and starter in the `jenkins.job.*` events, and an `env` option on `ctx.exec`. The
   generated settings form now honours `x-hidden`, and the plugins' own tests run with `npm test`.
