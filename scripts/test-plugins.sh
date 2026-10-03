@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lance les tests des plugins tiers voisins (unitaires, puis e2e contre CE Mergerie), avec un récapitulatif.
-# Usage : scripts/test-plugins.sh [--unit] [plugin ...]     (par défaut : docker-mergerie jenkins-mergerie link-mergerie)
+# Usage : scripts/test-plugins.sh [--unit] [plugin ...]     (par défaut : docker-mergerie jenkins-mergerie jenkins-teams-notify link-mergerie)
 #   --unit : seulement les tests sans Mergerie (pas de navigateur).
 # Les dépôts sont cherchés à côté de celui-ci (../<nom>) ou dans PLUGINS_DIR. Prérequis des e2e : `npm ci` et le Chromium de Playwright ici.
 set -uo pipefail
@@ -9,7 +9,7 @@ BASE="${PLUGINS_DIR:-$RACINE/..}"
 
 UNIT_SEUL=0
 if [ "${1:-}" = "--unit" ]; then UNIT_SEUL=1; shift; fi
-PLUGINS=("$@"); [ ${#PLUGINS[@]} -eq 0 ] && PLUGINS=(docker-mergerie jenkins-mergerie link-mergerie)
+PLUGINS=("$@"); [ ${#PLUGINS[@]} -eq 0 ] && PLUGINS=(docker-mergerie jenkins-mergerie jenkins-teams-notify link-mergerie)
 
 if [ "$UNIT_SEUL" = 0 ] && ! node -e "process.exit(require('fs').existsSync(require('playwright').chromium.executablePath())?0:1)" 2>/dev/null; then
   echo "✗ Chromium de Playwright absent : « npm ci && npx playwright install chromium » ici, ou --unit." >&2; exit 2
@@ -28,7 +28,10 @@ for nom in "${PLUGINS[@]}"; do
   ( cd "$dir" && { [ -d node_modules/@mergerie/plugin-sdk ] || npm install --no-audit --no-fund >/dev/null; } ) \
     || { RESUME+=("✗ $nom — npm install"); ECHECS=$((ECHECS + 1)); continue; }
   lancer "$nom" "unitaires" bash -c "cd '$dir' && npm test"
-  [ "$UNIT_SEUL" = 0 ] && lancer "$nom" "e2e" bash -c "cd '$dir' && MERGERIE_DIR='$RACINE' npm run test:e2e"
+  # Un plugin sans script `test:e2e` (ses tests tournent sans Mergerie) n'a pas d'étape e2e.
+  if [ "$UNIT_SEUL" = 0 ] && grep -q '"test:e2e"' "$dir/package.json"; then
+    lancer "$nom" "e2e" bash -c "cd '$dir' && MERGERIE_DIR='$RACINE' npm run test:e2e"
+  fi
 done
 
 echo; echo "━━ Récapitulatif"; printf '%s\n' "${RESUME[@]}"
