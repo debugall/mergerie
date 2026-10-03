@@ -1,5 +1,10 @@
 /* Réglages → Plugins : les cartes, l'état, les permissions, le formulaire généré. */
-.plugin-card { margin-bottom: 10px; }
+/* La carte d'un plugin se lit de haut en bas : titre, détails, gestes, réglages. Le `.card` du cœur est une rangée qui
+   passe à la ligne — un formulaire s'y retrouvait à DROITE des permissions, avec un grand vide à gauche. */
+.plugin-card { display: block; margin-bottom: 10px; }
+.plugin-card .card-actions { justify-content: flex-start; margin-top: 10px; }
+.plugin-card .card-head { margin-bottom: 4px; }
+.plugin-hint { margin: 10px 0 0; font-size: 12.5px; }
 .plugin-card .card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .plugin-details { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 12.5px; }
 .plugin-details dt { color: var(--muted); }
@@ -8,7 +13,7 @@
 .plugin-error { margin: 6px 0; }
 .plugin-warn { margin: 6px 0; padding: 6px 10px; border-radius: var(--r); background: var(--warn-bg, rgba(255, 170, 0, .12)); color: var(--warn-fg, inherit); display: flex; align-items: center; gap: 6px; }
 .plugin-dep-missing { text-decoration: line-through; color: var(--err, #c33); }
-.plugin-settings { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.plugin-settings { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
 .plugin-settings-form { max-width: 520px; }
 .plugin-install { max-width: 720px; margin-bottom: 14px; }
 .plugin-install [data-source] { display: block; }

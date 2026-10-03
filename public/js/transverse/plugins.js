@@ -234,15 +234,17 @@ async function pluginsReglagesForm(nom, conteneur) {
   if (!conteneur || !schema || !schema.properties || !Object.keys(schema.properties).length) { if (conteneur) conteneur.innerHTML = ''; return; }
   let valeurs = {};
   try { valeurs = await api(`/plugins/${nom}/settings`); } catch (e) { conteneur.innerHTML = errorBox(explainError(e.message)); return; }
+  /* `x-hidden` : un état que le plugin garde lui-même (une session, un dernier test) n'est ni affiché ni renvoyé. */
+  const champsVisibles = Object.entries(schema.properties).filter(([, p]) => !(p && p['x-hidden']));
   conteneur.innerHTML = `<form class="form plugin-settings-form" data-plugin-form="${esc(nom)}" autocomplete="off">
-    ${Object.entries(schema.properties).map(([k, p]) => pluginsChampReglage(nom, k, p, valeurs[k])).join('\n')}
+    ${champsVisibles.map(([k, p]) => pluginsChampReglage(nom, k, p, valeurs[k])).join('\n')}
     <div class="form-actions"><button class="btn btn-primary" type="submit"><svg class="ico"><use href="#i-save"/></svg><span>${esc(tr('plugins.settings.save'))}</span></button> <span class="muted plugin-settings-info"></span></div>
   </form>`;
   const form = conteneur.querySelector('form');
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const patch = {};
-    for (const [k, p] of Object.entries(schema.properties)) {
+    for (const [k, p] of champsVisibles) {
       const el = form.elements[k];
       if (!el) continue;
       patch[k] = p.type === 'boolean' ? el.checked : el.value;
@@ -251,7 +253,7 @@ async function pluginsReglagesForm(nom, conteneur) {
     const info = form.querySelector('.plugin-settings-info');
     try {
       const s = await busy(form.querySelector('button[type=submit]'), () => pluginsUi.settings.save(nom, patch));
-      for (const [k, p] of Object.entries(schema.properties)) { const el = form.elements[k]; if (el && p['x-secret']) el.value = s[k] || ''; }
+      for (const [k, p] of champsVisibles) { const el = form.elements[k]; if (el && p['x-secret']) el.value = s[k] || ''; }
       if (info) info.textContent = tr('plugins.settings.saved');
     } catch (err) { if (info) info.textContent = ''; toast(explainError(err.message), true); }
   });

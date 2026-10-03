@@ -38,7 +38,9 @@ function pluginCarteHtml(p) {
       ${aSonOnglet ? `<button type="button" class="btn" data-plugin-settings-tab="${esc(p.ui.settingsTabs[0])}">${svgIco('sliders')}${esc(tr('plugins.open-settings'))}</button>` : ''}
       ${!p.builtin ? `<button type="button" class="btn btn-danger" data-plugin-uninstall="${esc(p.name)}">${svgIco('trash')}${esc(tr('plugins.uninstall'))}</button>` : ''}
     </div>
-    ${!aSonOnglet && p.settingsSchema && Object.keys(p.settingsSchema.properties || {}).length ? `<div class="plugin-settings" data-plugin-settings-form="${esc(p.name)}"></div>` : ''}
+    ${/* Les réglages n'ont de sens que pour un plugin ACTIF (ses routes, son écran) : inactif, on le dit au lieu d'afficher un formulaire à vide. */''}
+    ${p.active && !aSonOnglet && p.settingsSchema && Object.keys(p.settingsSchema.properties || {}).length ? `<div class="plugin-settings" data-plugin-settings-form="${esc(p.name)}"></div>` : ''}
+    ${!p.active && p.state !== 'incompatible' && p.settingsSchema && Object.keys(p.settingsSchema.properties || {}).length ? `<p class="muted plugin-hint">${esc(tr('plugins.settings-after-enable'))}</p>` : ''}
   </div>`;
 }
 
