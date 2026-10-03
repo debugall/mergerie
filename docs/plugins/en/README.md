@@ -6,8 +6,10 @@ A **plugin** is a folder with a `plugin.json` and an `index.js` exporting `activ
 `deactivate()`. It adds to Mergerie what the core does not do — a tab, actions on merge requests, a
 background task, an integration — **without touching the core's code**: everything it can do goes
 through the `ctx`, a closed list of primitives (settings, secrets, tables, routes, tasks, events,
-screen…). A plugin shipped in the repository (`plugins/jenkins`, `plugins/hello`) and a plugin you
+screen…). A plugin shipped in the repository (`plugins/jenkins`, `plugins/hello`, `plugins/jenkins-teams-notify`) and a plugin you
 install yourself have **exactly the same rights**.
+
+> **A subscriber must not wait.** The bus calls an event's subscribers one after the other and waits for each (30 s at most): long work — a process, a browser, a slow network call — goes into a queue and **returns at once** (see `plugins/jenkins-teams-notify`); its outcome goes to the plugin's own log.
 
 ## Install `hello`, enable it, change a setting
 

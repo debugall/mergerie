@@ -1,0 +1,41 @@
+{
+  "name": "jenkins-teams-notify",
+  "version": "0.1.0",
+  "apiVersion": "1",
+  "displayName": "Jenkins Teams Notify",
+  "description": "Publie un message dans un canal Microsoft Teams quand un job Jenkins lancé depuis Mergerie démarre ou se termine — par automatisation du navigateur (Playwright), faute de webhook ni d'API Graph.",
+  "author": "Mergerie",
+  "homepage": "https://mergerie.dev",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "builtin": true,
+  "enabledByDefault": false,
+  "permissions": ["events", "settings", "db", "http", "exec", "storage", "ui.tab", "ui.actions", "demo", "services"],
+  "events": {
+    "listens": ["jenkins.job.started", "jenkins.job.finished"],
+    "emits": []
+  },
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "team_link": { "type": "string", "title": "Lien du canal Teams", "description": "Teams → … à côté du canal → « Obtenir le lien vers le canal ». https uniquement.", "default": "", "maxLength": 2000, "pattern": "^https://", "x-required": true },
+      "channel_name": { "type": "string", "title": "Nom du canal", "description": "Si renseigné, rien n'est posté tant que le titre de la page Teams ne le contient pas.", "default": "", "maxLength": 120 },
+      "session_mode": { "type": "string", "title": "Session", "description": "profile : un profil Playwright persistant (par défaut) · cdp : un Chrome déjà ouvert.", "enum": ["profile", "cdp"], "default": "profile" },
+      "cdp_url": { "type": "string", "title": "Adresse CDP", "description": "Mode cdp : http://127.0.0.1:9222 — la machine locale uniquement.", "default": "", "maxLength": 200, "pattern": "^(https?|wss?)://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/.*)?$" },
+      "headless": { "type": "boolean", "title": "Sans fenêtre", "description": "Mode profile : le navigateur n'affiche rien pendant l'envoi.", "default": true },
+      "job_filter": { "type": "string", "title": "Jobs notifiés", "description": "Motifs glob sur le nom complet du job, un par ligne. Vide = tous.", "default": "", "maxLength": 1000 },
+      "template_started": { "type": "string", "title": "Modèle : démarré", "default": "", "maxLength": 500 },
+      "template_success": { "type": "string", "title": "Modèle : réussi", "default": "", "maxLength": 500 },
+      "template_failure": { "type": "string", "title": "Modèle : échec", "default": "", "maxLength": 500 },
+      "template_aborted": { "type": "string", "title": "Modèle : interrompu", "default": "", "maxLength": 500 },
+      "retention_days": { "type": "integer", "title": "Journal : jours conservés", "description": "0 = pour toujours ; sinon au moins 7, comme la rétention du cœur (90 par défaut).", "default": 90, "minimum": 0, "maximum": 3650 },
+      "session_state": { "type": "string", "enum": ["inconnu", "ok", "connexion-requise"], "default": "inconnu", "x-hidden": true }
+    }
+  },
+  "ui": {
+    "styles": ["ui/jenkins-teams-notify.css"],
+    "i18n": ["ui/i18n.js"],
+    "scripts": ["ui/main.js"],
+    "html": { "tabs": ["ui/html/onglet.html"], "settings": ["ui/html/reglages.html"] }
+  }
+}

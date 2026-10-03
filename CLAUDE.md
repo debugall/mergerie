@@ -66,8 +66,10 @@
   (`js/transverse/kit.js`, one key per line — a core helper a plugin needs is added there). Its
   HTML lands on the `<!--@plugins:…-->` markers of `index.html`, `sidebar.html`, `sprite.html`
   and `reglages.html`. Built-in plugins run in-process, third-party in a worker: a primitive must
-  work through the RPC (no live object, no callback kept by the core). A plugin's tests use
-  `createTestContext()` from `sdk/`; a core test that needs Jenkins calls `configureJenkins()`
+  work through the RPC (no live object, no callback kept by the core). A plugin writes its files in `ctx.dataDir`
+  (`<dataDir>/plugin-data/<name>/`, permission `storage`), never in its own folder — that one is code, replaced on update. A
+  subscriber to a core event never awaits long work: the bus waits for it (30 s). A plugin's tests use
+  `createTestContext()` from `sdk/` and run with `npm test` (`plugins/*/test/`); a core test that needs Jenkins calls `configureJenkins()`
   from `test/helpers/app.js`. **One Jenkins-era rule still applies to core migrations**: the move
   of Jenkins data lives in `src/db/schema/18-plugins.js` and must stay replayable on a database
   from before it.

@@ -6,8 +6,10 @@ Un **plugin** est un dossier avec un `plugin.json` et un `index.js` qui exporte 
 `deactivate()`. Il ajoute à Mergerie ce que le cœur ne fait pas — un onglet, des actions sur les
 merge requests, une tâche de fond, une intégration — **sans toucher au code du cœur** : tout ce qu'il
 peut faire passe par le `ctx`, une liste fermée de primitives (réglages, secrets, tables, routes,
-tâches, événements, écran…). Un plugin embarqué dans le dépôt (`plugins/jenkins`, `plugins/hello`)
+tâches, événements, écran…). Un plugin embarqué dans le dépôt (`plugins/jenkins`, `plugins/hello`, `plugins/jenkins-teams-notify`)
 et un plugin que vous installez chez vous ont **exactement les mêmes droits**.
+
+> **Un abonné ne doit pas attendre.** Le bus appelle les abonnés d'un événement l'un après l'autre et en attend chacun (30 s au plus) : un travail long — un processus, un navigateur, un appel réseau lent — se met en file et **rend la main** (voir `plugins/jenkins-teams-notify`), son issue va dans le journal du plugin.
 
 ## Installer `hello`, l'activer, modifier un réglage
 

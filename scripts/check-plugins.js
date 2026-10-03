@@ -53,13 +53,17 @@ const plugins = pageplugins.embarques();
 {
   const soucis = [];
   for (const p of plugins) {
+    /* Un script `bin/` tourne dans SON PROCESSUS (lancé par ctx.exec), hors de Mergerie : il peut avoir ses propres
+       dépendances npm, À CONDITION que le plugin les déclare dans son `package.json` (`peerDependencies`). */
+    let pairs = [];
+    try { pairs = Object.keys(JSON.parse(fs.readFileSync(path.join(p.dir, 'package.json'), 'utf8')).peerDependencies || {}); } catch { /* pas de package.json */ }
     // Les tests d'un plugin (`test/`) importent le SDK et node:test : ce ne sont pas le plugin.
     for (const f of tous(p.dir, '.js').filter((x) => !x.includes(`${path.sep}test${path.sep}`))) {
       const rel = path.relative(ROOT, f);
       depouiller(fs.readFileSync(f, 'utf8')).split('\n').forEach((l, i) => {
         for (const m of l.matchAll(/require\((['"])([^'"]+)\1\)/g)) {
           const cible = m[2];
-          if (!cible.startsWith('.')) { if (!['fs', 'path', 'node:fs', 'node:path', 'url', 'node:url', 'crypto', 'node:crypto', 'util', 'node:util', 'os', 'node:os', 'events', 'node:events', 'stream', 'node:stream'].includes(cible) && !cible.startsWith('@mergerie/')) soucis.push(`${rel}:${i + 1}  require('${cible}') — un plugin n'a pas de dépendance hors de Node, du SDK et de ses fichiers`); continue; }
+          if (!cible.startsWith('.')) { if (f.startsWith(path.join(p.dir, 'bin') + path.sep) && pairs.includes(cible.split('/')[0])) continue; if (!['fs', 'path', 'node:fs', 'node:path', 'url', 'node:url', 'crypto', 'node:crypto', 'util', 'node:util', 'os', 'node:os', 'events', 'node:events', 'stream', 'node:stream'].includes(cible) && !cible.startsWith('@mergerie/')) soucis.push(`${rel}:${i + 1}  require('${cible}') — un plugin n'a pas de dépendance hors de Node, du SDK et de ses fichiers`); continue; }
           const abs = path.resolve(path.dirname(f), cible);
           if (abs.startsWith(path.join(ROOT, 'src') + path.sep)) soucis.push(`${rel}:${i + 1}  require('${cible}') mène dans src/ — un plugin passe par le ctx`);
           else if (!abs.startsWith(p.dir + path.sep) && !abs.startsWith(path.join(ROOT, 'sdk') + path.sep)) soucis.push(`${rel}:${i + 1}  require('${cible}') sort du plugin`);
@@ -76,7 +80,7 @@ const plugins = pageplugins.embarques();
   for (const p of plugins) {
     if (!p.ok) continue;
     const prefixe = `plugin_${p.manifeste.name.replace(/-/g, '_')}_`;
-    for (const f of tous(path.join(p.dir), '.js').filter((x) => !x.includes(`${path.sep}ui${path.sep}`))) {
+    for (const f of tous(path.join(p.dir), '.js').filter((x) => !x.includes(`${path.sep}ui${path.sep}`) && !x.includes(`${path.sep}test${path.sep}`))) {   // `test/` : la base du test est celle du SDK, un test peut y simuler une base abîmée
       const texte = depouiller(fs.readFileSync(f, 'utf8'));
       for (const m of texte.matchAll(/(['"`])((?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|REPLACE|PRAGMA)\b[\s\S]*?)\1/gi)) {
         try { dbplugin.verifier(prefixe, m[2]); } catch (e) { soucis.push(`${path.relative(ROOT, f)}  ${e.message} — « ${m[2].slice(0, 60).replace(/\s+/g, ' ')}… »`); }
