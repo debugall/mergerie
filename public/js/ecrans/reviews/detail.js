@@ -1,6 +1,6 @@
 'use strict';
 /* Le rapport ouvert (`openReport`) : ce qui est rendu dans le détail, et ce qu'on y fait. */
-// @expose openReport
+// @expose openReport, rafraichirApresDecouverte
 /* Ce qui est actuellement rendu dans le détail : sert à ne PAS réécrire l'écran pour rien.
    Le rapport était réécrit intégralement à chaque fin de job — on lisait un constat en bas de
    page, un job se terminait ailleurs, et on repartait en haut, onglet et version reperdus.
@@ -18,6 +18,23 @@ function reportSig(d) {
     r && r.comment_posted_at,
     d.convergence && d.convergence.status, d.stale, t2.text && t2.text.length, t2.has_image,
     t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd].join('\u0001');
+}
+
+/* UNE DÉCOUVERTE PEUT CHANGER CE QUE LE RAPPORT OUVERT AFFICHE. Une branche qui a bougé rend un rapport « périmé » : le badge et « Relancer
+   (delta) » n'existent que dans le détail. La découverte rechargeait les listes et laissait le détail tel quel — il fallait rafraîchir la
+   page. Ce qui le rafraîchissait parfois (la fin d'un job, ou un sondage d'état après une synchro d'équipe) n'est pas la découverte :
+   sans vérificateur automatique ni synchro, rien ne passait. Un seul geste pour les trois chemins — le bouton « Chercher », la découverte
+   à l'ouverture de l'onglet, le sondage automatique : la liste du stade affiché, puis le rapport ouvert (`keep` : on ne réécrit l'écran que si
+   quelque chose d'affiché a changé). */
+async function rafraichirApresDecouverte() {
+  if (currentSeg !== 'to_review') await loadReports(currentSeg);
+  if (!selectedMr) return;
+  if (currentSeg !== 'to_review' && !reportRows.some((m) => m.id === selectedMr)) {
+    // Le rapport ouvert a quitté ce stade : on ne le montre plus.
+    selectedMr = null; renderReportPlaceholder();
+    return;
+  }
+  await openReport(selectedMr, { keep: true });
 }
 
 async function openReport(id, opts = {}) {

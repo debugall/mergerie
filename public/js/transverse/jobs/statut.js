@@ -30,7 +30,7 @@ function setupAutoRefreshPolling(minutes) {
   if (m <= 0) return;
   autoRefreshPoll = setInterval(() => {
     loadToReview().catch(() => {});
-    if (currentSeg !== 'to_review') loadReports(currentSeg).catch(() => {});
+    rafraichirApresDecouverte().catch(() => {});   // la liste du stade affiché ET le rapport ouvert
     refreshStatus();
   }, m * 60 * 1000);
 }
@@ -144,6 +144,7 @@ async function decouvrirSiPerime() {
     await api('/discover', { method: 'POST' });
     statutAgent.lastDiscoveryAt = new Date().toISOString();
     if (typeof loadToReview === 'function') loadToReview().catch(() => {});
+    if (typeof rafraichirApresDecouverte === 'function') rafraichirApresDecouverte().catch(() => {});
   } catch { /* la prochaine ouverture réessaiera */ } finally { decouverteEnVol = false; }
 }
 /* ---------- Ce qu'un collègue a changé, à l'écran ----------

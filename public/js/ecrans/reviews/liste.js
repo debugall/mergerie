@@ -550,6 +550,8 @@ $('#btnDiscover').addEventListener('click', async () => {
        gardait « 0 » et un bouton grisé au-dessus des cartes qu'on venait de découvrir. */
     await loadToReview();
     refreshCounts();
+    // Le rapport ouvert a pu devenir « périmé » : il se met à jour sous les yeux.
+    await rafraichirApresDecouverte().catch(() => { /* un détail qui ne se recharge pas n'est pas une panne de la découverte */ });
   } catch (e) { $('#discoverInfo').textContent = ''; $('#reviewErrors').innerHTML = errorBox(e.message); }
   finally { delete db_.dataset.busy; db_.disabled = false; }
 });

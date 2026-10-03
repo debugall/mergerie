@@ -97,6 +97,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **An open report that becomes stale updates on screen.** "Relancer (delta)" and the stale badge only appeared after reloading the page: a
+  discovery (the Search button, the discovery on opening the tab, the automatic poll) reloaded the lists but not the report you were reading.
+  Only a finished job, or a team sync, refreshed it. The discovery now refreshes the open report itself.
 - **Plugin tables of two plugins can no longer be mixed up.** `plugin_jenkins_` is the beginning of `plugin_jenkins_teams_notify_`: the
   Jenkins plugin could read, empty or drop the other one's table, and uninstalling it with "also delete its data" removed it (a SQL
   `LIKE` whose `_` is a wildcard). A table now belongs to the plugin with the longest matching prefix among the known plugins, in the
