@@ -52,7 +52,8 @@ describe('Menu Notes · Aujourd’hui — Docker, Jenkins, Git et sessions sans 
       name: 'panier-ci', color: 'red', buildable: true, property: [],
       builds: [{ number: 57, result: 'FAILURE', building: false, timestamp: Date.now(), duration: 4000, url: '' }],
     };
-    await app.configure({ jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token });
+    await app.configure();
+    await app.configureJenkins({ jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token  });
 
     app.state.mrs['grp/app'] = [{
       iid: 41, title: 'Le panier en trois fois', state: 'opened',

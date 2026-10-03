@@ -83,11 +83,6 @@ function todoLinkHtml(t) {
   if (t.link_kind === 'verification') {
     return `<button type="button" class="note-link" data-vreport="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('check')} ${esc(tr('notes.todo.link.verification'))}</button>`;
   }
-  if (t.link_kind === 'build') {
-    // `chemin/du/job#42` — le job seul suffit à ouvrir la fiche, le numéro dit lequel.
-    const [chemin, num] = String(t.link_ref).split('#');
-    return `<button type="button" class="note-link" data-todo-build="${esc(chemin)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('pipeline')} ${esc(tr('notes.todo.link.build', { job: chemin, n: num || '' }))}</button>`;
-  }
   if (t.link_kind === 'branch') {
     // `<id de dépôt>:<branche>` — l'explorateur se pose dessus.
     const [repoId, ...reste] = String(t.link_ref).split(':');
@@ -97,14 +92,15 @@ function todoLinkHtml(t) {
   if (t.link_kind === 'container') {
     return `<button type="button" class="note-link" data-todo-container="${esc(t.link_ref)}" title="${esc(tr('notes.todo.link-title'))}">${svgIco('inbox')} ${esc(t.link_ref)}</button>`;
   }
+  // Un genre déclaré par un plugin : rendu et ouverture par lui.
+  const dePlugin = pluginsLienHtml(t);
+  if (dePlugin) return dePlugin;
   return `<span class="muted">${svgIco('branch')} ${esc(tr('notes.todo.link.repo', { project: t.link_ref }))}</span>`;
 }
 
 /* Les portes des trois liens qui ne sont pas de simples ancres. `data-vreport` est déjà
    écouté ailleurs (le badge d'une carte ouvre le même rapport) : on ne le recâble pas. */
 document.addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-todo-build]');
-  if (b) { navTab('jenkins'); await loadJenkins(); openJenkinsJob(b.dataset.todoBuild); return; }
   /* Une branche : l'explorateur, son dépôt COCHÉ et l'analyse lancée — c'est là qu'on voit
      ce qu'une branche a d'écart, de dernier commit et de merge request. On coche la vraie
      case et on clique le vrai bouton : pas de second chemin d'analyse à maintenir. */

@@ -34,9 +34,7 @@ describe('Jenkins — routes', () => {
       ],
     };
     mock.state.console['/job/boutique/job/api-build/3'] = 'tout va bien\nFinished: SUCCESS';
-    await app.api('PUT', '/api/config', {
-      jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token,
-    });
+    await app.configureJenkins({ jenkins_url: srv.url, jenkins_user: mock.state.user, jenkins_token: mock.state.token });
   });
   after(async () => {
     if (srv) await srv.close();
@@ -44,7 +42,7 @@ describe('Jenkins — routes', () => {
   });
 
   test('la liste des jobs arrive aplatie et traduite', async () => {
-    const r = await app.api('GET', '/api/jenkins/jobs');
+    const r = await app.api('GET', '/api/plugins/jenkins/jobs');
     assert.equal(r.status, 200);
     assert.equal(r.body.configured, true);
     assert.deepEqual(r.body.jobs.map((j) => [j.path, j.statut]),
@@ -52,16 +50,16 @@ describe('Jenkins — routes', () => {
   });
 
   test('le détail et la console d’un build', async () => {
-    const d = await app.api('GET', '/api/jenkins/job?path=boutique%2Fapi-build');
+    const d = await app.api('GET', '/api/plugins/jenkins/job?path=boutique%2Fapi-build');
     assert.equal(d.status, 200);
     assert.equal(d.body.builds[0].number, 3);
-    const c = await app.api('GET', '/api/jenkins/console?path=boutique%2Fapi-build&build=3');
+    const c = await app.api('GET', '/api/plugins/jenkins/console?path=boutique%2Fapi-build&build=3');
     assert.match(c.body.text, /Finished: SUCCESS/);
   });
 
   test('lancer est un POST, et il arrive vraiment chez Jenkins', async () => {
     const avant = mock.state.calls.length;
-    const r = await app.api('POST', '/api/jenkins/build', { path: 'boutique/api-build', parameters: { A: '1' } });
+    const r = await app.api('POST', '/api/plugins/jenkins/build', { path: 'boutique/api-build', parameters: { A: '1' } });
     assert.equal(r.status, 200);
     assert.equal(r.body.queued, true);
     const post = mock.state.calls.slice(avant).find((c) => c.method === 'POST' && /build/.test(c.path));
@@ -70,53 +68,53 @@ describe('Jenkins — routes', () => {
   });
 
   test('un chemin vide est refusé plutôt qu’interprété', async () => {
-    assert.equal((await app.api('GET', '/api/jenkins/job?path=')).status, 400);
-    assert.equal((await app.api('POST', '/api/jenkins/build', {})).status, 400);
+    assert.equal((await app.api('GET', '/api/plugins/jenkins/job?path=')).status, 400);
+    assert.equal((await app.api('POST', '/api/plugins/jenkins/build', {})).status, 400);
   });
 
   /* LE JETON. Trois règles, chacune apprise à ses dépens ailleurs dans l'application :
      il ne ressort jamais en clair, le masque signifie « garde-le », et une chaîne vide
      signifie « efface-le » — sinon on ne pourrait jamais retirer un accès. */
   test('le jeton se masque en lecture et survit à un enregistrement', async () => {
-    const lu = await app.api('GET', '/api/config');
+    const lu = await app.api('GET', '/api/plugins/jenkins/settings');
     assert.equal(lu.body.jenkins_token, '***', 'un secret ne repart pas en clair vers l’écran');
     assert.equal(lu.body.jenkins_user, mock.state.user, 'l’utilisateur, lui, n’est pas un secret');
 
     // L'écran renvoie le masque quand on n'a pas touché au champ : le jeton doit rester.
-    await app.api('PUT', '/api/config', { jenkins_token: '***', jenkins_url: srv.url });
-    assert.equal((await app.api('GET', '/api/jenkins/jobs')).body.configured, true,
+    await app.configureJenkins({ jenkins_token: '***', jenkins_url: srv.url });
+    assert.equal((await app.api('GET', '/api/plugins/jenkins/jobs')).body.configured, true,
       'enregistrer les réglages sans retoucher le jeton ne doit pas déconnecter Jenkins');
 
-    const t = await app.api('POST', '/api/jenkins/test', { jenkins_token: '***' });
+    const t = await app.api('POST', '/api/plugins/jenkins/test', { jenkins_token: '***' });
     assert.equal(t.body.ok, true);
     assert.equal(t.body.user, 'Moi Même', 'le test nomme le compte : l’URL qui répond ne prouve pas le jeton');
   });
 
   test('sans configuration, l’onglet dit qu’il n’est pas connecté au lieu d’échouer', async () => {
-    await app.api('PUT', '/api/config', { jenkins_url: '', jenkins_user: '', jenkins_token: '' });
-    const r = await app.api('GET', '/api/jenkins/jobs');
+    await app.configureJenkins({ jenkins_url: '', jenkins_user: '', jenkins_token: '' });
+    const r = await app.api('GET', '/api/plugins/jenkins/jobs');
     assert.equal(r.status, 200, 'un onglet non configuré doit expliquer, pas afficher une erreur rouge');
     assert.deepEqual({ c: r.body.configured, n: r.body.jobs.length }, { c: false, n: 0 });
-    assert.equal((await app.api('POST', '/api/jenkins/test', {})).status, 400, 'tester sans rien, en revanche, est une erreur');
+    assert.equal((await app.api('POST', '/api/plugins/jenkins/test', {})).status, 400, 'tester sans rien, en revanche, est une erreur');
   });
 
   /* LA CADENCE EST UN RÉGLAGE DE L'OUTIL, comme celle des MR et celle de Jira : en base, pas
      dans le navigateur, et bornée — une liste de trois cents jobs redemandée toutes les dix
      secondes pèse sur une installation partagée, pas seulement sur celui qui l'a réglée. */
   test('la cadence de rafraîchissement se règle, et reste bornée', async () => {
-    const lire = () => app.api('GET', '/api/status').then((r) => r.body.jenkinsRefreshMinutes);
+    const lire = () => app.api('GET', '/api/plugins/jenkins/status').then((r) => r.body.refreshMinutes);
     assert.equal(await lire(), 1, 'une minute par défaut');
 
-    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '5' });
-    assert.equal(await lire(), 5, 'l’écran la lit dans /status : changer le réglage s’applique sans recharger');
+    await app.configureJenkins({ jenkins_refresh_minutes: '5' });
+    assert.equal(await lire(), 5, 'l’écran la relit à chaque enregistrement : changer le réglage s’applique sans recharger');
 
-    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '0' });
+    await app.configureJenkins({ jenkins_refresh_minutes: '0' });
     assert.equal(await lire(), 0, '0 = jamais : seul le bouton Rafraîchir demande alors l’état');
 
-    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '999' });
+    await app.configureJenkins({ jenkins_refresh_minutes: '999' });
     assert.equal(await lire(), 60, 'plafonnée à l’heure');
-    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: 'x' });
+    await app.configureJenkins({ jenkins_refresh_minutes: 'x' });
     assert.equal(await lire(), 0, 'une saisie illisible coupe le sondage plutôt que d’inventer une cadence');
-    await app.api('PUT', '/api/config', { jenkins_refresh_minutes: '1' });
+    await app.configureJenkins({ jenkins_refresh_minutes: '1' });
   });
 });

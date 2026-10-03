@@ -1,0 +1,10 @@
+{
+  "name": "shares-prefix-child",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Shares prefix child",
+  "description": "Plugin dont le préfixe prolonge celui de shares-prefix : ses tables ne sont pas celles de son parent.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["db", "http"]
+}

@@ -8,11 +8,6 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 
-/* ---------- Jenkins : voir et lancer des jobs -------------------------------
-   Aucune requête n'est émise sans un geste : pas de sondage, pas de rafraîchissement de
-   fond. L'écran demande, on demande à Jenkins. `configured: false` plutôt qu'une erreur —
-   un onglet non configuré doit expliquer comment le configurer, pas afficher un échec. */
-const jenkinsCfg = () => getConfig();
 // Test de connexion — même contrat que « Tester Jira » : le masque signifie « garde le jeton ».
 /* A38 — LE SOUVENIR D'UN TEST DE CONNEXION. Le bouton répondait à l'écran et n'en gardait
    rien : au retour dans les réglages, les quatre connexions étaient muettes, et « est-ce que
@@ -38,5 +33,5 @@ function exigerJetonFrais(urlCorps, urlBase, jetonCorps, jetonBase, defaut = '')
 }
 
 module.exports = {
-  jenkinsCfg, noterTest, exigerJetonFrais,
+  noterTest, exigerJetonFrais,
 };

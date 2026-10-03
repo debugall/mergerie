@@ -9,6 +9,10 @@ initDirs();
 const { ulid, slugLibre } = require('../core/ulid');
 
 const db = new Database(DB_PATH);
+/* UNE BASE QUI EXISTAIT DÉJÀ, ou une base neuve ? Lu AVANT que la moindre tranche de `schema/` ne crée une table : c'est ce qui
+   distingue un poste qui monte de version (ses plugins embarqués d'avant restent activés) d'une première installation (tous
+   les plugins embarqués démarrent désactivés). Voir `schema/18-plugins.js`. */
+db.baseExistante = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").get();
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 

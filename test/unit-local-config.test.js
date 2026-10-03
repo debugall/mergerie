@@ -66,8 +66,7 @@ describe('local_config — ce qui reste sur ce poste', () => {
   test('un jeton enregistré atterrit dans local_config, et JAMAIS dans config', () => {
     config.updateConfig({
       access_token: 'glpat-SECRET', github_token: 'ghp-SECRET', jira_token: 'jira-SECRET',
-      jenkins_token: 'jk-SECRET',
-      jira_email: 'moi@example.com', jenkins_user: 'moi',
+      jira_email: 'moi@example.com',
     });
     const c = db.prepare('SELECT * FROM config WHERE id = 1').get();
     const l = db.prepare('SELECT * FROM local_config WHERE id = 1').get();

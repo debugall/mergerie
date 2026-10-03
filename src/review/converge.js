@@ -232,6 +232,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
     setRun({ status, passes_done: passes, message, finished_at: new Date().toISOString() });
     onLog(`✅ convergence : ${status} — ${message}`);
     notify.push('converge_done', { mr_id: mrId, iid: mr.iid, status, note10: best.note, passes });
+    require('../core/events').emit('converge.finished', { mr_id: mrId, iid: mr.iid, status, note10: best.note == null ? null : best.note, passes }).catch(() => {});
     return { runId, status, note: best.note, passes };
   } catch (e) {
     setRun({ status: 'error', message: String(e.message).slice(0, 300), finished_at: new Date().toISOString() });

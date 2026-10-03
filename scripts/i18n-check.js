@@ -21,6 +21,17 @@ const ROOT = path.join(__dirname, '..');
    fichier unique d'avant le découpage — le contrôle lit l'un comme l'autre. */
 const DECOUPE = fs.existsSync(path.join(ROOT, 'public/i18n/index.js'));
 const DICT = require(path.join(ROOT, DECOUPE ? 'public/i18n/index.js' : 'public/i18n.js'));
+/* LES DICTIONNAIRES DES PLUGINS EMBARQUÉS rejoignent celui du cœur : leurs clés sont appelées par
+   leur front et par leur serveur, et le contrôle des clés mortes doit les connaître. Leur parité
+   et leur préfixe sont contrôlés à part (scripts/check-plugins.js). */
+const PLUGINS_DIR = path.join(ROOT, 'plugins');
+const pluginsEmbarques = fs.existsSync(PLUGINS_DIR) ? fs.readdirSync(PLUGINS_DIR).filter((d) => fs.existsSync(path.join(PLUGINS_DIR, d, 'plugin.json'))) : [];
+for (const p of pluginsEmbarques) {
+  let m; try { m = JSON.parse(fs.readFileSync(path.join(PLUGINS_DIR, p, 'plugin.json'), 'utf8')); } catch { continue; }
+  for (const f of (m.ui && m.ui.i18n) || []) {
+    try { const d = require(path.join(PLUGINS_DIR, p, f)); for (const l of Object.keys(d)) Object.assign(DICT[l] || (DICT[l] = {}), d[l]); } catch { /* signalé par check-plugins */ }
+  }
+}
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 let failures = 0;
@@ -105,6 +116,7 @@ const rel = (f) => path.relative(ROOT, f).split(path.sep).join('/');
 const SOURCES = [
   ...tousLes(path.join(ROOT, 'public'), ['.js', '.html'], [], ['vendor', 'images']).map(rel),
   ...tousLes(path.join(ROOT, 'src'), ['.js']).map(rel),
+  ...(fs.existsSync(PLUGINS_DIR) ? tousLes(PLUGINS_DIR, ['.js', '.html'], [], ['node_modules']).map(rel) : []),
 ];
 const used = new Set();
 // Les commentaires sont retirés AVANT extraction : un exemple de code cité dans un

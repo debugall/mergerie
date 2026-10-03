@@ -166,10 +166,19 @@ function sansSecrets(c) {
     access_token: c.access_token ? '***' : '',
     jira_token: c.jira_token ? '***' : '',
     github_token: c.github_token ? '***' : '',
-    jenkins_token: c.jenkins_token ? '***' : '',
     confluence_token: c.confluence_token ? '***' : '',
   };
 }
+/* « COPIER » un jeton : la SEULE route qui rend un jeton en clair, sur un geste explicite (un bouton, un POST). Le jeton ne passe jamais
+   dans le DOM : l'écran l'écrit dans le presse-papiers et l'oublie. Liste blanche de quatre champs, jamais de journal, jamais de cache.
+   Les gardes de l'API (origine, jeton local) s'appliquent comme partout. */
+const JETONS_COPIABLES = ['access_token', 'github_token', 'jira_token', 'confluence_token'];
+app.post('/api/config/secret', wrap((req, res) => {
+  const champ = String((req.body && req.body.field) || '');
+  if (!JETONS_COPIABLES.includes(champ)) throw Object.assign(new Error(i18n.t('err.secret-copy-unknown')), { status: 400 });
+  res.set('Cache-Control', 'no-store');
+  res.json({ value: String(getConfig()[champ] || '') });
+}));
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
   /* `scopes` dit, champ par champ, ce qu'un changement ENGAGE : « equipe » (le réglage vit dans
@@ -202,7 +211,6 @@ app.put('/api/config', wrap((req, res) => {
   if (patch.access_token === '***') delete patch.access_token;
   if (patch.jira_token === '***') delete patch.jira_token;
   if (patch.github_token === '***') delete patch.github_token;
-  if (patch.jenkins_token === '***') delete patch.jenkins_token;
   if (patch.confluence_token === '***') delete patch.confluence_token;
   const avant = getConfig();
   const c = updateConfig(patch);

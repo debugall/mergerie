@@ -827,7 +827,7 @@ function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, d
 
   /* B13/TOP 12 — LA PALETTE AGIT, elle ne fait plus seulement naviguer. Quatre objets du
      quotidien n'y étaient pas, et chacun se cherchait à la souris : un vérificateur, un job
-     Jenkins, un projet compose, une commande git enregistrée. Le principe ne change pas — la
+     de CI (par son plugin), un projet compose, une commande git enregistrée. Le principe ne change pas — la
      palette ne sait rien faire que l'écran ne sache déjà faire, elle emmène au bon endroit et
      clique le vrai bouton. */
   const fVerif = preFiltre(requete, ['name']);
@@ -838,19 +838,6 @@ function launcher(q, { jiraConfigure = false, actions = [], agentsMsgs = null, d
       label: String(msgs.verify || '{name}').replace('{name}', r.name), detail: '',
       nav: { verifier_id: r.id },
       texte: `${r.name} verifier verification`,
-    });
-  }
-  /* Les jobs Jenkins RATTACHÉS à un dépôt : la seule liste de jobs que le serveur connaisse
-     sans appeler Jenkins — et la palette ne doit jamais appeler le CI de l'équipe pour
-     remplir une liste de suggestions. */
-  const fJk = preFiltre(requete, ['job_path']);
-  for (const r of db.prepare(`SELECT DISTINCT job_path FROM repo_jenkins
-      ${fJk.cond ? `WHERE ${fJk.cond}` : ''} ORDER BY job_path LIMIT ?`).all(...fJk.args, PAR_SOURCE)) {
-    pousser({
-      kind: 'jenkins', ref: r.job_path, group: 'actions',
-      label: String(msgs.jenkins || '{job}').replace('{job}', r.job_path), detail: '',
-      nav: { jenkins_path: r.job_path },
-      texte: `${r.job_path} jenkins build ci`,
     });
   }
   // Les projets compose DÉJÀ VUS par la veille (aucun `docker ps` déclenché par la palette).

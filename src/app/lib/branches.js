@@ -1,10 +1,9 @@
 'use strict';
-/* Une branche n’est pas anonyme : ce que la base sait dire d’elle (ticket, verdict, session, job Jenkins), et l’adresse d’une ref sur la forge.
+/* Une branche n’est pas anonyme : ce que la base sait dire d’elle (ticket, verdict, session), et l’adresse d’une ref sur la forge.
    Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
 const notes = require('../../notes/notes');
 const jobs = require('../../jobs');
-const jenkins = require('../../integrations/jenkins');
 const path = require('path');
 
 /* Explorateur de branches. Exige un clone local : l'analyse du graphe
@@ -38,7 +37,7 @@ function nommerBranches(repoId, rows) {
   /* TOP 15 — TOUT CE QUE LA BASE SAIT D'UNE BRANCHE. Le graphe disait « ahead 3, behind 12 » et
      rien de ce que la branche PORTE : le titre de sa merge request est chargé puis jeté par
      `gitgraph`, son ticket Jira est en base, le dernier verdict de vérification aussi (dans
-     `targets_json`), et le dernier build Jenkins est à une jointure. Chacune de ces données
+     `targets_json`). Chacune de ces données
      transforme une ligne de graphe en ligne de travail — et aucune ne coûte un appel de plus.
      Trois requêtes pour tout le dépôt, jamais une par branche. */
   const mrs = {};
@@ -59,15 +58,9 @@ function nommerBranches(repoId, rows) {
       if (!verdicts[c.branch]) verdicts[c.branch] = { verdict: v.verdict, at: v.finished_at };
     }
   }
-  /* …et le job Jenkins du dépôt (TOP 15, dernier tiers). Une branche se déploie par le même job
-     que les merge requests du dépôt ; le bouton existait sur une merge request VERTE et nulle part
-     pour une branche qui n'en a pas encore — or c'est exactement le cas d'une branche qu'on veut
-     déployer en recette avant de la proposer. Une requête pour tout le dépôt. */
-  const jobs = db.prepare('SELECT job_path, param FROM repo_jenkins WHERE repo_id = ? ORDER BY job_path LIMIT 3').all(repoId);
   for (const b of rows) {
     if (notes[b.name] != null) b.mr_note = notes[b.name];
     if (sessions[b.name]) b.session = sessions[b.name];
-    if (jobs.length && !b.default) b.jenkins = jobs.map((j) => ({ path: j.job_path, param: j.param || '' }));
     const mr = mrs[b.name];
     if (mr) {
       b.mr = {

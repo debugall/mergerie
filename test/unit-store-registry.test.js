@@ -210,8 +210,7 @@ describe('store-registry — la classification des tables', () => {
     // Ce test nomme les colonnes une par une : un renommage de `access_token` en `forge_auth`
     // passerait sous le radar de INTERDITS, pas sous celui-ci.
     const locales = new Set(registre.localesDe('config'));
-    for (const secret of ['access_token', 'github_token', 'jira_token', 'jenkins_token',
-      'jira_email', 'jenkins_user', 'clone_path']) {
+    for (const secret of ['access_token', 'github_token', 'jira_token', 'jira_email', 'clone_path']) {
       assert.ok(locales.has(secret), `config.${secret} doit rester sur le poste`);
     }
     // Et l'inverse : les gabarits de prompt sont d'équipe (décision § 13 de la spec).

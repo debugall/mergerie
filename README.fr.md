@@ -172,7 +172,13 @@ demandent de traverser des dossiers.
   commune nécessaire), suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.
-- **Jenkins** — l'état de tes jobs CI et leur lancement, sans quitter l'outil : tous les jobs que ton compte
+- **Plugins** — étendre Mergerie sans toucher à son cœur : un plugin est un dossier avec un manifeste et un
+  `activate(ctx)`, où `ctx` est une API fermée et documentée (réglages, secrets, ses propres tables, routes,
+  tâches, événements, un onglet, des actions sur les merge requests, une section du brief, des notifications).
+  *Réglages → Plugins* les active ou les désactive sans redémarrer et installe un plugin tiers depuis un dossier
+  ou une adresse git, dans son propre worker. Jenkins est le premier plugin embarqué ; `plugins/hello` l'exemple
+  minimal. Écris le tien avec le SDK : [docs/plugins/README.md](docs/plugins/README.md).
+- **Jenkins** (un plugin embarqué) — l'état de tes jobs CI et leur lancement, sans quitter l'outil : tous les jobs que ton compte
   voit, groupés par dossier, avec une recherche (une installation d'entreprise en porte des centaines) et un
   filtre sur ce qui ne va pas. L'historique d'un job se lit run par run, **avec les paramètres de chacun**.
   Lancer demande toujours confirmation et nomme le job ; un job paramétré ouvre sa page, pour voir ce qu'on

@@ -44,6 +44,9 @@ const RANG = {
   core: 0,
   db: 1, data: 1, forge: 1, git: 1,
   agent: 2, review: 2, session: 2, verify: 2, notes: 2, integrations: 2,
+  /* Le système de plugins : il lit la base, le bus et les briques du cœur, monte ses routes par
+     `app/routes/plugins.js` et n'importe rien au-dessus de lui. */
+  plugins: 2,
   jobs: 3,
   app: 4, racine: 4,
   demo: 4,

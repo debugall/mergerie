@@ -9,7 +9,7 @@
  *                  fichier de son parent). C'est ce qu'une équipe se dit.
  *   L — local    : secret (jetons) ou propre à un poste (chemins absolus, handles de session,
  *                  préférences d'affichage). N'entre JAMAIS dans le dépôt.
- *   C — cache    : relu de la forge, de Jenkins, de Docker ou du disque. Se recrée tout seul,
+ *   C — cache    : relu de la forge, de Docker ou du disque. Se recrée tout seul,
  *                  donc ne se partage pas — le partager, ce serait partager du périmé.
  *
  * Ce fichier est PUR : aucun `require` vers la base. Il est lisible par `npm run check`, par les
@@ -65,7 +65,6 @@ const EXCEPTIONS = {
   'todo.link_kind': 'le genre d’objet lié (mr, task…)',
   'lot_member.kind': 'le genre de membre',
   'verify_run_test.targets_key': 'l’empreinte des cibles d’un run, calculée, la même partout',
-  'repo_jenkins.job_path': 'le chemin d’un job DANS Jenkins (dossier/job), pas un chemin de disque',
   'mr_comment_draft.old_path': 'un chemin DANS le diff, relatif au dépôt : le même partout',
   'mr_comment_draft.new_path': 'un chemin DANS le diff, relatif au dépôt : le même partout',
   'agent_knowledge.tokens': 'un NOMBRE de jetons de modèle — le coût de la connaissance, pas un secret',
@@ -186,14 +185,13 @@ const REGISTRE = [
      décision de poste : quels dépôts CE compte de forge, avec CE jeton, doit synchroniser. Deux
      collègues sur le même projet GitLab suivent chacun leur propre ligne `repo`, chacun avec ses
      réglages (branches suivies, bascules), et chacun ne synchronise que ce qu'il a ajouté —
-     exactement le même raisonnement que pour Docker, Jenkins, Git et Jira ci-dessous, dont `repo`
+     exactement le même raisonnement que pour Docker, Git et Jira ci-dessous, dont `repo`
      rejoint la famille. `repo_link` (les projets liés par défaut d'un dépôt) la suit : une liste
      fille n'a pas de sort séparé de son parent. */
   { table: 'repo', famille: 'L', uidPropre: true, note: 'les dépôts que CE poste suit : à chacun les siens' },
   { table: 'repo_link', famille: 'L', uidPropre: true, note: 'les projets liés par défaut d’un dépôt suivi par CE poste' },
-  /* LES QUATRE ONGLETS QUI RESTENT À SOI : DOCKER, JENKINS, GIT ET LES DÉPÔTS SUIVIS.
-     Ils ne décrivent pas un travail accumulé mais une MACHINE et ses accès. Un job Jenkins visé
-     depuis ici, une palette de commandes git, le journal des refs qu'on a créées ou supprimées,
+  /* LES ONGLETS QUI RESTENT À SOI : DOCKER, GIT ET LES DÉPÔTS SUIVIS (et les plugins, plus bas).
+     Ils ne décrivent pas un travail accumulé mais une MACHINE et ses accès. Une palette de commandes git, le journal des refs qu'on a créées ou supprimées,
      les conteneurs qu'on sauvegarde, les dépôts qu'on a choisi de suivre : tout cela dit comment
      CE poste est branché, pas ce que l'équipe a produit — et le partager imposerait à chacun
      l'outillage du voisin. C'est le même raisonnement que pour l'onglet Liens. */
@@ -202,7 +200,6 @@ const REGISTRE = [
      pourtant uidPropre). Le retirer ferait surtout DIVERGER une base neuve d'une base existante
      — la colonne ne serait plus créée d'un côté et resterait de l'autre, ce qui est exactement
      le genre d'écart qui ne se voit que chez quelqu'un d'autre. */
-  { table: 'repo_jenkins', famille: 'L', uidPropre: true, note: 'les jobs Jenkins visés depuis CE poste' },
   {
     /* `uidPropre` alors que le FICHIER est nommé par la clé naturelle : les deux ne servent pas
        à la même chose. Le fichier se nomme `forge/projet/iid`, qui désigne la même merge request
@@ -1588,7 +1585,7 @@ const REGISTRE = [
   /* LA VEILLE JIRA RESTE À SOI. Surveiller un ticket, c'est décider que SON travail en dépend :
      le motif écrit à côté (« attendre la validation du PO avant de merger ») parle à celui qui
      l'a écrit, et la todo créée au changement d'état atterrit dans SA liste. Partagée, la veille
-     d'un collègue remplissait la liste de tout le monde. Comme Docker, Jenkins, Git et Liens :
+     d'un collègue remplissait la liste de tout le monde. Comme Docker, Git et Liens :
      ça décrit une façon de travailler, pas un produit. */
   { table: 'jira_watch', famille: 'L', note: 'les tickets que CE poste surveille' },
 
@@ -1734,7 +1731,17 @@ const REGISTRE = [
      sauvegardés : ce sont des gestes d'outillage, faits depuis une machine, sur des clones et
      des démons qui n'existent que là. Les partager imposerait à chacun la palette du voisin et
      ferait voyager un journal d'actions que personne d'autre ne peut ni rejouer ni défaire.
-     Comme l'onglet Liens et l'onglet Jenkins : ça reste à soi. */
+     Comme l'onglet Liens : ça reste à soi. */
+  /* ── Plugins ─────────────────────────────────────────────────────────────────────────── */
+  /* L'ÉTAT, LES RÉGLAGES ET LES SECRETS DES PLUGINS SONT DE POSTE. Un plugin activé ici ne l'est
+     pas forcément chez le voisin, ses réglages portent des adresses et des jetons, et ses
+     migrations ont été jouées sur CETTE base. Les tables d'un plugin (`plugin_<nom>_*`) sont
+     créées par lui, hors de ce schéma ; leur classement est déclaré par `ctx.db.classify`
+     (L ou C en V1 : rien d'un plugin ne part dans le dépôt d'équipe). */
+  { table: 'plugin_state', famille: 'L', note: 'quel plugin est activé sur CE poste, sa version, son erreur' },
+  { table: 'plugin_setting', famille: 'L', note: 'les réglages des plugins de CE poste' },
+  { table: 'plugin_secret', famille: 'L', note: 'les secrets des plugins de CE poste' },
+  { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
   { table: 'docker_backup', famille: 'L', uidPropre: true, note: 'les conteneurs sauvegardés sur CE poste' },
@@ -1750,10 +1757,9 @@ const REGISTRE = [
     locales: ['id',
       // Secrets. Un secret commité dans git est définitif : l'historique est immuable, chaque
       // clone le garde, la forge le garde. Il ne suffit pas de les retirer, il faut révoquer.
-      'access_token', 'github_token', 'jira_email', 'jira_token', 'confluence_token', 'jenkins_user', 'jenkins_token',
-      // Propre au poste : où sont les clones, dans quelle langue on lit, à quelle cadence CE
-      // poste interroge Jenkins.
-      'clone_path', 'language', 'jenkins_refresh_minutes', 'git_commands_seeded',
+      'access_token', 'github_token', 'jira_email', 'jira_token', 'confluence_token',
+      // Propre au poste : où sont les clones, dans quelle langue on lit.
+      'clone_path', 'language', 'git_commands_seeded',
       // L'adresse par laquelle CE poste rejoint l'équipe. Vide = mono-poste.
       'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
       /* DES HABITUDES, PAS DES POLITIQUES. Ouvrir le brief au lancement est une habitude
@@ -1774,8 +1780,8 @@ const REGISTRE = [
       // L'agent de CE poste : un chemin de binaire n'a de sens que sur la machine qui le porte.
       'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless'],
     partagees: [
-      // Où est la forge, Jira, Jenkins : une équipe en a UNE. Le jeton, lui, reste de poste.
-      'gitlab_url', 'github_url', 'jira_url', 'jenkins_url', 'confluence_url',
+      // Où est la forge, Jira : une équipe en a UNE. Le jeton, lui, reste de poste.
+      'gitlab_url', 'github_url', 'jira_url', 'confluence_url',
       // La précision technique d'un ticket : la ligne repère et les consignes se décident à plusieurs.
       'spec_marker', 'spec_team_instructions',
       // Ce qu'on demande à l'IA. D'équipe, et c'est le point : deux reviews de la même MR
@@ -1913,7 +1919,6 @@ function cleNaturelle(table) {
    est un « UNIQUE constraint failed » qui attend son équipe. */
 const UNIQUES_SANS_CLE = {
   'agent.name': 'le slug est dérivé du nom : même nom, même slug, donc déjà rapproché',
-  'repo_jenkins.repo_id+job_path': 'liste fille remplacée en bloc avec son dépôt',
   'verifier_command.verifier_id+position': 'liste fille remplacée en bloc avec son vérificateur',
   'verifier_repo.verifier_id+repo_id': 'liste fille remplacée en bloc avec son vérificateur',
   'verifier_group.verifier_id+group_id': 'liste fille remplacée en bloc avec son vérificateur',

@@ -13,6 +13,40 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A "copy" button next to every token in Settings** — GitLab, GitHub, Jira, Confluence and Jenkins. Tokens still never reach the page
+  (the field keeps showing `***`): the button asks the server for the value on that click, writes it to the clipboard and keeps it out
+  of the screen. A token you just typed and have not saved is copied as is. A plugin gets the same button for any setting its schema
+  marks as a secret.
+- **Jenkins Teams Notify**, a plugin in its own repository (https://gitlab.com/amady/jenkins-teams-notify): notifies a Microsoft Teams channel when a Jenkins
+  job started from Mergerie starts or finishes. Teams webhooks and the Graph API not being an option, it drives a
+  browser with Playwright — a persistent profile, or your own Chrome over CDP — and posts as you. Per-type message
+  templates, a job filter (glob on the full name), a send log kept as long as you choose, and a "sign-in required" state
+  (tab badge, brief) that stops sending until a manual test succeeds. A third-party plugin, installed from
+  Settings → Plugins (from git), disabled until you enable it. To support it the plugin API gains,
+  additively and on the same `apiVersion`: a private folder for a plugin's files (`ctx.dataDir`, permission `storage`),
+  the build address, duration and starter in the `jenkins.job.*` events, and an `env` option on `ctx.exec`. The
+  generated settings form now honours `x-hidden`, and the plugins' own tests run with `npm test`.
+- **Plugin system.** Mergerie can now be extended by plugins: a folder with a `plugin.json` and an
+  `index.js` that declares what it needs (permissions) and receives a closed, documented `ctx` —
+  settings and secrets, its own prefixed tables, routes under `/api/plugins/<name>/`, periodic tasks,
+  events, a tab, actions on merge request cards, a section of the morning brief, desktop
+  notifications. *Settings → Plugins* lists them with their version, state, permissions and events,
+  enables or disables them **without restarting** (the page reloads, data is kept), and installs a
+  third-party plugin from a local folder or a git address — third-party plugins run in their own
+  worker, disabled until you enable them, and `exec` shows an explicit warning. A developer kit
+  (`sdk/`, `@mergerie/plugin-sdk`) gives the TypeScript types, an in-memory test context and a
+  generator (`npm create mergerie-plugin`); `plugins/hello` is the generated example, shipped
+  disabled. Documentation in `docs/plugins/` (fr and en), every example of which the CI runs.
+- **A first installation starts with no plugin enabled.** Jenkins and the other built-in plugins are disabled on a brand-new
+  database and are switched on from Settings → Plugins, without a restart. A machine that already runs Mergerie keeps
+  Jenkins enabled when it upgrades: nothing disappears.
+- **Jenkins becomes a built-in plugin** (`plugins/jenkins`) — **no functional change** for those who already had it: the tab, the
+  job sheet, the launches, the linked jobs, the badges, the end-of-build notification, the
+  « CI red » section of the brief and the console in a session's follow-up are exactly as before. On
+  upgrade, the connection (URL, user, token, refresh cadence), the linked jobs and the last
+  connection test move to the plugin with nothing lost; the Jenkins settings now live in
+  *Settings → Jenkins* as the plugin's own settings (the URL is a per-machine setting, like the
+  rest of the connection), and the API moved from `/api/jenkins/*` to `/api/plugins/jenkins/*`.
 - **Tags by period, in the Git tab.** "What did we ship these two weeks?" used to mean opening every
   repository. The new *Tags by period* sub-tab takes two dates (last 7 or 30 days in one click) and lists
   every tag created between them across all active repositories: repository, tag, date, first line
@@ -63,6 +97,20 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **An open report that becomes stale updates on screen.** "Relancer (delta)" and the stale badge only appeared after reloading the page: a
+  discovery (the Search button, the discovery on opening the tab, the automatic poll) reloaded the lists but not the report you were reading.
+  Only a finished job, or a team sync, refreshed it. The discovery now refreshes the open report itself.
+- **Plugin tables of two plugins can no longer be mixed up.** `plugin_jenkins_` is the beginning of `plugin_jenkins_teams_notify_`: the
+  Jenkins plugin could read, empty or drop the other one's table, and uninstalling it with "also delete its data" removed it (a SQL
+  `LIKE` whose `_` is a wildcard). A table now belongs to the plugin with the longest matching prefix among the known plugins, in the
+  SQL guard, in `ctx.db.tables()` and when uninstalling.
+- **A plugin's routes are built once per activation, not once per request**, and are rebuilt when it is reactivated.
+- **`ctx.exec` no longer lets a plugin set `PATH`, `LD_PRELOAD`, `NODE_OPTIONS`, `GIT_*`…** through its `env` option, which bypassed the
+  sub-command allowlist.
+- **The Jenkins data migration is one transaction**: a stop in the middle leaves the previous database, which the migration replays.
+- **The linked projects you add in a merge request's Context are kept.** Saving the Context sent an empty list, so reopening it showed no
+  linked project: a rename made for the Links screen had changed the class of the rows without changing the code that reads them.
+  The Context modal now saves and shows them again, and a test does the whole gesture in a browser.
 - **Yolo is yolo everywhere, and a write always comes with the rights to write.** Yolo means "no
   restriction", yet a CLI run non-interactively refuses every tool it was not explicitly allowed: on a
   Copilot machine the review ended with "I could not write review.md" as its whole report. In yolo mode

@@ -22,16 +22,17 @@ const TRANCHES = [
   '07-verification',
   '08-liens',
   '09-notes',
-  '10-jenkins-config',
+  '10-config-git',
   '12-agents',
   '13-local-config',
   '14-identite',
   '15-local-state',
   '16-slug',
   '17-store',
+  '18-plugins',
 ];
 for (const nom of TRANCHES) require(`./schema/${nom}`);
-const { DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY } = require('./schema/10-jenkins-config');
+const { DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY } = require('./schema/10-config-git');
 
 
 // Au démarrage : tout job resté "running" a été coupé -> interrupted.

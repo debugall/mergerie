@@ -26,13 +26,14 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
   if (b.dataset.tab === 'links') loadLinks();
-  if (b.dataset.tab === 'jenkins') loadJenkins();
+  // Un onglet de plugin : son bundle a enregistré ce qu'il charge à l'ouverture.
+  pluginsOnglet(b.dataset.tab);
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }
 }));
 
-/* LA PORTE CONTEXTUELLE DÉPLIE LE MENU. Git, Docker, Jenkins et Liens démarrent repliés, et rien
+/* LA PORTE CONTEXTUELLE DÉPLIE LE MENU. Git, Docker et Liens (et les onglets de plugins) démarrent repliés, et rien
    ne les faisait découvrir ; mais l'outil y MÈNE déjà de partout — « Résoudre dans Git → Merge »
-   sur une MR en conflit, « Voir les logs » depuis le brief, un job Jenkins depuis une carte. Un
+   sur une MR en conflit, « Voir les logs » depuis le brief, un job de CI depuis une carte. Un
    écran ouvert par une de ces portes reste alors visible dans la barre, comme si la case des
    Réglages avait été cochée : c'est par l'usage qu'un menu se découvre, pas par une case. */
 function navTab(tab) {

@@ -1,0 +1,10 @@
+{
+  "name": "stores-files",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Stores files",
+  "description": "Écrit un fichier dans son dossier privé (ctx.dataDir) : sert à prouver où il vit et quand il disparaît.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["storage", "http"]
+}

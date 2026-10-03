@@ -29,7 +29,7 @@ const { dispo } = navigateurDispo();
 /* Valeur SAISIE → valeur attendue par l'API. Un booléen = une case à cocher. Les valeurs sont
    choisies DANS les bornes du serveur : ce fichier éprouve l'aller-retour, pas le bornage (qui a
    ses propres tests). L'ordre compte : une case qui déplie ou active un champ passe avant lui. */
-const SECRETS = ['access_token', 'github_token', 'jira_token', 'jenkins_token'];
+const SECRETS = ['access_token', 'github_token', 'jira_token'];
 
 function groupes(app) {
   return [
@@ -79,12 +79,7 @@ function groupes(app) {
       ['verify_jira_comment', true],
       ['jira_test_key', 'PROJ-77'],
     ] },
-    { sub: 'jenkinscfg', champs: [
-      ['jenkins_url', 'https://jenkins.reglages.test'],
-      ['jenkins_user', 'moi.jenkins'],
-      ['jenkins_token', 'jk-reglages-ecran'],
-      ['jenkins_refresh_minutes', '5'],
-    ] },
+    /* Jenkins est un plugin : son sous-onglet enregistre par les réglages du plugin, éprouvés dans e2e-jenkins-ui. */
     { sub: 'aisession', champs: [
       // Le binaire par défaut (bin, args, env, délai, backend, nom) s'édite dans la liste des
       // binaires, par son propre formulaire : e2e-agent-clis-ui.test.js.
@@ -210,7 +205,6 @@ describe('Menu Réglages — chaque champ s’enregistre depuis l’écran et se
       access_token: 'glpat-reglages-ecran',
       github_token: 'ghp-reglages-ecran',
       jira_token: 'ATATT-reglages-ecran',
-      jenkins_token: 'jk-reglages-ecran',
     });
     const c = await config();
     for (const s of SECRETS) assert.equal(c[s], '***', `${s} ne redescend jamais en clair`);

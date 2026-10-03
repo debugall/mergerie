@@ -247,7 +247,6 @@ function renderToReview() {
       });
     return;
   }
-  assurerJenkinsPourCI();          // une fois par page : le badge CI a besoin de la liste
   const rows = ordonnerFile(filtrerAuteur(q ? toReviewRows.filter((m) => matchMr(m, q)) : toReviewRows));
   assurerCIForge(rows);            // l'état de la CI de la forge, pour les cartes affichées
   if (!rows.length) {
@@ -432,7 +431,7 @@ function mrCard(m) {
         ${badgeTicket(m)}
         ${badgeConflit(m)}
         ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
-        ${badgeCI(m.source_branch)}
+        ${pluginsHtml('mr-badge', m)}
         ${badgeCIForge(m)}
         ${verifyBadge(m.verification)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
@@ -469,12 +468,8 @@ function mrCard(m) {
         ${m.verification ? `<button role="menuitem" data-vresults="${m.id}">${tr('verify.btn.results')}</button>` : ''}
         ${/* LE MESSAGE SLACK TOUT FAIT. « Où en est !217 ? » se répond en collant une ligne
               qui porte l'essentiel : le numéro, le titre, la note, le verdict, l'adresse. */''}
-        ${/* B8 — LA QA VEUT !217 EN RECETTE. Le job est déclaré pour ce dépôt : il apparaît
-              quand la merge request est VÉRIFIÉE VERTE, avec sa branche pré-remplie. Ni avant
-              (on ne déploie pas ce qui n'est pas vérifié), ni sans confirmation. */''}
-        ${(m.verification && m.verification.verdict === 'verified_pass' && !m.verification.stale)
-    ? (m.jenkins_jobs || []).map((j) => `<button role="menuitem" data-mr-jenkins="${esc(j.path)}" data-param="${esc(j.param || '')}" data-branch="${esc(m.source_branch)}" title="${esc(tr('mr.title.jenkins-run'))}">${esc(tr('mr.btn.jenkins-run', { job: j.path }))}</button>`).join('')
-    : ''}
+        ${/* Les actions qu'un plugin ajoute au menu d'une merge request (cible « mr »). */''}
+        ${pluginsHtml('mr', m)}
         <button role="menuitem" data-copy-ref="${m.id}">${tr('mr.btn.copy-ref')}</button>
         ${/* C11 — SURVEILLER LE TICKET DE CETTE MR. La clé est déjà déduite (elle est écrite
               sur la carte) ; il fallait pourtant aller dans Jira → Surveillés et la retaper.
@@ -555,6 +550,8 @@ $('#btnDiscover').addEventListener('click', async () => {
        gardait « 0 » et un bouton grisé au-dessus des cartes qu'on venait de découvrir. */
     await loadToReview();
     refreshCounts();
+    // Le rapport ouvert a pu devenir « périmé » : il se met à jour sous les yeux.
+    await rafraichirApresDecouverte().catch(() => { /* un détail qui ne se recharge pas n'est pas une panne de la découverte */ });
   } catch (e) { $('#discoverInfo').textContent = ''; $('#reviewErrors').innerHTML = errorBox(e.message); }
   finally { delete db_.dataset.busy; db_.disabled = false; }
 });

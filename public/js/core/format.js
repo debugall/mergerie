@@ -69,6 +69,17 @@ const fmtNote = (note) => (note && note.value != null ? fmtNote10(note.value * 1
 /* « il y a 3 h » plutôt qu'une date : ce qu'on lit sur une liste triée par date, c'est la
    FRAÎCHEUR, pas le jour exact. `Intl` s'en charge dans la langue courante — une table de
    traductions maison pour « minute / heure / jour » n'aurait rien apporté. */
+/* UNE TEINTE STABLE PAR NOM. Un hachage du nom, pas son rang : la teinte ne bouge pas quand la liste
+   change. Deux noms peuvent tomber sur la même teinte — le nom reste écrit, la couleur aide, elle ne
+   remplace rien. Huit teintes, celles des classes `la-c0`…`la-c7` (Liens) et des pastilles de paramètres. */
+const TEINTES = 8;
+function teinteDe(nom) {
+  let h = 0;
+  const s = String(nom || '');
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 9973;
+  return h % TEINTES;
+}
+
 function depuis(iso) {
   const t = Date.parse(iso);
   if (!t) return '';

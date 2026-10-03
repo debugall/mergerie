@@ -73,9 +73,15 @@ const ou = (l) => `${nomDe(l.f)}:${l.i}`;
    String.replace transforme silencieusement tous les `$$` en `$`. */
 const singleOnList = [];
 lignes.forEach((l) => {
-  const m = l.texte.match(/(?<!\$)\$\((['"`][^'"`]*['"`][^)]*)\)\s*\.\s*(forEach|map|filter|some|every|slice|reduce)\b/);
+  const m = l.texte.match(/(?<!\$)\$\((['"`][^'"`]*['"`][^)]*)\)\s*\.\s*(forEach|map|filter|find|some|every|slice|reduce)\b/);
   if (m) singleOnList.push(`${ou(l)}  $(…).${m[2]} — devrait être $$(…)`);
 });
+/* La même faute sur PLUSIEURS lignes : `$([…].join(', '))` suivi de `.find(…)` à la ligne
+   d'après — passée une troisième fois, par un sélecteur assemblé depuis un tableau. */
+for (const f of man.scripts.filter(existe)) {
+  const m = lirePublic(f).match(/(?<!\$)\$\(\[[\s\S]{0,800}?\]\.join\([^)]*\)\)\s*\.\s*(forEach|map|filter|find|some|every|slice|reduce)\b/);
+  if (m) singleOnList.push(`${nomDe(f)}  $([…].join(…)).${m[1]} — devrait être $$(…)`);
+}
 singleOnList.length ? fail('Sélecteur $ utilisé comme une liste', singleOnList) : ok('Aucun $(…) traité comme un tableau');
 
 /* 2. Sous-onglets sans la classe qui les habille.
@@ -372,7 +378,8 @@ avantDecl.length
     if (/(?<![\w-])(href|src)="'\s*\+(?!\s*(esc\()?\s*(safeUrl|safeImg)\()/.test(l)) soucis.push(`${nom}  URL concaténée sans safeUrl/safeImg : ${l.trim().slice(0, 90)}`);
     if (/target="_blank"/.test(l) && !/rel=/.test(l)) soucis.push(`${nom}  target="_blank" sans rel : ${l.trim().slice(0, 90)}`);
   }
-  const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>/g)].length;
+  // Un <script type="application/json"> est du TEXTE (les déclarations des plugins) : la CSP ne l'exécute pas, il ne compte pas.
+  const enLigne = [...html.matchAll(/<script(?![^>]*\bsrc=)(?![^>]*type="application\/json")[^>]*>/g)].length;
   if (enLigne) soucis.push(`public/index.html  ${enLigne} <script> en ligne — la CSP les refuse, mettez le code dans un fichier`);
   soucis.length
     ? fail('Verrous de sécurité de l’écran (guard.md)', soucis)

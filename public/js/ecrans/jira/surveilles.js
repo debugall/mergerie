@@ -311,7 +311,7 @@ surLeDetailJira('change', async (e) => {
   /* A/Jira 2 (C9) — CHANGER L'ÉTAT D'UN TICKET EST UNE ÉCRITURE CHEZ LES AUTRES, et c'était
      la seule de l'outil sans confirmation : un `<select>` natif applique au `change`, donc
      une flèche du clavier suffisait à faire passer PROJ-1408 en « Terminé » devant toute
-     l'équipe. Le lancement Jenkins, la publication d'un rapport et « Prévenir Jira »
+     l'équipe. Le lancement d'un job de CI, la publication d'un rapport et « Prévenir Jira »
      demandent tous ; celui-ci demande aussi, et NOMME le ticket et l'état visé. */
   const versEtat = (sel.options[sel.selectedIndex] || {}).textContent || '';
   if (!await confirmDialog({
