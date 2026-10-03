@@ -10,6 +10,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   return {
     fr: {
+      "jenkins.settings.copy-token": "Copier le jeton",
       "jenkins.ui.loading": "chargement…",
       "jenkins.ui.delete": "Supprimer",
       "jenkins.ui.saved": "enregistré",
@@ -183,6 +184,7 @@
       "jenkins.investigate.prompt": "Le job Jenkins « {job} » a échoué au build #{n}. Voici la fin de la console :\n\n{log}\n\nTrouve dans le code d’où vient cette erreur.",
     },
     en: {
+      "jenkins.settings.copy-token": "Copy the token",
       "jenkins.ui.loading": "loading…",
       "jenkins.ui.delete": "Delete",
       "jenkins.ui.saved": "saved",

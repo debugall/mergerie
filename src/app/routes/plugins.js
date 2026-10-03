@@ -39,6 +39,11 @@ app.post('/api/plugins/:name/uninstall', wrap(async (req, res) => {
   res.json({ ...r, plugins: plugins.liste() });
 }));
 app.get('/api/plugins/:name/settings', wrap((req, res) => { res.json(plugins.reglagesPourEcran(exigerNom(req.params.name))); }));
+/* « Copier » un secret du plugin (un bouton de son écran) : la valeur n'est rendue que si son schéma le déclare `x-secret`. Pas de cache. */
+app.post('/api/plugins/:name/secret', wrap((req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ value: plugins.lireSecretPourCopie(exigerNom(req.params.name), String((req.body && req.body.key) || '')) });
+}));
 app.put('/api/plugins/:name/settings', wrap((req, res) => { res.json(plugins.ecrireReglages(exigerNom(req.params.name), req.body || {})); }));
 
 /* ---------- LA PORTE DES ROUTES D'UN PLUGIN ----------

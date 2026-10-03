@@ -169,6 +169,16 @@ function sansSecrets(c) {
     confluence_token: c.confluence_token ? '***' : '',
   };
 }
+/* « COPIER » un jeton : la SEULE route qui rend un jeton en clair, sur un geste explicite (un bouton, un POST). Le jeton ne passe jamais
+   dans le DOM : l'écran l'écrit dans le presse-papiers et l'oublie. Liste blanche de quatre champs, jamais de journal, jamais de cache.
+   Les gardes de l'API (origine, jeton local) s'appliquent comme partout. */
+const JETONS_COPIABLES = ['access_token', 'github_token', 'jira_token', 'confluence_token'];
+app.post('/api/config/secret', wrap((req, res) => {
+  const champ = String((req.body && req.body.field) || '');
+  if (!JETONS_COPIABLES.includes(champ)) throw Object.assign(new Error(i18n.t('err.secret-copy-unknown')), { status: 400 });
+  res.set('Cache-Control', 'no-store');
+  res.json({ value: String(getConfig()[champ] || '') });
+}));
 app.get('/api/config', wrap((req, res) => {
   const c = getConfig();
   /* `scopes` dit, champ par champ, ce qu'un changement ENGAGE : « equipe » (le réglage vit dans

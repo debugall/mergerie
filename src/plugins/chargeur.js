@@ -352,6 +352,15 @@ function reglagesPourEcran(nom) {
   for (const k of secrets) d[k] = base.prepare('SELECT 1 FROM plugin_secret WHERE plugin = ? AND key = ?').get(nom, k) ? '***' : '';
   return d;
 }
+/** La valeur d'un secret de plugin, pour le bouton « copier » — et seulement si le schéma du plugin le déclare `x-secret`. */
+function lireSecretPourCopie(nom, cle) {
+  const f = fiches.get(nom);
+  if (!f || !f.manifeste) throw Object.assign(new Error(`plugin inconnu : ${nom}`), { status: 404 });
+  const schema = require(path.join(__dirname, '..', '..', 'sdk', 'lib', 'schema.js'));
+  if (!schema.secrets(f.manifeste.settingsSchema || { properties: {} }).includes(String(cle))) throw Object.assign(new Error(`« ${cle} » n'est pas un secret de ce plugin`), { status: 400 });
+  const r = db().prepare('SELECT value FROM plugin_secret WHERE plugin = ? AND key = ?').get(nom, String(cle));
+  return r ? String(r.value) : '';
+}
 function ecrireReglages(nom, patch) {
   const f = fiches.get(nom);
   if (!f || !f.manifeste) throw Object.assign(new Error(`plugin inconnu : ${nom}`), { status: 404 });
@@ -369,6 +378,6 @@ function reset() { fiches.clear(); dossierUtilisateur = null; }
 
 module.exports = {
   decouvrir, activer, desactiver, demarrer, arreter, installerDepuisDossier, installerDepuisGit, desinstaller,
-  fiche, liste, actifsPourPage, routesDe, semerDemo, reglagesPourEcran, ecrireReglages, dossierUser, reset,
+  fiche, liste, actifsPourPage, routesDe, semerDemo, reglagesPourEcran, lireSecretPourCopie, ecrireReglages, dossierUser, reset,
   EMBARQUES, pageplugins,
 };

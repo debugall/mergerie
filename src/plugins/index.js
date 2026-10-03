@@ -22,7 +22,7 @@ module.exports = {
   activer: chargeur.activer, desactiver: chargeur.desactiver,
   installerDepuisDossier: chargeur.installerDepuisDossier, installerDepuisGit: chargeur.installerDepuisGit, desinstaller: chargeur.desinstaller,
   routesDe: chargeur.routesDe, semerDemo: chargeur.semerDemo,
-  reglagesPourEcran: chargeur.reglagesPourEcran, ecrireReglages: chargeur.ecrireReglages,
+  reglagesPourEcran: chargeur.reglagesPourEcran, lireSecretPourCopie: chargeur.lireSecretPourCopie, ecrireReglages: chargeur.ecrireReglages,
   fragmentsDePage, uiPourNavigateur, bundle: (nom) => { const f = chargeur.fiche(nom); return f && f.actif ? pageplugins.bundle(f) : null; },
   services: { register: (nom, fn) => registre.registerService('coeur', nom, fn), call: registre.callService, has: registre.hasService },
   palette: registre.palette,

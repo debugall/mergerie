@@ -24,7 +24,7 @@ read.
 | `http` / `sse` | routes under `/api/plugins/<name>/`, behind the same guards as the core (origin, local token, CSP) | a path outside that prefix |
 | `net` | outgoing HTTP(S) requests, with the core's TLS convention (`<NAME>_CA_CERT`, `<NAME>_INSECURE_TLS`) | — (a plugin can reach any address: reading what it calls is up to you) |
 | `exec` | a binary, WITHOUT a shell, with an **allowlist of sub-commands** and refused flags (`-c`, `--exec`, `--config`, `--upload-pack`…), minimal environment, timeout | a shell, a flag that executes arbitrary code |
-| `secrets` | its own secrets, masked `***` towards the screen | the core's or another plugin's secrets |
+| `secrets` | its own secrets, masked `***` towards the screen — they can only be copied through the screen's "copy" button, on an explicit gesture, when the schema declares them `x-secret` | the core's or another plugin's secrets |
 | `settings` | its settings, validated by its schema | the core's settings |
 | `env` | the `<NAME>_*` variables of the server's environment | `PATH`, `HOME`, the tokens of the `.env` |
 | `repos` | **reading** the repository registry (id, project, URL, forge) | forge tokens, clones |

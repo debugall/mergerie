@@ -13,6 +13,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A "copy" button next to every token in Settings** — GitLab, GitHub, Jira, Confluence and Jenkins. Tokens still never reach the page
+  (the field keeps showing `***`): the button asks the server for the value on that click, writes it to the clipboard and keeps it out
+  of the screen. A token you just typed and have not saved is copied as is. A plugin gets the same button for any setting its schema
+  marks as a secret.
 - **Jenkins Teams Notify**, a plugin in its own repository (https://gitlab.com/amady/jenkins-teams-notify): notifies a Microsoft Teams channel when a Jenkins
   job started from Mergerie starts or finishes. Teams webhooks and the Graph API not being an option, it drives a
   browser with Playwright — a persistent profile, or your own Chrome over CDP — and posts as you. Per-type message
