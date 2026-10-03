@@ -97,6 +97,9 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The linked projects you add in a merge request's Context are kept.** Saving the Context sent an empty list, so reopening it showed no
+  linked project: a rename made for the Links screen had changed the class of the rows without changing the code that reads them.
+  The Context modal now saves and shows them again, and a test does the whole gesture in a browser.
 - **Yolo is yolo everywhere, and a write always comes with the rights to write.** Yolo means "no
   restriction", yet a CLI run non-interactively refuses every tool it was not explicitly allowed: on a
   Copilot machine the review ended with "I could not write review.md" as its whole report. In yolo mode

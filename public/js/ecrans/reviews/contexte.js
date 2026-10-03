@@ -38,7 +38,7 @@ async function openTicket(id, title) {
 /* Projets liés : une ligne = un dépôt (combo avec recherche, réutilisé) + une branche
    (combo alimenté par branchesFor, comme la modale de session). Sauvés avec le contexte. */
 function linkRowHtml(idx, sel = {}) {
-  return `<div class="link-grid-row" data-row="${idx}">
+  return `<div class="link-row" data-row="${idx}">
     ${repoComboHtml(sel.repo_id, { idClass: 'link-repo', defaultFirst: false })}
     <div class="combo link-branch-combo">
       <input class="link-branch" data-pick-link="1" autocomplete="off" value="${esc(sel.branch || '')}" placeholder="${tr('context.links.branch-ph')}" />
