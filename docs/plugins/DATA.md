@@ -11,6 +11,8 @@ plugin — est refusé avec `requête refusée : la table « x » n'appartient p
 `DETACH`, `VACUUM` et tout `PRAGMA` autre que `table_info`/`index_list`/`index_info`/`foreign_key_list`
 sont refusés aussi. `ctx.db.tables()` liste les siennes.
 
+**Des préfixes qui se chevauchent.** `plugin_jenkins_` est le début de `plugin_jenkins_teams_notify_` : une table appartient au plugin dont le préfixe est le **plus long** parmi les plugins **connus** (installés, actifs ou non). `jenkins` ne peut donc ni lire, ni vider, ni supprimer la table de `jenkins-teams-notify` — et désinstaller l'un avec « supprimer aussi ses données » n'emporte jamais les tables de l'autre. Un plugin installé après l'activation d'un autre compte aussi (le garde relit la liste à chaque requête). Si le plus long n'est pas (encore) installé, la table est celle du plus court.
+
 Une **clé étrangère vers une table du cœur** n'est pas possible (et ne traverserait pas un worker) :
 on s'abonne à l'événement — `ctx.repos.onRemoved(fn)` remplace un `ON DELETE CASCADE` vers `repo`.
 

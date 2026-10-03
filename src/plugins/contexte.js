@@ -13,6 +13,10 @@ const horloge = require('./horloge');
 
 /* Les dictionnaires des plugins, côté serveur : fusionnés dans celui du cœur pour que `t()`
    les trouve, et retirés à la désactivation. */
+/* Les noms de TOUS les plugins connus, fournis par le chargeur (qui importe ce module : l'inverse serait un cycle). */
+let nomsConnus = () => [];
+function connaitreLesPlugins(fn) { nomsConnus = fn; }
+
 const dictsParPlugin = new Map();
 function retirerDicts(nom) {
   const mien = dictsParPlugin.get(nom);
@@ -40,6 +44,7 @@ function creerContexte(manifeste, options = {}) {
     notify: { push: (type, data) => require('../core/notify').push(type, data) },
     exec: { options: (o) => require('../core/proc').options(o), tuer: (child, signal) => require('../core/proc').tuerGroupe(child, signal) },
     dataDir: (n) => require('./donnees').dossierDe(n),
+    autresPlugins: () => nomsConnus(),
     env: process.env,
     isDemo: options.isDemo || (() => process.env.MERGERIE_DEMO === '1'),
   });
@@ -47,4 +52,4 @@ function creerContexte(manifeste, options = {}) {
   return ctx;
 }
 
-module.exports = { creerContexte, primitivesDe, retirerDicts };
+module.exports = { creerContexte, primitivesDe, retirerDicts, connaitreLesPlugins };

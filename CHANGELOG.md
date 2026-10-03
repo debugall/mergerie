@@ -97,6 +97,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Plugin tables of two plugins can no longer be mixed up.** `plugin_jenkins_` is the beginning of `plugin_jenkins_teams_notify_`: the
+  Jenkins plugin could read, empty or drop the other one's table, and uninstalling it with "also delete its data" removed it (a SQL
+  `LIKE` whose `_` is a wildcard). A table now belongs to the plugin with the longest matching prefix among the known plugins, in the
+  SQL guard, in `ctx.db.tables()` and when uninstalling.
 - **The linked projects you add in a merge request's Context are kept.** Saving the Context sent an empty list, so reopening it showed no
   linked project: a rename made for the Links screen had changed the class of the rows without changing the code that reads them.
   The Context modal now saves and shows them again, and a test does the whole gesture in a browser.

@@ -19,7 +19,8 @@ const fs = require('fs');
 const path = require('path');
 
 const manifesteMod = require(path.join(__dirname, '..', '..', 'sdk', 'lib', 'manifeste.js'));
-const { creerContexte, retirerDicts } = require('./contexte');
+const dbplugin = require(path.join(__dirname, '..', '..', 'sdk', 'lib', 'dbplugin.js'));
+const { creerContexte, retirerDicts, connaitreLesPlugins } = require('./contexte');
 const registre = require('./registre');
 const horloge = require('./horloge');
 const events = require('../core/events');
@@ -274,8 +275,12 @@ async function desinstaller(nom, { garderDonnees = true } = {}) {
   const d = db();
   d.prepare('DELETE FROM plugin_state WHERE name = ?').run(nom);
   if (!garderDonnees) {
-    const prefixe = `plugin_${nom.replace(/-/g, '_')}_`;
-    for (const t of d.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE ?").all(`${prefixe}%`)) d.exec(`DROP TABLE IF EXISTS ${t.name}`);
+    /* Les tables de CE plugin : celles dont il est le propriétaire (préfixe le plus long). Un `LIKE 'plugin_a_%'` emporterait aussi
+       celles de `a-b` — le « _ » y est un joker, et `plugin_a_` est le début de `plugin_a_b_` —, donc les données d'un autre plugin. */
+    const connus = [...fiches.keys(), nom];
+    for (const t of d.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) {
+      if (dbplugin.proprietaire(t.name, connus) === nom) d.exec(`DROP TABLE IF EXISTS "${t.name.replace(/"/g, '""')}"`);
+    }
     d.prepare('DELETE FROM plugin_setting WHERE plugin = ?').run(nom);
     d.prepare('DELETE FROM plugin_secret WHERE plugin = ?').run(nom);
     d.prepare('DELETE FROM plugin_migration WHERE plugin = ?').run(nom);
@@ -286,6 +291,8 @@ async function desinstaller(nom, { garderDonnees = true } = {}) {
 
 /* ---------- Lecture ---------- */
 function fiche(nom) { return fiches.get(nom) || null; }
+// Le garde SQL départage les préfixes qui se chevauchent : il lui faut les noms de TOUS les plugins connus, actifs ou non.
+connaitreLesPlugins(() => [...fiches.keys()]);
 function liste() {
   return [...fiches.values()].map((f) => {
     const m = f.manifeste || {};

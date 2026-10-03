@@ -83,7 +83,7 @@ const plugins = pageplugins.embarques();
     for (const f of tous(path.join(p.dir), '.js').filter((x) => !x.includes(`${path.sep}ui${path.sep}`) && !x.includes(`${path.sep}test${path.sep}`))) {   // `test/` : la base du test est celle du SDK, un test peut y simuler une base abîmée
       const texte = depouiller(fs.readFileSync(f, 'utf8'));
       for (const m of texte.matchAll(/(['"`])((?:SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|REPLACE|PRAGMA)\b[\s\S]*?)\1/gi)) {
-        try { dbplugin.verifier(prefixe, m[2]); } catch (e) { soucis.push(`${path.relative(ROOT, f)}  ${e.message} — « ${m[2].slice(0, 60).replace(/\s+/g, ' ')}… »`); }
+        try { dbplugin.verifier(prefixe, m[2], dbplugin.prefixesPlusLongs(prefixe, plugins.map((q) => q.manifeste && q.manifeste.name).filter(Boolean))); } catch (e) { soucis.push(`${path.relative(ROOT, f)}  ${e.message} — « ${m[2].slice(0, 60).replace(/\s+/g, ' ')}… »`); }
       }
     }
   }

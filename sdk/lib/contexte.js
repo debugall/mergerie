@@ -138,7 +138,7 @@ function creerContexte(manifeste, f) {
   }
 
   if (permissions.has('db')) {
-    ctx.db = dbplugin.creer(base(), nom, { classer: (table, famille) => { (sortie.classements = sortie.classements || {})[table] = famille; } });
+    ctx.db = dbplugin.creer(base(), nom, { autres: () => (f.autresPlugins ? f.autresPlugins() : []), classer: (table, famille) => { (sortie.classements = sortie.classements || {})[table] = famille; } });
   }
 
   if (permissions.has('http')) {

@@ -140,6 +140,26 @@ describe('Plugins — chargeur et isolation', () => {
     assert.deepEqual((await de('needs-other')).missing, ['absent-plugin']);
   });
 
+  test('deux plugins dont les préfixes se chevauchent : le garde SQL les départage, et désinstaller l’un n’emporte JAMAIS les tables de l’autre', async () => {
+    for (const nom of ['shares-prefix', 'shares-prefix-child']) {
+      assert.equal((await app.api('POST', '/api/plugins/install', { path: path.join(FIXTURES, nom) })).status, 200, nom);
+      assert.equal((await app.api('POST', `/api/plugins/${nom}/enable`)).body.ok, true, nom);
+    }
+    const existe = (t) => !!app.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+    assert.ok(existe('plugin_shares_prefix_own') && existe('plugin_shares_prefix_child_t'));
+    // Le parent ne peut pas toucher à la table de l'enfant, et ne la voit pas dans tables().
+    const peek = (await app.api('GET', '/api/plugins/shares-prefix/peek')).body;
+    assert.match(peek.refus, /appartient à un autre plugin/);
+    assert.deepEqual(peek.tables, ['plugin_shares_prefix_own']);
+    assert.deepEqual((await app.api('GET', '/api/plugins/shares-prefix-child/own')).body.tables, ['plugin_shares_prefix_child_t']);
+    // Désinstaller le parent AVEC ses données : la table de l'enfant reste.
+    await app.api('POST', '/api/plugins/shares-prefix/disable');
+    assert.equal((await app.api('POST', '/api/plugins/shares-prefix/uninstall', { deleteData: true })).status, 200);
+    assert.equal(existe('plugin_shares_prefix_own'), false, 'ses tables sont parties');
+    assert.equal(existe('plugin_shares_prefix_child_t'), true, 'celles de l’enfant sont intactes');
+    assert.equal((await app.api('GET', '/api/plugins/shares-prefix-child/own')).body.tables.length, 1);
+  });
+
   test('ctx.exec depuis un worker : sans shell, le message arrive intact, l’environnement demandé est transmis — et lui seul', async () => {
     process.env.RUNS_EXEC_SECRET = 'ne-doit-pas-fuiter';
     try {

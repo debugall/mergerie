@@ -11,6 +11,8 @@ refused with `requête refusée : la table « x » n'appartient pas au plugin`. 
 `VACUUM` and any `PRAGMA` other than `table_info`/`index_list`/`index_info`/`foreign_key_list` are
 refused too. `ctx.db.tables()` lists its own.
 
+**Overlapping prefixes.** `plugin_jenkins_` is the beginning of `plugin_jenkins_teams_notify_`: a table belongs to the plugin whose prefix is the **longest** among the **known** plugins (installed, active or not). So `jenkins` can neither read, empty nor drop the table of `jenkins-teams-notify` — and uninstalling one with "also delete its data" never takes the other's tables. A plugin installed after another was activated counts too (the guard rereads the list on every query). If the longer one is not (yet) installed, the table is the shorter one's.
+
 A **foreign key to a core table** is not possible (and would not cross a worker): subscribe to the
 event instead — `ctx.repos.onRemoved(fn)` replaces an `ON DELETE CASCADE` to `repo`.
 

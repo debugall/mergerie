@@ -46,10 +46,33 @@ function tablesDe(sql) {
   return [...tables];
 }
 
-/** Lève si la requête touche une table hors du préfixe. */
-function verifier(prefixe, sql) {
+/** Le préfixe des tables d'un plugin. */
+const prefixeDe = (nom) => `plugin_${String(nom).replace(/-/g, '_')}_`;
+
+/** LES PRÉFIXES SE CHEVAUCHENT : `plugin_jenkins_` est le début de `plugin_jenkins_teams_notify_`. Un test « commence par » dirait donc
+    que la table du second est au premier — qui pourrait la lire, la vider, ou l'emporter à sa désinstallation. La règle : une table
+    appartient au plugin dont le préfixe est le PLUS LONG parmi ceux des plugins CONNUS.
+    @param {string} table @param {string[]} noms les noms de tous les plugins connus
+    @returns {string|null} le nom du propriétaire */
+function proprietaire(table, noms) {
+  let meilleur = null;
+  for (const n of noms) {
+    const p = prefixeDe(n);
+    if (String(table).startsWith(p) && (meilleur === null || p.length > prefixeDe(meilleur).length)) meilleur = n;
+  }
+  return meilleur;
+}
+
+/** Les préfixes d'AUTRES plugins qui étendent `prefixe` : ce que la table d'un plugin ne peut pas être. */
+function prefixesPlusLongs(prefixe, noms) {
+  return (noms || []).map(prefixeDe).filter((p) => p.length > prefixe.length && p.startsWith(prefixe));
+}
+
+/** Lève si la requête touche une table hors du préfixe — ou qui est celle d'un autre plugin au préfixe plus long. */
+function verifier(prefixe, sql, longs = []) {
   for (const t of tablesDe(sql)) {
     if (!t.startsWith(prefixe)) throw new Error(`requête refusée : la table « ${t} » n'appartient pas au plugin (préfixe attendu : ${prefixe})`);
+    if (longs.some((p) => t.startsWith(p))) throw new Error(`requête refusée : la table « ${t} » appartient à un autre plugin`);
   }
 }
 
@@ -57,22 +80,26 @@ function verifier(prefixe, sql) {
  * Le `ctx.db` d'un plugin, sur une connexion better-sqlite3 (celle du cœur, ou une base en
  * mémoire dans le SDK de test).
  */
-function creer(db, nom, { classer = () => {} } = {}) {
-  const prefixe = `plugin_${String(nom).replace(/-/g, '_')}_`;
+function creer(db, nom, { classer = () => {}, autres = () => [] } = {}) {
+  const prefixe = prefixeDe(nom);
+  // Relus à CHAQUE requête : un plugin installé après l'activation de celui-ci compte aussi.
+  const longs = () => prefixesPlusLongs(prefixe, autres());
   const api = {
     prefix: prefixe,
-    prepare(sql) { verifier(prefixe, sql); return db.prepare(sql); },
+    prepare(sql) { verifier(prefixe, sql, longs()); return db.prepare(sql); },
     exec(sql) {
       // Plusieurs instructions possibles : chacune est vérifiée.
-      for (const part of String(sql).split(';')) if (part.trim()) verifier(prefixe, part);
+      for (const part of String(sql).split(';')) if (part.trim()) verifier(prefixe, part, longs());
       db.exec(sql);
     },
     transaction(fn) { return db.transaction(fn)(); },
     tables() {
-      return db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE ? ORDER BY name").all(`${prefixe}%`).map((r) => r.name);
+      // En JS, pas en `LIKE` : le « _ » du préfixe y est un joker (`plugin_jenkins_` attraperait `plugin_jenkinsX…`).
+      const plus = longs();
+      return db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all().map((r) => r.name).filter((n) => n.startsWith(prefixe) && !plus.some((p) => n.startsWith(p)));
     },
     classify(table, famille) {
-      if (!String(table).startsWith(prefixe)) throw new Error(`classify : la table « ${table} » n'appartient pas au plugin`);
+      if (!String(table).startsWith(prefixe) || longs().some((p) => String(table).startsWith(p))) throw new Error(`classify : la table « ${table} » n'appartient pas au plugin`);
       if (!['L', 'C'].includes(famille)) throw new Error('classify : famille L ou C (le partage P d’une table de plugin n’est pas ouvert en V1)');
       classer(table, famille);
     },
@@ -101,4 +128,4 @@ function creer(db, nom, { classer = () => {} } = {}) {
   return api;
 }
 
-module.exports = { creer, verifier, tablesDe };
+module.exports = { creer, verifier, tablesDe, prefixeDe, proprietaire, prefixesPlusLongs };

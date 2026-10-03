@@ -156,6 +156,8 @@ function createTestContext(options = {}) {
     net: { request: options.request || requestNode, makeAgentFactory },
     notify: { push: (type, data) => notifications.push({ type, data, at: new Date().toISOString() }) },
     exec: {},
+    // Les autres plugins que le test veut CONNUS (pour que le garde SQL départage deux préfixes qui se chevauchent).
+    autresPlugins: () => options.otherPlugins || [],
     dataDir: () => options.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), `mergerie-plugin-${m.name}-`)),
     env: options.env || {},
     isDemo: () => !!options.demo,

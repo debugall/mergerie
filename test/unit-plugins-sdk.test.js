@@ -13,6 +13,51 @@ const sdk = require('../sdk');
 
 const FIXTURE = path.join(__dirname, 'fixtures', 'plugins', 'hello-fixture');
 
+describe('SDK — préfixes de tables qui se chevauchent', () => {
+  const dbp = require('../sdk/lib/dbplugin');
+  const manifeste = (nom) => ({ name: nom, version: '1.0.0', apiVersion: '1', displayName: nom, description: '', main: 'index.js', permissions: ['db'] });
+  test('une table appartient au plugin dont le préfixe est le PLUS LONG parmi les plugins connus', () => {
+    const noms = ['jenkins', 'jenkins-teams-notify', 'ab', 'a'];
+    assert.equal(dbp.proprietaire('plugin_jenkins_link', noms), 'jenkins');
+    assert.equal(dbp.proprietaire('plugin_jenkins_teams_notify_log', noms), 'jenkins-teams-notify');
+    assert.equal(dbp.proprietaire('plugin_ab_x', noms), 'ab');
+    assert.equal(dbp.proprietaire('plugin_a_x', noms), 'a');
+    assert.equal(dbp.proprietaire('plugin_inconnu_x', noms), null);
+    assert.equal(dbp.proprietaire('repo', noms), null);
+  });
+  test('le garde refuse au plugin « court » la table du plugin « long » CONNU — et rien d’autre ne change', () => {
+    const t = sdk.createTestContext({ manifest: manifeste('jenkins'), otherPlugins: ['jenkins-teams-notify'] });
+    t.db.exec('CREATE TABLE plugin_jenkins_link (id INTEGER)');
+    t.db.exec('CREATE TABLE plugin_jenkins_teams_notify_log (id INTEGER)');
+    assert.doesNotThrow(() => t.ctx.db.prepare('SELECT * FROM plugin_jenkins_link'));
+    for (const sql of ['SELECT * FROM plugin_jenkins_teams_notify_log', 'DROP TABLE plugin_jenkins_teams_notify_log', 'DELETE FROM plugin_jenkins_teams_notify_log']) {
+      assert.throws(() => t.ctx.db.prepare(sql), /appartient à un autre plugin/, sql);
+    }
+    assert.throws(() => t.ctx.db.exec('DROP TABLE plugin_jenkins_teams_notify_log'), /autre plugin/);
+    assert.throws(() => t.ctx.db.classify('plugin_jenkins_teams_notify_log', 'L'), /n'appartient pas/);
+    assert.deepEqual(t.ctx.db.tables(), ['plugin_jenkins_link'], 'et tables() ne la liste pas');
+    t.close();
+  });
+  test('le plugin « long » garde ses tables ; sans voisin connu, rien ne change (le SDK de test seul ne connaît personne)', () => {
+    const long = sdk.createTestContext({ manifest: manifeste('jenkins-teams-notify'), otherPlugins: ['jenkins'] });
+    long.db.exec('CREATE TABLE plugin_jenkins_teams_notify_log (id INTEGER)');
+    assert.doesNotThrow(() => long.ctx.db.prepare('SELECT * FROM plugin_jenkins_teams_notify_log'));
+    assert.deepEqual(long.ctx.db.tables(), ['plugin_jenkins_teams_notify_log']);
+    long.close();
+    const seul = sdk.createTestContext({ manifest: manifeste('jenkins') });
+    seul.db.exec('CREATE TABLE plugin_jenkins_teams_notify_log (id INTEGER)');
+    assert.doesNotThrow(() => seul.ctx.db.prepare('SELECT * FROM plugin_jenkins_teams_notify_log'), 'inconnu du SDK : traité comme sa propre table');
+    seul.close();
+  });
+  test('tables() n’emploie pas LIKE : le « _ » du préfixe n’est pas un joker', () => {
+    const t = sdk.createTestContext({ manifest: manifeste('jenkins') });
+    t.db.exec('CREATE TABLE plugin_jenkinsX_t (id INTEGER)');   // « plugin_jenkins_% » l'attraperait : « _ » = n'importe quel caractère
+    t.db.exec('CREATE TABLE plugin_jenkins_t (id INTEGER)');
+    assert.deepEqual(t.ctx.db.tables(), ['plugin_jenkins_t']);
+    t.close();
+  });
+});
+
 describe('SDK — ctx.dataDir (permission storage)', () => {
   const manifeste = (permissions) => ({ name: 'p', version: '1.0.0', apiVersion: '1', displayName: 'P', description: '', main: 'index.js', permissions });
   test('avec « storage » : un dossier existant et privé ; sans, la primitive n’existe pas', () => {
