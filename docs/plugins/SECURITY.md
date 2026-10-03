@@ -22,11 +22,12 @@ ce dont vous avez lu le code.
 | `db` | ses tables `plugin_<nom>_*` | toute autre table (les jetons sont dans `local_config`, inaccessible), `sqlite_master`, `ATTACH` |
 | `http` / `sse` | des routes sous `/api/plugins/<nom>/`, derrière les mêmes gardes que le cœur (origine, jeton local, CSP) | un chemin hors de ce préfixe |
 | `net` | des requêtes HTTP(S) sortantes, avec la convention TLS du cœur (`<NOM>_CA_CERT`, `<NOM>_INSECURE_TLS`) | — (un plugin peut joindre n'importe quelle adresse : c'est à vous de lire ce qu'il appelle) |
-| `exec` | un binaire, SANS shell, avec une **liste blanche de sous-commandes** et des drapeaux refusés (`-c`, `--exec`, `--config`, `--upload-pack`…), environnement minimal (l'option `env` ne peut poser ni `PATH`, `HOME`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `GIT_*`, `SHELL`, `BASH_ENV`), délai | un shell, un drapeau à exécution arbitraire |
+| `exec` | un binaire, SANS shell, avec une **liste blanche de sous-commandes** et des drapeaux refusés (`-c`, `--exec`, `--config`, `--upload-pack`…), environnement minimal (l'option `env` ne peut poser ni `PATH`, `HOME`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `GIT_*`, `SHELL`, `BASH_ENV`), délai. `ctx.execStream` : le même garde pour un processus qui dure (un `docker logs -f`), sans délai, que l'appelant ferme | un shell, un drapeau à exécution arbitraire |
+| `jobs` | des jobs dans la file du cœur : journal en direct, progression, « Stop » qui tue le groupe de processus, écran des jobs. Le `job` du runner lance des commandes par le même garde que `exec` ; un plugin tiers ne pilote QUE ses propres jobs | un job d'un autre plugin ou du cœur, un accès aux clones git (un job de plugin ne réserve ni ne touche aucun dépôt) |
 | `secrets` | ses propres secrets, masqués `***` vers l'écran — ils ne s'en copient que par le bouton « copier » de l'écran, sur un geste explicite, si le schéma les déclare `x-secret` | les secrets du cœur ou d'un autre plugin |
 | `settings` | ses réglages, validés par son schéma | les réglages du cœur |
 | `env` | les variables `<NOM>_*` de l'environnement du serveur | `PATH`, `HOME`, les jetons du `.env` |
-| `repos` | la **lecture** du registre des dépôts (id, projet, URL, forge) | les jetons de forge, les clones |
+| `repos` | la **lecture** du registre des dépôts (id, projet, URL, forge) et des **répertoires locaux** déclarés (`ctx.repos.localRoots()`) | les jetons de forge, les clones |
 | `events` | écouter les événements du cœur, émettre les siens (déclarés, préfixés) | émettre un événement du cœur ou d'un autre plugin |
 | `schedule` | des tâches périodiques (≥ 1 s, jamais en recouvrement, arrêtées à la désactivation) | — |
 | `storage` | un dossier privé, `<dataDir>/plugin-data/<name>/` (`ctx.dataDir`) : un profil de navigateur, un cache | le code des plugins, la base, le dossier d'un autre plugin ; il n'entre ni dans le dépôt d'équipe ni dans la sauvegarde |

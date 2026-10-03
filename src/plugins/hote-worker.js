@@ -19,6 +19,9 @@ const path = require('path');
 const { Worker, MessageChannel, receiveMessageOnPort } = require('worker_threads');
 
 const { creerContexte } = require('./contexte');
+const jobsPlugins = require('./jobs-plugins');
+
+const DELAI_JOB_MS = 6 * 3600_000;
 
 const DELAI_ACTIVATE_MS = 10_000;
 const DELAI_HTTP_MS = 60_000;
@@ -38,6 +41,9 @@ class HoteWorker {
     this.stmtSeq = 0;
     this.tachesWorker = new Map(); // id local → id horloge
     this.relais = new Map();       // id local d'abonnement → { name, fn }
+    this.flux = new Map();         // id de flux exec → { close }
+    this.sses = new Map();         // id de flux SSE ouvert → { send, close }
+    this.mesJobs = new Set();      // les jobs que CE plugin pilote en ce moment
     this.mort = null;
   }
 
@@ -69,6 +75,10 @@ class HoteWorker {
     for (const [, a] of this.attentes) a.reject(new Error(`plugin ${this.nom} arrêté`));
     this.attentes.clear();
     this.statements.clear();
+    for (const [, f] of this.flux) { try { f.close(); } catch { /* déjà parti */ } }
+    this.flux.clear();
+    for (const [, e] of this.sses) { try { e.close(); } catch { /* déjà fermé */ } }
+    this.sses.clear();
     if (this.worker) { try { this.worker.terminate(); } catch { /* déjà parti */ } }
     this.worker = null;
   }
@@ -110,6 +120,8 @@ class HoteWorker {
       case 'log': this.log(String(m.message)); break;
       case 'reply': this.repondreAttente(`reply:${m.id}`, m.value, m.error); break;
       case 'rpcAsync': this.rpcAsync(m); break;
+      case 'sseSend': { const e = this.sses.get(m.sid); if (e) e.send(m.event, m.data); break; }
+      case 'sseEnd': { const e = this.sses.get(m.sid); if (e) { this.sses.delete(m.sid); e.close(); } break; }
       default: break;
     }
   }
@@ -222,7 +234,50 @@ class HoteWorker {
         return true;
       }
       case 'demo.seed': return true;   // le worker garde la fonction ; `semer()` la fera jouer
-      case 'http.sse': throw new Error(`${nom} : http.sse n'est pas disponible depuis un worker en V1 (non éprouvé)`);
+      case 'http.sse': {
+        const [id, chemin] = args;
+        ctx.http.sse(chemin, (req, send, close) => {
+          if (!this.worker) { close(); return () => {}; }
+          const sid = ++this.seq;
+          this.sses.set(sid, { send, close });
+          this.worker.postMessage({ t: 'sseOpen', id, sid, req: { query: req.query, params: req.params, headers: req.headers } });
+          return () => { this.sses.delete(sid); if (this.worker) this.worker.postMessage({ t: 'sseClose', sid }); };
+        });
+        return true;
+      }
+      case 'execStream': {
+        const [sid, bin, argv, opts] = args;
+        const h = ctx.execStream(bin, argv, opts || {},
+          (flux2, ligne) => { if (this.worker) this.worker.postMessage({ t: 'streamLine', sid, flux: flux2, ligne }); },
+          (r) => { this.flux.delete(sid); if (this.worker) this.worker.postMessage({ t: 'streamClose', sid, result: r }); });
+        this.flux.set(sid, h);
+        return true;
+      }
+      case 'execStream.close': { const f = this.flux.get(args[0]); if (f) { this.flux.delete(args[0]); f.close(); } return true; }
+      case 'jobs.register': {
+        const [id, genre] = args;
+        ctx.jobs.register(genre, (job, payload) => {
+          if (!this.worker) return Promise.reject(new Error(`plugin ${nom} arrêté`));
+          const rid = ++this.seq;
+          this.mesJobs.add(job.id);
+          this.worker.postMessage({ t: 'jobRun', id, rid, jid: job.id, payload });
+          return this.attendre(`reply:${rid}`, DELAI_JOB_MS, `job ${genre} sans réponse`).finally(() => this.mesJobs.delete(job.id));
+        });
+        return true;
+      }
+      case 'jobs.op': {
+        const [jid, op, ...reste] = args;
+        const job = this.mesJobs.has(jid) ? jobsPlugins.actif(jid) : null;
+        if (!job) throw new Error(`jobs : le job ${jid} n'est pas à ce plugin, ou n'est plus en cours`);
+        if (!['log', 'message', 'progress', 'isCancelled'].includes(op)) throw new Error(`jobs.${op} indisponible`);
+        return job[op](...reste);
+      }
+      case 'jobs.exec': {
+        const [jid, bin, argv, opts] = args;
+        const job = this.mesJobs.has(jid) ? jobsPlugins.actif(jid) : null;
+        if (!job) return Promise.reject(new Error(`jobs : le job ${jid} n'est pas à ce plugin, ou n'est plus en cours`));
+        return job.exec(bin, argv, opts || {});
+      }
       default: {
         const [a, b] = prim.split('.');
         const cible = b ? (ctx[a] && ctx[a][b]) : ctx[a];

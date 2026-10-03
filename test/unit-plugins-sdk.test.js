@@ -232,3 +232,50 @@ describe('SDK — createTestContext', () => {
     assert.ok(sdk.readManifest(FIXTURE).ok);
   });
 });
+
+describe('SDK — jobs, flux de processus, répertoires locaux', () => {
+  const m = (permissions) => ({ name: 'tj', version: '1.0.0', apiVersion: '1', displayName: 'tj', description: 'x', main: 'index.js', permissions });
+  const SCRIPT = path.join(__dirname, 'fixtures', 'plugins', 'runs-jobs', 'lines.js');
+
+  test('ctx.jobs : le runner reçoit un job (journal, progression, exec) ; une exception met le job en erreur', async () => {
+    const t = sdk.createTestContext({ manifest: m(['jobs', 'exec']) });
+    t.ctx.jobs.register('copie', async (job, payload) => {
+      job.message('début'); job.progress(1, 2);
+      const r = await job.exec(process.execPath, [SCRIPT], { allowlist: [SCRIPT] });
+      if (payload.fail) throw new Error('boum');
+      return r;
+    });
+    const ok = t.ctx.jobs.start('copie', { fail: false }, { label: 'Copie' });
+    assert.equal(ok.status, 'queued');
+    const fini = await t.jobs.wait(ok.id);
+    assert.deepEqual([fini.status, fini.progress], ['done', { done: 1, total: 2 }]);
+    assert.deepEqual([...fini.logs].sort(), ['deux', 'trois', 'un'], 'stdout et stderr arrivent dans un ordre qu’aucun des deux ne garantit');
+    const ko = await t.jobs.wait(t.ctx.jobs.start('copie', { fail: true }).id);
+    assert.deepEqual([ko.status, ko.error], ['error', 'boum']);
+    assert.throws(() => t.ctx.jobs.start('inconnu'), /non inscrit/);
+    assert.throws(() => t.ctx.jobs.register('Mauvais Nom', () => {}), /kebab-case/);
+  });
+
+  test('ctx.execStream : les lignes arrivent au fil de l’eau, close() arrête le processus, les gardes de exec s’appliquent', async () => {
+    const t = sdk.createTestContext({ manifest: m(['exec']) });
+    const lignes = [];
+    let fin = null;
+    const h = t.ctx.execStream(process.execPath, [SCRIPT, '--wait'], { allowlist: [SCRIPT] }, (f, l) => lignes.push(`${f}:${l}`), (r) => { fin = r; });
+    for (let i = 0; i < 100 && lignes.length < 3; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual([...lignes].sort(), ['stderr:deux', 'stdout:trois', 'stdout:un']);
+    h.close();
+    for (let i = 0; i < 100 && !fin; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(fin && fin.code !== 0, 'tué : code non nul');
+    let refus = null;
+    t.ctx.execStream(process.execPath, ['--eval', 'x'], { allowlist: ['x'] }, () => {}, (r) => { refus = r; });
+    for (let i = 0; i < 50 && !refus; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.match(refus.error, /drapeau refusé|hors liste blanche/);
+    assert.throws(() => t.ctx.execStream(process.execPath, [], { allowlist: ['x'] }), /onLine/);
+  });
+
+  test('ctx.repos.localRoots : les répertoires locaux, et rien sans la permission repos', () => {
+    const t = sdk.createTestContext({ manifest: m(['repos']), localRoots: [{ path: '/tmp/a', label: 'A' }, { path: '/tmp/b' }] });
+    assert.deepEqual(t.ctx.repos.localRoots().map((r) => [r.path, r.label]), [['/tmp/a', 'A'], ['/tmp/b', '']]);
+    assert.equal(sdk.createTestContext({ manifest: m([]) }).ctx.repos, undefined);
+  });
+});

@@ -20,6 +20,7 @@ const horlogeMod = require('./lib/horloge');
 const manifeste = require('./lib/manifeste');
 const schema = require('./lib/schema');
 const dbplugin = require('./lib/dbplugin');
+const { creerJob } = require('./lib/jobs');
 
 /* Un client HTTP(S) minimal, au même contrat que celui du cœur (`{ status, statusText, headers, body }`),
    avec la convention TLS `<NOM>_CA_CERT` / `<NOM>_INSECURE_TLS`. */
@@ -120,6 +121,30 @@ function creerHttp(sortie) {
   };
 }
 
+/** Les jobs d'un plugin sous test : lancés tout de suite, journal et progression gardés en mémoire — `t.jobs.wait(id)` attend la fin. */
+function creerJobs() {
+  const runners = new Map(); const lignes = []; let seq = 0;
+  return {
+    register: (plugin, kind, runner, exec) => { runners.set(`${plugin}:${kind}`, { runner, exec }); },
+    start: (plugin, kind, payload, options = {}) => {
+      const r = runners.get(`${plugin}:${kind}`);
+      if (!r) throw new Error(`${plugin} : jobs.start('${kind}') — genre non inscrit (jobs.register)`);
+      const row = { id: ++seq, plugin, kind, status: 'queued', message: String(options.label || ''), logs: [], progress: { done: 0, total: 0 }, cancelled: false, error: null };
+      lignes.push(row);
+      row.fini = (async () => {
+        await Promise.resolve();
+        row.status = 'running';
+        const job = creerJob(plugin, { id: row.id, log: (t) => row.logs.push(t), message: (t) => { row.message = t; }, progress: (d, t) => { row.progress = { done: d, total: t }; }, estAnnule: () => row.cancelled, exec: r.exec });
+        try { await r.runner(job, payload); row.status = 'done'; } catch (e) { row.status = row.cancelled ? 'stopped' : 'error'; row.error = e.message; }
+      })();
+      return { id: row.id, status: 'queued' };
+    },
+    list: () => lignes.map(({ fini, ...r }) => r),
+    wait: (id) => { const r = lignes.find((x) => x.id === id); return r ? r.fini.then(() => { const { fini, ...rest } = r; return rest; }) : Promise.reject(new Error(`job ${id} inconnu`)); },
+    cancel: (id) => { const r = lignes.find((x) => x.id === id); if (r) r.cancelled = true; },
+  };
+}
+
 /**
  * Un ctx en mémoire pour tester un plugin.
  * @param {object} [options]
@@ -127,6 +152,7 @@ function creerHttp(sortie) {
  * @param {string} [options.dir] le dossier du plugin
  * @param {string[]} [options.permissions] remplace celles du manifeste
  * @param {object[]} [options.repos] les dépôts que `ctx.repos` rend
+ * @param {{ path: string, label?: string }[]} [options.localRoots] les répertoires locaux que `ctx.repos.localRoots()` rend
  * @param {object} [options.env] l'environnement que `ctx.env` lit
  * @param {boolean} [options.demo] ce que `ctx.demo.isDemo()` rend
  * @param {(m: string) => void} [options.log]
@@ -140,6 +166,8 @@ function createTestContext(options = {}) {
   const Database = require('better-sqlite3');
   const db = new Database(':memory:');
   db.exec(SQL_SOCLE);
+  db.exec('CREATE TABLE IF NOT EXISTS local_root (id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, label TEXT, created_at TEXT)');
+  for (const [i, r] of (options.localRoots || []).entries()) db.prepare('INSERT INTO local_root (id, path, label) VALUES (?, ?, ?)').run(i + 1, r.path, r.label || '');
   db.exec('CREATE TABLE IF NOT EXISTS repo (id INTEGER PRIMARY KEY, project TEXT, url TEXT, forge TEXT DEFAULT \'gitlab\', enabled INTEGER DEFAULT 1, fetch_mrs INTEGER DEFAULT 1)');
   for (const r of options.repos || []) db.prepare('INSERT INTO repo (id, project, url, forge, enabled, fetch_mrs) VALUES (?, ?, ?, ?, ?, ?)').run(r.id, r.project, r.url || '', r.forge || 'gitlab', r.enabled === false ? 0 : 1, r.fetch_mrs === false ? 0 : 1);
   const journal = [];
@@ -149,6 +177,7 @@ function createTestContext(options = {}) {
   const registre = registreMod.creer();
   const horloge = horlogeMod.creer({ log });
   const notifications = [];
+  const jobs = creerJobs();
   const sortie = {};
   const ctx = creerContexte(m, {
     log, sortie, bus, i18n, registre, horloge,
@@ -156,6 +185,7 @@ function createTestContext(options = {}) {
     net: { request: options.request || requestNode, makeAgentFactory },
     notify: { push: (type, data) => notifications.push({ type, data, at: new Date().toISOString() }) },
     exec: {},
+    jobs,
     // Les autres plugins que le test veut CONNUS (pour que le garde SQL départage deux préfixes qui se chevauchent).
     autresPlugins: () => options.otherPlugins || [],
     dataDir: () => options.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), `mergerie-plugin-${m.name}-`)),
@@ -166,6 +196,7 @@ function createTestContext(options = {}) {
   return {
     ctx,
     db, bus, i18n, registre, horloge, log: journal, notifications, sortie,
+    jobs: { list: jobs.list, wait: jobs.wait, cancel: jobs.cancel },
     http: creerHttp(sortie),
     /** Joue toutes les tâches périodiques du plugin, une fois. */
     tick: () => horloge.tick(m.name),

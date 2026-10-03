@@ -2,8 +2,8 @@
 // Types du ctx d'un plugin Mergerie, de son manifeste et des payloads d'événements.
 
 export type ApiVersion = '1';
-export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services' | 'storage';
-export type Target = 'mr' | 'mr-badge' | 'session-target' | 'session-target-badge' | 'branch' | 'branch-badge' | 'verification' | 'repo-sheet';
+export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services' | 'jobs' | 'storage';
+export type Target = 'mr' | 'mr-badge' | 'session-target' | 'session-target-badge' | 'branch' | 'branch-badge' | 'verification' | 'repo-sheet' | 'repo-row' | 'verify-launch';
 export type EventName = 'app.ready' | 'app.shutdown' | 'repo.deleted' | 'session.started' | 'session.finished' | 'mr.created' | 'review.completed' | 'converge.finished' | 'verify.finished' | 'jenkins.job.started' | 'jenkins.job.finished' | (string & {});
 
 /** le serveur écoute et les plugins sont activés (cœur) */
@@ -136,6 +136,7 @@ export interface Migration { version: number; up: string | ((db: PluginDb) => vo
 export interface PluginDb { prefix: string; prepare(sql: string): Statement; exec(sql: string): void; transaction<T>(fn: () => T): T; migrate(migrations: Migration[]): number; classify(table: string, family: 'L' | 'C'): void; tables(): string[]; appliedVersions(): number[]; markApplied(version: number): void; }
 export interface TabSpec { id: string; label: string; title?: string; icon?: string; position?: 'end' | `before:${string}` | `after:${string}`; foldedByDefault?: boolean; shortcut?: string | null; searchField?: string | null; list?: string | null; onboarding?: { label: string; i18n?: string } | null; badgeLegend?: { text?: string; i18n?: string } | null; i18n?: { label?: string; title?: string } | null; }
 export interface SettingsTabSpec { id: string; label: string; title?: string; followsTab?: string | null; schemaForm?: boolean; i18n?: { label?: string; title?: string } | null; }
+export interface JobHandle { id: number; log(line: string): void; message(text: string): void; progress(done: number, total: number): void; exec(bin: string, args: string[], options: { cwd?: string, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }): Promise<{ code: number; tail: string }>; isCancelled(): boolean; }
 export interface PaletteEntry { label: string; ref?: string; detail?: string; text?: string; nav?: Record<string, unknown>; }
 export interface SettingsSchemaProperty { type: 'string' | 'number' | 'integer' | 'boolean'; title?: string; description?: string; default?: unknown; enum?: unknown[]; minimum?: number; maximum?: number; minLength?: number; maxLength?: number; pattern?: string; format?: 'uri'; 'x-secret'?: boolean; 'x-bound-to'?: string; 'x-hidden'?: boolean; 'x-required'?: boolean; 'x-i18n'?: string; }
 export interface SettingsSchema { type: 'object'; properties: Record<string, SettingsSchemaProperty>; }
@@ -207,6 +208,8 @@ export interface PluginContext {
   unschedule: (id: number) => void;
   /** lance SANS shell, sous-commande en liste blanche ; `env` s’ajoute à un environnement minimal, sans PATH, HOME, LD_*, DYLD_*, NODE_OPTIONS, GIT_*, SHELL, BASH_ENV… — permission `exec` */
   exec: (bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>;
+  /** un processus qui dure, SANS shell, mêmes gardes que `exec` : ses lignes arrivent au fil de l’eau, `close()` l’arrête (un `docker logs -f`) ; aucun délai, c’est à celui qui lance de fermer — permission `exec` */
+  execStream: (bin: string, args: string[], options: { cwd?: string, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }, onLine: (stream: "stdout" | "stderr", line: string) => void, onClose?: (result: { code: number } | { error: string }) => void) => { close(): void };
   net: {
     /** HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s — permission `net` */
     request: (url: string, options?: { method?, headers?, body? }) => Promise<{ status, statusText, headers, body }>;
@@ -216,8 +219,16 @@ export interface PluginContext {
     list: () => Repo[];
     /** un dépôt — permission `repos` */
     byId: (id: number) => Repo | null;
+    /** les répertoires locaux déclarés dans Réglages → Dépôts (là où l’on cherche des projets, des fichiers compose…) — permission `repos` */
+    localRoots: () => { id: number, path: string, label: string }[];
     /** appelé quand un dépôt est retiré (remplace une FK ON DELETE CASCADE) — permission `repos` */
     onRemoved: (handler: (repo: { id: number, project: string }) => void) => () => void;
+  };
+  jobs: {
+    /** inscrit un genre de job ; `runner` reçoit un `job` (`log(line)`, `message(text)`, `progress(done, total)`, `exec(bin, args, options)` → `{ code, tail }`, dont la sortie va au journal et que « Stop » arrête, `isCancelled()`) ; une exception met le job en erreur — permission `jobs` */
+    register: (kind: string, runner: (job: JobHandle, payload: unknown) => void | Promise<void>) => void;
+    /** met un job du plugin dans la file du cœur (voie séquentielle, parallélisable à tout : il ne touche aucun clone) ; le journal, le « Stop » et l’écran des jobs sont ceux du cœur — permission `jobs` */
+    start: (kind: string, payload?: unknown, options?: { label?: string }) => { id: number, status: string };
   };
   ui: {
     /** un onglet dans la barre (icône, position, replié d’office, recherche, raccourci, onboarding) — permission `ui.tab` */

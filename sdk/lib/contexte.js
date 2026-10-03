@@ -171,6 +171,27 @@ function creerContexte(manifeste, f) {
     ctx.exec = (bin, args, opts) => exec.executer(nom, bin, args, opts, f.exec || {});
   }
 
+  if (permissions.has('exec')) {
+    ctx.execStream = (bin, args, opts, onLine, onClose) => {
+      if (typeof onLine !== 'function') throw new Error(`${nom} : execStream — onLine(stream, line) requis`);
+      const { fini, close } = exec.flux(nom, bin, args, opts, onLine, f.exec || {});
+      fini.then((r) => { if (typeof onClose === 'function') onClose(r); }, (e) => { if (typeof onClose === 'function') onClose({ error: e.message }); });
+      return { close };
+    };
+  }
+
+  if (permissions.has('jobs')) {
+    if (!f.jobs) throw new Error(`${nom} : la permission jobs demande un fournisseur jobs`);
+    ctx.jobs = {
+      register: (kind, runner) => {
+        if (!/^[a-z][a-z0-9-]*$/.test(String(kind || ''))) throw new Error(`${nom} : jobs.register — genre en kebab-case requis`);
+        if (typeof runner !== 'function') throw new Error(`${nom} : jobs.register('${kind}', runner) — runner requis`);
+        f.jobs.register(nom, String(kind), runner, f.exec || {});
+      },
+      start: (kind, payload, options) => f.jobs.start(nom, String(kind), payload === undefined ? null : payload, options || {}),
+    };
+  }
+
   if (permissions.has('storage')) {
     if (!f.dataDir) throw new Error(`${nom} : la permission storage demande un fournisseur dataDir`);
     ctx.dataDir = f.dataDir(nom);
@@ -195,6 +216,7 @@ function creerContexte(manifeste, f) {
     ctx.repos = {
       list: () => lister().map(normaliser),
       byId: (id) => normaliser(unSeul(id)),
+      localRoots: () => (f.localRoots ? f.localRoots() : base().prepare('SELECT id, path, label FROM local_root ORDER BY path').all()).map((r) => ({ id: r.id, path: r.path, label: r.label || '' })),
       onRemoved: (h) => f.bus.on('repo.deleted', (p) => h({ id: p.id, project: p.project }), { proprietaire: nom }),
     };
   }

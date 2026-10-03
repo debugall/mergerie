@@ -23,11 +23,12 @@ read.
 | `db` | its `plugin_<name>_*` tables | any other table (tokens are in `local_config`, unreachable), `sqlite_master`, `ATTACH` |
 | `http` / `sse` | routes under `/api/plugins/<name>/`, behind the same guards as the core (origin, local token, CSP) | a path outside that prefix |
 | `net` | outgoing HTTP(S) requests, with the core's TLS convention (`<NAME>_CA_CERT`, `<NAME>_INSECURE_TLS`) | — (a plugin can reach any address: reading what it calls is up to you) |
-| `exec` | a binary, WITHOUT a shell, with an **allowlist of sub-commands** and refused flags (`-c`, `--exec`, `--config`, `--upload-pack`…), minimal environment (the `env` option cannot set `PATH`, `HOME`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `GIT_*`, `SHELL`, `BASH_ENV`), timeout | a shell, a flag that executes arbitrary code |
+| `exec` | a binary, WITHOUT a shell, with an **allowlist of sub-commands** and refused flags (`-c`, `--exec`, `--config`, `--upload-pack`…), minimal environment (the `env` option cannot set `PATH`, `HOME`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `GIT_*`, `SHELL`, `BASH_ENV`), timeout. `ctx.execStream`: the same guard for a long-lived process (a `docker logs -f`), no timeout, closed by the caller | a shell, a flag that executes arbitrary code |
+| `jobs` | jobs in the core's queue: live log, progress, a « Stop » that kills the process group, the jobs screen. The runner's `job` runs commands through the same guard as `exec`; a third-party plugin drives ONLY its own jobs | another plugin's or the core's job, access to git clones (a plugin job neither reserves nor touches any repository) |
 | `secrets` | its own secrets, masked `***` towards the screen — they can only be copied through the screen's "copy" button, on an explicit gesture, when the schema declares them `x-secret` | the core's or another plugin's secrets |
 | `settings` | its settings, validated by its schema | the core's settings |
 | `env` | the `<NAME>_*` variables of the server's environment | `PATH`, `HOME`, the tokens of the `.env` |
-| `repos` | **reading** the repository registry (id, project, URL, forge) | forge tokens, clones |
+| `repos` | **reading** the repository registry (id, project, URL, forge) and the declared **local folders** (`ctx.repos.localRoots()`) | forge tokens, clones |
 | `events` | listening to core events, emitting its own (declared, prefixed) | emitting a core or another plugin's event |
 | `schedule` | periodic tasks (≥ 1 s, never overlapping, stopped on deactivation) | — |
 | `storage` | a private folder, `<dataDir>/plugin-data/<name>/` (`ctx.dataDir`): a browser profile, a cache | plugin code, the database, another plugin's folder; it enters neither the team repository nor the backup |

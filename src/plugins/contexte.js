@@ -10,6 +10,7 @@ const events = require('../core/events');
 const i18nCoeur = require('../core/i18n');
 const registre = require('./registre');
 const horloge = require('./horloge');
+const jobsPlugins = require('./jobs-plugins');
 
 /* Les dictionnaires des plugins, côté serveur : fusionnés dans celui du cœur pour que `t()`
    les trouve, et retirés à la désactivation. */
@@ -42,7 +43,10 @@ function creerContexte(manifeste, options = {}) {
     db: () => options.db || require('../db'),
     net: require('../core/httpreq'),
     notify: { push: (type, data) => require('../core/notify').push(type, data) },
-    exec: { options: (o) => require('../core/proc').options(o), tuer: (child, signal) => require('../core/proc').tuerGroupe(child, signal) },
+    /* `suivre` : tout processus est suivi pour ne laisser aucun groupe orphelin à l'arrêt ; `suivreJob` : le processus d'un `job.exec` devient l'enfant ACTIF du job courant (contexte d'annulation du cœur), donc « Stop » le tue. */
+    exec: { options: (o) => require('../core/proc').options(o), tuer: (child, signal) => require('../core/proc').tuerGroupe(child, signal), suivre: (child) => require('../core/proc').suivre(child), suivreJob: (child) => require('../core/proc').setActive(child) },
+    jobs: { register: jobsPlugins.inscrire, start: jobsPlugins.demarrer },
+    localRoots: () => (options.db || require('../db')).prepare('SELECT id, path, label FROM local_root ORDER BY path').all(),
     dataDir: (n) => require('./donnees').dossierDe(n),
     autresPlugins: () => nomsConnus(),
     env: process.env,

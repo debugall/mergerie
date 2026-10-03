@@ -213,6 +213,70 @@ describe('Plugins — chargeur et isolation', () => {
     assert.equal(fs.existsSync(prive), false, 'données supprimées avec le plugin');
   });
 
+  test('ctx.jobs, ctx.execStream, http.sse et repos.localRoots depuis un worker : le job passe par la file du cœur, son journal, son Stop — et un flux SSE se ferme avec son processus', async () => {
+    assert.equal((await app.api('POST', '/api/plugins/install', { path: path.join(FIXTURES, 'runs-jobs') })).status, 200);
+    assert.equal((await app.api('POST', '/api/plugins/runs-jobs/enable')).body.ok, true);
+    const attendre = async (id, fini) => {
+      const t0 = Date.now();
+      for (;;) {
+        const j = (await app.api('GET', `/api/jobs/${id}/log`)).body;
+        if (fini(j)) return j;
+        if (Date.now() - t0 > 20000) throw new Error(`job ${id} : ${JSON.stringify(j)}`);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    };
+    const etat = async (id) => (await app.api('GET', '/api/jobs/history')).body.jobs.find((x) => x.id === id);
+
+    // 1. un job qui réussit : journal (message, charge, sortie des deux flux), état « done », genre `plugin:<nom>`.
+    const lance = await app.api('POST', '/api/plugins/runs-jobs/lancer', { n: 1 });
+    assert.equal(lance.status, 200, JSON.stringify(lance.body));
+    assert.equal(lance.body.status, 'queued');
+    const id = lance.body.id;
+    const log = await attendre(id, (j) => !j.running);
+    const textes = log.lines.map((l) => l.text);
+    assert.ok(textes.includes('charge : {"n":1}'), JSON.stringify(textes));
+    for (const t of ['un', 'deux', 'trois']) assert.ok(textes.includes(t), `la sortie du processus est au journal : ${t}`);
+    const hist = await etat(id);
+    assert.equal(hist.status, 'done');
+    assert.equal(hist.kind, 'plugin:runs-jobs');
+
+    // 2. une exception du runner met le job en erreur, avec le message.
+    const rate = (await app.api('POST', '/api/plugins/runs-jobs/lancer', { fail: true })).body.id;
+    await attendre(rate, (j) => !j.running);
+    const h2 = await etat(rate);
+    assert.equal(h2.status, 'error');
+    assert.match(h2.message, /échec voulu/);
+
+    // 3. « Stop » tue le processus lancé par job.exec (depuis le worker) et le job est « stopped ».
+    const long = (await app.api('POST', '/api/plugins/runs-jobs/lancer', { wait: true })).body.id;
+    await attendre(long, (j) => j.lines.some((l) => l.text === 'trois'));
+    assert.equal((await app.api('POST', `/api/jobs/${long}/stop`)).status, 200);
+    await attendre(long, (j) => !j.running);
+    assert.equal((await etat(long)).status, 'stopped');
+
+    // 4. repos.localRoots : les répertoires locaux de Réglages → Dépôts.
+    const racine = fs.mkdtempSync(path.join(app.dataDir, 'racine-'));
+    assert.equal((await app.api('POST', '/api/local-roots', { path: racine })).status, 200);
+    const roots = (await app.api('GET', '/api/plugins/runs-jobs/racines')).body.roots;
+    assert.ok(roots.some((r) => r.path === racine), JSON.stringify(roots));
+
+    // 5. http.sse : les lignes du processus arrivent, et fermer la connexion tue le processus.
+    const ac = new AbortController();
+    const res = await fetch(`${app.base}/api/plugins/runs-jobs/flux`, { headers: { Authorization: `Bearer ${app.localToken}` }, signal: ac.signal });
+    assert.equal(res.status, 200);
+    let recu = '';
+    const lecteur = res.body.getReader();
+    const dec = new TextDecoder();
+    while (!/trois/.test(recu)) { const { value, done } = await lecteur.read(); if (done) break; recu += dec.decode(value); }
+    assert.match(recu, /event: ligne/);
+    assert.match(recu, /"ligne":"un"/);
+    ac.abort();
+    // Le plugin désactivé : ses genres de job ne sont plus inscrits (un job en file rendrait « inactif »).
+    await app.api('POST', '/api/plugins/runs-jobs/disable');
+    assert.equal((await app.api('POST', '/api/plugins/runs-jobs/lancer', {})).status, 404);
+    await app.api('POST', '/api/plugins/runs-jobs/uninstall', { deleteData: true });
+  });
+
   test('désinstaller : avec ou sans ses données ; un embarqué ne se désinstalle pas ; un nom invalide est refusé', async () => {
     await app.api('POST', '/api/plugins/hostile/disable');
     const u = await app.api('POST', '/api/plugins/hostile/uninstall', { deleteData: false });

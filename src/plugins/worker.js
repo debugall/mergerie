@@ -16,7 +16,7 @@ const permissions = new Set(Array.isArray(manifeste.permissions) ? manifeste.per
 require(path.join(racine, 'src', 'plugins', 'garde-require.js')).surveiller(dir);
 
 let seq = 0;
-const handlers = { events: new Map(), schedules: new Map(), routes: new Map(), services: new Map(), settings: [], repos: [], palette: [], seeds: [] };
+const handlers = { events: new Map(), schedules: new Map(), routes: new Map(), services: new Map(), settings: [], repos: [], palette: [], seeds: [], jobs: new Map(), streams: new Map(), sses: new Map(), sse: new Map() };
 const attentesAsync = new Map();
 
 /* ---------- Appels synchrones vers l'hôte ---------- */
@@ -101,16 +101,43 @@ if (permissions.has('http')) {
   }
   ctx.http = { router };
 }
-if (permissions.has('sse')) { ctx.http = ctx.http || {}; ctx.http.sse = () => { throw new Error(`${nom} : http.sse n'est pas disponible depuis un worker en V1`); }; }
+if (permissions.has('sse')) {
+  ctx.http = ctx.http || {};
+  ctx.http.sse = (chemin, producer) => { const id = ++seq; handlers.sse.set(id, producer); rpc('http.sse', [id, chemin]); };
+}
 if (permissions.has('schedule')) {
   ctx.schedule = (ms, fn, opts) => { const id = ++seq; handlers.schedules.set(id, fn); rpc('schedule', [id, ms, opts || {}]); return id; };
   ctx.unschedule = (id) => { handlers.schedules.delete(id); return rpc('unschedule', [id]); };
 }
-if (permissions.has('exec')) ctx.exec = (bin, args, opts) => rpcAsync('exec', [bin, args, opts]);
+if (permissions.has('exec')) {
+  ctx.exec = (bin, args, opts) => rpcAsync('exec', [bin, args, opts]);
+  ctx.execStream = (bin, args, opts, onLine, onClose) => {
+    if (typeof onLine !== 'function') throw new Error(`${nom} : execStream — onLine(stream, line) requis`);
+    const sid = ++seq;
+    handlers.streams.set(sid, { onLine, onClose });
+    try { rpc('execStream', [sid, bin, args, opts]); } catch (e) { handlers.streams.delete(sid); throw e; }
+    return { close: () => { rpc('execStream.close', [sid]); } };
+  };
+}
+if (permissions.has('jobs')) {
+  /* Le `job` reçu par un runner : chaque op traverse la frontière, vers le job que le cœur tient. */
+  const jobMandataire = (jid) => Object.freeze({
+    id: jid,
+    log: (t) => rpc('jobs.op', [jid, 'log', String(t)]),
+    message: (t) => rpc('jobs.op', [jid, 'message', String(t)]),
+    progress: (d, t) => rpc('jobs.op', [jid, 'progress', d, t]),
+    isCancelled: () => rpc('jobs.op', [jid, 'isCancelled']),
+    exec: (bin, args, opts) => rpcAsync('jobs.exec', [jid, bin, args, opts || {}]),
+  });
+  ctx.jobs = {
+    register: (kind, runner) => { const id = ++seq; handlers.jobs.set(id, { runner, jobMandataire }); rpc('jobs.register', [id, kind]); },
+    start: (kind, payload, options) => rpc('jobs.start', [kind, payload === undefined ? null : payload, options || {}]),
+  };
+}
 if (permissions.has('net')) ctx.net = { request: (url, opts) => rpcAsync('net.request', [url, opts]) };
 if (permissions.has('repos')) {
   ctx.repos = {
-    list: () => rpc('repos.list', []), byId: (id) => rpc('repos.byId', [id]),
+    list: () => rpc('repos.list', []), byId: (id) => rpc('repos.byId', [id]), localRoots: () => rpc('repos.localRoots', []),
     onRemoved: (h) => { handlers.repos.push(h); if (handlers.repos.length === 1) rpc('repos.onRemoved', []); return () => { const i = handlers.repos.indexOf(h); if (i !== -1) handlers.repos.splice(i, 1); }; },
   };
 }
@@ -187,6 +214,21 @@ parentPort.on('message', async (m) => {
         repondre(m.rid, out);
         break;
       }
+      case 'jobRun': {
+        const j = handlers.jobs.get(m.id);
+        try { if (!j) throw new Error('genre de job inconnu'); await j.runner(j.jobMandataire(m.jid), m.payload); repondre(m.rid, true); } catch (e) { repondre(m.rid, null, (e && e.message) || String(e)); }
+        break;
+      }
+      case 'streamLine': { const s = handlers.streams.get(m.sid); if (s) { try { s.onLine(m.flux, m.ligne); } catch (e) { ctx.log(`execStream : ${e.message}`); } } break; }
+      case 'streamClose': { const s = handlers.streams.get(m.sid); handlers.streams.delete(m.sid); if (s && s.onClose) { try { s.onClose(m.result); } catch (e) { ctx.log(`execStream : ${e.message}`); } } break; }
+      case 'sseOpen': {
+        const producer = handlers.sse.get(m.id);
+        const send = (event, data) => parentPort.postMessage({ t: 'sseSend', sid: m.sid, event, data });
+        const close = () => parentPort.postMessage({ t: 'sseEnd', sid: m.sid });
+        try { const nettoyage = producer(m.req, send, close); handlers.sses.set(m.sid, typeof nettoyage === 'function' ? nettoyage : () => {}); } catch (e) { send('error', { error: e.message }); close(); }
+        break;
+      }
+      case 'sseClose': { const n = handlers.sses.get(m.sid); handlers.sses.delete(m.sid); if (n) { try { n(); } catch { /* best-effort */ } } break; }
       case 'settingsChanged': for (const h of handlers.settings) { try { h(m.settings); } catch (e) { ctx.log(`settings.onChange : ${e.message}`); } } break;
       case 'repoRemoved': for (const h of handlers.repos) { try { h(m.repo); } catch (e) { ctx.log(`repos.onRemoved : ${e.message}`); } } break;
       case 'rpcAsyncResult': { const a = attentesAsync.get(m.id); if (a) { attentesAsync.delete(m.id); if (m.error) a.reject(new Error(m.error)); else a.resolve(m.value); } break; }

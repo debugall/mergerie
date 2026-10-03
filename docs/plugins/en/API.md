@@ -29,6 +29,7 @@ Declared in `plugin.json` → `permissions`. Settings → Plugins shows them bef
 | `demo` | semer le mode démo (ctx.demo) |
 | `env` | lire les variables d’environnement préfixées par son nom (ctx.env) |
 | `services` | exposer et appeler des services nommés entre plugins et cœur (ctx.services) |
+| `jobs` | des jobs dans la file du cœur : journal en direct, progression, arrêt, écran des jobs (ctx.jobs) |
 | `storage` | un dossier privé où écrire des fichiers — un profil de navigateur, un cache — qui survit aux mises à jour du plugin (ctx.dataDir) |
 
 ## Primitives
@@ -57,10 +58,14 @@ Declared in `plugin.json` → `permissions`. Settings → Plugins shows them bef
 | `ctx.schedule` | `schedule` | `(intervalMs: number, fn: () => void \| Promise<void>, options?: { immediate?: boolean, inDemo?: boolean }) => number` | une tâche périodique ; arrêtée à la désactivation, jamais en recouvrement, inactive en démo sauf inDemo |
 | `ctx.unschedule` | `schedule` | `(id: number) => void` | arrête une tâche |
 | `ctx.exec` | `exec` | `(bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>` | lance SANS shell, sous-commande en liste blanche ; `env` s’ajoute à un environnement minimal, sans PATH, HOME, LD_*, DYLD_*, NODE_OPTIONS, GIT_*, SHELL, BASH_ENV… |
+| `ctx.execStream` | `exec` | `(bin: string, args: string[], options: { cwd?: string, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }, onLine: (stream: "stdout" \| "stderr", line: string) => void, onClose?: (result: { code: number } \| { error: string }) => void) => { close(): void }` | un processus qui dure, SANS shell, mêmes gardes que `exec` : ses lignes arrivent au fil de l’eau, `close()` l’arrête (un `docker logs -f`) ; aucun délai, c’est à celui qui lance de fermer |
 | `ctx.net.request` | `net` | `(url: string, options?: { method?, headers?, body? }) => Promise<{ status, statusText, headers, body }>` | HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s |
 | `ctx.repos.list` | `repos` | `() => Repo[]` | les dépôts suivis sur ce poste |
 | `ctx.repos.byId` | `repos` | `(id: number) => Repo \| null` | un dépôt |
+| `ctx.repos.localRoots` | `repos` | `() => { id: number, path: string, label: string }[]` | les répertoires locaux déclarés dans Réglages → Dépôts (là où l’on cherche des projets, des fichiers compose…) |
 | `ctx.repos.onRemoved` | `repos` | `(handler: (repo: { id: number, project: string }) => void) => () => void` | appelé quand un dépôt est retiré (remplace une FK ON DELETE CASCADE) |
+| `ctx.jobs.register` | `jobs` | `(kind: string, runner: (job: JobHandle, payload: unknown) => void \| Promise<void>) => void` | inscrit un genre de job ; `runner` reçoit un `job` (`log(line)`, `message(text)`, `progress(done, total)`, `exec(bin, args, options)` → `{ code, tail }`, dont la sortie va au journal et que « Stop » arrête, `isCancelled()`) ; une exception met le job en erreur |
+| `ctx.jobs.start` | `jobs` | `(kind: string, payload?: unknown, options?: { label?: string }) => { id: number, status: string }` | met un job du plugin dans la file du cœur (voie séquentielle, parallélisable à tout : il ne touche aucun clone) ; le journal, le « Stop » et l’écran des jobs sont ceux du cœur |
 | `ctx.ui.registerTab` | `ui.tab` | `(tab: TabSpec) => void` | un onglet dans la barre (icône, position, replié d’office, recherche, raccourci, onboarding) |
 | `ctx.ui.registerSettingsTab` | `ui.tab` | `(tab: SettingsTabSpec) => void` | un sous-onglet de Réglages : formulaire généré du schéma + rendu libre |
 | `ctx.ui.setBadge` | `ui.tab` | `(tabId: string, value: { count?: number, failed?: number, warn?: number } \| number \| null) => void` | les pastilles de l’onglet (côté serveur : poussé au navigateur au prochain état) |
@@ -85,7 +90,7 @@ The `target` of an action or a decoration, and the object the browser passes to 
 
 | Target | Where | Object received by `render(obj, ctx)` |
 |---|---|---|
-| `mr` | the "⋯" menu of a merge request card | the merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `session-target-badge`, `branch`, `branch-badge`, `verification`, `repo-sheet`)) |
+| `mr` | the "⋯" menu of a merge request card | the merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `session-target-badge`, `branch`, `branch-badge`, `verification`, `repo-sheet`, `repo-row`, `verify-launch`)) |
 | `mr-badge` | the badges of a merge request card | same |
 | `session-target` | the follow-up form of a session's project | `{ task, target }` |
 | `session-target-badge` | the badges of a session's project | `{ task, target }` |

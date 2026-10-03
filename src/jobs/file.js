@@ -85,15 +85,15 @@ function mrRowById(id) {
 /* Ce qu'un job va TOUCHER, sous forme de clés comparables : un dépôt (donc un clone, donc
    un checkout) ou un dossier local. Deux jobs qui partagent une clé ne peuvent pas tourner
    ensemble — l'un ferait un checkout pendant que l'autre lit, et le dépôt en sortirait
-   incohérent. Un job Docker ne touche aucun dépôt : il est parallélisable avec tout.
+   incohérent. Un job de plugin (Docker…) ne touche aucun dépôt : il est parallélisable avec tout.
    Prudence par défaut : un job dont on ne sait pas déduire les clés renvoie `*`, qui
    entre en conflit avec tout le monde. Mieux vaut refuser à tort que corrompre un clone. */
 function jobKeys(entry) {
   const keys = new Set();
   const repo = (id) => { if (id) keys.add(`repo:${id}`); };
   const targetsOf = (taskId) => db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(taskId);
+  if (String(entry.kind).startsWith('plugin:')) return keys;   // un job de plugin ne touche aucun clone : jamais en conflit
   switch (entry.kind) {
-    case 'docker': return keys;                       // aucun dépôt : jamais en conflit
     /* Une question libre ne touche NI dépôt NI dossier : rien à réserver, donc elle ne
        bloque personne et personne ne la bloque. C'est la seule saveur de session dans ce
        cas — les trois autres travaillent toujours dans des fichiers. */

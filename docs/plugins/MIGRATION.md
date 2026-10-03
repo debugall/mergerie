@@ -45,7 +45,7 @@ reconnaître un payload d'une autre version pendant la transition.
 |---|---|---|
 | `1` | 2.1 | première version publique : le ctx, les événements, le kit, le SDK |
 | `1` (ajouts) | 2.1 | **additifs, même version** : la permission `storage` et `ctx.dataDir` ; les champs `url` et `startedBy` de `jenkins.job.started`, `url`, `duration` et `startedBy` de `jenkins.job.finished` ; l'option `env` de `ctx.exec` |
+| `1` (ajouts) | 2.2 | **additifs, même version** (extraction de Docker en plugin tiers) : la permission `jobs` et `ctx.jobs` (`register`, `start` ; le `job` du runner : `log`, `message`, `progress`, `exec` → `{ code, tail }`, `isCancelled`) ; `ctx.execStream` (processus qui dure, lignes au fil de l'eau) ; `ctx.repos.localRoots()` ; `ctx.http.sse` depuis un worker ; les cibles `repo-row` et `verify-launch` ; côté navigateur, l'événement `job.finished` et les noms `toastUndo`, `chipBranche`, `navMasque`, `ANSI`, `jobs.refresh` du kit |
 
 Primitives présentes mais **non éprouvées** par un plugin embarqué en `1` (leur forme peut encore
-changer sans rupture, le temps que Liens, Docker et Git les exercent) : `http.sse` (indisponible depuis
-un worker), `exec`, `ui.registerSettingsTab({ schemaForm: true })` seul, `demo.seed` depuis un worker.
+changer sans rupture, le temps que Liens et Git les exercent) : `ui.registerSettingsTab({ schemaForm: true })` seul, `demo.seed` depuis un worker. `exec`, `execStream`, `jobs` et `http.sse` (y compris depuis un worker) sont éprouvés par le plugin tiers Docker.

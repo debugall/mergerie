@@ -17,6 +17,7 @@
    et n'est pas chargé. */
 const fs = require('fs');
 const path = require('path');
+const jobsPlugins = require('./jobs-plugins');
 
 const manifesteMod = require(path.join(__dirname, '..', '..', 'sdk', 'lib', 'manifeste.js'));
 const dbplugin = require(path.join(__dirname, '..', '..', 'sdk', 'lib', 'dbplugin.js'));
@@ -160,6 +161,7 @@ function nettoyer(nom, f) {
   events.offAll(nom);
   horloge.arreterTout(nom);
   registre.oublier(nom);
+  jobsPlugins.oublier(nom);
   retirerDicts(nom);
   if (f.hote) { try { f.hote.terminer(); } catch { /* déjà parti */ } }
   f.hote = null; f.instance = null; f.ctx = null; f.sortie = null;

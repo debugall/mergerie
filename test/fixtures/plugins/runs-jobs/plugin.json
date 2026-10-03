@@ -1,0 +1,10 @@
+{
+  "name": "runs-jobs",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Runs jobs",
+  "description": "Inscrit un genre de job, lance un processus qui dure et sert un flux SSE : prouve que jobs, execStream, http.sse et repos.localRoots traversent la frontière du worker.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["jobs", "exec", "http", "sse", "repos"]
+}

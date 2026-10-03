@@ -38,11 +38,12 @@ const PERMISSIONS = {
   demo: 'semer le mode démo (ctx.demo)',
   env: 'lire les variables d’environnement préfixées par son nom (ctx.env)',
   services: 'exposer et appeler des services nommés entre plugins et cœur (ctx.services)',
+  jobs: 'des jobs dans la file du cœur : journal en direct, progression, arrêt, écran des jobs (ctx.jobs)',
   storage: 'un dossier privé où écrire des fichiers — un profil de navigateur, un cache — qui survit aux mises à jour du plugin (ctx.dataDir)',
 };
 
 /* Les cibles d'une action ou d'une décoration (`target`). */
-const CIBLES_UI = ['mr', 'mr-badge', 'session-target', 'session-target-badge', 'branch', 'branch-badge', 'verification', 'repo-sheet'];
+const CIBLES_UI = ['mr', 'mr-badge', 'session-target', 'session-target-badge', 'branch', 'branch-badge', 'verification', 'repo-sheet', 'repo-row', 'verify-launch'];
 
 /* LES PRIMITIVES DU CTX — la liste fermée. Une primitive absente d'ici n'existe pas, et le
    chargeur refuse d'en exposer une autre. `permission: null` = toujours présente. */
@@ -69,10 +70,14 @@ const CTX = {
   'schedule': { permission: 'schedule', signature: '(intervalMs: number, fn: () => void | Promise<void>, options?: { immediate?: boolean, inDemo?: boolean }) => number', description: 'une tâche périodique ; arrêtée à la désactivation, jamais en recouvrement, inactive en démo sauf inDemo' },
   'unschedule': { permission: 'schedule', signature: '(id: number) => void', description: 'arrête une tâche' },
   'exec': { permission: 'exec', signature: '(bin: string, args: string[], options: { cwd?: string, timeoutMs?: number, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }) => Promise<{ stdout, stderr, code }>', description: 'lance SANS shell, sous-commande en liste blanche ; `env` s’ajoute à un environnement minimal, sans PATH, HOME, LD_*, DYLD_*, NODE_OPTIONS, GIT_*, SHELL, BASH_ENV…' },
+  'execStream': { permission: 'exec', signature: '(bin: string, args: string[], options: { cwd?: string, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }, onLine: (stream: "stdout" | "stderr", line: string) => void, onClose?: (result: { code: number } | { error: string }) => void) => { close(): void }', description: 'un processus qui dure, SANS shell, mêmes gardes que `exec` : ses lignes arrivent au fil de l’eau, `close()` l’arrête (un `docker logs -f`) ; aucun délai, c’est à celui qui lance de fermer' },
   'net.request': { permission: 'net', signature: '(url: string, options?: { method?, headers?, body? }) => Promise<{ status, statusText, headers, body }>', description: 'HTTP(S) sortant, agent TLS du plugin (<NAME>_CA_CERT / <NAME>_INSECURE_TLS), délai 30 s' },
   'repos.list': { permission: 'repos', signature: '() => Repo[]', description: 'les dépôts suivis sur ce poste' },
   'repos.byId': { permission: 'repos', signature: '(id: number) => Repo | null', description: 'un dépôt' },
+  'repos.localRoots': { permission: 'repos', signature: '() => { id: number, path: string, label: string }[]', description: 'les répertoires locaux déclarés dans Réglages → Dépôts (là où l’on cherche des projets, des fichiers compose…)' },
   'repos.onRemoved': { permission: 'repos', signature: '(handler: (repo: { id: number, project: string }) => void) => () => void', description: 'appelé quand un dépôt est retiré (remplace une FK ON DELETE CASCADE)' },
+  'jobs.register': { permission: 'jobs', signature: '(kind: string, runner: (job: JobHandle, payload: unknown) => void | Promise<void>) => void', description: 'inscrit un genre de job ; `runner` reçoit un `job` (`log(line)`, `message(text)`, `progress(done, total)`, `exec(bin, args, options)` → `{ code, tail }`, dont la sortie va au journal et que « Stop » arrête, `isCancelled()`) ; une exception met le job en erreur' },
+  'jobs.start': { permission: 'jobs', signature: '(kind: string, payload?: unknown, options?: { label?: string }) => { id: number, status: string }', description: 'met un job du plugin dans la file du cœur (voie séquentielle, parallélisable à tout : il ne touche aucun clone) ; le journal, le « Stop » et l’écran des jobs sont ceux du cœur' },
   'ui.registerTab': { permission: 'ui.tab', signature: '(tab: TabSpec) => void', description: 'un onglet dans la barre (icône, position, replié d’office, recherche, raccourci, onboarding)' },
   'ui.registerSettingsTab': { permission: 'ui.tab', signature: '(tab: SettingsTabSpec) => void', description: 'un sous-onglet de Réglages : formulaire généré du schéma + rendu libre' },
   'ui.setBadge': { permission: 'ui.tab', signature: '(tabId: string, value: { count?: number, failed?: number, warn?: number } | number | null) => void', description: 'les pastilles de l’onglet (côté serveur : poussé au navigateur au prochain état)' },
