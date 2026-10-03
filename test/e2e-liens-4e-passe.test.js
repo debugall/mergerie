@@ -418,6 +418,7 @@ describe('Les liens manquants · 4ᵉ passe', () => {
     d.prepare("INSERT INTO agent_repo (agent_id, repo_id, role) VALUES (?,?,'readonly')").run(agentId, repoId);
 
     const f = (await app.api('GET', `/api/repos/${repoId}/sheet`)).body;
+    assert.equal(f.id, repoId, 'la fiche dit de quel dépôt elle est : un plugin qui la décore (cible repo-sheet) en a besoin');
     assert.ok(f.verifiers.some((v) => v.name === 'V fiche'));
     assert.ok(f.rules.some((r) => r.label === 'Ma règle'), 'les règles LIMITÉES à ce dépôt');
     assert.ok(f.links.some((l) => l.project === 'grp/lie' && l.branch === 'main'));

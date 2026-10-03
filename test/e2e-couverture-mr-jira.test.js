@@ -5,8 +5,8 @@
    - les commits arrivés DEPUIS la review (`stale-commits`, la bulle du tag « périmé ») ;
    - l'historique des vérifications d'une MR (`verifications/history`, la tendance du rapport) ;
    - prévenir Jira depuis la modale de merge (`mrs/:id/notify-jira`) ;
-   - les boutons contextuels d'un projet de session et d'un ticket Jira
-     (`targets/:tid/links`, `jira/issues/:key/links`) ;
+   - le PORTEUR d'un ticket Jira (`jira/issues/:key/carrier`) : le dépôt et la branche que le plugin Liens
+     utilise pour poser ses boutons d'environnement (leur résolution est testée dans son dépôt) ;
    - « repartir d'une session d'agent neuve » (`forget-session`).
 
    Vrai dépôt git, faux GitLab et faux Jira pilotés par le test : on juge l'EFFET (ce que la
@@ -170,54 +170,27 @@ describe('Couverture — merge request, projet de session, Jira', () => {
     assert.ok((await app.api('POST', '/api/mrs/99999/notify-jira')).status >= 400, 'MR inconnue : refusée');
   });
 
-  /* -------------------------------------- liens contextuels (projet, ticket) ---- */
+  /* -------------------------------------- le porteur d'un ticket Jira ---- */
 
-  describe('liens contextuels', () => {
-    before(async () => {
-      const dev = (await app.api('POST', '/api/environments', { name: 'dev', color: '#2f6fe0' })).body;
-      const svc = (await app.api('POST', '/api/services', { name: 'api-core', repo_id: repoId })).body;
-      assert.ok(svc.id, 'le service est relié au dépôt');
-      await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: dev.id, url: 'https://api-dev.test/' });
-      const logs = await app.api('POST', `/api/services/${svc.id}/context-links`, { label: 'Logs', url_template: 'https://logs.test/{env}/{branch}' });
-      assert.equal(logs.status, 200, logs.text);
-      const ci = await app.api('POST', `/api/services/${svc.id}/context-links`, { label: 'CI', url_template: 'https://ci.test/{service}' });
-      assert.equal(ci.status, 200, ci.text);
-    });
-
-    const parLabel = (d, label) => d.context.find((c) => c.label === label);
-
-    test('un projet de session a les boutons de son dépôt, résolus sur SA branche — même sans MR', async () => {
-      const r = await app.api('GET', `/api/tasks/${taskId}/targets/${targetId}/links`);
-      assert.equal(r.status, 200, r.text);
-      assert.equal(r.body.service.name, 'api-core');
-      assert.deepEqual(r.body.envs.map((e) => [e.env, e.url]), [['dev', 'https://api-dev.test/']]);
-      const logs = parLabel(r.body, 'Logs');
-      assert.equal(logs.per_env.length, 1, 'un bouton par environnement rempli');
-      assert.equal(logs.per_env[0].url, `https://logs.test/dev/${encodeURIComponent('ai/PROJ-77-liens')}`,
-        'la branche est encodée : un slash ne doit pas ouvrir un segment');
-      const ci = parLabel(r.body, 'CI');
-      assert.deepEqual(ci.per_env, [], 'sans {env}, un seul bouton suffit');
-      assert.equal(ci.url, 'https://ci.test/api-core');
-
-      assert.equal((await app.api('GET', `/api/tasks/${taskId}/targets/99999/links`)).status, 404);
-    });
-
-    test('un ticket Jira trouve ses liens par ce qui est engagé : la MR d’abord, sinon la session', async () => {
-      // PROJ-42 : porté par la branche de la MR !7 → les liens de la MR.
-      const viaMr = await app.api('GET', '/api/jira/issues/PROJ-42/links');
+  describe('porteur d’un ticket', () => {
+    /* Le dépôt n'est pas écrit dans Jira : le cœur le déduit de ce qui est déjà engagé — la merge request qui porte la clé, sinon la session de codage.
+       Rien n'est deviné : sans engagement, pas de porteur, et donc pas de boutons chez le plugin. */
+    test('un ticket Jira trouve son dépôt par ce qui est engagé : la MR d’abord, sinon la session', async () => {
+      // PROJ-42 : porté par la branche de la MR !7 → le porteur de la MR.
+      const viaMr = await app.api('GET', '/api/jira/issues/PROJ-42/carrier');
       assert.equal(viaMr.status, 200, viaMr.text);
-      assert.equal(viaMr.body.service.name, 'api-core');
-      assert.equal(parLabel(viaMr.body, 'Logs').per_env[0].url, `https://logs.test/dev/${encodeURIComponent(repo.branch)}`);
+      assert.deepEqual(viaMr.body.carrier, { repo_id: repoId, branch: repo.branch, iid: 7 });
 
-      // PROJ-77 : aucune MR, mais une session de codage → les liens de son projet.
-      const viaSession = await app.api('GET', '/api/jira/issues/PROJ-77/links');
+      // PROJ-77 : aucune MR, mais une session de codage → le porteur de son projet.
+      const viaSession = await app.api('GET', '/api/jira/issues/PROJ-77/carrier');
       assert.equal(viaSession.status, 200, viaSession.text);
-      assert.equal(parLabel(viaSession.body, 'Logs').per_env[0].url, `https://logs.test/dev/${encodeURIComponent('ai/PROJ-77-liens')}`);
+      assert.equal(viaSession.body.carrier.repo_id, repoId);
+      assert.equal(viaSession.body.carrier.branch, 'ai/PROJ-77-liens');
 
-      // Un ticket que rien n'engage : pas de boutons, et c'est exact — rien n'est deviné.
-      const rien = await app.api('GET', '/api/jira/issues/ZZZ-1/links');
+      // Un ticket que rien n'engage : pas de porteur, et c'est exact — rien n'est deviné.
+      const rien = await app.api('GET', '/api/jira/issues/ZZZ-1/carrier');
       assert.equal(rien.status, 200);
-      assert.deepEqual(rien.body, { service: null, envs: [], context: [] });
+      assert.deepEqual(rien.body, { carrier: null });
     });
   });
 

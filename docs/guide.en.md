@@ -1872,6 +1872,8 @@ that answers does not prove the token is right. The token is stored locally and 
 saving the settings again without touching it does not erase it.
 
 ### Links
+> **Links is a plugin**: the tab lives in its own repository ([link-mergerie](https://gitlab.com/amady/link-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the environment buttons on merge requests, sessions and tickets, the "local" box suggested from Docker, the links in the palette) exists. **Your links are not lost**: the grid, the addresses, the templates, the free links and their order stay in your database and come back once it is installed. Everything below describes its screen; the `Ctrl`/`Cmd`+`K` palette itself stays in the core.
+
 Work links have a **structure** a browser's bookmarks cannot express: the same service exists in
 local, dev, staging and production. A folder tree scatters it across four places; a **grid** shows
 it at once — services as rows, environments as columns.

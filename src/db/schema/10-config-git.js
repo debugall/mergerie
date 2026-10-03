@@ -140,6 +140,5 @@ try { db.exec("ALTER TABLE config ADD COLUMN review_link_template TEXT DEFAULT '
    dérivée, rien à conserver. Idempotents comme les migrations voisines : la seconde exécution
    ne trouve plus rien et ne dit rien. */
 try { db.exec('DROP TABLE IF EXISTS health_status'); } catch { /* déjà partie */ }
-try { db.exec('ALTER TABLE environment DROP COLUMN health_check'); } catch { /* déjà retirée */ }
 
 module.exports = { DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY };

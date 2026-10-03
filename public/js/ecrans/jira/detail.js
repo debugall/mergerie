@@ -167,9 +167,8 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
              Reviews à la main. La section arrive vide et se remplit — l'appel est court, et un
              ticket sans engagement n'affiche rien plutôt qu'une section vide. */''}
       <div class="jira-section jira-mergerie" id="jiraMergerie" hidden></div>
-      ${/* Le ticket a un dépôt PROBABLE — celui de la merge request ou de la session qui porte
-            sa clé : les mêmes boutons y mènent aux mêmes environnements. */''}
-      <div class="jira-section jira-liens" data-liens-ticket="${esc(it.key)}"></div>
+      ${/* Le ticket a un dépôt PROBABLE — celui de la merge request ou de la session qui porte sa clé : un plugin (Liens) y pose les boutons d'environnement, cible « jira-ticket ». */''}
+      ${pluginsHtml('jira-ticket', it)}
       ${sectionSpecHtml(it)}
       <div class="jira-section"><h4>${esc(tr('jira.description'))}</h4>
         <div class="jira-card md-body">${it.descriptionMd ? mdToHtml(it.descriptionMd) : `<p class="muted">${esc(tr('jira.no-description'))}</p>`}</div>
@@ -181,7 +180,6 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
     </article>`;
   chargerEngagements(it.key);
   chargerSpec(it.key, box);      // la précision technique, si elle existe
-  remplirLiensDifferes(box);     // les boutons contextuels du ticket
   /* C8 — le champ de commentaire se souvient et part à Ctrl+Entrée, comme celui de la
      surveillance. Armé APRÈS le rendu : le textarea vient d'être recréé. */
   const taJ = $('.jira-comment-input', box);

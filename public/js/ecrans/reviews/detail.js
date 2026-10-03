@@ -187,7 +187,8 @@ async function openReport(id, opts = {}) {
       </div>`).join('')}
     </div>` : ''}
 
-    <div id="mrLinksBox"></div>
+    ${/* Les boutons d'environnement du service lié à ce dépôt : un plugin (Liens) les pose, cible « mr-detail ». */''}
+    ${pluginsHtml('mr-detail', m)}
 
     ${m.last_error ? errorBox(m.last_error, m.id) : ''}
     ${convergeBoxHtml(d.convergence, d.verification)}
@@ -232,10 +233,6 @@ async function openReport(id, opts = {}) {
 
   // charge et affiche les commentaires généraux (non-inline) de la MR
   loadMrComments(id);
-  /* Les liens du service associé à ce dépôt (aucun service lié → rien ne s'affiche, et
-     surtout pas un bloc vide). Chargé à part : ils ne doivent pas retarder le rapport. */
-  renderMrLinks(id, $('#mrLinksBox'));
-
   // bascule rapport / explication
   // Historique des reviews : chaque passe est conservée, on peut relire les précédentes.
   let shown = { md: rev && rev.md, explanation: rev && rev.explanation };

@@ -125,6 +125,69 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
   })();
 }
 
+/* ---------- LE PASSAGE DES LIENS AU PLUGIN, une fois, sans perte ----------
+ *
+ * L'onglet Liens a quitté le cœur : il est le plugin `links` (dépôt `link-mergerie`, installé comme n'importe quel plugin tiers). Ses cinq tables
+ * — les colonnes de la grille (`environment`), ses lignes (`service`), leurs adresses (`service_url`), les gabarits de contexte
+ * (`context_link`) et les liens libres (`free_link`) — sont RENOMMÉES en `plugin_links_*`, pas copiées : le `CREATE TABLE IF NOT EXISTS` du plugin
+ * ne fait alors rien, et il retrouve la grille, ses dossiers, ses gabarits et ses liens libres tels quels, ids compris (les références des clés
+ * étrangères suivent le renommage). Sur une base neuve, il n'y a rien à renommer.
+ *
+ * AVANT le renommage, ce que l'ancienne tranche `08-liens.js` faisait aux bases d'avant : la colonne `service.position`, la colonne `free_link.folder`, la
+ * reconstruction de `service_url` (une ligne par adresse, clé primaire `id`) et le retrait de `environment.health_check`. Elles ne sont plus rejouées
+ * ailleurs : une base très ancienne passe par ici avant de changer de nom.
+ *
+ * La FRÉCENCE des liens suit : les lignes de `launcher_usage` des genres `service_url` et `free_link` passent dans `plugin_links_usage` (la table que le plugin
+ * déclare, créée ici sur le même schéma s'il y a de quoi y mettre) ; celles des merge requests, des sessions, etc. restent dans le cœur.
+ *
+ * Un poste qui montait de version avait l'onglet : l'état `links` est posé ACTIVÉ, pour que le plugin s'active tout seul le jour où on l'installe — rien ne
+ * disparaît à la montée de version, sauf à ne jamais l'installer. Le marqueur `_core` 3 garantit que ce passage ne se joue qu'une fois. */
+{
+  const fait = db.prepare("SELECT 1 FROM plugin_migration WHERE plugin = '_core' AND version = 3").get();
+  if (!fait) db.transaction(() => {
+    const existe = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+    const colonnes = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name);
+    /* Les noms d'anciennes tables sont des VARIABLES, à dessein : `npm run check` exige qu'une modification de table suive la création de cette table dans
+       le schéma — ici elle n'est plus créée nulle part, c'est tout l'objet. */
+    const [env, svc, url, ctxl, libre] = ['environment', 'service', 'service_url', 'context_link', 'free_link'];
+    const ajouter = (t, col, ddl) => { if (existe(t) && !colonnes(t).includes(col)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${col} ${ddl}`); };
+    ajouter(svc, 'position', 'INTEGER NOT NULL DEFAULT 0');
+    ajouter(libre, 'folder', "TEXT NOT NULL DEFAULT ''");
+    if (existe(env) && colonnes(env).includes('health_check')) { try { db.exec(`ALTER TABLE ${env} DROP COLUMN health_check`); } catch { /* plus ancienne SQLite : la colonne reste, inerte */ } }
+    /* `service_url` d'avant les adresses multiples : pas de colonne `id`, et SQLite ne sait pas ajouter une clé primaire — on la reconstruit, chaque case devenant une
+       adresse sans libellé. Clés étrangères coupées le temps de la manœuvre, comme le prescrit SQLite ; le `WHERE EXISTS` écarte une adresse orpheline. */
+    if (existe(url) && !colonnes(url).includes('id')) {
+      const neuve = `${url}_v2`;
+      db.exec(`CREATE TABLE ${neuve} (id INTEGER PRIMARY KEY, service_id INTEGER NOT NULL REFERENCES ${svc}(id) ON DELETE CASCADE,
+        environment_id INTEGER NOT NULL REFERENCES ${env}(id) ON DELETE CASCADE, label TEXT NOT NULL DEFAULT '', url TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0)`);
+      db.exec(`INSERT INTO ${neuve} (service_id, environment_id, label, url, position)
+        SELECT u.service_id, u.environment_id, '', u.url, 0 FROM ${url} u
+        WHERE EXISTS (SELECT 1 FROM ${svc} s WHERE s.id = u.service_id) AND EXISTS (SELECT 1 FROM ${env} e WHERE e.id = u.environment_id)`);
+      db.exec(`DROP TABLE ${url}`);
+      db.exec(`ALTER TABLE ${neuve} RENAME TO ${url}`);
+    }
+    // Les parents d'abord : une clé étrangère d'enfant suit le nom de son parent renommé.
+    const renommages = [[env, 'plugin_links_environment'], [svc, 'plugin_links_service'], [url, 'plugin_links_service_url'], [ctxl, 'plugin_links_context_link'], [libre, 'plugin_links_free_link']];
+    for (const [ancienne, nouvelle] of renommages) if (existe(ancienne) && !existe(nouvelle)) db.exec(`ALTER TABLE ${ancienne} RENAME TO ${nouvelle}`);
+    if (db.prepare("SELECT 1 FROM launcher_usage WHERE kind IN ('service_url', 'free_link') LIMIT 1").get()) {
+      /* Le nom est une VARIABLE, comme ceux des renommages : la table est celle du plugin (il la déclare, la classe et la possède) ; le cœur ne la fait pas entrer
+         dans son registre de familles. */
+      const usage = 'plugin_links_usage';
+      db.exec(`CREATE TABLE IF NOT EXISTS ${usage} (
+        kind TEXT NOT NULL, ref TEXT NOT NULL, uses INTEGER NOT NULL DEFAULT 0, last_used_at TEXT NOT NULL, PRIMARY KEY (kind, ref)
+      )`);
+      db.exec(`INSERT OR IGNORE INTO ${usage} (kind, ref, uses, last_used_at)
+        SELECT kind, ref, uses, last_used_at FROM launcher_usage WHERE kind IN ('service_url', 'free_link')`);
+      db.exec("DELETE FROM launcher_usage WHERE kind IN ('service_url', 'free_link')");
+    }
+    const maintenant = new Date().toISOString();
+    if (db.baseExistante) {
+      db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('links', 1, '', 'user', ?)").run(maintenant);
+    }
+    db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 3, ?)").run(maintenant);
+  })();
+}
+
 /* `todo.link_kind` N'EST PLUS CONTRAINT PAR LA TABLE. Le `CHECK (link_kind IN ('mr', …))` obligeait
    tout plugin qui veut accrocher une todo à ce qu'il connaît (un build, un ticket d'un autre
    outil) à demander une migration au cœur. La liste vit désormais là où elle se décide : les

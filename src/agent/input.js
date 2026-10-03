@@ -17,6 +17,7 @@ const path = require('node:path');
 const db = require('../db');
 const { ensureDir } = require('../core/paths');
 const { t } = require('../core/i18n');
+const plugins = require('../plugins');
 
 const WORK_REL = 'ai-dev-tools-internal';
 const MAX_RECENT = 30000;
@@ -38,22 +39,20 @@ function mrsRecentes(repoId) {
     ORDER BY updated_at DESC LIMIT 20`).all(repoId, depuis);
 }
 
-// Les services rattachés au dépôt et leurs adresses par environnement (onglet Liens).
-function servicesDe(repoId) {
-  const out = [];
-  for (const s of db.prepare('SELECT id, name FROM service WHERE repo_id = ? ORDER BY name').all(repoId)) {
-    const urls = db.prepare(`SELECT e.name AS env, u.url FROM service_url u
-      JOIN environment e ON e.id = u.environment_id
-      WHERE u.service_id = ? ORDER BY e.position LIMIT 10`).all(s.id);
-    out.push({ name: s.name, urls });
-  }
-  return out;
+/* Les services rattachés au dépôt et leurs adresses par environnement : c'est le plugin Liens qui les sait. Sans lui (absent, désactivé,
+   ou qui ne répond pas), le fichier se passe de cette section — un contexte en moins vaut mieux qu'une session qui ne part pas. */
+async function servicesDe(repoId) {
+  if (!plugins.services.has('links.servicesOf')) return [];
+  try {
+    const d = await plugins.services.call('links.servicesOf', { repo_id: repoId });
+    return (d && Array.isArray(d.services)) ? d.services : [];
+  } catch { return []; }
 }
 
 /* `recent.md` — écrit dès qu'un run regarde PLUSIEURS dépôts. Pour une session ordinaire
    (sans agent), rien n'est écrit : ce contexte n'a pas été demandé, et un fichier qui apparaît
    dans le dossier de travail sans raison est une surprise, pas un service. */
-function ecrireRecent(root, repos) {
+async function ecrireRecent(root, repos) {
   if (!repos || !repos.length) return null;
   const morceaux = [`# ${t('agents.input.recent-title')}`, ''];
   let tronque = false;
@@ -66,7 +65,7 @@ function ecrireRecent(root, repos) {
       bloc.push(mrs.length
         ? mrs.map((m) => `- !${m.iid} ${m.title || ''} — ${m.author || '?'} — ${jour(m.updated_at)}`).join('\n')
         : t('agents.input.no-recent-mr'));
-      const svc = servicesDe(r.repo_id);
+      const svc = await servicesDe(r.repo_id);
       if (svc.length) {
         bloc.push('', `### ${t('agents.input.services')}`);
         for (const s of svc) bloc.push(`- **${s.name}** : ${s.urls.map((u) => `${u.env} → ${u.url}`).join(' · ') || '—'}`);

@@ -44,7 +44,7 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
   // Tous les onglets du fichier, repliés compris : ce que les Réglages doivent lister.
   const tousLesOnglets = () => page.locator('nav button[data-tab]')
     .evaluateAll((els) => els.map((e) => e.dataset.tab));
-  const REPLIES_DOFFICE = ['git', 'jenkins', 'links'];
+  const REPLIES_DOFFICE = ['git', 'jenkins'];
   const ouvrirReglages = async () => {
     await page.locator('nav button[data-tab="admin"]').click();
     await page.locator('#tab-admin .subnav [data-sub="config"]').click();
@@ -67,11 +67,11 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
     assert.deepEqual(lignes, await tousLesOnglets(), 'une ligne par menu, dans le même ordre');
   });
 
-  /* LE DÉFAUT. Une barre de onze entrées se lit moins bien qu'une barre de sept : Git,
-     Jenkins et Liens sont des commodités — on y va le jour où on en a besoin. Elles démarrent
+  /* LE DÉFAUT. Une barre de dix entrées se lit moins bien qu'une barre de sept : Git,
+     Jenkins (et Docker, Liens quand ils sont installés) sont des commodités — on y va le jour où on en a besoin. Elles démarrent
      donc repliées. Rien n'est désactivé pour autant : la ligne est dans les Réglages, décochée,
      et une case suffit. */
-  test('Git, Jenkins et Liens sont repliés d’office, et une case les rend', async () => {
+  test('Git et Jenkins sont repliés d’office, et une case les rend', async () => {
     await remettreAZero();
     const visibles = await barre();
     for (const t of REPLIES_DOFFICE) {

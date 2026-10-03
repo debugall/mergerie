@@ -23,9 +23,6 @@ async function ficheDepotHtml(d) {
       `<button type="button" class="lien-reglage" data-sheet-rule="${r.id}">${esc(r.label || r.branch_match || r.path_match || `#${r.id}`)}</button>`
       + (r.enabled ? '' : ` <span class="muted">${esc(tr('rules.disabled'))}</span>`),
     ))),
-    section(tr('settings.repo.sheet.services'), (d.services || []).map((sv) => li(
-      `<button type="button" class="lien-reglage" data-sheet-service="${sv.id}">${esc(sv.name)}</button>`,
-    ))),
     section(tr('settings.repo.sheet.links'), (d.links || []).map((l) => li(
       `${esc(l.project)}${l.branch ? ` <code>${esc(l.branch)}</code>` : ''}`,
     ))),
@@ -58,8 +55,6 @@ document.addEventListener('click', async (e) => {
   if (v) { showAdminSub('verifiers'); return; }
   const r = e.target.closest && e.target.closest('[data-sheet-rule]');
   if (r) { showAdminSub('rules'); return; }
-  const sv = e.target.closest && e.target.closest('[data-sheet-service]');
-  if (sv) { navTab('links'); return; }
   const a = e.target.closest && e.target.closest('[data-sheet-agent]');
   if (a) { navTab('agents'); showAgentsSub('list'); return; }
   const g = e.target.closest && e.target.closest('[data-sheet-group]');

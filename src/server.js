@@ -114,7 +114,7 @@ require('./app/routes/maintenance');
 require('./app/routes/jira');
 require('./app/routes/jira-spec');
 require('./app/routes/jobs');
-require('./app/routes/links');
+require('./app/routes/launcher');
 require('./app/routes/local-tasks');
 require('./app/routes/mrs');
 require('./app/routes/mrs-commentaires');

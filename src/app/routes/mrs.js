@@ -15,7 +15,6 @@ const { t } = i18n;
 const jira = require('../../integrations/jira');
 const glob = require('../../core/glob');
 const notes = require('../../notes/notes');
-const links = require('../../notes/links');
 const jobs = require('../../jobs');
 const reviewer = require('../../review/reviewer');
 const prompts = require('../../core/prompts');

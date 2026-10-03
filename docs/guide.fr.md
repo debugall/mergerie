@@ -1950,6 +1950,8 @@ qui répond ne prouve pas que le jeton est bon. Le jeton est stocké en local et
 réenregistrer les réglages sans y toucher ne l'efface pas.
 
 ### Liens
+> **Liens est un plugin** : l'onglet vit dans son propre dépôt ([link-mergerie](https://gitlab.com/amady/link-mergerie)), à installer depuis Réglages → Plugins (depuis git) puis à activer. Tant qu'il ne l'est pas, ni l'onglet ni ce qui s'y rattache (les boutons d'environnement sur les merge requests, les sessions et les tickets, la case « local » proposée depuis Docker, les liens dans la palette) n'existent. **Tes liens ne sont pas perdus** : la grille, les adresses, les gabarits, les liens libres et leur ordre restent dans ta base et réapparaissent à l'installation. Tout ce qui suit décrit son écran ; la palette `Ctrl`/`Cmd`+`K`, elle, reste au cœur.
+
 Les liens de travail ont une **structure** que les marque-pages d'un navigateur ne savent pas
 représenter : le même service existe en local, en dev, en preprod, en prod. Un arbre de dossiers
 l'éclate en quatre endroits ; une **grille** le montre d'un coup — services en lignes,

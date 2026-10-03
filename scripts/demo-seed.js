@@ -1295,94 +1295,7 @@ mrsP3x.forEach((mr) => {
     done_at: at(12), archived_at: at(5), created_at: at(20) });
 }
 
-/* ---------- Liens (plan_add_links.md §11) ----------
-   Trois environnements, quatre services dont deux liés aux dépôts de démo (ce sont eux qui
-   font apparaître les boutons sur les merge requests), un gabarit contextuel, des liens
-   libres tagués. */
-{
-  const insEnv = db.prepare('INSERT INTO environment (name, position, color, created_at) VALUES (?,?,?,?)');
-  const envIds = {};
-  [['local', '#8b97ad'], ['dev', '#2f6fe0'], ['preprod', '#a16207']]
-    .forEach(([nom, couleur], i) => { envIds[nom] = insEnv.run(nom, i + 1, couleur, at(30)).lastInsertRowid; });
-
-  const insSvc = db.prepare('INSERT INTO service (name, repo_id, tags, pinned, created_at) VALUES (?,?,?,?,?)');
-  const insUrl = db.prepare('INSERT INTO service_url (service_id, environment_id, label, url, position) VALUES (?,?,?,?,?)');
-  const SERVICES = [
-    { nom: 'webapp-front', repo: 'groupe/webapp-front', tags: ['front', 'produit'], pin: 1,
-      urls: { local: 'http://localhost:3000', dev: 'https://front-dev.demo.invalid', preprod: 'https://front-preprod.demo.invalid' } },
-    { nom: 'api-core', repo: 'groupe/api-core', tags: ['backend', 'produit'], pin: 1,
-      urls: { local: 'http://localhost:8080/health', dev: 'https://api-dev.demo.invalid/health', preprod: 'https://api-preprod.demo.invalid/health' } },
-    /* KIBANA PORTE PLUSIEURS ADRESSES EN PREPROD, et c'est le cas qui justifie la
-       fonctionnalité : un même outil au même endroit, autant d'adresses que de filtres
-       enregistrés. Sans un exemple à plusieurs, la grille laisserait croire qu'une case ne
-       peut porter qu'une adresse. */
-    { nom: 'Kibana', repo: null, tags: ['observabilite'], pin: 0,
-      urls: {
-        dev: [['', 'https://kibana-dev.demo.invalid/app/logs']],
-        preprod: [
-          ['erreurs paiement', 'https://kibana-preprod.demo.invalid/app/logs?q=checkout%20AND%20level:error'],
-          ['latence API', 'https://kibana-preprod.demo.invalid/app/apm?service=api-core'],
-          ['journal complet', 'https://kibana-preprod.demo.invalid/app/logs'],
-          ['erreurs 5xx', 'https://kibana-preprod.demo.invalid/app/logs?q=status:5*'],
-          ['webhooks rejetés', 'https://kibana-preprod.demo.invalid/app/logs?q=webhook%20AND%20rejected'],
-          ['lenteurs base', 'https://kibana-preprod.demo.invalid/app/logs?q=slow_query'],
-        ],
-      } },
-    { nom: 'Grafana', repo: null, tags: ['observabilite'], pin: 0,
-      urls: { dev: 'https://grafana-dev.demo.invalid/d/home' } },
-  ];
-  const svcIds = {};
-  for (const s of SERVICES) {
-    const id = insSvc.run(s.nom, s.repo ? repoIds[s.repo] : null, JSON.stringify(s.tags), s.pin, at(30)).lastInsertRowid;
-    svcIds[s.nom] = id;
-    for (const [env, v] of Object.entries(s.urls)) {
-      // Une chaîne = une adresse sans nom ; une liste = plusieurs, nommées, dans cet ordre.
-      const liste = Array.isArray(v) ? v : [['', v]];
-      liste.forEach(([label, url], i) => insUrl.run(id, envIds[env], label, url, i));
-    }
-  }
-
-  /* Le lien contextuel qui donne son sens à la fonctionnalité : depuis une merge request,
-     ouvrir les logs de SA branche, sur l'environnement voulu, sans rien retaper. */
-  db.prepare('INSERT INTO context_link (service_id, label, url_template) VALUES (?,?,?)')
-    .run(svcIds['api-core'], 'Logs', 'https://kibana-{env}.demo.invalid/app/logs?q={service}%20{branch}');
-
-  /* LES DOSSIERS, tels qu'un import de marque-pages les aurait posés : la liste des liens
-     libres se regroupe dès qu'un dossier existe, et sans exemple on ne verrait jamais l'arbre. */
-  const insFree = db.prepare('INSERT INTO free_link (label, url, tags, folder, created_at) VALUES (?,?,?,?,?)');
-  const freeIds = {};
-  [
-    ['Confluence — specs paiement', 'https://confluence.demo.invalid/paiement', ['confluence', 'produit'], 'doc/specs'],
-    ['Confluence — runbook astreinte', 'https://confluence.demo.invalid/runbook', ['confluence', 'astreinte'], 'doc/astreinte'],
-    ['Doc API publique', 'https://docs.demo.invalid/api', ['doc'], 'doc'],
-    ['Portail SSO', 'https://sso.demo.invalid', ['outils'], 'outils'],
-    ['Statut fournisseur PSP', 'https://status.demo.invalid/psp', ['outils', 'astreinte'], 'outils'],
-    ['Tableau de bord coûts cloud', 'https://cloud.demo.invalid/couts', ['outils'], 'outils'],
-  ].forEach(([label, url, tags, dossier]) => {
-    freeIds[label] = insFree.run(label, url, JSON.stringify(tags), dossier, at(20)).lastInsertRowid;
-  });
-
-  /* LA FRÉCENCE, PAR ADRESSE (`service:environnement:adresse`). Les références à deux segments
-     ne désignaient plus rien depuis qu'une case porte une liste : ni la palette, ni l'ordre des
-     trois adresses montrées par une case, ni « dernière ouverture » n'en voyaient la couleur. */
-  const insUsage = db.prepare('INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES (?,?,?,?)');
-  const adresse = (svc, env, rang = 0) => db.prepare(`SELECT id FROM service_url
-    WHERE service_id = ? AND environment_id = ? ORDER BY position, id LIMIT 1 OFFSET ?`).get(svcIds[svc], envIds[env], rang);
-  const noter = (svc, env, rang, uses, jours) => {
-    const u = adresse(svc, env, rang);
-    if (u) insUsage.run('service_url', `${svcIds[svc]}:${envIds[env]}:${u.id}`, uses, at(jours));
-  };
-  noter('api-core', 'dev', 0, 42, 0.1);
-  noter('webapp-front', 'local', 0, 17, 0.4);
-  /* Kibana · preprod porte six adresses : sans usages, la case en montrerait trois au hasard.
-     Avec eux, elle montre celles qu'on ouvre — et le panneau les marque d'un point. */
-  noter('Kibana', 'preprod', 1, 31, 0.2);
-  noter('Kibana', 'preprod', 3, 12, 1.2);
-  noter('Kibana', 'preprod', 0, 5, 6);
-  // Les liens libres se classent aussi par frécence : le runbook d'astreinte passe devant.
-  insUsage.run('free_link', String(freeIds['Confluence — runbook astreinte']), 23, at(0.3));
-  insUsage.run('free_link', String(freeIds['Portail SSO']), 9, at(2));
-}
+/* Les liens de travail (grille, liens libres, gabarits) sont semés par le plugin `links` quand il est installé : `mergerie demo` l'installe si `../link-mergerie` existe. */
 
 /* ── CE QUE LA SECONDE PASSE A AJOUTÉ, RENDU VISIBLE ────────────────────────────────────────
    Placé À LA FIN, et pas à côté des autres inserts : ces trois blocs LISENT ce que le seed
@@ -1585,8 +1498,6 @@ const counts = {
   notePages: db.prepare('SELECT COUNT(*) c FROM note_page').get().c,
   todos: db.prepare('SELECT COUNT(*) c FROM todo').get().c,
   gitOps: db.prepare('SELECT COUNT(*) c FROM git_op').get().c,
-  services: db.prepare('SELECT COUNT(*) c FROM service').get().c,
-  freeLinks: db.prepare('SELECT COUNT(*) c FROM free_link').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
 };
 /* ---------- des branches mortes à nettoyer (décor Git) ----------
@@ -1771,9 +1682,9 @@ async function semerPlugins() {
   /* Les plugins embarqués sont désactivés sur une base neuve. La démo, elle, MONTRE Jenkins (son onglet, ses décors) : on l'active
      — l'état est gardé, `npm run demo` le retrouvera. Les autres restent éteints, comme sur toute installation. */
   for (const nom of ['jenkins']) { if (plugins.fiche(nom)) await plugins.activer(nom); }
-  /* Les plugins TIERS que la démo montre aussi (Docker n'est plus dans le cœur) : les dossiers de `MERGERIE_DEMO_PLUGINS` (séparés par `:`), ou, à défaut,
-     le dépôt voisin `../docker-mergerie` s'il est là. Installés dans le dossier de données de la démo puis activés ; absents, la démo se passe de leur onglet. */
-  const tiers = (process.env.MERGERIE_DEMO_PLUGINS ? process.env.MERGERIE_DEMO_PLUGINS.split(':') : [path.join(__dirname, '..', '..', 'docker-mergerie')]).filter((d) => d && fs.existsSync(path.join(d, 'plugin.json')));
+  /* Les plugins TIERS que la démo montre aussi (Docker et Liens ne sont plus dans le cœur) : les dossiers de `MERGERIE_DEMO_PLUGINS` (séparés par `:`), ou, à défaut,
+     les dépôts voisins `../docker-mergerie` et `../link-mergerie` s'ils sont là. Installés dans le dossier de données de la démo puis activés ; absents, la démo se passe de leur onglet. */
+  const tiers = (process.env.MERGERIE_DEMO_PLUGINS ? process.env.MERGERIE_DEMO_PLUGINS.split(':') : ['docker-mergerie', 'link-mergerie'].map((n) => path.join(__dirname, '..', '..', n))).filter((d) => d && fs.existsSync(path.join(d, 'plugin.json')));
   for (const dossier of tiers) {
     try { const f = plugins.installerDepuisDossier(dossier); await plugins.activer(f.nom); } catch (e) { console.log(`[demo] plugin ${dossier} ignoré : ${e.message}`); }
   }

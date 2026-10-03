@@ -778,7 +778,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
      qu'elle n'a pas — les autres dépôts, ce qui vient d'être mergé, la connaissance d'un agent
      de domaine — vit à la RACINE des clones, qui n'appartient à aucun dépôt. Rien n'est écrit
      pour une session sans agent. */
-  const entrees = apres.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
+  const entrees = await apres.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
   const blocEntrees = apres.blocEntrees(task, entrees);
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
 

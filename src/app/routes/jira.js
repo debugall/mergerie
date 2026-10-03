@@ -12,7 +12,6 @@ const jira = require('../../integrations/jira');
 const jiraspec = require('../../integrations/jiraspec');
 const specTicket = require('../../session/spec');
 const notes = require('../../notes/notes');
-const links = require('../../notes/links');
 const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const pieces = require('../../agent/pieces');
@@ -334,22 +333,16 @@ app.post('/api/tasks/:id/targets/:tid/notify-jira', wrap(async (req, res) => {
   if (!cible) throw new Error(t('err.session-introuvable'));
   res.json(await prevenirJira(cible));
 }));
-app.get('/api/tasks/:id/targets/:tid/links', wrap((req, res) => {
-  const tg = targetById(Number(req.params.id), Number(req.params.tid));
-  if (!tg) throw Object.assign(new Error(t('err.links.unknown')), { status: 404 });
-  res.json(links.liensDeMr({ repo_id: tg.repo_id, source_branch: tg.branch, iid: tg.mr_iid || null }));
-}));
-/* ET SUR UN TICKET JIRA. Le dépôt n'y est pas écrit : on le déduit de ce qui est déjà
-   engagé — la merge request qui porte la clé, sinon la session de codage. Rien de deviné :
-   sans engagement, il n'y a pas de boutons, et c'est exact. */
-app.get('/api/jira/issues/:key/links', wrap((req, res) => {
+/* LE DÉPÔT PROBABLE D'UN TICKET, pour les plugins qui décorent un ticket (les boutons d'environnement du plugin Liens). Il
+   n'est pas écrit dans Jira : on le déduit de ce qui est déjà engagé — la merge request qui porte la clé, sinon la session de
+   codage. Rien de deviné : sans engagement, `carrier` vaut null, et c'est exact. */
+app.get('/api/jira/issues/:key/carrier', wrap((req, res) => {
   const d = engagementsSurTicket(req.params.key);
   const mr = d.mrs[0] ? mrById(d.mrs[0].id) : null;
-  if (mr) { res.json(links.liensDeMr(mr)); return; }
+  if (mr) { res.json({ carrier: { repo_id: mr.repo_id, branch: mr.source_branch, iid: mr.iid } }); return; }
   const tache = d.tasks[0]
     ? db.prepare(`SELECT tt.repo_id, tt.branch, tt.mr_iid FROM task_target tt
       WHERE tt.task_id = ? ORDER BY tt.id LIMIT 1`).get(d.tasks[0].id)
     : null;
-  if (!tache) { res.json({ service: null, envs: [], context: [] }); return; }
-  res.json(links.liensDeMr({ repo_id: tache.repo_id, source_branch: tache.branch, iid: tache.mr_iid || null }));
+  res.json({ carrier: tache ? { repo_id: tache.repo_id, branch: tache.branch, iid: tache.mr_iid || null } : null });
 }));

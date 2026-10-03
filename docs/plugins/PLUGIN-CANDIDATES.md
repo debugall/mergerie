@@ -1,33 +1,30 @@
 # Les prochains plugins : Liens, Docker, Git — et ce qui reste dans le cœur
 
 Étape 0 bis. Relevé **en lecture seule** des trois onglets qui suivaient
-Jenkins (Docker a depuis été extrait : voir plus bas), pour dimensionner le ctx **une fois** : chaque extraction suivante doit être un
+Jenkins (Liens et Docker ont depuis été extraits : voir plus bas), pour dimensionner le ctx **une fois** : chaque extraction suivante doit être un
 déplacement, pas une primitive de plus. Même grille que `JENKINS-INVENTORY.md`.
 
 ---
 
-## 1. Liens (`links`)
+## 1. Liens (`links`) — fait : un plugin tiers, `link-mergerie`
 
-| Volet | Contenu |
+L'onglet Liens a quitté le cœur. Il vit dans son propre dépôt ([`link-mergerie`](https://gitlab.com/amady/link-mergerie)), s'installe comme n'importe quel plugin tiers et
+tourne dans un worker. Il n'a demandé au contrat que des **ajouts** de portes, même `apiVersion` (voir [MIGRATION.md](./MIGRATION.md)) :
+
+| Besoin | Réponse |
 |---|---|
-| Serveur | `notes/links.js` (1 365 l. : grille services × environnements, liens libres, tags, **palette globale** avec frécence, import Chrome, collage d'adresses, liens d'une MR `liensDeMr`), `app/routes/links.js` (28 routes : `/api/links/*`, `/api/environments*`, `/api/services*`, `/api/free-links*`, `/api/context-links/:id`, `/api/launcher*`, `/api/mrs/:id/links`) |
-| Tables | `environment`, `service`, `service_url`, `context_link`, `free_link`, `launcher_usage` (`db/schema/08-liens.js`) — toutes **L** |
-| Front | `js/ecrans/liens/` 8 fichiers (1 781 l.), ports `loadLinks`, `naviguerGrilleLiens`, `pris` ; `html/ecrans/liens.html`, `html/modales/liens.html` (192 l.), `css/ecrans/liens.css` (463), `i18n/liens.js` (337) |
-| Tâches de fond | aucune (santé des liens : « seulement si un client regarde », non implémentée) |
-| Secrets | aucun ; validation `http(s)` de toute URL (« jamais ouverte par l'outil ») |
-| Tissages **sortants** (Liens → noyau) | `liensDeMr(mr)` appelé par `routes/mrs.js` (boutons d'environnement sur la carte, `{branch}` substitué), `routes/repos.js` (fiche), `routes/jira.js` (?), `routes/jenkins.js` (`build-links`) ; la **palette Ctrl+K** (`notes/links.palette`) agrège pages, MR, dépôts, vérificateurs, **jobs Jenkins**, projets compose, commandes git — c'est un service transverse hébergé dans Liens |
-| Démo | `demo-seed.js` sème environnements, services, liens |
-| Tests | `e2e-liens-*`, `e2e-menu-transverse-palette`, `unit-links*` |
+| des boutons d'environnement sur le détail d'une merge request, sur la ligne de projet d'une session, sur un ticket Jira | décorations sur les cibles `mr-detail`, `session-target-badge` (déjà là) et `jira-ticket` : le plugin pose un emplacement, le remplit après coup depuis ses routes ; le dépôt probable d'un ticket est déduit par le cœur (`GET /api/jira/issues/:key/carrier`) |
+| les services de la grille dans la fiche d'un dépôt | décoration sur `repo-sheet` (déjà là) |
+| la palette Ctrl+K : les liens en sont une source parmi sept | **la palette reste au cœur** (`notes/palette.js`, `app/routes/launcher.js` : agrégation, flou, frécence de ce qui lui appartient) ; Liens est un FOURNISSEUR (`registerPaletteProvider`) qui nomme son groupe `links` et garde sa propre frécence (`plugin_links_usage`) |
+| le clavier de la grille (`j`/`k`, `←`/`→`, `Entrée`, `e`, `c`) | `ui.onKey(onglet, fn)` : l'onglet ouvert passe avant les touches globales |
+| ce que le cœur doit savoir de Liens : le contexte `recent.md` d'un agent (services et adresses d'un dépôt), la case « local » que le compose connaît, les adresses de déploiement d'un job Jenkins | services nommés `links.servicesOf`, `links.localSuggestion`, `links.forRepo` — appelés par le cœur ou par un autre plugin, absents sans Liens |
+| le menu déroulant « Ajouter », fermé au clic ailleurs | `closeSplitMenus` dans le kit |
+| une « transaction » sur plusieurs écritures | un worker n'en a pas (chaque instruction est autonome) : ce qui doit être tout-ou-rien est **vérifié avant la première écriture** |
 
-**Primitives nécessaires** : `db`, `http.router`, `ui.registerTab`, `ui.registerSettingsTab`
-(environnements), `ui.registerAction({target:'mr'})` (boutons d'environnement sur la carte),
-`ui.registerAction({target:'repo'})` (fiche), **`ui.registerPaletteProvider(fn)`** (ses entrées),
-**`ui.registerImporter({label, run})`** (Chrome), `demo.seed`, `i18n.register`.
-
-**Ce qui doit REMONTER dans le cœur avant l'extraction** : la **palette** elle-même (agrégation,
-frécence `launcher_usage`, raccourci Ctrl+K) — elle sert tous les écrans ; Liens n'en est qu'un
-fournisseur parmi sept. `liensDeMr` doit devenir une **requête de service** entre plugins (Jenkins
-→ Liens) ou un décorateur de MR fourni par Liens.
+Les tables `environment`, `service`, `service_url`, `context_link` et `free_link` sont **renommées** (`plugin_links_*`) par `src/db/schema/18-plugins.js`, une fois — avec, avant, ce que
+l'ancienne tranche `08-liens.js` faisait aux bases d'avant (colonnes `position` et `folder`, reconstruction de `service_url`, retrait de `health_check`) — et la frécence des liens passe de
+`launcher_usage` à `plugin_links_usage`. Un poste qui monte de version retrouve sa grille, ses adresses, ses gabarits, ses liens libres et leur ordre : l'état `links` est posé activé, le plugin
+s'active seul le jour où on l'installe.
 
 ## 2. Docker (`docker`) — fait : un plugin tiers, `docker-mergerie`
 

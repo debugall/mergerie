@@ -103,7 +103,7 @@ const NAV_KEY = 'mergerie_nav';
 const NAV_TOUJOURS = 'admin';
 
 /* CE QUI EST REPLIÉ D'OFFICE. Onze entrées, et la plupart des journées n'en demandent que
-   quelques-unes : Git, Docker et Liens (et les onglets de plugins) sont des COMMODITÉS — on y va le jour où on en
+   quelques-unes : Git (et les onglets de plugins : Docker, Liens…) sont des COMMODITÉS — on y va le jour où on en
    a besoin, pas dix fois par jour —, tandis que Reviews, Dev IA, Agents, Notes et Jira sont le
    travail lui-même. La barre porte donc d'abord ce qui a de la valeur tous les jours, et une
    case des Réglages rend les autres. Rien n'est désactivé au passage : les écrans, les données
@@ -111,7 +111,7 @@ const NAV_TOUJOURS = 'admin';
 
    Ce défaut ne vaut que pour qui n'a JAMAIS touché sa barre. Une préférence enregistrée fait
    foi, fût-elle antérieure : on ne retire pas ses menus à quelqu'un qui les a rangés lui-même. */
-const NAV_MASQUES_DEFAUT = ['git', 'links', ...pluginsOngletsReplies()];
+const NAV_MASQUES_DEFAUT = ['git', ...pluginsOngletsReplies()];
 
 function lireNav() {
   try {

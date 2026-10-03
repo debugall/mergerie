@@ -1822,17 +1822,7 @@ const REGISTRE = [
   },
 
   /* ── Famille L : secret, ou propre à ce poste ────────────────────────────────────────── */
-  /* L'ONGLET LIENS RESTE À SOI. La grille « services × environnements », les gabarits d'URL de
-     contexte et les liens libres décrivent où l'on va travailler, pas ce qu'on a produit : des
-     signets, des tableaux de bord internes, des adresses de recette qui n'ont de sens que pour
-     celui qui les a rangées ainsi. Les partager imposerait à toute l'équipe la façon dont une
-     personne classe ses raccourcis — et ferait entrer dans un dépôt d'URL d'infrastructure que
-     rien n'oblige à écrire quelque part. Décision de l'auteur, 14 septembre 2026. */
-  { table: 'environment', famille: 'L', note: 'les colonnes de la grille de liens (dev, recette, prod) de CE poste' },
-  { table: 'service', famille: 'L', note: 'les lignes de la grille de liens' },
-  { table: 'service_url', famille: 'L', note: 'les cases de la grille : une URL par service et par environnement' },
-  { table: 'context_link', famille: 'L', note: 'les gabarits d’URL de contexte d’un service' },
-  { table: 'free_link', famille: 'L', note: 'les liens libres, avec leurs étiquettes et leurs dossiers' },
+  /* L'onglet Liens est le plugin `links` : ses tables (`plugin_links_*`) sont classées L par lui, et il garde la décision de leur partage — celle de l'auteur, 14 septembre 2026 : ce sont des signets et des adresses de recette qui n'ont de sens que pour celui qui les a rangés ainsi. */
   { table: 'agent_cli', famille: 'L', note: 'les autres binaires d’agent de CE poste (chemins, secrets) ; le défaut est dans `local_config`' },
   {
     table: 'local_config', famille: 'L',

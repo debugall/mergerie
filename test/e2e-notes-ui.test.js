@@ -343,9 +343,9 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 10);
-    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'jenkins', 'links', 'dashboard', 'admin'],
-      'le cœur · ce que j’ai à faire · ma machine, son intégration et ses liens · le méta');
+    assert.equal(barre.length, 9);
+    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'jenkins', 'dashboard', 'admin'],
+      'le cœur · ce que j’ai à faire · ma machine et son intégration · le méta');
 
     /* Les neuf premiers sur leur chiffre ; le DERNIER sur « 0 », faute de touche « 10 » — et
        c'est bien le dernier, pas le dixième : sinon un onglet ajouté retirerait en silence
@@ -368,8 +368,10 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     // Et la feuille d'aide annonce la plage réelle, pas un « 1 – 8 » recopié une fois de plus.
     await page.keyboard.press('?');
     await page.waitForSelector('#shortcutsModal:not([hidden])');
-    assert.match(await page.locator('#shortcutsList').innerText(), /1 – 9, 0/,
-      'la plage annoncée suit le nombre réel d’onglets, touche « 0 » comprise');
+    // Neuf onglets ou moins : « 1 – N », sans « 0 » (le dernier onglet a déjà son chiffre) ; au-delà, « 1 – 9, 0 » (les plugins tiers en ajoutent).
+    const plage = barre.length > 9 ? '1 – 9, 0' : `1 – ${barre.length}`;
+    assert.ok((await page.locator('#shortcutsList').innerText()).includes(plage),
+      `la plage annoncée suit le nombre réel d’onglets (${plage})`);
     await page.locator('#shortcutsClose').click();
   });
 

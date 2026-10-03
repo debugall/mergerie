@@ -303,6 +303,5 @@ function renderTasks() {
   wirePromptToggles('#taskList');
   wireTaskActions();
   restoreTaskForms(openForms);
-  remplirLiensDifferes(el);      // les boutons contextuels des lignes de projet
 }
 

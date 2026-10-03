@@ -148,10 +148,6 @@ function targetLine(t, tg) {
           ressemble à une clé mais qui ne correspond à aucun ticket. */''}
     ${mrIid && jiraConfigured && tg.ticket_key
     ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc(tg.ticket_key)}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
-    ${/* LES BOUTONS CONTEXTUELS, ICI AUSSI. La ligne a un dépôt et une branche : `{env}` et
-          `{branch}` s'y résolvent exactement comme sur une carte de merge request. Le bloc
-          arrive vide et se remplit — un projet sans service lié n'affiche rien. */''}
-    <span class="tg-liens" data-liens-task="${t.id}" data-liens-target="${tg.id}"></span>
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}

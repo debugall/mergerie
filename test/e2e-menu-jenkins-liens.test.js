@@ -7,7 +7,7 @@
  *     la merge request OUVERTE dont la branche est celle du dernier build — un clic ouvre son
  *     rapport dans Reviews ;
  *   - B10 : un build VERT parti avec `ENV=recette` sur un job lié propose d'ouvrir l'adresse de
- *     recette du service du dépôt (grille de Liens) — et rien sur un build rouge, ni sur un job
+ *     recette du service du dépôt (grille du plugin Liens) — et rien sur un build rouge, ni sur un job
  *     sans lien ;
  *   - A/Jenkins 2 : « Mes branches » ne garde que les jobs dont le dernier build porte la
  *     branche d'une de MES merge requests ouvertes, et le filtre survit au rechargement.
@@ -18,6 +18,7 @@
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
+const path = require('node:path');
 const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, afficherMenusOptionnels,
 } = require('./helpers/app');
@@ -78,10 +79,12 @@ describe('Menu Jenkins — dépôts liés, merge requests, environnements et « 
       const r = await app.api('POST', '/api/plugins/jenkins/links', { repo_id: repoId, job_path: job, param: 'BRANCH' });
       assert.equal(r.status, 200);
     }
-    const recette = (await app.api('POST', '/api/environments', { name: 'recette', color: '#2f6fe0' })).body;
-    await app.api('POST', '/api/environments', { name: 'prod', color: '#d23' });
-    const svc = (await app.api('POST', '/api/services', { name: 'boutique-api', repo_id: repoId })).body;
-    await app.api('PUT', `/api/services/${svc.id}/urls`, { environment_id: recette.id, url: URL_RECETTE });
+    /* La grille des liens est celle du plugin Liens ; ici une DOUBLURE l'est à sa place (test/fixtures/plugins/links-stub) : Jenkins n'emprunte que le service nommé
+       `links.forRepo`, c'est ce que ce fichier prouve. */
+    const inst = await app.api('POST', '/api/plugins/install', { path: path.join(__dirname, 'fixtures', 'plugins', 'links-stub') });
+    assert.equal(inst.status, 200, JSON.stringify(inst.body));
+    assert.equal((await app.api('POST', '/api/plugins/links/enable')).body.ok, true);
+    await app.api('POST', '/api/plugins/links/set', { repo_id: repoId, envs: [{ id: 1, environment_id: 1, env: 'recette', color: '#2f6fe0', url: URL_RECETTE, label: '' }] });
     const liens = (await app.api('GET', '/api/plugins/jenkins/build-links?path=boutique%2Fdeploy-recette')).body;
     assert.deepEqual(liens.envs.map((e) => e.env), ['recette'], 'le décor : une adresse de recette pour le service du dépôt');
 

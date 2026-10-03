@@ -1,0 +1,10 @@
+{
+  "name": "links",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Liens (doublure de test)",
+  "description": "Se fait passer pour le plugin Liens auprès du cœur et de Jenkins : expose le service `links.forRepo` à partir de ce qu'un test lui pose par `POST /api/plugins/links/set`. Le vrai plugin vit dans le dépôt link-mergerie.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["services", "http"]
+}

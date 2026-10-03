@@ -85,7 +85,8 @@ async function paletteChercher(q) {
    Dans les deux cas on note l'usage — c'est ce qui fait remonter demain ce qu'on ouvre
    aujourd'hui. */
 function ouvrirResultatPalette(r) {
-  api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
+  /* La frécence du cœur ne compte que SES résultats : un résultat de plugin (`nav.plugin`) tient la sienne, au moment où le plugin l'ouvre. */
+  if (!(r.nav && r.nav.plugin)) api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
   if (r.url) { window.open(safeUrl(r.url), '_blank', 'noopener,noreferrer'); return; }
   if (r.action) {
     const i = Number(String(r.action).split(':')[1]);

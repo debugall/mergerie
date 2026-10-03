@@ -134,7 +134,7 @@ describe('Plugins — migration des données Jenkins du cœur vers le plugin', (
     const db = new Database(path.join(dir, 'reviewer.db'), { readonly: true });
     assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_setting WHERE plugin = 'jenkins'").get().c, 0);
     assert.equal(db.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('repo_jenkins', 'plugin_jenkins_link')").get().c, 0, 'la table du plugin n’existe qu’une fois le plugin activé');
-    assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core'").get().c, 2, 'les deux passages du cœur (Jenkins, Docker) sont notés');
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core'").get().c, 3, 'les trois passages du cœur (Jenkins, Docker, Liens) sont notés');
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -170,5 +170,72 @@ describe('Plugins — migration des données Docker du cœur vers le plugin', ()
     ouvrirSchema(ancienne, ["UPDATE plugin_state SET enabled = 0 WHERE name = 'docker'"]);
     ouvrirSchema(ancienne);
     assert.equal(lireDans(ancienne, "SELECT enabled FROM plugin_state WHERE name = 'docker'")[0].enabled, 0);
+  });
+});
+
+describe('Plugins — migration des données Liens du cœur vers le plugin', () => {
+  const lireDans = (dir, sql) => JSON.parse(execFileSync(process.execPath, ['-e',
+    'const d=require("better-sqlite3")(process.argv[1],{readonly:true});console.log(JSON.stringify(d.prepare(process.argv[2]).all()))',
+    path.join(dir, 'reviewer.db'), sql], { cwd: ROOT, encoding: 'utf8' }));
+  const TABLES = "('environment', 'service', 'service_url', 'context_link', 'free_link', 'plugin_links_environment', 'plugin_links_service', 'plugin_links_service_url', 'plugin_links_context_link', 'plugin_links_free_link', 'plugin_links_usage')";
+
+  /* L'ANCIEN SCHÉMA, DANS SA FORME LA PLUS VIEILLE : une base d'avant les adresses multiples (`service_url` sans `id`, clé primaire (service, environnement)),
+     d'avant l'ordre des lignes (`service.position`) et les dossiers (`free_link.folder`), avec la colonne `environment.health_check` qu'on a retirée depuis. C'est
+     ce que la migration doit remettre d'aplomb AVANT de renommer — le schéma du cœur ne le fait plus. */
+  const ANCIEN = [
+    "INSERT INTO repo (id, project, url, created_at) VALUES (501, 'groupe/api', 'https://git.invalid/groupe/api.git', '2026-01-01')",
+    "CREATE TABLE environment (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, position INTEGER NOT NULL, color TEXT NOT NULL DEFAULT '#2f6fe0', created_at TEXT NOT NULL, health_check INTEGER NOT NULL DEFAULT 0)",
+    "CREATE TABLE service (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, repo_id INTEGER REFERENCES repo(id) ON DELETE SET NULL, tags TEXT NOT NULL DEFAULT '[]', pinned INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)",
+    "CREATE TABLE service_url (service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE, environment_id INTEGER NOT NULL REFERENCES environment(id) ON DELETE CASCADE, url TEXT NOT NULL, PRIMARY KEY (service_id, environment_id))",
+    "CREATE TABLE context_link (id INTEGER PRIMARY KEY, service_id INTEGER NOT NULL REFERENCES service(id) ON DELETE CASCADE, label TEXT NOT NULL, url_template TEXT NOT NULL)",
+    "CREATE TABLE free_link (id INTEGER PRIMARY KEY, label TEXT NOT NULL, url TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL)",
+    "INSERT INTO environment (id, name, position, color, created_at) VALUES (7, 'recette', 1, '#aa0000', '2026-01-01')",
+    "INSERT INTO service (id, name, repo_id, tags, pinned, created_at) VALUES (42, 'facturation', 501, '[\"compta\"]', 1, '2026-01-01')",
+    "INSERT INTO service_url (service_id, environment_id, url) VALUES (42, 7, 'https://fact.recette.test/health')",
+    "INSERT INTO context_link (id, service_id, label, url_template) VALUES (3, 42, 'Logs', 'https://k-{env}.test/{branch}')",
+    "INSERT INTO free_link (id, label, url, tags, created_at) VALUES (9, 'Runbook', 'https://r.test', '[\"astreinte\"]', '2026-01-01')",
+    "INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES ('service_url', '42:7', 5, '2026-02-01')",
+    "INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES ('free_link', '9', 12, '2026-02-02')",
+    "INSERT INTO launcher_usage (kind, ref, uses, last_used_at) VALUES ('mr', '1', 3, '2026-02-03')",
+    "DELETE FROM plugin_migration WHERE plugin = '_core' AND version = 3",
+  ];
+
+  test('base NEUVE : le cœur ne crée plus aucune table de liens, n’active rien d’office', () => {
+    const neuve = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-liens-neuve-'));
+    ouvrirSchema(neuve);
+    assert.deepEqual(lireDans(neuve, `SELECT name FROM sqlite_master WHERE name IN ${TABLES}`), [], 'ni l’ancien nom ni celui du plugin : il crée ses tables lui-même');
+    assert.deepEqual(lireDans(neuve, "SELECT * FROM plugin_state WHERE name = 'links'"), [], 'le plugin n’est pas activé d’office sur une première installation');
+    assert.equal(lireDans(neuve, "SELECT COUNT(*) c FROM sqlite_master WHERE name = 'launcher_usage'")[0].c, 1, 'la frécence du lanceur, elle, reste au cœur');
+  });
+
+  test('base EXISTANTE : tout est RENOMMÉ sur place — lignes, ids, clés étrangères — la vieille forme est d’abord remise d’aplomb, la frécence suit, une seule fois', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-liens-ancienne-'));
+    ouvrirSchema(dir);
+    ouvrirSchema(dir, ANCIEN);
+    ouvrirSchema(dir);   // le démarrage qui monte de version
+
+    assert.deepEqual(lireDans(dir, `SELECT name FROM sqlite_master WHERE name IN ('environment', 'service', 'service_url', 'context_link', 'free_link', 'service_url_v2')`), [], 'les anciennes tables ont changé de nom, aucune table de travail ne traîne');
+    assert.deepEqual(lireDans(dir, 'SELECT id, name, position, color FROM plugin_links_environment'), [{ id: 7, name: 'recette', position: 1, color: '#aa0000' }]);
+    assert.ok(!lireDans(dir, 'PRAGMA table_info(plugin_links_environment)').some((c) => c.name === 'health_check'), 'la colonne retirée depuis est partie');
+    assert.deepEqual(lireDans(dir, 'SELECT id, name, repo_id, tags, pinned, position FROM plugin_links_service'), [{ id: 42, name: 'facturation', repo_id: 501, tags: '["compta"]', pinned: 1, position: 0 }], 'la colonne position a été ajoutée');
+    assert.deepEqual(lireDans(dir, 'SELECT service_id, environment_id, label, url, position FROM plugin_links_service_url'), [{ service_id: 42, environment_id: 7, label: '', url: 'https://fact.recette.test/health', position: 0 }], 'service_url reconstruite : chaque case devient une adresse sans libellé');
+    assert.ok(lireDans(dir, 'PRAGMA table_info(plugin_links_service_url)').some((c) => c.name === 'id'), 'avec sa clé primaire');
+    assert.deepEqual(lireDans(dir, 'SELECT id, service_id, label FROM plugin_links_context_link'), [{ id: 3, service_id: 42, label: 'Logs' }]);
+    assert.deepEqual(lireDans(dir, 'SELECT id, label, folder FROM plugin_links_free_link'), [{ id: 9, label: 'Runbook', folder: '' }], 'la colonne folder a été ajoutée');
+    // Les clés étrangères des enfants suivent le nom de leur parent renommé : sans cela, supprimer un service n'emporterait plus ses adresses.
+    const ddl = lireDans(dir, "SELECT sql FROM sqlite_master WHERE name = 'plugin_links_service_url'")[0].sql;
+    assert.match(ddl, /REFERENCES "?plugin_links_service"?\s*\(id\)/);
+    assert.match(ddl, /REFERENCES "?plugin_links_environment"?\s*\(id\)/);
+    // La frécence des liens a changé de table ; celle des merge requests est restée.
+    assert.deepEqual(lireDans(dir, 'SELECT kind, ref, uses FROM plugin_links_usage ORDER BY kind'), [{ kind: 'free_link', ref: '9', uses: 12 }, { kind: 'service_url', ref: '42:7', uses: 5 }]);
+    assert.deepEqual(lireDans(dir, 'SELECT kind FROM launcher_usage'), [{ kind: 'mr' }]);
+    assert.deepEqual(lireDans(dir, "SELECT enabled, origin FROM plugin_state WHERE name = 'links'"), [{ enabled: 1, origin: 'user' }], 'le plugin s’active tout seul le jour où on l’installe');
+    assert.equal(lireDans(dir, "SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core' AND version = 3")[0].c, 1);
+
+    // Pas rejoué : désactivé par la personne, il le reste ; les lignes ajoutées depuis ne sont pas touchées.
+    ouvrirSchema(dir, ["UPDATE plugin_state SET enabled = 0 WHERE name = 'links'", "INSERT INTO plugin_links_free_link (label, url, created_at) VALUES ('Ajouté après', 'https://a.test', '2026-03-01')"]);
+    ouvrirSchema(dir);
+    assert.equal(lireDans(dir, "SELECT enabled FROM plugin_state WHERE name = 'links'")[0].enabled, 0);
+    assert.equal(lireDans(dir, 'SELECT COUNT(*) c FROM plugin_links_free_link')[0].c, 2);
   });
 });

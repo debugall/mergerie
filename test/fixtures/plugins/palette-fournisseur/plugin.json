@@ -1,0 +1,10 @@
+{
+  "name": "palette-fournisseur",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Fournisseur de palette",
+  "description": "Rend deux entrées à la requête « zorglub » — l'une nomme son groupe (comme le plugin Liens), l'autre non : prouve comment le cœur les place dans la palette.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["ui.palette"]
+}

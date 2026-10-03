@@ -8,7 +8,6 @@ const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
-const links = require('../../notes/links');
 const forge = require('../../forge');
 const git = require('../../git/git');
 const localrepos = require('../../git/localrepos');
@@ -67,6 +66,8 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
   const parGroupe = [...new Set([...db.prepare(`SELECT vg.verifier_id FROM verifier_group vg
       JOIN repo_group_member m ON m.group_id = vg.group_id WHERE m.repo_id = ?`).all(id).map((r) => r.verifier_id)])];
   res.json({
+    // Qui est ce dépôt : les plugins qui décorent la fiche (cible `repo-sheet`) en ont besoin pour y poser ce qu'ils rattachent.
+    id: repo.id, project: repo.project,
     /* Ses groupes : la porte vers Réglages → Dépôts → Groupes. */
     groups: groupes.groupesDuDepot(id).map((g) => ({ id: g.id, name: g.name })),
     verifiers: [
@@ -81,7 +82,6 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
        les lister ici ferait croire qu'elles disparaîtraient avec lui. */
     rules: db.prepare(`SELECT id, label, branch_match, path_match, enabled, group_id FROM review_rule
       WHERE repo_id = ? OR group_id IN (SELECT group_id FROM repo_group_member WHERE repo_id = ?) ORDER BY id`).all(id, id),
-    services: db.prepare('SELECT id, name FROM service WHERE repo_id = ? ORDER BY name').all(id),
     // Les projets liés PAR DÉFAUT : ce qui sera joint au contexte des futures merge requests.
     links: db.prepare(`SELECT l.linked_repo_id AS id, l.branch, r.project FROM repo_link l
       JOIN repo r ON r.id = l.linked_repo_id WHERE l.repo_id = ? ORDER BY r.project`).all(id),

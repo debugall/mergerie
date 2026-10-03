@@ -83,6 +83,14 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Links tab is now a plugin**, in its own repository (https://gitlab.com/amady/link-mergerie), installed from Settings → Plugins (from git) and enabled
+  like any third-party plugin. Nothing changes on screen once it is on: the services × environments grid, free links, bookmark import, address pasting, the
+  environment buttons on a merge request, on a session's project line and on a Jira ticket, and the palette entries all come with it. **Your links are not
+  lost**: a Mergerie that already had the tab keeps its grid, its addresses, its templates, its free links and their order — the tables are renamed in place
+  on upgrade, ids included — and so does the "most opened" ranking; the plugin comes up **enabled** the day you install it, and until you do the tab is
+  simply absent. The palette (`Ctrl`/`Cmd`+`K`) stays in the core; links join it as a plugin source, still first in the list. The plugin API gains, additively and on
+  the same `apiVersion`: the `mr-detail` and `jira-ticket` targets, `ui.onKey` (the keyboard of the open tab), the `closeSplitMenus` kit name and a `group` on
+  palette entries. A plugin tab positioned "before" a tab that is not there (a plugin that is not installed) no longer disappears from the bar.
 - **The Docker tab is now a plugin**, in its own repository (https://gitlab.com/amady/docker-mergerie), installed from Settings → Plugins (from git)
   and enabled like any third-party plugin. Nothing changes on screen once it is on: compose projects and `.env` drift, containers outside compose,
   group actions, `make` targets, live logs, the health badge, the "container went down" notification and the brief section all come with it.
