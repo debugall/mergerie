@@ -104,6 +104,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **A plugin's routes are built once per activation, not once per request**, and are rebuilt when it is reactivated.
 - **`ctx.exec` no longer lets a plugin set `PATH`, `LD_PRELOAD`, `NODE_OPTIONS`, `GIT_*`…** through its `env` option, which bypassed the
   sub-command allowlist.
+- **The Jenkins data migration is one transaction**: a stop in the middle leaves the previous database, which the migration replays.
 - **The linked projects you add in a merge request's Context are kept.** Saving the Context sent an empty list, so reopening it showed no
   linked project: a rename made for the Links screen had changed the class of the rows without changing the code that reads them.
   The Context modal now saves and shows them again, and a test does the whole gesture in a browser.

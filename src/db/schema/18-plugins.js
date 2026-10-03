@@ -54,7 +54,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
  * est délibérée : une migration de données nomme ce qu'elle migre. */
 {
   const fait = db.prepare("SELECT 1 FROM plugin_migration WHERE plugin = '_core' AND version = 1").get();
-  if (!fait) {
+  /* UNE TRANSACTION : les réglages recopiés, la table renommée, les colonnes retirées et le marqueur passent ensemble ou pas du tout. Un arrêt
+     au milieu laisse la base d'avant, que la migration rejouera en entier — pas une base à moitié passée. */
+  if (!fait) db.transaction(() => {
     const colonnes = (table) => { try { return db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name); } catch { return []; } };
     const existe = (t) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
     const maintenant = new Date().toISOString();
@@ -96,7 +98,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
       db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('jenkins', 1, '', 'builtin', ?)").run(maintenant);
     }
     db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 1, ?)").run(maintenant);
-  }
+  })();
 }
 
 /* `todo.link_kind` N'EST PLUS CONTRAINT PAR LA TABLE. Le `CHECK (link_kind IN ('mr', …))` obligeait
