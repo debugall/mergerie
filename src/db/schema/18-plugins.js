@@ -89,6 +89,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
       try { if (cfg.includes(col)) db.exec(`ALTER TABLE config DROP COLUMN ${col}`); } catch { /* plus ancienne SQLite : la colonne reste, vide */ }
       try { if (loc.includes(col)) db.exec(`ALTER TABLE local_config DROP COLUMN ${col}`); } catch { /* idem */ }
     }
+    /* LES PLUGINS EMBARQUÉS DÉMARRENT DÉSACTIVÉS sur une première installation — Jenkins comme les autres. Un poste qui
+       tournait déjà avait l'onglet Jenkins : il le garde, activé, tel quel (rien ne disparaît à la montée de version). Le
+       chargeur n'écrit l'état d'un plugin que s'il n'en a pas : celui-ci est posé AVANT son premier passage. */
+    if (db.baseExistante) {
+      db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('jenkins', 1, '', 'builtin', ?)").run(maintenant);
+    }
     db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 1, ?)").run(maintenant);
   }
 }

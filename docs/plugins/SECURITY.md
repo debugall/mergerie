@@ -58,8 +58,8 @@ Toujours présents : `log`, `i18n`.
 - écrire dans le dépôt de données partagé de l'équipe (ses tables sont de poste) ;
 - survivre à sa désactivation : abonnements, tâches, routes, déclarations d'écran, dictionnaires et
   services sont retirés ; seules ses données restent ;
-- s'activer tout seul (un tiers est désactivé après installation ; un embarqué peut dire
-  `enabledByDefault: false`).
+- s'activer tout seul (un tiers et un embarqué sont désactivés sur une première installation — un manifeste embarqué pourrait
+  dire `enabledByDefault: true`, aucun ne le fait ; un poste qui monte de version garde activés ceux qu'il avait).
 
 ## Responsabilités de l'auteur
 

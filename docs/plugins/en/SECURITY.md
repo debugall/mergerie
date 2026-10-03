@@ -60,8 +60,8 @@ Always present: `log`, `i18n`.
 - write into the team's shared data repository (its tables are local);
 - outlive its deactivation: subscriptions, tasks, routes, screen declarations, dictionaries and
   services are removed; only its data stays;
-- enable itself (a third-party plugin is disabled after installation; a built-in one may say
-  `enabledByDefault: false`).
+- enable itself (a third-party plugin and a built-in one are both disabled on a first installation — a built-in manifest could say
+  `enabledByDefault: true`, none does; a machine that upgrades keeps enabled the ones it already had).
 
 ## The author's responsibilities
 

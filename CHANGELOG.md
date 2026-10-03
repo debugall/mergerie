@@ -24,7 +24,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
   (`sdk/`, `@mergerie/plugin-sdk`) gives the TypeScript types, an in-memory test context and a
   generator (`npm create mergerie-plugin`); `plugins/hello` is the generated example, shipped
   disabled. Documentation in `docs/plugins/` (fr and en), every example of which the CI runs.
-- **Jenkins becomes a built-in plugin** (`plugins/jenkins`) — **no functional change**: the tab, the
+- **A first installation starts with no plugin enabled.** Jenkins and the other built-in plugins are disabled on a brand-new
+  database and are switched on from Settings → Plugins, without a restart. A machine that already runs Mergerie keeps
+  Jenkins enabled when it upgrades: nothing disappears.
+- **Jenkins becomes a built-in plugin** (`plugins/jenkins`) — **no functional change** for those who already had it: the tab, the
   job sheet, the launches, the linked jobs, the badges, the end-of-build notification, the
   « CI red » section of the brief and the console in a session's follow-up are exactly as before. On
   upgrade, the connection (URL, user, token, refresh cadence), the linked jobs and the last

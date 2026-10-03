@@ -79,8 +79,10 @@ function decouvrir() {
     fiche.manifeste = t.manifeste; fiche.dir = t.dir; fiche.origin = t.origin; fiche.erreurs = t.erreurs; fiche.valide = t.ok;
     const etat = lireEtat(nom);
     if (!etat) {
-      // Un embarqué est activé d'office — sauf s'il dit le contraire (`enabledByDefault: false`, comme hello) ; un tiers, jamais.
-      const dOffice = t.origin === 'builtin' && !(t.manifeste && t.manifeste.enabledByDefault === false);
+      // Un embarqué est activé d'office SEULEMENT s'il le dit (`enabledByDefault: true`) ; sinon, comme un tiers, il attend qu'on l'active.
+      // Les embarqués du dépôt sont tous désactivés sur une première installation ; un poste qui monte de version garde Jenkins
+      // grâce à l'état que `db/schema/18-plugins.js` pose avant ce passage.
+      const dOffice = t.origin === 'builtin' && !!(t.manifeste && t.manifeste.enabledByDefault === true);
       ecrireEtat(nom, { enabled: dOffice ? 1 : 0, version: (t.manifeste && t.manifeste.version) || '', origin: t.origin });
     }
     const e = lireEtat(nom);

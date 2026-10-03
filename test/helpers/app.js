@@ -52,7 +52,7 @@ function prepareEnv() {
 }
 
 // Démarre l'application. À appeler une fois par fichier de test.
-async function startApp() {
+async function startApp({ plugins = ['jenkins'] } = {}) {
   const dataDir = prepareEnv();
   const gitlab = await mock.start();
   const github = await mockGh.start();
@@ -65,6 +65,12 @@ async function startApp() {
   if (!server.server.listening) {
     await new Promise((resolve) => server.server.once('listening', resolve));
   }
+  /* LES PLUGINS EMBARQUÉS SONT DÉSACTIVÉS sur une base neuve (c'est ce que voit une première installation). La suite, elle, éprouve
+     Jenkins presque partout : on l'active comme le ferait un poste qui monte de version. `startApp({ plugins: [] })` rend la
+     première installation telle quelle — et les tests de ce comportement le font. */
+  // eslint-disable-next-line global-require
+  const lesPlugins = require('../../src/plugins');
+  for (const nom of plugins) { if (lesPlugins.fiche(nom)) await lesPlugins.activer(nom); }
   const base = `http://127.0.0.1:${server.server.address().port}`;
   const localToken = fs.readFileSync(path.join(dataDir, 'local-token'), 'utf8').trim();
   /* LE MODE SÉCURISÉ, D'OFFICE DANS LES TESTS. Le défaut d'une installation est yolo (aucune

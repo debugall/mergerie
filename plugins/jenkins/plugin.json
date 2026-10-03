@@ -9,6 +9,7 @@
   "license": "AGPL-3.0-only",
   "main": "index.js",
   "builtin": true,
+  "enabledByDefault": false,
   "permissions": ["events", "settings", "secrets", "db", "http", "schedule", "net", "repos", "ui.tab", "ui.actions", "ui.palette", "notify", "demo", "env", "services"],
   "events": {
     "listens": ["repo.deleted"],

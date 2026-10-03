@@ -1,8 +1,9 @@
 # Plugin Jenkins (embarqué)
 
 Voir l'état des jobs Jenkins et les lancer, lier un job à un dépôt, suivre la fin des builds
-lancés depuis Mergerie — sans quitter l'outil. Livré avec Mergerie, activé d'office,
-désactivable depuis Réglages → Plugins.
+lancés depuis Mergerie — sans quitter l'outil. Livré avec Mergerie, **désactivé sur une
+première installation** (Réglages → Plugins → Activer) ; un poste qui montait de version et avait déjà l'onglet Jenkins
+le garde activé.
 
 Ce plugin n'a **aucun privilège** qu'un plugin tiers n'aurait pas : il n'utilise que le `ctx`
 public (docs/plugins/API.md), ses tables sont préfixées `plugin_jenkins_`, ses routes vivent

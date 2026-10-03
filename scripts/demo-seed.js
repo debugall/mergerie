@@ -1783,12 +1783,15 @@ const counts = {
   counts.ticket_spec = specs.length;
 }
 
-/* CE QUE LES PLUGINS SÈMENT (`ctx.demo.seed`) : les plugins embarqués sont activés le temps de
-   semer, sur la même base, puis arrêtés — `npm run demo` les réactivera au démarrage du serveur. */
+/* CE QUE LES PLUGINS SÈMENT (`ctx.demo.seed`) : les plugins embarqués sont démarrés le temps de
+   semer, sur la même base, puis arrêtés — Jenkins est activé pour la démo (voir plus bas), `npm run demo` le retrouvera. */
 async function semerPlugins() {
   // eslint-disable-next-line global-require
   const plugins = require('../src/plugins');
   await plugins.demarrer({ log: () => {} });
+  /* Les plugins embarqués sont désactivés sur une base neuve. La démo, elle, MONTRE Jenkins (son onglet, ses décors) : on l'active
+     — l'état est gardé, `npm run demo` le retrouvera. Les autres restent éteints, comme sur toute installation. */
+  for (const nom of ['jenkins']) { if (plugins.fiche(nom)) await plugins.activer(nom); }
   const semes = await plugins.semerDemo();
   await plugins.arreter();
   for (const [nom, n] of Object.entries(semes)) counts[`plugin:${nom}`] = n;

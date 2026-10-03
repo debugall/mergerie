@@ -26,6 +26,27 @@ function ouvrirSchema(dir, instructions = []) {
 }
 
 describe('Plugins — migration des données Jenkins du cœur vers le plugin', () => {
+  test('base NEUVE : aucun état de plugin n’est posé (donc Jenkins démarre désactivé) ; base EXISTANTE : Jenkins reste activé', () => {
+    const lire = (dir, sql) => JSON.parse(execFileSync(process.execPath, ['-e',
+      'const d=require("better-sqlite3")(process.argv[1],{readonly:true});console.log(JSON.stringify(d.prepare(process.argv[2]).all()))',
+      path.join(dir, 'reviewer.db'), sql], { cwd: ROOT, encoding: 'utf8' }));
+    // Première installation : le schéma se joue sur une base qui n'existait pas.
+    const neuve = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-neuve-'));
+    ouvrirSchema(neuve);
+    assert.deepEqual(lire(neuve, "SELECT * FROM plugin_state WHERE name = 'jenkins'"), [], 'rien n’est activé d’office');
+    // Un poste qui tournait : la base existe, le marqueur de migration n'a pas encore été posé.
+    const ancienne = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-ancienne-'));
+    ouvrirSchema(ancienne);
+    ouvrirSchema(ancienne, ["DELETE FROM plugin_migration WHERE plugin = '_core'", "DELETE FROM plugin_state WHERE name = 'jenkins'"]);
+    ouvrirSchema(ancienne);
+    const etat = lire(ancienne, "SELECT enabled, origin FROM plugin_state WHERE name = 'jenkins'");
+    assert.deepEqual(etat, [{ enabled: 1, origin: 'builtin' }], 'Jenkins reste activé sur un poste qui monte de version');
+    // Et ce n'est pas rejoué : désactivé par la personne, il le reste.
+    ouvrirSchema(ancienne, ["UPDATE plugin_state SET enabled = 0 WHERE name = 'jenkins'"]);
+    ouvrirSchema(ancienne);
+    assert.equal(lire(ancienne, "SELECT enabled FROM plugin_state WHERE name = 'jenkins'")[0].enabled, 0, 'un choix de la personne n’est jamais réécrit');
+  });
+
   test('todo.link_kind perd son CHECK sans rien perdre : lignes, colonnes ajoutées après coup, déclencheurs', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-migr-todo-'));
     const lire = (sql) => JSON.parse(execFileSync(process.execPath, ['-e',
