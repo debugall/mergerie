@@ -75,16 +75,35 @@ function assemblerPage(cheminIndex, { fragments } = {}) {
   return poserFragments(base, fragments);
 }
 
+/** Les boutons d'onglets de plugins, dans l'ordre : ceux sans position, puis chaque position nommée (`before:links`, `after:docker`) posée contre le bouton du plugin qu'elle
+    vise s'il est là, sinon en fin de liste. */
+function ordonnerOngletsPlugins(texte, positions) {
+  const lignes = String(texte || '').split('\n').filter(Boolean);
+  for (const [cle, bloc] of positions) {
+    const [sens, ancre] = [cle.slice(0, cle.indexOf(':')), cle.slice(cle.indexOf(':') + 1)];
+    const i = lignes.findIndex((l) => l.includes(`<button data-tab="${ancre}"`));
+    const morceaux = String(bloc).split('\n').filter(Boolean);
+    if (i === -1) lignes.push(...morceaux);
+    else lignes.splice(sens === 'before' ? i : i + 1, 0, ...morceaux);
+  }
+  return lignes.join('\n');
+}
+
 /** La page avec ses fragments de plugins posés sur les marqueurs `<!--@plugins:x-->`. */
 function poserFragments(page, fragments) {
   const positions = (fragments && fragments.navPositions) || {};
   const lignes = page.split('\n');
+  /* Les ancres que la COQUILLE connaît : `before:git` se pose contre son bouton. Une ancre qui n'y est pas — l'onglet d'un autre plugin (Liens, Docker),
+     ou d'un plugin absent — se résout contre les boutons de plugins posés au marqueur, et à défaut en fin de liste : un onglet ne disparaît jamais
+     parce que son voisin n'est pas installé. */
+  const ancresCoeur = new Set([...page.matchAll(/<button data-tab="([a-z-]+)"/g)].map((x) => x[1]));
+  const sansAncre = Object.entries(positions).filter(([cle]) => !ancresCoeur.has(cle.slice(cle.indexOf(':') + 1)));
   const out = [];
   for (const l of lignes) {
     const m = MARQUEUR_PLUGINS.exec(l);
     if (m) {
       out.push(l);
-      const texte = fragments[m[2]];
+      const texte = m[2] === 'nav' ? ordonnerOngletsPlugins(fragments.nav, sansAncre) : fragments[m[2]];
       if (texte) out.push(texte);
       continue;
     }

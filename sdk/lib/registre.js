@@ -12,6 +12,9 @@ const contrat = require('../contract');
 const exiger = (cond, message) => { if (!cond) throw new Error(message); };
 const ID = /^[a-z][a-z0-9-]*$/;
 
+/* Les groupes que l'entrée d'un plugin peut NOMMER dans la palette (ceux dont l'écran a le libellé `palette.group.<groupe>`) ; tout autre tombe dans « actions ». */
+const GROUPES_PALETTE = new Set(['links']);
+
 function creer() {
   const parPlugin = new Map();
   const services = new Map();
@@ -107,7 +110,7 @@ function creer() {
           const entrees = await fn(String(requete || ''), limite);
           for (const e of (Array.isArray(entrees) ? entrees : []).slice(0, limite)) {
             if (!e || !e.label) continue;
-            out.push({ kind: `plugin:${plugin}`, ref: String(e.ref || ''), group: 'actions', label: String(e.label), detail: String(e.detail || ''), nav: { plugin, ...(e.nav && typeof e.nav === 'object' ? e.nav : {}) }, texte: String(e.text || e.label) });
+            out.push({ kind: `plugin:${plugin}`, ref: String(e.ref || ''), group: GROUPES_PALETTE.has(e.group) ? e.group : 'actions', label: String(e.label), detail: String(e.detail || ''), nav: { plugin, ...(e.nav && typeof e.nav === 'object' ? e.nav : {}) }, texte: String(e.text || e.label) });
           }
         } catch (err) { console.error(`[plugins] palette ${plugin} : ${err.message}`); }
       }

@@ -90,7 +90,7 @@ Déclarées dans `plugin.json` → `permissions`. Réglages → Plugins les affi
 
 | Cible | Où | Objet reçu par `render(obj, ctx)` |
 |---|---|---|
-| `mr` | le menu « ⋯ » d'une carte de merge request | la merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `session-target-badge`, `branch`, `branch-badge`, `verification`, `repo-sheet`, `repo-row`, `verify-launch`)) |
+| `mr` | le menu « ⋯ » d'une carte de merge request | la merge request (`id`, `iid`, `repo_id`, `source_branch`, `verification`… (`mr`, `mr-badge`, `session-target`, `session-target-badge`, `branch`, `branch-badge`, `verification`, `repo-sheet`, `repo-row`, `verify-launch`, `mr-detail`, `jira-ticket`)) |
 | `mr-badge` | les badges d'une carte de merge request | idem |
 | `session-target` | le formulaire de suivi d'un projet d'une session | `{ task, target }` |
 | `session-target-badge` | les badges d'un projet d'une session | `{ task, target }` |

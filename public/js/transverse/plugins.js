@@ -29,6 +29,7 @@ const PLUGINS_FRONT = {
   palette: new Map(),          // plugin → (nav) → void
   paletteActions: [],          // { label, run }
   settingsListeners: new Map(),// plugin → [fn]
+  keys: new Map(),             // onglet → (KeyboardEvent) → true si la touche est consommée
 };
 
 /* Un petit bus front : `settings.changed`, `tab.opened`, `brief.rendered`… Les plugins
@@ -65,6 +66,7 @@ const pluginsUi = {
   onBriefSection: (id, render) => { PLUGINS_FRONT.brief.set(id, render); },
   onLinkKind: (kind, spec) => { PLUGINS_FRONT.linkKinds.set(kind, typeof spec === 'function' ? { open: spec } : (spec || {})); },
   onNotif: (type, fn) => { PLUGINS_FRONT.notifs.set(type, fn); },
+  onKey: (tab, fn) => { PLUGINS_FRONT.keys.set(tab, fn); },
   onPaletteResult: (plugin, fn) => { PLUGINS_FRONT.palette.set(plugin, fn); },
   registerPaletteAction: (a) => { if (a && a.label && typeof a.run === 'function') PLUGINS_FRONT.paletteActions.push(a); },
   setBadge: pluginsSetBadge,
@@ -92,6 +94,13 @@ function pluginsOnglet(tab) {
   const fn = PLUGINS_FRONT.tabOpen.get(tab);
   if (fn) { try { fn(); } catch (e) { console.error(`[plugins] onglet ${tab} : ${e.message}`); } }
   pluginsEvenements.emit('tab.opened', { tab });
+}
+/* Le clavier de l'onglet de plugin OUVERT : vrai quand son plugin a consommé la touche. */
+function pluginsTouche(e) {
+  const actif = $('.tab.active');
+  const fn = actif && PLUGINS_FRONT.keys.get(String(actif.id).replace(/^tab-/, ''));
+  if (!fn) return false;
+  try { return fn(e) === true; } catch (err) { console.error(`[plugins] clavier : ${err.message}`); return false; }
 }
 /* Un sous-onglet de réglages porté par un plugin : vrai si un plugin le connaît. */
 function pluginsSousOnglet(sub) {

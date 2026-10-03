@@ -3,7 +3,7 @@
 
 export type ApiVersion = '1';
 export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services' | 'jobs' | 'storage';
-export type Target = 'mr' | 'mr-badge' | 'session-target' | 'session-target-badge' | 'branch' | 'branch-badge' | 'verification' | 'repo-sheet' | 'repo-row' | 'verify-launch';
+export type Target = 'mr' | 'mr-badge' | 'session-target' | 'session-target-badge' | 'branch' | 'branch-badge' | 'verification' | 'repo-sheet' | 'repo-row' | 'verify-launch' | 'mr-detail' | 'jira-ticket';
 export type EventName = 'app.ready' | 'app.shutdown' | 'repo.deleted' | 'session.started' | 'session.finished' | 'mr.created' | 'review.completed' | 'converge.finished' | 'verify.finished' | 'jenkins.job.started' | 'jenkins.job.finished' | (string & {});
 
 /** le serveur écoute et les plugins sont activés (cœur) */
@@ -137,7 +137,7 @@ export interface PluginDb { prefix: string; prepare(sql: string): Statement; exe
 export interface TabSpec { id: string; label: string; title?: string; icon?: string; position?: 'end' | `before:${string}` | `after:${string}`; foldedByDefault?: boolean; shortcut?: string | null; searchField?: string | null; list?: string | null; onboarding?: { label: string; i18n?: string } | null; badgeLegend?: { text?: string; i18n?: string } | null; i18n?: { label?: string; title?: string } | null; }
 export interface SettingsTabSpec { id: string; label: string; title?: string; followsTab?: string | null; schemaForm?: boolean; i18n?: { label?: string; title?: string } | null; }
 export interface JobHandle { id: number; log(line: string): void; message(text: string): void; progress(done: number, total: number): void; exec(bin: string, args: string[], options: { cwd?: string, allowlist: string[], denyFlags?: string[], env?: Record<string, string> }): Promise<{ code: number; tail: string }>; isCancelled(): boolean; }
-export interface PaletteEntry { label: string; ref?: string; detail?: string; text?: string; nav?: Record<string, unknown>; }
+export interface PaletteEntry { label: string; ref?: string; detail?: string; text?: string; nav?: Record<string, unknown>; group?: string; }
 export interface SettingsSchemaProperty { type: 'string' | 'number' | 'integer' | 'boolean'; title?: string; description?: string; default?: unknown; enum?: unknown[]; minimum?: number; maximum?: number; minLength?: number; maxLength?: number; pattern?: string; format?: 'uri'; 'x-secret'?: boolean; 'x-bound-to'?: string; 'x-hidden'?: boolean; 'x-required'?: boolean; 'x-i18n'?: string; }
 export interface SettingsSchema { type: 'object'; properties: Record<string, SettingsSchemaProperty>; }
 

@@ -30,7 +30,7 @@ pose dans la page qu'il sert, exactement comme ceux du cœur.
 | `html.sprite` | des `<symbol id="i-…">` dans le sprite d'icônes |
 
 Le bouton d'onglet et le bouton de sous-onglet sont **générés** par le serveur depuis
-`ctx.ui.registerTab` / `registerSettingsTab` (position `before:links`, `after:docker`, `end` ; pastilles
+`ctx.ui.registerTab` / `registerSettingsTab` (position `before:git`, `after:docker`, `end` — une ancre qui n'est ni un onglet du cœur ni celui d'un plugin installé range le bouton en fin de liste, il ne disparaît jamais ; pastilles
 `#nav-<id>-count`, `#nav-<id>-err`, `#nav-<id>-warn`). Les déclarations d'écran de tous les plugins
 actifs sont dans la page, en JSON (`<script type="application/json" id="mergeriePlugins">`).
 
@@ -43,7 +43,7 @@ Le bundle d'un plugin est évalué dans une **portée privée** où chaque clé 
 `window.mergerie` est en portée : `$`, `$$`, `api`, `tr`, `esc`, `safeUrl`, `toast`, `busy`, `skeleton`,
 `svgIco`, `emptyState`, `comboHtml`/`wireCombo` (les combos avec recherche), `repoComboHtml`/`wireRepoCombos`,
 `confirmDialog`, `navTab`, `fermerAuFond`, `errorBox`, `explainError`, `fmtDateTime`, `dateHtml`, `depuis`,
-`mdToHtml`, `ANSI` (lire les couleurs d’un journal), `showNotif`, `toastUndo`, `chipBranche`, `navMasque`, `i18n`, et des objets : `repos`, `reviews`, `notes`, `agents`, `sessions`,
+`mdToHtml`, `ANSI` (lire les couleurs d’un journal), `showNotif`, `toastUndo`, `chipBranche`, `closeSplitMenus` (referme les menus déroulants ouverts), `navMasque`, `i18n`, et des objets : `repos`, `reviews`, `notes`, `agents`, `sessions`,
 `settings`, `ui`, `events`, `jobs` (`jobs.refresh()` : relire la file après avoir lancé un job). **Rien d'autre du cœur** n'est accessible : `npm run check:plugins` refuse,
 dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit. La liste exacte est dans
 `public/js/transverse/kit.js` (une clé par ligne) ; elle est couverte par l'`apiVersion`.
@@ -60,6 +60,7 @@ dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit
 | `ui.onDecorator(id, render(obj, ctx))` | le rendu d'une décoration (`registerDecorator`) |
 | `ui.onBriefSection(id, render(brief))` | le corps d'une section du brief « Aujourd'hui » (vide = pas de section) |
 | `ui.onLinkKind(kind, { render(todo), open(ref) })` | un lien de todo d'un genre déclaré par `registerLinkKind` — la table `todo` ne contraint pas `link_kind` : le genre est accepté à l'écriture tant que le plugin est actif |
+| `ui.onKey(tabId, (evenement) => boolean)` | le clavier de l'onglet OUVERT : il passe avant les touches globales (`j`/`k`, `Entrée`…) ; rendre `true` consomme la touche |
 | `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | une notification d'un genre déclaré par `notify.registerKind` |
 | `ui.onPaletteResult(plugin, (nav, resultat) => …)` | l'ouverture d'un résultat rendu par le fournisseur de palette du plugin |
 | `ui.registerPaletteAction({ label, tab, run })` | une action de palette (« Aller à … ») |
@@ -81,9 +82,11 @@ dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit
 | `branch` | une ligne de l'explorateur Git | `{ branch, repo_id }` |
 | `branch-badge` | les badges d'une ligne de l'explorateur | `{ branch, repo_id }` |
 | `verification` | ce qui suit un verdict vert, dans le rapport | la merge request, `ctx.verification` |
-| `repo-sheet` | la fiche d'un dépôt (Réglages → Dépôts) | la fiche |
+| `repo-sheet` | la fiche d'un dépôt (Réglages → Dépôts) | la fiche (dont `id` et `project`) |
 | `repo-row` | la ligne d'un dépôt dans Réglages → Dépôts (de petits liens à côté de son état) | le dépôt (dont `has_compose`) |
 | `verify-launch` | la fenêtre de lancement d'une vérification, quand un répertoire « in place » est en jeu | `{ dirs }` — les dossiers de travail |
+| `mr-detail` | sous le rapport d'une merge request, avant ses erreurs (des boutons, un bloc) | la merge request |
+| `jira-ticket` | la section d'un ticket Jira, entre ce qui est déjà engagé et la description | le ticket (dont `key`) |
 
 Le cœur ne connaît aucun plugin : il appelle « que rendez-vous pour cette cible ? » et insère ce qui
 revient. Le plugin pose ses propres `data-*` et écoute ses propres clics (délégation sur `document`).
@@ -100,7 +103,7 @@ revient. Le plugin pose ses propres `data-*` et écoute ses propres clics (dél�
   (`comboHtml`/`wireCombo`, `repoComboHtml`) ; `registerTab({ searchField })` branche « / », et `list`
   les touches `j`/`k`.
 - **Palette** : `ctx.ui.registerPaletteProvider` côté serveur, calculé sans réseau ; l'ouverture côté
-  navigateur par `ui.onPaletteResult`.
+  navigateur par `ui.onPaletteResult`. Une entrée peut nommer son `group` — `links` est le seul groupe qu'un plugin puisse nommer (il ouvre la liste, devant les résultats du cœur, comme les liens de travail l'ont toujours fait) ; tout autre tombe dans « actions ».
 - **Raccourcis** : les onglets reçoivent un chiffre selon leur place dans la barre ; un plugin peut
   déclarer `shortcut` pour information.
 - **Sécurité de l'écran** : pas de gestionnaire `on…=` en attribut ni de `<script>` en ligne (la CSP

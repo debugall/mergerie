@@ -30,7 +30,7 @@ places them in the page it serves, exactly like the core's own.
 | `html.sprite` | `<symbol id="i-…">` elements in the icon sprite |
 
 The tab button and the settings sub-tab button are **generated** by the server from
-`ctx.ui.registerTab` / `registerSettingsTab` (position `before:links`, `after:docker`, `end`; badges
+`ctx.ui.registerTab` / `registerSettingsTab` (position `before:git`, `after:docker`, `end` — an anchor that is neither a core tab nor an installed plugin's tab puts the button at the end of the list, it never disappears; badges
 `#nav-<id>-count`, `#nav-<id>-err`, `#nav-<id>-warn`). The screen declarations of every active plugin
 are in the page, as JSON (`<script type="application/json" id="mergeriePlugins">`).
 
@@ -43,7 +43,7 @@ A plugin's bundle is evaluated in a **private scope** where every top-level key 
 is in scope: `$`, `$$`, `api`, `tr`, `esc`, `safeUrl`, `toast`, `busy`, `skeleton`, `svgIco`,
 `emptyState`, `comboHtml`/`wireCombo` (searchable combos), `repoComboHtml`/`wireRepoCombos`,
 `confirmDialog`, `navTab`, `fermerAuFond`, `errorBox`, `explainError`, `fmtDateTime`, `dateHtml`,
-`depuis`, `mdToHtml`, `ANSI` (reading the colours of a log), `showNotif`, `toastUndo`, `chipBranche`, `navMasque`, `i18n`, and objects: `repos`, `reviews`, `notes`, `agents`,
+`depuis`, `mdToHtml`, `ANSI` (reading the colours of a log), `showNotif`, `toastUndo`, `chipBranche`, `closeSplitMenus` (closes the open drop-down menus), `navMasque`, `i18n`, and objects: `repos`, `reviews`, `notes`, `agents`,
 `sessions`, `settings`, `ui`, `events`, `jobs` (`jobs.refresh()`: re-read the queue after starting a job). **Nothing else of the core** is reachable:
 `npm run check:plugins` refuses, in a built-in plugin's front, any core name outside the kit. The exact
 list is in `public/js/transverse/kit.js` (one key per line); it is covered by the `apiVersion`.
@@ -60,6 +60,7 @@ list is in `public/js/transverse/kit.js` (one key per line); it is covered by th
 | `ui.onDecorator(id, render(obj, ctx))` | the rendering of a decoration (`registerDecorator`) |
 | `ui.onBriefSection(id, render(brief))` | the body of a section of the "Today" brief (empty = no section) |
 | `ui.onLinkKind(kind, { render(todo), open(ref) })` | a todo link of a kind declared by `registerLinkKind` — the `todo` table does not constrain `link_kind`: the kind is accepted on write while the plugin is active |
+| `ui.onKey(tabId, (event) => boolean)` | the keyboard of the OPEN tab: it runs before the global keys (`j`/`k`, `Enter`…); returning `true` consumes the key |
 | `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | a notification of a kind declared by `notify.registerKind` |
 | `ui.onPaletteResult(plugin, (nav, result) => …)` | opening a result returned by the plugin's palette provider |
 | `ui.registerPaletteAction({ label, tab, run })` | a palette action ("Go to …") |
@@ -81,9 +82,11 @@ list is in `public/js/transverse/kit.js` (one key per line); it is covered by th
 | `branch` | a row of the Git explorer | `{ branch, repo_id }` |
 | `branch-badge` | the badges of a Git explorer row | `{ branch, repo_id }` |
 | `verification` | what follows a green verdict, in the report | the merge request, `ctx.verification` |
-| `repo-sheet` | a repository's sheet (Settings → Repositories) | the sheet |
+| `repo-sheet` | a repository's sheet (Settings → Repositories) | the sheet (with `id` and `project`) |
 | `repo-row` | a repository's row in Settings → Repositories (small links next to its state) | the repository (with `has_compose`) |
 | `verify-launch` | the verification launch window, when an « in place » directory is involved | `{ dirs }` — the working directories |
+| `mr-detail` | below a merge request's report, before its errors (buttons, a block) | the merge request |
+| `jira-ticket` | a Jira ticket's section, between what is already engaged and the description | the ticket (with `key`) |
 
 The core knows no plugin: it asks "what do you render for this target?" and inserts what comes back.
 The plugin sets its own `data-*` attributes and listens to its own clicks (delegation on `document`).
@@ -98,7 +101,7 @@ The plugin sets its own `data-*` attributes and listens to its own clicks (deleg
 - **Search**: wherever a repository or a ref is picked, a searchable combo (`comboHtml`/`wireCombo`,
   `repoComboHtml`); `registerTab({ searchField })` wires "/", and `list` the `j`/`k` keys.
 - **Palette**: `ctx.ui.registerPaletteProvider` server-side, computed without network; opening
-  browser-side through `ui.onPaletteResult`.
+  browser-side through `ui.onPaletteResult`. An entry may name its `group` — `links` is the only group a plugin can name (it opens the list, ahead of the core's results, as the work links always did); any other falls under "actions".
 - **Shortcuts**: tabs get a digit from their position in the bar; a plugin may declare `shortcut`
   for information.
 - **Screen security**: no `on…=` attribute handlers nor inline `<script>` (the CSP refuses them);

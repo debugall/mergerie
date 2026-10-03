@@ -89,10 +89,9 @@ document.addEventListener('keydown', (e) => {
      Le dixième tant qu'il y en a dix ; au-delà, c'est bien le dernier qu'il faut viser :
      sinon ajouter un onglet retire en silence son raccourci à celui qui ferme la barre
      (Réglages), et le onzième onglet en prendrait un qui ne lui était pas destiné. */
-  /* L'ONGLET LIENS A SON PROPRE CLAVIER dès qu'une case a le focus : `j`/`k` les lignes,
-     `←`/`→` les cases, `Entrée` ouvre, `e` modifie, `c` copie. Il passe avant les touches
-     globales, qui parlent des cartes de merge requests et n'ont rien à faire ici. */
-  if ($('#tab-links') && $('#tab-links').classList.contains('active') && naviguerGrilleLiens(e)) return;
+  /* UN ONGLET DE PLUGIN PEUT AVOIR SON PROPRE CLAVIER (la grille de Liens : `j`/`k` les lignes, `←`/`→` les cases, `Entrée` ouvre…) : il passe
+     avant les touches globales, qui parlent des cartes de merge requests et n'ont rien à faire là. */
+  if (pluginsTouche(e)) return;
   if (/^[0-9]$/.test(e.key)) {
     // …et seulement ce qui est VISIBLE : un menu masqué n'a pas de numéro, sinon « 3 » ouvrirait
     // un onglet absent de la barre.
@@ -112,7 +111,7 @@ document.addEventListener('keydown', (e) => {
          étaient absents, si bien que « / » y faisait exactement ce que le commentaire
          ci-dessus dit avoir corrigé — changer d'onglet. */
       const champ = $$([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
-        #pageSearch, #linkSearch, #todoQuickAdd,
+        #pageSearch, #todoQuickAdd,
         #agentFilter, #repoSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
         .find((el) => el.offsetParent !== null);
       if (champ) { champ.focus(); if (champ.select) champ.select(); break; }

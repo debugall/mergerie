@@ -38,6 +38,7 @@ window.mergerie = {
   filtrerLignes,
   placerMenu,
   chipBranche,
+  closeSplitMenus: (...a) => closeSplitMenus(...a),
   navMasque: (...a) => navMasque(...a),
   dateHtml,
   depuis,

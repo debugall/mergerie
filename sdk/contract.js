@@ -43,7 +43,7 @@ const PERMISSIONS = {
 };
 
 /* Les cibles d'une action ou d'une décoration (`target`). */
-const CIBLES_UI = ['mr', 'mr-badge', 'session-target', 'session-target-badge', 'branch', 'branch-badge', 'verification', 'repo-sheet', 'repo-row', 'verify-launch'];
+const CIBLES_UI = ['mr', 'mr-badge', 'session-target', 'session-target-badge', 'branch', 'branch-badge', 'verification', 'repo-sheet', 'repo-row', 'verify-launch', 'mr-detail', 'jira-ticket'];
 
 /* LES PRIMITIVES DU CTX — la liste fermée. Une primitive absente d'ici n'existe pas, et le
    chargeur refuse d'en exposer une autre. `permission: null` = toujours présente. */
