@@ -1674,17 +1674,15 @@ const counts = {
 }
 
 /* CE QUE LES PLUGINS SÈMENT (`ctx.demo.seed`) : les plugins embarqués sont démarrés le temps de
-   semer, sur la même base, puis arrêtés — Jenkins est activé pour la démo (voir plus bas), `npm run demo` le retrouvera. */
+   semer, sur la même base, puis arrêtés — et les plugins tiers que la démo montre (Docker, Jenkins, Liens) sont installés pour la démo (voir plus bas). */
 async function semerPlugins() {
   // eslint-disable-next-line global-require
   const plugins = require('../src/plugins');
   await plugins.demarrer({ log: () => {} });
-  /* Les plugins embarqués sont désactivés sur une base neuve. La démo, elle, MONTRE Jenkins (son onglet, ses décors) : on l'active
-     — l'état est gardé, `npm run demo` le retrouvera. Les autres restent éteints, comme sur toute installation. */
-  for (const nom of ['jenkins']) { if (plugins.fiche(nom)) await plugins.activer(nom); }
-  /* Les plugins TIERS que la démo montre aussi (Docker et Liens ne sont plus dans le cœur) : les dossiers de `MERGERIE_DEMO_PLUGINS` (séparés par `:`), ou, à défaut,
-     les dépôts voisins `../docker-mergerie` et `../link-mergerie` s'ils sont là. Installés dans le dossier de données de la démo puis activés ; absents, la démo se passe de leur onglet. */
-  const tiers = (process.env.MERGERIE_DEMO_PLUGINS ? process.env.MERGERIE_DEMO_PLUGINS.split(':') : ['docker-mergerie', 'link-mergerie'].map((n) => path.join(__dirname, '..', '..', n))).filter((d) => d && fs.existsSync(path.join(d, 'plugin.json')));
+  /* Les plugins embarqués sont désactivés sur une base neuve, et ils le restent, comme sur toute installation.
+     Les plugins TIERS que la démo MONTRE (Docker, Jenkins et Liens ne sont plus dans le cœur) : les dossiers de `MERGERIE_DEMO_PLUGINS` (séparés par `:`), ou, à défaut,
+     les dépôts voisins `../docker-mergerie`, `../jenkins-mergerie` et `../link-mergerie` s'ils sont là. Installés dans le dossier de données de la démo puis activés ; absents, la démo se passe de leur onglet. */
+  const tiers = (process.env.MERGERIE_DEMO_PLUGINS ? process.env.MERGERIE_DEMO_PLUGINS.split(':') : ['docker-mergerie', 'jenkins-mergerie', 'link-mergerie'].map((n) => path.join(__dirname, '..', '..', n))).filter((d) => d && fs.existsSync(path.join(d, 'plugin.json')));
   for (const dossier of tiers) {
     try { const f = plugins.installerDepuisDossier(dossier); await plugins.activer(f.nom); } catch (e) { console.log(`[demo] plugin ${dossier} ignoré : ${e.message}`); }
   }

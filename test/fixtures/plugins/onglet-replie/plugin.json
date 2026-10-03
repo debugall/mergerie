@@ -1,0 +1,11 @@
+{
+  "name": "onglet-replie",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Onglet replié",
+  "description": "Un onglet replié d'office et son sous-onglet de réglages, qui suit son menu : prouve ce que le cœur fait de `foldedByDefault`, de `followsTab` et de `onboarding` (les portes contextuelles vers un menu replié, la case « ce que ton équipe utilise »).",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["ui.tab"],
+  "ui": { "html": { "tabs": ["ui/html/onglet.html"], "settings": ["ui/html/reglages.html"] } }
+}

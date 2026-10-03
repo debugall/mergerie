@@ -4,7 +4,7 @@
  * Déjà éprouvés ailleurs, et donc pas rejoués ici : « !217 » tapé seul (e2e-ameliorations),
  * l'ancrage sous le champ de l'en-tête, les flèches sur un lien et la touche « o »
  * (e2e-links-ui), un menu masqué qui quitte la palette (e2e-nav-prefs), et côté API seulement
- * le `nav` d'un vérificateur, d'un job Jenkins et d'une commande git (e2e-liens-4e-passe).
+ * le `nav` d'un vérificateur et d'une commande git (e2e-liens-4e-passe) ; celui d'un job Jenkins : dans le dépôt du plugin.
  *
  * Ce fichier pilote le reste AU NAVIGATEUR :
  *   - le raccourci lui-même : Ctrl+K ouvre, referme, et fonctionne le curseur dans un champ ;
@@ -16,8 +16,8 @@
  *     on vérifie l'EFFET, pas la fermeture de la palette ;
  *   - CHAQUE geste d'un résultat : une merge request (rapport + adresse), ⌘/Ctrl+Entrée (le
  *     diff), un ticket surveillé tapé seul, une page de notes, une todo, une session de codage
- *     et une exploration (la bonne saveur), un vérificateur (sa modale, présélectionné), un job
- *     Jenkins (sa fiche), une commande git (le champ rempli), un agent (la modale, l'agent posé).
+ *     et une exploration (la bonne saveur), un vérificateur (sa modale, présélectionné), une
+ *     commande git (le champ rempli), un agent (la modale, l'agent posé).
  *
  * Un seul `startApp()`, un seul navigateur. */
 
@@ -30,29 +30,18 @@ const {
   navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 const seed = require('./helpers/stats-seed');
-const mockJenkins = require('./helpers/mock-jenkins');
 
 const { dispo } = navigateurDispo();
 
 const echapper = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let jenkins; let navigateur; let page; let repo; let repoId;
+  let app; let navigateur; let page; let repo; let repoId;
   const ids = {};
   const erreurs = [];
 
   before(async () => {
     app = await startApp();
-    jenkins = await mockJenkins.start();
-    mockJenkins.reset();
-    mockJenkins.state.jobs = [{ name: 'app', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
-      { name: 'deploy', color: 'blue', buildable: true },
-    ] }];
-    mockJenkins.state.details['/job/app/job/deploy'] = {
-      name: 'deploy', color: 'blue', buildable: true, description: 'Déploie la boutique.', property: [],
-      builds: [{ number: 3, result: 'SUCCESS', building: false, timestamp: 900, duration: 1000, url: '', actions: [] }],
-    };
-
     repo = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'remote-')));
     const mr = (iid, titre) => ({
       iid, title: titre, state: 'opened', source_branch: repo.branch, target_branch: 'main',
@@ -64,7 +53,6 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     app.state.jiraIssues['PROJ-77'] = { key: 'PROJ-77', fields: { summary: 'Ticket surveillé de la palette', status: { name: 'À faire' } } };
 
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira', jira_watch_minutes: '0' });
-    await app.configureJenkins({ jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token, jenkins_refresh_minutes: '0' });
     repoId = (await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' })).body.id;
     await app.api('POST', '/api/discover');
     await waitForJobs(app.api);
@@ -84,7 +72,6 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     });
     assert.ok(verif.status < 300, verif.text);
     ids.verif = verif.body.id;
-    app.db.prepare('INSERT INTO plugin_jenkins_link (repo_id, job_path) VALUES (?,?)').run(repoId, 'app/deploy');
     assert.equal((await app.api('POST', '/api/git-commands', { label: 'Statut maison okapi', command: 'status -s' })).status, 200);
     assert.equal((await app.api('POST', '/api/jira/watch', { key: 'PROJ-77' })).status < 300, true);
     const agent = await app.api('POST', '/api/agents', { name: 'Agent capybara', kind: 'explore' });
@@ -101,7 +88,6 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
 
   after(async () => {
     if (navigateur) await navigateur.close();
-    if (jenkins) await jenkins.close();
     if (app) await app.stop();
   });
 
@@ -230,7 +216,6 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     ['Notes — pages', '#tab-notes.active #notesSubPages:not([hidden])'],
     ['Aller à Jira', '#tab-jira.active'],
     ['Aller à Git', '#tab-git.active'],
-    ['Aller à Jenkins', '#tab-jenkins.active'],
     ['Aller aux statistiques', '#tab-dashboard.active'],
     ['Aller aux Agents', '#tab-agents.active'],
     ['Aller aux réglages', '#tab-admin.active'],
@@ -385,14 +370,6 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
     await choisir('Tests palette', 'Vérifier avec « Tests palette »');
     await page.waitForSelector('#branchVerifyModal:not([hidden])');
     assert.equal(await page.locator('#branchVerifySelect').inputValue(), String(ids.verif));
-  });
-
-  test('un job Jenkins rattaché ouvre sa fiche', async () => {
-    await choisir('app/deploy', 'Ouvrir le job app/deploy');
-    await actif('jenkins');
-    await page.waitForSelector('#jenkinsModal:not([hidden])');
-    assert.equal(await page.locator('#jenkinsModalTitle').textContent(), 'app/deploy');
-    await page.waitForFunction(() => /Déploie la boutique/.test(document.querySelector('#jenkinsModalDesc').textContent));
   });
 
   test('une commande git enregistrée ouvre Git → Commandes, champ rempli', async () => {

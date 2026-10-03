@@ -9,7 +9,6 @@
  *   - Règles de review : ajout (portée par dépôt comprise), filtre, modification en ligne,
  *     activation, duplication, suppression différée et son « Annuler » ;
  *   - Git : la palette de commandes (ajouter, modifier, annuler, supprimer) ;
- *   - Jenkins : les jobs liés aux dépôts (le combo PROPOSE les jobs réels de Jenkins).
  *
  * Chaque geste est jugé sur son EFFET côté serveur, relu par l'API — jamais sur un libellé.
  * Un seul `startApp()`, un seul navigateur. */
@@ -23,12 +22,11 @@ const {
   startApp, makeRemoteRepo, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
   afficherMenusOptionnels,
 } = require('./helpers/app');
-const mockJenkins = require('./helpers/mock-jenkins');
 
 const { dispo } = navigateurDispo();
 
-describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs liés', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let jenkins; let reel;
+describe('Menu Réglages — dépôts, répertoires, règles, palette git', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+  let app; let navigateur; let page; let reel;
   const erreurs = [];
 
   before(async () => {
@@ -48,19 +46,6 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs 
     reel = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'remote-reel-')));
     assert.equal((await app.api('POST', '/api/repos', { project: 'grp/reel', url: reel.url })).status, 200);
 
-    // Un Jenkins qui connaît un job, avec le paramètre qui reçoit la branche.
-    jenkins = await mockJenkins.start();
-    mockJenkins.reset();
-    mockJenkins.state.jobs = [{ name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
-      { name: 'api-build', color: 'blue', buildable: true, lastBuild: {
-        number: 3, timestamp: 1000,
-        actions: [{ causes: [{ userName: 'Alice' }] }, { parameters: [{ name: 'BRANCHE', value: 'main', _class: 'hudson.model.StringParameterValue' }] }],
-      } },
-    ] }];
-    assert.equal((await app.configureJenkins({
-      jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token,
-    })).status, 200);
-
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
     page.on('pageerror', (e) => erreurs.push(e.message));
@@ -71,7 +56,6 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs 
 
   after(async () => {
     if (navigateur) await navigateur.close();
-    if (jenkins) await jenkins.close();
     if (app) await app.stop();
   });
 
@@ -432,40 +416,6 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git, jobs 
     await page.locator(`#gitCmdList [data-gcdel="${c.id}"]`).click();
     await confirmer();
     await attendreServeur(async () => !(await cmds()).some((x) => x.id === c.id), 'la commande supprimée');
-  });
-
-  /* ------------------------------------------------- Jobs liés (Jenkins) ---- */
-
-  test('un job Jenkins se lie à un dépôt en le CHOISISSANT, avec son paramètre, et se délie', async () => {
-    const liens = async () => (await app.api('GET', '/api/plugins/jenkins/links')).body.links || [];
-    const cible = await depot('grp/reel');
-    await ouvrir('jenkinscfg');
-    await page.waitForSelector('#jenkinsLinkRepo [data-repo-combo]');
-    await page.locator('#jenkinsLinkRepo [data-repo-combo]').click();
-    await page.locator('#jenkinsLinkRepo [data-repo-combo]').fill('grp/reel');
-    await page.locator('#jenkinsLinkRepo .combo-opt[data-r]').first().waitFor();
-    await page.locator('#jenkinsLinkRepo .combo-opt[data-r]').first().dispatchEvent('mousedown');
-    await page.waitForFunction((id) => document.querySelector('#jenkinsLinkRepo .jl-repo').value === String(id), cible.id);
-
-    // Le job est PROPOSÉ par Jenkins, pas retapé.
-    await page.locator('#jenkinsLinkJobBox [data-combo]').click();
-    await page.locator('#jenkinsLinkJobBox .combo-opt[data-v]').first().waitFor();
-    const job = await page.locator('#jenkinsLinkJobBox .combo-opt[data-v]').first().getAttribute('data-v');
-    assert.match(job, /api-build/);
-    await page.locator('#jenkinsLinkJobBox .combo-opt[data-v]').first().dispatchEvent('mousedown');
-    // …et le paramètre, parmi ceux de son dernier lancement.
-    await page.locator('#jenkinsLinkParamBox [data-combo]').click();
-    await page.locator('#jenkinsLinkParamBox .combo-opt[data-v="BRANCHE"]').waitFor();
-    await page.locator('#jenkinsLinkParamBox .combo-opt[data-v="BRANCHE"]').dispatchEvent('mousedown');
-    await page.locator('#jenkinsLinkForm button[type="submit"]').click();
-
-    await attendreServeur(async () => (await liens()).some((l) => l.job_path === job), 'le lien est enregistré');
-    const l = (await liens()).find((x) => x.job_path === job);
-    assert.equal(l.repo_id, cible.id);
-    assert.equal(l.param, 'BRANCHE');
-    await page.waitForSelector(`#jenkinsLinkList [data-jl-del="${l.id}"]`);
-    await page.locator(`#jenkinsLinkList [data-jl-del="${l.id}"]`).click();
-    await attendreServeur(async () => !(await liens()).some((x) => x.id === l.id), 'le lien est retiré');
   });
 
   test('aucune erreur JavaScript pendant tout le parcours', () => {

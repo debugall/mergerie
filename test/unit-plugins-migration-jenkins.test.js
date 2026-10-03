@@ -26,7 +26,7 @@ function ouvrirSchema(dir, instructions = []) {
 }
 
 describe('Plugins — migration des données Jenkins du cœur vers le plugin', () => {
-  test('base NEUVE : aucun état de plugin n’est posé (donc Jenkins démarre désactivé) ; base EXISTANTE : Jenkins reste activé', () => {
+  test('base NEUVE : aucun état de plugin n’est posé (donc Jenkins démarre désactivé) ; base EXISTANTE : Jenkins est posé activé, en tiers', () => {
     const lire = (dir, sql) => JSON.parse(execFileSync(process.execPath, ['-e',
       'const d=require("better-sqlite3")(process.argv[1],{readonly:true});console.log(JSON.stringify(d.prepare(process.argv[2]).all()))',
       path.join(dir, 'reviewer.db'), sql], { cwd: ROOT, encoding: 'utf8' }));
@@ -40,7 +40,7 @@ describe('Plugins — migration des données Jenkins du cœur vers le plugin', (
     ouvrirSchema(ancienne, ["DELETE FROM plugin_migration WHERE plugin = '_core'", "DELETE FROM plugin_state WHERE name = 'jenkins'"]);
     ouvrirSchema(ancienne);
     const etat = lire(ancienne, "SELECT enabled, origin FROM plugin_state WHERE name = 'jenkins'");
-    assert.deepEqual(etat, [{ enabled: 1, origin: 'builtin' }], 'Jenkins reste activé sur un poste qui monte de version');
+    assert.deepEqual(etat, [{ enabled: 1, origin: 'user' }], 'Jenkins reste activé sur un poste qui monte de version (en plugin tiers : il s’active le jour où on l’installe)');
     // Et ce n'est pas rejoué : désactivé par la personne, il le reste.
     ouvrirSchema(ancienne, ["UPDATE plugin_state SET enabled = 0 WHERE name = 'jenkins'"]);
     ouvrirSchema(ancienne);
@@ -115,6 +115,7 @@ describe('Plugins — migration des données Jenkins du cœur vers le plugin', (
     const colonnes = (t) => db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name).filter((c) => /jenkins/.test(c));
     assert.deepEqual([colonnes('config'), colonnes('local_config')], [[], []], 'les colonnes du cœur ont disparu');
     assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core' AND version = 1").get().c, 1, 'le passage est noté : il ne se rejouera pas');
+    assert.deepEqual(db.prepare("SELECT enabled, origin FROM plugin_state WHERE name = 'jenkins'").all(), [{ enabled: 1, origin: 'user' }], 'le plugin, devenu tiers, s’active tout seul le jour où on l’installe');
     db.close();
 
     // Rejouer le schéma ne refait rien : les valeurs restent, rien n'est dupliqué.
@@ -126,6 +127,34 @@ describe('Plugins — migration des données Jenkins du cœur vers le plugin', (
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  test('un poste qui avait Jenkins EMBARQUÉ le retrouve : l’état passe de « builtin » à « user », données et activation intactes — une seule fois', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-migr-jk-embarque-'));
+    ouvrirSchema(dir);
+    // La base d'AVANT la sortie du cœur : le plugin embarqué, activé, avec ses réglages et ses jobs liés ; le passage 4 pas encore posé.
+    ouvrirSchema(dir, [
+      "INSERT INTO repo (id, project, url, forge, enabled, created_at) VALUES (1, 'grp/app', 'https://gl.test/grp/app.git', 'gitlab', 1, datetime('now'))",
+      'CREATE TABLE IF NOT EXISTS plugin_jenkins_link (id INTEGER PRIMARY KEY, repo_id INTEGER NOT NULL, job_path TEXT NOT NULL, param TEXT, UNIQUE(repo_id, job_path))',
+      "INSERT INTO plugin_jenkins_link (repo_id, job_path, param) VALUES (1, 'boutique/deploy', 'BRANCH')",
+      "INSERT INTO plugin_setting (plugin, key, value, updated_at) VALUES ('jenkins', 'jenkins_url', '\"https://jenkins.equipe.test\"', '2026-01-01')",
+      "INSERT INTO plugin_secret (plugin, key, value, updated_at) VALUES ('jenkins', 'jenkins_token', 'jk-SECRET', '2026-01-01')",
+      "INSERT OR REPLACE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('jenkins', 1, '1.0.0', 'builtin', '2026-01-01')",
+      "DELETE FROM plugin_migration WHERE plugin = '_core' AND version = 4",
+    ]);
+    ouvrirSchema(dir);   // le démarrage qui monte de version
+    const lire = (sql) => JSON.parse(execFileSync(process.execPath, ['-e',
+      'const d=require("better-sqlite3")(process.argv[1],{readonly:true});console.log(JSON.stringify(d.prepare(process.argv[2]).all()))',
+      path.join(dir, 'reviewer.db'), sql], { cwd: ROOT, encoding: 'utf8' }));
+    assert.deepEqual(lire("SELECT enabled, version, origin FROM plugin_state WHERE name = 'jenkins'"), [{ enabled: 1, version: '1.0.0', origin: 'user' }], 'activé tel quel, désormais tiers');
+    assert.deepEqual(lire('SELECT job_path, param FROM plugin_jenkins_link'), [{ job_path: 'boutique/deploy', param: 'BRANCH' }], 'les jobs liés n’ont pas bougé');
+    assert.equal(lire("SELECT value FROM plugin_secret WHERE plugin = 'jenkins' AND key = 'jenkins_token'")[0].value, 'jk-SECRET', 'le jeton non plus');
+    assert.equal(lire("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core' AND version = 4")[0].c, 1);
+    // Pas rejoué : ce que la personne fait ensuite (désactiver) tient, même si l'état redevenait « builtin » par accident.
+    ouvrirSchema(dir, ["UPDATE plugin_state SET enabled = 0, origin = 'builtin' WHERE name = 'jenkins'"]);
+    ouvrirSchema(dir);
+    assert.deepEqual(lire("SELECT enabled, origin FROM plugin_state WHERE name = 'jenkins'"), [{ enabled: 0, origin: 'builtin' }], 'le passage ne se rejoue pas');
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('sur une base neuve, le passage ne trouve rien et ne crée rien de Jenkins', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergerie-migr-neuve-'));
     ouvrirSchema(dir);
@@ -134,7 +163,7 @@ describe('Plugins — migration des données Jenkins du cœur vers le plugin', (
     const db = new Database(path.join(dir, 'reviewer.db'), { readonly: true });
     assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_setting WHERE plugin = 'jenkins'").get().c, 0);
     assert.equal(db.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE name IN ('repo_jenkins', 'plugin_jenkins_link')").get().c, 0, 'la table du plugin n’existe qu’une fois le plugin activé');
-    assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core'").get().c, 3, 'les trois passages du cœur (Jenkins, Docker, Liens) sont notés');
+    assert.equal(db.prepare("SELECT COUNT(*) c FROM plugin_migration WHERE plugin = '_core'").get().c, 4, 'les quatre passages du cœur (Jenkins ×2, Docker, Liens) sont notés');
     db.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });

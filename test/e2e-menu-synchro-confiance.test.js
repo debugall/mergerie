@@ -4,7 +4,7 @@
  * Deux frontières, éprouvées entre DEUX VRAIS POSTES (ce serveur piloté par l'écran, et Claire,
  * seconde instance de Mergerie en processus enfant — `helpers/synchro-collegue`) :
  *
- * 1. CE QUI NE QUITTE PAS CE POSTE. Les jetons saisis À L'ÉCRAN (GitLab, GitHub, Jira, Jenkins),
+ * 1. CE QUI NE QUITTE PAS CE POSTE. Les jetons saisis À L'ÉCRAN (GitLab, GitHub, Jira) et ceux d'un plugin (Jenkins, chez lui, a les siens),
  *    l'e-mail et l'utilisateur de connexion, les VALEURS d'environnement d'un
  *    vérificateur, les chemins de ce disque (dossier de clonage, dossier d'une session hors
  *    dépôt), les poignées de session d'agent. On ne regarde pas un libellé : on fouille TOUT
@@ -40,8 +40,8 @@ const SECRETS = {
   github_token: 'ghp-FUITE-ECRAN-GITHUB',
   jira_email: 'fuite-jira@poste.test',
   jira_token: 'ATATT-FUITE-ECRAN-JIRA',
-  jenkins_user: 'fuite-jenkins-utilisateur',
-  jenkins_token: 'jk-FUITE-ECRAN-JENKINS',
+  plugin_url: 'https://fuite-plugin.equipe.test',
+  plugin_token: 'pl-FUITE-ECRAN-PLUGIN',
   env: 'postgres://FUITE-VERIF@db.interne/app',
   session_key: 'SESSION-FUITE-POIGNEE',
 };
@@ -74,7 +74,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
-    await afficherMenusOptionnels(page);   // le sous-onglet Jenkins suit son menu, replié d'office
+    await afficherMenusOptionnels(page);   // le sous-onglet d'un plugin suit son menu, replié d'office
     page.on('pageerror', (e) => erreurs.push(e.message));
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab="admin"]');
@@ -117,8 +117,10 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
         clone_path: path.join(app.dataDir, 'CLONES-DE-CE-POSTE') }],
       ['jiracfg', { jira_url: 'https://jira.equipe.test', jira_email: SECRETS.jira_email, jira_token: SECRETS.jira_token }],
     ];
-    // Jenkins est un plugin : ses réglages et son jeton vont dans les tables de plugin, de poste elles aussi.
-    await app.api('PUT', '/api/plugins/jenkins/settings', { jenkins_url: 'https://jenkins.equipe.test', jenkins_user: SECRETS.jenkins_user, jenkins_token: SECRETS.jenkins_token });
+    // Un plugin (ici une doublure) a ses réglages et son jeton dans les tables de plugin, de poste elles aussi.
+    assert.equal((await app.api('POST', '/api/plugins/install', { path: path.join(__dirname, 'fixtures', 'plugins', 'hello-fixture') })).status, 200);
+    assert.equal((await app.api('POST', '/api/plugins/hello-fixture/enable')).body.ok, true);
+    assert.equal((await app.api('PUT', '/api/plugins/hello-fixture/settings', { url: SECRETS.plugin_url, token: SECRETS.plugin_token })).status, 200);
     for (const [sub, champs] of groupes) {
       await ouvrirReglages(sub);
       for (const [nom, v] of Object.entries(champs)) {
@@ -183,7 +185,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       assert.ok(!histoire.includes(chemin), `un chemin de ce disque a fui dans le dépôt : ${chemin}`);
     }
     const reglages = JSON.parse(gitNu('show', 'main:settings.json'));
-    for (const cle of ['access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token',
+    for (const cle of ['access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token', 'token',
       'clone_path', 'data_repo_url', 'data_repo_branch', 'data_sync_seconds']) {
       assert.ok(!(cle in reglages), `settings.json ne porte pas « ${cle} »`);
     }

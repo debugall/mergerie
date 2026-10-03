@@ -127,18 +127,15 @@ describe('Les liens manquants · 4ᵉ passe', () => {
       'case décochée : rien n’est écrit chez personne');
   });
 
-  /* B13 — LA PALETTE AGIT. Quatre objets du quotidien y sont entrés ; ce qui se casse en
+  /* B13 — LA PALETTE AGIT. Quatre objets du quotidien y sont entrés (les jobs Jenkins : dans le dépôt du plugin) ; ce qui se casse en
      silence, c'est le `nav` qu'ils portent — sans lui, le résultat s'affiche et ne fait rien. */
-  test('la palette propose un vérificateur, un job Jenkins et une commande git, chacun avec son geste', async () => {
+  test('la palette propose un vérificateur et une commande git, chacun avec son geste', async () => {
     const d = app.db;
     d.prepare("INSERT INTO verifier (name, command, kind, created_at) VALUES ('Tests liens','','commands',datetime('now'))").run();
-    d.prepare('INSERT INTO plugin_jenkins_link (repo_id, job_path) VALUES (?,?)').run(repoId, 'equipe/liens-deploy');
 
     const cherche = async (q) => (await app.api('POST', '/api/launcher', { q })).body.results;
     const v = (await cherche('Tests liens')).find((r) => r.kind === 'verifier');
     assert.ok(v && v.nav && v.nav.verifier_id, `le vérificateur porte son geste : ${JSON.stringify(v)}`);
-    const j = (await cherche('liens-deploy')).find((r) => r.kind === 'plugin:jenkins');
-    assert.equal(j && j.nav.jenkins_path, 'equipe/liens-deploy');
     const g = (await cherche('fetch')).find((r) => r.kind === 'gitcmd');
     assert.ok(g && /fetch/.test(g.nav.git_command), 'la commande git est posée telle quelle');
   });
@@ -156,9 +153,8 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   /* B16 — UNE TODO S'ACCROCHE AUX QUATRE NOUVEAUX OBJETS. Le `CHECK` de la table et la liste
      du module doivent dire la même chose : ce que l'un accepte et que l'autre refuse sort en
      erreur SQLite brute à l'écran. */
-  test('une todo se lie à une branche, une vérification, un build (le conteneur est un genre du plugin Docker)', async () => {
-    for (const [kind, ref] of [['branch', `${repoId}:feature/x`], ['verification', '12'],
-      ['build', 'equipe/deploy#42']]) {
+  test('une todo se lie à une branche, une vérification (« build » et « conteneur » sont des genres de plugin)', async () => {
+    for (const [kind, ref] of [['branch', `${repoId}:feature/x`], ['verification', '12']]) {
       const r = await app.api('POST', '/api/todos', { title: `todo ${kind}`, link_kind: kind, link_ref: ref });
       assert.equal(r.status, 200, `${kind} refusé : ${r.text}`);
       assert.equal(r.body.link_kind, kind);
@@ -169,11 +165,9 @@ describe('Les liens manquants · 4ᵉ passe', () => {
   });
 
   /* TOP 15 — LA LIGNE D'UNE BRANCHE PORTE CE QUE LA BASE SAIT D'ELLE : son ticket, le dernier
-     verdict, et le job Jenkins du dépôt. Le bouton Jenkins n'existait que sur une merge request
-     vérifiée verte — une branche qu'on veut déployer en recette AVANT d'en faire une merge
-     request n'y avait pas droit. On teste l'ANNOTATION, pas la forge : la route complète parle
+     verdict, (le bouton du job lié, lui, est posé par le plugin Jenkins). On teste l'ANNOTATION, pas la forge : la route complète parle
      à GitLab, la fonction qui annote se suffit à elle-même. */
-  test('une branche porte son ticket, son verdict et le job Jenkins de son dépôt', async () => {
+  test('une branche porte son ticket et son verdict', async () => {
     const d = app.db;
     d.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, ticket_jira_key, ticket_jira_status, updated_at)
       VALUES (?, 600, 'Tunnel', 'feat/PROJ-77-tunnel', 'main', 'to_review', 'PROJ-77', 'En cours', datetime('now'))`).run(repoId);
@@ -189,7 +183,6 @@ describe('Les liens manquants · 4ᵉ passe', () => {
     assert.equal(br.ticket && br.ticket.key, 'PROJ-77');
     assert.equal(br.ticket.status, 'En cours');
     assert.equal(br.verification && br.verification.verdict, 'verified_fail');
-    // Le job du dépôt est posé sur la ligne par le plugin Jenkins, côté navigateur (cible « branch »).
   });
 
   /* A7 — LES CONSTATS DEVIENNENT DES BROUILLONS INLINE. Trois règles, et chacune se casse en

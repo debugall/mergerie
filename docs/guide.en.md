@@ -1690,6 +1690,8 @@ be **restored**: the tool saved its full `inspect` before every deletion, and no
   — like the certificate / token errors.
 
 ### Jenkins
+> **Jenkins is a plugin**: the tab lives in its own repository ([jenkins-mergerie](https://gitlab.com/amady/jenkins-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the linked-job button on a merge request, a branch or a session, the "CI red" brief section) exists; your settings and linked jobs are kept and come back on install. Everything below describes its screen.
+
 See **where your jobs stand** and **run them**, without leaving the tool or opening another
 page. This is not an administration console: no job configuration, no agent management — what
 Jenkins already does well, and which there is no point redoing.

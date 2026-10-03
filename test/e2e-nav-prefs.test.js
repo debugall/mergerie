@@ -6,8 +6,8 @@
  *
  * Ce qui se joue ici :
  *
- *   0. la barre ne porte D'OFFICE que le travail de tous les jours : Git, Jenkins et
- *      Liens démarrent repliés, et une case des Réglages les rend — sans rien désactiver ;
+ *   0. la barre ne porte D'OFFICE que le travail de tous les jours : Git (et les plugins
+ *      comme Jenkins, Docker, Liens) démarrent repliés, et une case des Réglages les rend — sans rien désactiver ;
  *
  *   1. l'ordre et le masquage s'appliquent À LA BARRE, tout de suite, et survivent au
  *      rechargement — une préférence qu'il faut reposer à chaque visite n'en est pas une ;
@@ -44,7 +44,7 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
   // Tous les onglets du fichier, repliés compris : ce que les Réglages doivent lister.
   const tousLesOnglets = () => page.locator('nav button[data-tab]')
     .evaluateAll((els) => els.map((e) => e.dataset.tab));
-  const REPLIES_DOFFICE = ['git', 'jenkins'];
+  const REPLIES_DOFFICE = ['git'];
   const ouvrirReglages = async () => {
     await page.locator('nav button[data-tab="admin"]').click();
     await page.locator('#tab-admin .subnav [data-sub="config"]').click();
@@ -67,11 +67,11 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
     assert.deepEqual(lignes, await tousLesOnglets(), 'une ligne par menu, dans le même ordre');
   });
 
-  /* LE DÉFAUT. Une barre de dix entrées se lit moins bien qu'une barre de sept : Git,
-     Jenkins (et Docker, Liens quand ils sont installés) sont des commodités — on y va le jour où on en a besoin. Elles démarrent
-     donc repliées. Rien n'est désactivé pour autant : la ligne est dans les Réglages, décochée,
+  /* LE DÉFAUT. Une barre de dix entrées se lit moins bien qu'une barre de sept : Git
+     (et Docker, Jenkins, Liens quand ils sont installés) est une commodité — on y va le jour où on en a besoin. Il démarre
+     donc replié. Rien n'est désactivé pour autant : la ligne est dans les Réglages, décochée,
      et une case suffit. */
-  test('Git et Jenkins sont repliés d’office, et une case les rend', async () => {
+  test('Git est replié d’office, et une case le rend', async () => {
     await remettreAZero();
     const visibles = await barre();
     for (const t of REPLIES_DOFFICE) {
@@ -86,11 +86,11 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
       assert.equal(await page.locator(`.nav-prefs-row[data-navtab="${t}"] .nav-show`).isChecked(), false,
         `« ${t} » est listé, décoché : on peut le rappeler`);
     }
-    await page.locator('.nav-prefs-row[data-navtab="jenkins"] .nav-show').check();
-    await page.waitForFunction(() => !!document.querySelector('nav button[data-tab="jenkins"]:not([hidden])'));
+    await page.locator('.nav-prefs-row[data-navtab="git"] .nav-show').check();
+    await page.waitForFunction(() => !!document.querySelector('nav button[data-tab="git"]:not([hidden])'));
     await page.reload();
     await page.waitForSelector('nav button[data-tab]');
-    assert.ok((await barre()).includes('jenkins'), 'et ce choix-là tient au rechargement');
+    assert.ok((await barre()).includes('git'), 'et ce choix-là tient au rechargement');
   });
 
   test('monter un menu le déplace dans la barre, et ça survit au rechargement', async () => {
@@ -201,7 +201,7 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
   });
 
   /* « Rétablir » rend l'état DU DÉPART, repliés compris — et non « tout afficher ». Écrire une
-     liste de masqués vide aurait déplié les quatre commodités à qui demandait seulement de
+     liste de masqués vide aurait déplié les commodités à qui demandait seulement de
      défaire son rangement : ce n'est pas l'origine, c'est l'inverse. */
   test('« Rétablir les menus d’origine » rend la barre du départ, repliés compris', async () => {
     await remettreAZero();
@@ -209,11 +209,11 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
     await ouvrirReglages();
     await page.locator('[data-navup="dashboard"]').click();
     // On dérange dans les deux sens : un menu qu'on rend, un menu qu'on replie.
-    await page.locator('.nav-prefs-row[data-navtab="jenkins"] .nav-show').check();
+    await page.locator('.nav-prefs-row[data-navtab="git"] .nav-show').check();
     await page.locator('.nav-prefs-row[data-navtab="jira"] .nav-show').uncheck();
     await page.waitForFunction(() => {
       const v = [...document.querySelectorAll('nav button[data-tab]:not([hidden])')].map((e) => e.dataset.tab);
-      return v.includes('jenkins') && !v.includes('jira');
+      return v.includes('git') && !v.includes('jira');
     });
 
     await page.locator('#navPrefsReset').click();
@@ -221,7 +221,7 @@ describe('Réglages · ordre et visibilité des menus', { skip: navigateurDispo(
       const v = [...document.querySelectorAll('nav button[data-tab]:not([hidden])')].map((e) => e.dataset.tab);
       return v.join(',') === o.join(',');
     }, origine);
-    assert.deepEqual(await barre(), origine, 'Jenkins est reparti se replier, Jira est revenu, l’ordre aussi');
+    assert.deepEqual(await barre(), origine, 'Git est reparti se replier, Jira est revenu, l’ordre aussi');
     await page.reload();
     await page.waitForSelector('nav button[data-tab]');
     assert.deepEqual(await barre(), origine, 'et ça tient au rechargement');

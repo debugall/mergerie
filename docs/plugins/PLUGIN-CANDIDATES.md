@@ -1,7 +1,7 @@
 # Les prochains plugins : Liens, Docker, Git — et ce qui reste dans le cœur
 
 Étape 0 bis. Relevé **en lecture seule** des trois onglets qui suivaient
-Jenkins (Liens et Docker ont depuis été extraits : voir plus bas), pour dimensionner le ctx **une fois** : chaque extraction suivante doit être un
+Jenkins (Liens et Docker ont depuis été extraits : voir plus bas ; Jenkins lui-même, d'abord plugin embarqué, est devenu un plugin tiers, `jenkins-mergerie`, sans primitive de plus), pour dimensionner le ctx **une fois** : chaque extraction suivante doit être un
 déplacement, pas une primitive de plus. Même grille que `JENKINS-INVENTORY.md`.
 
 ---

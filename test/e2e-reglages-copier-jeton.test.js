@@ -2,11 +2,13 @@
 /* « COPIER » UN JETON, dans Réglages. Les jetons ne redescendent jamais dans la page (le champ montre « *** ») : le bouton va
  * chercher la valeur par une route explicite, l'écrit dans le presse-papiers et ne la pose nulle part dans le DOM.
  * Ce qu'on prouve : la liste blanche, le masque qui reste, et — dans un vrai navigateur — ce qui arrive VRAIMENT dans le presse-papiers. */
+const path = require('node:path');
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { startApp, afficherMenusOptionnels, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur } = require('./helpers/app');
 
 const { dispo } = navigateurDispo();
+const FIXTURE = path.join(__dirname, 'fixtures', 'plugins', 'hello-fixture');
 const ATTENTE = 20000;
 const JETONS = { access_token: 'glpat-SECRET-gitlab', github_token: 'ghp_SECRET_github', jira_token: 'jira-SECRET', confluence_token: 'conf-SECRET' };
 
@@ -16,15 +18,18 @@ describe('Réglages — copier un jeton', () => {
     app = await startApp();
     await app.configure();
     assert.equal((await app.api('PUT', '/api/config', JETONS)).status, 200);
-    await app.configureJenkins({ jenkins_url: 'http://jenkins.test', jenkins_user: 'moi', jenkins_token: 'jk-SECRET-token' });
+    // Un plugin de test porte un jeton déclaré `x-secret` (Jenkins, chez lui, fait la même chose).
+    assert.equal((await app.api('POST', '/api/plugins/install', { path: FIXTURE })).status, 200);
+    assert.equal((await app.api('POST', '/api/plugins/hello-fixture/enable')).body.ok, true);
+    assert.equal((await app.api('PUT', '/api/plugins/hello-fixture/settings', { url: 'http://plugin.test', token: 'pl-SECRET-token' })).status, 200);
   });
   after(async () => { if (app) await app.stop(); });
 
   test('la page ne reçoit toujours AUCUN jeton : « *** », jamais la valeur', async () => {
     const c = (await app.api('GET', '/api/config')).body;
     for (const k of Object.keys(JETONS)) assert.equal(c[k], '***', k);
-    assert.equal((await app.api('GET', '/api/plugins/jenkins/settings')).body.jenkins_token, '***');
-    assert.ok(!JSON.stringify([c, (await app.api('GET', '/api/plugins/jenkins/settings')).body]).includes('SECRET'));
+    assert.equal((await app.api('GET', '/api/plugins/hello-fixture/settings')).body.token, '***');
+    assert.ok(!JSON.stringify([c, (await app.api('GET', '/api/plugins/hello-fixture/settings')).body]).includes('SECRET'));
   });
 
   test('la route de copie rend la valeur d’un jeton de la liste blanche, sans cache — et rien d’autre', async () => {
@@ -39,9 +44,9 @@ describe('Réglages — copier un jeton', () => {
   });
 
   test('un secret de plugin : seulement s’il est déclaré x-secret par son schéma', async () => {
-    const ok = await app.api('POST', '/api/plugins/jenkins/secret', { key: 'jenkins_token' });
-    assert.deepEqual([ok.status, ok.body.value], [200, 'jk-SECRET-token']);
-    for (const cle of ['jenkins_url', 'jenkins_user', 'last_test', 'inconnu', '']) assert.equal((await app.api('POST', '/api/plugins/jenkins/secret', { key: cle })).status, 400, cle);
+    const ok = await app.api('POST', '/api/plugins/hello-fixture/secret', { key: 'token' });
+    assert.deepEqual([ok.status, ok.body.value], [200, 'pl-SECRET-token']);
+    for (const cle of ['url', 'greeting', 'every', 'inconnu', '']) assert.equal((await app.api('POST', '/api/plugins/hello-fixture/secret', { key: cle })).status, 400, cle);
     assert.equal((await app.api('POST', '/api/plugins/inconnu/secret', { key: 'x' })).status, 404);
   });
 
@@ -99,15 +104,12 @@ describe('Réglages — copier un jeton', () => {
       assert.equal(await lirePressePapiers(), 'avant', 'le presse-papiers n’a pas bougé');
     });
 
-    test('Jira, Confluence et le jeton du plugin Jenkins ont le même bouton', async () => {
+    test('Jira et Confluence ont le même bouton (celui du jeton de Jenkins : dans le dépôt du plugin)', async () => {
       await ouvrir('jiracfg');
       for (const [champ, valeur] of [['jira_token', JETONS.jira_token], ['confluence_token', JETONS.confluence_token]]) {
         await page.locator(`.secret-row:has(input[name="${champ}"]) .secret-copy`).click();
         await attendreServeur(async () => (await lirePressePapiers()) === valeur, `presse-papiers : ${champ}`);
       }
-      await ouvrir('jenkinscfg');
-      await page.locator('.secret-row:has(input[name="jenkins_token"]) .secret-copy').click();
-      await attendreServeur(async () => (await lirePressePapiers()) === 'jk-SECRET-token', 'presse-papiers : jenkins_token');
     });
   });
 });

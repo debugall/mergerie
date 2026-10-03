@@ -343,9 +343,9 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const barre = await page.locator('nav button[data-tab]').evaluateAll(
       (els) => els.map((e) => e.dataset.tab),
     );
-    assert.equal(barre.length, 9);
-    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'jenkins', 'dashboard', 'admin'],
-      'le cœur · ce que j’ai à faire · ma machine et son intégration · le méta');
+    assert.equal(barre.length, 8);
+    assert.deepEqual(barre, ['review', 'task', 'agents', 'notes', 'jira', 'git', 'dashboard', 'admin'],
+      'le cœur · ce que j’ai à faire · ma machine et son intégration · le méta (Docker, Jenkins, Liens : des plugins, absents tant qu’on ne les installe pas)');
 
     /* Les neuf premiers sur leur chiffre ; le DERNIER sur « 0 », faute de touche « 10 » — et
        c'est bien le dernier, pas le dixième : sinon un onglet ajouté retirerait en silence

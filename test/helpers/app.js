@@ -52,7 +52,7 @@ function prepareEnv() {
 }
 
 // Démarre l'application. À appeler une fois par fichier de test.
-async function startApp({ plugins = ['jenkins'] } = {}) {
+async function startApp({ plugins = [] } = {}) {
   const dataDir = prepareEnv();
   const gitlab = await mock.start();
   const github = await mockGh.start();
@@ -65,9 +65,8 @@ async function startApp({ plugins = ['jenkins'] } = {}) {
   if (!server.server.listening) {
     await new Promise((resolve) => server.server.once('listening', resolve));
   }
-  /* LES PLUGINS EMBARQUÉS SONT DÉSACTIVÉS sur une base neuve (c'est ce que voit une première installation). La suite, elle, éprouve
-     Jenkins presque partout : on l'active comme le ferait un poste qui monte de version. `startApp({ plugins: [] })` rend la
-     première installation telle quelle — et les tests de ce comportement le font. */
+  /* LES PLUGINS EMBARQUÉS SONT DÉSACTIVÉS sur une base neuve (c'est ce que voit une première installation) ; `startApp({ plugins: ['hello'] })`
+     en active un, comme le ferait un poste qui l'a coché. */
   // eslint-disable-next-line global-require
   const lesPlugins = require('../../src/plugins');
   for (const nom of plugins) { if (lesPlugins.fiche(nom)) await lesPlugins.activer(nom); }
@@ -113,11 +112,6 @@ async function startApp({ plugins = ['jenkins'] } = {}) {
 
   // Connexion GitHub (faux serveur) — à appeler en plus de configure() pour les
   // dépôts GitHub. Les deux forges peuvent être configurées en même temps.
-  /* La connexion Jenkins vit dans les réglages du plugin, pas dans /api/config. */
-  async function configureJenkins(extra = {}) {
-    return api('PUT', '/api/plugins/jenkins/settings', extra);
-  }
-
   async function configureGithub(extra = {}) {
     return api('PUT', '/api/config', {
       github_url: github.url,
@@ -128,7 +122,7 @@ async function startApp({ plugins = ['jenkins'] } = {}) {
   }
 
   return {
-    base, api, configure, configureGithub, configureJenkins, dataDir, db, localToken,
+    base, api, configure, configureGithub, dataDir, db, localToken,
     gitlabUrl: gitlab.url, githubUrl: github.url,
     state: mock.state, ghState: mockGh.state,
     async stop() {
@@ -263,7 +257,7 @@ async function waitForJobs(api, { timeout = 60000 } = {}) {
   }
 }
 
-/* LES MENUS OPTIONNELS — Git, Docker, Liens, et les onglets de plugins comme Jenkins — DÉMARRENT REPLIÉS : la barre
+/* LES MENUS OPTIONNELS — Git, et les onglets de plugins (Docker, Jenkins, Liens…) — DÉMARRENT REPLIÉS : la barre
    ne porte d'office que le travail de tous les jours. Un test qui va sur l'un de ces écrans
    commence donc par les afficher, exactement comme l'utilisateur le fait dans Réglages →
    Menus : la préférence vit dans le stockage du navigateur, on l'y pose.

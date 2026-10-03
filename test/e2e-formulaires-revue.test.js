@@ -342,7 +342,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
 
   /* ---------- Les formulaires de connexion ---------- */
 
-  test('les quatre boutons « tester » ont la même garde à vide, sous le champ', async () => {
+  test('le bouton « tester » a une garde à vide, sous le champ (celui de Jenkins : dans le dépôt du plugin)', async () => {
     await ouvrirReglages('gitcfg');
     await page.fill('[name="gitlab_url"]', '');
     await page.click('#btnTestGitlab');
@@ -350,10 +350,6 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     assert.match(await page.locator('#sub-gitcfg .field-error').first().textContent(), /URL GitLab/);
     assert.equal(await page.locator('.toast.err').count(), 0, 'une erreur de champ n’est pas un toast');
 
-    await ouvrirReglages('jenkinscfg');
-    await page.click('#btnTestJenkins');
-    await page.waitForSelector('#sub-jenkinscfg .field-error', { timeout: ATTENTE });
-    assert.equal(await page.locator('.toast.err').count(), 0);
   });
 
   test('Entrée enregistre, et le dit', async () => {

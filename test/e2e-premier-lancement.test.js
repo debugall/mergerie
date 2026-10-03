@@ -15,7 +15,10 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const { attendreServeur, startApp, afficherMenusOptionnels } = require('./helpers/app');
+
+const FIXTURE_REPLIE = path.join(__dirname, 'fixtures', 'plugins', 'onglet-replie');
 
 let chromium = null;
 let dispo = false;
@@ -34,6 +37,9 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
 
   before(async () => {
     app = await startApp();
+    // Un plugin de test pose un onglet replié d'office, avec sa case dans l'assistant (Jenkins, Docker, Liens en font autant, chez eux).
+    assert.equal((await app.api('POST', '/api/plugins/install', { path: FIXTURE_REPLIE })).status, 200);
+    assert.equal((await app.api('POST', '/api/plugins/onglet-replie/enable')).body.ok, true);
     /* PAS de `configure()` : c'est tout l'objet du fichier. On pose seulement `brief_on_open`
        à '1' — sa valeur par défaut dans l'application — pour éprouver que le brief NE prend
        PAS la main quand rien n'est configuré. Le harnais le met à '0' d'ordinaire, ce qui
@@ -297,19 +303,19 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
     assert.equal(await page.locator('#toReviewList .step.done').count(), 3);
   });
 
-  /* « CE QUE TON ÉQUIPE UTILISE » : cocher Jira et Jenkins (un plugin : sa case vient de son `onboarding`) déplie ces deux menus — repliés d'office —
+  /* « CE QUE TON ÉQUIPE UTILISE » : cocher Jira et un plugin (sa case vient de son `onboarding`) déplie ces deux menus — repliés d'office —
      et la préférence est celle des Réglages → Général → Menus, écrite comme si on y avait coché. */
   test('l’étape « ton équipe utilise » déplie les menus cochés et se coche', async () => {
     /* Le harnais avait déplié tous les menus (pour les épreuves de l'onglet Git) : on remet
        l'état du DÉPART — les commodités repliées — sans recharger, par la fonction
        qu'applique l'écran lui-même. */
     await page.evaluate(() => {
-      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['git', 'jenkins'] }));
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['git', 'replie'] }));
       appliquerNav();
     });
     await page.locator('nav button[data-tab="review"]').click();
-    await page.waitForSelector('#toReviewList .step[data-step="3"] [data-outil="jenkins"]', { timeout: ATTENTE });
-    await page.locator('#toReviewList [data-outil="jenkins"]').check();
+    await page.waitForSelector('#toReviewList .step[data-step="3"] [data-outil="replie"]', { timeout: ATTENTE });
+    await page.locator('#toReviewList [data-outil="replie"]').check();
     await page.locator('#toReviewList [data-outil="jira"]').check();
     /* « Sécurisé ou yolo ? » se pose ici, une fois : on choisit yolo (le harnais avait forcé le
        sécurisé) et on relit le réglage sur le serveur, pas à l'écran. */
@@ -322,10 +328,10 @@ describe('Premier lancement', { skip: dispo ? false : 'chromium absent — npx p
       () => document.querySelectorAll('#toReviewList .step.done').length === 4,
       null, { timeout: ATTENTE },
     );
-    assert.equal(await page.locator('nav button[data-tab="jenkins"]').evaluate((b) => b.hidden), false, 'Jenkins sort des menus repliés');
+    assert.equal(await page.locator('nav button[data-tab="replie"]').evaluate((b) => b.hidden), false, 'l’onglet du plugin sort des menus repliés');
     assert.equal(await page.locator('nav button[data-tab="git"]').evaluate((b) => b.hidden), true, 'Git, non coché, reste replié');
     const pref = await page.evaluate(() => JSON.parse(localStorage.getItem('mergerie_nav') || '{}'));
-    assert.ok(Array.isArray(pref.masques) && !pref.masques.includes('jenkins') && pref.masques.includes('git'),
+    assert.ok(Array.isArray(pref.masques) && !pref.masques.includes('replie') && pref.masques.includes('git'),
       'la préférence est celle des Réglages, pas un état d’écran');
   });
 

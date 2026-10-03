@@ -3,7 +3,7 @@
  *
  * `unit-bin` prouve que la commande sème ~/.mergerie/demo et que la page SERVIE contient la
  * bannière ; `e2e-git-merge` que le dépôt local de la démo porte son conflit ; les `unit-demo-*`
- * que chaque décor (diff, Jenkins, review) répond. Personne n'avait ouvert la démo comme le fait
+ * que chaque décor (diff, review) répond. Personne n'avait ouvert la démo comme le fait
  * un visiteur : ce fichier la lance et la parcourt.
  *
  * PAS DE `startApp()` : la démo est un PROCESSUS À PART, lancé comme npx le lance — `bin/
@@ -14,7 +14,7 @@
  * Ce qu'on regarde :
  *   - la bannière de démo et le badge dry-run sont visibles ;
  *   - chaque menu montre son décor : merge requests à traiter et rapports (un rapport s'ouvre),
- *     sessions, tickets Jira, jobs Jenkins (le décor Docker est celui du plugin, éprouvé chez lui) ;
+ *     sessions, tickets Jira, (les décors Docker, Jenkins et Liens sont ceux des plugins, éprouvés chez eux) ;
  *   - « Chercher les nouvelles MR » ne part pas sur le réseau et ne lève aucune erreur ;
  *   - une nouvelle session propose d'office le SEUL dépôt réellement clonable ;
  *   - aucune erreur JavaScript. */
@@ -126,11 +126,9 @@ describe('Transverse — le mode démo, parcouru au navigateur', { skip: dispo ?
     await page.waitForFunction(() => [...document.querySelectorAll('#taskModal input')].some((i) => i.value === 'groupe/tarification'));
   });
 
-  test('Jira et Jenkins montrent leur décor', async () => {
+  test('Jira montre son décor', async () => {
     await aller('jira');
     await page.waitForSelector('#jiraList .jira-item');
-    await aller('jenkins');
-    await page.waitForSelector('#jenkinsBox .jk-row');
   });
 
   test('aucune erreur JavaScript pendant tout le parcours', () => {

@@ -1760,6 +1760,8 @@ suppression, et aucun écran ne le relisait.
   besoin) — comme les erreurs certificat / token.
 
 ### Jenkins
+> **Jenkins est un plugin** : l'onglet vit dans son propre dépôt ([jenkins-mergerie](https://gitlab.com/amady/jenkins-mergerie)), à installer depuis Réglages → Plugins (depuis git) puis à activer. Tant qu'il ne l'est pas, ni l'onglet ni ce qui s'y rattache (le bouton du job lié sur une merge request, une branche ou une session, la section « CI rouge » du brief) n'existent ; vos réglages et vos jobs liés, eux, sont gardés et reviennent à l'installation. Tout ce qui suit décrit son écran.
+
 Voir **où en sont les jobs** et **les lancer**, sans quitter l'outil ni ouvrir une nouvelle
 page. Ce n'est pas une console d'administration : il n'y a ni configuration de job, ni gestion
 d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.

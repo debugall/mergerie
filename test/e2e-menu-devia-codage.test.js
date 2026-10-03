@@ -19,7 +19,6 @@ const path = require('node:path');
 const {
   startApp, makeRemoteRepo, waitForJobs, attendreServeur, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
-const jenkins = require('./helpers/mock-jenkins');
 
 const { dispo } = navigateurDispo();
 
@@ -27,7 +26,6 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
   let app;
   let nav;
   let page;
-  let srvJenkins;
   const erreurs = [];
   let repoApp;
   let repoLib;
@@ -75,21 +73,7 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
       key: 'PROJ-7',
       fields: { summary: 'Cache du panier', status: { name: 'À faire', statusCategory: { key: 'new' } }, description: 'x', issuetype: { name: 'Tâche' } },
     };
-    /* Un job Jenkins ROUGE sur la branche de la session : sa console doit pouvoir entrer dans un
-       suivi, sans copier-coller. */
-    srvJenkins = await jenkins.start();
-    jenkins.reset();
-    jenkins.state.jobs = [{
-      name: 'ci-app', color: 'red', buildable: true,
-      lastBuild: {
-        number: 42, timestamp: Date.now(),
-        actions: [{ causes: [{ userName: 'moi' }] }, { lastBuiltRevision: { branch: [{ name: 'refs/remotes/origin/feat/PROJ-7-cache' }] } }],
-      },
-    }];
-    jenkins.state.details['/job/ci-app'] = { name: 'ci-app', color: 'red', builds: [] };
-    jenkins.state.console['/job/ci-app/42'] = 'npm test\nError: Module not found: ./cache\nFinished: FAILURE';
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira' });
-    await app.configureJenkins({ jenkins_url: srvJenkins.url, jenkins_user: jenkins.state.user, jenkins_token: jenkins.state.token });
     repoApp = (await app.api('POST', '/api/repos', { url: r1.url, project: 'grp/app' })).body.id;
     repoLib = (await app.api('POST', '/api/repos', { url: r2.url, project: 'grp/lib' })).body.id;
 
@@ -119,7 +103,6 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
   after(async () => {
     if (nav) await nav.close();
     if (app) await app.stop();
-    if (srvJenkins) await srvJenkins.close();
   });
 
   /* ------------------------------------------------------------ lancer, lire ---- */
@@ -184,29 +167,6 @@ describe('Menu Dev IA — les gestes d’une session de codage', { skip: dispo ?
     const derniere = app.db.prepare("SELECT kind, prompt FROM agent_pass WHERE scope = 'task' AND unit_id = ? ORDER BY n DESC LIMIT 1").get(tgApp.id);
     assert.equal(derniere.kind, 'followup');
     assert.match(derniere.prompt, /Renomme la variable du cache/);
-  });
-
-  /* B3 — LA CONSOLE JENKINS ENTRE DANS LE SUIVI DU PROJET. Le build de la branche est rouge :
-     le bouton remplit la remarque avec les dernières lignes de la console, et le dit. */
-  test('le build Jenkins rouge de la branche remplit le suivi du projet avec sa console', async () => {
-    await page.reload();
-    await aller();
-    await deplier(ids.multi);
-    await ligne(ids.multi, 'grp/app').locator('[data-ci-job]').waitFor();
-    assert.match(await ligne(ids.multi, 'grp/app').locator('[data-ci-job]').textContent(), /CI #42/);
-    const tgApp = await cible(ids.multi, repoApp);
-    await ligne(ids.multi, 'grp/app').locator('[data-tgfollow]').click();
-    const form = page.locator(`#taskList .followup[data-followform="tg${tgApp.id}"]`);
-    await form.waitFor({ state: 'visible' });
-    await form.locator('[data-followci]').click();
-    await page.waitForFunction((cle) => /Module not found/.test(
-      document.querySelector(`#taskList .followup[data-followform="${cle}"] .followup-text`).value,
-    ), `tg${tgApp.id}`);
-    const texte = await form.locator('.followup-text').inputValue();
-    assert.match(texte, /ci-app/, 'le prompt dit d’où vient le texte');
-    assert.match(texte, /42/);
-    await form.locator(`[data-followcancel="tg${tgApp.id}"]`).click();
-    await form.waitFor({ state: 'hidden' });
   });
 
   /* ------------------------------------------------------------ suivi de session ---- */

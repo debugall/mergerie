@@ -1,14 +1,11 @@
 'use strict';
 /* MENU NOTES → AUJOURD'HUI : les sections qui viennent d'AILLEURS que la base.
  *
- * Deux sections du brief ne se remplissent qu'avec un tiers ou un autre écran :
- *   - « CI rouge sur mes branches » — la liste Jenkins croisée avec les branches de mes MR ;
- *   - « À nettoyer » — le nombre de branches de MR mergées, lu par l'onglet Git.
+ * Une section du brief ne se remplit qu'avec un autre écran : « À nettoyer » — le nombre de branches de MR mergées, lu par l'onglet Git.
  * Et deux saveurs de session qui attendent une réponse sans avoir de dépôt : hors dépôt et
  * question libre. Chacune mène à son écran, et c'est ce que ce fichier éprouve par l'écran.
  *
- * (« Conteneurs tombés » est la section du plugin Docker : elle est éprouvée chez lui.) Jenkins est le
- * faux serveur de test/helpers/mock-jenkins.
+ * (« Conteneurs tombés » est la section du plugin Docker, « CI rouge sur mes branches » celle du plugin Jenkins : elles sont éprouvées chez eux.)
  *
  * Un seul `startApp()` ; `src/` n'est chargé qu'APRÈS lui (voir e2e-veille). */
 
@@ -17,36 +14,17 @@ const assert = require('node:assert/strict');
 const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, afficherMenusOptionnels,
 } = require('./helpers/app');
-const mockJenkins = require('./helpers/mock-jenkins');
 
 const { dispo } = navigateurDispo();
 
-describe('Menu Notes · Aujourd’hui — Jenkins, Git et sessions sans dépôt', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let jenkins;
+describe('Menu Notes · Aujourd’hui — Git et sessions sans dépôt', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
+  let app; let navigateur; let page;
   const erreurs = [];
   const s = {};
 
   before(async () => {
     app = await startApp();
-    // Jenkins : un job ROUGE dont le dernier build porte la branche d'une de mes MR.
-    jenkins = await mockJenkins.start();
-    mockJenkins.reset();
-    const build = (n, ref) => ({
-      number: n, timestamp: Date.now() - 3600e3,
-      actions: [{ causes: [{ userName: 'Alice' }] }, { lastBuiltRevision: { branch: [{ name: `refs/remotes/origin/${ref}` }] } }],
-    });
-    mockJenkins.state.jobs = [
-      { name: 'boutique', _class: 'com.cloudbees.hudson.plugins.folder.Folder', jobs: [
-        { name: 'panier-ci', color: 'red', buildable: true, lastBuild: build(57, 'feature/panier') },
-        { name: 'autre-ci', color: 'blue', buildable: true, lastBuild: build(12, 'main') },
-      ] },
-    ];
-    mockJenkins.state.details['/job/boutique/job/panier-ci'] = {
-      name: 'panier-ci', color: 'red', buildable: true, property: [],
-      builds: [{ number: 57, result: 'FAILURE', building: false, timestamp: Date.now(), duration: 4000, url: '' }],
-    };
     await app.configure();
-    await app.configureJenkins({ jenkins_url: jenkins.url, jenkins_user: mockJenkins.state.user, jenkins_token: mockJenkins.state.token  });
 
     app.state.mrs['grp/app'] = [{
       iid: 41, title: 'Le panier en trois fois', state: 'opened',
@@ -84,7 +62,6 @@ describe('Menu Notes · Aujourd’hui — Jenkins, Git et sessions sans dépôt'
 
   after(async () => {
     if (navigateur) await navigateur.close();
-    if (jenkins) await jenkins.close();
     if (app) await app.stop();
   });
 
@@ -96,25 +73,6 @@ describe('Menu Notes · Aujourd’hui — Jenkins, Git et sessions sans dépôt'
     await page.waitForSelector('#notesSubToday:not([hidden]) #briefBox .brief-head');
   };
   const section = (titre) => page.locator('#briefBox .brief-sec').filter({ has: page.locator('h3', { hasText: titre }) });
-
-  test('un job Jenkins rouge sur la branche d’une de mes MR apparaît, et « Détails » ouvre sa fiche', async () => {
-    await allerBrief();
-    // La liste Jenkins arrive APRÈS le brief, qui se redessine alors.
-    const sec = section('CI rouge sur mes branches');
-    await sec.waitFor();
-    const texte = await sec.innerText();
-    assert.match(texte, /boutique\/panier-ci/);
-    assert.match(texte, /#57/);
-    assert.match(texte, /feature\/panier — merge request !41/);
-    assert.doesNotMatch(texte, /autre-ci/, 'un job vert ne s’y trouve pas');
-
-    await sec.locator('[data-ci-job="boutique/panier-ci"]').click();
-    await page.waitForSelector('#tab-jenkins.active');
-    await page.waitForSelector('#jenkinsModal:not([hidden])');
-    assert.equal(await page.locator('#jenkinsModalTitle').innerText(), 'boutique/panier-ci');
-    await page.keyboard.press('Escape');
-    await page.waitForSelector('#jenkinsModal', { state: 'hidden' });
-  });
 
   test('dix branches mergées à nettoyer : le brief le dit une fois l’onglet Git vu, et « Nettoyer » prépare le lot', async () => {
     // Le nombre est lu par l'onglet Git : on y passe, comme au quotidien.

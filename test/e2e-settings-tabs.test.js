@@ -28,7 +28,7 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     await app.configure();
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 900 } });
-    // Le sous-onglet Jenkins suit son menu, replié d'office : ce fichier éprouve l'ordre COMPLET.
+    // Un sous-onglet de plugin (Jenkins…) suit son menu, replié d'office : ce fichier éprouve l'ordre COMPLET.
     await afficherMenusOptionnels(page);
     await page.goto(app.base);
   });
@@ -62,18 +62,18 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
        qu'un simple réglage — on y vient pour éprouver une installation, pas pour cocher une
        case en passant. */
     /* « Données partagées » suit « Général » : les deux règlent L'OUTIL, l'un pour soi, l'autre
-       à plusieurs. Elle passe avant Jira et Jenkins, qui branchent des services du dehors. */
+       à plusieurs. Elle passe avant Jira (et les plugins), qui branchent des services du dehors. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'datasync', 'jiracfg', 'jenkinscfg', 'plugins', 'aisession']);
+      'notif', 'config', 'datasync', 'jiracfg', 'plugins', 'aisession']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne
      sur le repli. Il est mémorisé par son NOM, donc réordonner la barre ne déplace personne. */
   test('le dernier sous-onglet consulté est retrouvé au rechargement', async () => {
-    await page.locator('#tab-admin .subnav [data-sub="jenkinscfg"]').click();
+    await page.locator('#tab-admin .subnav [data-sub="jiracfg"]').click();
     await page.reload();
     await page.locator('[data-tab="admin"]').click();
-    assert.equal(await actif(), 'jenkinscfg');
+    assert.equal(await actif(), 'jiracfg');
   });
 
   /* LE CHAMP DES CONSIGNES PERMANENTES VIT DANS CE PANNEAU, et un panneau de réglages doit
@@ -114,30 +114,6 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     await champ.waitFor();
     await page.waitForFunction(() => document.querySelector('#sub-aisession [name="ai_extra_instructions"]').value !== '');
     assert.equal(await champ.inputValue(), 'Commente en français.');
-  });
-
-  /* UN CHAMP OCCUPE SA COLONNE. La rangée « Jobs liés aux dépôts » réserve trois colonnes
-     larges, mais ses trois champs sont des COMBOS : leur boîte n'était contrainte par rien, et
-     le `width: 100%` de leur input se mesurait donc sur la largeur par défaut d'un `<input>` —
-     une vingtaine de caractères. Résultat : des champs deux fois plus étroits que le libellé
-     qui les annonce, et la moitié de la rangée vide. La preuve se prend à la mesure, pas à
-     l'œil : chaque champ doit remplir son étiquette. */
-  test('les champs des jobs liés remplissent leur colonne', async () => {
-    await page.locator('[data-tab="admin"]').click();
-    await page.locator('#tab-admin .subnav [data-sub="jenkinscfg"]').click();
-    await page.waitForSelector('#jenkinsLinkForm .combo');
-    const cols = await page.locator('#jenkinsLinkForm').evaluate((f) => [...f.querySelectorAll(':scope > label')].map((l) => {
-      const champ = l.querySelector('.combo') || l.querySelector('input');
-      const r = l.getBoundingClientRect();
-      return { nom: l.textContent.trim().slice(0, 18), colonne: Math.round(r.width), champ: Math.round(champ.getBoundingClientRect().width), haut: Math.round(champ.getBoundingClientRect().top) };
-    }));
-    assert.equal(cols.length, 3);
-    assert.deepEqual(cols.filter((c) => c.colonne - c.champ > 2).map((c) => `${c.nom} : ${c.champ}/${c.colonne} px`), [],
-      'un champ plus étroit que son libellé laisse croire à une saisie courte');
-    /* …et sur un écran large la rangée reste UNE rangée : c'est ce qui la rend lisible. On
-       mesure les CHAMPS, pas les étiquettes — un libellé sur deux lignes commence plus haut
-       que les autres alors que la rangée est bien alignée (elle l'est par le bas). */
-    assert.equal(new Set(cols.map((c) => c.haut)).size, 1, 'les trois champs tiennent sur une ligne à 1400 px');
   });
 
   /* Un nom mémorisé qui n'existe plus (un onglet supprimé depuis) ne doit pas laisser l'écran

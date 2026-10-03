@@ -1,7 +1,7 @@
 'use strict';
 /* LES PLUGINS : leur état (activé, version, erreur), leurs réglages, leurs secrets, leurs
-   migrations jouées — et, UNE FOIS, le passage de ce que le cœur portait pour Jenkins vers le
-   plugin embarqué qui le remplace.
+   migrations jouées — et, UNE FOIS chacun, les passages de ce que le cœur portait (Jenkins,
+   Docker, Liens) vers les plugins qui les remplacent.
 
    Les tables d'un plugin lui-même (`plugin_<nom>_*`) ne sont pas créées ici : chaque plugin
    déclare ses migrations et `ctx.db.migrate` les joue à son activation, en avant seulement.
@@ -37,6 +37,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
   PRIMARY KEY (plugin, version)
 )`);
 /* ---------- LE PASSAGE DE JENKINS AU PLUGIN, une fois, sans perte ----------
+ *
+ * Jenkins a connu deux étapes : le cœur → un plugin EMBARQUÉ (marqueur `_core` 1, ci-dessous), puis l'embarqué → un plugin TIERS, dépôt
+ * `jenkins-mergerie` (marqueur `_core` 4, plus bas : l'état passe de `builtin` à `user`, rien d'autre ne bouge — mêmes tables, mêmes
+ * réglages, mêmes secrets, sous le même nom de plugin). Une base très ancienne rejoue les deux, dans l'ordre.
  *
  * Avant le système de plugins, Jenkins vivait dans le cœur : quatre colonnes de réglages
  * (`config.jenkins_url`, `local_config.jenkins_user`, `jenkins_token`, `jenkins_refresh_minutes`),
@@ -91,11 +95,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
       try { if (cfg.includes(col)) db.exec(`ALTER TABLE config DROP COLUMN ${col}`); } catch { /* plus ancienne SQLite : la colonne reste, vide */ }
       try { if (loc.includes(col)) db.exec(`ALTER TABLE local_config DROP COLUMN ${col}`); } catch { /* idem */ }
     }
-    /* LES PLUGINS EMBARQUÉS DÉMARRENT DÉSACTIVÉS sur une première installation — Jenkins comme les autres. Un poste qui
-       tournait déjà avait l'onglet Jenkins : il le garde, activé, tel quel (rien ne disparaît à la montée de version). Le
-       chargeur n'écrit l'état d'un plugin que s'il n'en a pas : celui-ci est posé AVANT son premier passage. */
+    /* Un poste qui tournait déjà avait l'onglet Jenkins : il le garde, activé, tel quel — le jour où le plugin tiers est installé (rien ne
+       disparaît à la montée de version). Le chargeur n'écrit l'état d'un plugin que s'il n'en a pas : celui-ci est posé AVANT son premier passage. */
     if (db.baseExistante) {
-      db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('jenkins', 1, '', 'builtin', ?)").run(maintenant);
+      db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('jenkins', 1, '', 'user', ?)").run(maintenant);
     }
     db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 1, ?)").run(maintenant);
   })();
@@ -185,6 +188,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS plugin_migration (
       db.prepare("INSERT OR IGNORE INTO plugin_state (name, enabled, version, origin, updated_at) VALUES ('links', 1, '', 'user', ?)").run(maintenant);
     }
     db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 3, ?)").run(maintenant);
+  })();
+}
+
+/* ---------- JENKINS, D'EMBARQUÉ À TIERS, une fois ----------
+ *
+ * Le plugin `jenkins` n'est plus livré avec Mergerie : il vit dans son dépôt (`jenkins-mergerie`) et s'installe comme n'importe quel plugin tiers. Ses
+ * données n'ont pas à bouger — `plugin_jenkins_link`, ses réglages et son jeton portent le nom du plugin, pas celui de son dossier. Ne reste que
+ * l'état : un poste qui l'avait activé en `builtin` le garde activé, en `user` — il s'activera tout seul le jour où on l'installe. Une base qui
+ * a déjà tout cela (le passage 1 pose désormais `user`) n'a rien à changer. */
+{
+  const fait = db.prepare("SELECT 1 FROM plugin_migration WHERE plugin = '_core' AND version = 4").get();
+  if (!fait) db.transaction(() => {
+    db.prepare("UPDATE plugin_state SET origin = 'user' WHERE name = 'jenkins' AND origin = 'builtin'").run();
+    db.prepare("INSERT INTO plugin_migration (plugin, version, applied_at) VALUES ('_core', 4, ?)").run(new Date().toISOString());
   })();
 }
 

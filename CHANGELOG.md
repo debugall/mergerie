@@ -83,6 +83,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **The Jenkins tab is now a third-party plugin**, in its own repository (https://gitlab.com/amady/jenkins-mergerie), installed from Settings → Plugins (from git)
+  and enabled like any third-party plugin; it no longer ships with Mergerie. Nothing changes on screen once it is on: the job list and sheet, launches, the
+  linked jobs and their buttons on merge requests, branches and sessions, the badges, the end-of-build notification, the "CI red" section of the brief and the
+  console in a follow-up all come with it. **Nothing is lost**: the connection (URL, user, token, refresh rate), the linked jobs and the last connection test
+  already live under the plugin's name, so a Mergerie that had the tab finds them all again — the plugin comes up **enabled** the day you install it, and
+  until you do the tab is simply absent. It now runs in an isolated worker; `JENKINS_CA_CERT` and `JENKINS_INSECURE_TLS` still apply to its calls.
 - **The Links tab is now a plugin**, in its own repository (https://gitlab.com/amady/link-mergerie), installed from Settings → Plugins (from git) and enabled
   like any third-party plugin. Nothing changes on screen once it is on: the services × environments grid, free links, bookmark import, address pasting, the
   environment buttons on a merge request, on a session's project line and on a Jira ticket, and the palette entries all come with it. **Your links are not
