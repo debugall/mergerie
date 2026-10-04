@@ -96,6 +96,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **"Tell Jira when the merge request is created" moved to Settings → Jira, and the comment is editable.** The checkbox (which ticks "Tell Jira" by default in the new-session window) left the General tab for the Jira tab, and
   a new **template** field sets the text posted on the ticket: `{url}` (required), `{iid}`, `{project}`, `{title}`, `{branch}`, `{key}`, with a live preview; empty keeps the shipped message. The template is shared with the team like the review-link template.
+- **Settings → AI sessions has ONE "Save" button**, in a bar pinned to the bottom of the screen, instead of five identical ones (one per section, all writing the same configuration). The bar says "unsaved changes" as soon as a field changes, then "saved"; and **every Settings save now shows a confirmation toast** (an error toast when the server refuses).
 - **"An MR is dormant after (days)" moved from Settings → General to Settings → Merge Request**, next to the automatic refresh.
 - **"New session — boxes ticked by default" (Auto-push, the AI may ask questions, Converge after) moved from Settings → General to Settings → AI sessions**, with the other agent settings.
 - **Settings tabs reordered**: General now comes first of the tool settings, then Notifications and Shared data, so the bar reads connect → code → review → tool → integrations.

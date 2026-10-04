@@ -656,9 +656,6 @@
                     <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.default-ask" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                 <label class="inline-check"><input form="configForm" name="task_default_converge" type="checkbox" /> <span data-i18n="settings.lbl.default-converge">Converger après</span>
                     <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.default-converge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
-                <p>
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                </p>
             </div>
 
             <!-- CE QU'ON REDIT À CHAQUE SESSION SANS VOULOIR LE RETAPER. Le champ vit ici parce
@@ -669,9 +666,6 @@
             <div class="form">
                 <label><span data-i18n="settings.extra.lbl">Consignes ajoutées à chaque session</span>
                     <textarea form="configForm" name="ai_extra_instructions" rows="5" placeholder="Ex. : commente en français ; lance `npm run check` avant de committer." data-i18n-placeholder="settings.extra.ph"></textarea></label>
-                <p>
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                </p>
             </div>
 
             <!-- LES BORNES DU JOUR : ce qui peut partir tout seul, tourner longtemps, dépenser.
@@ -686,10 +680,6 @@
                     <input form="configForm" name="agent_max_turns" type="number" min="0" max="10000" step="1" placeholder="200" /></label>
                 <label><span data-i18n="ui.config.agent-budget">Dépense d’IA au plus par jour, en dollars (0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="ui.config.agent-budget-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <input form="configForm" name="agent_daily_budget_usd" type="number" min="0" step="0.01" placeholder="0" /></label>
-                <p>
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                    <span id="configInfoAi" class="muted"></span>
-                </p>
             </div>
 
             <!-- SÉCURISÉ OU YOLO : un seul interrupteur, global, de poste. Le détail (sandbox,
@@ -703,9 +693,6 @@
                         <option value="yolo" data-i18n="settings.mode.opt.yolo">Yolo — aucune restriction (défaut)</option>
                         <option value="secure" data-i18n="settings.mode.opt.secure">Sécurisé — sandbox, liste blanche, lecture seule prouvée</option>
                     </select></label>
-                <p>
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                </p>
             </div>
             <div id="sandboxDetails">
             <h2 data-i18n="settings.sandbox.title">Sandbox de l'agent en écriture</h2>
@@ -721,9 +708,6 @@
                     <textarea form="configForm" name="agent_write_allow" rows="3" placeholder="make&#10;Bash(mvn:*)" data-i18n-placeholder="settings.sandbox.allow-ph"></textarea></label>
                 <label><span data-i18n="settings.sandbox.domains-lbl">Domaines joignables sous sandbox (un par ligne — vide = réseau fermé)</span>
                     <textarea form="configForm" name="agent_sandbox_network_domains" rows="2" placeholder="registry.npmjs.org&#10;pypi.org" data-i18n-placeholder="settings.sandbox.domains-ph"></textarea></label>
-                <p>
-                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
-                </p>
                 <p>
                     <button id="sandboxTest" type="button" class="btn btn-primary" title="Lance un appel réel au CLI pour vérifier le sandbox sur cette machine" data-i18n-title="settings.sandbox.test-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="settings.sandbox.test">Tester le sandbox</span></button>
                     <span id="sandboxTestInfo" class="muted"></span>
@@ -741,6 +725,15 @@
             </p>
             <div id="aiSessionResult"></div>
             </details>
+        
+
+            <!-- UN SEUL BOUTON « ENREGISTRER » POUR TOUT L'ONGLET, collé en bas de l'écran. Les réglages de cet onglet vont tous au même /config : cinq boutons identiques,
+                 un par section, laissaient croire à cinq enregistrements distincts — et la confirmation n'apparaissait que près de l'un d'eux. La barre suit le défilement,
+                 dit « modifications non enregistrées » dès qu'on change un champ, et « Enregistré » après ; un toast le confirme aussi. -->
+            <div class="reglages-barre-enregistrer" id="aiSaveBar">
+                <button class="btn btn-primary" type="submit" form="configForm" id="aiSaveBtn" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                <span id="configInfoAi" class="muted" role="status" aria-live="polite"></span>
+            </div>
         </div><!-- /sub-aisession -->
 
         <!-- Sous-onglet : Plugins — la liste, activer/désactiver à chaud, installer. -->

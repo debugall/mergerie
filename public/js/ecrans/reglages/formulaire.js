@@ -193,7 +193,9 @@ $('#configForm').addEventListener('submit', async (e) => {
     configReference = complet;
     marquerConfig(false);   // avant la mention : elle porterait sinon la classe « non enregistré »
     f.dispatchEvent(new Event('mergerie:config-saved'));   // « Enregistrer et tester » enchaîne
-    info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
+    info.textContent = tr('ui.saved'); setTimeout(() => { if (info.textContent === tr('ui.saved')) info.textContent = ''; }, 4000);
+    /* UN TOAST AUSSI : la mention vit à côté du bouton, qui peut être hors de l'écran (onglet long) ou sans mention dans sa section. */
+    toast(tr('ui.saved'));
     loadConfig(); refreshStatus();
     /* L'ASSISTANT DE DÉMARRAGE SUIT. Il coche ses étapes depuis `setupState`, qui n'était lu
        qu'au chargement de la page : on connectait la forge, on revenait sur Reviews, et

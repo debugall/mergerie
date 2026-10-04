@@ -212,7 +212,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       /* L'EXÉCUTANT FERME LE GROUPE : il dit QUI fait tourner les deux automatismes juste
          au-dessus, et le `P` qui suit est l'avertissement affiché quand ils sont cochés sans
          personne pour les exécuter. */
-      '# Automatisation', 'auto_refresh_minutes', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
+      '# Automatisation', 'auto_refresh_minutes', 'stale_mr_days', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
       'auto_runner', 'P',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');

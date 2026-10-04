@@ -256,13 +256,13 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
   /* ------------------------------------------------------------ Réglages d'équipe ---- */
 
   test('Réglages : un réglage d’équipe part dans settings.json, celui de Claire revient ; les jetons jamais', async () => {
-    await ouvrirReglages('config');
-    await page.waitForSelector('#sub-config .scope-badge');
+    await ouvrirReglages('mr');
+    await page.waitForSelector('#sub-mr .scope-badge');
     const champ = page.locator('[form="configForm"][name="stale_mr_days"]');
     await champ.waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelector('[form="configForm"][name="stale_mr_days"]').value !== '');
     await champ.fill('12');
-    await page.locator('#sub-config button[type="submit"][form="configForm"]').first().click();
+    await page.locator('#sub-mr button[type="submit"][form="configForm"]').first().click();
     await attendreServeur(async () => String((await app.api('GET', '/api/config')).body.stale_mr_days) === '12', 'le réglage est en base');
     await synchroniserJusqua(app, async () => String(JSON.parse(contenuDuDepot(nu, 'settings.json')).stale_mr_days) === '12',
       'le réglage d’équipe est dans settings.json');
@@ -275,7 +275,7 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
     await synchroniserJusqua(app, async () => String((await app.api('GET', '/api/config')).body.stale_mr_days) === '21',
       'le réglage de Claire est arrivé');
     await page.reload();
-    await ouvrirReglages('config');
+    await ouvrirReglages('mr');
     await page.waitForFunction(() => document.querySelector('[form="configForm"][name="stale_mr_days"]').value === '21');
 
     // QUI EXÉCUTE LES AUTOMATISMES est une décision d'équipe : elle part dans le même fichier.
