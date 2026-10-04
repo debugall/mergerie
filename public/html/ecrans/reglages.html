@@ -336,9 +336,6 @@
                  Cochée, jamais supprimée — et débrayable pour qui préfère cocher lui-même. -->
             <label class="inline-check"><input form="configForm" name="todo_close_on_merge" type="checkbox" /> <span data-i18n="settings.lbl.todo-close-on-merge">Cocher les todos liées quand leur merge request est mergée</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.todo-close-on-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
-            <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
-            </label>
             <!-- Sauvegarde : la seule chose que Mergerie ne sait pas reconstruire. -->
             <div class="backup-row">
                 <button type="button" id="btnBackup" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.backup.btn">Sauvegarder les données</span></button>
@@ -553,6 +550,10 @@
             <h3 data-i18n="settings.mr.group.auto">Automatisation</h3>
             <label><span data-i18n="settings.lbl.rafraichir-les-mr-automatiquement-minutes">Rafraîchir les MR automatiquement (minutes, 0 = désactivé)</span> <button type="button" class="hint" tabindex="-1" aria-label="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-tip="Découverte automatique des nouvelles MR à intervalle régulier. 0 = désactivé. Minimum 1 minute, pour éviter les rate limits de l'API GitLab." data-i18n-tip="settings.tip.decouverte-automatique-des-nouvelles-mr"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="auto_refresh_minutes" type="number" min="0" step="1" placeholder="0" />
+            </label>
+            <!-- Ce que le brief appelle « dormante » : une MR reviewée, toujours ouverte après ce délai. Réglé avec la façon dont on suit les MR, et non dans « Général ». -->
+            <label><span data-i18n="settings.lbl.stale-mr-days">MR dormante au bout de (jours)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.stale-mr-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="stale_mr_days" type="number" min="1" max="90" step="1" placeholder="5" />
             </label>
             <!-- LA REVIEW QUI PART TOUTE SEULE, et son plafond JUSTE DESSOUS, indenté et
                  désactivé tant que la case est décochée : chaque review est un appel IA

@@ -46,6 +46,7 @@ function groupes(app) {
       ['auto_post_review', true],
       ['auto_post_blocking_only', true],
       ['auto_refresh_minutes', '30'],
+      ['stale_mr_days', '12'],
       ['auto_review_new', true],
       ['review_auto_max', '7'],
       ['auto_rereview_stale', true],
@@ -65,7 +66,6 @@ function groupes(app) {
       ['mr_retention_days', '60'],
       ['brief_on_open', true],
       ['todo_close_on_merge', false],
-      ['stale_mr_days', '12'],
     ] },
     { sub: 'aisession', champs: [
       ['task_default_auto_push', true],
