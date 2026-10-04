@@ -1574,9 +1574,9 @@ const counts = {
     return chemin;
   };
   const photo = (cle) => { const i = demoJira.issue(cle); return JSON.stringify({ summary: i.summary, description: i.descriptionMd || '', updated: i.updated || '' }); };
-  const insSpec = db.prepare(`INSERT INTO ticket_spec (ticket_key, epic_key, repo_ids_json, complement, confluence_json, detail, include_epic, ask_questions,
+  const insSpec = db.prepare(`INSERT INTO ticket_spec (ticket_key, epic_key, repo_ids_json, branches_json, complement, confluence_json, detail, include_epic, ask_questions,
       ticket_snapshot, status, stale, nonce, comment_id, posted_version, created_at, updated_at)
-    VALUES (@ticket_key, @epic_key, @repo_ids_json, @complement, @confluence_json, @detail, 1, 1, @ticket_snapshot, @status, @stale, 'd3m0aa', @comment_id, @posted_version, @created_at, @updated_at)`);
+    VALUES (@ticket_key, @epic_key, @repo_ids_json, @branches_json, @complement, @confluence_json, @detail, 1, 1, @ticket_snapshot, @status, @stale, 'd3m0aa', @comment_id, @posted_version, @created_at, @updated_at)`);
   const insVersion = db.prepare('INSERT INTO ticket_spec_version (spec_id, ticket_key, version, origin, md_path, instruction, created_at) VALUES (?,?,?,?,?,?,?)');
 
   const panierV1 = `## Dépôts concernés
@@ -1653,7 +1653,8 @@ const counts = {
     { cle: 'PROJ-1421', epic: 'PROJ-1100', repos: ['groupe/api-core', 'groupe/webapp-front'], complement: 'Le panier est en session serveur, pas en cookie — c’est le point de départ.',
       pages: [{ url: 'https://confluence.demo/wiki/spaces/DEV/pages/1001/Panier-et-sessions', title: 'Panier et sessions', chars: 2140, truncated: false, fetched_at: at(2), error: null }],
       status: 'posted', comment_id: '31001', posted_version: 2, versions: [['ai', panierV1, null, at(2.1)], ['followup', panierV2, 'Ajoute ce que le support doit voir dans les logs.', at(2)]], created: at(2.2), updated: at(2) },
-    { cle: 'PROJ-1408', epic: 'PROJ-1100', repos: ['groupe/api-core', 'groupe/facturation'], complement: '',
+    // Le code décrit vit sur la release en cours de recette, pas sur la branche par défaut : la branche lue est choisie par dépôt.
+    { cle: 'PROJ-1408', epic: 'PROJ-1100', repos: ['groupe/api-core', 'groupe/facturation'], branches: { 'groupe/facturation': 'release/2.4' }, complement: '',
       pages: [{ url: 'https://confluence.demo/wiki/spaces/PROD/pages/2048/Regles-3x', title: 'Règles 3×', chars: 3900, truncated: false, fetched_at: at(0.3), error: null },
         { url: 'https://confluence.demo/wiki/spaces/FIN/pages/777/Grille-tarifaire', title: '', chars: 0, truncated: false, fetched_at: at(0.3), error: 'non lue : 403' }],
       status: 'proposed', comment_id: null, posted_version: null, versions: [['ai', paiementV1, null, at(0.3)]], created: at(0.3), updated: at(0.3) },
@@ -1664,7 +1665,8 @@ const counts = {
   for (const sp of specs) {
     const repos = sp.repos.map((p2) => repoIds[p2]).filter(Boolean);
     const id = insSpec.run({
-      ticket_key: sp.cle, epic_key: sp.epic, repo_ids_json: JSON.stringify(repos), complement: sp.complement,
+      ticket_key: sp.cle, epic_key: sp.epic, repo_ids_json: JSON.stringify(repos),
+      branches_json: JSON.stringify(Object.fromEntries(Object.entries(sp.branches || {}).map(([p2, b]) => [repoIds[p2], b]).filter(([id]) => id))), complement: sp.complement,
       confluence_json: JSON.stringify(sp.pages), detail: 'synthese', ticket_snapshot: sp.photoPerimee || photo(sp.cle),
       status: sp.status, stale: sp.stale ? 1 : 0, comment_id: sp.comment_id, posted_version: sp.posted_version, created_at: sp.created, updated_at: sp.updated,
     }).lastInsertRowid;

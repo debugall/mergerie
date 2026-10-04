@@ -26,6 +26,11 @@
 .jira-spec-filtre { width: 100%; padding: 6px 10px; font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
 .jira-spec-repos, .jira-spec-lot { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow: auto; padding: 4px 2px; }
 .jira-spec-repo { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.jira-spec-repo > .inline-check { flex: 1 1 auto; min-width: 0; }
+.jira-spec-branch { flex: 0 0 240px; }
+.jira-spec-branch .cb-search { width: 100%; box-sizing: border-box; }
+.jira-spec-lus { margin: 4px 0; font-size: 12.5px; }
+.jira-ana-repos { font-size: 12px; margin: 2px 0; }
 .jira-spec-repo[hidden] { display: none; }
 .jira-spec-pages { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
 .jira-spec-pages li { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }

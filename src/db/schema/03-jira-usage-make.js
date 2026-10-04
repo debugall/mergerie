@@ -93,6 +93,9 @@ db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_spec_key ON ticket_spec(ti
 try { db.exec('ALTER TABLE ticket_spec ADD COLUMN stale INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 // L'instruction d'un suivi en cours : écrite sur la version qu'il produira, puis effacée. De poste.
 try { db.exec('ALTER TABLE ticket_spec ADD COLUMN pending_instruction TEXT'); } catch { /* déjà présente */ }
+/* La branche à lire pour chaque dépôt choisi : { "<id du dépôt>": "release/2.4" }. Absente d'un dépôt, c'est sa branche par défaut. Partagée : c'est un choix
+   d'analyse, comme les dépôts eux-mêmes. */
+try { db.exec("ALTER TABLE ticket_spec ADD COLUMN branches_json TEXT DEFAULT '{}'"); } catch { /* déjà présente */ }
 db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec_version (
   id INTEGER PRIMARY KEY,
   spec_id INTEGER NOT NULL REFERENCES ticket_spec(id) ON DELETE CASCADE,

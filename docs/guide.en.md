@@ -1393,6 +1393,13 @@ yours, and you want to know **when it moves**, not to think about it three times
 - A ticket that was **deleted or became invisible** (rights lost) is reported **on its row**, without
   interrupting the check of the others, and **without erasing** the last known state.
 
+#### Finding the analysed tickets
+The **Analysed** tab of the Jira menu lists every ticket whose technical brief was started or proposed — with
+the repositories and branches read, its state (proposed, posted, to review…) and its version; a click opens
+the ticket and its brief next to the list, and the badge counts those with a proposal. In **My tickets**,
+the **Analysis** filter shows everything, only the tickets *already analysed*, or only those *not analysed yet*
+(the choice is remembered, and the list updates as soon as a brief arrives).
+
 #### Technical brief of a ticket
 A ticket written by a Product Owner says the functional *what*, never the *where* (which repositories,
 which modules) nor the *how* (the steps, the constraints of the existing code). The developer redoes that
@@ -1401,7 +1408,7 @@ ticket's detail opens the **Technical brief** section, where the AI does that wo
 comment.
 
 - **What you give it.** One or more **repositories** (the list filters as you type: the filter hides
-  without unticking), the ticket's **epic** and its other tickets as context (ticked by default when the
+  without unticking), each with its **branch** — a searchable list, the repository's default branch when you pick none: the code being described often lives on a release or a feature branch, and that is the one the AI reads (the "Have the AI code" session opened from the brief starts from it), the ticket's **epic** and its other tickets as context (ticked by default when the
   ticket has one — a ticket often makes sense in the light of its neighbours), one or several **Confluence
   pages** (five at most; Cloud is read with the Jira account, Server / Data Center needs an address and a
   token in Settings → Jira; a page that is not on that Jira or that Confluence is refused: credentials go

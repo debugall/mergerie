@@ -13,6 +13,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **A branch per repository in a ticket's technical brief, an "Analysed" tab in Jira, and an "Analysis" filter on "My tickets".** Ticking a repository in the brief now offers its **branch**
+  (a searchable list, the repository's default branch when left empty): the code you describe often lives on a release or feature branch, and the AI reads that one. The branches read are
+  shown on the brief, travel with the team's shared specs, and the "Have the AI code" session opened from a brief starts from them. The new **Analysed** tab lists every ticket whose brief
+  was started or proposed — with its repositories, branches, state and version — and opens the ticket and its brief alongside; its badge counts them. **My tickets** gets an
+  *Analysis* filter (all · already analysed · not analysed yet), remembered across reloads and updated as soon as a brief arrives.
 - **An "Update" button on each installed plugin** (Settings → Plugins). Mergerie keeps where a plugin was installed from (git address and branch or tag, or folder); one click clones it again,
   disables the plugin, replaces its folder with the latest version and enables it again if it was — its data, settings and secrets untouched, the page reloading when it was active. A
   network failure leaves the plugin as it was. A plugin installed before this release has the button greyed out with a hint: install it once more from git and the address is kept.

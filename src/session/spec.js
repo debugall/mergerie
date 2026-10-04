@@ -39,10 +39,21 @@ function poser(id, champs) {
     .run({ ...champs, updated_at: now(), id: Number(id) });
 }
 
+/** Les branches choisies, { id du dépôt: branche } : seulement pour les dépôts retenus, jamais une branche invalide ; vide = la branche par défaut (rien n'est écrit). */
+function normaliserBranches(repos, brut) {
+  const sortie = {};
+  if (!brut || typeof brut !== 'object') return sortie;
+  for (const id of repos) {
+    const b = String(brut[id] == null ? '' : brut[id]).trim();
+    if (b) sortie[id] = tasks.assertValidBranch(b);
+  }
+  return sortie;
+}
+
 /* Crée la spec d'un ticket, ou REPREND celle qui existe : une seule par ticket, c'est l'identité.
    Les choix (dépôts, pages, complément, détail) sont réécrits ; l'id du commentaire posté et
    les versions restent — c'est ce qui fait qu'une relance met à jour le même commentaire. */
-function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, detail, includeEpic, askQuestions, epicKey, batchId, verifierOrigine = true }) {
+function creerOuReprendre({ ticketKey, repoIds, repoBranches, complement, confluenceUrls, detail, includeEpic, askQuestions, epicKey, batchId, verifierOrigine = true }) {
   const cle = jiraspec.normaliserCle(ticketKey);
   if (!jiraspec.cleValide(cle)) throw new Error(t('err.jira.invalid-key'));
   const repos = [...new Set((repoIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
@@ -58,6 +69,7 @@ function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, deta
   if (hors.length) throw new Error(t('err.spec.page-host', { url: hors[0] }));
   const champs = {
     repo_ids_json: JSON.stringify(repos),
+    branches_json: JSON.stringify(normaliserBranches(repos, repoBranches)),
     complement: String(complement || '').trim().slice(0, 4000),
     confluence_json: JSON.stringify(urls.map((url) => ({ url }))),
     detail: detail === 'detaille' ? 'detaille' : 'synthese',
@@ -68,9 +80,9 @@ function creerOuReprendre({ ticketKey, repoIds, complement, confluenceUrls, deta
   };
   const existante = specByKey(cle);
   if (existante) { poser(existante.id, champs); return specById(existante.id); }
-  const info = db.prepare(`INSERT INTO ticket_spec (ticket_key, epic_key, batch_id, repo_ids_json, complement, confluence_json, detail,
+  const info = db.prepare(`INSERT INTO ticket_spec (ticket_key, epic_key, batch_id, repo_ids_json, branches_json, complement, confluence_json, detail,
       include_epic, ask_questions, status, created_at, updated_at)
-    VALUES (@ticket_key, @epic_key, @batch_id, @repo_ids_json, @complement, @confluence_json, @detail, @include_epic, @ask_questions, 'new', @now, @now)`)
+    VALUES (@ticket_key, @epic_key, @batch_id, @repo_ids_json, @branches_json, @complement, @confluence_json, @detail, @include_epic, @ask_questions, 'new', @now, @now)`)
     .run({ ...champs, ticket_key: cle, now: now() });
   return specById(info.lastInsertRowid);
 }
@@ -87,7 +99,9 @@ async function preparerAnalyse(spec, { cfg = getConfig(), enfantsConnus = null }
     complement: spec.complement, detail: spec.detail, nonce, consignesEquipe: cfg.spec_team_instructions,
   });
   const repoIds = jsonOu(spec.repo_ids_json, []);
-  const targets = tasks.normalizeTargets(repoIds.map((repo_id) => ({ repo_id })), 'explore');
+  // Une exploration lit la branche choisie pour ce dépôt (vide : sa branche par défaut) — c'est celle sur laquelle le code se trouve vraiment, pas forcément `develop`.
+  const branches = jsonOu(spec.branches_json, {});
+  const targets = tasks.normalizeTargets(repoIds.map((repo_id) => ({ repo_id, branch: branches[repo_id] || '' })), 'explore');
   const taskId = tasks.creerTask({
     kind: 'explore', prompt: question, targets, askQuestions: !!spec.ask_questions,
     label: t('jira.spec.task-label', { key: spec.ticket_key, title: String(ctx.ticket.summary || '').slice(0, 80) }),
@@ -169,6 +183,7 @@ function vue(spec) {
     id: spec.id, uid: spec.uid, ticket_key: spec.ticket_key, epic_key: spec.epic_key, batch_id: spec.batch_id,
     task_id: spec.task_id, task_status: tache ? tache.status : null,
     repo_ids: jsonOu(spec.repo_ids_json, []),
+    repo_branches: jsonOu(spec.branches_json, {}),
     complement: spec.complement || '',
     confluence: jsonOu(spec.confluence_json, []),
     detail: spec.detail || 'synthese',
@@ -185,6 +200,6 @@ function vue(spec) {
 }
 
 module.exports = {
-  STATUTS, specById, specByKey, specDeTache, versions, versionCourante, poser, creerOuReprendre, preparerAnalyse,
+  STATUTS, normaliserBranches, specById, specByKey, specDeTache, versions, versionCourante, poser, creerOuReprendre, preparerAnalyse,
   instructionSuivi, ajouterVersion, apresRun, marquerErreur, vue, lireMd,
 };

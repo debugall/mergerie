@@ -173,7 +173,7 @@ $('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => bu
 }));
 
 // Bouton « Surveiller » du détail d'un ticket : bascule, puis redessine l'en-tête.
-/* Le détail vit dans deux panneaux (Mes tickets · Surveillés) et porte les mêmes actions.
+/* Le détail vit dans trois panneaux (Mes tickets · Surveillés · Analysés) et porte les mêmes actions.
    On câble donc chaque gestionnaire SUR LES DEUX, une fois pour toutes : dupliquer les
    écouteurs par sous-onglet, c'est se garantir qu'une action marchera d'un côté seulement. */
 function surLeDetailJira(type, handler) {
@@ -181,7 +181,7 @@ function surLeDetailJira(type, handler) {
      la distribution de l'événement, et relu après une requête il valait toujours null — toute
      action passait pour venir de « Mes tickets ». */
   $$('.js-jira-detail').forEach((el) => el.addEventListener(type, (e) => {
-    e.panneauJira = el.id === 'jiraWatchDetail' ? 'watch' : 'mine';
+    e.panneauJira = el.id === 'jiraWatchDetail' ? 'watch' : el.id === 'jiraAnalysedDetail' ? 'analysed' : 'mine';
     return handler(e);
   }));
 }
@@ -204,7 +204,9 @@ function showJiraSub(sub) {
   $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.classList.toggle('active', b.dataset.jsub === sub));
   $('#jiraSubMine').hidden = sub !== 'mine';
   $('#jiraSubWatch').hidden = sub !== 'watch';
+  $('#jiraSubAnalysed').hidden = sub !== 'analysed';
   if (sub === 'watch') loadJiraWatch();
+  if (sub === 'analysed') chargerAnalyses();
 }
 $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.addEventListener('click', () => showJiraSub(b.dataset.jsub)));
 

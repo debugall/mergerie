@@ -245,7 +245,7 @@ function jiraVisibleIssues() {
   const foin = (it) => `${it.key} ${it.summary} ${it.epic ? `${it.epic.key} ${it.epic.summary}` : ''}`.toLowerCase();
   const filtres = jiraFiltres();
   return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status)
-    && jiraPasseFiltres(it, filtres));
+    && jiraPasseFiltres(it, filtres) && jiraPasseFiltreAnalyse(it));
 }
 function jiraUpdateStatusFilterCount() {
   const el = $('#jiraStatusFilterCount'); if (!el) return;

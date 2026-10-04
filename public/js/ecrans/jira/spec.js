@@ -9,7 +9,7 @@
 
 const SPEC = {
   parCle: {},        // KEY -> vue rendue par le serveur
-  formulaire: {},    // KEY -> { ouvert, repos:[ids], pages:[url], complement, detail, epic, ask, edition }
+  formulaire: {},    // KEY -> { ouvert, repos:[ids], branches:{id: branche}, pages:[url], complement, detail, epic, ask, edition }
   repos: null,       // options de dépôts, chargées une fois
   timers: {},        // KEY -> timer de sondage pendant une analyse
 };
@@ -24,12 +24,23 @@ async function reposOptions() {
 function formulaireDe(cle, vue) {
   if (!SPEC.formulaire[cle]) {
     SPEC.formulaire[cle] = {
-      ouvert: !vue, repos: vue ? vue.repo_ids.slice() : [], pages: vue ? vue.confluence.map((p) => p.url) : [],
+      ouvert: !vue, repos: vue ? vue.repo_ids.slice() : [], branches: vue ? { ...vue.repo_branches } : {}, pages: vue ? vue.confluence.map((p) => p.url) : [],
       complement: vue ? vue.complement : '', detail: vue ? vue.detail : 'synthese', epic: vue ? vue.include_epic : true,
       ask: vue ? vue.ask_questions : true, edition: false, filtre: '',
     };
   }
   return SPEC.formulaire[cle];
+}
+
+/* ---------- La branche lue pour chaque dépôt coché ----------
+   Un dépôt cherche sa branche dans une liste avec recherche (un dépôt actif en compte des centaines) ; vide = sa branche par défaut. */
+const brancheComboHtml = (valeur) => comboHtml('spec-branch', { value: valeur, label: valeur, ph: tr('jira.spec.branch-ph'), wrapClass: 'jira-spec-branch' })
+  + `<button type="button" class="hint" tabindex="-1" aria-label="${esc(tr('jira.spec.branch-tip'))}" data-tip="${esc(tr('jira.spec.branch-tip'))}"><svg class="ico"><use href="#i-info"/></svg></button>`;
+function brancherCombosBranche(racine) {
+  wireCombo(racine, 'spec-branch', async (ligne) => {
+    const d = await branchesFor(Number(ligne.dataset.specRow));
+    return [{ value: '', label: tr('jira.spec.branch-default-opt', { branch: d.def || '?' }) }, ...d.branches.map((b) => ({ value: b, label: b }))];
+  });
 }
 
 /* ---------- Rendu ---------- */
@@ -39,8 +50,9 @@ function formulaireHtml(cle, it, vue) {
   const f = formulaireDe(cle, vue);
   const repos = SPEC.repos || [];
   const q = f.filtre.trim().toLowerCase();
-  const lignes = repos.map((r) => `<label class="jira-spec-repo"${q && !r.project.toLowerCase().includes(q) ? ' hidden' : ''}>
-      <input type="checkbox" data-spec-repo="${r.id}"${f.repos.includes(r.id) ? ' checked' : ''} /> <span>${esc(r.project)}</span></label>`).join('');
+  const lignes = repos.map((r) => `<div class="jira-spec-repo" data-row data-spec-row="${r.id}"${q && !r.project.toLowerCase().includes(q) ? ' hidden' : ''}>
+      <label class="inline-check"><input type="checkbox" data-spec-repo="${r.id}"${f.repos.includes(r.id) ? ' checked' : ''} /> <span>${esc(r.project)}</span></label>
+      ${f.repos.includes(r.id) ? brancheComboHtml(f.branches[r.id] || '') : ''}</div>`).join('');
   const epic = it.epic || (it.type && /epic|epique|epopee/i.test(it.type) ? { key: it.key, summary: it.summary } : null);
   return `<form class="jira-spec-form" data-spec-form="${esc(cle)}" autocomplete="off">
       <div class="jira-spec-field">
@@ -96,7 +108,9 @@ function propositionHtml(cle, vue) {
   else if (attend) conseil = `<p class="jira-spec-hint is-warn">${esc(tr('jira.spec.needs-input-hint'))}</p>`;
   else if (vue.stale) conseil = `<p class="jira-spec-hint is-warn">${esc(tr('jira.spec.stale-hint'))}</p>`;
   else if (vue.status === 'error') conseil = `<p class="jira-spec-hint is-err">${esc(tr('jira.spec.error-hint'))} ${esc(vue.last_error || '')}</p>`;
-  const pagesHtml = pages.length ? `<ul class="jira-spec-lues muted">${pages.map((p) => `<li>${esc(p.title || p.url)}${p.truncated ? ` (${esc(tr('jira.spec.page-truncated-ui'))})` : ''}${p.error ? ` — ${esc(p.error)}` : ''}</li>`).join('')}</ul>` : '';
+  const lus = (vue.repos || []).length
+    ? `<p class="muted jira-spec-lus">${esc(tr('jira.spec.read-branches', { list: vue.repos.map((r) => `${r.project} (${r.branch || tr('jira.ana.default-branch')})`).join(', ') }))}</p>` : '';
+  const pagesHtml = lus + (pages.length ? `<ul class="jira-spec-lues muted">${pages.map((p) => `<li>${esc(p.title || p.url)}${p.truncated ? ` (${esc(tr('jira.spec.page-truncated-ui'))})` : ''}${p.error ? ` — ${esc(p.error)}` : ''}</li>`).join('')}</ul>` : '');
   let corps = '';
   if (vue.version && f.edition) {
     corps = `<textarea class="jira-spec-editor" data-spec-editor rows="16">${esc(vue.markdown)}</textarea>
@@ -134,6 +148,7 @@ function rendreSpec(cle, box) {
   const corps = $('.jira-spec-body', box);
   if (!corps) return;
   corps.innerHTML = `${vue ? propositionHtml(cle, vue) : ''}${(!vue || f.ouvert) ? formulaireHtml(cle, it, vue) : ''}`;
+  brancherCombosBranche(corps);
   box.hidden = false;
   // Tant qu'une analyse tourne, on relit l'état : la proposition arrive sans recharger la page.
   clearTimeout(SPEC.timers[cle]);
@@ -153,7 +168,7 @@ async function chargerSpec(cle, conteneur) {
     if (d.spec && SPEC.formulaire[cle] && !SPEC.formulaire[cle].ouvert) {
       // Les choix enregistrés font foi quand le formulaire est fermé.
       const f = SPEC.formulaire[cle];
-      f.repos = d.spec.repo_ids.slice(); f.pages = d.spec.confluence.map((p) => p.url); f.complement = d.spec.complement;
+      f.repos = d.spec.repo_ids.slice(); f.branches = { ...d.spec.repo_branches }; f.pages = d.spec.confluence.map((p) => p.url); f.complement = d.spec.complement;
       f.detail = d.spec.detail; f.epic = d.spec.include_epic; f.ask = d.spec.ask_questions;
     }
   } catch { SPEC.parCle[cle] = SPEC.parCle[cle] || null; }
@@ -168,6 +183,13 @@ async function majSpecsListe(cles) {
   let d;
   try { d = await api(`/jira/specs?keys=${encodeURIComponent(cles.join(','))}`); } catch { return; }
   const demandees = new Set(cles);
+  /* La table des tickets analysés suit : un ticket qui vient d'avoir sa proposition entre dans le filtre « Déjà analysés » sans recharger la page. */
+  let change = false;
+  for (const cle of cles) {
+    const s = d.specs[cle]; const etait = !!(JIRA.analyses[cle] && JIRA.analyses[cle].analysed);
+    if (!!(s && s.version > 0) !== etait) change = true;
+  }
+  if (change || !$('#jiraSubAnalysed').hidden) chargerAnalyses().then((vraiChangement) => { if (vraiChangement && jiraSpecFiltre() !== 'all') renderJiraList(); });
   for (const el of $$('[data-spec-chip]')) {
     // Seules les cartes DEMANDÉES sont relues : un rafraîchissement d'un ticket ne doit pas éteindre les autres.
     if (!demandees.has(el.dataset.specChip)) continue;
@@ -184,6 +206,14 @@ async function majSpecsListe(cles) {
 function lireFormulaire(form, cle) {
   const f = formulaireDe(cle, SPEC.parCle[cle]);
   f.repos = $$('[data-spec-repo]:checked', form).map((c) => Number(c.dataset.specRepo));
+  // Les branches : celles des dépôts COCHÉS seulement (la branche d'un dépôt décoché ne part pas, et ne revient pas à la prochaine case).
+  const branches = {};
+  for (const id of f.repos) {
+    const champ = form.querySelector(`[data-spec-row="${id}"] .spec-branch`);
+    const b = champ ? champ.value.trim() : (f.branches[id] || '');
+    if (b) branches[id] = b;
+  }
+  f.branches = branches;
   f.complement = ($('[data-spec-complement]', form) || {}).value || '';
   const det = form.querySelector(`input[name="spec-detail-${CSS.escape(cle)}"]:checked`);
   f.detail = det ? det.value : 'synthese';
@@ -192,7 +222,7 @@ function lireFormulaire(form, cle) {
   return f;
 }
 const corpsDe = (cle, f, extra = {}) => ({
-  key: cle, repo_ids: f.repos, complement: f.complement, confluence_urls: f.pages, detail: f.detail,
+  key: cle, repo_ids: f.repos, repo_branches: f.branches, complement: f.complement, confluence_urls: f.pages, detail: f.detail,
   include_epic: f.epic, ask_questions: f.ask, ...extra,
 });
 const boxDe = (el) => el.closest('[data-spec-box]');
@@ -207,6 +237,16 @@ document.addEventListener('input', (e) => {
   formulaireDe(form.dataset.specForm, SPEC.parCle[form.dataset.specForm]).filtre = filtre.value;
   // Le filtre MASQUE les lignes sans rien décocher : ce qui est coché reste coché.
   for (const l of $$('.jira-spec-repo', form)) l.hidden = !!q && !l.textContent.toLowerCase().includes(q);
+});
+
+/* Cocher un dépôt fait apparaître son sélecteur de branche, le décocher le retire — sur place : redessiner le formulaire effacerait ce qu'on est en train de saisir ailleurs. */
+document.addEventListener('change', (e) => {
+  const c = e.target.closest && e.target.closest('[data-spec-repo]');
+  if (!c) return;
+  const ligne = c.closest('[data-spec-row]');
+  const existant = $('.combo', ligne);
+  if (c.checked && !existant) { ligne.insertAdjacentHTML('beforeend', brancheComboHtml('')); brancherCombosBranche(ligne); }
+  else if (!c.checked && existant) { existant.remove(); const i = $('.hint', ligne); if (i) i.remove(); }
 });
 
 document.addEventListener('submit', async (e) => {

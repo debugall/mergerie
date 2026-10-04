@@ -255,7 +255,7 @@ document.addEventListener('click', (e) => {
      « Surveillés », celle de « Mes tickets » dans la sienne. */
   const rel = e.target.closest && e.target.closest('[data-jira-open]');
   if (rel) {
-    const box = rel.closest('#jiraWatchDetail') ? 'watch' : 'mine';
+    const box = rel.closest('#jiraWatchDetail') ? 'watch' : rel.closest('#jiraAnalysedDetail') ? 'analysed' : 'mine';
     selectJiraIssue(rel.dataset.jiraOpen, box);
     return;
   }
@@ -275,9 +275,10 @@ function ouvrirTicketJira(key) {
 }
 async function selectJiraIssue(key, ou = 'mine') {
   const surveille = ou === 'watch';
-  const box = $(surveille ? '#jiraWatchDetail' : '#jiraDetail');
+  const box = $({ watch: '#jiraWatchDetail', analysed: '#jiraAnalysedDetail' }[ou] || '#jiraDetail');
   if (!box) return;
   if (surveille) { JIRA_WATCH.selectedKey = key; renderJiraWatch(); }
+  else if (ou === 'analysed') { JIRA_ANA.selectedKey = key; renderJiraAnalysed(); }
   else { JIRA.selectedKey = key; renderJiraList(); }
   box.innerHTML = skeleton(2);
   try {
@@ -346,6 +347,7 @@ async function loadJira() {
   // La liste surveillée est chargée AVEC l'onglet : le bouton « Surveiller » du détail doit
   // connaître l'état réel dès le premier rendu, sinon il propose d'ajouter un ticket déjà suivi.
   await loadJiraWatch();
+  await chargerAnalyses();      // le filtre « Analyse » de la liste a besoin de savoir, dès le premier rendu, quels tickets le sont
   await loadJiraTickets();
   refreshJiraBadge();
 }

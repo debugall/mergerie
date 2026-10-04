@@ -25,7 +25,9 @@ const specOu404 = (id) => {
 };
 const reposDe = (s) => {
   let ids = []; try { ids = JSON.parse(s.repo_ids_json || '[]'); } catch { ids = []; }
-  return ids.length ? db.prepare(`SELECT id, project, forge FROM repo WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids) : [];
+  let branches = {}; try { branches = JSON.parse(s.branches_json || '{}') || {}; } catch { branches = {}; }
+  const lignes = ids.length ? db.prepare(`SELECT id, project, forge FROM repo WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids) : [];
+  return lignes.map((r) => ({ ...r, branch: branches[r.id] || '' }));
 };
 const vueComplete = (s) => ({ ...spec.vue(s), repos: reposDe(s) });
 const marker = (cfg) => String(cfg.spec_marker || '').trim() || t('jira.spec.marker');
@@ -52,6 +54,20 @@ async function lancer(s, body = {}, { enfantsConnus = null } = {}) {
   const job = jobs.startTaskJob(task.id, 'run', imageIds.length ? { imageIds } : {});
   return { spec: spec.specById(s.id), job };
 }
+
+/* Tous les tickets précisés : l'onglet « Analysés » et le filtre de « Mes tickets ». Le titre vient de la photo prise à l'analyse (aucun appel Jira). */
+app.get('/api/jira/specs/all', wrap((req, res) => {
+  const specs = db.prepare('SELECT * FROM ticket_spec ORDER BY updated_at DESC').all().map((s) => {
+    const v = spec.versionCourante(s.id);
+    let photo = {}; try { photo = JSON.parse(s.ticket_snapshot || '{}') || {}; } catch { photo = {}; }
+    return {
+      id: s.id, key: s.ticket_key, summary: photo.summary || '', epic_key: s.epic_key || null, status: s.status, stale: !!s.stale,
+      version: v ? v.version : 0, posted_version: s.posted_version, unposted: !!(v && (s.posted_version == null || v.version > s.posted_version)),
+      analysed: !!v, repos: reposDe(s), updated_at: s.updated_at,
+    };
+  });
+  res.json({ specs });
+}));
 
 /* Les pastilles de la liste : l'état de la spec de chaque ticket, en un appel. */
 app.get('/api/jira/specs', wrap((req, res) => {
@@ -123,7 +139,7 @@ app.post('/api/jira/spec/epic', wrap((req, res) => {
       const tache = existante && existante.task_id ? db.prepare('SELECT status FROM task WHERE id = ?').get(existante.task_id) : null;
       if (tache && ['running', 'needs_input'].includes(tache.status)) throw new Error(t('err.spec.session-busy'));
       const s = spec.creerOuReprendre({
-        ticketKey: cle, repoIds: b.repo_ids, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
+        ticketKey: cle, repoIds: b.repo_ids, repoBranches: b.repo_branches, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
         includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey, batchId, verifierOrigine: !demoMode.isDemo(),
       });
       creees.push(s.id);
@@ -153,7 +169,7 @@ app.get('/api/jira/spec/:key', wrap((req, res) => {
 app.post('/api/jira/spec', wrap(async (req, res) => {
   const b = req.body || {};
   const s = spec.creerOuReprendre({
-    ticketKey: b.key, repoIds: b.repo_ids, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
+    ticketKey: b.key, repoIds: b.repo_ids, repoBranches: b.repo_branches, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
     includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey: b.epic_key, verifierOrigine: !demoMode.isDemo(),
   });
   const r = await lancer(s, b);
@@ -168,9 +184,9 @@ app.post('/api/jira/spec/:id/rerun', wrap(async (req, res) => {
   // Une session qui tourne (ou attend des réponses) n'est pas doublée : la première perdrait sa spec.
   const enCours = s.task_id ? db.prepare('SELECT status FROM task WHERE id = ?').get(s.task_id) : null;
   if (enCours && ['running', 'needs_input'].includes(enCours.status)) throw new Error(t('err.spec.session-busy'));
-  if (b.repo_ids || b.complement != null || b.confluence_urls || b.detail || b.include_epic != null || b.ask_questions != null) {
+  if (b.repo_ids || b.repo_branches !== undefined || b.complement != null || b.confluence_urls || b.detail || b.include_epic != null || b.ask_questions != null) {
     spec.creerOuReprendre({
-      ticketKey: s.ticket_key, repoIds: b.repo_ids || JSON.parse(s.repo_ids_json || '[]'), complement: b.complement != null ? b.complement : s.complement,
+      ticketKey: s.ticket_key, repoIds: b.repo_ids || JSON.parse(s.repo_ids_json || '[]'), repoBranches: b.repo_branches !== undefined ? b.repo_branches : JSON.parse(s.branches_json || '{}'), complement: b.complement != null ? b.complement : s.complement,
       confluenceUrls: b.confluence_urls || JSON.parse(s.confluence_json || '[]').map((p) => p.url), detail: b.detail || s.detail,
       includeEpic: b.include_epic != null ? b.include_epic : s.include_epic, askQuestions: b.ask_questions != null ? b.ask_questions : s.ask_questions,
       epicKey: s.epic_key, batchId: s.batch_id, verifierOrigine: !demoMode.isDemo(),
@@ -273,7 +289,8 @@ app.get('/api/jira/spec/:id/prefill', wrap((req, res) => {
   const md = spec.lireMd(v.md_path).trim();
   res.json({
     key: s.ticket_key,
-    repos: reposDe(s),
+    // La branche choisie pour l'analyse devient la branche de DÉPART de la session de code : c'est elle qui porte le code décrit.
+    repos: reposDe(s).map((r) => ({ ...r, base_branch: r.branch })),
     prompt: t('jira.spec.prefill', { key: s.ticket_key }) + '\n\n' + md,
     branch_hint: `feat/${s.ticket_key}-`,
   });

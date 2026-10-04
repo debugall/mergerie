@@ -1608,6 +1608,8 @@ const REGISTRE = [
       task: r.task_id ? ctx.uid('task', r.task_id) : null,
       // Les dépôts par leur clé naturelle : un id entier ne désigne rien chez le voisin.
       repos: (() => { try { return JSON.parse(r.repo_ids_json || '[]').map((id) => ctx.repoRef(id)).filter(Boolean); } catch { return []; } })(),
+      // La branche lue pour chaque dépôt, par la même référence naturelle (un id entier ne désigne rien chez le voisin).
+      branches: (() => { try { const b = JSON.parse(r.branches_json || '{}') || {}; return Object.entries(b).map(([id, branch]) => ({ repo: ctx.repoRef(Number(id)), branch })).filter((x) => x.repo && x.branch); } catch { return []; } })(),
       complement: r.complement || '',
       confluence: (() => { try { return JSON.parse(r.confluence_json || '[]'); } catch { return []; } })(),
       detail: r.detail || 'synthese',
@@ -1628,6 +1630,7 @@ const REGISTRE = [
       epic_key: doc.epic_key || null,
       task_id: doc.task ? ctx.id('task', doc.task) : null,
       repo_ids_json: JSON.stringify((doc.repos || []).map((ref) => ctx.repoId(ref)).filter(Boolean)),
+      branches_json: JSON.stringify(Object.fromEntries((doc.branches || []).map((x) => [ctx.repoId(x.repo), x.branch]).filter(([id, b]) => id && b))),
       complement: doc.complement || '',
       confluence_json: JSON.stringify(Array.isArray(doc.confluence) ? doc.confluence : []),
       detail: doc.detail || 'synthese',

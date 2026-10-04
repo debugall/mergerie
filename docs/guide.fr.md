@@ -1448,6 +1448,13 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
 - Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre
   la vérification des autres, et **sans effacer** le dernier état connu.
 
+#### Retrouver les tickets analysés
+L'onglet **Analysés** du menu Jira liste tous les tickets dont la précision technique a été lancée ou
+proposée — avec leurs dépôts et branches lus, leur état (proposée, postée, à revoir…) et leur version ; un clic
+ouvre le ticket et sa précision à côté de la liste, et la pastille compte ceux qui ont une proposition. Dans
+**Mes tickets**, le filtre **Analyse** montre tout, seulement les tickets *déjà analysés*, ou seulement ceux *pas
+encore analysés* (le choix est mémorisé, et la liste se met à jour dès qu'une proposition arrive).
+
 #### Préciser un ticket techniquement
 Un ticket écrit par un Product Owner dit le *quoi* fonctionnel, jamais le *où* (quels dépôts, quels
 modules) ni le *comment* (les étapes, les contraintes de l'existant). Le développeur refait cette
@@ -1456,7 +1463,7 @@ techniquement »** du détail d'un ticket ouvre la section **Précision techniqu
 et le propose en commentaire.
 
 - **Ce qu'on lui donne.** Un ou plusieurs **dépôts** (la liste se filtre à la frappe : le filtre masque
-  sans rien décocher), **l'epic** du ticket et ses autres tickets en contexte (cochée d'office quand le
+  sans rien décocher), chacun avec sa **branche** — une liste avec recherche, la branche par défaut du dépôt si on n'en choisit pas : le code décrit vit souvent sur une release ou une branche de fonctionnalité, et c'est celle-là que l'IA lit (la session « Faire coder par l'IA » ouverte depuis la proposition en part), **l'epic** du ticket et ses autres tickets en contexte (cochée d'office quand le
   ticket en a une — un ticket prend souvent son sens à la lumière des voisins), une ou plusieurs
   **pages Confluence** (cinq au plus ; Cloud se lit avec le compte Jira, Server / Data Center demande une
   adresse et un jeton dans Réglages → Jira ; une page qui n'est pas sur ce Jira ou ce Confluence est refusée :

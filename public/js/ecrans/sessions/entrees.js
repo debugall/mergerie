@@ -236,7 +236,8 @@ async function openTaskForSpec(pre) {
   await loadRepoOptions();
   applyKindToModal('code');
   const branch = pre.branch_hint || `feature/${pre.key}`;
-  renderTargetRows((pre.repos || []).map((r) => ({ repo_id: r.id, branch })));
+  // La branche lue pour l'analyse est celle où se trouve le code décrit : la session de code en part (branche de départ), sauf si on n'en avait pas choisi.
+  renderTargetRows((pre.repos || []).map((r) => ({ repo_id: r.id, branch, base_branch: r.base_branch || '' })));
   renderCtxRepoRows([]);
   setupTaskJira(branch);
   f.prompt.value = `${pre.prompt || ''}\n\n---\n\n`;
