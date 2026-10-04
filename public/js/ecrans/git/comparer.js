@@ -213,7 +213,7 @@ function showGitSub(name) {
   }
   if (name === 'history') gitLoadHistory();
   if (name === 'findref') poserMemoireFindRef();
-  if (name === 'explore') poserMemoireExplorer();
+  if (name === 'tags') tagsPeriodeInit();
   if (name === 'commands') loadGitCommands();
   if (name === 'compare') renderCompareCotes();
   if (name === 'merge') mergeLoad();
@@ -221,8 +221,8 @@ function showGitSub(name) {
 
 // Le compte de dépôts cochés, comme partout ailleurs où l'on coche dans une longue liste
 // (A/Git — « combien de dépôts vais-je analyser ? » ne se lisait qu'en comptant les cases).
-// Fonction à part : `poserMemoireExplorer` (explorateur.js) coche des cases par le code, ce
-// qui ne déclenche pas d'évènement `change`, et doit donc rafraîchir le compte lui aussi.
+// Fonction à part : « Tout cocher / Tout décocher » coche des cases par le code, ce qui ne
+// déclenche pas d'évènement `change`, et doit donc rafraîchir le compte lui aussi.
 function gitExploreMajCompte() {
   const box = $('#gitExploreRepoBox');
   if (!box) return;
@@ -272,7 +272,6 @@ async function loadGit() {
   gitMajVide();
   majBranchesMergees();
   renderGitExploreRepos();
-  poserMemoireExplorer();   // les dépôts du dernier passage, s'ils existent encore
   navRenderRoot();
   navRenderTargets();
   navRestaurer();          // les projets du dernier passage, s'ils existent encore

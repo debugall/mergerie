@@ -19,7 +19,7 @@
  *   - Réglages → Général et Merge requests : un réglage d'équipe et l'exécutant des automatismes
  *     enregistrés depuis le formulaire arrivent dans `settings.json`, celui que Claire y change
  *     s'affiche ici ; les jetons n'y sont jamais ;
- *   - Jira, Git, Liens : rien de ce qu'on y range n'est dans le dépôt.
+ *   - Jira, Git : rien de ce qu'on y range n'est dans le dépôt (Liens est un plugin : ses tables sont classées « poste » par lui, ce que son dépôt prouve).
  *
  * La cadence est poussée à 600 s : ce qu'on voit arriver vient du tour qu'on a demandé.
  * Un seul `startApp()`, un seul navigateur. */
@@ -256,13 +256,13 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
   /* ------------------------------------------------------------ Réglages d'équipe ---- */
 
   test('Réglages : un réglage d’équipe part dans settings.json, celui de Claire revient ; les jetons jamais', async () => {
-    await ouvrirReglages('config');
-    await page.waitForSelector('#sub-config .scope-badge');
+    await ouvrirReglages('mr');
+    await page.waitForSelector('#sub-mr .scope-badge');
     const champ = page.locator('[form="configForm"][name="stale_mr_days"]');
     await champ.waitFor({ state: 'visible' });
     await page.waitForFunction(() => document.querySelector('[form="configForm"][name="stale_mr_days"]').value !== '');
     await champ.fill('12');
-    await page.locator('#sub-config button[type="submit"][form="configForm"]').first().click();
+    await page.locator('#sub-mr button[type="submit"][form="configForm"]').first().click();
     await attendreServeur(async () => String((await app.api('GET', '/api/config')).body.stale_mr_days) === '12', 'le réglage est en base');
     await synchroniserJusqua(app, async () => String(JSON.parse(contenuDuDepot(nu, 'settings.json')).stale_mr_days) === '12',
       'le réglage d’équipe est dans settings.json');
@@ -275,7 +275,7 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
     await synchroniserJusqua(app, async () => String((await app.api('GET', '/api/config')).body.stale_mr_days) === '21',
       'le réglage de Claire est arrivé');
     await page.reload();
-    await ouvrirReglages('config');
+    await ouvrirReglages('mr');
     await page.waitForFunction(() => document.querySelector('[form="configForm"][name="stale_mr_days"]').value === '21');
 
     // QUI EXÉCUTE LES AUTOMATISMES est une décision d'équipe : elle part dans le même fichier.
@@ -303,19 +303,16 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
 
   /* ------------------------------------------------------------ ce qui ne part jamais ---- */
 
-  test('Jira, Git, Liens, Dépôts : la veille, la palette, la grille, les liens libres et les dépôts suivis restent sur ce poste', async () => {
+  test('Jira, Git, Dépôts : la veille, la palette de commandes et les dépôts suivis restent sur ce poste', async () => {
     assert.equal((await app.api('POST', '/api/jira/watch', { key: 'OPS-77' })).status, 200);
     assert.equal((await app.api('POST', '/api/git-commands', { label: 'Palette privée', command: 'fetch --prune' })).status, 200);
-    assert.equal((await app.api('POST', '/api/services', { name: 'Service-du-poste' })).status, 200);
-    assert.equal((await app.api('POST', '/api/free-links', { label: 'Lien-libre-du-poste', url: 'https://interne.exemple.test/wiki' })).status, 200);
     // Une écriture d'équipe dans le même tour : la preuve que ce tour-là a bien poussé quelque chose.
     await app.api('POST', '/api/rules', { branch_match: 'LOCAL-', label: 'temoin-du-tour', content: 'témoin' });
     const uid = app.db.prepare("SELECT uid FROM review_rule WHERE label = 'temoin-du-tour'").get().uid;
     await synchroniserJusqua(app, async () => fichiers().includes(`rules/${uid}.json`), 'le tour a poussé');
 
     const tout = toutLeDepot(nu);
-    for (const prive of ['OPS-77', 'Veille privée du poste', 'Palette privée', 'fetch --prune', 'Service-du-poste',
-      'Lien-libre-du-poste', 'interne.exemple.test']) {
+    for (const prive of ['OPS-77', 'Veille privée du poste', 'Palette privée', 'fetch --prune']) {
       assert.ok(!tout.includes(prive), `« ${prive} » ne devait pas quitter ce poste`);
     }
     /* `grp/app`, LUI, VOYAGE — mais jamais comme fichier à lui : c'est la clé naturelle par

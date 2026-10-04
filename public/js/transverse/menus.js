@@ -84,8 +84,6 @@ const PASTILLES = [
   ['nav.agents', 'shortcuts.badge.agents'],
   ['nav.notes', 'shortcuts.badge.notes'],
   ['nav.jira', 'shortcuts.badge.jira'],
-  ['nav.docker', 'shortcuts.badge.docker'],
-  ['nav.jenkins', 'shortcuts.badge.jenkins'],
 ];
 /* ---------- La barre de menus : ordre et visibilité ----------
    Préférence de ce NAVIGATEUR, comme le thème et la densité : c'est un arrangement d'écran,
@@ -105,7 +103,7 @@ const NAV_KEY = 'mergerie_nav';
 const NAV_TOUJOURS = 'admin';
 
 /* CE QUI EST REPLIÉ D'OFFICE. Onze entrées, et la plupart des journées n'en demandent que
-   quelques-unes : Git, Docker, Jenkins et Liens sont des COMMODITÉS — on y va le jour où on en
+   quelques-unes : Git (et les onglets de plugins : Docker, Liens…) sont des COMMODITÉS — on y va le jour où on en
    a besoin, pas dix fois par jour —, tandis que Reviews, Dev IA, Agents, Notes et Jira sont le
    travail lui-même. La barre porte donc d'abord ce qui a de la valeur tous les jours, et une
    case des Réglages rend les autres. Rien n'est désactivé au passage : les écrans, les données
@@ -113,7 +111,7 @@ const NAV_TOUJOURS = 'admin';
 
    Ce défaut ne vaut que pour qui n'a JAMAIS touché sa barre. Une préférence enregistrée fait
    foi, fût-elle antérieure : on ne retire pas ses menus à quelqu'un qui les a rangés lui-même. */
-const NAV_MASQUES_DEFAUT = ['git', 'docker', 'jenkins', 'links'];
+const NAV_MASQUES_DEFAUT = ['git', ...pluginsOngletsReplies()];
 
 function lireNav() {
   try {
@@ -151,7 +149,7 @@ function appliquerNav() {
     b.hidden = navMasque(tab);
     barre.insertBefore(b, ancre);
   }
-  // Les sous-onglets des Réglages qui suivent un menu (Jenkins) se replient et se rendent avec lui.
+  // Les sous-onglets des Réglages qui suivent un menu (ceux des plugins) se replient et se rendent avec lui.
   if (typeof replierSousOngletsSelonMenus === 'function') replierSousOngletsSelonMenus();
   /* L'onglet courant vient d'être masqué : on ne laisse pas un écran ouvert sans son entrée de
      menu — on bascule sur le premier visible. */

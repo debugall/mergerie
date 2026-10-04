@@ -3,7 +3,7 @@
  *
  * Les opérations multi-dépôts sont couvertes par l'API (e2e-git) ; ce fichier passe par
  * l'ÉCRAN, du choix du dépôt jusqu'à la ref réellement créée ou supprimée sur la forge :
- *   - les huit sous-onglets, et celui qu'on retrouve au rechargement ;
+ *   - les neuf sous-onglets, et celui qu'on retrouve au rechargement ;
  *   - le formulaire qui change de forme selon l'action ;
  *   - créer une branche, un tag par projet avec son message, supprimer des branches cochées
  *     dans une liste filtrée (le filtre MASQUE, il ne décoche rien) — aperçu, confirmation,
@@ -159,10 +159,10 @@ describe('Menu Git : sous-onglets, Actions et Historique', { skip: dispo ? false
 
   /* ---------------------------------------------------------------- tests ---- */
 
-  test('les huit sous-onglets ouvrent chacun leur écran, et le dernier revient au rechargement', async () => {
+  test('les neuf sous-onglets ouvrent chacun leur écran, et le dernier revient au rechargement', async () => {
     await allerGit('actions');
     const subs = await page.locator('#tab-git .subnav [data-gsub]').evaluateAll((els) => els.map((e) => e.dataset.gsub));
-    assert.deepEqual(subs, ['actions', 'merge', 'navigate', 'commands', 'explore', 'compare', 'findref', 'history']);
+    assert.deepEqual(subs, ['actions', 'merge', 'navigate', 'commands', 'explore', 'compare', 'findref', 'tags', 'history']);
     for (const s of subs) {
       await page.locator(`#tab-git .subnav [data-gsub="${s}"]`).click();
       await page.waitForSelector(`#gsub-${s}.active`);

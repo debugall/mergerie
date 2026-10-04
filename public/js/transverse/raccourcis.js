@@ -52,7 +52,9 @@ function openShortcuts() {
   $('#shortcutsList').innerHTML = SHORTCUTS
     .map(([k, key]) => `<div class="shortcut-row"><kbd>${esc(k || plage)}</kbd><span>${esc(tr(key))}</span></div>`).join('')
     + `<h4 class="shortcut-titre">${esc(tr('shortcuts.badges-title'))}</h4>`
-    + PASTILLES.map(([onglet, key]) => `<div class="shortcut-row"><kbd>${esc(tr(onglet))}</kbd><span>${esc(tr(key))}</span></div>`).join('');
+    + PASTILLES.map(([onglet, key]) => `<div class="shortcut-row"><kbd>${esc(tr(onglet))}</kbd><span>${esc(tr(key))}</span></div>`).join('')
+    // …et celles des onglets de plugins, déjà traduites par le plugin.
+    + pluginsLegendesPastilles().map(([onglet, texte]) => `<div class="shortcut-row"><kbd>${esc(onglet)}</kbd><span>${esc(texte)}</span></div>`).join('');
   m.hidden = false;
 }
 $('#footerHelp') && $('#footerHelp').addEventListener('click', openShortcuts);
@@ -87,10 +89,9 @@ document.addEventListener('keydown', (e) => {
      Le dixième tant qu'il y en a dix ; au-delà, c'est bien le dernier qu'il faut viser :
      sinon ajouter un onglet retire en silence son raccourci à celui qui ferme la barre
      (Réglages), et le onzième onglet en prendrait un qui ne lui était pas destiné. */
-  /* L'ONGLET LIENS A SON PROPRE CLAVIER dès qu'une case a le focus : `j`/`k` les lignes,
-     `←`/`→` les cases, `Entrée` ouvre, `e` modifie, `c` copie. Il passe avant les touches
-     globales, qui parlent des cartes de merge requests et n'ont rien à faire ici. */
-  if ($('#tab-links') && $('#tab-links').classList.contains('active') && naviguerGrilleLiens(e)) return;
+  /* UN ONGLET DE PLUGIN PEUT AVOIR SON PROPRE CLAVIER (la grille de Liens : `j`/`k` les lignes, `←`/`→` les cases, `Entrée` ouvre…) : il passe
+     avant les touches globales, qui parlent des cartes de merge requests et n'ont rien à faire là. */
+  if (pluginsTouche(e)) return;
   if (/^[0-9]$/.test(e.key)) {
     // …et seulement ce qui est VISIBLE : un menu masqué n'a pas de numéro, sinon « 3 » ouvrirait
     // un onglet absent de la barre.
@@ -101,17 +102,17 @@ document.addEventListener('keydown', (e) => {
   }
   switch (e.key) {
     /* C12 — « / » CHERCHE LÀ OÙ ON EST. Il éjectait vers Reviews : appuyer sur « / » dans
-       Jenkins pour filtrer deux cents jobs changeait d'onglet. Chaque onglet a sa recherche ;
+       un onglet pour filtrer deux cents lignes changeait d'onglet. Chaque onglet a sa recherche ;
        on prend celle qui est visible, et on ne retombe sur Reviews que faute de mieux. */
     case '/': {
       e.preventDefault();
       /* …et « là où on est » couvre TOUS les onglets qui ont une recherche : Agents, Git
          (explorateur et « Trouver une ref »), Docker (journaux) et Réglages (dépôts) en
          étaient absents, si bien que « / » y faisait exactement ce que le commentaire
-         ci-dessus dit avoir corrigé pour Jenkins — changer d'onglet. */
-      const champ = $$(`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
-        #jenkinsSearch, #pageSearch, #linkSearch, #dactSearch, #todoQuickAdd,
-        #agentFilter, #repoSearch, #dlogSearch, .git-ex-filter, #findRefName`)
+         ci-dessus dit avoir corrigé — changer d'onglet. */
+      const champ = $$([`#tab-review .search, #tab-task .search, #jiraSearch, #jiraWatchSearch,
+        #pageSearch, #todoQuickAdd,
+        #agentFilter, #repoSearch, .git-ex-filter, #findRefName`, ...pluginsChampsRecherche()].join(', '))
         .find((el) => el.offsetParent !== null);
       if (champ) { champ.focus(); if (champ.select) champ.select(); break; }
       const s = $('#searchReview');

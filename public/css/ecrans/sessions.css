@@ -139,3 +139,7 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .converge-verdict-fail { color: var(--red); }
 .converge-verdict-stale { color: var(--muted); }
 .plan-approve .plan-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* La session d'analyse d'un ticket porte sa clé : un bouton, pas une étiquette — il ouvre le ticket. */
+.tag.task-spec { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font: inherit; font-size: inherit; color: var(--accent); border-color: var(--accent); background: transparent; }
+.tag.task-spec:hover, .tag.task-spec:focus-visible { background: var(--panel2); }

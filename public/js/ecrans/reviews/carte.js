@@ -1,6 +1,6 @@
 'use strict';
 /* La carte d'une merge request : sa taille, ses notes, l'édition d'un commentaire, le suivi de résolution, les constats ; les boutons contextuels. */
-// @expose noteBadge, remplirLiensDifferes
+// @expose noteBadge
 /* ---------- La taille d'une merge request, sur sa carte ----------
    « Par laquelle commencer ? » se répondait en ouvrant trois cartes. Le nombre de fichiers, le
    volume de lignes et la date de dernière activité tiennent sur une ligne — et ce sont
@@ -358,69 +358,4 @@ document.addEventListener('change', (e) => {
   masquerResolus = e.target.checked;
   appliquerFiltreConstats();
 });
-
-/* ---------- Boutons contextuels sur une merge request ---------- */
-
-/* Les liens du service associé au dépôt de la MR : ses URLs de grille, puis ses gabarits
-   résolus avec la branche et le numéro. Un gabarit non résoluble ICI reste affiché, GRISÉ,
-   avec sa raison — le faire disparaître laisserait croire qu'il n'existe pas. */
-/* Les boutons contextuels, quelle que soit LEUR SOURCE : une merge request, la ligne de projet
-   d'une session, ou un ticket Jira. Le serveur résout `{env}` / `{branch}` / `{mr_iid}` de la
-   même façon dans les trois cas — c'est le même geste, il porte donc les mêmes boutons. */
-/* Les blocs de liens rendus DANS UNE LISTE se remplissent après coup, une fois par ligne :
-   les demander pendant le rendu ferait attendre la liste pour un ornement. */
-function remplirLiensDifferes(racine) {
-  for (const el of $$('[data-liens-task]', racine || document)) {
-    if (el.dataset.liensFait === '1') continue;
-    el.dataset.liensFait = '1';
-    renderLiensContextuels(`/tasks/${el.dataset.liensTask}/targets/${el.dataset.liensTarget}/links`, el);
-  }
-  for (const el of $$('[data-liens-ticket]', racine || document)) {
-    if (el.dataset.liensFait === '1') continue;
-    el.dataset.liensFait = '1';
-    renderLiensContextuels(`/jira/issues/${encodeURIComponent(el.dataset.liensTicket)}/links`, el);
-  }
-}
-
-async function renderLiensContextuels(route, box) {
-  if (!box) return;
-  let d;
-  try { d = await api(route); } catch { return; }
-  return renderBoutonsLiens(d, box);
-}
-
-async function renderMrLinks(mrId, box) {
-  if (!box) return;
-  let d;
-  try { d = await api(`/mrs/${mrId}/links`); } catch { return; }
-  return renderBoutonsLiens(d, box);
-}
-
-function renderBoutonsLiens(d, box) {
-  if (!d.service || (!d.envs.length && !d.context.length)) return;
-  const boutons = [
-    /* Un bouton PAR ADRESSE : une case qui porte « erreurs paiement » et « latence API » en
-       donne deux, chacun nommé. Sans le libellé, deux boutons « Ouvrir · prod » côte à côte
-       obligeraient à en survoler un pour savoir lequel est lequel. */
-    /* LA RÉFÉRENCE A TROIS SEGMENTS, comme partout ailleurs : la frécence se compte PAR
-       ADRESSE (`service:environnement:adresse`). À deux, chaque ouverture depuis une merge
-       request se perdait — ni la palette ni « dernière ouverture » ne la voyaient passer. */
-    ...d.envs.map((e) => `<a class="btn btn-sm" href="${esc(safeUrl(e.url))}" target="_blank" rel="noopener noreferrer"
-        data-usekind="service_url" data-useref="${d.service.id}:${e.environment_id}:${e.id}" title="${esc(e.url)}">
-        <span class="link-env-dot" style="background:${esc(e.color)}"></span>${esc(e.label
-          ? tr('links.mr.open-named', { env: e.env, name: e.label })
-          : tr('links.mr.open', { env: e.env }))}</a>`),
-    ...d.context.flatMap((c) => {
-      if (c.per_env.length) {
-        return c.per_env.map((k) => (k.url
-          ? `<a class="btn btn-sm" href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</a>`
-          : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${k.manquante}}` }))}">${svgIco('zap')}${esc(c.label)} · ${esc(k.env)}</button>`));
-      }
-      return [c.url
-        ? `<a class="btn btn-sm" href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer">${svgIco('zap')}${esc(c.label)}</a>`
-        : `<button type="button" class="btn btn-sm" disabled title="${esc(tr('links.mr.unresolved', { name: `{${c.manquante}}` }))}">${svgIco('zap')}${esc(c.label)}</button>`];
-    }),
-  ];
-  box.innerHTML = `<div class="mr-links"><span class="muted">${esc(d.service.name)}</span>${boutons.join('')}</div>`;
-}
 

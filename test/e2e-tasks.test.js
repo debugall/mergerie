@@ -904,8 +904,8 @@ describe('Sessions de dev de bout en bout', () => {
     const kCtxCible = [...jobKeys({ kind: 'task', taskId: avecContexte.id, opts: { targetIds: [cibleId] } })];
     assert.deepEqual(kCtxCible.sort(), [`repo:${repoId}`, `repo:${repo2Id}`].sort());
 
-    // Docker ne touche aucun dépôt ; une opération git déclare les siens.
-    assert.deepEqual([...jobKeys({ kind: 'docker', payload: {} })], []);
+    // Un job de plugin (Docker…) ne touche aucun dépôt ; une opération git déclare les siens.
+    assert.deepEqual([...jobKeys({ kind: 'plugin:docker', payload: {} })], []);
     assert.deepEqual([...jobKeys({ kind: 'gitops', payload: { targets: [{ repo_id: repoId }] } })], [`repo:${repoId}`]);
     // Une RESTAURATION relit sa cible en base au moment du run : périmètre inconnu → refus.
     assert.deepEqual([...jobKeys({ kind: 'gitops', payload: { restoreOpId: 7 } })], ['*']);

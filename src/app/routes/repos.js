@@ -8,10 +8,8 @@ const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
-const links = require('../../notes/links');
 const forge = require('../../forge');
 const git = require('../../git/git');
-const jenkins = require('../../integrations/jenkins');
 const localrepos = require('../../git/localrepos');
 const path = require('path');
 const fs = require('fs');
@@ -68,6 +66,8 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
   const parGroupe = [...new Set([...db.prepare(`SELECT vg.verifier_id FROM verifier_group vg
       JOIN repo_group_member m ON m.group_id = vg.group_id WHERE m.repo_id = ?`).all(id).map((r) => r.verifier_id)])];
   res.json({
+    // Qui est ce dépôt : les plugins qui décorent la fiche (cible `repo-sheet`) en ont besoin pour y poser ce qu'ils rattachent.
+    id: repo.id, project: repo.project,
     /* Ses groupes : la porte vers Réglages → Dépôts → Groupes. */
     groups: groupes.groupesDuDepot(id).map((g) => ({ id: g.id, name: g.name })),
     verifiers: [
@@ -78,12 +78,10 @@ app.get('/api/repos/:id/sheet', wrap((req, res) => {
         .filter((v) => !db.prepare('SELECT 1 FROM verifier_repo WHERE verifier_id = ? AND repo_id = ?').get(v.id, id))
         .map((v) => ({ ...v, mode: 'worktree', via_group: true })),
     ],
-    jenkins: db.prepare('SELECT id, job_path, param FROM repo_jenkins WHERE repo_id = ? ORDER BY job_path').all(id),
     /* Les règles LIMITÉES à ce dépôt. Celles qui valent partout ne sont pas « rattachées » :
        les lister ici ferait croire qu'elles disparaîtraient avec lui. */
     rules: db.prepare(`SELECT id, label, branch_match, path_match, enabled, group_id FROM review_rule
       WHERE repo_id = ? OR group_id IN (SELECT group_id FROM repo_group_member WHERE repo_id = ?) ORDER BY id`).all(id, id),
-    services: db.prepare('SELECT id, name FROM service WHERE repo_id = ? ORDER BY name').all(id),
     // Les projets liés PAR DÉFAUT : ce qui sera joint au contexte des futures merge requests.
     links: db.prepare(`SELECT l.linked_repo_id AS id, l.branch, r.project FROM repo_link l
       JOIN repo r ON r.id = l.linked_repo_id WHERE l.repo_id = ? ORDER BY r.project`).all(id),
@@ -167,7 +165,10 @@ app.put('/api/repos/:id', wrap((req, res) => {
 }));
 app.delete('/api/repos/:id', wrap((req, res) => {
   store.verserEnMarge(req.params.id);
+  const parti = db.prepare('SELECT id, project FROM repo WHERE id = ?').get(Number(req.params.id));
   db.prepare('DELETE FROM repo WHERE id = ?').run(Number(req.params.id));
+  // Les plugins qui tiennent une table rattachée à un dépôt en font le ménage sur cet événement.
+  if (parti) require('../../core/events').emit('repo.deleted', { id: parti.id, project: parti.project }).catch(() => {});
   res.json({ ok: true });
 }));
 /* ---------- Répertoires locaux (Réglages → Dépôts) ----------

@@ -270,7 +270,7 @@ app.post('/api/tasks/:id/targets/:tid/mr', wrap(async (req, res) => {
      request EST créée, et un Jira injoignable ne doit pas faire croire le contraire. Le
      résultat est rendu avec la réponse, pour que l'écran puisse le dire. */
   let jiraNotifie = null;
-  if (tache.notify_jira) jiraNotifie = await prevenirJira(tg).catch(() => null);
+  if (tache.notify_jira) jiraNotifie = await prevenirJira({ ...tg, mr_iid: mr.iid, mr_url: mr.web_url, mr_target: target, mr_title: mr.title || title }).catch(() => null);
   /* B9 — REVIEWER DÈS LA CRÉATION, si la session l'a demandé. La merge request vient d'être
      ouverte sur la forge : la table locale ne la connaît pas encore (c'est la découverte qui
      l'y range). On fait donc l'upsert CIBLÉ — le même que la convergence — puis on enfile la

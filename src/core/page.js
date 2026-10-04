@@ -28,6 +28,12 @@ const path = require('path');
    `core.autocrlf=true`) — sans lui, le marqueur ne matche plus jamais et la page sert les
    commentaires `<!--@include …-->` tels quels, coquille vide, tous les `$(...)` de scripts null. */
 const MARQUEUR = /^[ \t]*<!--@include ([^\s>]+)-->[ \t]*\r?$/;
+/* LES MARQUEURS DE PLUGINS : `<!--@plugins:styles-->`, `<!--@plugins:nav-->`… Chacun est
+   remplacé par ce que les plugins ACTIFS apportent à cet endroit (voir `src/plugins/pageplugins.js`),
+   la ligne du marqueur restant en place. Sans fragments (contrôles, tests sans plugin), le
+   marqueur reste seul : la page est celle du cœur. `nav` admet des positions nommées
+   (`before:links`), résolues contre les boutons `data-tab` de la coquille. */
+const MARQUEUR_PLUGINS = /^([ \t]*)<!--@plugins:([a-z0-9-]+)-->[ \t]*\r?$/;
 
 /* Le chemin d'un morceau, vérifié : relatif, sous `public/`, jamais au-dessus. */
 function cheminMorceau(base, rel, ou) {
@@ -59,7 +65,58 @@ function inchange(entree) {
   } catch { return false; }
 }
 
-function assemblerPage(cheminIndex) {
+/**
+ * @param {string} cheminIndex
+ * @param {{ fragments?: Record<string, any> }} [options] les fragments des plugins actifs, par marqueur
+ */
+function assemblerPage(cheminIndex, { fragments } = {}) {
+  const base = assemblerCoquille(cheminIndex);
+  if (!fragments) return base;
+  return poserFragments(base, fragments);
+}
+
+/** Les boutons d'onglets de plugins, dans l'ordre : ceux sans position, puis chaque position nommée (`before:links`, `after:docker`) posée contre le bouton du plugin qu'elle
+    vise s'il est là, sinon en fin de liste. */
+function ordonnerOngletsPlugins(texte, positions) {
+  const lignes = String(texte || '').split('\n').filter(Boolean);
+  for (const [cle, bloc] of positions) {
+    const [sens, ancre] = [cle.slice(0, cle.indexOf(':')), cle.slice(cle.indexOf(':') + 1)];
+    const i = lignes.findIndex((l) => l.includes(`<button data-tab="${ancre}"`));
+    const morceaux = String(bloc).split('\n').filter(Boolean);
+    if (i === -1) lignes.push(...morceaux);
+    else lignes.splice(sens === 'before' ? i : i + 1, 0, ...morceaux);
+  }
+  return lignes.join('\n');
+}
+
+/** La page avec ses fragments de plugins posés sur les marqueurs `<!--@plugins:x-->`. */
+function poserFragments(page, fragments) {
+  const positions = (fragments && fragments.navPositions) || {};
+  const lignes = page.split('\n');
+  /* Les ancres que la COQUILLE connaît : `before:git` se pose contre son bouton. Une ancre qui n'y est pas — l'onglet d'un autre plugin (Liens, Docker),
+     ou d'un plugin absent — se résout contre les boutons de plugins posés au marqueur, et à défaut en fin de liste : un onglet ne disparaît jamais
+     parce que son voisin n'est pas installé. */
+  const ancresCoeur = new Set([...page.matchAll(/<button data-tab="([a-z-]+)"/g)].map((x) => x[1]));
+  const sansAncre = Object.entries(positions).filter(([cle]) => !ancresCoeur.has(cle.slice(cle.indexOf(':') + 1)));
+  const out = [];
+  for (const l of lignes) {
+    const m = MARQUEUR_PLUGINS.exec(l);
+    if (m) {
+      out.push(l);
+      const texte = m[2] === 'nav' ? ordonnerOngletsPlugins(fragments.nav, sansAncre) : fragments[m[2]];
+      if (texte) out.push(texte);
+      continue;
+    }
+    /* Un bouton d'onglet du cœur : un plugin peut demander à passer AVANT ou APRÈS lui. */
+    const tab = l.match(/<button data-tab="([a-z-]+)"/);
+    if (tab && positions[`before:${tab[1]}`]) out.push(positions[`before:${tab[1]}`]);
+    out.push(l);
+    if (tab && positions[`after:${tab[1]}`]) out.push(positions[`after:${tab[1]}`]);
+  }
+  return out.join('\n');
+}
+
+function assemblerCoquille(cheminIndex) {
   const deja = memo.get(cheminIndex);
   if (deja && inchange(deja)) return deja.page;
   const base = path.dirname(cheminIndex);
@@ -82,4 +139,9 @@ function assemblerPage(cheminIndex) {
   return page;
 }
 
-module.exports = { assemblerPage, morceaux, MARQUEUR };
+/** Les marqueurs de plugins de la coquille assemblée, dans l'ordre. */
+function marqueursPlugins(cheminIndex) {
+  return assemblerCoquille(cheminIndex).split('\n').map((l) => MARQUEUR_PLUGINS.exec(l)).filter(Boolean).map((m) => m[2]);
+}
+
+module.exports = { assemblerPage, poserFragments, morceaux, marqueursPlugins, MARQUEUR, MARQUEUR_PLUGINS };

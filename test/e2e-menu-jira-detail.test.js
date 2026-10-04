@@ -204,7 +204,8 @@ describe('Menu Jira — le ticket ouvert', { skip: dispo ? false : MSG_NAVIGATEU
     assert.match(envoye, /"type":"doc"/, 'converti en ADF, le format que Jira exige');
     assert.match(envoye, /Déployé en recette\./);
     await page.waitForFunction(() => /2 commentaires/.test(document.querySelector('#jiraDetail').textContent));
-    assert.match(await page.locator('#jiraDetail').innerText(), /Nouveau commentaire/, 'le commentaire rendu par Jira s’ajoute au fil');
+    // Le faux Jira rend désormais le commentaire POSTÉ (avec son id, comme le vrai) : c'est lui qui s'ajoute au fil.
+    assert.match(await page.locator('#jiraDetail .jira-comment').last().innerText(), /Déployé en recette\./, 'le commentaire rendu par Jira s’ajoute au fil');
   });
 
   test('le brouillon de commentaire survit au rechargement, Ctrl+Entrée l’envoie puis l’efface', async () => {

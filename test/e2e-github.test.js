@@ -33,8 +33,10 @@ describe('GitHub de bout en bout', () => {
     ];
     app.ghState.pulls[PROJECT] = [{
       number: 42, title: 'Ajout de b [PROJ-100]', state: 'open', merged: false, merged_at: null,
-      head: { ref: repo.branch, sha: repo.branchSha },
-      base: { ref: 'main', sha: repo.mainSha },
+      /* `repo` sur les deux côtés : une pull request du dépôt lui-même, pas d'un fork — c'est
+         ce qui autorise la comparaison `base...head` (le retard) et la vérification automatique. */
+      head: { ref: repo.branch, sha: repo.branchSha, repo: { full_name: PROJECT } },
+      base: { ref: 'main', sha: repo.mainSha, repo: { full_name: PROJECT } },
       html_url: `https://github.test/${PROJECT}/pull/42`,
       created_at: new Date().toISOString(), user: { login: 'alice' },
     }];
@@ -159,6 +161,9 @@ describe('GitHub de bout en bout', () => {
   /* ---------- Découverte et review ---------- */
 
   test('POST /api/discover récupère les PR GitHub comme des MR', async () => {
+    /* LE RETARD SUR LA CIBLE : GitHub ne le met pas sur la pull request, la comparaison
+       `base...head` le compte (`behind_by`). */
+    app.ghState.compare[PROJECT] = { behind_by: 2, ahead_by: 1 };
     const { body } = await app.api('POST', '/api/discover');
     assert.equal(body.errors.length, 0, JSON.stringify(body.errors));
     const mrs = (await app.api('GET', '/api/mrs')).body.filter((m) => m.project === PROJECT);
@@ -168,6 +173,8 @@ describe('GitHub de bout en bout', () => {
     assert.equal(mrs[0].source_branch, repo.branch, 'head.ref → source_branch');
     assert.equal(mrs[0].target_branch, 'main', 'base.ref → target_branch');
     assert.equal(mrs[0].author, 'alice');
+    assert.equal(mrs[0].behind_by, 2, 'deux commits de retard, lus de /compare');
+    assert.ok(app.ghState.calls.some((c) => /\/compare\/main\.\.\./.test(c.path)), 'la comparaison cible...source a été demandée');
   });
 
   test('les chemins modifiés d’une PR alimentent le badge « risque »', async () => {

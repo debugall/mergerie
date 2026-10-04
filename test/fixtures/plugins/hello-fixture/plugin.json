@@ -1,0 +1,22 @@
+{
+  "name": "hello-fixture",
+  "version": "1.2.3",
+  "apiVersion": "1",
+  "displayName": "Hello (fixture)",
+  "description": "Un plugin de test : un onglet, une route, une table, une tâche, un réglage.",
+  "author": "tests",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["events", "settings", "secrets", "db", "http", "schedule", "repos", "ui.tab", "ui.actions", "ui.palette", "notify", "demo", "env", "services"],
+  "events": { "listens": ["session.finished", "repo.deleted"], "emits": ["hello-fixture.pinged"] },
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "greeting": { "type": "string", "title": "Salutation", "default": "bonjour", "maxLength": 40 },
+      "url": { "type": "string", "format": "uri", "title": "Adresse", "default": "" },
+      "token": { "type": "string", "x-secret": true, "x-bound-to": "url", "title": "Jeton" },
+      "every": { "type": "integer", "minimum": 1, "maximum": 60, "default": 5 }
+    }
+  },
+  "ui": { "scripts": ["ui/hello.js"], "styles": ["ui/hello.css"], "html": { "tabs": ["ui/onglet.html"] } }
+}

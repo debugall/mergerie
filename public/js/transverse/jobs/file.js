@@ -13,10 +13,15 @@ let logQueueOpen = false;
 const JOB_KIND_LABEL = {
   review: 'job.kind.review', rereview: 'job.kind.rereview', modify: 'job.kind.modify',
   explain: 'job.kind.explain', task: 'job.kind.task', local: 'job.kind.local',
-  gitops: 'job.kind.gitops', docker: 'job.kind.docker',
+  gitops: 'job.kind.gitops',
   converge: 'job.kind.converge', 'converge-session': 'job.kind.converge',
   verify: 'job.kind.verify', ask: 'job.kind.ask',
   'ask-review': 'job.kind.ask-review', reconcile: 'job.kind.reconcile',
 };
-const jobKindLabel = (k) => (JOB_KIND_LABEL[k] ? tr(JOB_KIND_LABEL[k]) : k);
+/* Un job de PLUGIN a pour genre `plugin:<nom>` : on le nomme comme le plugin se nomme (« Docker »). */
+const jobKindLabel = (k) => {
+  if (JOB_KIND_LABEL[k]) return tr(JOB_KIND_LABEL[k]);
+  const m = /^plugin:(.+)$/.exec(String(k));
+  return m ? ((PLUGINS_META[m[1]] && PLUGINS_META[m[1]].displayName) || m[1]) : k;
+};
 

@@ -8,6 +8,7 @@
             <button data-gsub="explore" role="tab"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.sub.explorer">Explorateur de branches</span></button>
             <button data-gsub="compare" role="tab"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.sub.compare">Comparer</span></button>
             <button data-gsub="findref" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.findref">Trouver une ref</span></button>
+            <button data-gsub="tags" role="tab"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="git.sub.tags">Tags par période</span></button>
             <button data-gsub="history" role="tab"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="git.sub.history">Historique</span></button>
         </div>
 
@@ -84,6 +85,11 @@
              Le travail se fait dans un worktree dédié (cf. src/gitmerge.js) : le clone partagé
              n'est jamais laissé à moitié fusionné pendant qu'on résout. -->
         <div id="gsub-merge" class="subtab">
+            <!-- Le travail d'abord : quand un merge est ouvert, CSS (order) place #mergeWork en tête,
+                 puis la liste des merges en cours, puis ce formulaire — qui prend alors le titre
+                 « Préparer un autre merge ». L'ordre du DOM ne change pas : les tests et les ids non plus. -->
+            <div class="merge-form-box" id="mergeFormBox">
+            <h4 class="merge-form-title" data-i18n="git.merge.form-other">Préparer un autre merge</h4>
             <p class="muted" style="max-width:900px" data-i18n="git.merge.intro">Fusionne une branche dans une autre. Les conflits se résolvent ici, fichier par fichier : tu vois les deux versions, tu choisis celle que tu gardes — ou tu écris la tienne. Rien n'est commité ni poussé sans ton clic.</p>
             <div class="form" style="max-width:900px">
                 <div class="target-row merge-pick" data-row="0">
@@ -101,6 +107,7 @@
                     <button id="mergeStart" class="btn btn-primary" data-i18n-title="git.merge.start-title"><svg class="ico"><use href="#i-merge"/></svg><span data-i18n="git.merge.start">Préparer le merge</span></button>
                     <span id="mergeStartInfo" class="muted"></span>
                 </div>
+            </div>
             </div>
             <!-- Refus « historiques sans ancêtre commun » : une question, pas une panne. Le bloc
                  n'apparaît qu'après le refus, pour ne pas encombrer un formulaire de trois champs. -->
@@ -200,6 +207,24 @@
                 <span id="findRefInfo" class="muted"></span>
             </form>
             <div id="findRefBox"></div>
+        </div>
+
+        <!-- Sous-onglet : tags par période — « qu'a-t-on livré ces deux semaines ? » : tous les tags
+             posés entre deux jours, tous dépôts actifs confondus, en un tableau qui se copie tel
+             quel dans Teams (HTML + texte tabulé dans le presse-papiers). -->
+        <div id="gsub-tags" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.tags.period.intro">Choisis une période : l'outil liste les tags créés entre ces deux jours dans tous les dépôts actifs. « Copier le tableau » le pose dans le presse-papiers prêt à coller dans Teams.</p>
+            <form id="tagsPeriodForm" class="form inline git-tags-form" style="max-width:none">
+                <label class="git-tags-lbl"><span data-i18n="git.tags.period.from">Du</span> <input type="date" id="tagsPeriodFrom" required /></label>
+                <label class="git-tags-lbl"><span data-i18n="git.tags.period.to">au</span> <input type="date" id="tagsPeriodTo" required /></label>
+                <span class="git-tags-presets">
+                    <button type="button" class="btn btn-sm" data-tags-preset="7" data-i18n="git.tags.period.preset-7">7 derniers jours</button>
+                    <button type="button" class="btn btn-sm" data-tags-preset="30" data-i18n="git.tags.period.preset-30">30 derniers jours</button>
+                </span>
+                <button id="tagsPeriodGo" type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="git.tags.period.search">Rechercher</span></button>
+                <span id="tagsPeriodInfo" class="muted"></span>
+            </form>
+            <div id="tagsPeriodBox"></div>
         </div>
 
         <!-- Sous-onglet : historique -->

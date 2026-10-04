@@ -18,6 +18,7 @@ function freshState() {
     commits: {},             // project -> [commit] (le plus récent d'abord)
     events: {},              // project -> [event] : les pushes de TOUTES les branches
     files: {},               // `${project}#${n}` -> [{ filename, previous_filename }]
+    compare: {},             // `${project}` -> { behind_by, ahead_by } rendus par /compare/base...head
     reviewComments: {},      // `${project}#${n}` -> [comment]
     reviews: {},             // `${project}#${n}` -> [{ id, user:{login}, state }]
     resolvedThreads: {},     // `${project}#${n}` -> Set(rootId) — l'état « résolu », GraphQL seulement
@@ -117,6 +118,12 @@ function handle(req, res, pathname, query, body) {
   if (rest === '') {
     const r = state.repos.find((x) => x.full_name === project);
     return json(res, 200, r || { full_name: project, default_branch: 'main' });
+  }
+
+  // --- Comparaison base...head (le retard d'une branche sur sa cible) ---
+  if (rest.startsWith('/compare/') && req.method === 'GET') {
+    const c = state.compare[project] || { behind_by: 0, ahead_by: 0 };
+    return json(res, 200, { status: c.behind_by ? 'diverged' : 'ahead', ...c, commits: [] });
   }
 
   // --- Pull requests ---

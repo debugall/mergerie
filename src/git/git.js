@@ -357,6 +357,21 @@ async function tagAuthor(cwd, tag) {
   };
 }
 
+// Date de CRÉATION et première ligne de message de CHAQUE tag du clone, en une commande :
+// `creatordate` est la date du tagger pour un tag annoté, celle du commit pour un tag léger.
+// Sert aux forges qui ne datent pas leurs tags (GitHub) ; le fetch préalable est best-effort.
+async function tagDates(cwd) {
+  try { await run('git', [...gitTlsArgs(), 'fetch', 'origin', '--tags', '--force'], { cwd }); } catch { /* on lit l'état local */ }
+  const { stdout } = await run('git', ['for-each-ref', '--format=%(refname:short)\t%(creatordate:iso-strict)\t%(contents:subject)', 'refs/tags'], { cwd });
+  const out = new Map();
+  for (const l of stdout.split('\n')) {
+    if (!l.trim()) continue;
+    const [name, date = '', subject = ''] = l.split('\t');
+    out.set(name, { date: date.trim() || null, message: subject.trim() });
+  }
+  return out;
+}
+
 // Branches (distantes) qui CONTIENNENT un commit — ici le commit pointé par un tag,
 // pour répondre à « sur quelle branche ce tag a-t-il été posé ». Un tag ne mémorise
 // pas sa branche d'origine (il pointe un commit) : on renvoie donc les branches où ce
@@ -671,7 +686,7 @@ module.exports = {
   aheadOf, behindOf, isPushed, renommerDernierCommit, nonPousses,
   rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
   resetWorktree,
-  ensureRepo, targetedDiff, diffTroisPoints, diffRange, tagAuthor, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
+  ensureRepo, targetedDiff, diffTroisPoints, diffRange, tagAuthor, tagDates, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   envGit, enTetesForge, sansIdentifiants, nettoyerOrigines, argsDurcis,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
   lsTree, showFile, fileDiffFull, fileDiffRange,

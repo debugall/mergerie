@@ -22,9 +22,8 @@ function enregistrerConfig(info) {
 }
 
 /* ---------- La garde à vide, commune aux quatre boutons « Tester » ----------
-   Trois boutons jumeaux (Git, Jira, Jenkins) répondaient de trois façons : GitLab appelait
-   l'API avec des champs vides et rendait l'erreur du serveur, Jira ne répondait rien du tout,
-   Jenkins renvoyait un libellé de serveur. Une seule garde, et l'erreur se pose SOUS le
+   Les boutons jumeaux (Git, Jira) répondaient chacun à leur façon : GitLab appelait
+   l'API avec des champs vides et rendait l'erreur du serveur, Jira ne répondait rien du tout. Une seule garde, et l'erreur se pose SOUS le
    premier champ manquant — un test de connexion échoue à cause d'un champ, pas d'un écran. */
 function gardeConnexion(champs, message, info) {
   const vide = champs.find((c) => c && !String(c.value || '').trim());
@@ -38,7 +37,7 @@ function gardeConnexion(champs, message, info) {
    répondaient à l'écran et n'en gardaient rien : en rouvrant les réglages, plus rien ne disait
    si GitLab répondait encore, ni depuis quand personne n'avait vérifié. On relit donc le
    souvenir du dernier test, à l'ouverture de l'onglet. */
-const CONN_INFO = { gitlab: '#configInfoGit', github: '#configInfoGithub', jira: '#configInfoJira', jenkins: '#configInfoJenkins' };
+const CONN_INFO = { gitlab: '#configInfoGit', github: '#configInfoGithub', jira: '#configInfoJira' };
 async function majEtatsConnexions() {
   let d;
   try { d = await api('/conn-tests'); } catch { return; }
@@ -110,8 +109,8 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
   const info = $('#configInfoJira') || $('#configInfo');
   /* LA MÊME GARDE QUE GITLAB, avant tout appel. Le bouton ouvrait un `prompt()` du navigateur
      et sortait sans un mot si on l'annulait — à vide il ne faisait donc rien du tout, au moment
-     précis où l'on cherche à savoir si la connexion marche. Trois boutons jumeaux (Git, Jira,
-     Jenkins) doivent répondre pareil. */
+     précis où l'on cherche à savoir si la connexion marche. Les boutons jumeaux (Git, Jira)
+     doivent répondre pareil. */
   const champ = $('#jiraTestKey');
   const key = (champ && champ.value.trim()) || '';
   viderErreursChamps($('#sub-jiracfg'));
@@ -137,30 +136,4 @@ if (btnTestJira) btnTestJira.addEventListener('click', async () => {
   }
 });
 
-/* Tester Jenkins : mêmes règles que Jira — on teste les valeurs SAISIES, et le masque veut
-   dire « garde le jeton déjà enregistré ». Le nom du compte rendu par Jenkins prouve que le
-   couple utilisateur/jeton est le bon, pas seulement que l'URL répond. */
-const btnTestJenkins = $('#btnTestJenkins');
-if (btnTestJenkins) btnTestJenkins.addEventListener('click', async () => {
-  const f = $('#configForm');
-  const info = $('#configInfoJenkins') || $('#configInfo');
-  /* MÊME GARDE, MÊME PHRASE que Git et Jira. Le serveur répondait « Jenkins non configuré
-     (URL, utilisateur, jeton requis) » — une catégorie interne, et une formulation à part sur
-     trois boutons jumeaux. */
-  viderErreursChamps($('#sub-jenkinscfg'));
-  if (!gardeConnexion([f.jenkins_url, f.jenkins_user, f.jenkins_token], tr('err.jenkins-test-incomplet'), info)) return;
-  await enregistrerConfig(info);
-  info.textContent = tr('settings.jenkins.testing');
-  try {
-    const r = await busy(btnTestJenkins, () => api('/jenkins/test', { method: 'POST', body: {
-      jenkins_url: f.jenkins_url.value.trim(),
-      jenkins_user: f.jenkins_user.value.trim(),
-      jenkins_token: f.jenkins_token.value,
-    } }));
-    info.textContent = tr('settings.jenkins.ok', { user: r.user, n: r.jobs, count: r.jobs });
-  } catch (e) {
-    info.textContent = '';
-    toast(explainError(e.message), true);
-  }
-});
 

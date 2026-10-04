@@ -58,6 +58,9 @@ async function discoverAll() {
   }
 
   const selectMr = db.prepare('SELECT * FROM mr WHERE repo_id = ? AND iid = ?');
+  const poserRetard = db.prepare('UPDATE mr SET behind_by = ?, has_conflicts = COALESCE(?, has_conflicts) WHERE id = ?');
+  const MAX_RETARD_CHECKS = 60;
+  let retardsReleves = 0;
   const insertMr = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at,
      has_conflicts, is_draft, reviewers, description, author_username, is_fork)
@@ -104,15 +107,19 @@ async function discoverAll() {
           author_username: String(m.author_username || ''),
           is_fork: m.is_fork === true ? 1 : (m.is_fork === false ? 0 : null),
         };
+        let mrId;
         if (existing) {
           // Le SHA a bougé → tout verdict déjà rendu sur cette MR est périmé.
           if (m.sha && existing.current_sha && m.sha !== existing.current_sha) result.stale_mr_ids.push(existing.id);
           updateMr.run({ ...base, id: existing.id }); // reset closed_seen si réapparue
           result.updated += 1;
+          mrId = existing.id;
         } else {
           const info = insertMr.run(base);
+          mrId = info.lastInsertRowid;
           insertFeed.run('mr_opened', m.iid, repo.project, m.author || '', m.title || '', now); // 🆕 vient d'arriver
           notify.push('mr_new', { mr_id: info.lastInsertRowid, iid: m.iid, project: repo.project, title: m.title || '' });
+          require('../core/events').emit('mr.created', { mr_id: Number(info.lastInsertRowid), iid: m.iid, project: repo.project, title: m.title || '' }).catch(() => {});
           // Projets liés par défaut du dépôt → copiés sur la nouvelle MR (zéro clic).
           const defaults = db.prepare('SELECT linked_repo_id, branch FROM repo_link WHERE repo_id = ?').all(repo.id);
           if (defaults.length) {
@@ -121,6 +128,21 @@ async function discoverAll() {
           }
           newMrs.push({ id: info.lastInsertRowid, title: m.title, branch: m.source_branch });
           result.created += 1;
+        }
+        /* EN RETARD SUR SA CIBLE ? La liste ne le dit pas : un appel par merge request ouverte
+           (le détail chez GitLab, la comparaison chez GitHub), PLAFONNÉ par tour pour ménager les
+           rate limits — le reste attend le tour suivant, ou l'ouverture de la modale de merge.
+           Best-effort : la forge muette laisse la valeur connue, jamais un 0 inventé. Le conflit
+           que ce détail rapporte est écrit au passage — GitHub ne le calcule que là. */
+        if (retardsReleves < MAX_RETARD_CHECKS && m.is_fork !== true) {
+          retardsReleves += 1;
+          try {
+            const d = await forge.clientFor(repo).divergence(cfg, repo.project, { ...m, is_fork: m.is_fork });
+            if (d && Number.isInteger(d.behind_by)) {
+              poserRetard.run(d.behind_by, d.has_conflicts === true ? 1 : (d.has_conflicts === false ? 0 : null), mrId);
+              if (d.behind_by > 0) result.behind = (result.behind || 0) + 1;
+            }
+          } catch { /* la forge n'a pas répondu : la valeur connue reste */ }
         }
       }
       // MR connues, jamais signalées closes, absentes du set ouvert → mergées/fermées.
@@ -303,6 +325,7 @@ async function upsertMrFromApi(repoId, m) {
   db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)')
     .run('mr_opened', m.iid, (repo && repo.project) || '', author, m.title || '', now);
   notify.push('mr_new', { mr_id: id, iid: m.iid, project: (repo && repo.project) || '', title: m.title || '' });
+  require('../core/events').emit('mr.created', { mr_id: Number(id), iid: m.iid, project: (repo && repo.project) || '', title: m.title || '' }).catch(() => {});
 
   // Projets liés par défaut du dépôt → copiés sur la nouvelle MR (le reviewer les lit).
   const defaults = db.prepare('SELECT linked_repo_id, branch FROM repo_link WHERE repo_id = ?').all(repoId);

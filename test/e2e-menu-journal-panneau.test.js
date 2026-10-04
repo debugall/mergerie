@@ -28,18 +28,16 @@ const {
   startApp, attendreServeur, waitForJobs,
   navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
-const { installerFauxDocker, scenarioDocker } = require('./helpers/fake-docker');
 const { preparerChantier, jobServeur } = require('./helpers/journal');
 
 const { dispo } = navigateurDispo();
 const ATTENTE = 20000;
 
 describe('Panneau de journal — bandeau et corps', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
-  let app; let navigateur; let page; let faux; let chantier;
+  let app; let navigateur; let page; let chantier;
   const erreurs = [];
 
   before(async () => {
-    faux = installerFauxDocker(scenarioDocker());
     app = await startApp();
     await app.configure();
     const racine = path.join(app.dataDir, 'stacks');
@@ -65,7 +63,6 @@ describe('Panneau de journal — bandeau et corps', { skip: dispo ? false : MSG_
     if (app) { try { await waitForJobs(app.api, { timeout: 30000 }); } catch { /* on arrête quand même */ } }
     if (navigateur) await navigateur.close();
     if (app) await app.stop();
-    if (faux) faux.nettoyer();
   });
 
   /* ---------------------------------------------------------------- outils ---- */
@@ -235,7 +232,7 @@ describe('Panneau de journal — bandeau et corps', { skip: dispo ? false : MSG_
     assert.equal(await volet(id).locator('span', { hasText: 'avant la casse' }).isHidden(), true,
       'la ligne ordinaire arrivée après le filtre est masquée');
 
-    // Un job Docker ne se relance pas d'ici : le bouton est absent, et l'écran dit pourquoi.
+    // Un job de plugin ne se relance pas d'ici : le bouton est absent, et l'écran dit pourquoi.
     const raison = (await app.api('GET', `/api/jobs/${id}/log`)).body.no_retry_reason;
     assert.ok(raison, 'le serveur donne une raison');
     await page.locator('#logNoRetry').waitFor({ state: 'visible' });
@@ -262,7 +259,7 @@ describe('Panneau de journal — bandeau et corps', { skip: dispo ? false : MSG_
     await attendreStatut(/arrêté/);
     await page.locator('#logStop').waitFor({ state: 'hidden', timeout: ATTENTE });
     await page.locator('#logNoRetry').waitFor({ state: 'visible' });
-    assert.match(await page.locator('#logNoRetry').innerText(), /Docker/);
+    assert.match(await page.locator('#logNoRetry').innerText(), /plugin/);
     await attendreDansVolet(id, 'Arrêté par l’utilisateur');
   });
 

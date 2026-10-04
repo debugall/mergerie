@@ -111,7 +111,7 @@ function viderToastsErreur() { $$('.toast.err').forEach((t) => t.remove()); }
     for (const m of muts) { if (m.target.hidden) { viderToastsErreur(); return; } }
   });
   /* LA DERNIÈRE MODALE OUVERTE PASSE DEVANT. À z-index égal, c'est l'ordre du HTML qui
-     tranchait : « Ajouter aux todos » ou « Enquêter » depuis la fiche d'un job Jenkins ouvraient
+     tranchait : « Ajouter aux todos » ou « Enquêter » depuis la fiche d'un job de CI ouvraient
      leur fenêtre DERRIÈRE la fiche, déclarée plus bas dans la page, et son bouton n'était plus
      cliquable. Sous la confirmation (150), qui reste au-dessus de tout. */
   function auPremierPlan(modale) {

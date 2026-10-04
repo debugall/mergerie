@@ -125,6 +125,12 @@ try { db.exec('ALTER TABLE config ADD COLUMN task_default_converge INTEGER DEFAU
    ne se décide pas à notre place. Placée APRÈS le `CREATE TABLE config`, comme toutes les
    migrations de ce fichier. */
 try { db.exec('ALTER TABLE config ADD COLUMN verify_jira_comment INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* PRÉCISION TECHNIQUE D'UN TICKET : l'adresse d'un Confluence Server/DC (Cloud : même compte que
+   Jira, rien à poser), la ligne repère du commentaire posté, et des consignes d'équipe pour la
+   proposition. D'équipe tous les trois ; le jeton Confluence, lui, est de poste (`local_config`). */
+try { db.exec("ALTER TABLE config ADD COLUMN confluence_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN spec_marker TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN spec_team_instructions TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 
 /* A18 — « ESSAI » ESSAIE VRAIMENT LE PROFIL. Le bouton n'ouvrait qu'une session pré-remplie du
    gabarit : le modèle, les outils, les sous-agents et le prompt système ne partaient pas,

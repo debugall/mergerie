@@ -77,14 +77,6 @@
 /* La fin de la console d'un build rouge : du log, donc monospace et défilement propre. */
 .jk-tail { max-height: 220px; overflow: auto; }
 
-/* La dernière exécution d'une cible Make, sous son bouton : discrète, rouge si elle a raté. */
-.mk-last { font-size: var(--fs-xs, 11px); white-space: nowrap; }
-.mk-last-ko { color: var(--red-text, var(--red)); }
-
-/* La branche qui tourne, dans l'en-tête d'un projet compose. */
-.docker-git { font-size: var(--fs-xs, 11px); white-space: nowrap; }
-.docker-git .ico { width: 12px; height: 12px; vertical-align: -1px; }
-
 /* Ce qu'une branche porte, dans l'explorateur : la note de sa review, la session qui l'a
    créée. Discret — la colonne reste celle du NOM de la branche. */
 .git-ex-note { font-size: var(--fs-xs, 11px); color: var(--muted); }

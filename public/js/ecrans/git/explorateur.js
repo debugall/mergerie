@@ -1,6 +1,6 @@
 'use strict';
 /* Explorateur de branches, trouver une ref, historique et restauration. */
-// @expose GIT_ACTION_LABEL, filtrerHistoriqueGit, gitAnalyze
+// @expose GIT_ACTION_LABEL, filtrerHistoriqueGit
 /* ---- Explorateur de branches ---- */
 /* La session qui a créé la branche mène À ELLE, pas à l'onglet : on arrivait sur Dev IA, sur
    le sous-onglet consulté la dernière fois, à charge de retrouver la session parmi douze. */
@@ -91,13 +91,7 @@ function gitRenderExplorer(d, box) {
            bouton « Ajouter aux todos » n'existait que sur une merge request et un ticket, et
            une branche sans merge request (le cas justement intéressant) restait hors de
            portée. La todo garde `<dépôt>:<branche>` et sait donc y revenir. */
-        /* TOP 15 — ET LE JOB JENKINS DU DÉPÔT, avec la branche déjà posée. Le bouton n'existait
-           que sur une merge request vérifiée verte : une branche qu'on veut justement déployer
-           en recette AVANT d'en faire une merge request n'y avait pas droit. On ouvre la fiche,
-           jamais un lancement. */
-        + ((b.jenkins || []).slice(0, 1).map((j) => '<button class="btn btn-sm btn-ghost" data-mr-jenkins="' + esc(j.path)
-          + '" data-param="' + esc(j.param) + '" data-branch="' + esc(b.name) + '" title="'
-          + esc(tr('git.br.jenkins-title', { job: j.path, branch: b.name })) + '">' + svgIco('pipeline') + '</button>').join(''))
+        + pluginsHtml('branch', { branch: b, repo_id: d.repo_id })
         + addTodoBtn('branch', d.repo_id + ':' + b.name, tr('notes.add-todo.branch', { branch: b.name }));
       const mrBtn = b.open_mr
         ? '<a class="btn btn-sm" href="' + esc(safeUrl(b.open_mr.url)) + '" target="_blank" rel="noopener noreferrer" title="' + esc(tr('git.mr.open-title', { target: b.open_mr.target })) + '"><svg class="ico ico-sm"><use href="#i-branch"/></svg>!' + b.open_mr.iid + ' ↗</a>'
@@ -113,14 +107,13 @@ function gitRenderExplorer(d, box) {
              sont en base, et ce sont elles qui font d'une ligne un plan de travail. */
           (b.mr_note != null ? ' <span class="git-ex-note">' + esc(fmtNote10(b.mr_note * 10)) + '</span>' : '') +
           /* TOP 15 — …ET LE RESTE DE CE QUE LA BASE SAIT : le TITRE de la merge request (chargé
-             puis jeté jusqu'ici), le ticket, le dernier verdict de vérification, le dernier
-             build. Un nom de branche ne dit pas ce qu'elle fait ; son titre, si. */
+             puis jeté jusqu'ici), le ticket, le dernier verdict de vérification. Un nom de branche ne dit pas ce qu'elle fait ; son titre, si. */
           (b.mr && b.mr.title ? ' <span class="git-ex-titre muted" title="' + esc(b.mr.title) + '">' + esc(String(b.mr.title).slice(0, 60)) + '</span>' : '') +
           (b.mr && b.mr.draft ? ' <span class="tag draft">' + esc(tr('mr.tag.draft')) + '</span>' : '') +
           (b.mr && b.mr.conflicts ? ' <span class="tag conflit">' + esc(tr('mr.tag.conflict')) + '</span>' : '') +
           (b.ticket ? ' <span class="tag" title="' + esc(b.ticket.status || '') + '">' + esc(b.ticket.key) + '</span>' : '') +
           (b.verification ? ' ' + verifyBadge({ verdict: b.verification.verdict }) : '') +
-          badgeCI(b.name) +
+          pluginsHtml('branch-badge', { branch: b, repo_id: d.repo_id }) +
           (b.session ? ' <button type="button" class="lien-reglage git-ex-sess" data-git-sess="' + b.session.id + '" data-git-sess-kind="' + esc(b.session.kind || 'code') + '" title="'
             + esc(tr('git.branch.session-title')) + '">' + svgIco('bot') + ' ' + esc(String(b.session.label || '').slice(0, 40)) + '</button>' : '') + '</td>' +
         '<td>' + ab + '</td><td>' + gitOriginCell(b) + '</td><td>' + merged + '</td>' +
@@ -194,7 +187,6 @@ async function gitAnalyze() {
   // Multi-projets : on analyse tous les dépôts cochés. Chaque résultat va dans son
   // propre bloc <details>, REPLIÉ par défaut (on ouvre celui qu'on veut inspecter).
   const ids = $$('#gitExploreRepoBox .git-multi-pick:checked').map((c) => Number(c.value));
-  retenirDepotsExplorer(ids);
   if (!ids.length) { toast(tr('git.explorer.pick-one'), true); return; }
   const btn = $('#gitExploreGo');
   const wrap = $('#gitExploreBox');
@@ -252,26 +244,14 @@ function findRefBranchesHtml(branches) {
       + '</div>';
   }).join('') + '</div>';
 }
-/* CE QU'ON CHERCHAIT LA DERNIÈRE FOIS. « Trouver une ref » et l'explorateur étaient les deux
-   seuls sous-onglets de Git sans mémoire : on retapait `v2.14.0` à chaque visite, alors qu'on y
-   revient précisément pour suivre la même ref de dépôt en dépôt. */
+/* CE QU'ON CHERCHAIT LA DERNIÈRE FOIS. « Trouver une ref » retient la ref : on y revient
+   précisément pour suivre la même `v2.14.0` de dépôt en dépôt.
+   L'EXPLORATEUR, lui, ne retient PAS les dépôts cochés : une analyse porte sur les dépôts du
+   moment, et retrouver cochés ceux de la veille faisait lancer sans le vouloir une analyse
+   sur trois dépôts au lieu d'un. La mémoire a existé (`aidevtools_git_explorer`) ; on efface
+   la clé qu'un navigateur peut encore porter. */
 const MEMO_FINDREF = 'aidevtools_findref';
-/* …et les dépôts de l'EXPLORATEUR, pour la même raison : on y revient sur les mêmes deux ou
-   trois dépôts, et il fallait les recocher à chaque visite. On ne recoche que ce qui existe
-   encore — un dépôt retiré des réglages ne doit pas réapparaître en fantôme. */
-const MEMO_EXPLORER = 'aidevtools_git_explorer';
-function poserMemoireExplorer() {
-  let ids = [];
-  try { ids = JSON.parse(localStorage.getItem(MEMO_EXPLORER) || '[]'); } catch { ids = []; }
-  if (!Array.isArray(ids) || !ids.length) return;
-  const cases = $$('#gitExploreRepoBox .git-multi-pick');
-  if (!cases.length || cases.some((c) => c.checked)) return;   // déjà un choix à l'écran : on n'y touche pas
-  cases.forEach((c) => { if (ids.includes(Number(c.value))) c.checked = true; });
-  gitExploreMajCompte();   // cocher par le code ne déclenche pas `change`
-}
-function retenirDepotsExplorer(ids) {
-  try { localStorage.setItem(MEMO_EXPLORER, JSON.stringify(ids || [])); } catch { /* stockage indisponible */ }
-}
+try { localStorage.removeItem('aidevtools_git_explorer'); } catch { /* stockage indisponible */ }
 
 function poserMemoireFindRef() {
   let m = {};

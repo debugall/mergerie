@@ -39,11 +39,11 @@ const MAX_NOTE = 2000;
 const MAX_PAGE = 200 * 1024;
 
 const PRIORITES = ['high', 'normal', 'low'];
-/* B16 — quatre objets de plus : une branche (`<dépôt>:<branche>`), une vérification, un build
-   Jenkins (`<job>#<numéro>`) et un conteneur. La liste doit rester alignée sur le `CHECK` de
-   la table (`db.js`, migration B16) : ce qui passe ici et que la table refuse ferait une
-   erreur SQLite brute à l'écran. */
-const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification', 'build', 'container'];
+/* Les genres d'objet que le CŒUR sait ouvrir : une MR, un ticket, un dépôt, une branche
+   (`<dépôt>:<branche>`), une vérification. La table ne les contraint plus (cf.
+   `db/schema/18-plugins.js`) : un plugin déclare les siens (`ctx.ui.registerLinkKind`, par exemple
+   le build de CI `<job>#<numéro>`, ou le conteneur `container` du plugin Docker) et la route les passe en `genresExtra` tant qu'il est actif. */
+const LINK_KINDS = ['mr', 'ticket', 'repo', 'branch', 'verification'];
 // Combien de temps une todo faite reste visible, barrée, avant de s'archiver.
 const JOURS_AVANT_ARCHIVE = 7;
 
@@ -89,11 +89,11 @@ function lirePriorite(v, msgInvalide) {
 /* Le lien est optionnel, mais il va par PAIRE : un `link_kind` sans `link_ref` donnerait une
    todo « liée à une MR » sans MR, donc un bouton qui ne mène nulle part. On efface les deux
    dès que l'un manque. */
-function lireLien(kind, ref, msgInvalide) {
+function lireLien(kind, ref, msgInvalide, genresExtra = []) {
   const k = String(kind == null ? '' : kind).trim();
   const r = String(ref == null ? '' : ref).trim();
   if (!k && !r) return { link_kind: null, link_ref: null };
-  if (!LINK_KINDS.includes(k)) throw erreur(msgInvalide);
+  if (!LINK_KINDS.includes(k) && !genresExtra.includes(k)) throw erreur(msgInvalide);
   if (!r) return { link_kind: null, link_ref: null };
   return { link_kind: k, link_ref: r.slice(0, MAX_TITLE) };
 }
@@ -371,9 +371,9 @@ function reordonnerTodos(ids) {
 
 const lireTodo = (id) => db.prepare('SELECT * FROM todo WHERE id = ?').get(Number(id) || 0);
 
-function creerTodo(body = {}, msgs) {
+function creerTodo(body = {}, msgs, genresExtra = []) {
   const now = nowIso();
-  const lien = lireLien(body.link_kind, body.link_ref, msgs.lienInvalide);
+  const lien = lireLien(body.link_kind, body.link_ref, msgs.lienInvalide, genresExtra);
   return store.ecrire('todo', () => db.prepare(`INSERT INTO todo
     (title, priority, status, note, link_kind, link_ref, due_at, shared, created_at, updated_at)
     VALUES (?,?,'open',?,?,?,?,?,?,?)`).run(
@@ -393,7 +393,7 @@ function creerTodo(body = {}, msgs) {
        décocher l'efface, sinon une todo rouverte s'archiverait toute seule ;
      — toucher `due_at` remet `reminded_at` à NULL : c'est ce qui fait qu'un snooze
        re-sonne (cf. l'en-tête du module). */
-function majTodo(id, patch = {}, msgs) {
+function majTodo(id, patch = {}, msgs, genresExtra = []) {
   const todo = lireTodo(id);
   if (!todo) throw erreur(msgs.inconnue, 404);
   const champs = [];
@@ -412,6 +412,7 @@ function majTodo(id, patch = {}, msgs) {
       patch.link_kind === undefined ? todo.link_kind : patch.link_kind,
       patch.link_ref === undefined ? todo.link_ref : patch.link_ref,
       msgs.lienInvalide,
+      genresExtra,
     );
     set('link_kind', lien.link_kind); set('link_ref', lien.link_ref);
   }

@@ -12,7 +12,7 @@ const notes = require('../../notes/notes');
 const jobs = require('../../jobs');
 const reviewer = require('../../review/reviewer');
 const forge = require('../../forge');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const demoComments = require('../../demo/comments');
 const agentpass = require('../../agent/pass');
 const path = require('path');
@@ -152,15 +152,15 @@ app.post('/api/mrs/:id/clear-error', wrap((req, res) => {
 app.post('/api/mrs/:id/done', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  db.prepare(`UPDATE mr SET status = 'done', updated_at = ? WHERE id = ?`).run(new Date().toISOString(), mr.id);
+  db.prepare(`UPDATE mr SET status = 'done', updated_at = ?, status_at = ? WHERE id = ?`).run(new Date().toISOString(), new Date().toISOString(), mr.id);
   res.json({ ok: true });
 }));
 app.post('/api/mrs/:id/reopen', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const rev = db.prepare('SELECT 1 FROM review WHERE mr_id = ?').get(mr.id);
-  db.prepare(`UPDATE mr SET status = ?, updated_at = ? WHERE id = ?`)
-    .run(rev ? 'reviewed' : 'to_review', new Date().toISOString(), mr.id);
+  db.prepare(`UPDATE mr SET status = ?, updated_at = ?, status_at = ? WHERE id = ?`)
+    .run(rev ? 'reviewed' : 'to_review', new Date().toISOString(), new Date().toISOString(), mr.id);
   res.json({ ok: true });
 }));
 // Supprime le rapport d'une MR (fichiers + ligne en base) et la remet « à reviewer ».
@@ -179,8 +179,8 @@ app.post('/api/mrs/:id/delete-review', wrap((req, res) => {
      parentes selon le scope), donc le ménage est explicite — comme pour les sessions. */
   agentpass.removeTask('review', mr.id);
   try { fs.rmSync(path.join(TASKS_DIR, 'review', String(mr.id)), { recursive: true, force: true }); } catch { /* rien */ }
-  db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, updated_at = ? WHERE id = ?")
-    .run(new Date().toISOString(), mr.id);
+  db.prepare("UPDATE mr SET status = 'to_review', reviewed_sha = NULL, updated_at = ?, status_at = ? WHERE id = ?")
+    .run(new Date().toISOString(), new Date().toISOString(), mr.id);
   res.json({ ok: true });
 }));
 app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
@@ -188,7 +188,7 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.commentaire-vide'));
-  if (demoDocker.isDemo()) return res.json({ ok: true, note_id: demoComments.post(mr.id, body, null).notes[0].id });
+  if (demoMode.isDemo()) return res.json({ ok: true, note_id: demoComments.post(mr.id, body, null).notes[0].id });
   const cfg = getConfig();
   const note = await forge.clientFor(mr).postMrNote(cfg, mr.project, mr.iid, body);
   db.prepare('INSERT INTO comment_log (mr_id, body, gitlab_note_id, sent_at) VALUES (?,?,?,?)')
@@ -210,18 +210,28 @@ app.post('/api/mrs/:id/comment', wrap(async (req, res) => {
  * pointent la même branche aussi — leur bouton « Mettre à jour avec … » apparaît donc sans
  * attendre la prochaine découverte. */
 async function etatFusion(mr) {
-  const reponse = (c) => ({
+  const reponse = (c, retard) => ({
     has_conflicts: c === null || c === undefined ? null : !!c,
+    behind_by: Number.isInteger(retard) ? retard : null,
     target_branch: mr.target_branch,
   });
   // En démo, la forge n'existe pas : on rend ce qui est en base plutôt qu'une erreur.
-  if (demoDocker.isDemo()) return reponse(mr.has_conflicts);
-  const m = await forge.clientFor(mr).getMergeRequest(getConfig(), mr.project, mr.iid);
+  if (demoMode.isDemo()) return reponse(mr.has_conflicts, mr.behind_by);
+  const client = forge.clientFor(mr);
+  const m = await client.getMergeRequest(getConfig(), mr.project, mr.iid);
   const c = m && m.has_conflicts === true ? 1 : (m && m.has_conflicts === false ? 0 : null);
   db.prepare('UPDATE mr SET has_conflicts = ? WHERE id = ?').run(c, mr.id);
   db.prepare('UPDATE task_target SET mr_conflicts = ? WHERE repo_id = ? AND branch = ?')
     .run(c, mr.repo_id, mr.source_branch);
-  return { ...reponse(c), target_branch: (m && m.target_branch) || mr.target_branch };
+  /* LE RETARD SUR LA CIBLE, au même moment. GitLab le rend avec le détail déjà lu ; GitHub demande
+     une comparaison de plus. Best-effort : la forge muette laisse la valeur connue. */
+  let retard = m && Number.isInteger(m.behind_by) ? m.behind_by : null;
+  if (retard === null) {
+    try { const d = await client.divergence(getConfig(), mr.project, mr); retard = d && Number.isInteger(d.behind_by) ? d.behind_by : null; }
+    catch { /* la forge n'a pas répondu */ }
+  }
+  if (retard !== null) db.prepare('UPDATE mr SET behind_by = ? WHERE id = ?').run(retard, mr.id);
+  return { ...reponse(c, retard === null ? mr.behind_by : retard), target_branch: (m && m.target_branch) || mr.target_branch };
 }
 app.get('/api/mrs/:id/merge-check', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
@@ -277,7 +287,7 @@ app.get('/api/me', wrap(async (req, res) => {
 app.get('/api/mrs/:id/discussions', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  const [discs, me] = demoDocker.isDemo()
+  const [discs, me] = demoMode.isDemo()
     ? [demoComments.list(mr.id), demoComments.ME]
     : await Promise.all([
       forge.clientFor(mr).listMrDiscussions(getConfig(), mr.project, mr.iid),
@@ -311,7 +321,7 @@ app.put('/api/mrs/:id/notes/:noteId', wrap(async (req, res) => {
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.commentaire-vide'));
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     const n = demoComments.update(mr.id, req.params.noteId, body);
     return res.json({ ok: true, id: n.id, body: n.body });
   }
@@ -326,7 +336,7 @@ app.post('/api/mrs/:id/discussions/:discussionId/reply', wrap(async (req, res) =
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const body = (req.body && req.body.body || '').trim();
   if (!body) throw new Error(t('err.reponse-vide'));
-  if (demoDocker.isDemo()) return res.json({ ok: true, id: demoComments.reply(mr.id, req.params.discussionId, body).id });
+  if (demoMode.isDemo()) return res.json({ ok: true, id: demoComments.reply(mr.id, req.params.discussionId, body).id });
   const note = await forge.clientFor(mr).replyToDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, body);
   res.json({ ok: true, id: note && note.id });
 }));
@@ -337,7 +347,7 @@ app.post('/api/mrs/:id/discussions/:discussionId/resolve', wrap(async (req, res)
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const resolved = !(req.body && (req.body.resolved === false || req.body.resolved === '0' || req.body.resolved === 0));
-  if (demoDocker.isDemo()) return res.json(demoComments.resolve(mr.id, req.params.discussionId, resolved));
+  if (demoMode.isDemo()) return res.json(demoComments.resolve(mr.id, req.params.discussionId, resolved));
   res.json(await forge.clientFor(mr).resolveDiscussion(getConfig(), mr.project, mr.iid, req.params.discussionId, resolved));
 }));
 /* APPROUVER — le verdict que la forge lit. Un seul geste, sans commentaire inline : `approve`
@@ -348,7 +358,7 @@ app.post('/api/mrs/:id/approve', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   const retirer = !!(req.body && req.body.unapprove);
-  if (demoDocker.isDemo()) { demoComments.approve(mr.id, retirer); return res.json({ ok: true, approvals: demoComments.approvals(mr.id) }); }
+  if (demoMode.isDemo()) { demoComments.approve(mr.id, retirer); return res.json({ ok: true, approvals: demoComments.approvals(mr.id) }); }
   const cfg = getConfig();
   const client = forge.clientFor(mr);
   if (retirer) await client.unapproveMergeRequest(cfg, mr.project, mr.iid);
@@ -359,7 +369,7 @@ app.post('/api/mrs/:id/approve', wrap(async (req, res) => {
 app.get('/api/mrs/:id/approvals', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
-  if (demoDocker.isDemo()) return res.json(demoComments.approvals(mr.id));
+  if (demoMode.isDemo()) return res.json(demoComments.approvals(mr.id));
   const me = await forgeUsername(mr);
   res.json(await forge.clientFor(mr).approvalState(getConfig(), mr.project, mr.iid, me));
 }));
@@ -370,7 +380,7 @@ app.get('/api/mrs/:id/approvals', wrap(async (req, res) => {
 app.get('/api/mrs-ci', wrap(async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0).slice(0, 60);
   const out = {};
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     ids.forEach((id, i) => { out[id] = { state: ['success', 'failed', 'running', 'success'][i % 4], url: null, label: '' }; });
     return res.json(out);
   }
@@ -391,7 +401,7 @@ app.post('/api/mrs/:id/discussion', wrap(async (req, res) => {
   const { body, old_path, new_path, old_line, new_line } = req.body || {};
   if (!(body || '').trim()) throw new Error(t('err.commentaire-vide-2'));
   if (!new_path && !old_path) throw new Error(t('err.fichier-requis'));
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     const d = demoComments.post(mr.id, body.trim(), { new_path, old_path, new_line, old_line });
     return res.json({ ok: true, id: d.id });
   }

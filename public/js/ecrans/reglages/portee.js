@@ -70,6 +70,9 @@ async function loadConfig() {
       url: 'https://…/reviews/…/rapport.md', v: 2, note: '8,4',
     });
   }
+  // Le message de Jira qui partira si l'on ne touche à rien : montré tel quel, pas deviné.
+  if (f.jira_notify_template) f.jira_notify_template.placeholder = tr('jira.notify.body', { iid: 214, project: 'groupe/projet', url: 'https://…/merge_requests/214' });
+  majApercuJira();
   /* La ligne « publier le lien » n'a de sens qu'avec un dépôt de données : on retient ici ce
      que le serveur vient de dire, `syncAutoPostBlocking` s'en sert à chaque changement. */
   depotDonneesConfigure = !!String(c.data_repo_url || '').trim();
@@ -100,7 +103,6 @@ async function loadConfig() {
      ne sait pas si l'on regarde un réglage ou une suggestion. `retention_days` et
      `stale_mr_days` le faisaient déjà ; le plafond de vérification automatique non. */
   if (f.verif_auto_max) f.verif_auto_max.value = Number(c.verif_auto_max) || 5;
-  if (f.jenkins_refresh_minutes) f.jenkins_refresh_minutes.value = Number(c.jenkins_refresh_minutes) || 0;
   syncReviewAutoMax();
   syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };

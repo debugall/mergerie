@@ -35,9 +35,6 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await app.api('POST', '/api/repos', { url: 'https://gitlab.test/groupe/webapp.git', project: 'groupe/webapp' });
     await app.api('POST', '/api/discover');
     mrId = (await app.api('GET', '/api/mrs')).body[0].id;
-    /* La modale d'un lien libre ne s'ouvre plus QUE sur un lien existant : on ajoute désormais
-       en collant, et « Nouveau lien » a disparu de la barre. Il en faut donc un à modifier. */
-    await app.api('POST', '/api/free-links', { label: 'Confluence', url: 'https://confluence.demo.invalid/x', tags: 'doc' });
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1400, height: 950 } });
     await afficherMenusOptionnels(page);
@@ -215,7 +212,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       /* L'EXÉCUTANT FERME LE GROUPE : il dit QUI fait tourner les deux automatismes juste
          au-dessus, et le `P` qui suit est l'avertissement affiché quand ils sont cochés sans
          personne pour les exécuter. */
-      '# Automatisation', 'auto_refresh_minutes', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
+      '# Automatisation', 'auto_refresh_minutes', 'stale_mr_days', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
       'auto_runner', 'P',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
@@ -345,7 +342,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
 
   /* ---------- Les formulaires de connexion ---------- */
 
-  test('les quatre boutons « tester » ont la même garde à vide, sous le champ', async () => {
+  test('le bouton « tester » a une garde à vide, sous le champ (celui de Jenkins : dans le dépôt du plugin)', async () => {
     await ouvrirReglages('gitcfg');
     await page.fill('[name="gitlab_url"]', '');
     await page.click('#btnTestGitlab');
@@ -353,10 +350,6 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     assert.match(await page.locator('#sub-gitcfg .field-error').first().textContent(), /URL GitLab/);
     assert.equal(await page.locator('.toast.err').count(), 0, 'une erreur de champ n’est pas un toast');
 
-    await ouvrirReglages('jenkinscfg');
-    await page.click('#btnTestJenkins');
-    await page.waitForSelector('#sub-jenkinscfg .field-error', { timeout: ATTENTE });
-    assert.equal(await page.locator('.toast.err').count(), 0);
   });
 
   test('Entrée enregistre, et le dit', async () => {
@@ -415,57 +408,6 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     await page.evaluate(() => { document.querySelector('#verifyModal').hidden = true; });
   });
 
-  /* La modale d'un lien libre s'ouvre par le crayon de sa ligne : c'est la seule porte depuis
-     que l'ajout passe par « Coller une adresse ». */
-  async function ouvrirLienLibre() {
-    await ecranPropre();
-    await page.click('nav button[data-tab="links"]');
-    await page.waitForSelector('#linkFreeList [data-editfree]', { timeout: ATTENTE });
-    await page.locator('#linkFreeList [data-editfree]').first().click();
-    await page.waitForSelector('#freeLinkModal:not([hidden])', { timeout: ATTENTE });
-  }
-
-  test('un toast d’erreur meurt avec la modale qui l’a produit', async () => {
-    /* Le chemin est celui de l'application : une session de codage sans branche de travail est
-       refusée EN LIGNE ; ce qu'on veut ici, c'est un toast produit par un refus du serveur. */
-    await ouvrirLienLibre();
-    await page.fill('#freeLabel', 'Tableau de bord');
-    await page.fill('#freeUrl', 'pas-une-url');
-    await page.click('#freeSave');
-    await page.waitForSelector('.toast.err', { timeout: ATTENTE });
-    await page.click('#freeCancel');
-    await page.waitForFunction(() => document.querySelectorAll('.toast.err').length === 0,
-      null, { timeout: ATTENTE });
-  });
-
-  /* ---------- L'annexe ---------- */
-
-  test('le lien libre marque ses champs obligatoires et refuse sous le champ', async () => {
-    await ouvrirLienLibre();
-    assert.equal(await page.locator('#freeTags').getAttribute('placeholder'), 'doc, astreinte');
-    // Vider les deux champs obligatoires : la modale s'ouvre désormais sur un lien existant.
-    await page.fill('#freeUrl', '');
-    await page.fill('#freeLabel', '');
-    await page.click('#freeSave');
-    await page.waitForSelector('#freeLinkModal .field-error', { timeout: ATTENTE });
-    /* DANS L'ORDRE DES CHAMPS, et l'adresse est passée devant : c'est elle qu'on colle, et
-       c'est d'elle que le libellé se déduit. Un refus qui saute au second champ se lirait
-       comme un refus du premier. */
-    assert.match(await page.locator('#freeLinkModal .field-error').first().textContent(), /url/i);
-    /* …et le libellé refuse à son tour, sous LUI. Il faut l'EFFACER après avoir donné
-       l'adresse : le formulaire le propose désormais depuis l'hôte, si bien qu'un libellé vide
-       ne s'obtient plus qu'en supprimant la proposition — ce que fait qui n'en veut pas. */
-    await page.fill('#freeUrl', 'https://exemple.demo.invalid');
-    await page.fill('#freeLabel', '');
-    await page.click('#freeSave');
-    await page.waitForFunction(() => {
-      const e = document.querySelector('#freeLinkModal .field-error');
-      return e && /libell/i.test(e.textContent);
-    }, null, { timeout: ATTENTE });
-    assert.equal(await page.locator('.toast.err').count(), 0);
-    await page.click('#freeCancel');
-  });
-
   test('l’erreur de branche se pose SOUS la rangée, sans écraser les champs voisins', async () => {
     /* Elle s'insérait entre « Branche de travail » et « Branche de départ », dans une ligne
        flex : elle devenait une colonne de plus, écrasait la branche de départ de 285 à 157 px
@@ -507,14 +449,6 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
 
   test('la palette dit comment la rouvrir', async () => {
     assert.match(await page.locator('.palette-hint').textContent(), /⌘K|o/);
-  });
-
-  test('l’onglet Docker n’accuse rien avant d’avoir été ouvert', async () => {
-    await ecranPropre();
-    await page.goto(app.base);              // profil neuf : le drapeau « déjà vu » est vierge
-    await page.waitForSelector('nav button[data-tab="docker"]', { timeout: ATTENTE });
-    assert.equal(await page.locator('#dockerErrBadge').evaluate((e) => e.hidden), true);
-    assert.equal(await page.locator('#dockerUnhealthyBadge').evaluate((e) => e.hidden), true);
   });
 
   test('le filtre de l’ajout en masse reçoit le focus', async () => {

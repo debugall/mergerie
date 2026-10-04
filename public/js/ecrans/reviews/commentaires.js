@@ -255,14 +255,20 @@ $('#treeList').addEventListener('toggle', (e) => {
   const d = e.target.closest && e.target.closest('details.tree-folder');
   if (d) memoDossiers()[d.dataset.dir] = d.open;
 }, true);
-$('#reportToggle').addEventListener('click', () => {
-  const hidden = $('.code-body', $('#splitView')).classList.toggle('no-report');
-  $('#reportToggle').classList.toggle('off', hidden);
-});
-$('#treeToggle').addEventListener('click', () => {
-  const hidden = $('.code-body', $('#splitView')).classList.toggle('no-tree');
-  $('#treeToggle').classList.toggle('off', hidden);
-});
+/* AU MOINS UN PANNEAU RESTE. Trois boutons pour trois panneaux : masquer le dernier visible
+   laisserait un écran vide dont on ne sait plus comment sortir sans chercher. Le clic qui le
+   ferait ne fait rien — le bouton reste là, le panneau aussi. */
+const PANNEAUX = { 'no-report': 'reportToggle', 'no-tree': 'treeToggle', 'no-code': 'codeToggle' };
+function basculerPanneau(classe) {
+  const corps = $('.code-body', $('#splitView'));
+  const masques = Object.keys(PANNEAUX).filter((c) => corps.classList.contains(c));
+  if (!corps.classList.contains(classe) && masques.length >= Object.keys(PANNEAUX).length - 1) return;
+  const hidden = corps.classList.toggle(classe);
+  $(`#${PANNEAUX[classe]}`).classList.toggle('off', hidden);
+}
+$('#codeToggle').addEventListener('click', () => basculerPanneau('no-code'));
+$('#reportToggle').addEventListener('click', () => basculerPanneau('no-report'));
+$('#treeToggle').addEventListener('click', () => basculerPanneau('no-tree'));
 $('#splitClose').addEventListener('click', closeSplit);
 /* ÉCHAP DANS LES VUES PLEIN ÉCRAN : LE PLUS HAUT D'ABORD, et un seul gestionnaire pour en
    décider. Le diff d'une itération s'ouvre PAR-DESSUS la liste des itérations ; avec deux

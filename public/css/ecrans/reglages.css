@@ -36,3 +36,16 @@
 .agentcli-form h3 { margin-top: 0; }
 .agentcli-avance summary { cursor: pointer; margin: var(--s-2) 0; }
 .agentcli-empty { margin: 4px 0 0; }
+
+/* Un jeton et son bouton « copier » : le champ prend la place, le bouton reste à côté. */
+.secret-row { display: flex; gap: 6px; align-items: center; }
+.secret-row input { flex: 1; min-width: 0; }
+.secret-copy.copied { color: var(--ok, #3fa66b); border-color: var(--ok, #3fa66b); }
+
+/* LA BARRE « ENREGISTRER » de Réglages → Sessions IA : un seul bouton pour tout l'onglet, collé au bas de l'écran pendant le défilement. */
+.reglages-barre-enregistrer {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 18px; padding: 10px 0;
+  background: var(--bg); border-top: 1px solid var(--border);
+}

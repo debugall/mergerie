@@ -1,6 +1,10 @@
 'use strict';
 /* Le brief « Aujourd'hui ». */
-// @expose loadBrief
+// @expose loadBrief, rafraichirBrief
+let dernierBrief = null;
+/* Redessine le brief avec les dernières données reçues : un plugin dont la section arrive après
+   coup (une liste chargée en retard) l'appelle, sans refaire la requête. */
+function rafraichirBrief() { if (dernierBrief && $('#briefBox') && $('#tab-notes').classList.contains('active')) renderBrief(dernierBrief); }
 /* ---------- Le brief « Aujourd'hui » ---------- */
 
 async function loadBrief() {
@@ -13,15 +17,8 @@ async function loadBrief() {
   /* Le seuil du filtre « prêtes à merger » de l'onglet Reviews vient d'ICI : le brief est la
      seule source de cette règle, et les deux écrans doivent compter la même chose. */
   if (d.ready_threshold) seuilPret = Number(d.ready_threshold) || 8;
+  dernierBrief = d;
   renderBrief(d);
-  /* B4 — LA LISTE JENKINS ARRIVE APRÈS, ET LE BRIEF SE REDESSINE. On ne fait pas attendre le
-     brief pour une CI : il s'affiche d'abord, et la section « CI rouge » apparaît quand la
-     liste est là. Un seul appel par page (`assurerJenkinsPourCI` se garde lui-même), et rien
-     n'est sondé — c'est la même liste que celle de l'onglet Jenkins. */
-  if (!(JENKINS.jobs || []).length) {
-    await assurerJenkinsPourCI();
-    if ((JENKINS.jobs || []).length && $('#briefBox')) renderBrief(d);
-  }
 }
 
 /* A/Notes 3 — LE TEXTE DU DAILY. Composé à partir de ce que le brief affiche DÉJÀ : rien
@@ -164,29 +161,6 @@ function renderBrief(d) {
       <button type="button" class="btn btn-primary" data-brief-branches>${esc(tr('notes.brief.branches.go'))}</button>
     </div>` : '';
 
-  /* B4 — CE QUE JENKINS A CASSÉ SUR MES BRANCHES. Le brief listait les vérifications rouges
-     de l'outil et ignorait la CI de l'équipe : le nightly cassait à 23 h et on l'apprenait à
-     11 h par un collègue. Calculé À L'OUVERTURE, depuis la liste que l'onglet Jenkins charge
-     déjà — aucun sondage, aucune requête de plus : on croise les jobs rouges avec les branches
-     de mes merge requests ouvertes. Sans Jenkins configuré, la section n'existe pas. */
-  const rougesCI = (JENKINS.jobs || []).length
-    ? toReviewRows.concat(reportRows)
-      .filter((m) => !m.closed_seen)
-      .map((m) => ({ m, ci: ciDeLaBranche(m.source_branch) }))
-      .filter((x) => x.ci && x.ci.statut === 'echec' && !x.ci.enCours)
-      // une même branche peut porter deux MR : on ne le dit qu'une fois
-      .filter((x, i, tous) => tous.findIndex((y) => y.ci.path === x.ci.path && y.m.source_branch === x.m.source_branch) === i)
-      .slice(0, 8)
-    : [];
-  const ciCasse = rougesCI.map(({ m, ci }) => `<div class="brief-item">
-      <div class="brief-item-main">
-        <div class="brief-item-title">${esc(ci.path)} <span class="muted">#${esc(String(ci.number))}</span></div>
-        <div class="brief-item-meta muted">${esc(tr('notes.brief.ci.on', { branch: m.source_branch, iid: m.iid }))}</div>
-      </div>
-      <button type="button" class="btn btn-primary" data-ci-job="${esc(ci.path)}">${esc(tr('notes.brief.ci.details'))}</button>
-      <button type="button" class="btn" data-brief-review="${m.id}" data-iid="${esc(m.iid)}">${esc(tr('mr.btn.review'))}</button>
-    </div>`).join('');
-
   /* B11 — CE QUE JE PEUX MERGER MAINTENANT. Une ligne, un nombre, une porte : le brief ne
      refait pas la file, il dit combien ne demandent plus rien. Rien n'est mergé d'ici. */
   const pretes = d.ready_to_merge ? `<div class="brief-item">
@@ -239,17 +213,6 @@ function renderBrief(d) {
       <button type="button" class="btn" data-brief-gitop="${esc(g.project)}">${esc(tr('notes.brief.git.op.go'))}</button>
     </div>`)).join('');
 
-  /* TOP 14 — LES CONTENEURS TOMBÉS, tels que la veille de fond les a vus. Daté : c'est un
-     relevé, pas un direct, et le dire évite de prendre une minute de retard pour une panne. */
-  const dk = d.docker;
-  const dockerBas = dk && (dk.containers || []).length ? (dk.containers.map((c) => `<div class="brief-item">
-      <div class="brief-item-main">
-        <div class="brief-item-title">${esc(c.name)}</div>
-        <div class="brief-item-meta muted">${c.project ? `${esc(c.project)} · ` : ''}${esc(c.status || c.state)}</div>
-      </div>
-      <button type="button" class="btn" data-brief-docker="${esc(c.name)}" data-brief-project="${esc(c.project || '')}">${esc(tr('notes.brief.docker.go'))}</button>
-    </div>`).join('') + `<p class="brief-item-meta muted">${esc(tr('notes.brief.docker.seen'))} <span data-when="${esc(dk.at)}">${esc(depuis(dk.at))}</span></p>`) : '';
-
   const a = d.activity;
   const activite = a ? `<p class="brief-activity">${[
     a.merged ? esc(tr('notes.brief.activity.merged', { n: a.merged, count: a.merged })) : '',
@@ -269,11 +232,11 @@ function renderBrief(d) {
     briefSection(tr('agents.brief.title'), agentsBrief, { icon: 'zap', hint: tr('agents.brief.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
-    briefSection(tr('notes.brief.sec.ci'), ciCasse, { icon: 'alert' }),
-    briefSection(tr('notes.brief.sec.docker'), dockerBas, { icon: 'inbox', hint: tr('notes.brief.docker.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
+    // Les sections des plugins, après celles du cœur.
+    pluginsBriefSections(d),
   ].join('');
 
   box.innerHTML = `<header class="brief-head">
@@ -398,11 +361,6 @@ document.addEventListener('click', async (e) => {
     filtrerHistoriqueGit();
     return;
   }
-  /* Un conteneur tombé : l'onglet Docker, sur le sous-onglet où il VIT — un service compose
-     n'est pas au même endroit qu'un container lancé à la main, et arriver sur le mauvais des
-     deux oblige à chercher ce qu'on venait de trouver. */
-  const bdk = e.target.closest && e.target.closest('[data-brief-docker]');
-  if (bdk) { navTab('docker'); showDockerSub(bdk.dataset.briefProject ? 'compose' : 'orphans'); return; }
   /* B7 — la carte du domaine touché : on l'ouvre, en lecture, là où elle vit. */
   const mc = e.target.closest && e.target.closest('[data-mr-card]');
   if (mc) {

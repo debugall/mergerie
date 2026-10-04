@@ -154,6 +154,9 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
                 dans douze clones. Le bouton n'apparaît QUE si le texte porte une trace —
                 sinon c'est un bouton qui ne sert à rien sur les neuf tickets sur dix. */''}
           ${detecterTrace(`${it.summary || ''}\n${it.descriptionMd || ''}`) ? `<button type="button" class="btn btn-sm btn-jira-investigate" data-jirakey="${esc(it.key)}" title="${esc(tr('jira.investigate-title'))}"><svg class="ico ico-sm"><use href="#i-search"/></svg>${esc(tr('jira.investigate'))}</button>` : ''}
+          ${/* PRÉCISER TECHNIQUEMENT : l'IA lit le ticket, l'epic, des pages Confluence et le code,
+                et propose une précision à poster en commentaire. Le bouton mène à la section. */''}
+          <button type="button" class="btn btn-sm" data-spec-goto="${esc(it.key)}" title="${esc(tr('jira.spec.btn.open-title'))}"><svg class="ico ico-sm"><use href="#i-edit"/></svg>${esc(tr('jira.spec.btn.open'))}</button>
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
           <a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
@@ -164,9 +167,9 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
              Reviews à la main. La section arrive vide et se remplit — l'appel est court, et un
              ticket sans engagement n'affiche rien plutôt qu'une section vide. */''}
       <div class="jira-section jira-mergerie" id="jiraMergerie" hidden></div>
-      ${/* Le ticket a un dépôt PROBABLE — celui de la merge request ou de la session qui porte
-            sa clé : les mêmes boutons y mènent aux mêmes environnements. */''}
-      <div class="jira-section jira-liens" data-liens-ticket="${esc(it.key)}"></div>
+      ${/* Le ticket a un dépôt PROBABLE — celui de la merge request ou de la session qui porte sa clé : un plugin (Liens) y pose les boutons d'environnement, cible « jira-ticket ». */''}
+      ${pluginsHtml('jira-ticket', it)}
+      ${sectionSpecHtml(it)}
       <div class="jira-section"><h4>${esc(tr('jira.description'))}</h4>
         <div class="jira-card md-body">${it.descriptionMd ? mdToHtml(it.descriptionMd) : `<p class="muted">${esc(tr('jira.no-description'))}</p>`}</div>
       </div>
@@ -176,7 +179,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
       ${comments}
     </article>`;
   chargerEngagements(it.key);
-  remplirLiensDifferes(box);     // les boutons contextuels du ticket
+  chargerSpec(it.key, box);      // la précision technique, si elle existe
   /* C8 — le champ de commentaire se souvient et part à Ctrl+Entrée, comme celui de la
      surveillance. Armé APRÈS le rendu : le textarea vient d'être recréé. */
   const taJ = $('.jira-comment-input', box);
@@ -252,7 +255,7 @@ document.addEventListener('click', (e) => {
      « Surveillés », celle de « Mes tickets » dans la sienne. */
   const rel = e.target.closest && e.target.closest('[data-jira-open]');
   if (rel) {
-    const box = rel.closest('#jiraWatchDetail') ? 'watch' : 'mine';
+    const box = rel.closest('#jiraWatchDetail') ? 'watch' : rel.closest('#jiraAnalysedDetail') ? 'analysed' : 'mine';
     selectJiraIssue(rel.dataset.jiraOpen, box);
     return;
   }
@@ -272,9 +275,10 @@ function ouvrirTicketJira(key) {
 }
 async function selectJiraIssue(key, ou = 'mine') {
   const surveille = ou === 'watch';
-  const box = $(surveille ? '#jiraWatchDetail' : '#jiraDetail');
+  const box = $({ watch: '#jiraWatchDetail', analysed: '#jiraAnalysedDetail' }[ou] || '#jiraDetail');
   if (!box) return;
   if (surveille) { JIRA_WATCH.selectedKey = key; renderJiraWatch(); }
+  else if (ou === 'analysed') { JIRA_ANA.selectedKey = key; renderJiraAnalysed(); }
   else { JIRA.selectedKey = key; renderJiraList(); }
   box.innerHTML = skeleton(2);
   try {
@@ -343,6 +347,7 @@ async function loadJira() {
   // La liste surveillée est chargée AVEC l'onglet : le bouton « Surveiller » du détail doit
   // connaître l'état réel dès le premier rendu, sinon il propose d'ajouter un ticket déjà suivi.
   await loadJiraWatch();
+  await chargerAnalyses();      // le filtre « Analyse » de la liste a besoin de savoir, dès le premier rendu, quels tickets le sont
   await loadJiraTickets();
   refreshJiraBadge();
 }

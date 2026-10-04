@@ -256,41 +256,6 @@ function choisirVerifier(listeBrute, mrIds, lotId = null) {
   return new Promise((resolve) => { verifyPickResolve = resolve; });
 }
 
-/* ---------- B6 : l'état des services au moment du clic ----------
-   La vérification « in place » tourne DANS un répertoire de travail. Si ce répertoire porte un
-   projet compose et que sa base est arrêtée, elle mourra en trois secondes sur un
-   `ECONNREFUSED` — et on l'apprendra après. La fenêtre le dit avant, avec le bouton qui
-   répare. Demandé À L'OUVERTURE de la fenêtre, pas en boucle : c'est un `docker ps`. */
-async function majEtatDockerDuChoix(v) {
-  const box = $('#verifyDockerEtat');
-  if (!box) return;
-  const dirs = [...new Set((v.repos || []).filter((r) => r.mode === 'in_place' && r.workdir).map((r) => r.workdir))];
-  box.innerHTML = '';
-  for (const dir of dirs) {
-    let d;
-    try { d = await api(`/docker/dir-state?dir=${encodeURIComponent(dir)}`); } catch { d = null; }
-    if (!d || !d.found || !d.services.length) continue;
-    const arretes = d.services.filter((sv) => sv.state !== 'running');
-    if (!arretes.length) continue;      // tout tourne : rien à dire, et le silence est la bonne réponse
-    const el = document.createElement('p');
-    el.className = 'converge-note';
-    el.innerHTML = `${svgIco('alert')} <span>${esc(tr('verify.pick.docker-down', {
-      project: d.project,
-      list: arretes.map((sv) => `${sv.name} : ${dockerStateLabel(sv.state)}`).join(', '),
-    }))}</span> <button type="button" class="btn btn-sm" data-verify-up="${esc(dir)}">${esc(tr('docker.act.up'))}</button>`;
-    box.appendChild(el);
-  }
-}
-document.addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-verify-up]');
-  if (!b) return;
-  try {
-    await busy(b, () => api('/docker/compose/action', { method: 'POST', body: { action: 'up', dir: b.dataset.verifyUp, services: [] } }));
-    toast(tr('docker.up.started'));
-    b.disabled = true;
-  } catch (err) { toast(explainError(err.message), true); }
-});
-
 // Ce qui va réellement tourner : les commandes, le mode, le délai.
 function majDetailChoix() {
   const sel = $('#verifyPickList input:checked');
@@ -303,9 +268,7 @@ function majDetailChoix() {
     <p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c)}`).join('\n')}</pre>
     <p class="muted">${modes}</p>
     <p class="muted">${esc(v.run_base ? tr('verify.pick.with-base') : tr('verify.pick.no-base'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}</p>
-    ${(v.repos || []).some((r) => r.mode === 'in_place') ? `<div id="verifyDockerEtat"></div><p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
-  // L'état des services du répertoire « in place », demandé maintenant (cf. B6).
-  majEtatDockerDuChoix(v);
+    ${(v.repos || []).some((r) => r.mode === 'in_place') ? `${/* B6 — l'état des services du répertoire « in place » : un plugin (Docker) le dit avant le clic, cible « verify-launch ». */''}${pluginsHtml('verify-launch', { dirs: [...new Set((v.repos || []).filter((r) => r.mode === 'in_place' && r.workdir).map((r) => r.workdir))] })}<p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
   // Le HOME de ce run : la case suit ce que le vérificateur a mémorisé, et la note dit ce que ça change.
   const home = $('#verifyPickHome');
   if (home) { home.checked = !!v.isolated_home; majNoteHome(home, $('#verifyPickHomeNote')); }

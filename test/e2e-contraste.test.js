@@ -75,8 +75,6 @@ const ONGLETS = [
      tombe sous le seuil en clair. */
   ['agents', '#agentList .agent-card'],
   ['git', null],
-  ['docker', '.docker-svc'],
-  ['jenkins', '#jenkinsBox .jk-row'],
   ['jira', '#jiraList .jira-item'],
   ['links', null],
   ['dashboard', '.dash-card'],
@@ -90,7 +88,7 @@ describe('Contraste WCAG AA', { skip: dispo ? false : 'chromium absent — npx p
   before(async () => {
     /* MODE DÉMO : sans lui, un serveur de test neuf a des onglets vides et la sonde ne mesure
        presque rien — le test passerait pour de mauvaises raisons. Les jeux statiques de
-       `demo-docker`, `demo-jira` et `demo-jenkins` peuplent précisément les écrans qui
+       `demo-jira` peuple précisément les écrans qui
        portaient les fautes (puces d'état, statuts, paramètres de job). */
     process.env.MERGERIE_DEMO = '1';
     app = await startApp();

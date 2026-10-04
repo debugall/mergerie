@@ -92,7 +92,7 @@ async function mergeRenderRunning() {
   try { liste = await api('/git/merges'); } catch { liste = []; }
   if (!liste.length) { box.innerHTML = ''; if (!mergeEtat) $('#mergeWork').hidden = true; return; }
   box.innerHTML = `<div class="box merge-running"><h4>${esc(tr('git.merge.running'))}</h4>${liste.map((m) => `
-    <div class="merge-run-row">
+    <div class="merge-run-row${mergeEtat && mergeEtat.id === m.id ? ' current' : ''}">
       <span><strong>${esc(m.project)}</strong> <code>${esc(m.source_branch)}</code> → <code>${esc(m.target_branch)}</code>
       <span class="tag ${m.status === 'conflict' ? 'stale' : 'reviewed'}">${esc(tr(`git.merge.status.${m.status}`))}</span>
       ${/* A31 — CE QU'ON RATTRAPE. On arrive ici depuis le badge « en conflit » d'une merge
@@ -105,7 +105,8 @@ async function mergeRenderRunning() {
             alors que c'est la seule façon de vérifier ce qu'on vient d'assembler. */''}
       ${m.commit_sha ? `<button type="button" class="lien-reglage" data-merge-diff="${m.id}" title="${esc(tr('git.merge.diff-title'))}">${esc(tr('git.merge.diff', { sha: String(m.commit_sha).slice(0, 8) }))}</button>` : ''}</span>
       <span class="spacer"></span>
-      <button class="btn btn-sm btn-primary" data-mopen="${m.id}">${esc(tr('git.merge.resume'))}</button>
+      ${mergeEtat && mergeEtat.id === m.id ? `<span class="muted">${esc(tr('git.merge.open-now'))}</span>` : ''}
+      <button class="btn btn-sm${mergeEtat && mergeEtat.id === m.id ? '' : ' btn-primary'}" data-mopen="${m.id}">${esc(tr('git.merge.resume'))}</button>
       <button class="btn btn-sm btn-danger" data-mdrop="${m.id}">${esc(tr('git.merge.abandon'))}</button>
     </div>`).join('')}</div>`;
   $$('#mergeRunning [data-merge-mr]').forEach((b) => b.addEventListener('click', () => navMrReport(Number(b.dataset.mergeMr))));
@@ -118,6 +119,7 @@ async function mergeOuvrir(id) {
   mergeAiEnCours = false; mergeAiGen += 1;   // un autre merge, sans lien avec une éventuelle demande passée
   const premier = mergeEtat.conflits[0];
   if (premier) await mergeOuvrirFichier(premier); else mergeRenderWork();
+  await mergeRenderRunning();   // la liste marque le merge ouvert
 }
 
 /* Le fichier ouvert : ses morceaux, et un choix par conflit. « ours » d'office — la destination
@@ -163,12 +165,31 @@ const mergeApercu = () => {
   }).join('\n');
 };
 
+/* Refermer l'écran de travail : l'onglet reprend son ordre normal (formulaire en tête). */
+function mergeFermerWork() {
+  mergeEtat = null; mergeFichier = null;
+  $('#mergeWork').hidden = true;
+  const onglet = $('#gsub-merge'); if (onglet) onglet.classList.remove('merge-ouvert');
+}
+
+/* Les trois étapes d'un merge, avec celle en cours. */
+function mergeEtapesHtml(e) {
+  const faits = { conflict: 0, ready: 1, committed: 2, pushed: 3 }[e.status] ?? 0;
+  const etapes = [tr('git.merge.step.resolve'), tr('git.merge.step.commit'), tr('git.merge.step.push')];
+  return `<div class="merge-steps">${etapes.map((lib, i) => `${i ? '<span class="merge-step-sep">›</span>' : ''}<span class="merge-step${i < faits ? ' ok' : i === faits ? ' on' : ''}">${i < faits ? '✓ ' : ''}${esc(lib)}</span>`).join('')}</div>`;
+}
+
 function mergeRenderWork() {
   const box = $('#mergeWork'); if (!box) return;
-  if (!mergeEtat) { box.hidden = true; return; }
+  const onglet = $('#gsub-merge');
+  if (!mergeEtat) { box.hidden = true; if (onglet) onglet.classList.remove('merge-ouvert'); return; }
   box.hidden = false;
+  if (onglet) onglet.classList.add('merge-ouvert');
   const e = mergeEtat;
   const reste = e.conflits.length;
+  /* `prets` vient de `git diff --cached`, qui liste AUSSI les fichiers encore en conflit (leur index
+     porte les trois versions) : un fichier ne peut pas être coché « prêt » et « à résoudre » à la fois. */
+  const prets = e.prets.filter((f) => !e.conflits.includes(f));
   const fini = e.status === 'committed' || e.status === 'pushed';
   box.innerHTML = `
     <div class="box merge-head">
@@ -180,7 +201,7 @@ function mergeRenderWork() {
           ${e.mr.note != null ? noteBadge(Math.round(e.mr.note * 1000) / 100) : ''}
           ${e.mr.ticket ? `<span class="tag">${esc(e.mr.ticket)}</span>` : ''}
           <span class="muted">${esc(String(e.mr.title || '').slice(0, 60))}</span>` : ''}
-        <span class="tag ${reste ? 'stale' : 'done'}">${esc(reste
+        <span class="tag ${reste || e.perdu ? 'stale' : 'done'}">${esc(reste
     ? tr('git.merge.left', { n: reste, count: reste })
     : tr(`git.merge.status.${e.status}`))}</span>
         ${/* LE COMMIT DE FUSION, une fois qu'il existe. Il était écrit en base et jamais montré :
@@ -199,15 +220,25 @@ function mergeRenderWork() {
       ${fini ? '' : `<button class="btn btn-danger" id="mergeAbandon">${esc(tr('git.merge.abandon'))}</button>`}
       ${e.status === 'ready' ? `<button class="btn btn-primary" id="mergeCommit"><svg class="ico"><use href="#i-save"/></svg>${esc(tr('git.merge.commit.go'))}</button>` : ''}
       ${e.status === 'committed' ? `<button class="btn btn-primary" id="mergePush"><svg class="ico"><use href="#i-upload"/></svg>${esc(tr('git.merge.push'))}</button>` : ''}
+      ${mergeEtapesHtml(e)}
     </div>
-    ${e.status === 'pushed' ? `<p class="converge-note">${svgIco('check')} <span>${esc(tr('git.merge.pushed', { target: e.target_branch }))}</span></p>` : ''}
-    ${reste || mergeFichier ? `<div class="merge-body">
+    ${e.status === 'pushed' ? `<p class="converge-note merge-hint">${svgIco('check')} <span>${esc(tr('git.merge.pushed', { target: e.target_branch }))}</span></p>` : ''}
+    ${/* CE QU'IL RESTE À FAIRE, DIT EN CLAIR. « prêt à commiter » en badge ne dit pas que rien ne
+          part avant « Pousser » ; un merge sans fichier ET sans dossier de travail (préparé sur
+          un autre poste, ou nettoyé) montrait un panneau vide, sans un mot. */''}
+    ${e.status === 'ready' ? `<p class="converge-note note-ok merge-hint">${svgIco('check')} <span>${esc(tr('git.merge.ready-hint'))}</span></p>` : ''}
+    ${e.status === 'committed' ? `<p class="converge-note note-ok merge-hint">${svgIco('check')} <span>${esc(tr('git.merge.committed-hint'))}</span></p>` : ''}
+    ${e.perdu ? `<p class="converge-note note-bad merge-hint">${svgIco('alert')} <span>${esc(tr('git.merge.no-worktree'))}</span></p>` : ''}
+    ${reste || mergeFichier || (e.status === 'ready' && prets.length) ? `<div class="merge-body">
       <div class="merge-files">${(e.conflits.length ? e.conflits : [mergeFichier && mergeFichier.path].filter(Boolean)).map((f) => `
         <button class="mf-item${mergeFichier && mergeFichier.path === f ? ' active' : ''}" data-mfile="${esc(f)}">
           ${svgIco('alert')} <span>${esc(f)}</span></button>`).join('')}
-        ${e.prets.length ? `<div class="mf-done">${esc(tr('git.merge.done-files', { n: e.prets.length, count: e.prets.length }))}</div>` : ''}
+        ${/* Les fichiers déjà résolus restent listés, cochés : ce qu'on a fait se voit à côté de
+              ce qui reste. Ceux fusionnés sans conflit ne sont qu'un compte : rien à relire. */''}
+        ${prets.length ? `<div class="mf-done">${esc(tr('git.merge.done-files', { n: prets.length, count: prets.length }))}</div>
+        ${prets.map((f) => `<div class="mf-ok" title="${esc(f)}">${svgIco('check')} <span>${esc(f)}</span></div>`).join('')}` : ''}
       </div>
-      <div class="merge-pane" id="mergePane">${mergeFichier ? mergePaneHtml() : `<p class="muted">${esc(tr('git.merge.pick-file'))}</p>`}</div>
+      <div class="merge-pane" id="mergePane">${mergeFichier ? mergePaneHtml() : reste ? `<p class="muted">${esc(tr('git.merge.pick-file'))}</p>` : ''}</div>
     </div>` : ''}`;
 }
 
@@ -218,8 +249,8 @@ function mergeRenderWork() {
    (voir `session/mergeai.js`), simplement rien à montrer. */
 function blocIA(proposition, retenue, n, ouverte) {
   const lignes = proposition.texte.split('\n');
-  return `<div class="cf-side cf-ia${retenue ? ' cf-keep' : ''}">
-      <div class="cf-lab"><span>${esc(tr('git.merge.ai.side'))}</span>
+  return `<div class="cf-side cf-ia${retenue ? ' cf-keep' : ''}" data-cote="ia" data-h="${n}" title="${esc(tr('git.merge.side-click'))}">
+      <div class="cf-lab"><span>${esc(tr('git.merge.ai.side'))}</span>${retenue ? `<span class="cf-kept">✓ ${esc(tr('git.merge.kept'))}</span>` : ''}<span class="spacer"></span>
         ${proposition.raison ? `<button class="btn btn-sm btn-ghost" data-reason="${n}">${esc(tr(ouverte ? 'git.merge.ai.reason-hide' : 'git.merge.ai.reason-show'))}</button>` : ''}
         <button class="btn btn-sm${retenue ? ' btn-primary' : ''}" data-keep="ia" data-h="${n}">${esc(tr('git.merge.keep'))}</button></div>
       <pre>${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre>
@@ -253,9 +284,10 @@ function mergePaneHtml() {
     /* LA DATE, À CÔTÉ DE LA BRANCHE. Le même repère que partout ailleurs dans l'écran : l'absolu
        à l'écran (il se compare), le relatif au survol. Une seule mesure par branche pour tout le
        fichier — `git log -1` sur le chemin, pas par conflit — donc identique sur chaque bloc. */
-    const bloc = (cote, lignes, libelle, date) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux' && cote !== 'ia') ? ' cf-keep' : ''}">
+    const bloc = (cote, lignes, libelle, date) => `<div class="cf-side cf-${cote}${c === cote || (c === 'deux' && cote !== 'ia') ? ' cf-keep' : ''}" data-cote="${cote}" data-h="${n}" title="${esc(tr('git.merge.side-click'))}">
         <div class="cf-lab"><span>${esc(libelle)}</span>
           ${date ? `<span class="muted cf-date" title="${esc(tr('git.merge.date-title'))}">${dateHtml(date, fmtDateTime(date))}</span>` : ''}
+          ${c === cote || (c === 'deux' && cote !== 'ia') ? `<span class="cf-kept">✓ ${esc(tr('git.merge.kept'))}</span>` : ''}<span class="spacer"></span>
           <button class="btn btn-sm${c === cote ? ' btn-primary' : ''}" data-keep="${cote}" data-h="${n}">${esc(tr('git.merge.keep'))}</button></div>
         <pre>${esc(lignes.join('\n')) || `<span class="muted">${esc(tr('git.merge.empty-side'))}</span>`}</pre></div>`;
     // Une troisième colonne, SEULEMENT si l'IA a une proposition pour CE conflit précis — un
@@ -266,7 +298,7 @@ function mergePaneHtml() {
       ${bloc('ours', m.ours, tr('git.merge.side-ours', { branch: e.target_branch }), f.dates.ours)}
       ${bloc('theirs', m.theirs, tr('git.merge.side-theirs', { branch: e.source_branch }), f.dates.theirs)}
       ${proposition != null ? blocIA(proposition, c === 'ia', n, !!f.raisonsOuvertes[n]) : ''}
-      <div class="cf-both"><button class="btn btn-sm${c === 'deux' ? ' btn-primary' : ''}" data-keep="deux" data-h="${n}"
+      <div class="cf-both"><span>${esc(tr('git.merge.or'))}</span><button class="btn btn-sm${c === 'deux' ? ' btn-primary' : ''}" data-keep="deux" data-h="${n}"
         title="${esc(tr('git.merge.keep-both-title', { target: e.target_branch, source: e.source_branch }))}">${esc(tr('git.merge.keep-both', { target: e.target_branch, source: e.source_branch }))}</button></div>
     </div>`;
   }).join('');
@@ -458,7 +490,7 @@ document.addEventListener('click', async (e) => {
     if (!await confirmDialog({ text: tr('git.merge.abandon-confirm'), confirmLabel: tr('git.merge.abandon') })) return;
     try {
       await api(`/git/merges/${drop.dataset.mdrop}`, { method: 'DELETE' });
-      mergeEtat = null; mergeFichier = null; $('#mergeWork').hidden = true;
+      mergeFermerWork();
       await mergeRenderRunning();
     } catch (err) { toast(explainError(err.message), true); }
     return;
@@ -483,6 +515,15 @@ document.addEventListener('click', async (e) => {
     $('#mergePane').innerHTML = mergePaneHtml();
     return;
   }
+  /* Toute la version se clique, pas seulement son « Garder » : le bloc entier est la cible,
+     comme dans la vue plein écran. Les boutons du bloc (Garder, Voir la raison) sont traités
+     au-dessus et ne passent pas ici. */
+  const cote = dans('#mergePane .cf-side[data-cote]');
+  if (cote && mergeFichier && !dans('button') && !dans('a')) {
+    mergeFichier.choix[Number(cote.dataset.h)] = cote.dataset.cote;
+    $('#mergePane').innerHTML = mergePaneHtml();
+    return;
+  }
   const edit = dans('[data-medit]');
   if (edit && mergeFichier) { mergeFichier.edite = edit.dataset.medit === '1'; $('#mergePane').innerHTML = mergePaneHtml(); return; }
   if (dans('#mergeResolveChoices')) { await mergeResoudre({ choices: mergeFichier.choix }); return; }
@@ -491,7 +532,7 @@ document.addEventListener('click', async (e) => {
     if (!await confirmDialog({ text: tr('git.merge.abandon-confirm'), confirmLabel: tr('git.merge.abandon') })) return;
     try {
       await api(`/git/merges/${mergeEtat.id}`, { method: 'DELETE' });
-      mergeEtat = null; mergeFichier = null; $('#mergeWork').hidden = true;
+      mergeFermerWork();
       await mergeRenderRunning();
     } catch (err) { toast(explainError(err.message), true); }
     return;

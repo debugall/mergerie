@@ -1,0 +1,24 @@
+/* Réglages → Plugins : les cartes, l'état, les permissions, le formulaire généré. */
+/* La carte d'un plugin se lit de haut en bas : titre, détails, gestes, réglages. Le `.card` du cœur est une rangée qui
+   passe à la ligne — un formulaire s'y retrouvait à DROITE des permissions, avec un grand vide à gauche. */
+/* Le trait entre deux plugins : la bordure d'une carte (`--line`) se fondait dans le fond ; on la tire vers le texte, dans les deux thèmes. */
+.plugin-card { display: block; margin-bottom: 26px; border-color: color-mix(in srgb, var(--muted) 55%, var(--line)); box-shadow: 0 1px 0 color-mix(in srgb, var(--muted) 25%, transparent); }
+.plugin-card .card-actions { justify-content: flex-start; margin-top: 10px; }
+.plugin-card .card-head { margin-bottom: 4px; }
+/* La description se lit EN ENTIER : la règle des listes (une ligne, « … ») couperait ce qu'on vient chercher ici. */
+.list .plugin-card .card-head .meta { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+.plugin-hint { margin: 10px 0 0; font-size: 12.5px; }
+.plugin-card .card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.plugin-details { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 12.5px; }
+.plugin-details dt { color: var(--muted); }
+.plugin-details dd { margin: 0; }
+.plugin-details dd .tag { margin-right: 4px; }
+.plugin-error { margin: 6px 0; }
+.plugin-warn { margin: 6px 0; padding: 6px 10px; border-radius: var(--r); background: var(--warn-bg, rgba(255, 170, 0, .12)); color: var(--warn-fg, inherit); display: flex; align-items: center; gap: 6px; }
+.plugin-dep-missing { text-decoration: line-through; color: var(--err, #c33); }
+.plugin-settings { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.plugin-settings-form { max-width: 520px; }
+.plugin-install { max-width: 720px; margin-bottom: 14px; }
+.plugin-install [data-source] { display: block; }
+.plugin-install .plugin-install-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.plugin-install .plugin-install-row label { flex: 1; min-width: 220px; }

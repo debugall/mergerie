@@ -556,7 +556,9 @@ async function issueDetail(cfg, key) {
   try {
     const c = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}/comment?maxResults=100&orderBy=created`);
     comments = (c.comments || []).map((cm) => ({
+      id: cm.id == null ? null : String(cm.id),
       author: cm.author ? (cm.author.displayName || cm.author.name || '') : '',
+      authorId: cm.author ? (cm.author.accountId || cm.author.name || '') : '',
       created: cm.created || '',
       bodyMd: adfToMarkdown(cm.body, mdOpts),
     }));
@@ -626,24 +628,138 @@ function textToAdf(text) {
   return { type: 'doc', version: 1, content };
 }
 
-// Poste un commentaire (texte) sur un ticket. Renvoie le commentaire créé (mappé comme les autres).
-async function addComment(cfg, key, text) {
-  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
-  const corps = String(text || '').trim();
-  if (!corps) throw new Error(t('err.jira.empty-comment'));
-  const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/comment`, {
-    method: 'POST',
+/* ---------- Markdown (sous-ensemble) → ADF ----------
+   Une précision technique est rédigée en Markdown : titres `##`, listes `-`/`1.`, gras,
+   code inline, liens. Jira v3 exige l'ADF, et `textToAdf` ne connaît que le paragraphe :
+   un titre y arrivait en `## Dépôts concernés` littéral. Six nœuds, pas plus — ce qui n'est
+   pas reconnu redevient un paragraphe, jamais une erreur. */
+function inlineToAdf(ligne) {
+  const nodes = [];
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\((https?:[^)\s]+)\))/g;
+  let i = 0; let m;
+  const texte = String(ligne || '');
+  while ((m = re.exec(texte))) {
+    if (m.index > i) nodes.push({ type: 'text', text: texte.slice(i, m.index) });
+    const tok = m[0];
+    if (tok.startsWith('**')) nodes.push({ type: 'text', text: tok.slice(2, -2), marks: [{ type: 'strong' }] });
+    else if (tok.startsWith('`')) nodes.push({ type: 'text', text: tok.slice(1, -1), marks: [{ type: 'code' }] });
+    else {
+      const lm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
+      nodes.push({ type: 'text', text: lm[1], marks: [{ type: 'link', attrs: { href: lm[2] } }] });
+    }
+    i = m.index + tok.length;
+  }
+  if (i < texte.length) nodes.push({ type: 'text', text: texte.slice(i) });
+  return nodes.length ? nodes : [];
+}
+function mdToAdf(md) {
+  const lignes = String(md || '').replace(/\r/g, '').split('\n');
+  const content = [];
+  let para = []; let liste = null;
+  const fermerPara = () => {
+    if (!para.length) return;
+    const nodes = [];
+    para.forEach((l, i) => { if (i) nodes.push({ type: 'hardBreak' }); nodes.push(...inlineToAdf(l)); });
+    content.push({ type: 'paragraph', content: nodes.length ? nodes : [{ type: 'text', text: ' ' }] });
+    para = [];
+  };
+  const fermerListe = () => { if (liste) { content.push(liste); liste = null; } };
+  for (const brute of lignes) {
+    const l = brute.replace(/\s+$/, '');
+    const h = /^(#{1,6})\s+(.+)$/.exec(l);
+    const li = /^\s*(?:[-*•]|\d+[.)])\s+(.+)$/.exec(l);
+    if (!l.trim()) { fermerPara(); fermerListe(); continue; }
+    if (h) {
+      fermerPara(); fermerListe();
+      content.push({ type: 'heading', attrs: { level: Math.min(6, Math.max(2, h[1].length + 1)) }, content: inlineToAdf(h[2]) });
+      continue;
+    }
+    if (li) {
+      fermerPara();
+      const ordre = /^\s*\d/.test(l) ? 'orderedList' : 'bulletList';
+      if (!liste || liste.type !== ordre) { fermerListe(); liste = { type: ordre, content: [] }; }
+      liste.content.push({ type: 'listItem', content: [{ type: 'paragraph', content: inlineToAdf(li[1]) }] });
+      continue;
+    }
+    fermerListe();
+    para.push(l);
+  }
+  fermerPara(); fermerListe();
+  return { type: 'doc', version: 1, content: content.length ? content : [{ type: 'paragraph', content: [] }] };
+}
+
+/* L'écriture d'un commentaire, création ou mise à jour : même en-tête, même lecture de la
+   réponse. Le texte part en ADF — paragraphes seuls (`textToAdf`), ou Markdown (`mdToAdf`)
+   quand l'appelant le demande. 401/403 et 404 sont distingués pour que l'écran dise la bonne
+   chose : « refusé » n'appelle pas le même geste que « ce commentaire n'existe plus ». */
+async function ecrireCommentaire(cfg, key, corps, { markdown = false, commentId = null } = {}) {
+  const suffixe = commentId ? `/${encodeURIComponent(String(commentId))}` : '';
+  const res = await request(jiraBase(cfg) + `/rest/api/3/issue/${encodeURIComponent(key)}/comment${suffixe}`, {
+    method: commentId ? 'PUT' : 'POST',
     headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ body: textToAdf(corps) }),
+    body: JSON.stringify({ body: markdown ? mdToAdf(corps) : textToAdf(corps) }),
   });
-  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.comment-denied', { status: res.status }));
+  if (res.status === 401 || res.status === 403) {
+    const e = new Error(t('err.jira.comment-denied', { status: res.status })); e.code = 'JIRA_DENIED'; e.status = res.status; throw e;
+  }
+  if (res.status === 404) {
+    const e = new Error(t('err.jira.comment-gone')); e.code = 'JIRA_COMMENT_GONE'; e.status = 404; throw e;
+  }
   if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${res.body ? ` : ${res.body.slice(0, 200)}` : ''}`);
   let data = {}; try { data = JSON.parse(res.body); } catch { /* corps vide */ }
   return {
+    id: data.id == null ? (commentId == null ? null : String(commentId)) : String(data.id),
     author: data.author ? (data.author.displayName || data.author.name || '') : '',
+    authorId: data.author ? (data.author.accountId || data.author.name || '') : '',
     created: data.created || new Date().toISOString(),
-    bodyMd: adfToMarkdown(data.body) || t,
+    bodyMd: adfToMarkdown(data.body) || corps,
   };
+}
+// Poste un commentaire (texte) sur un ticket. Renvoie le commentaire créé (mappé comme les autres).
+async function addComment(cfg, key, text, opts = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const corps = String(text || '').trim();
+  if (!corps) throw new Error(t('err.jira.empty-comment'));
+  return ecrireCommentaire(cfg, key, corps, { markdown: !!opts.markdown });
+}
+// Met à jour un commentaire EXISTANT (le sien) : même contrat que la création.
+async function updateComment(cfg, key, commentId, text, opts = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const corps = String(text || '').trim();
+  if (!corps) throw new Error(t('err.jira.empty-comment'));
+  return ecrireCommentaire(cfg, key, corps, { markdown: !!opts.markdown, commentId });
+}
+
+/* Les commentaires d'un ticket, les plus RÉCENTS d'abord, avec leur id et l'auteur : ce qu'il faut
+   pour retrouver le sien quand l'id mémorisé manque. `issueDetail` lit les 100 plus anciens — sur
+   un ticket très commenté, le commentaire cherché n'y est pas. */
+async function listComments(cfg, key, { max = 100 } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const c = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}/comment?maxResults=${Math.min(Math.max(1, max), 100)}&orderBy=-created`);
+  return (c.comments || []).map((cm) => ({
+    id: cm.id == null ? null : String(cm.id),
+    author: cm.author ? (cm.author.displayName || cm.author.name || '') : '',
+    authorId: cm.author ? (cm.author.accountId || cm.author.name || '') : '',
+    created: cm.created || '',
+    bodyMd: adfToMarkdown(cm.body),
+  })).reverse();
+}
+
+/* ---------- Les tickets d'une epic ----------
+   Jira Cloud a unifié la hiérarchie : les enfants d'une epic sont ceux dont `parent` est
+   l'epic. On rend les mêmes métadonnées que la liste, plus la description en Markdown — c'est
+   elle qui sert de contexte quand on précise un ticket « à la lumière » des autres. Plafond
+   cent (une page Jira) : au-delà, le lot est de toute façon trop gros pour être relu. */
+async function epicChildren(cfg, epicKey) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const cle = String(epicKey || '').trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9]+-\d+$/.test(cle)) throw new Error(t('err.jira.invalid-key'));
+  const data = await runSearch(cfg, `parent = "${cle}" ORDER BY rank ASC, created ASC`, `${TICKET_FIELDS},description,subtasks`, 100);
+  return (data.issues || []).map((i) => ({
+    ...withUrls(cfg, issueMeta(i)),
+    descriptionMd: adfToMarkdown((i.fields || {}).description),
+    isSubtask: !!(i.fields && i.fields.issuetype && i.fields.issuetype.subtask),
+  }));
 }
 
 // Transitions POSSIBLES du ticket (= les changements d'état autorisés pour l'utilisateur) :
@@ -716,4 +832,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

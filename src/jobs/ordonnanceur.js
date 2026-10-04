@@ -4,7 +4,6 @@
 const path = require('node:path');
 const db = require('../db');
 const proc = require('../core/proc');
-const docker = require('../integrations/docker');
 const { t } = require('../core/i18n');
 const { MAX_RUNNING, RUNNERS, active, activeJob, canRetry, conflictsWithRunning, jobKeys, keysClash, mrRowById, mrsToReview, parallelBusy, queue, rememberRetry, setJob } = require('./file');
 
@@ -37,7 +36,7 @@ function retryJob(jobId) {
 function runEntry(e) {
   if (e.kind === 'task') return RUNNERS['task'](e.jobId, e.taskId, e.action, e.opts);
   if (e.kind === 'gitops') return RUNNERS['gitops'](e.jobId, e.payload);
-  if (e.kind === 'docker') return RUNNERS['docker'](e.jobId, e.payload);
+  if (e.kind.startsWith('plugin:')) return RUNNERS['plugin'](e.jobId, e.payload);
   if (e.kind === 'converge') return RUNNERS['converge'](e.jobId, e.mrId, e.opts);
   if (e.kind === 'converge-session') return RUNNERS['converge-session'](e.jobId, e.taskId, e.opts);
   if (e.kind === 'local') return RUNNERS['local'](e.jobId, e.taskId, e.opts);
@@ -166,31 +165,6 @@ function startGitJob(payload) {
     VALUES ('gitops', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
   const jobId = info.lastInsertRowid;
   queue.push({ jobId, kind: 'gitops', payload });
-  setImmediate(pump);
-  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
-}
-// Actions Docker (compose up/restart/pull/recreate/down, suppression d'orphelin) → log streamé.
-/* UNE SEULE GARDE POUR TOUTES LES ROUTES DOCKER. Le `dir` venait du client tel quel :
-   `docker compose up --build` ou `make` dans n'importe quel dossier de la machine. Il doit être
-   celui d'un fichier compose trouvé sous les racines déclarées (Réglages → Répertoires locaux),
-   comme `composeOne` l'exigeait déjà pour l'inspection. */
-function exigerDossierCompose(dir) {
-  const racines = db.prepare('SELECT * FROM local_root').all();
-  const d = path.resolve(String(dir || ''));
-  const connu = racines.some((r) => docker.composeFilesUnder(r.path).some((h) => path.resolve(h.dir) === d));
-  if (!dir || !connu) {
-    const e = new Error(t('err.docker.dir-unknown', { dir: String(dir || '') }));
-    e.status = 400;
-    throw e;
-  }
-}
-function startDockerJob(payload) {
-  if (payload && (payload.op === 'compose' || payload.op === 'make')) exigerDossierCompose(payload.dir);
-  if (payload && payload.op === 'compose-bulk') for (const g of payload.groups || []) exigerDossierCompose(g && g.dir);
-  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
-    VALUES ('docker', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
-  const jobId = info.lastInsertRowid;
-  queue.push({ jobId, kind: 'docker', payload });
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }
@@ -345,5 +319,5 @@ function isRunning() {
 }
 
 module.exports = {
-  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, startNow, startJob, startGitJob, exigerDossierCompose, startDockerJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
+  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, startNow, startJob, startGitJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
 };

@@ -3,7 +3,7 @@
  *
  * `unit-bin` prouve que la commande sème ~/.mergerie/demo et que la page SERVIE contient la
  * bannière ; `e2e-git-merge` que le dépôt local de la démo porte son conflit ; les `unit-demo-*`
- * que chaque décor (diff, Jenkins, review) répond. Personne n'avait ouvert la démo comme le fait
+ * que chaque décor (diff, review) répond. Personne n'avait ouvert la démo comme le fait
  * un visiteur : ce fichier la lance et la parcourt.
  *
  * PAS DE `startApp()` : la démo est un PROCESSUS À PART, lancé comme npx le lance — `bin/
@@ -14,10 +14,9 @@
  * Ce qu'on regarde :
  *   - la bannière de démo et le badge dry-run sont visibles ;
  *   - chaque menu montre son décor : merge requests à traiter et rapports (un rapport s'ouvre),
- *     sessions, tickets Jira, jobs Jenkins, projets Docker ;
+ *     sessions, tickets Jira, (les décors Docker, Jenkins et Liens sont ceux des plugins, éprouvés chez eux) ;
  *   - « Chercher les nouvelles MR » ne part pas sur le réseau et ne lève aucune erreur ;
  *   - une nouvelle session propose d'office le SEUL dépôt réellement clonable ;
- *   - la palette propose un projet compose du décor, et y mène ;
  *   - aucune erreur JavaScript. */
 
 const { test, before, after, describe } = require('node:test');
@@ -127,30 +126,9 @@ describe('Transverse — le mode démo, parcouru au navigateur', { skip: dispo ?
     await page.waitForFunction(() => [...document.querySelectorAll('#taskModal input')].some((i) => i.value === 'groupe/tarification'));
   });
 
-  test('Jira, Jenkins et Docker montrent leur décor', async () => {
+  test('Jira montre son décor', async () => {
     await aller('jira');
     await page.waitForSelector('#jiraList .jira-item');
-    await aller('jenkins');
-    await page.waitForSelector('#jenkinsBox .jk-row');
-    await aller('docker');
-    await page.waitForFunction(() => /boutique/.test(document.querySelector('#tab-docker').textContent));
-  });
-
-  test('la palette propose un projet compose du décor, et mène à Docker → Compose', async () => {
-    // Docker sur un AUTRE sous-onglet, puis ailleurs : la palette doit ramener sur Compose.
-    await aller('docker');
-    await page.locator('#tab-docker .subnav [data-dsub="orphans"]').click();
-    await page.waitForSelector('#dsub-orphans.active');
-    await aller('review');
-    await page.locator('#paletteTrigger').click();
-    await page.waitForSelector('#paletteModal:not([hidden])');
-    await page.locator('#paletteInput').fill('boutique');
-    const entree = page.locator('#paletteList .palette-item')
-      .filter({ has: page.locator('.palette-label', { hasText: /^Docker : projet boutique$/ }) }).first();
-    await entree.click();
-    await page.waitForSelector('#tab-docker.active');
-    await page.waitForSelector('#tab-docker .subnav [data-dsub="compose"].active');
-    await page.waitForSelector('#dsub-compose.active');
   });
 
   test('aucune erreur JavaScript pendant tout le parcours', () => {

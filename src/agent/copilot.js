@@ -96,25 +96,28 @@ function argsActuels() {
 }
 function timeoutActuel() { return reglagesAgent().timeout || ENV_TIMEOUT() || DEFAUT_TIMEOUT_MS; }
 
-/* LA DÉTECTION SE REFAIT. Elle était mise en cache pour toute la vie du processus : installer
-   `claude` après le démarrage, ou corriger le chemin, ne changeait rien avant un redémarrage —
-   et l'écran continuait de produire des rapports simulés. Le cache est par binaire et expire au
-   bout d'une minute ; `redetecter()` (bouton « Réessayer » de la bannière, enregistrement des
-   réglages) l'efface tout de suite. */
-const _dispo = new Map();   // bin → { ok, a }
-const CACHE_DETECTION_MS = 60000;
-function binaryAvailable(bin = binActuel()) {
-  const c = _dispo.get(bin);
-  if (c && Date.now() - c.a < CACHE_DETECTION_MS) return c.ok;
-  let ok = false;
-  try {
-    const r = spawnSync(bin, ['--version'], { timeout: 5000 });
-    ok = !r.error;
-  } catch { ok = false; }
-  _dispo.set(bin, { ok, a: Date.now() });
-  return ok;
+/* LA DÉTECTION NE LANCE RIEN. Elle faisait `spawnSync(bin, ['--version'])` avec cinq secondes de
+   délai, et mettait le résultat en cache une minute. Sous charge — un agent qui tourne à côté —,
+   ce `--version` dépassait le délai ou échouait en `EAGAIN`, et pendant une minute l'écran disait
+   « introuvable » pour un binaire bien présent… et `isDryRun()` faisait passer une vraie review
+   en rapport SIMULÉ, sans un mot. Un binaire est disponible s'il se RÉSOUT : un chemin qui existe
+   et s'exécute, ou un nom trouvé sur le PATH du serveur — la même résolution que `spawn` fera au
+   lancement, sans processus, sans délai, sans cache à périmer. `redetecter()` est gardé pour les
+   appelants (bouton « Réessayer », enregistrement des réglages) : il n'a plus rien à effacer. */
+const EXTENSIONS_EXECUTABLES = process.platform === 'win32'
+  ? ['', ...String(process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean)]
+  : [''];
+function executable(p) {
+  try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile(); } catch { return false; }
 }
-function redetecter() { _dispo.clear(); return binaryAvailable(); }
+function binaryAvailable(bin = binActuel()) {
+  const nom = String(bin || '').trim();
+  if (!nom) return false;
+  if (/[\\/]/.test(nom)) return EXTENSIONS_EXECUTABLES.some((e) => executable(nom + e));
+  const dossiers = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  return dossiers.some((d) => EXTENSIONS_EXECUTABLES.some((e) => executable(path.join(d, nom + e))));
+}
+function redetecter() { return binaryAvailable(); }
 
 /* Le dry-run VOULU (`COPILOT_DRY_RUN=1` : démo, tests) et le dry-run SUBI (binaire introuvable)
    ne se lisent plus pareil : l'écran dit le second, avec le chemin cherché. */
@@ -145,7 +148,13 @@ function runReal(prompt, cwd, onLog = () => {}, meta = {}) {
     backend, bin: COPILOT_BIN, extra: EXTRA_ARGS, kind: meta.saveur || meta.kind, addDirs: meta.addDirs, cwd,
   });
   const be = require('./backends').pour(backend);
-  if (pol.note) onLog(t(pol.note === 'backend-non-restreint' ? 'agents.log.backend-not-restricted' : 'agents.log.copilot-not-restricted'));
+  if (pol.note) {
+    const NOTES = {
+      'backend-non-restreint': 'agents.log.backend-not-restricted', 'yolo-sans-restriction': 'agents.log.yolo-unrestricted',
+      'copilot-ecriture-non-restreinte': 'agents.log.copilot-write-not-restricted',
+    };
+    onLog(t(NOTES[pol.note] || 'agents.log.copilot-not-restricted', pol.noteVars || {}));
+  }
   onLog(t(`agents.log.level.${agentpolicy.niveauDe(COPILOT_BIN)}`, { backend: be.label }));
   agentpolicy.exigerBudget();                // le plafond du jour, avant de dépenser
   const flags = [...pol.extra, ...pol.args];

@@ -138,7 +138,7 @@ function targetLine(t, tg) {
     ${tg.mr_row_id && !tg.has_review
     ? `<button class="btn btn-sm" data-tgreview="${tg.mr_row_id}" data-iid="${mrIid || ''}" title="${esc(tr('task.title.review-mr'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${esc(tr('mr.btn.review'))}</button>`
     : ''}
-    ${badgeCI(tg.branch)}
+    ${pluginsHtml('session-target-badge', { task: t, target: tg })}
     ${/* B5 — PRÉVENIR JIRA. La merge request est ouverte et la branche porte une clé : un
           commentaire avec le lien, et la transition « en revue » si Jira la propose. Derrière
           confirmation — c'est écrire chez les autres. La clé vient du SERVEUR (`tg.ticket_key`,
@@ -148,10 +148,6 @@ function targetLine(t, tg) {
           ressemble à une clé mais qui ne correspond à aucun ticket. */''}
     ${mrIid && jiraConfigured && tg.ticket_key
     ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc(tg.ticket_key)}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
-    ${/* LES BOUTONS CONTEXTUELS, ICI AUSSI. La ligne a un dépôt et une branche : `{env}` et
-          `{branch}` s'y résolvent exactement comme sur une carte de merge request. Le bloc
-          arrive vide et se remplit — un projet sans service lié n'affiche rien. */''}
-    <span class="tg-liens" data-liens-task="${t.id}" data-liens-target="${tg.id}"></span>
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
     ${resumeCmdBtn(tg.resume_cmd)}
@@ -175,18 +171,7 @@ function targetLine(t, tg) {
     ${suiviCapturesHtml()}
     ${tg.has_review ? boutonSuiviReview(t.id, tg.id) : ''}
     ${tg.has_verify_fail ? boutonSuiviVerif(t.id, tg.id) : ''}
-    ${/* B3 — LA CONSOLE JENKINS ENTRE DANS LE SUIVI. `CI #42 ✗ · Module not found` : on
-          ouvrait Détails, on sélectionnait la console à la souris, on copiait, on ouvrait
-          « Envoyer un suivi », on collait, on expliquait. Le bouton fait le même chemin que
-          « Reprendre le rapport de vérif », avec le texte que Jenkins a écrit. Le verdict
-          reste celui de Jenkins : l'agent ne reçoit que le texte à corriger. */''}
-    ${(() => {
-    const ci = ciDeLaBranche(tg.branch);
-    return ci && ci.statut === 'echec' && !ci.enCours && ['committed', 'pushed', 'error'].includes(tg.status)
-      ? `<button class="btn btn-sm" data-followci="${t.id}" data-tgci="${tg.id}" data-job="${esc(ci.path)}" data-build="${ci.number}"
-           title="${esc(tr('task.title.followup-ci', { job: ci.path, n: ci.number }))}">${svgIco('bot')}${esc(tr('task.btn.followup-ci'))}</button>`
-      : '';
-  })()}
+    ${pluginsHtml('session-target', { task: t, target: tg })}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
   </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;
@@ -547,30 +532,6 @@ function wireTaskActions() {
     taskAttr: 'followverif', targetAttr: 'followveriftarget', url: 'verify-prompt',
     label: 'task.btn.followup-verify', compteur: (d) => d.verificateurs.length,
   }));
-  /* B3 — la console de Jenkins, dans le champ de suivi. Elle n'est pas composée par le
-     serveur comme les deux autres : elle ne vient pas de nous, elle vient de Jenkins. On la
-     demande à la route qui la sert déjà, on garde les trente dernières lignes utiles — la
-     même borne que le panneau de détail — et on écrit un prompt qui DIT d'où ça sort. */
-  on('[data-followci]', async (b) => {
-    const cle = b.dataset.tgci ? `tg${b.dataset.tgci}` : b.dataset.followci;
-    const champ = $(`#taskList .followup[data-followform="${cle}"] .followup-text`);
-    if (!champ) return;
-    try {
-      const d = await busy(b, () => api(`/jenkins/console?path=${encodeURIComponent(b.dataset.job)}&build=${encodeURIComponent(b.dataset.build)}`));
-      const lignes = String((d && d.text) || '').split('\n').filter((l) => l.trim()).slice(-30).join('\n');
-      if (!lignes) { toast(tr('jenkins.build.tail-empty'), true); return; }
-      if (champ.value.trim() && !await confirmDialog({
-        title: tr('confirm.followup-review.title'),
-        text: tr('confirm.followup-review.text'),
-        confirmLabel: tr('task.btn.followup-ci'),
-        danger: false,
-      })) return;
-      champ.value = tr('task.followup-ci.prompt', { job: b.dataset.job, n: b.dataset.build, log: lignes });
-      champ.focus();
-      champ.dispatchEvent(new Event('input', { bubbles: true }));   // l'autosave doit le voir
-      toast(tr('task.followup-ci.filled', { n: b.dataset.build }));
-    } catch (e) { toast(explainError(e.message), true); }
-  });
   /* LE RATTRAPAGE TOURNE EN TÂCHE DE FOND (l'IA peut devoir trancher des conflits) : le clic ne
      dit que « lancé ». Sans repli, la seule preuve qu'il a réussi — et qu'il FAUT maintenant
      pousser en forçant — était de remarquer, sur une carte qui se redessine toutes les secondes

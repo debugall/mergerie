@@ -7,8 +7,32 @@
 .merge-arrow { color: var(--muted); flex: 0 0 auto; font-size: 18px; }
 @media (max-width: 1000px) { .merge-pick > div { flex: 1 1 100%; } }
 
-.merge-running .merge-run-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; flex-wrap: wrap; }
+.merge-running .merge-run-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin: 0 -8px; border-radius: var(--radius); flex-wrap: wrap; }
+/* La ligne du merge OUVERT au-dessus : on la reconnaît sans relire les branches. */
+.merge-running .merge-run-row.current { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+/* LE TRAVAIL D'ABORD. Le DOM garde l'ordre formulaire → liste → travail (ids et tests inchangés) ;
+   l'écran, lui, montre le merge ouvert en tête, puis les merges en cours, puis le formulaire.
+   Sans ça, le premier conflit commençait sous le pli sur un portable, après trois blocs qui
+   répétaient les mêmes branches. */
+#gsub-merge.active { display: flex; flex-direction: column; }
+#gsub-merge > #mergeWork { order: -2; margin-top: 0; }
+#gsub-merge > #mergeRunning { order: -1; }
+#gsub-merge > #mergeUnrelated { order: 1; }
+#gsub-merge > .merge-form-box { order: 2; }
+.merge-form-title { display: none; margin: 18px 0 4px; font-size: 14px; }
+#gsub-merge.merge-ouvert .merge-form-title { display: block; }
+#gsub-merge.merge-ouvert .merge-form-box .muted[data-i18n="git.merge.intro"] { display: none; }
+#gsub-merge.merge-ouvert #mergeRunning .box { margin-top: 14px; }
+
 .merge-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Les trois étapes d'un merge, sous ses branches : où l'on en est se lit sans déduire du bouton. */
+.merge-steps { display: flex; align-items: center; gap: 4px; flex-basis: 100%; font-size: 12px; margin-top: 2px; }
+.merge-step { padding: 1px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.merge-step.on { color: var(--accent-text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); font-weight: 600; }
+.merge-step.ok { color: var(--green-text); border-color: var(--green); }
+.merge-step-sep { color: var(--muted); font-size: 11px; }
+.merge-hint { margin: 10px 0 0; }
 
 /* Deux colonnes : la liste des fichiers reste sous les yeux pendant qu'on résout. */
 .merge-body { display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; }
@@ -23,6 +47,10 @@
 .mf-item .ico { color: var(--amber); flex: 0 0 auto; }
 .mf-item.active { border-color: var(--accent); background: var(--panel2); }
 .mf-done { font-size: 12px; color: var(--ok); padding: 6px 8px; }
+/* Un fichier résolu reste listé, coché : on voit ce qu'on a fait, pas seulement ce qui reste. */
+.mf-ok { display: flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 13px; color: var(--muted); border: 1px solid transparent; }
+.mf-ok .ico { color: var(--ok); flex: 0 0 auto; }
+.mf-ok span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .mp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .merge-editor { width: 100%; min-height: 320px; font-family: var(--ff-mono); font-size: 12.5px; }
@@ -31,8 +59,19 @@
    ce qu'on garde sans avoir à relire les boutons. */
 .cf-hunk { border: 1px solid var(--line); border-radius: var(--radius); margin: 10px 0; overflow: hidden; }
 .cf-num { font-size: 12px; color: var(--muted); padding: 4px 8px; background: var(--panel2); }
-.cf-side { border-top: 1px solid var(--line); }
+/* Toute la version se clique, pas seulement son bouton, et la version RETENUE porte une barre à
+   gauche et un « gardée » à côté de son nom : le choix par défaut (la destination) se voit,
+   au lieu de se deviner à la teinte du fond. */
+.cf-side { border-top: 1px solid var(--line); border-left: 3px solid transparent; cursor: pointer; }
+.cf-side:hover pre { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.cf-ours.cf-keep { border-left-color: var(--accent); }
+.cf-theirs.cf-keep { border-left-color: var(--ok); }
+.cf-ia.cf-keep { border-left-color: var(--purple); }
+.cf-kept { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: var(--accent-text); }
+.cf-theirs .cf-kept { color: var(--green-text); }
+.cf-ia .cf-kept { color: var(--purple); }
 .cf-lab { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12.5px; color: var(--muted); }
+.cf-lab .spacer { flex: 1 1 auto; }
 .cf-lab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cf-side pre { margin: 0; padding: 6px 10px; font-family: var(--ff-mono); font-size: 12.5px;
   white-space: pre-wrap; word-break: break-word; }
@@ -44,7 +83,7 @@
 .cf-ia.cf-keep pre { background: color-mix(in srgb, var(--purple) 14%, transparent); }
 .cf-reason { margin: 0; padding: 6px 10px; font-size: 12.5px; color: var(--muted);
   border-top: 1px dashed var(--line); background: color-mix(in srgb, var(--purple) 6%, transparent); }
-.cf-both { padding: 6px 8px; border-top: 1px solid var(--line); }
+.cf-both { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); background: var(--panel2); }
 .cf-ctx { margin: 0; padding: 4px 10px; color: var(--muted); font-family: var(--ff-mono); font-size: 12px;
   white-space: pre-wrap; word-break: break-word; }
 .cf-gap { color: var(--muted); }

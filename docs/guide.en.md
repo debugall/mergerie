@@ -33,8 +33,10 @@ security model. For a quick start, stay on the [README](../README.md).
 3. **Connect the forge** — GitLab (URL + token, scopes `api` and `read_repository`) **or** GitHub
    (token, scope `repo`). One *Test* button per forge.
 4. **Pick your repositories** — Settings → Repositories, in bulk from the forge or one address at a time.
-5. **What your team uses** — Jira, Jenkins, Docker, environments: what is ticked unfolds its menu,
-   the rest stays folded. Nothing is lost: Settings → General → Menus.
+5. **What your team uses** — Jira is built in, folded by default: tick it in Settings → General →
+   Menus to unfold its menu. Jenkins, Docker and the environments grid (Links) are **plugins**:
+   install the ones you use from Settings → Plugins (from a git address), then enable them — the
+   tab appears once they are. Nothing already running is lost either way.
 6. **Fetch MRs** — the queue fills up (and refreshes every 5 minutes by default). On a card,
    **Review**: the report lands in the right-hand panel, with its score.
 
@@ -75,8 +77,23 @@ in the database. The tool merges nothing; it says how many merge requests are on
 decision.
 
 **A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
-direction that unblocks it (the target branch into the MR's branch). *Update with main* only ever
-existed for merge requests born from a session; a colleague's had nothing.
+direction that unblocks it (the target branch into the MR's branch). Next to it, **`Update with the AI`**
+opens the coding session modal already filled in: the MR's branch, its target branch as the base,
+automatic push unticked, and the instruction — first understand what the branch changes and why, replay
+those changes on top of the target's current state (`git rebase`), resolve each conflict keeping what
+the target brings and the branch's intent, check, commit, **do not push**. You re-read the instruction,
+launch, re-read the diff, then `Push` — which forces by itself (`--force-with-lease`), the history
+having been rewritten. It works on a colleague's merge request as well as yours; *Update with main* on
+a project line stays the shortcut with no instruction to re-read, for merge requests born from a session.
+
+**A merge request behind its target says so too**, without waiting for a conflict: the card carries
+"N commit(s) behind" — what the target branch received and this branch never saw. It still merges, but
+its code never ran with those commits; the badge opens `Git → Merge` as a conflict does, and
+**`Update with the AI`** is there as well, with an instruction that states the delay rather than a
+conflict that does not exist — and rebases the same way. The count comes from the forge (GitLab's
+diverged commits count, GitHub's `base...head` comparison), read at discovery — one call per open merge
+request, capped per round — and when the merge modal opens. "Not known yet" shows nothing: a branch
+from a fork, or a silent forge, never becomes "up to date" by default.
 
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
@@ -402,7 +419,9 @@ overridden at launch**. A
 
 ### ⛶ Open the code (full-screen explorer)
 Project tree plus the file shown **in full with the diff in place**, syntax highlighting, a **mini-map** of
-the changes, navigation between modifications, collapsible panels. **Inline comments** per line and
+the changes, navigation between modifications, collapsible panels: three buttons at the top — `Report`,
+`Tree`, `Code` — each hide their panel. Hiding the **code** gives the report the full width, to read it
+comfortably; one panel always stays, the last one refuses to go. **Inline comments** per line and
 **replies** to threads, synchronised with the forge — and **editable** as long as they are yours.
 
 **The tree says what each file carries**: the number of unresolved findings (in red when one of them
@@ -712,7 +731,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **what it became** — score, verdict, pending comments — instead of a bare `MR !216 ↗` that sent you back
   to Reviews, and **`Tell Jira`** comments the ticket with the merge request link then moves it to review
   when Jira offers the transition, behind a confirmation that names the ticket. A checkbox in the session
-  dialog, **unchecked by default**, does it at every merge request creation. **`Diff`** opens the **same full-screen explorer as the
+  dialog, **unchecked by default**, does it at every merge request creation — and its default, together with the **template of the comment**
+  (`{url}` `{iid}` `{project}` `{title}` `{branch}` `{target}` `{key}`, with a live preview), lives in *Settings → Jira*. **`Diff`** opens the **same full-screen explorer as the
   merge requests** — the whole project tree in the middle, the entire file with the changes in place on the
   right (navigation from one change to the next, mini-map) — with, on the left, the **AI's report** instead
   of the review report. So you read what the AI says it did *and* what it actually wrote, side by side, in
@@ -924,7 +944,8 @@ between humans.
 - **Incident investigator** — paste a trace, a log, a ticket excerpt. It searches **every clone** with
   one `chercheur` subagent per repository, then names the repository, the file and the line, with a
   likely cause and the recent commits that touched those lines. If it finds nothing, it says so in plain
-  words instead of offering a plausible repository. Its report ends with a service block that feeds the
+  words instead of offering a plausible repository. Subagents exist only with Claude Code (`--agents`):
+  on another backend the request does not name them and the agent searches by itself. Its report ends with a service block that feeds the
   **“Fix in *repository*”** button: one click opens a coding session on the right repository, with the
   report as the request.
 - **Librarian** — it reads every repository and writes the **service map** into a note page: what each
@@ -1374,6 +1395,68 @@ yours, and you want to know **when it moves**, not to think about it three times
 - A ticket that was **deleted or became invisible** (rights lost) is reported **on its row**, without
   interrupting the check of the others, and **without erasing** the last known state.
 
+#### Finding the analysed tickets
+The **Analysed** tab of the Jira menu lists every ticket whose technical brief was started or proposed — with
+the repositories and branches read, its state (proposed, posted, to review…) and its version; a click opens
+the ticket and its brief next to the list, and the badge counts those with a proposal. In **My tickets**,
+the **Analysis** filter shows everything, only the tickets *already analysed*, or only those *not analysed yet*
+(the choice is remembered, and the list updates as soon as a brief arrives).
+
+#### Technical brief of a ticket
+A ticket written by a Product Owner says the functional *what*, never the *where* (which repositories,
+which modules) nor the *how* (the steps, the constraints of the existing code). The developer redoes that
+translation in their head for every ticket, and it lands nowhere. The **"Technical brief"** button of a
+ticket's detail opens the **Technical brief** section, where the AI does that work and proposes it as a
+comment.
+
+- **What you give it.** One or more **repositories** (the list filters as you type: the filter hides
+  without unticking), each with its **branch** — a searchable list, the repository's default branch when you pick none: the code being described often lives on a release or a feature branch, and that is the one the AI reads (the "Have the AI code" session opened from the brief starts from it), the ticket's **epic** and its other tickets as context (ticked by default when the
+  ticket has one — a ticket often makes sense in the light of its neighbours), one or several **Confluence
+  pages** (five at most; Cloud is read with the Jira account, Server / Data Center needs an address and a
+  token in Settings → Jira; a page that is not on that Jira or that Confluence is refused: credentials go
+  nowhere else), a free **complement** ("it is the billing service, not crm; the legacy stays
+  untouched"), the level of detail (**summary**, thirty lines at most, or **detailed**) and the box
+  **"The AI may ask me questions"**.
+- **What it does.** An ordinary **exploration session**, read-only, on the chosen repositories: it reads the
+  ticket, its comments and linked tickets, the epic, the pages, then the code. Everything coming from Jira
+  or Confluence enters the prompt as fenced **data**, never as an instruction; only your complement is read
+  as one. A page that is refused (rights) or too long is **said so**, in the proposal and on screen, and
+  blocks nothing.
+- **Two kinds of questions.** What **only you** know (which service, which convention) is asked **before**
+  proposing, through the usual mechanism: the session goes to *waiting for your answers*, you answer in AI
+  Dev, the analysis resumes. What **only the PO** knows becomes the proposal's last section, *Open
+  questions for the PO* — often the first thing the PO reads.
+- **The proposal.** Six sections, always in the same order: *Repositories involved*, *Existing code we
+  build on* (named files and modules, no code), *What has to be done*, *Points of attention*, *Out of
+  scope*, *Open questions for the PO*. It shows up in the section without reloading the page.
+- **Adjusting it.** A **follow-up** ("detail the migration part", "too long") has the agent rewrite the
+  whole proposal, in the same session; **"Edit"** opens it for hand editing, without calling the AI. Every
+  pass is a **version** (AI, follow-up, edit), and the screen says when changes are not posted yet.
+- **Posting.** **"Post as a comment"** shows what leaves and asks for confirmation: the comment starts with
+  a **marker line** (set in Settings → Jira) and the version number. Next time — new analysis, follow-up,
+  touch-up — the button reads **"Update the comment"** and **the same comment** is rewritten, never a
+  second one. If Jira refuses (the comment was posted by a teammate from another account, or the right to
+  edit was removed), nothing leaves silently: the screen offers to post a new version under your name.
+  Deleted on Jira in the meantime, a new one is created, and the screen says so.
+- **To review.** When the ticket **changes meaning** (title or description rewritten by the PO) after the
+  analysis, the brief turns **"to review"** as soon as the ticket is opened. A mere status change expires
+  nothing. **"Run the analysis again"** rereads everything (ticket, pages, code) in a fresh session; the
+  versions and the posted comment stay.
+- **Towards the code.** **"Start a session"** opens the AI Dev modal prefilled: the brief's repositories
+  as targets, the proposal as the instruction — the loop ticket → brief → session → MR.
+- **A whole epic.** **"Brief the epic's tickets"** lists its tickets, tickable (already briefed and done
+  ones are unticked by default, a filter hides without unticking), and starts **one analysis per ticked
+  ticket** with the repositories, pages and complement of the current form — the batch prepares in the
+  background, the list chips follow. Each ticket then keeps its own
+  brief: follow-up, edit, post, ticket by ticket.
+- **In the list**, every ticket carries a *brief proposed / posted / to review / waiting for your answers*
+  chip. **In AI Dev**, the analysis session carries the *Brief PROJ-123* tag (which opens the ticket), and
+  a *with / without / only ticket briefs* chip hides those sessions in one gesture — remembered per
+  machine, nothing archived; an analysis waiting for an answer stays visible whatever the filter.
+- **Settings → Jira**: address and token of a Confluence Server / Data Center, the comment's marker line,
+  and **team guidelines** added to every analysis ("our endpoints follow `/v2/<resource>`", "never a
+  destructive migration") — guidance, not protocol: the proposal's format itself is not editable.
+
 ### Git
 Operations across **several repositories at once**, and branch exploration.
 
@@ -1413,10 +1496,17 @@ Operations across **several repositories at once**, and branch exploration.
   committed or pushed**: the merge is prepared in a **workspace of its own**, never in the shared clone — a
   review, a coding session or a verification running alongside must not find the repository half-merged. A
   merge **can be resumed** after the tool restarts.
+  - **The open merge moves to the top of the tab**, above the list of running merges (where its row says
+    "open above") and the form, which becomes "Prepare another merge". Its banner carries the three steps
+    `Resolve › Commit › Push`, the current one highlighted, the done ones ticked; on the left, the files still
+    in conflict, then, ticked, those already ready to commit. A merge whose **working folder is gone**
+    (prepared on another machine, disk clean-up) says so plainly and only offers to abandon it, instead of
+    an empty panel.
   - **Conflicts are resolved on screen, one at a time.** For each conflict: the **destination's version**
     and the **incoming version**, one under the other, with `Keep` on each and `Keep both: <destination> then <source>` — the button names the two
-    branches and the order it applies them in — below them; the side you keep is highlighted, so you can see where you stand without re-reading the
-    buttons. **You never see a `<<<<<<<` marker.** When neither side fits, `Write it myself` hands you the
+    branches and the order it applies them in — below them; the side you keep carries a coloured bar and the word
+    **"kept"**, so you can see where you stand without re-reading the buttons — the destination is kept by
+    default — and **each version can be clicked as a whole**, not only its `Keep`. **You never see a `<<<<<<<` marker.** When neither side fits, `Write it myself` hands you the
     **result of your choices** in a plain text field and saves what you write.
   - **Then two separate gestures, in that order.** `Commit` — the message is already filled in with the one
     git itself wrote — then `Push`, each behind its own confirmation. `Commit` refuses while a conflict
@@ -1500,6 +1590,15 @@ Operations across **several repositories at once**, and branch exploration.
   repository** (GitLab and GitHub alike), which ones have it: type, commit + link to the forge, date, the
   branch(es) carrying the tag, the author — with the same `Tag author` button. An unreachable repository is
   reported separately, never confused with “absent”.
+- **Tags by period** — “what did we ship these two weeks?”. Two dates (shortcuts *Last 7* and *Last 30
+  days*; the last 30 are set when the sub-tab opens) and the tool lists **every tag created between those
+  two days, both included, across all active repositories**: repository, tag (link to the forge), date,
+  first line of the message. **`Copy the table`** puts it in the clipboard in two forms at once — a real
+  HTML table, which Teams, an email or Word render as a table, and tab-separated text for a spreadsheet or
+  a plain editor. A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
+  otherwise the date of the commit it points to; GitHub tags, which the API does not date, are read from
+  the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
+  unreachable repository is named.
 
 > ⚠️ **A branch's origin is an inference, not a fact.** Git records nowhere which branch a branch was
 > created from. The tool infers it (`merge-base`), except when a merge request attests to it — the only
@@ -1507,6 +1606,8 @@ Operations across **several repositories at once**, and branch exploration.
 > never as a fact.
 
 ### Docker
+> **Docker is a plugin**: the tab lives in its own repository ([docker-mergerie](https://gitlab.com/amady/docker-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the “Containers down” brief section, the state of the services before an “in place” verification) exists. Everything below describes its screen.
+
 Two sub-views, like Coding/Exploration in AI Dev.
 
 **What the compose already knows.** A service publishing a port **opens it in one click** (`:3000`), and
@@ -1599,6 +1700,8 @@ be **restored**: the tool saved its full `inspect` before every deletion, and no
   — like the certificate / token errors.
 
 ### Jenkins
+> **Jenkins is a plugin**: the tab lives in its own repository ([jenkins-mergerie](https://gitlab.com/amady/jenkins-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the linked-job button on a merge request, a branch or a session, the "CI red" brief section) exists; your settings and linked jobs are kept and come back on install. Everything below describes its screen.
+
 See **where your jobs stand** and **run them**, without leaving the tool or opening another
 page. This is not an administration console: no job configuration, no agent management — what
 Jenkins already does well, and which there is no point redoing.
@@ -1780,7 +1883,19 @@ alone is not enough. **`Test Jenkins`** returns the **account name** the server 
 that answers does not prove the token is right. The token is stored locally and **masked**;
 saving the settings again without touching it does not erase it.
 
+- **Announce ALL jobs, not only yours** — on by default; untick it in *Settings → Jenkins* to go
+  back to following only the builds you started from Mergerie. On, the plugin asks Jenkins once a
+  minute for the whole job tree (a single call) and emits its `started`/`finished` events for
+  **every** build, whoever launched it; each event carries `source` (`"mergerie"` or `"jenkins"`)
+  so a listener can tell a build you triggered from one someone else or the scheduler started.
+  This is what lets another plugin, such as **Jenkins Teams Notify**, post about a chosen list of
+  jobs no matter who launched them — and the finished event now also carries the build's
+  **parameters** (secret-looking ones left out), so a notification template can say which
+  environment it deployed to.
+
 ### Links
+> **Links is a plugin**: the tab lives in its own repository ([link-mergerie](https://gitlab.com/amady/link-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the environment buttons on merge requests, sessions and tickets, the "local" box suggested from Docker, the links in the palette) exists. **Your links are not lost**: the grid, the addresses, the templates, the free links and their order stay in your database and come back once it is installed. Everything below describes its screen; the `Ctrl`/`Cmd`+`K` palette itself stays in the core.
+
 Work links have a **structure** a browser's bookmarks cannot express: the same service exists in
 local, dev, staging and production. A folder tree scatters it across four places; a **grid** shows
 it at once — services as rows, environments as columns.
@@ -2190,10 +2305,14 @@ policies, the forge address — two reviews of the same merge request written un
 instructions are not comparable, so those settings are meant to be shared. A **this machine**
 setting belongs to your computer alone: the API tokens, the clone folder, the language. They are
 stored apart, in a table that is never meant to travel: that is what will later let a team share
-its tool without a single secret leaving anyone's machine.
+its tool without a single secret leaving anyone's machine. A **copy** button sits next to every
+token field (GitLab, GitHub, Jira, Confluence, a plugin's own secret…): the field itself still
+only ever shows `***`, the button asks the server for the value on that click and writes it
+straight to the clipboard.
 
 Sub-tabs, **in the order of the journey** — connect, choose the code, tune the review, tune the
-tool, the optional integrations, the test bench:
+tool, the optional integrations, the test bench. Every save, on any sub-tab, now confirms with a
+**toast** once it lands (an error toast if the server refuses):
 
 **Git** (the **GitLab connection** — URL + access token, with
 *Test the connection* —, the **GitHub connection** — URL (empty = github.com, otherwise GitHub Enterprise)
@@ -2215,7 +2334,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
@@ -2233,22 +2352,34 @@ on disk, **nothing is executed** — to add in one click; when a compose file is
 **`docker compose run --rm <service> <command>`** variant of every test command is offered too: the commands run
 **on the host**, and it is in the line that you say to enter a container; every suggestion is an **exact line**,
 the one that will be approved as is) ·
-**Notifications** (a dedicated sub-tab, see below) ·
 **General** (with its own **Save** button — the fields of every sub-tab belong to the same form,
-and this one had none: you ticked a box and nothing left; the **four boxes ticked by default** on a new session — auto-push, AI questions, tell Jira, converge afterwards: these are working habits, set once instead of starting unticked at every opening; light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
-and a **danger zone** for a full reset) ·
+and this one had none: you ticked a box and nothing left; light/dark/auto theme, language, density,
+**menu arrangement**, morning brief, data retention, backup, and a **danger zone** for a full
+reset) ·
+**Notifications** (a dedicated sub-tab, see below) ·
+**Shared data** (the git repository a team uses to share its accumulated settings, templates and
+rules — see *Sharing with a team* below) ·
 **Jira** (the **Jira connection** —
-URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
-from a ticket) ·
-**Jenkins** (URL, user and API token, with a test button, the jobs' **refresh interval**, and the **jobs
-linked to repositories**: a job declared for a repository is offered on its **verified green** merge
-requests, with the branch prefilled into the parameter you name — the job page opens, nothing is launched
-without the usual confirmation) ·
+URL + email + API token, with a *Test Jira* button —, and **“Tell Jira when the merge request is
+created”** — ticked by default in a new session's window — with an editable **comment
+template** (`{url}`, `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, a live
+preview; empty keeps the shipped message, shared with the team like the review-link template) —;
+feeds the *Jira* tab and the enrichment of a session from a ticket) ·
+**Plugins** (every installed plugin, its version, state and permissions; enable or disable it
+**without restarting**; install a third-party plugin from a local folder or a git address — this
+is where Jenkins, Docker and Links are installed and updated. An **enabled** plugin that declares
+its own settings adds its own sub-tab here, right after this one — Jenkins, for instance, brings
+back its URL, user, API token, jobs' refresh interval, linked jobs and **“Announce ALL jobs”**
+setting exactly where they used to live) ·
 **AI sessions** (the **agent binaries** — the default and the others, see *Configuration* —, the **standing
-instructions**, see below, the daily limits, secure or yolo mode, and a technical test: two passes inside the
+instructions**, see below, the daily limits, secure or yolo mode, the **three boxes ticked by
+default on a new session** — auto-push, the AI may ask questions, converge afterwards — moved
+here from General, and a technical test: two passes inside the
 same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
-context continuity between review, fixes and convergence).
+context continuity between review, fixes and convergence. **One Save bar**, pinned to the bottom
+of the screen, now covers every section above instead of five identical buttons — it says
+*unsaved changes* as soon as a field changes, then *saved*).
 
 The first three are what you fill in to get started; **Rules** and **Verifiers** complete the review; the
 rest is tuned when the need arises. The **last sub-tab you visited is remembered** — you come back to
@@ -2753,7 +2884,9 @@ sandbox”), **declared** (the CLI can restrict itself — `--restricted`, `--sa
 **lightened** (none of that: the after-the-fact check is the only net, and every run's journal
 says so on its first line). No level blocks a CLI; what is never lightened: the forge token out
 of the clone, the API closed by the local token, the allowlisted environment, the wide-open mode
-stripped from the arguments.
+stripped from the arguments. Whenever a read-only run (review, exploration, knowledge update) lands
+on a backend that denies it writes — Claude, Codex, Gemini, and Copilot when it knows `--deny-tool` —
+the instruction asks for the final answer instead of a file the agent could not write.
 
 Two `.env` files are read at startup, weakest first: `~/.mergerie/.env`, then **the one in the
 folder the command is run from** (the root of the clone with `npm start`, the current directory
@@ -3149,7 +3282,13 @@ review rule shows who set it.
 installation that touched nothing, the agent runs **with no restriction from the launcher**, every
 flavour and every backend alike: `AGENT_ARGS` intact (wide-open mode included), no `--disallowedTools`,
 no sandbox, no allowlist, no after-the-fact integrity check — the old behaviour, as it was; every run's
-journal opens with it. In **secured** mode, everything this paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
+journal opens with it. One single thing is **added**: the CLI's own wide-open mode
+(`--dangerously-skip-permissions` for Claude, `--allow-all-tools` for Copilot,
+`--dangerously-bypass-approvals-and-sandbox` for Codex, `--yolo` for Gemini), when the agent's arguments say
+nothing about permissions — without it, a non-interactive CLI refuses every tool and an “unrestricted”
+review could not write its report; the journal says so, with the flag it set. An argument that already
+speaks of them (`--permission-mode`, `--allow-tool`, `--sandbox`, `--approval-mode`…) is kept as is, and a
+“plan first” pass keeps Claude's plan mode. In **secured** mode, everything this paragraph and the next ones describe applies. What yolo NEVER lifts, because these are the server's
 limits and not the agent's: the local token on `/api/`, the `Host` allowlist, the nonce on protocol
 blocks, the per-machine approval of what arrives through the sync, and the agent's allowlisted
 environment.
@@ -3179,9 +3318,14 @@ made on screen:
 - **bounds**: a default `--max-turns` (Settings → AI, 200) and a daily spend cap — two settings of **this machine**, which do not travel with the team's.
 
 **Copilot CLI knows `--allow-tool`/`--deny-tool`** when the installed binary offers them (probed once via
-`--help`): when writing, `git push`/`curl`/`wget`/`ssh`/`scp` are refused on that basis; when reading,
-`write` and `shell(*)` are. An older binary that does not know them is no longer refused: the run goes at
-the **lightened** level, reading as writing, and the journal says so on its first line. **A limit to keep in mind**: an agent that writes code
+`--help`): when writing, `git push`/`curl`/`wget`/`ssh`/`scp` are refused on that basis, and the **same allowlist
+as Claude** is granted (`--allow-tool write`, `shell(git status|log|show|diff|blame|add|commit|stash|checkout|rebase|merge*)`,
+the approved verifiers' commands, what you add in Settings → AI session) — without it, non-interactive
+Copilot ran nothing at all, "no approval possible"; when reading, `write` and `shell(*)` are refused and the
+report is asked for as the final answer — never as a file the launcher refuses. An older binary that does not know them is no longer refused: the run goes at
+the **lightened** level, reading as writing, and the journal says so on its first line; a write run there
+gets `--allow-all-tools` when the binary knows it, because a coding session that cannot write anything is
+not a restriction, it is a breakdown. **A limit to keep in mind**: an agent that writes code
 can write code that leaks; what bounds the damage is what it no longer has at hand.
 
 **Text from elsewhere is data, and is said to be.** MR title and description, Jira ticket, previous

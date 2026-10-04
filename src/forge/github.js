@@ -202,6 +202,18 @@ async function getMergeRequest(cfg, project, iid) {
   return toMr(await githubFetch(cfg, `/repos/${encodeProject(project)}/pulls/${iid}`));
 }
 
+/* LE RETARD DE LA BRANCHE SUR SA CIBLE — même forme que GitLab (`behind_by` entier, `null` si la
+   forge ne sait pas). GitHub ne le met sur la pull request que sous une protection de branche
+   (`mergeable_state: 'behind'`, un booléen) : la comparaison `cible...source` le compte toujours.
+   Une branche venue d'un FORK vit dans un autre dépôt : la comparaison demanderait `owner:branche`,
+   qu'on n'a pas — on rend `null` plutôt qu'un compte faux. */
+async function divergence(cfg, project, mr) {
+  if (mr.is_fork === true || !mr.source_branch || !mr.target_branch) return { behind_by: null, has_conflicts: null };
+  const c = await githubFetch(cfg, `/repos/${encodeProject(project)}/compare/${encodeURIComponent(mr.target_branch)}...${encodeURIComponent(mr.source_branch)}`);
+  const n = c && c.behind_by;
+  return { behind_by: Number.isInteger(n) && n >= 0 ? n : null, has_conflicts: null };
+}
+
 async function listAllMRs(cfg, project) {
   const items = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/pulls?state=all&sort=updated&direction=desc`);
   return items.map((pr) => ({
@@ -530,6 +542,7 @@ async function listTags(cfg, project) {
     message: '',
     annotated: false,
     committed_date: null,
+    created_at: null,
     author: '',
   }));
 }
@@ -751,7 +764,7 @@ module.exports = {
   // mêmes noms que gitlab.js (contrat commun consommé via src/forge.js)
   listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches,
   updateNote, currentUser,
-  latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion,
+  latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus,
   listProtectedTags, listMrChangedPaths, listMrChanges, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,

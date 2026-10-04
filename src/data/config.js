@@ -36,10 +36,9 @@ const ALLOWED = [
   'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
-  'review_link_template',
+  'review_link_template', 'jira_notify_template',
   'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'auto_runner',
-  'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
@@ -48,6 +47,7 @@ const ALLOWED = [
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge',
   'verify_jira_comment',
+  'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
 ];
 
@@ -81,7 +81,7 @@ function updateConfig(patch) {
   if (next.gitlab_url) next.gitlab_url = next.gitlab_url.trim().replace(/\/+$/, '');
   if (next.github_url) next.github_url = next.github_url.trim().replace(/\/+$/, '');
   if (next.jira_url) next.jira_url = next.jira_url.trim().replace(/\/+$/, '');
-  if (next.jenkins_url) next.jenkins_url = next.jenkins_url.trim().replace(/\/+$/, '');
+  if (next.confluence_url) next.confluence_url = next.confluence_url.trim().replace(/\/+$/, '');
   if (next.clone_path) next.clone_path = next.clone_path.trim();
   /* UNE ADRESSE QUI CHANGE INVALIDE LE JETON STOCKÉ (plan_secure.md, lot B, S1). */
   const invaliderSiOrigineChangee = (champUrl, champJeton, defaut = '') => {
@@ -91,7 +91,7 @@ function updateConfig(patch) {
   invaliderSiOrigineChangee('gitlab_url', 'access_token');
   invaliderSiOrigineChangee('github_url', 'github_token', 'https://github.com');
   invaliderSiOrigineChangee('jira_url', 'jira_token');
-  invaliderSiOrigineChangee('jenkins_url', 'jenkins_token');
+  invaliderSiOrigineChangee('confluence_url', 'confluence_token');
   // Rafraîchissement auto : 0 = désactivé ; sinon minimum 1 minute (protège des rate limits API).
   if ('auto_refresh_minutes' in patch) {
     let m = parseInt(patch.auto_refresh_minutes, 10);
@@ -101,13 +101,6 @@ function updateConfig(patch) {
   if ('jira_watch_minutes' in patch) {
     const w = parseInt(patch.jira_watch_minutes, 10);
     next.jira_watch_minutes = (!Number.isFinite(w) || w <= 0) ? 0 : Math.max(1, w);
-  }
-  /* Onglet Jenkins : 0 = pas de rafraîchissement automatique, sinon au moins une minute et au
-     plus une heure. Le plancher protège l'installation partagée — une liste de trois cents jobs
-     redemandée toutes les dix secondes pèse sur tout le monde, pas seulement sur soi. */
-  if ('jenkins_refresh_minutes' in patch) {
-    const jr = parseInt(patch.jenkins_refresh_minutes, 10);
-    next.jenkins_refresh_minutes = (!Number.isFinite(jr) || jr <= 0) ? 0 : Math.min(60, Math.max(1, jr));
   }
   /* Rétention de l'historique : 0 = illimité, sinon au moins 7 jours. Le plancher évite
      qu'une saisie à « 1 » n'efface le journal du job qu'on est en train de lire. */
@@ -247,6 +240,10 @@ function updateConfig(patch) {
   if (String(next.review_link_template || '').trim() && !String(next.review_link_template).includes('{url}')) {
     throw new Error(t('err.config.link-template-no-url'));
   }
+  /* LE MÊME GARDE-FOU POUR LE COMMENTAIRE JIRA : sans `{url}`, le ticket dirait « merge request ouverte » sans dire laquelle. */
+  if (String(next.jira_notify_template || '').trim() && !String(next.jira_notify_template).includes('{url}')) {
+    throw new Error(t('err.config.jira-template-no-url'));
+  }
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
@@ -258,7 +255,6 @@ function updateConfig(patch) {
       gitlab_url = @gitlab_url,
       github_url = @github_url,
       jira_url = @jira_url,
-      jenkins_url = @jenkins_url,
       prompt_review = @prompt_review,
       prompt_explain = @prompt_explain,
       prompt_modify = @prompt_modify,
@@ -266,11 +262,15 @@ function updateConfig(patch) {
       ai_extra_instructions = @ai_extra_instructions,
       jira_test_key = @jira_test_key,
       verify_jira_comment = @verify_jira_comment,
+      confluence_url = @confluence_url,
+      spec_marker = @spec_marker,
+      spec_team_instructions = @spec_team_instructions,
       review_explain = @review_explain,
       auto_post_review = @auto_post_review,
       auto_post_blocking_only = @auto_post_blocking_only,
       auto_post_review_link = @auto_post_review_link,
       review_link_template = @review_link_template,
+      jira_notify_template = @jira_notify_template,
       auto_review_new = @auto_review_new,
       auto_rereview_stale = @auto_rereview_stale,
       auto_runner = @auto_runner,
@@ -293,9 +293,7 @@ function updateConfig(patch) {
       language = @language,
       jira_email = @jira_email,
       jira_token = @jira_token,
-      jenkins_user = @jenkins_user,
-      jenkins_token = @jenkins_token,
-      jenkins_refresh_minutes = @jenkins_refresh_minutes,
+      confluence_token = @confluence_token,
       data_repo_url = @data_repo_url,
       data_repo_branch = @data_repo_branch,
       data_sync_seconds = @data_sync_seconds,

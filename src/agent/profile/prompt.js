@@ -14,6 +14,12 @@ const { t } = i18n;
 const knowledge = require('../knowledge');
 const { OUTILS_DEFAUT, jsonOu, repos } = require('./modele');
 const { nonceAgentRun } = require('../protocol');
+/* Le backend qui recevra ce prompt : celui du profil de CLI courant s'il y en a un, sinon celui
+   du binaire des réglages. Requis à l'appel : `copilot` lit la configuration à son chargement. */
+function backendCourant() {
+  const copilot = require('../copilot');
+  return require('../policy').backendDe(copilot.COPILOT_BIN);
+}
 
 /* ---------- Du profil aux options de lancement ---------- */
 
@@ -75,7 +81,7 @@ function systemPromptFor(task, agent) {
 }
 /* ---------- La demande (§8.6) ---------- */
 
-function composer(agent, { question, targets, kind, entrees }) {
+function composer(agent, { question, targets, kind, entrees, backend = backendCourant() }) {
   const cfg = getConfig();
   const morceaux = [];
 
@@ -109,8 +115,11 @@ function composer(agent, { question, targets, kind, entrees }) {
     if (agent.knowledge_prompt) morceaux.push(t('agents.prompt.read-knowledge-first'));
   }
 
-  // 4. les sous-agents dont il dispose, nommés.
-  const sous = jsonOu(agent.subagents_json, {});
+  /* 4. les sous-agents dont il dispose, nommés — SEULEMENT si le CLI les recevra. `--agents`
+     n'existe que chez Claude (`agentargs.argsFor` l'ignore ailleurs, et le dit au journal) :
+     sur Copilot, le cartographe lisait « confie la recherche au sous-agent `chercheur` », ne le
+     trouvait pas, et le disait dans sa réponse à la place de la connaissance demandée. */
+  const sous = agentargs.sousAgentsTransmis(backend) ? jsonOu(agent.subagents_json, {}) : {};
   const noms = Object.keys(sous);
   if (noms.length) {
     morceaux.push([t('agents.prompt.subagents'), ...noms.map((n) => `- \`${n}\` : ${sous[n].description || ''}`)].join('\n'));

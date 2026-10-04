@@ -128,4 +128,8 @@ function validate(options, kind) {
   return [...new Set(errs)];
 }
 
-module.exports = { argsFor, previewFor, validate, MODES, SUBAGENT_MODELS };
+/** Vrai quand ce backend recevra les sous-agents d'un profil (`--agents`) : Claude seul. Le prompt
+    ne nomme un sous-agent que si le CLI le connaît — sinon l'agent le cherche en vain. */
+const sousAgentsTransmis = (backend) => backend === 'claude';
+
+module.exports = { argsFor, previewFor, validate, MODES, SUBAGENT_MODELS, sousAgentsTransmis };

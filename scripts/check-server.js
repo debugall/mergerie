@@ -140,7 +140,7 @@ const texteDb = lignesDb.map((l) => l.texte).join('\n');
 /* UN CHAMP DE CONFIG SE DÉCLARE À DEUX ENDROITS dans config.js : la liste `ALLOWED`, qui
    dit ce qu'on accepte du client, et l'UPDATE, qui dit ce qu'on écrit. Manquer le second
    donne le pire des deux mondes : la route répond 200, l'écran affiche « enregistré », et la
-   valeur n'est nulle part. Ça s'est produit en ajoutant Jenkins ; ce contrôle le rattrape. */
+   valeur n'est nulle part. Ça s'est produit en ajoutant une connexion ; ce contrôle le rattrape. */
 if (F_CONFIG && registre) {
   const conf = lire(F_CONFIG);
   const bloc = (nom) => (conf.match(new RegExp(`UPDATE ${nom} SET([\\s\\S]*?)WHERE id = 1`)) || [])[1] || '';
@@ -377,7 +377,7 @@ if (registre) {
       /* Lire git (fetch d'un dépôt DÉCLARÉ, diff, liste des branches) est admis en GET pour ces
          routes-là, nommément : ce sont des lectures, derrière la garde Host + Sec-Fetch-Site. Une
          nouvelle route qui lit git en GET s'ajoute ici en connaissance de cause. */
-      const LECTURES_GIT = ['/api/mrs/:id/diffview', '/api/git/compare/file', '/api/git/branches', '/api/git/tag-author', '/api/git/find-ref'];
+      const LECTURES_GIT = ['/api/mrs/:id/diffview', '/api/git/compare/file', '/api/git/branches', '/api/git/tag-author', '/api/git/find-ref', '/api/git/tags-period'];
       const route = (corps.match(/^\s*app\.get\('([^']+)'/) || [])[1];
       const motif = LECTURES_GIT.includes(route) ? /\b(spawn\(|startJob\(|start\w+Job\()/ : /\b(spawn\(|git\.run\(|ensureRepo\(|startJob\(|start\w+Job\()/;
       const m = corps.match(motif);

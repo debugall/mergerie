@@ -9,9 +9,10 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jira = require('../../integrations/jira');
+const jiraspec = require('../../integrations/jiraspec');
+const specTicket = require('../../session/spec');
 const notes = require('../../notes/notes');
-const links = require('../../notes/links');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const pieces = require('../../agent/pieces');
 const tasks = require('../../agent/tasks');
@@ -42,14 +43,14 @@ app.post('/api/jira/test', wrap(async (req, res) => {
 // Onglet Jira → filtre par assigné : « moi » + les personnes ayant des tickets assignés récents
 // (pour cocher qui afficher). `not-configured` renvoie { configured:false } (pas une 400).
 app.get('/api/jira/assignees', wrap(async (req, res) => {
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.assignees() });
+  if (demoMode.isDemo()) return res.json({ configured: true, ...demoJira.assignees() });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, me: null, people: [] });
   res.json({ configured: true, ...(await jira.listAssignees(cfg)) });
 }));
 app.get('/api/jira/statuses', wrap(async (req, res) => {
   const cles = [...new Set(String(req.query.projects || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 20);
-  if (demoDocker.isDemo()) return res.json({ configured: true, statuses: demoJira.projectStatuses(cles) });
+  if (demoMode.isDemo()) return res.json({ configured: true, statuses: demoJira.projectStatuses(cles) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, statuses: [] });
   const par = new Map();
@@ -72,7 +73,7 @@ app.get('/api/jira/tickets', wrap(async (req, res) => {
   const sprints = String(req.query.sprints || '').split(',').map((x) => x.trim()).filter(Boolean);
   // Projets choisis dans le filtre : appliqués par Jira, pas après coup (cf. searchByAssignees).
   const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (demoDocker.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints, hideStatuses) });
+  if (demoMode.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints, hideStatuses) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
   res.json({ configured: true, ...(await jira.searchByAssignees(cfg, {
@@ -89,16 +90,26 @@ app.get('/api/jira/issue/:key', wrap(async (req, res) => {
     mrs: engagementsSurTicket(key).mrs.filter((m) => !m.closed && m.web_url)
       .map((m) => ({ iid: m.iid, url: m.web_url })),
   };
-  if (demoDocker.isDemo()) return res.json({ issue: { ...demoJira.issue(key), mergerie } });
-  const cfg = getConfig();
-  if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
-  res.json({ issue: { ...(await jira.issueDetail(cfg, key)), mergerie } });
+  const issue = demoMode.isDemo() ? demoJira.issue(key) : await (async () => {
+    const cfg = getConfig();
+    if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+    return jira.issueDetail(cfg, key);
+  })();
+  /* LA SPEC A-T-ELLE ENCORE UN SENS ? Le ticket vient d'être relu : si son titre ou sa
+     description ne sont plus ceux de la photo prise à l'analyse, la proposition parle d'un
+     ticket qui n'existe plus — on la marque « à revoir » ici même, sans appel de plus. Un
+     changement d'état n'est pas un changement de sens. */
+  const s = specTicket.specByKey(key);
+  if (s && !s.stale && ['proposed', 'edited', 'posted'].includes(s.status) && jiraspec.perimee(s.ticket_snapshot, issue)) {
+    specTicket.poser(s.id, { stale: 1 });   // un drapeau : l'état (proposée, postée…) reste ce qu'il est
+  }
+  res.json({ issue: { ...issue, mergerie } });
 }));
 // Poster un commentaire sur un ticket Jira.
 app.post('/api/jira/issue/:key/comment', wrap(async (req, res) => {
   const text = String((req.body && req.body.text) || '').trim();
   if (!text) throw new Error(t('err.jira.comment-empty'));
-  if (demoDocker.isDemo()) return res.json({ comment: { author: 'Toi (démo)', created: new Date().toISOString(), bodyMd: text } });
+  if (demoMode.isDemo()) return res.json({ comment: { author: 'Toi (démo)', created: new Date().toISOString(), bodyMd: text } });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   res.json({ comment: await jira.addComment(cfg, String(req.params.key || '').trim(), text) });
@@ -106,7 +117,7 @@ app.post('/api/jira/issue/:key/comment', wrap(async (req, res) => {
 // Changer l'ÉTAT d'un ticket : applique une transition Jira (les transitions possibles sont
 // dans le détail du ticket).
 app.post('/api/jira/issue/:key/transition', wrap(async (req, res) => {
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     return res.json({ ...demoJira.applyTransition(String(req.params.key || '').trim(), (req.body && req.body.transitionId) || ''), demo: true });
   }
   const cfg = getConfig();
@@ -124,7 +135,7 @@ app.post('/api/jira/issue/:key/transition', wrap(async (req, res) => {
 // navigateur) : le serveur récupère le fichier avec le token et le renvoie tel quel.
 app.get('/api/jira/attachment/:id', wrap(async (req, res) => {
   let file;
-  if (demoDocker.isDemo()) file = demoJira.attachmentFile(req.params.id);
+  if (demoMode.isDemo()) file = demoJira.attachmentFile(req.params.id);
   else {
     const cfg = getConfig();
     if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
@@ -143,7 +154,7 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
   /* B10 : les PIÈCES JOINTES viennent avec le contexte. La modale de session les propose en
      cases à cocher ; elles ne sont téléchargées qu'à la création, et seulement si on coche. */
   const pieces = (liste) => (liste || []).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType }));
-  if (demoDocker.isDemo()) {
+  if (demoMode.isDemo()) {
     const d = demoJira.issue(key);
     const body = [`# ${d.summary}`, '', d.descriptionMd || ''].join('\n');
     return res.json({ key: d.key, summary: d.summary, context: body, attachments: pieces(d.attachments) });
@@ -158,7 +169,7 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
 }));
 app.get('/api/jira/watch', wrap((req, res) => {
   const cfg = getConfig();
-  const demo = demoDocker.isDemo();
+  const demo = demoMode.isDemo();
   // L'URL est construite ici, où la configuration Jira est connue — comme pour les tickets.
   const lien = (key) => (demo ? demoJira.issueUrl(key) : (jira.isConfigured(cfg) ? jira.issueUrl(cfg, key) : null));
   res.json({
@@ -173,7 +184,7 @@ app.post('/api/jira/watch', wrap(async (req, res) => {
   const now = new Date().toISOString();
   // État de départ : celui du ticket maintenant. C'est ce qui évite la fausse notification.
   let meta = null;
-  if (demoDocker.isDemo()) { const d = demoJira.issue(key); meta = d && { summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }
+  if (demoMode.isDemo()) { const d = demoJira.issue(key); meta = d && { summary: d.summary, status: d.status, statusCategory: d.statusCategory }; }
   else {
     const cfg = getConfig();
     if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
@@ -237,7 +248,7 @@ app.get('/api/jira/engagements', wrap((req, res) => {
 app.post('/api/jira/watch/check', wrap(async (req, res) => { res.json(await checkJiraWatch()); }));
 // Compteur « en cours qui me sont affectés » : valeur en cache, jamais un appel Jira ici.
 app.get('/api/jira/badge', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ configured: true, inProgress: demoJira.inProgressMine(), error: null });
+  if (demoMode.isDemo()) return res.json({ configured: true, inProgress: demoJira.inProgressMine(), error: null });
   res.json({ configured: jira.isConfigured(getConfig()), ...lireJiraBadge() });
 }));
 // Rafraîchir le contexte Jira d'une MR à la demande (bonus des champs séparés :
@@ -315,6 +326,8 @@ app.post('/api/mrs/:id/notify-jira', wrap(async (req, res) => {
     project: repo.project || '',
     mr_iid: mr.iid,
     mr_url: mr.web_url || '',
+    mr_title: mr.title || '',
+    mr_target: mr.target_branch || '',
   }));
 }));
 app.post('/api/tasks/:id/targets/:tid/notify-jira', wrap(async (req, res) => {
@@ -322,22 +335,16 @@ app.post('/api/tasks/:id/targets/:tid/notify-jira', wrap(async (req, res) => {
   if (!cible) throw new Error(t('err.session-introuvable'));
   res.json(await prevenirJira(cible));
 }));
-app.get('/api/tasks/:id/targets/:tid/links', wrap((req, res) => {
-  const tg = targetById(Number(req.params.id), Number(req.params.tid));
-  if (!tg) throw Object.assign(new Error(t('err.links.unknown')), { status: 404 });
-  res.json(links.liensDeMr({ repo_id: tg.repo_id, source_branch: tg.branch, iid: tg.mr_iid || null }));
-}));
-/* ET SUR UN TICKET JIRA. Le dépôt n'y est pas écrit : on le déduit de ce qui est déjà
-   engagé — la merge request qui porte la clé, sinon la session de codage. Rien de deviné :
-   sans engagement, il n'y a pas de boutons, et c'est exact. */
-app.get('/api/jira/issues/:key/links', wrap((req, res) => {
+/* LE DÉPÔT PROBABLE D'UN TICKET, pour les plugins qui décorent un ticket (les boutons d'environnement du plugin Liens). Il
+   n'est pas écrit dans Jira : on le déduit de ce qui est déjà engagé — la merge request qui porte la clé, sinon la session de
+   codage. Rien de deviné : sans engagement, `carrier` vaut null, et c'est exact. */
+app.get('/api/jira/issues/:key/carrier', wrap((req, res) => {
   const d = engagementsSurTicket(req.params.key);
   const mr = d.mrs[0] ? mrById(d.mrs[0].id) : null;
-  if (mr) { res.json(links.liensDeMr(mr)); return; }
+  if (mr) { res.json({ carrier: { repo_id: mr.repo_id, branch: mr.source_branch, iid: mr.iid } }); return; }
   const tache = d.tasks[0]
     ? db.prepare(`SELECT tt.repo_id, tt.branch, tt.mr_iid FROM task_target tt
       WHERE tt.task_id = ? ORDER BY tt.id LIMIT 1`).get(d.tasks[0].id)
     : null;
-  if (!tache) { res.json({ service: null, envs: [], context: [] }); return; }
-  res.json(links.liensDeMr({ repo_id: tache.repo_id, source_branch: tache.branch, iid: tache.mr_iid || null }));
+  res.json({ carrier: tache ? { repo_id: tache.repo_id, branch: tache.branch, iid: tache.mr_iid || null } : null });
 }));

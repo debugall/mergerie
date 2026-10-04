@@ -14,7 +14,7 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 ## Sommaire
 
 - [Première review réelle en 5 minutes](#première-review-réelle-en-5-minutes)
-- [Les onglets en détail](#les-onglets-en-détail) — Reviews, Dev IA, Agents, Notes, Jira, Git, Docker, Jenkins, Liens, Stats, Réglages
+- [Les onglets en détail](#les-onglets-en-détail) — Reviews, Dev IA, Agents, Notes, Jira, Git, Stats, Réglages, et trois plugins tiers (Docker, Jenkins, Liens)
 - [Vérification objective (vérificateurs)](#vérification-objective-vérificateurs)
 - [Configuration (.env)](#configuration-env)
 - [GitLab self-hosted / GitHub Enterprise / Jenkins interne / certificat d'entreprise](#gitlab-self-hosted--github-enterprise--jenkins-interne--certificat-dentreprise)
@@ -35,8 +35,10 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 3. **Connecter la forge** — GitLab (URL + jeton, scopes `api` et `read_repository`) **ou** GitHub
    (jeton, scope `repo`). Un bouton *Tester* par forge.
 4. **Choisir tes dépôts** — Réglages → Dépôts, en masse depuis la forge ou une adresse à la fois.
-5. **Ce que ton équipe utilise** — Jira, Jenkins, Docker, des environnements : ce qui est coché
-   déplie son menu, le reste reste replié. Rien n'est perdu : Réglages → Général → Menus.
+5. **Ce que ton équipe utilise** — Jira est au cœur : coché, son menu se déplie. Jenkins, Docker et
+   les environnements (Liens) sont des plugins tiers ; si ton équipe s'en sert, installe-les depuis
+   *Réglages → Plugins* (une adresse git), active-les, puis même logique : coché déplie, le reste
+   reste replié. Rien n'est perdu : Réglages → Général → Menus.
 6. **Chercher les MR** — la file se remplit (et se rafraîchit toutes les 5 minutes d'office).
    Sur une carte, **Reviewer** : le rapport arrive dans le panneau de droite, avec sa note.
 
@@ -45,16 +47,22 @@ le rapport ne commence pas par « (mock) ».
 
 ## Les onglets en détail
 
-Onze onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
-faire, ma machine et ses liens, le méta :
-**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
-**Quatre d'entre eux — Git, Docker, Jenkins et Liens — démarrent repliés** : ce sont des commodités,
-on y va le jour où on en a besoin, et une barre de sept entrées se lit mieux qu'une barre de onze.
-Rien n'est désactivé : une case dans *Réglages → Général → Menus* les ramène, définitivement — et une
-**porte contextuelle** aussi : « Résoudre dans Git → Merge » sur une merge request en conflit, « Voir les
-logs » depuis le brief, un job Jenkins ouvert depuis une carte, « ce dépôt a un compose : afficher Docker »
-sur la ligne d'un dépôt. Le menu ainsi ouvert reste dans la barre, et le sous-onglet Jenkins des Réglages
-suit son menu.
+Huit onglets au cœur, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que
+j'ai à faire, ma machine, le méta :
+**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** — **Stats** · **Réglages**.
+**Git démarre replié** : une commodité, on y va le jour où on en a besoin, et une barre de sept
+entrées se lit mieux qu'une barre de huit. Rien n'est désactivé : une case dans
+*Réglages → Général → Menus* le ramène, définitivement — et une **porte contextuelle** aussi :
+« Résoudre dans Git → Merge » sur une merge request en conflit.
+
+**Docker, Jenkins et Liens ne sont pas dans le cœur : ce sont des plugins tiers**, chacun dans son
+propre dépôt git, à installer depuis *Réglages → Plugins* (une adresse git) puis à activer. Tant
+que ce n'est pas fait, ni leur onglet ni ce qui s'y rattache n'existe : pas de job Jenkins sur une
+carte, pas de « ce dépôt a un compose : afficher Docker » sur la ligne d'un dépôt, pas de bouton
+d'environnement Liens sur une merge request. Une fois actifs, ils rejoignent la barre et démarrent
+repliés, pour la même raison que Git ; une porte contextuelle les ouvre aussi (« Voir les logs »
+depuis le brief, un job Jenkins ouvert depuis une carte…), et le menu ainsi ouvert reste dans la
+barre — le sous-onglet Jenkins des Réglages suit son menu.
 La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
 sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
@@ -80,8 +88,25 @@ verdict vert non périmé, aucun ticket qui s'y oppose — trois colonnes déjà
 rien ; il dit combien de merge requests n'attendent plus qu'une décision.
 
 **Une merge request en conflit le dit sur sa carte**, et le badge ouvre `Git → Merge` pré-rempli dans le
-sens qui débloque (la branche cible dans la branche de la MR). *Mettre à jour avec main* n'existe que
-pour les merge requests nées d'une session ; celle d'un collègue n'avait rien.
+sens qui débloque (la branche cible dans la branche de la MR). À côté, **`Mettre à jour avec l'IA`**
+ouvre la modale de session de codage déjà remplie : la branche de la MR, sa branche cible pour base, le
+push automatique décoché, et la consigne — comprendre d'abord ce que la branche change et pourquoi,
+rejouer ces changements par-dessus l'état actuel de la cible (`git rebase`), résoudre chaque conflit en
+gardant ce que la cible apporte et l'intention de la branche, vérifier, commiter, **ne pas pousser**.
+Tu relis la consigne, tu lances, tu relis le diff, puis `Pousser` — qui forcera de lui-même
+(`--force-with-lease`), l'historique ayant été réécrit. Cela vaut pour la merge request d'un collègue
+comme pour la tienne ; *Mettre à jour avec main* sur une ligne de projet reste le raccourci sans
+consigne à relire, pour les merge requests nées d'une session.
+
+**Une merge request en retard sur sa cible le dit aussi**, sans attendre le conflit : la carte porte
+« N commit(s) de retard » — ce que la branche cible a reçu et que cette branche n'a jamais vu. Elle se
+merge encore, mais son code n'a pas tourné avec ces commits ; le badge ouvre `Git → Merge` comme pour un
+conflit, et **`Mettre à jour avec l'IA`** est là aussi, avec une consigne qui dit le retard plutôt qu'un
+conflit inexistant — et rebase de la même façon. Le compte vient de la forge (le nombre de commits
+divergents chez GitLab, la comparaison `cible...source` chez GitHub), relevé à la découverte — un appel
+par merge request ouverte, plafonné par tour — et à l'ouverture de la modale de merge. « Pas encore su »
+n'affiche rien : une branche venue d'un fork, ou une forge muette, ne devient jamais « à jour » par
+défaut.
 
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
@@ -413,7 +438,10 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
 
 ### ⛶ Ouvrir le code (explorateur plein écran)
 Arbre du projet + fichier affiché **entier avec le diff en place**, coloration syntaxique,
-**mini-carte** des changements, navigation entre modifications, panneaux repliables.
+**mini-carte** des changements, navigation entre modifications, panneaux repliables : trois boutons
+en tête — `Rapport`, `Arbre`, `Code` — masquent chacun leur panneau. Masquer le **code** donne
+toute la largeur au rapport, pour le lire à l'aise ; un panneau reste toujours visible, le dernier
+refuse de partir.
 
 **L'arbre dit ce que chaque fichier porte** : le nombre de constats non résolus (en rouge s'il y a un
 bloquant), de fils de discussion, de remarques en brouillon, et de lignes changées. Sur une merge
@@ -731,7 +759,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   commentaires en attente — au lieu d'un `MR !216 ↗` qui renvoyait dans Reviews, et **`Prévenir Jira`**
   commente le ticket avec le lien de la MR puis le passe en revue quand Jira propose la transition,
   derrière une confirmation qui nomme le ticket. Une case de la modale de session, **décochée par
-  défaut**, le fait à chaque création de merge request.
+  défaut**, le fait à chaque création de merge request — son défaut, avec le **gabarit du commentaire** (`{url}` `{iid}` `{project}` `{title}`
+  `{branch}` `{target}` `{key}`, aperçu en direct), se règle dans *Réglages → Jira*.
   **`Voir le diff`** ouvre le **même explorateur plein écran que celui des merge requests** —
   arborescence complète du projet au milieu, fichier entier avec les changements en place à droite
   (navigation d'un changement à l'autre, mini-carte) — avec, à gauche, le **retour de l'IA** au lieu
@@ -958,7 +987,9 @@ entre humains.
 - **Enquêteur d'incident** — on lui colle une trace, un log, un extrait de ticket. Il la cherche dans
   **tous les clones** avec un sous-agent `chercheur` par dépôt, puis nomme le dépôt, le fichier et la
   ligne, avec une hypothèse de cause et les commits récents qui ont touché ces lignes. S'il ne trouve
-  rien, il le dit en toutes lettres au lieu de proposer un dépôt plausible. Son rapport se termine par
+  rien, il le dit en toutes lettres au lieu de proposer un dépôt plausible. Les sous-agents n'existent
+  que chez Claude Code (`--agents`) : sur un autre backend, la demande ne les nomme pas et l'agent
+  cherche lui-même. Son rapport se termine par
   un bloc de service qui alimente le bouton **« Corriger sur *dépôt* »** : un clic ouvre une session de
   codage sur le bon dépôt, avec le rapport en demande.
 - **Documentaliste** — il relit tous les dépôts et écrit la **carte des services** dans une page de
@@ -1425,6 +1456,72 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
 - Un ticket **supprimé ou devenu invisible** (droits perdus) est signalé **sur sa ligne**, sans interrompre
   la vérification des autres, et **sans effacer** le dernier état connu.
 
+#### Retrouver les tickets analysés
+L'onglet **Analysés** du menu Jira liste tous les tickets dont la précision technique a été lancée ou
+proposée — avec leurs dépôts et branches lus, leur état (proposée, postée, à revoir…) et leur version ; un clic
+ouvre le ticket et sa précision à côté de la liste, et la pastille compte ceux qui ont une proposition. Dans
+**Mes tickets**, le filtre **Analyse** montre tout, seulement les tickets *déjà analysés*, ou seulement ceux *pas
+encore analysés* (le choix est mémorisé, et la liste se met à jour dès qu'une proposition arrive).
+
+#### Préciser un ticket techniquement
+Un ticket écrit par un Product Owner dit le *quoi* fonctionnel, jamais le *où* (quels dépôts, quels
+modules) ni le *comment* (les étapes, les contraintes de l'existant). Le développeur refait cette
+traduction de tête à chaque ticket, et elle ne se dépose nulle part. Le bouton **« Préciser
+techniquement »** du détail d'un ticket ouvre la section **Précision technique**, où l'IA fait ce travail
+et le propose en commentaire.
+
+- **Ce qu'on lui donne.** Un ou plusieurs **dépôts** (la liste se filtre à la frappe : le filtre masque
+  sans rien décocher), chacun avec sa **branche** — une liste avec recherche, la branche par défaut du dépôt si on n'en choisit pas : le code décrit vit souvent sur une release ou une branche de fonctionnalité, et c'est celle-là que l'IA lit (la session « Faire coder par l'IA » ouverte depuis la proposition en part), **l'epic** du ticket et ses autres tickets en contexte (cochée d'office quand le
+  ticket en a une — un ticket prend souvent son sens à la lumière des voisins), une ou plusieurs
+  **pages Confluence** (cinq au plus ; Cloud se lit avec le compte Jira, Server / Data Center demande une
+  adresse et un jeton dans Réglages → Jira ; une page qui n'est pas sur ce Jira ou ce Confluence est refusée :
+  les identifiants ne partent nulle part ailleurs), un **complément** libre (« c'est le service billing, pas crm ;
+  on ne touche pas au legacy »), le niveau de détail (**synthèse**, trente lignes au plus, ou
+  **détaillé**) et la case **« l'IA peut me poser des questions »**.
+- **Ce qu'elle fait.** Une **session d'exploration** ordinaire, en lecture seule, sur les dépôts choisis :
+  elle lit le ticket, ses commentaires et ses liés, l'epic, les pages, puis le code. Tout ce qui vient de
+  Jira ou de Confluence entre dans le prompt comme **donnée** balisée, jamais comme consigne ; seul ton
+  complément est lu comme une consigne. Une page refusée (droits) ou trop longue est **dite**, dans la
+  proposition comme à l'écran, et n'empêche rien.
+- **Deux sortes de questions.** Ce que **toi seul** sais (quel service, quelle convention) est demandé
+  **avant** de proposer, par le mécanisme habituel : la session passe en *attend tes réponses*, tu réponds
+  dans Dev IA, l'analyse reprend. Ce que **seul le PO** sait devient la dernière section de la
+  proposition, *Questions ouvertes pour le PO* — c'est souvent ce que le PO lit en premier.
+- **La proposition.** Six sections, toujours dans le même ordre : *Dépôts concernés*, *Existant sur lequel
+  on s'appuie* (des fichiers et modules nommés, pas de code), *Ce qu'il faut faire*, *Points d'attention*,
+  *Hors périmètre*, *Questions ouvertes pour le PO*. Elle arrive dans la section sans recharger la page.
+- **L'ajuster.** Un **suivi** (« détaille la partie migration », « trop long ») fait réécrire la proposition
+  entière par l'agent, dans la même session ; **« Modifier »** l'ouvre en édition, sans rappeler l'IA.
+  Chaque passage est une **version** (IA, suivi, édition), et l'écran dit quand des modifications ne
+  sont pas encore postées.
+- **Poster.** **« Poster en commentaire »** montre ce qui part et demande confirmation : le commentaire
+  commence par une **ligne repère** (réglable dans Réglages → Jira) et le numéro de version. La fois
+  d'après — nouvelle analyse, suivi, retouche — le bouton devient **« Mettre à jour le commentaire »** et
+  c'est **le même commentaire** qui est réécrit, jamais un deuxième. Si Jira refuse (le commentaire a été
+  posté par un collègue depuis un autre compte, ou le droit d'éditer a été retiré), rien ne part en
+  silence : l'écran propose de poster une nouvelle version sous ton nom. Supprimé entre-temps sur Jira,
+  un nouveau est créé, et l'écran le dit.
+- **À revoir.** Quand le ticket **change de sens** (titre ou description réécrits par le PO) après
+  l'analyse, la précision passe **« à revoir »** dès qu'on ouvre le ticket. Un simple changement d'état
+  ne périme rien. **« Relancer l'analyse »** relit tout (ticket, pages, code), dans une session neuve ;
+  les versions et le commentaire posté restent.
+- **Vers le code.** **« Lancer une session »** ouvre le modal Dev IA pré-rempli : les dépôts de la
+  précision en cibles, la proposition en consigne — la boucle ticket → précision → session → MR.
+- **Une epic d'un coup.** **« Préciser les tickets de l'epic »** liste ses tickets, cochables (ceux déjà
+  précisés et les terminés sont décochés d'office, un filtre masque sans décocher), et lance **une
+  analyse par ticket coché** avec les dépôts, pages et complément du formulaire courant — le lot se prépare en
+  arrière-plan, les pastilles de la liste suivent. Chaque ticket
+  garde ensuite sa précision propre : suivi, édition, post, ticket par ticket.
+- **Dans la liste**, chaque ticket porte une pastille *spec proposée / postée / à revoir / attend tes
+  réponses*. **Dans Dev IA**, la session d'analyse porte l'étiquette *Spec PROJ-123* (qui ramène au
+  ticket), et une pastille *avec / sans / seulement les analyses de tickets* masque ces sessions d'un
+  geste — mémorisée par poste, sans rien ranger ; une analyse qui attend une réponse reste visible quel
+  que soit le filtre.
+- **Réglages → Jira** : adresse et jeton d'un Confluence Server / Data Center, la ligne repère du
+  commentaire, et des **consignes d'équipe** ajoutées à chaque analyse (« nos endpoints suivent
+  `/v2/<ressource>` », « jamais de migration destructive ») — de la consigne, pas du protocole : le format
+  de la proposition, lui, n'est pas éditable.
+
 ### Git
 Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 
@@ -1466,12 +1563,20 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   poussé** : le merge est préparé dans un **espace de travail à part**, jamais dans le clone partagé — une
   review, une session de codage ou une vérification qui tourne à côté ne doit pas trouver le dépôt à moitié
   fusionné. Un merge **se reprend** après un redémarrage de l'outil.
+  - **Le merge ouvert passe en tête de l'onglet**, au-dessus de la liste des merges en cours (où sa ligne
+    dit « ouvert ci-dessus ») et du formulaire, qui devient « Préparer un autre merge ». Son bandeau porte
+    les trois étapes `Résoudre › Commiter › Pousser`, celle en cours en évidence, les faites cochées ; à
+    gauche, les fichiers encore en conflit, puis, cochés, ceux déjà prêts à commiter. Un merge dont le
+    **dossier de travail a disparu** (préparé sur un autre poste, ménage du disque) le dit en clair et ne
+    propose que de l'abandonner, au lieu d'un panneau vide.
   - **Les conflits se résolvent à l'écran, un par un.** Pour chaque conflit : la **version de la
     destination** et la **version entrante**, l'une sous l'autre — chacune avec la **date et l'heure** du
     dernier commit de ce fichier sur sa branche, pour ne plus deviner laquelle est la plus récente (deux
     commits du même jour se ressemblaient) —, avec `Garder` sur chacune et `Garder les deux : main puis
     feature` en dessous, qui nomme les deux branches et l'ordre dans lequel il les applique ; le côté
-    retenu est mis en évidence, pour voir où l'on en est sans relire les boutons. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
+    retenu porte une barre de couleur et la mention **« gardée »**, pour voir où l'on en est sans relire
+    les boutons — la destination l'est d'office — et **chaque version se clique en entier**, pas seulement
+    son `Garder`. **Aucun marqueur `<<<<<<<` n'est jamais montré.** Quand aucun des deux
     ne convient, `Écrire moi-même` donne le **résultat de tes choix** dans un champ texte libre et
     enregistre ce que tu écris.
   - **`Demander à l'IA` propose une résolution pour chaque conflit de chaque fichier, en une fois — tu
@@ -1559,6 +1664,15 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   lien vers la forge, date,
   branche(s) portant le tag, auteur — avec le même bouton `Auteur du tag`. Un dépôt injoignable est
   signalé à part, jamais confondu avec « absente ».
+- **Tags par période** — « qu'a-t-on livré ces deux semaines ? ». Deux dates (raccourcis *7* et *30
+  derniers jours* ; les 30 derniers sont posés à l'ouverture) et l'outil liste **tous les tags créés entre
+  ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date,
+  première ligne du message. **`Copier le tableau`** le pose dans le presse-papiers sous deux formes à la
+  fois — un vrai tableau HTML, que Teams, un mail ou Word rendent en tableau, et du texte tabulé pour un
+  tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne
+  (GitLab, tag annoté), sinon celle du commit pointé ; les tags GitHub, que l'API ne date pas, sont lus
+  dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
+  hasard ; un dépôt injoignable est nommé.
 
 > ⚠️ **L'origine d'une branche est une inférence, pas une donnée.** Git n'enregistre nulle part de
 > quelle branche une branche a été créée. L'outil la déduit (`merge-base`), sauf quand une merge
@@ -1566,6 +1680,8 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 > confiance** (*probable* / *ambigu*), jamais comme un fait.
 
 ### Docker
+> **Docker est un plugin** : l'onglet vit dans son propre dépôt ([docker-mergerie](https://gitlab.com/amady/docker-mergerie)), à installer depuis Réglages → Plugins (depuis git) puis à activer. Tant qu'il ne l'est pas, ni l'onglet ni ce qui s'y rattache (la section « Conteneurs tombés » du brief, l'état des services avant une vérification « in place ») n'existent. Tout ce qui suit décrit son écran.
+
 Deux sous-vues, comme Codage/Exploration en Dev IA.
 
 **Ce que le compose sait déjà.** Un service qui publie un port l'**ouvre d'un clic** (`:3000`), et propose
@@ -1660,6 +1776,8 @@ suppression, et aucun écran ne le relisait.
   besoin) — comme les erreurs certificat / token.
 
 ### Jenkins
+> **Jenkins est un plugin** : l'onglet vit dans son propre dépôt ([jenkins-mergerie](https://gitlab.com/amady/jenkins-mergerie)), à installer depuis Réglages → Plugins (depuis git) puis à activer. Tant qu'il ne l'est pas, ni l'onglet ni ce qui s'y rattache (le bouton du job lié sur une merge request, une branche ou une session, la section « CI rouge » du brief) n'existent ; vos réglages et vos jobs liés, eux, sont gardés et reviennent à l'installation. Tout ce qui suit décrit son écran.
+
 Voir **où en sont les jobs** et **les lancer**, sans quitter l'outil ni ouvrir une nouvelle
 page. Ce n'est pas une console d'administration : il n'y a ni configuration de job, ni gestion
 d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
@@ -1749,6 +1867,11 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   de fond ne fait pas clignoter la liste, et un réseau qui hoquette n'efface pas l'écran : on
   garde le précédent. Le menu **ne porte pas de pastille** — elle supposerait d'interroger
   Jenkins à chaque ouverture de l'application, même sans être sur l'onglet.
+- **`Annoncer TOUS les jobs`** (*Réglages → Jenkins*, coché par défaut) interroge Jenkins une fois
+  par minute (un seul appel pour tout l'arbre des jobs) et dit à l'application **chaque** build
+  démarré ou terminé, qui que l'ait lancé — pas seulement les tiens. Décoché, Mergerie ne suit à
+  nouveau que ce que **toi** as lancé d'ici. Ce que tu vois dans cet onglet ne change pas : c'est
+  ce qu'un **autre plugin** (Jenkins Teams Notify, par exemple) peut annoncer qui en dépend.
 - **Le menu porte un badge : combien de jobs ont tourné aujourd'hui.** La question qu'on se
   pose en passant devant l'onglet est « est-ce que ça a bougé ce matin ? ». Il est rempli une
   fois au démarrage, puis entretenu par le rafraîchissement de l'onglet — Jenkins n'est pas
@@ -1850,6 +1973,8 @@ qui répond ne prouve pas que le jeton est bon. Le jeton est stocké en local et
 réenregistrer les réglages sans y toucher ne l'efface pas.
 
 ### Liens
+> **Liens est un plugin** : l'onglet vit dans son propre dépôt ([link-mergerie](https://gitlab.com/amady/link-mergerie)), à installer depuis Réglages → Plugins (depuis git) puis à activer. Tant qu'il ne l'est pas, ni l'onglet ni ce qui s'y rattache (les boutons d'environnement sur les merge requests, les sessions et les tickets, la case « local » proposée depuis Docker, les liens dans la palette) n'existent. **Tes liens ne sont pas perdus** : la grille, les adresses, les gabarits, les liens libres et leur ordre restent dans ta base et réapparaissent à l'installation. Tout ce qui suit décrit son écran ; la palette `Ctrl`/`Cmd`+`K`, elle, reste au cœur.
+
 Les liens de travail ont une **structure** que les marque-pages d'un navigateur ne savent pas
 représenter : le même service existe en local, en dev, en preprod, en prod. Un arbre de dossiers
 l'éclate en quatre endroits ; une **grille** le montre d'un coup — services en lignes,
@@ -2296,7 +2421,8 @@ services de la grille, projets liés par défaut, agents dont il fait partie. La
 concerne LUI ; la fiche répond à « qu'est-ce qui casse si je le retire ? » et « quel vérificateur le teste,
 déjà ? ». Chaque entrée mène à l'écran où l'objet se modifie, et rien n'est demandé au serveur tant que le
 panneau n'est pas déplié) ·
-**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
+**Merge Request** (rafraîchissement auto, convergence, le seuil **« dormante » après N jours** (venu
+de Général), templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
 🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
 une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une
 installation restée sur l'ancien défaut passe au nouveau d'elle-même, dans sa langue ; il n'invoque
@@ -2320,24 +2446,37 @@ chaque commande de test : les commandes tournent **sur l'hôte**, c'est dans la 
 dans un conteneur. Chaque suggestion est une **ligne exacte**, celle qui sera approuvée telle quelle — à
 ajouter d'un clic) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
-**Général** (avec son propre bouton **Enregistrer** — les champs de tous les sous-onglets
-appartiennent au même formulaire, et celui-ci n'en avait aucun : on cochait une case et rien ne
-partait ; les **quatre cases cochées d'office** d'une nouvelle session — auto-push, questions de l'IA, prévenir Jira, converger après : ce sont des habitudes de travail, elles se règlent une fois au lieu de repartir décochées à chaque ouverture ; thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Général** (thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin,
+conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Données partagées** (le dépôt git où l'équipe partage son travail accumulé, voir *Partager avec une
+équipe* plus bas) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
-*Jira* et l'enrichissement d'une session depuis un ticket) ·
-**Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, la **fréquence de
-rafraîchissement** des jobs, et les **jobs liés aux dépôts** : un job déclaré pour un dépôt est proposé
-sur ses merge requests **vérifiées vertes**, avec la branche pré-remplie dans le paramètre que tu
-désignes — la page du job s'ouvre, rien n'est lancé sans la confirmation habituelle) ·
+*Jira* et l'enrichissement d'une session depuis un ticket ; et la case **« Prévenir Jira » à la création
+d'une merge request**, cochée d'office, avec son propre **gabarit de commentaire** — `{url}` obligatoire,
+plus `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, aperçu en direct ; vide reprend le
+texte livré) ·
+**Plugins** (la liste des plugins installés — version, état, permissions, événements —, activer ou
+désactiver **sans redémarrer** (la page recharge, les données restent), un bouton **Mettre à jour** par
+plugin installé depuis git ou un dossier (reclone, désactive, remplace le dossier, réactive si besoin,
+sans toucher à ses données ni ses secrets ; un échec réseau laisse le plugin tel quel ; grisé pour un
+plugin installé avant cette fonctionnalité — une réinstallation depuis git l'active), et l'installation
+d'un nouveau plugin depuis un dossier local ou une **adresse git** — Jenkins, Docker et Liens, entre
+autres, s'installent ainsi) ·
 **AI sessions** (les **binaires de l'agent** — le défaut et les autres, voir *Configuration* —, les
-**consignes permanentes**, voir ci-dessous, les bornes du jour, le mode sécurisé ou yolo, et un test technique : deux passes
+**consignes permanentes**, voir ci-dessous, les bornes du jour, le mode sécurisé ou yolo, les **trois
+cases cochées d'office** d'une nouvelle session — auto-push, questions de l'IA, converger après (venues
+de Général) — et un test technique : deux passes
 dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).
 
 Les trois premiers sont ce qu'on remplit pour démarrer ; **Règles** et **Vérificateurs** complètent
 la review ; le reste se règle quand le besoin s'en fait sentir. Le **dernier sous-onglet consulté est
-mémorisé** — on revient dans Réglages pour finir ce qu'on y faisait.
+mémorisé** — on revient dans Réglages pour finir ce qu'on y faisait. Toute la page tient sous une seule
+barre **Enregistrer**, fixée en bas : elle dit « modifications non enregistrées » dès qu'un champ change,
+puis confirme par un **toast** à chaque sauvegarde (une erreur si le serveur refuse) — et un jeton déjà
+enregistré (affiché `***`) a un bouton **copier** à côté : la valeur part dans le presse-papiers sans
+jamais s'afficher à l'écran, y compris pour un jeton qu'un plugin déclare secret.
 
 #### Consignes permanentes
 *Réglages → AI sessions.* Un texte libre **ajouté à la fin du prompt de toutes les sessions de codage**
@@ -2851,7 +2990,10 @@ ce poste — « Tester le sandbox »), **déclaré** (le CLI sait se restreindre
 après coup fait foi), **allégé** (rien de tout cela : le contrôle après coup est le seul filet,
 et le journal de chaque run l'écrit en première ligne). Aucun niveau ne bloque un CLI ; ce qui
 n'est jamais allégé : le jeton de forge hors du clone, l'API fermée par le jeton local,
-l'environnement en liste blanche, le mode large retiré des arguments.
+l'environnement en liste blanche, le mode large retiré des arguments. Dès qu'une lecture (review,
+exploration, mise à jour de connaissance) tourne sur un backend qui lui refuse l'écriture — Claude,
+Codex, Gemini, et Copilot quand il connaît `--deny-tool` —, la consigne demande la réponse finale
+au lieu d'un fichier que l'agent ne pourrait pas écrire.
 
 Deux fichiers `.env` sont lus au démarrage, du plus faible au plus fort : `~/.mergerie/.env`, puis
 **celui du dossier d'où la commande est lancée** (la racine du clone avec `npm start`, le répertoire
@@ -3260,7 +3402,13 @@ l'autorisation d'y travailler « in place » ne voyagent pas. Chaque règle de r
 d'une installation qui n'a rien touché, l'agent tourne **sans restriction du lanceur**, toutes saveurs
 et tous backends confondus : `AGENT_ARGS` intact (mode large compris), ni `--disallowedTools`, ni sandbox,
 ni liste blanche, ni contrôle d'intégrité après coup — l'ancien comportement, tel quel ; le journal de
-chaque run l'écrit en première ligne. En **sécurisé**, tout
+chaque run l'écrit en première ligne. Une seule chose est **ajoutée** : le mode large du CLI lui-même
+(`--dangerously-skip-permissions` pour Claude, `--allow-all-tools` pour Copilot,
+`--dangerously-bypass-approvals-and-sandbox` pour Codex, `--yolo` pour Gemini), quand les arguments de
+l'agent ne disent rien des permissions — sans lui, un CLI non interactif refuse tout outil et une review
+« sans restriction » ne pouvait pas écrire son rapport ; le journal le dit avec le drapeau posé. Un
+argument qui en parle déjà (`--permission-mode`, `--allow-tool`, `--sandbox`, `--approval-mode`…) est
+respecté tel quel, et une passe « planifier d'abord » garde le mode plan de Claude. En **sécurisé**, tout
 ce que ce paragraphe et les suivants décrivent s'applique. Ce que le mode yolo ne lève JAMAIS, parce que
 ce sont les limites du serveur et non celles de l'agent : le jeton local sur `/api/`, le `Host`
 allowlist, le nonce des blocs de protocole, l'approbation par poste de ce qui arrive par la synchro, et
@@ -3293,10 +3441,15 @@ choix fait dans l'écran :
 - **bornes** : `--max-turns` par défaut (Réglages → IA, 200) et un plafond de dépense par jour — deux réglages **de ce poste**, qui ne voyagent pas avec ceux de l'équipe.
 
 **Copilot CLI connaît `--allow-tool`/`--deny-tool`** quand le binaire installé les propose (sondé une fois
-via `--help`) : en écriture, `git push`/`curl`/`wget`/`ssh`/`scp` sont refusés à ce titre ; en lecture,
-`write` et `shell(*)` le sont. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
+via `--help`) : en écriture, `git push`/`curl`/`wget`/`ssh`/`scp` sont refusés à ce titre, et la **même liste
+blanche que Claude** lui est accordée (`--allow-tool write`, `shell(git status|log|show|diff|blame|add|commit|stash|checkout|rebase|merge*)`,
+les commandes des vérificateurs approuvés, ce que tu ajoutes dans Réglages → Session IA) — sans elle, en
+mode non interactif, Copilot ne lançait rien du tout, « aucune approbation possible » ; en lecture,
+`write` et `shell(*)` sont refusés, et le rapport est demandé comme réponse finale — jamais comme un
+fichier que le lanceur refuse. Un binaire plus ancien, qui ne les connaît pas, tourne au niveau **allégé** —
 le journal du run l'écrit en première ligne, en lecture comme en écriture — plutôt que de laisser croire
-à une restriction qui n'a pas lieu. **Limite, à ne
+à une restriction qui n'a pas lieu ; une écriture y reçoit `--allow-all-tools` s'il le connaît, car une
+session de codage qui ne peut rien écrire n'est pas une restriction, c'est une panne. **Limite, à ne
 pas oublier** : un agent qui écrit du code peut écrire un code qui fuit ; ce qui borne les dégâts, c'est ce
 qu'il n'a plus sous la main.
 

@@ -1,7 +1,7 @@
 'use strict';
 /* Onglet Jira : mes tickets affectés, les statuts. */
 /* ============ Onglet Jira : mes tickets affectés (liste → détail) ============ */
-const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {}, cible: null };
+const JIRA = { me: null, people: [], issues: [], selectedKey: null, current: null, currentBox: null, total: null, connus: {}, cible: null, analyses: {} };
 const JIRA_CAT = { new: 'todo', indeterminate: 'progress', done: 'done' };
 
 function jiraStatusChip(it) {

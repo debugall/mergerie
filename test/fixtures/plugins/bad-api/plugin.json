@@ -1,0 +1,1 @@
+{ "name": "bad-api", "version": "1.0.0", "apiVersion": "99", "displayName": "Bad API", "description": "cible une API inconnue", "main": "index.js" }

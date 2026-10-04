@@ -337,6 +337,7 @@ const NOTES = {
   'copilot-lecture-non-restreinte': 'agents.log.copilot-not-restricted',
   'copilot-ecriture-non-restreinte': 'agents.log.copilot-write-not-restricted',
   'backend-non-restreint': 'agents.log.backend-not-restricted',
+  'yolo-sans-restriction': 'agents.log.yolo-unrestricted',
 };
 /* Les options de permission d'un lancement, et ce qu'on en dit au journal : ce que copilot ne
    peut pas restreindre, et le MODE retenu pour une écriture (lot A, point 2). */
@@ -346,7 +347,7 @@ function argvSaveur(backend, saveur, options, addDirs, cwd, onLog = () => {}) {
     backend, bin: copilot.COPILOT_BIN, extra: copilot.EXTRA_ARGS, kind: saveur, profil, addDirs, cwd,
     allowedToolsProfil: (options && options.allowedTools) || [],
   });
-  if (pol.note && NOTES[pol.note]) onLog(t(NOTES[pol.note]));
+  if (pol.note && NOTES[pol.note]) onLog(t(NOTES[pol.note], pol.noteVars || {}));
   /* LE NIVEAU DE GARANTIE EN PREMIÈRE LIGNE : ce que ce lancement peut promettre, avant qu'il
      ne dise quoi que ce soit d'autre. */
   onLog(t(`agents.log.level.${agentpolicy.niveauDe(copilot.COPILOT_BIN)}`, { backend: backendCourant().label }));

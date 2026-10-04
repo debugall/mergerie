@@ -42,7 +42,6 @@
 
 const copilot = require('../agent/copilot');
 const protocol = require('../agent/protocol');
-const { nonFiable } = require('../core/nonfiable');
 const gitmerge = require('../git/gitmerge');
 const { t } = require('../core/i18n');
 const protocolesecret = require('../core/protocolesecret');
@@ -67,17 +66,21 @@ async function proposer(mergeId, onLog = () => {}) {
   if (!fichiers.length) return { fichiers: 0, conflits: 0, resolus: 0 };
 
   const totalConflits = fichiers.reduce((s, f) => s + f.nb, 0);
-  const blocsFichiers = fichiers.map((f, i) => t('git.merge.ai.file-block', {
+  /* Le contenu des fichiers en conflit ne part plus DANS le prompt (un merge de quelques gros
+     fichiers dépassait la taille d'argument qu'un shell accepte pour lancer l'agent — `spawn
+     E2BIG`) : `etat.dir` EST déjà le worktree où `git merge` a écrit les marqueurs de conflit,
+     donc l'agent, qui tourne avec ce même dossier pour cwd, les lit tout seul — même principe
+     que le diff d'une review (`reviewer.js`), jamais recopié non plus dans le prompt. */
+  const listeFichiers = fichiers.map((f, i) => t('git.merge.ai.file-block', {
     n: i + 1,
     fichier: f.chemin,
-    bloc: nonFiable(t('git.merge.ai.file-label', { fichier: f.chemin }), f.raw),
-  })).join('\n\n');
+  })).join('\n');
   /* Un nonce PAR DEMANDE, dérivé du secret du poste : ce qu'un fichier en conflit y glisserait ne
      peut pas le deviner, donc ne peut pas se faire passer pour une proposition. */
   const nonce = protocolesecret.hmac(`merge-${mergeId}-${Date.now()}`, 12);
   const prompt = t('git.merge.ai.prompt', {
     nonce, target: etat.target_branch, source: etat.source_branch,
-    nFichiers: fichiers.length, nConflits: totalConflits, contenu: blocsFichiers,
+    nFichiers: fichiers.length, nConflits: totalConflits, contenu: listeFichiers,
   });
 
   onLog(t('git.merge.ai.log-asking', {
@@ -85,6 +88,7 @@ async function proposer(mergeId, onLog = () => {}) {
   }));
   const reponse = await copilot.runPrompt(prompt, etat.dir, {
     kind: 'merge-ai', fichiers: fichiers.map((f) => ({ raw: f.raw })),
+    extraInput: fichiers.map((f) => f.raw).join('\n'),
   }, onLog);
 
   const parFichier = {};

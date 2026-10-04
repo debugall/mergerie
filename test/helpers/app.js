@@ -52,7 +52,7 @@ function prepareEnv() {
 }
 
 // Démarre l'application. À appeler une fois par fichier de test.
-async function startApp() {
+async function startApp({ plugins = [] } = {}) {
   const dataDir = prepareEnv();
   const gitlab = await mock.start();
   const github = await mockGh.start();
@@ -65,6 +65,11 @@ async function startApp() {
   if (!server.server.listening) {
     await new Promise((resolve) => server.server.once('listening', resolve));
   }
+  /* LES PLUGINS EMBARQUÉS SONT DÉSACTIVÉS sur une base neuve (c'est ce que voit une première installation) ; `startApp({ plugins: ['hello'] })`
+     en active un, comme le ferait un poste qui l'a coché. */
+  // eslint-disable-next-line global-require
+  const lesPlugins = require('../../src/plugins');
+  for (const nom of plugins) { if (lesPlugins.fiche(nom)) await lesPlugins.activer(nom); }
   const base = `http://127.0.0.1:${server.server.address().port}`;
   const localToken = fs.readFileSync(path.join(dataDir, 'local-token'), 'utf8').trim();
   /* LE MODE SÉCURISÉ, D'OFFICE DANS LES TESTS. Le défaut d'une installation est yolo (aucune
@@ -252,7 +257,7 @@ async function waitForJobs(api, { timeout = 60000 } = {}) {
   }
 }
 
-/* LES QUATRE MENUS OPTIONNELS — Git, Docker, Jenkins, Liens — DÉMARRENT REPLIÉS : la barre
+/* LES MENUS OPTIONNELS — Git, et les onglets de plugins (Docker, Jenkins, Liens…) — DÉMARRENT REPLIÉS : la barre
    ne porte d'office que le travail de tous les jours. Un test qui va sur l'un de ces écrans
    commence donc par les afficher, exactement comme l'utilisateur le fait dans Réglages →
    Menus : la préférence vit dans le stockage du navigateur, on l'y pose.

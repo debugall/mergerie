@@ -378,6 +378,42 @@ describe('Git · Merge de branche à branche', () => {
     await solder(body.id);
   });
 
+  /* LE CONTENU DES FICHIERS EN CONFLIT NE PART PLUS DANS LE PROMPT : un merge sur un gros
+     fichier dépassait la taille d'argument qu'un shell accepte pour lancer l'agent (« spawn
+     E2BIG »). Le fichier reste sur disque, dans le worktree du merge qui sert de cwd à l'agent
+     (`session/mergeai.js`) — seul son CHEMIN doit apparaître dans la commande envoyée, jamais
+     son contenu. */
+  test('le contenu des fichiers en conflit ne part plus dans le prompt, seulement leur chemin', async () => {
+    const src = 'feature/grosfichier';
+    g(work, 'checkout', '-q', 'main'); g(work, 'fetch', '-q', 'origin'); g(work, 'reset', '-q', '--hard', 'origin/main');
+    g(work, 'checkout', '-q', '-b', src);
+    const marqueur = 'MARQUEUR-GROS-FICHIER-E2BIG';
+    const gros = `${marqueur}\n${'x'.repeat(50000)}\n`;
+    fs.writeFileSync(path.join(work, 'gros.txt'), `ligne 1\nvenue de ${src}\n${gros}`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'travail gros fichier'); g(work, 'push', '-q', '-u', 'origin', src);
+    g(work, 'checkout', '-q', 'main');
+    fs.writeFileSync(path.join(work, 'gros.txt'), `ligne 1\nvenue de main gros\n${gros}`);
+    g(work, 'add', '-A'); g(work, 'commit', '-qm', 'main avance gros fichier'); g(work, 'push', '-q', 'origin', 'main');
+
+    const { body } = await demarrer(src);
+    assert.deepEqual(body.conflits, ['gros.txt']);
+
+    const job = await app.api('POST', `/api/git/merges/${body.id}/ai-propose`, {});
+    assert.equal(job.status, 200, JSON.stringify(job.body));
+    await waitForJobs(app.api);
+
+    const lignes = app.db.prepare('SELECT text FROM job_log WHERE job_id = ? ORDER BY id').all(job.body.id);
+    const journal = lignes.map((l) => l.text).join('\n');
+    assert.ok(journal.includes('gros.txt'), 'le chemin du fichier en conflit reste dans la commande envoyée à l’agent');
+    assert.ok(!journal.includes(marqueur), 'le CONTENU du fichier ne doit plus transiter par le prompt — l’agent le lit lui-même sur disque');
+    assert.ok(journal.length < gros.length, 'le journal reste largement plus petit que le fichier en conflit lui-même');
+
+    // La proposition est quand même produite : le mock de test lit le fichier via meta.fichiers, pas via le prompt.
+    const f = await app.api('GET', `/api/git/merges/${body.id}/file?path=gros.txt`);
+    assert.equal(f.body.propositions.length, 1);
+    await solder(body.id);
+  });
+
   /* UN CHEMIN EN CONFLIT QUI N'EST PAS UN FICHIER LISIBLE (un sous-module dont le pointeur
      diverge, par exemple, pointe vers un DOSSIER sur le disque) ne doit pas faire échouer la
      demande pour TOUS les fichiers — seulement rester sans proposition pour lui-même. On simule

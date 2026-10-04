@@ -11,6 +11,203 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-04
+
+### Added
+
+- **A branch per repository in a ticket's technical brief, an "Analysed" tab in Jira, and an "Analysis" filter on "My tickets".** Ticking a repository in the brief now offers its **branch**
+  (a searchable list, the repository's default branch when left empty): the code you describe often lives on a release or feature branch, and the AI reads that one. The branches read are
+  shown on the brief, travel with the team's shared specs, and the "Have the AI code" session opened from a brief starts from them. The new **Analysed** tab lists every ticket whose brief
+  was started or proposed — with its repositories, branches, state and version — and opens the ticket and its brief alongside; its badge counts them. **My tickets** gets an
+  *Analysis* filter (all · already analysed · not analysed yet), remembered across reloads and updated as soon as a brief arrives.
+- **An "Update" button on each installed plugin** (Settings → Plugins). Mergerie keeps where a plugin was installed from (git address and branch or tag, or folder); one click clones it again,
+  disables the plugin, replaces its folder with the latest version and enables it again if it was — its data, settings and secrets untouched, the page reloading when it was active. A
+  network failure leaves the plugin as it was. A plugin installed before this release has the button greyed out with a hint: install it once more from git and the address is kept.
+- **The Jenkins plugin can announce EVERY job, not only the builds you started from Mergerie.** A new setting, *Announce ALL jobs* (on by default; untick it to only follow your own launches), makes it ask Jenkins once a
+  minute (one call for the whole job tree) and emit `jenkins.job.started` / `jenkins.job.finished` for every build, whoever started it. Each event now carries `source`
+  (`"mergerie"` or `"jenkins"`) so a listener can tell them apart; plugins such as Jenkins Teams Notify use it to post about a chosen list of jobs whoever launched them.
+- **Jenkins Teams Notify has a single "Jobs notified" choice list**, fed by the Jenkins plugin (new `jenkins.jobs` service: the full job names). Tick the jobs to notify, whoever started the
+  build; a filter box hides rows without unticking any, a glob pattern can be added by hand, nothing ticked means nothing notifies. The former second list ("whoever started them") is merged into it at startup.
+  The plugin also installs Playwright and Chromium from a Settings button, and reports the outcome of a test or sign-in on screen.
+- **Job parameters in the Teams message.** `jenkins.job.finished` now carries `parameters` like `started` did (secret-looking ones left out), so a Jenkins Teams Notify template can say which environment a
+  build deployed to: `{{param.ENV}}` for one parameter, `{{params}}` for all of them. Plugin SDK 1.2.0 (additive).
+- **A "copy" button next to every token in Settings** — GitLab, GitHub, Jira, Confluence and Jenkins. Tokens still never reach the page
+  (the field keeps showing `***`): the button asks the server for the value on that click, writes it to the clipboard and keeps it out
+  of the screen. A token you just typed and have not saved is copied as is. A plugin gets the same button for any setting its schema
+  marks as a secret.
+- **Jenkins Teams Notify**, a plugin in its own repository (https://gitlab.com/amady/jenkins-teams-notify): notifies a Microsoft Teams channel when a Jenkins
+  job started from Mergerie starts or finishes. Teams webhooks and the Graph API not being an option, it drives a
+  browser with Playwright — a persistent profile, or your own Chrome over CDP — and posts as you. Per-type message
+  templates, a job filter (glob on the full name), a send log kept as long as you choose, and a "sign-in required" state
+  (tab badge, brief) that stops sending until a manual test succeeds. A third-party plugin, installed from
+  Settings → Plugins (from git), disabled until you enable it. To support it the plugin API gains,
+  additively and on the same `apiVersion`: a private folder for a plugin's files (`ctx.dataDir`, permission `storage`),
+  the build address, duration and starter in the `jenkins.job.*` events, and an `env` option on `ctx.exec`. The
+  generated settings form now honours `x-hidden`, and the plugins' own tests run with `npm test`.
+- **Plugin system.** Mergerie can now be extended by plugins: a folder with a `plugin.json` and an
+  `index.js` that declares what it needs (permissions) and receives a closed, documented `ctx` —
+  settings and secrets, its own prefixed tables, routes under `/api/plugins/<name>/`, periodic tasks,
+  events, a tab, actions on merge request cards, a section of the morning brief, desktop
+  notifications. *Settings → Plugins* lists them with their version, state, permissions and events,
+  enables or disables them **without restarting** (the page reloads, data is kept), and installs a
+  third-party plugin from a local folder or a git address — third-party plugins run in their own
+  worker, disabled until you enable them, and `exec` shows an explicit warning. A developer kit
+  (`sdk/`, `@mergerie/plugin-sdk`) gives the TypeScript types, an in-memory test context and a
+  generator (`npm create mergerie-plugin`); `plugins/hello` is the generated example, shipped
+  disabled. Documentation in `docs/plugins/` (fr and en), every example of which the CI runs.
+- **A first installation starts with no plugin enabled.** Jenkins and the other built-in plugins are disabled on a brand-new
+  database and are switched on from Settings → Plugins, without a restart. A machine that already runs Mergerie keeps
+  Jenkins enabled when it upgrades: nothing disappears.
+- **Jenkins becomes a built-in plugin** (`plugins/jenkins`) — **no functional change** for those who already had it: the tab, the
+  job sheet, the launches, the linked jobs, the badges, the end-of-build notification, the
+  « CI red » section of the brief and the console in a session's follow-up are exactly as before. On
+  upgrade, the connection (URL, user, token, refresh cadence), the linked jobs and the last
+  connection test move to the plugin with nothing lost; the Jenkins settings now live in
+  *Settings → Jenkins* as the plugin's own settings (the URL is a per-machine setting, like the
+  rest of the connection), and the API moved from `/api/jenkins/*` to `/api/plugins/jenkins/*`.
+- **Tags by period, in the Git tab.** "What did we ship these two weeks?" used to mean opening every
+  repository. The new *Tags by period* sub-tab takes two dates (last 7 or 30 days in one click) and lists
+  every tag created between them across all active repositories: repository, tag, date, first line
+  of the message. *Copy the table* puts it in the clipboard as a real table **and** as tab-separated
+  text, so it pastes as is into Teams, an email or a spreadsheet. A tag's date is its creation date
+  when the forge gives it (GitLab, annotated tags), otherwise the date of the commit it points to;
+  GitHub tags are dated from the local clone. A tag the tool cannot date is counted, never guessed.
+- **Technical brief of a Jira ticket.** A ticket written by a Product Owner says what, never where
+  nor how. From the ticket's detail, "Technical brief" lets you pick the repositories involved, attach
+  the epic and its tickets, one or several Confluence pages and a complement of your own; the AI
+  explores the code in a read-only session, asks you what only you can answer, and proposes a short
+  brief in six fixed sections (repositories, existing code, what to do, points of attention, out of
+  scope, open questions for the PO). You send follow-ups to have it rewritten, edit it by hand, then
+  post it as a comment on the ticket — and reposting after a new analysis **updates the same comment**
+  instead of piling up a new one. The brief turns stale when the ticket's title or description changes,
+  can prefill a coding session, and an epic launches one analysis per ticket you tick. In AI Dev, these
+  analysis sessions carry the ticket's key and a chip hides them in one gesture.
+- **The code explorer can hide the code too.** Next to "Report" and "Tree", a "Code" button hides the
+  file panel so the report takes the full width of the screen; one panel always stays visible.
+- **"Update with the AI" also on a merge request that is behind its target.** Each open merge
+  request now carries how many commits its target branch has that the branch does not (GitLab's
+  diverged commits count, GitHub's `base...head` comparison), read at discovery and when the merge
+  modal opens. A branch behind by one commit or more shows a "N commit(s) behind" badge — it still
+  merges, but its code never ran with what the target brought — with the same "Update with the AI"
+  button as a conflict; the instruction says the delay instead of a conflict, and rebases the same
+  way. "Not known yet" shows nothing: the tool does not guess.
+- **"Update with the AI" on a merge request in conflict.** Next to the "in conflict" badge, a button
+  opens the coding session modal already filled in: the merge request's branch, its target branch as
+  the base, automatic push unticked, and the instruction — understand what the branch changes and why,
+  replay those changes on top of the target with `git rebase`, resolve each conflict keeping what the
+  target brings and the branch's intent, check, commit, and do not push. You review the instruction,
+  launch, review the diff, then push: the session is marked for a forced push (`--force-with-lease`),
+  the history having been rewritten. Works on a colleague's merge request as well as yours.
+
+### Changed
+
+- **"Tell Jira when the merge request is created" moved to Settings → Jira, and the comment is editable.** The checkbox (which ticks "Tell Jira" by default in the new-session window) left the General tab for the Jira tab, and
+  a new **template** field sets the text posted on the ticket: `{url}` (required), `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}` (the destination branch), `{key}`, with a live preview; empty keeps the shipped message. The template is shared with the team like the review-link template.
+- **Settings → AI sessions has ONE "Save" button**, in a bar pinned to the bottom of the screen, instead of five identical ones (one per section, all writing the same configuration). The bar says "unsaved changes" as soon as a field changes, then "saved"; and **every Settings save now shows a confirmation toast** (an error toast when the server refuses).
+- **"An MR is dormant after (days)" moved from Settings → General to Settings → Merge Request**, next to the automatic refresh.
+- **"New session — boxes ticked by default" (Auto-push, the AI may ask questions, Converge after) moved from Settings → General to Settings → AI sessions**, with the other agent settings.
+- **Settings tabs reordered**: General now comes first of the tool settings, then Notifications and Shared data, so the bar reads connect → code → review → tool → integrations.
+- **The Jenkins tab is now a third-party plugin**, in its own repository (https://gitlab.com/amady/jenkins-mergerie), installed from Settings → Plugins (from git)
+  and enabled like any third-party plugin; it no longer ships with Mergerie. Nothing changes on screen once it is on: the job list and sheet, launches, the
+  linked jobs and their buttons on merge requests, branches and sessions, the badges, the end-of-build notification, the "CI red" section of the brief and the
+  console in a follow-up all come with it. **Nothing is lost**: the connection (URL, user, token, refresh rate), the linked jobs and the last connection test
+  already live under the plugin's name, so a Mergerie that had the tab finds them all again — the plugin comes up **enabled** the day you install it, and
+  until you do the tab is simply absent. It now runs in an isolated worker; `JENKINS_CA_CERT` and `JENKINS_INSECURE_TLS` still apply to its calls.
+- **The Links tab is now a plugin**, in its own repository (https://gitlab.com/amady/link-mergerie), installed from Settings → Plugins (from git) and enabled
+  like any third-party plugin. Nothing changes on screen once it is on: the services × environments grid, free links, bookmark import, address pasting, the
+  environment buttons on a merge request, on a session's project line and on a Jira ticket, and the palette entries all come with it. **Your links are not
+  lost**: a Mergerie that already had the tab keeps its grid, its addresses, its templates, its free links and their order — the tables are renamed in place
+  on upgrade, ids included — and so does the "most opened" ranking; the plugin comes up **enabled** the day you install it, and until you do the tab is
+  simply absent. The palette (`Ctrl`/`Cmd`+`K`) stays in the core; links join it as a plugin source, still first in the list. The plugin API gains, additively and on
+  the same `apiVersion`: the `mr-detail` and `jira-ticket` targets, `ui.onKey` (the keyboard of the open tab), the `closeSplitMenus` kit name and a `group` on
+  palette entries. A plugin tab positioned "before" a tab that is not there (a plugin that is not installed) no longer disappears from the bar.
+- **The Docker tab is now a plugin**, in its own repository (https://gitlab.com/amady/docker-mergerie), installed from Settings → Plugins (from git)
+  and enabled like any third-party plugin. Nothing changes on screen once it is on: compose projects and `.env` drift, containers outside compose,
+  group actions, `make` targets, live logs, the health badge, the "container went down" notification and the brief section all come with it.
+  A Mergerie that already had the tab keeps its data — saved container inspects and the last `make` runs move to the plugin's tables on
+  upgrade — and the plugin comes up **enabled** the day you install it; until you do, the tab is simply absent. The plugin API gains,
+  additively and on the same `apiVersion`: jobs in the core queue (`ctx.jobs`, with the live log and **Stop**), long-lived processes
+  (`ctx.execStream`), `http.sse` from a worker, the declared local folders (`ctx.repos.localRoots()`), the `repo-row` and `verify-launch`
+  screen targets, and a `job.finished` browser event. Offering a service's `docker compose` variants in the verifier's command suggestions
+  and reading the `Makefile` stay in the core.
+- **The branch explorer no longer remembers the repositories you ticked.** An analysis is about the
+  repositories of the moment; finding yesterday's still ticked launched, without meaning to, an
+  analysis on three repositories instead of one. Each visit starts unticked.
+- **Git → Merge puts the work first.** The open merge now sits at the top of the tab — above the list of
+  running merges, where its row says "open above", and above the form, which becomes "Prepare another
+  merge" — instead of starting below the fold behind three blocks repeating the same branches. Its banner
+  shows the three steps `Resolve › Commit › Push` with the current one highlighted; each version of a
+  conflict can be clicked as a whole and the kept one says "kept" (the destination is kept by default);
+  the files already ready to commit stay listed, ticked, next to those still in conflict; once resolved, a
+  note says what "ready to commit" means and that nothing reaches the branch before "Push". A merge whose
+  working folder is gone says so instead of showing an empty panel.
+
+### Fixed
+
+- **A plugin's description is shown in full in Settings → Plugins.** It was cut with "…" on one line like a list row; it now wraps.
+- **A plugin the upgrade had already marked enabled now comes up the moment you install it.** On a machine that had the Docker, Jenkins or Links tab, the upgrade
+  keeps the plugin "enabled"; installing it from Settings → Plugins used to leave it showing as "in error" until the next restart, with its data back but its tab
+  missing. It is activated at once, and a plugin with no earlier state still stays disabled until you enable it. The page reloads by itself when the install activated the plugin (and after an uninstall), so its menu appears without a manual refresh.
+- **A plugin's SQL may use `ON CONFLICT … DO UPDATE SET`.** The plugin SQL guard read the `UPDATE` of an upsert as a table named `set` and refused the
+  statement; it now reads the upsert for what it is, and still refuses a foreign table inside it.
+- **An open report that becomes stale updates on screen.** "Relancer (delta)" and the stale badge only appeared after reloading the page: a
+  discovery (the Search button, the discovery on opening the tab, the automatic poll) reloaded the lists but not the report you were reading.
+  Only a finished job, or a team sync, refreshed it. The discovery now refreshes the open report itself.
+- **Plugin tables of two plugins can no longer be mixed up.** `plugin_jenkins_` is the beginning of `plugin_jenkins_teams_notify_`: the
+  Jenkins plugin could read, empty or drop the other one's table, and uninstalling it with "also delete its data" removed it (a SQL
+  `LIKE` whose `_` is a wildcard). A table now belongs to the plugin with the longest matching prefix among the known plugins, in the
+  SQL guard, in `ctx.db.tables()` and when uninstalling.
+- **A plugin's routes are built once per activation, not once per request**, and are rebuilt when it is reactivated.
+- **`ctx.exec` no longer lets a plugin set `PATH`, `LD_PRELOAD`, `NODE_OPTIONS`, `GIT_*`…** through its `env` option, which bypassed the
+  sub-command allowlist.
+- **The Jenkins data migration is one transaction**: a stop in the middle leaves the previous database, which the migration replays.
+- **The linked projects you add in a merge request's Context are kept.** Saving the Context sent an empty list, so reopening it showed no
+  linked project: a rename made for the Links screen had changed the class of the rows without changing the code that reads them.
+  The Context modal now saves and shows them again, and a test does the whole gesture in a browser.
+- **Yolo is yolo everywhere, and a write always comes with the rights to write.** Yolo means "no
+  restriction", yet a CLI run non-interactively refuses every tool it was not explicitly allowed: on a
+  Copilot machine the review ended with "I could not write review.md" as its whole report. In yolo mode
+  Mergerie now sets the CLI's own wide-open flag itself (`--dangerously-skip-permissions`,
+  `--allow-all-tools`, `--dangerously-bypass-approvals-and-sandbox`, `--yolo`) when the agent's
+  arguments say nothing about permissions, and says so in the run's journal. In secure mode, a Copilot
+  too old for `--allow-tool` gets `--allow-all-tools` on write runs instead of nothing at all, and a
+  Copilot read run is always asked for its answer on the standard output, never for a file the launcher
+  would refuse.
+- **Copilot CLI can code again in secure mode.** Non-interactive Copilot refuses every tool it was not
+  allowed to run, and Mergerie only passed it denials: a coding session could neither write a file nor run
+  `git rebase`, and "Update with the AI" failed with "no approval possible". It now receives the same
+  allowlist as Claude (`--allow-tool write`, the git subset, approved verifier commands), and that git
+  subset admits `rebase` and `merge` for both backends.
+- **The code explorer shows the whole merge request after an incremental re-review.** The diff stored
+  next to the report was the delta sent to the AI, so "Open the code" only listed the files of the
+  last commits; it is now the full `target...source` diff, the delta staying what the AI reads.
+
+- **Updating a domain agent's knowledge on Copilot CLI no longer comes back empty.** In secure mode,
+  the launcher denies the agent every write, but its instruction still said "write the answer ONLY
+  in this file, do not repeat it on the output": the agent obeyed both, produced nothing, and its
+  session log was taken for the knowledge. As with Claude, Codex and Gemini, a read-only run on
+  Copilot is now asked for its final answer instead of a file it cannot write.
+- **A profile's subagents are only named in the request when the CLI will receive them.** Only
+  Claude Code takes `--agents`; on another backend the cartographer was told to hand the search to
+  a `chercheur` subagent, could not find it, and said so instead of answering.
+- **A merge request you reviewed no longer comes back to "To review" after a team sync.** A
+  colleague's machine rewrites the merge request's shared file for reasons that carry no decision
+  (a title or an author re-read from the forge) with *its* status, still "to review"; when both
+  machines had touched the file, the remote version won as a whole and undid your review. The
+  status now travels with the instant it was decided, and the most recent decision wins on every
+  machine — a status decided earlier, or never decided, no longer overwrites yours.
+- **The "no AI agent found" banner no longer flashes for a binary that is there.** Detection used to run
+  `<binary> --version` with a five-second limit and remember the answer for a minute: under load — an
+  agent working alongside — the probe timed out, the banner said "not found", and worse, a review
+  launched during that minute came back as a simulated report. A binary is now available when it
+  resolves — an existing executable path, or a name found on the server's PATH — with no process, no
+  delay and nothing to expire.
+- **"Ask the AI" on a merge's conflicts no longer fails with `spawn E2BIG` on a large conflicted
+  file.** The content of every conflicted file was packed into the command line used to launch the
+  agent; a big enough file (or several at once) overflowed what the OS accepts there. Conflicted
+  files already sit on disk in the merge's own workspace, where the agent runs — it now reads them
+  itself, and only their paths travel in the request.
+
 ## [2.0.1] - 2026-09-28
 
 ### Fixed
@@ -3941,7 +4138,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/debugall/mergerie/compare/v2.0.1...v3.0.0
 [2.0.1]: https://github.com/debugall/mergerie/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/debugall/mergerie/compare/v1.7.0...v2.0.0
 [1.7.0]: https://github.com/debugall/mergerie/compare/v1.6.0...v1.7.0

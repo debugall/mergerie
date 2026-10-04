@@ -359,7 +359,7 @@ function agentsRecents(maintenant, limite = MAX_PAR_SECTION) {
   return out.slice(0, limite);
 }
 
-function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8, dockerDown = null } = {}) {
+function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = {}) {
   const act = activite(maintenant);
   /* Le filtrage est posé ICI, après le calcul : chaque section garde une requête qui dit ce
      qui est VRAI, et l'écart se lit d'un seul endroit. Les sections plafonnent à huit lignes,
@@ -399,14 +399,6 @@ function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8, doc
     followups: suivisEnAttente(),
     /* B14 — les merges à finir et les opérations git en échec. */
     git: gitEnSuspens(maintenant),
-    /* TOP 14 — LES CONTENEURS TOMBÉS, tels que la veille de fond les a vus au dernier tour.
-       Le brief n'interroge pas Docker lui-même : il reste sans réseau et sans attente, et ce
-       qu'il montre est daté (`at`) pour que personne ne prenne un relevé d'il y a une minute
-       pour un état live. Rien mesuré (Docker absent, serveur qui vient de démarrer) → pas de
-       section, plutôt qu'un « 0 conteneur tombé » qui prétendrait avoir regardé. */
-    docker: dockerDown && dockerDown.at
-      ? { at: dockerDown.at, containers: (dockerDown.containers || []).slice(0, MAX_PAR_SECTION) }
-      : null,
   };
 }
 

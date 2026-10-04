@@ -122,7 +122,7 @@ describe('Transverse — la feuille des raccourcis et les touches globales', { s
       'Ctrl/Cmd + Entrée', '⇧ + clic']) {
       assert.ok(touches.includes(k), `la touche « ${k} » est listée`);
     }
-    // Sept menus visibles d'office (Git, Docker, Jenkins, Liens sont repliés) : « 1 – 7 ».
+    // Sept menus visibles d'office (Git, Jenkins, Liens sont repliés) : « 1 – 7 ».
     const visibles = await page.locator('nav button[data-tab]:not([hidden])').count();
     assert.equal(visibles, 7);
     assert.ok(touches.includes('1 – 7'), `la plage suit la barre visible : ${touches.join(' | ')}`);

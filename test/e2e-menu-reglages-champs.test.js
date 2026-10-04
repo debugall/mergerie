@@ -29,7 +29,7 @@ const { dispo } = navigateurDispo();
 /* Valeur SAISIE → valeur attendue par l'API. Un booléen = une case à cocher. Les valeurs sont
    choisies DANS les bornes du serveur : ce fichier éprouve l'aller-retour, pas le bornage (qui a
    ses propres tests). L'ordre compte : une case qui déplie ou active un champ passe avant lui. */
-const SECRETS = ['access_token', 'github_token', 'jira_token', 'jenkins_token'];
+const SECRETS = ['access_token', 'github_token', 'jira_token'];
 
 function groupes(app) {
   return [
@@ -46,6 +46,7 @@ function groupes(app) {
       ['auto_post_review', true],
       ['auto_post_blocking_only', true],
       ['auto_refresh_minutes', '30'],
+      ['stale_mr_days', '12'],
       ['auto_review_new', true],
       ['review_auto_max', '7'],
       ['auto_rereview_stale', true],
@@ -61,15 +62,15 @@ function groupes(app) {
       ['verif_auto_authors', 'all'],
     ] },
     { sub: 'config', champs: [
-      ['task_default_auto_push', true],
-      ['task_default_ask_questions', true],
-      ['task_default_notify_jira', true],
-      ['task_default_converge', true],
       ['retention_days', '30'],
       ['mr_retention_days', '60'],
       ['brief_on_open', true],
       ['todo_close_on_merge', false],
-      ['stale_mr_days', '12'],
+    ] },
+    { sub: 'aisession', champs: [
+      ['task_default_auto_push', true],
+      ['task_default_ask_questions', true],
+      ['task_default_converge', true],
     ] },
     { sub: 'jiracfg', champs: [
       ['jira_url', 'https://jira.reglages.test'],
@@ -77,14 +78,11 @@ function groupes(app) {
       ['jira_token', 'ATATT-reglages-ecran'],
       ['jira_watch_minutes', '15'],
       ['verify_jira_comment', true],
+      ['task_default_notify_jira', true],
+      ['jira_notify_template', 'MR {iid} ({title}) sur {project} : {url}'],
       ['jira_test_key', 'PROJ-77'],
     ] },
-    { sub: 'jenkinscfg', champs: [
-      ['jenkins_url', 'https://jenkins.reglages.test'],
-      ['jenkins_user', 'moi.jenkins'],
-      ['jenkins_token', 'jk-reglages-ecran'],
-      ['jenkins_refresh_minutes', '5'],
-    ] },
+    /* Jenkins est un plugin : son sous-onglet enregistre par les réglages du plugin, éprouvés dans e2e-jenkins-ui. */
     { sub: 'aisession', champs: [
       // Le binaire par défaut (bin, args, env, délai, backend, nom) s'édite dans la liste des
       // binaires, par son propre formulaire : e2e-agent-clis-ui.test.js.
@@ -210,7 +208,6 @@ describe('Menu Réglages — chaque champ s’enregistre depuis l’écran et se
       access_token: 'glpat-reglages-ecran',
       github_token: 'ghp-reglages-ecran',
       jira_token: 'ATATT-reglages-ecran',
-      jenkins_token: 'jk-reglages-ecran',
     });
     const c = await config();
     for (const s of SECRETS) assert.equal(c[s], '***', `${s} ne redescend jamais en clair`);

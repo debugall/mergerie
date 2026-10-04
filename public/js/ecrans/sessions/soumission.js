@@ -344,6 +344,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
     prompt: f.prompt.value,
     commit_message: f.commit_message ? f.commit_message.value : '',
     auto_push: f.auto_push ? f.auto_push.checked : false,
+    force_push: forcePushCreation,
     ask_questions: f.ask_questions ? f.ask_questions.checked : false,
     // B5 : prévenir Jira à la création de chaque merge request de cette session.
     notify_jira: f.notify_jira ? f.notify_jira.checked : false,

@@ -5,7 +5,7 @@
 // itèrent dessus (une divergence entre les deux = un champ qui ne s'enregistre pas,
 // exactement le bug qu'ont connu jira_email / jira_token).
 const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'access_token',
-  'github_url', 'github_token', 'jenkins_url', 'jenkins_user', 'jenkins_token', 'jenkins_refresh_minutes',
+  'github_url', 'github_token',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days', 'mr_retention_days', 'clone_blobless',
   'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
@@ -14,7 +14,8 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'agent_mode',
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
-  'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
+  'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
+  'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template', 'jira_notify_template',
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */
@@ -25,7 +26,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
  * quelques dizaines de millisecondes plus tard. Entre les deux, l'utilisateur peut déjà avoir
  * commencé à taper : la réponse écrase alors ses champs avec ce que le serveur avait, sans un
  * mot. Sur une machine chargée, la fenêtre s'élargit — c'est ainsi qu'un test collait son
- * jeton Jenkins et cliquait « Tester » sur trois champs redevenus vides.
+ * jeton et cliquait « Tester » sur trois champs redevenus vides.
  *
  * On note donc l'instant de la dernière frappe : si elle est postérieure au DÉPART de la
  * requête, on ne touche à rien.
@@ -46,7 +47,7 @@ document.addEventListener('input', (e) => {
    marque TOUS, pour que l'avertissement suive celui qui change d'écran. */
 let configSale = false;
 const boutonsConfig = () => $$('button[form="configForm"][type="submit"]');
-const mentionsConfig = () => $$('#configInfo, #configInfoGeneral, #configInfoMr, #configInfoGit, #configInfoGithub, #configInfoJira, #configInfoJenkins, #configInfoAi, #configInfoVerif').filter(Boolean);
+const mentionsConfig = () => $$('#configInfo, #configInfoGeneral, #configInfoMr, #configInfoGit, #configInfoGithub, #configInfoJira, #configInfoAi, #configInfoVerif').filter(Boolean);
 
 function marquerConfig(sale) {
   configSale = sale;
@@ -123,6 +124,17 @@ document.addEventListener('change', (e) => {
     || e.target.name === 'review_link_template') syncAutoPostBlocking();
 });
 
+/* L'APERÇU DU COMMENTAIRE JIRA, avec des valeurs d'exemple : on voit ce que le gabarit donnera avant d'enregistrer. Même règle que le serveur : une variable inconnue reste telle quelle. */
+function majApercuJira() {
+  const champ = $('#configForm') && $('#configForm').elements.jira_notify_template;
+  const boite = $('#jiraNotifyPreview');
+  if (!champ || !boite) return;
+  const exemple = { url: 'https://gitlab.exemple/groupe/projet/-/merge_requests/214', iid: 214, project: 'groupe/projet', title: 'Ajout du paiement', branch: 'feature/PROJ-42-paiement', target: 'main', key: 'PROJ-42' };
+  const gabarit = String(champ.value || '').trim() || tr('jira.notify.body', { iid: exemple.iid, project: exemple.project, url: exemple.url });
+  boite.textContent = gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in exemple ? String(exemple[cle]) : brut));
+}
+document.addEventListener('input', (e) => { if (e.target && e.target.name === 'jira_notify_template') majApercuJira(); });
+
 /* CE QUE LE FORMULAIRE ENVERRAIT, champ par champ. Lu deux fois : au chargement (la référence)
    et à l'enregistrement (ce qui a changé depuis). */
 function corpsConfig(f) {
@@ -150,7 +162,6 @@ function corpsConfig(f) {
   if (body.access_token === '***') delete body.access_token;
   if (body.jira_token === '***') delete body.jira_token;
   if (body.github_token === '***') delete body.github_token;
-  if (body.jenkins_token === '***') delete body.jenkins_token;
   return body;
 }
 /* N'ENVOYER QUE CE QUI A CHANGÉ. Le formulaire renvoyait TOUS ses champs : resté ouvert pendant
@@ -182,7 +193,9 @@ $('#configForm').addEventListener('submit', async (e) => {
     configReference = complet;
     marquerConfig(false);   // avant la mention : elle porterait sinon la classe « non enregistré »
     f.dispatchEvent(new Event('mergerie:config-saved'));   // « Enregistrer et tester » enchaîne
-    info.textContent = tr('ui.saved'); setTimeout(() => { info.textContent = ''; }, 2000);
+    info.textContent = tr('ui.saved'); setTimeout(() => { if (info.textContent === tr('ui.saved')) info.textContent = ''; }, 4000);
+    /* UN TOAST AUSSI : la mention vit à côté du bouton, qui peut être hors de l'écran (onglet long) ou sans mention dans sa section. */
+    toast(tr('ui.saved'));
     loadConfig(); refreshStatus();
     /* L'ASSISTANT DE DÉMARRAGE SUIT. Il coche ses étapes depuis `setupState`, qui n'était lu
        qu'au chargement de la page : on connectait la forge, on revenait sur Reviews, et
@@ -197,6 +210,12 @@ $('#configForm').addEventListener('submit', async (e) => {
    par type. Tout est local (localStorage) — aucun aller-retour serveur. */
 function renderNotifSettings() {
   const p = notifPrefs();
+  /* Les genres déclarés par les plugins actifs : une case chacun, posée une fois dans la liste. */
+  const zone = $('#notifPluginKinds');
+  if (zone && !zone.childElementCount) {
+    zone.innerHTML = pluginsNotifKinds().map((k) => `<label class="inline-check"><input type="checkbox" data-notif="${esc(k.type)}" /> <span>${esc(k.i18n ? tr(k.i18n) : k.label)}</span></label>`).join('');
+    $$('#notifPluginKinds [data-notif]').forEach((cb) => cb.addEventListener('change', () => { const q = notifPrefs(); q[cb.dataset.notif] = cb.checked; setNotifPrefs(q); updateMuteBtn(); }));
+  }
   $$('#sub-notif [data-notif]').forEach((cb) => { cb.checked = !!p[cb.dataset.notif]; });
   const th = $('#notifThreshold'); if (th) th.value = p.threshold;
   const status = $('#notifPermStatus');

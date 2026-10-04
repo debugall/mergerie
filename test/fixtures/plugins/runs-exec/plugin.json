@@ -1,0 +1,10 @@
+{
+  "name": "runs-exec",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Runs exec",
+  "description": "Lance un script Node par ctx.exec, sans shell : sert à prouver que exec traverse la frontière du worker, message et environnement compris.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["exec", "http"]
+}

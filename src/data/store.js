@@ -793,13 +793,13 @@ if (!existe(MARQUEUR)) marquer();
 
 /* CE QUI A ÉTÉ PARTAGÉ ET NE DOIT PLUS L'ÊTRE DOIT EN SORTIR.
  *
- * Quatre onglets sont redevenus locaux — Docker, Jenkins, Git, Jira : ils décrivent une machine,
+ * Quatre onglets sont redevenus locaux — Docker, Git, Jira, et l'ancien onglet de CI devenu plugin : ils décrivent une machine,
  * ses accès et sa façon de travailler, pas un travail accumulé. Leurs fichiers, eux, sont déjà dans le dépôt des équipes qui
  * ont synchronisé avant ce changement, et rien ne les en retirerait : le balayage ne connaît
  * que les tables qui écrivent encore, et une table devenue locale n'en fait plus partie. Ils
  * resteraient donc là, et la prochaine hydratation d'un collègue les reposerait chez lui.
  * On les retire donc UNE FOIS, au premier démarrage qui suit. Les dépôts suivis sont remis dans
- * la file pour que leur fichier se réécrive sans son bloc `jenkins`. */
+ * la file pour que leur fichier se réécrive sans son ancien bloc de jobs liés. */
 const RACINES_RETIREES = ['git-commands', 'git-ops', 'docker-backups', 'jira'];
 {
   const fait = db.prepare(
@@ -825,7 +825,7 @@ const RACINES_RETIREES = ['git-commands', 'git-ops', 'docker-backups', 'jira'];
  * sa clé naturelle : ajouter un dépôt sur un poste le faisait apparaître chez tout le monde, avec
  * son clonage et la découverte de ses merge requests au démarrage suivant, sans case à cocher pour
  * le refuser. Ce que chacun suit est une décision de poste, pas un travail accumulé — le même
- * raisonnement que pour Docker, Jenkins, Git et Jira ci-dessus, sur un calendrier différent, d'où
+ * raisonnement que pour Docker, Git et Jira ci-dessus, sur un calendrier différent, d'où
  * un second passage plutôt qu'une entrée de plus dans `RACINES_RETIREES` : un poste déjà à jour du
  * premier ne doit pas sauter le second. Les fichiers déjà poussés restent dans le dépôt jusqu'à ce
  * retrait, sans quoi ils reviendraient chez un collègue à sa prochaine synchronisation ; ce que ce
@@ -1330,6 +1330,10 @@ function hydraterFichiers(relatifs) {
          nom recevait ainsi ses reviews (posées avant) mais ni ses sessions, ni ses notes, ni
          même les pointeurs vers ses rapports, calculés tout à la fin. On le signale comme
          orphelin — c'est visible dans l'état de la synchro — et on continue. */
+      /* Une entrée peut ARBITRER entre ce qui arrive et ce qu'elle tient déjà (`fusionner`,
+         voir `mr` dans le registre) : elle rend la ligne à écrire, éventuellement amputée des
+         colonnes que la version locale, plus récente, garde. */
+      if (e.fusionner) row = e.fusionner(row, db) || row;
       let ligne;
       try {
         ligne = upsert(item.table, row);

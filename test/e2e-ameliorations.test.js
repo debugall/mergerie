@@ -282,17 +282,6 @@ describe('Améliorations — croisements et raccourcis', { skip: dispo ? false :
     assert.equal(r.body.repos[0].refs[0].name, depot.branch);
   });
 
-  test('B8 — un job Jenkins se lie à un dépôt, et rien ne part sans clic', async () => {
-    await app.api('POST', '/api/jenkins/links', { repo_id: repoId, job_path: 'boutique/deploy', param: 'BRANCH' });
-    const liens = (await app.api('GET', '/api/jenkins/links')).body.links;
-    assert.equal(liens.length, 1);
-    assert.equal(liens[0].job_path, 'boutique/deploy');
-    assert.equal(liens[0].param, 'BRANCH', 'le paramètre qui recevra la branche');
-    const mrs = (await app.api('GET', '/api/mrs')).body;
-    assert.deepEqual(mrs[0].jenkins_jobs, [{ path: 'boutique/deploy', param: 'BRANCH' }],
-      'la merge request porte le job de son dépôt ; l’écran décide de l’AFFICHER ou non');
-  });
-
   test('B4 — un constat qui revient trois fois devient une proposition de règle', async () => {
     /* Trois merge requests du même dépôt portant le même constat : c'est le seuil à partir
        duquel une consigne mérite d'être écrite une fois pour toutes. */

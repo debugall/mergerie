@@ -13,7 +13,7 @@ const notify = require('../../core/notify');
 const { discoverAll } = require('../../notes/discover');
 const jobs = require('../../jobs');
 const forge = require('../../forge');
-const docker = require('../../integrations/docker');
+const plugins = require('../../plugins');
 const { mrById } = require('../http');
 const { forgeIdentite } = require('./forge-identite');
 const { appliquerModes, ciblesDepuisMrs, creerVerification } = require('./verifications');
@@ -37,7 +37,7 @@ const plafondVerifAuto = () => {
    Best-effort de bout en bout : un vérificateur qui refuse (dépôt déjà en cours de
    vérification, MR sans SHA) ne doit pas faire échouer la découverte, dont le travail — trouver
    les MR — est déjà fait. */
-/* A28 — LE PRÉ-VOL DOCKER VAUT AUSSI POUR LES VÉRIFICATIONS AUTOMATIQUES.
+/* A28 — LE PRÉ-VOL DOCKER (le service `docker.dirState` du plugin Docker) VAUT AUSSI POUR LES VÉRIFICATIONS AUTOMATIQUES.
  *
  * Il n'existait que dans la modale manuelle : on voyait « la base est arrêtée » avant de
  * cliquer. Une vérification AUTOMATIQUE, elle, partait quand même — et mourait en trois
@@ -52,16 +52,16 @@ async function servicesPretsPour(verifier, onLog = () => {}) {
   const dirs = db.prepare(`SELECT DISTINCT workdir FROM verifier_repo
     WHERE verifier_id = ? AND mode = 'in_place' AND workdir IS NOT NULL AND workdir <> ''`).all(verifier.id);
   if (!dirs.length) return true;
+  /* L'état des services compose d'un dossier est une affaire du plugin Docker : sans lui (absent, désactivé), il n'y a rien à dire et on lance. */
+  if (!plugins.services.has('docker.dirState')) return true;
   for (const { workdir } of dirs) {
     try {
-      const roots = db.prepare('SELECT * FROM local_root').all();
-      const projets = await docker.composeProjects(roots);
-      const p = projets.find((x) => x.dir === workdir);
-      if (!p || !(p.services || []).length) continue;      // pas de compose ici : rien à dire
-      const arretes = p.services.filter((sv) => !sv.container || sv.container.state !== 'running');
+      const etat = await plugins.services.call('docker.dirState', { dir: workdir });
+      if (!etat || !etat.found || !(etat.services || []).length) continue;      // pas de compose ici : rien à dire
+      const arretes = etat.services.filter((sv) => sv.state !== 'running');
       if (!arretes.length) continue;
       onLog(t('log.verify.services-down', {
-        verifier: verifier.name, project: p.name,
+        verifier: verifier.name, project: etat.project,
         list: arretes.map((sv) => sv.name).join(', '),
       }));
       return false;

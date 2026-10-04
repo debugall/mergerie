@@ -125,7 +125,7 @@ function rangerSousPages(agent, racineId, blocks, entete, msgs, onLog) {
 }
 /* Les fichiers d'entrée à écrire avant un run (appelé par les exécutants, qui savent où est
    la racine des clones). Rend la liste { path, role } que `composer` annonce à l'agent. */
-function ecrireEntrees(task, root, cibles) {
+async function ecrireEntrees(task, root, cibles) {
   if (!task || !task.agent_id) return [];
   const a = db.prepare('SELECT * FROM agent WHERE id = ?').get(task.agent_id);
   if (!a) return [];
@@ -133,7 +133,7 @@ function ecrireEntrees(task, root, cibles) {
   /* `recent.md` dès que plusieurs dépôts sont en jeu : c'est là que « ce qui vient d'être
      mergé » a une valeur qu'aucun clone ne porte. */
   if (a.scope_kind === 'all_repos' || (cibles || []).length >= 2) {
-    const p = agentinput.ecrireRecent(root, cibles);
+    const p = await agentinput.ecrireRecent(root, cibles);
     if (p) out.push({ path: p, role: t('agents.input.role-recent') });
   }
   if (a.knowledge_prompt) {

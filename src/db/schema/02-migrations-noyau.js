@@ -1,5 +1,5 @@
 'use strict';
-/* Ce que les versions suivantes ont ajouté aux tables du noyau : la forge, les dates de la MR, le ticket, les colonnes de session, les liens de MR et de dépôt, Jira et Jenkins dans la config.
+/* Ce que les versions suivantes ont ajouté aux tables du noyau : la forge, les dates de la MR, le ticket, les colonnes de session, les liens de MR et de dépôt, Jira dans la config.
    Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
@@ -61,6 +61,12 @@ try { db.exec('ALTER TABLE mr ADD COLUMN review_session_cwd TEXT'); } catch { /*
    Relevé au moment où l'on ouvre la modale de merge : on est alors à un clic d'une action
    irréversible, un appel d'API pour le dire avant vaut mieux qu'un refus après. */
 try { db.exec('ALTER TABLE mr ADD COLUMN has_conflicts INTEGER'); } catch { /* déjà présente */ }
+/* EN RETARD SUR SA CIBLE : le nombre de commits que la branche cible porte et que la branche de
+   la merge request n'a pas — 0 à jour, NULL pas encore su. Relevé à la découverte (un appel par
+   merge request ouverte, plafonné) et à l'ouverture de la modale de merge. Une branche en retard
+   sans conflit se merge, mais elle n'a jamais tourné avec ce que la cible a apporté : le bouton
+   « Mettre à jour avec l'IA » s'affiche pour elle comme pour un conflit. */
+try { db.exec('ALTER TABLE mr ADD COLUMN behind_by INTEGER'); } catch { /* déjà présente */ }
 /* BROUILLON (« Draft »/« WIP ») et REVIEWERS DEMANDÉS, relevés à la découverte. Les deux
    viennent de la liste déjà parcourue — on les jetait. Un brouillon n'est pas prêt à être
    relu : la review automatique lui dépensait un appel IA, et rien à l'écran ne disait
@@ -130,15 +136,6 @@ try { db.exec("ALTER TABLE config ADD COLUMN jira_url TEXT DEFAULT ''"); } catch
 // Migration : identifiants Jira Cloud (email + jeton d'API) pour le fetch automatique.
 try { db.exec("ALTER TABLE config ADD COLUMN jira_email TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN jira_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
-/* Migration : connexion Jenkins (URL + utilisateur + jeton d'API). Jenkins authentifie en
-   Basic `utilisateur:jeton` — le jeton seul ne suffit pas, d'où les deux champs. */
-try { db.exec("ALTER TABLE config ADD COLUMN jenkins_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
-try { db.exec("ALTER TABLE config ADD COLUMN jenkins_user TEXT DEFAULT ''"); } catch { /* déjà présente */ }
-try { db.exec("ALTER TABLE config ADD COLUMN jenkins_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
-/* Cadence de rafraîchissement de l'onglet Jenkins, en minutes (0 = jamais). En base et non en
-   localStorage, comme celle des MR et celle de Jira : c'est un réglage de l'OUTIL, et il doit
-   valoir quel que soit le navigateur d'où on le regarde. */
-try { db.exec('ALTER TABLE config ADD COLUMN jenkins_refresh_minutes INTEGER DEFAULT 1'); } catch { /* déjà présente */ }
 /* Plafond de vérifications automatiques par tour de découverte. Un lundi matin en ramène
    quinze : quinze batteries fonctionnelles saturent la machine et bloquent la file partagée
    avec les reviews. Le bon chiffre dépend de la machine et de la durée des suites — il se règle

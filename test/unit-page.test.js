@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { assemblerPage, morceaux } = require('../src/core/page');
+const { assemblerPage, poserFragments, morceaux } = require('../src/core/page');
 
 describe('page : assembler la coquille et ses morceaux', () => {
   let dir; let index;
@@ -73,5 +73,32 @@ describe('page : assembler la coquille et ses morceaux', () => {
     toucher('html/a.html');
     ecrire('html/a.html', '<!--@include html/ecrans/b.html-->\n');
     assert.throws(() => assemblerPage(index), /un seul niveau/);
+  });
+});
+
+/* LES POSITIONS NOMMÉES DES ONGLETS DE PLUGINS. `before:git` se pose contre un bouton de la coquille ; une ancre que la coquille n'a pas — l'onglet d'un autre
+   plugin, ou d'un plugin absent — ne doit jamais faire DISPARAÎTRE l'onglet qui la vise (c'est ce qu'un plugin posé « avant Liens » est devenu le jour où
+   Liens a quitté le cœur). */
+describe('page : les ancres d’onglets de plugins', () => {
+  const coquille = [
+    '<nav>', '<button data-tab="git">Git</button>', '<!--@plugins:nav-->', '<button data-tab="dashboard">Stats</button>', '</nav>',
+  ].join('\n');
+  const bouton = (id) => `<button data-tab="${id}" data-plugin-tab="${id}">${id}</button>`;
+  const ordre = (html) => [...html.matchAll(/data-tab="([a-z-]+)"/g)].map((m) => m[1]);
+
+  test('une ancre de la coquille place le bouton avant ou après elle', () => {
+    const html = poserFragments(coquille, { nav: bouton('x'), navPositions: { 'before:dashboard': bouton('av'), 'after:git': bouton('ap') } });
+    assert.deepEqual(ordre(html), ['git', 'ap', 'x', 'av', 'dashboard']);
+  });
+
+  test('une ancre qui est l’onglet d’un autre plugin se résout contre lui', () => {
+    const html = poserFragments(coquille, { nav: bouton('liens'), navPositions: { 'before:liens': bouton('docker'), 'after:liens': bouton('jenkins') } });
+    assert.deepEqual(ordre(html), ['git', 'docker', 'liens', 'jenkins', 'dashboard']);
+  });
+
+  test('une ancre introuvable (plugin absent) ne fait pas disparaître l’onglet : il va en fin de liste', () => {
+    const html = poserFragments(coquille, { nav: bouton('x'), navPositions: { 'before:liens': bouton('docker') } });
+    assert.deepEqual(ordre(html), ['git', 'x', 'docker', 'dashboard']);
+    assert.deepEqual(ordre(poserFragments(coquille, { nav: '', navPositions: { 'before:liens': bouton('docker') } })), ['git', 'docker', 'dashboard']);
   });
 });

@@ -15,7 +15,6 @@ const { t } = i18n;
 const jira = require('../../integrations/jira');
 const glob = require('../../core/glob');
 const notes = require('../../notes/notes');
-const links = require('../../notes/links');
 const jobs = require('../../jobs');
 const reviewer = require('../../review/reviewer');
 const prompts = require('../../core/prompts');
@@ -128,12 +127,6 @@ app.get('/api/mrs', wrap((req, res) => {
   for (const w of db.prepare('SELECT key, status, status_category FROM jira_watch').all()) {
     etatsTickets[String(w.key).toUpperCase()] = { status: w.status, cat: w.status_category };
   }
-  /* B8 — les jobs Jenkins déclarés pour chaque dépôt. Une requête pour toute la liste ; le
-     bouton n'apparaît que sur une merge request VÉRIFIÉE VERTE, ce que l'écran décide. */
-  const jobsParDepot = {};
-  for (const l of db.prepare('SELECT repo_id, job_path, param FROM repo_jenkins').all()) {
-    (jobsParDepot[l.repo_id] = jobsParDepot[l.repo_id] || []).push({ path: l.job_path, param: l.param });
-  }
   const verifs = dernieresVerificationsParMr();
   /* Un dépôt qu'aucun vérificateur ne couvre : le bouton « Vérifier » sera GRISÉ, avec la raison
      en info-bulle. Proposer un bouton qui répond « impossible » une fois cliqué fait perdre un
@@ -168,11 +161,13 @@ app.get('/api/mrs', wrap((req, res) => {
          revue » ; la merge request attend depuis trois jours au milieu de onze cartes et
          personne ne fait le lien. On ne SONDE pas Jira pour autant : on lit ce que la
          surveillance des tickets a déjà relevé — c'est la seule liste connue hors ligne. */
-      jenkins_jobs: jobsParDepot[r.repo_id] || [],
       /* EN CONFLIT : la forge l'a dit, on l'a écrit — et personne ne le relisait entre deux
          ouvertures de la modale de merge. Une MR en conflit ne se merge pas : le savoir en
          lisant la file évite de l'ouvrir pour l'apprendre. */
       has_conflicts: r.has_conflicts == null ? null : !!r.has_conflicts,
+      /* EN RETARD SUR SA CIBLE : combien de commits de la cible la branche n'a pas — 0 à jour,
+         `null` pas encore su. Le badge et « Mettre à jour avec l'IA » en vivent. */
+      behind_by: r.behind_by == null ? null : Number(r.behind_by),
       /* A/Réglages 3 — À QUELS LOTS CETTE MERGE REQUEST APPARTIENT. On la vérifie « ensemble »
          avec quatre autres, puis trois jours plus tard on ouvre sa carte et rien ne dit
          qu'elle ne tient pas seule. Une requête pour toute la liste, pas une par carte. */

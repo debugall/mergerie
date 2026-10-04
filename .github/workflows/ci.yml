@@ -28,3 +28,29 @@ jobs:
         run: npx playwright install --with-deps chromium
       - run: npm run check
       - run: npm test
+
+  # Les plugins tiers (Docker, Jenkins, Liens, Jenkins Teams Notify) vivent dans leurs dépôts GitLab PUBLICS : on les clone à côté et on lance leurs tests contre CE Mergerie
+  # (unitaires, puis de bout en bout dans un navigateur). C'est ce qui garde un changement du cœur de casser un plugin sans que rien ne le dise.
+  # Leurs propres tests tournent sur le SDK PUBLIÉ sur npm (`@mergerie/plugin-sdk`), pas sur celui de cette copie : un changement de contrat doit donc être publié (voir scripts/publish-sdk.sh).
+  plugins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Clone the plugin repositories
+        run: |
+          mkdir -p "$RUNNER_TEMP/plugins"
+          for p in docker-mergerie jenkins-mergerie jenkins-teams-notify link-mergerie; do
+            git clone --depth 1 --branch develop "https://gitlab.com/amady/$p.git" "$RUNNER_TEMP/plugins/$p"
+          done
+      - name: Run the plugins' tests against this Mergerie
+        env:
+          PLUGINS_DIR: ${{ runner.temp }}/plugins
+        run: scripts/test-plugins.sh

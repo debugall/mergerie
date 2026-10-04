@@ -147,3 +147,11 @@
    largeur confortable pour la recherche (sinon il s'écrase à la taille du texte). */
 .form.inline .repo-combo { flex: 0 1 380px; min-width: 240px; }
 
+
+/* Tags par période : deux dates, deux raccourcis, un tableau. Le formulaire est « inline » comme
+   Trouver une ref ; les champs date gardent une largeur fixe pour ne pas s'étirer sur la ligne. */
+.git-tags-form .git-tags-lbl { display: inline-flex; align-items: center; gap: 6px; }
+.git-tags-form input[type="date"] { width: 160px; }
+.git-tags-presets { display: inline-flex; gap: 6px; }
+.git-tags-actions { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
+.git-tags-table td.git-tags-msg { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

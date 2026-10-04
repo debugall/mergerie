@@ -27,7 +27,7 @@ const { applySessionId, demoMrDe, insertTargets, insertContextRepos, lireCliSess
 const { targetCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label } = req.body || {};
+  const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label, force_push } = req.body || {};
   const k = kind === 'explore' ? 'explore' : 'code';
   if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
   // Le binaire choisi pour cette session (`agent_cli`) ; vide = le défaut, sans rien écrire.
@@ -71,6 +71,10 @@ app.post('/api/tasks', wrap((req, res) => {
     branch: list[0].branch || '',
     commitMessage: (commit_message || '').trim() || null,
     autoPush: profil ? 0 : (auto_push ? 1 : 0),
+    /* UNE SESSION QUI VA RÉÉCRIRE L'HISTORIQUE (mettre à jour la branche d'une merge request en
+       conflit : rebase par-dessus la cible) le dit à la création : « Pousser » forcera avec
+       `--force-with-lease` au lieu de buter sur le refus d'un push normal. Codage seulement. */
+    forcePush: k === 'code' && !!force_push,
     askQuestions: ask,
     verifierId: lireVerifierSession(k, profil ? 0 : auto_push, verifier_id),
     label: lireLibelle(label) || (profil ? profil.name : null),

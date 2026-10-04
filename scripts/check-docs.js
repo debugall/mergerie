@@ -21,6 +21,23 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const GUIDES = ['docs/guide.fr.md', 'docs/guide.en.md'];
 
+/* LA DOCUMENTATION DES PLUGINS EXISTE EN DEUX LANGUES, page pour page : `docs/plugins/X.md` et
+   `docs/plugins/en/X.md`. Une page ajoutée d'un seul côté est un trou dans l'autre langue. Les
+   inventaires de chantier (JENKINS-INVENTORY, PLUGIN-CANDIDATES) sont des documents de travail en
+   français seulement : nommés ici, pour que l'exception soit dite. */
+const PLUGINS_FR_SEULEMENT = ['JENKINS-INVENTORY.md', 'PLUGIN-CANDIDATES.md'];
+{
+  const dir = path.join(ROOT, 'docs', 'plugins');
+  if (fs.existsSync(dir)) {
+    const fr = fs.readdirSync(dir).filter((x) => x.endsWith('.md') && !PLUGINS_FR_SEULEMENT.includes(x)).sort();
+    const en = fs.existsSync(path.join(dir, 'en')) ? fs.readdirSync(path.join(dir, 'en')).filter((x) => x.endsWith('.md')).sort() : [];
+    const soucis = [...fr.filter((x) => !en.includes(x)).map((x) => `docs/plugins/en/${x}  manque — la page existe en français`),
+      ...en.filter((x) => !fr.includes(x)).map((x) => `docs/plugins/${x}  manque — la page existe en anglais`)];
+    if (soucis.length) { failures++; console.log(`\n❌ Documentation des plugins : fr et en page pour page (${soucis.length})`); soucis.forEach((x) => console.log(`   ${x}`)); }
+    else console.log(`✅ Documentation des plugins : ${fr.length} pages, en français et en anglais`);
+  }
+}
+
 let failures = 0;
 const fail = (title, items) => {
   failures++;

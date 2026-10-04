@@ -262,6 +262,39 @@ describe('Menu Reviews — le rapport ouvert', { skip: dispo ? false : MSG_NAVIG
     assert.equal((await detail(21)).stale, false);
   });
 
+  /* UN RAPPORT OUVERT QUI DEVIENT « PÉRIMÉ » SE MET À JOUR SOUS LES YEUX. Le bouton « Relancer (delta) » ne s'affichait qu'à
+     l'ouverture du rapport : une découverte (le bouton « Chercher », le sondage automatique) rechargeait les listes mais pas le
+     rapport ouvert, et il fallait rafraîchir la page. Les tests d'avant rouvraient le rapport après la découverte — le trou.
+     Ce qui rafraîchissait l'écran malgré tout — la fin d'un job, ou le sondage d'état quand une synchro a bougé — n'est pas la découverte
+     elle-même : on vérifie donc que le rapport est rechargé PAR la découverte, avant le moindre sondage d'état. */
+  test('un rapport DÉJÀ OUVERT devient « périmé » après une découverte : « Relancer (delta) » apparaît sans rechargement', async () => {
+    await ouvrir(21, () => !document.querySelector('#aStaleRe'));
+    assert.equal(await page.locator('#aStaleRe').count(), 0, 'à jour : pas de badge « périmé »');
+    await menu();
+    assert.equal(await page.locator('#aReInc').count(), 0, 'ni de « Relancer (delta) » dans le menu');
+    await page.keyboard.press('Escape');
+
+    avancerBranche(pushChange(repo, 'src/app.js', 'const a = 1;\nconst b = 5;\nmodule.exports = { a, b };\n', 'fix: b encore et encore'));
+    const requetes = [];
+    page.on('request', (r) => { const u = r.url().replace(/^.*\/api/, ''); if (/^\/(status|mrs\/\d+$)/.test(u)) requetes.push(u); });
+    await page.locator('#btnDiscover').click();
+    await attendreServeur(async () => (await detail(21)).stale === true, 'le serveur voit le rapport périmé');
+    // SANS rouvrir le rapport, SANS recharger la page : l'écran le montre.
+    await page.waitForFunction(() => !!document.querySelector('#aStaleRe'), null, { timeout: 15000 });
+    const iRapport = requetes.indexOf(`/mrs/${id[21]}`); const iStatut = requetes.indexOf('/status');
+    assert.ok(iRapport !== -1, 'le rapport ouvert a été rechargé');
+    assert.ok(iStatut === -1 || iRapport < iStatut, `rechargé par la découverte, pas par le sondage d’état — ordre vu : ${JSON.stringify(requetes)}`);
+    await menu();
+    assert.equal(await page.locator('#aReInc').count(), 1, '« Relancer (delta) » est dans le menu');
+    await page.keyboard.press('Escape');
+
+    // On remet le rapport à jour, pour les tests suivants.
+    await page.locator('#aStaleRe').click();
+    await attendreServeur(async () => (await versions(21)).length === 6, 'une v6 existe');
+    await auRepos();
+    await page.waitForFunction(() => !document.querySelector('#aStaleRe'), null, { timeout: 15000 });
+  });
+
   /* ------------------------------------------------------------ le menu ⋯ ---- */
 
   test('⋯ → « Contexte » ouvre la modale du contexte de cette MR, « Annuler » la ferme', async () => {

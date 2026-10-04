@@ -280,8 +280,22 @@ async function mergeMergeRequest(cfg, project, iid, opts = {}) {
 // Récupère une MR complète (pour ses diff_refs : base_sha, start_sha, head_sha).
 async function getMergeRequest(cfg, project, iid) {
   const enc = encodeProject(project);
-  const m = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`);
-  return m && typeof m === 'object' ? { ...m, has_conflicts: conflitsDe(m) } : m;
+  /* `include_diverged_commits_count` : le RETARD de la branche sur sa cible vient avec le détail,
+     au même prix — GitLab le calcule à la demande et le rend en `diverged_commits_count`. */
+  const m = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}?include_diverged_commits_count=true`);
+  return m && typeof m === 'object' ? { ...m, has_conflicts: conflitsDe(m), behind_by: retardDe(m) } : m;
+}
+
+/* LE RETARD SUR LA CIBLE, normalisé comme le conflit : un entier (0 = à jour), ou `null` quand la
+   forge ne le dit pas — jamais 0 par défaut, qui afficherait « à jour » sans le savoir. GitHub
+   rend la même forme depuis son API de comparaison. */
+function retardDe(m) {
+  const n = m && m.diverged_commits_count;
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+async function divergence(cfg, project, mr) {
+  const m = await getMergeRequest(cfg, project, mr.iid);
+  return { behind_by: m ? m.behind_by : null, has_conflicts: m ? m.has_conflicts : null };
 }
 
 /* CONFLITS, vus de GitLab. Trois sources, par ordre de fiabilité décroissante — et trois
@@ -438,6 +452,8 @@ async function listTags(cfg, project) {
     message: tag.message || '',
     annotated: !!(tag.message && tag.message.trim()),
     committed_date: tag.commit && tag.commit.committed_date,
+    // Date de CRÉATION du tag (celle du tagger) : GitLab la donne pour un tag annoté, null sinon.
+    created_at: tag.created_at || null,
     // Auteur du commit pointé par le tag (donnée exposée par l'API tags).
     author: (tag.commit && tag.commit.author_name) || '',
   }));
@@ -523,6 +539,6 @@ async function listAllMRs(cfg, project) {
   }));
 }
 
-module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
+module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs };

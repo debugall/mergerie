@@ -4,9 +4,11 @@
 const db = require('../../db');
 const taskrunner = require('../../session/taskrunner');
 const { apresRun } = require('../../agent/profile/apres');
+const spec = require('../../session/spec');
 const { exigerApprobation } = require('../../agent/profile/modele');
 const proc = require('../../core/proc');
 const notify = require('../../core/notify');
+const events = require('../../core/events');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestion, verifierApresSession } = require('../apres-session');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
@@ -20,6 +22,10 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   if (!task) { setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: t('err.tache-introuvable') }); return; }
   const onLog = (msg, annexe) => { logLine(jobId, null, msg, annexe); setJob(jobId, { message: String(msg).slice(0, 180) }); };
   if (action !== 'push') db.prepare("UPDATE task SET status='running', last_error=NULL, updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
+  /* Le bus : un plugin peut réagir au départ et à la fin d'une session, sans rien savoir des runners. */
+  const estSession = action !== 'push' && action !== 'push-all';
+  if (estSession) events.emit('session.started', { kind: 'task', id: task.id, action }).catch(() => {});
+  let fin = 'done';
   try {
     /* RÉ-APPROBATION AU DÉMARRAGE DU JOB, PAS SEULEMENT AU LANCEMENT (plan_secure.md, lot C,
        point 3) : `lancer()` (`agent/profile/lancer.js`) vérifie l'approbation en créant la
@@ -53,9 +59,15 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
       try { await apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
       catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
     }
+    /* LA SPEC D'UN TICKET : la session a produit (ou non) son bloc <<<SPEC>>>, ou s'est arrêtée
+       sur des questions. Même règle que la sortie d'un agent : une erreur ici ne fait pas
+       échouer le job, le Markdown reste lisible dans Dev IA. */
+    try { spec.apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
+    catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,
     // pas « prête à push ». Sinon, codage terminé → prêt à push/MR.
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(task.id);
+    if (after && (after.status === 'needs_input' || after.status === 'planned')) fin = 'needs_input';
     if (after && after.status === 'needs_input') {
       notify.push('needs_input', { task_id: task.id });
       todoQuestion(task.id);
@@ -83,16 +95,20 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
       db.prepare("UPDATE task SET status='new', updated_at=? WHERE id=?").run(new Date().toISOString(), task.id);
       logLine(jobId, null, t('log.job.task-stopped'));
       setJob(jobId, { status: 'stopped', finished_at: new Date().toISOString(), message: '' });
+      fin = 'stopped';
       return;
     }
+    fin = 'error';
     const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
     db.prepare("UPDATE task SET status='error', last_error=?, updated_at=? WHERE id=?").run(full, new Date().toISOString(), task.id);
+    try { spec.marquerErreur(task.id, e.message); } catch { /* la spec ne doit pas masquer l'erreur de la session */ }
     logLine(jobId, null, `❌ Task ERREUR : ${e.message}`);
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     notify.push('job_failed', { task_id: task.id, message: String(e.message).slice(0, 200) });
   } finally {
     // `push`/`push-all` déplacent du code déjà produit : la session n'a pas tourné.
     if (action !== 'push' && action !== 'push-all') marquerFinExecution('task', task.id);
+    if (estSession) events.emit('session.finished', { kind: 'task', id: task.id, action, status: fin }).catch(() => {});
   }
 }
 

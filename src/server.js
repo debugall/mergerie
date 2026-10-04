@@ -72,13 +72,14 @@ const retention = require('./session/retention');
 const notes = require('./notes/notes');
 const { t } = i18n;
 const git = require('./git/git');
-const demoDocker = require('./demo/docker');
-const veille = require('./integrations/veille');
+const demoMode = require('./demo/mode');
 const verifyrun = require('./verify/verifyrun');
 const copilot = require('./agent/copilot');
 const agentprofile = require('./agent/profile');
 const agentschedule = require('./agent/schedule');
 const jobs = require('./jobs');
+const events = require('./core/events');
+const plugins = require('./plugins');
 
 /* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (réorganisation de src/ par couches). Chaque fichier de
    `app/middleware/` s'accroche à l'application quand on le charge : la ligne où il est chargé
@@ -105,22 +106,22 @@ require('./app/routes/agent-passes');
 require('./app/routes/agents');
 require('./app/routes/config');
 require('./app/routes/data-sync');
-require('./app/routes/docker');
 require('./app/routes/git');
 require('./app/routes/git-compare');
 require('./app/routes/git-merge');
 require('./app/routes/groupes');
 require('./app/routes/maintenance');
-require('./app/routes/jenkins');
 require('./app/routes/jira');
+require('./app/routes/jira-spec');
 require('./app/routes/jobs');
-require('./app/routes/links');
+require('./app/routes/launcher');
 require('./app/routes/local-tasks');
 require('./app/routes/mrs');
 require('./app/routes/mrs-commentaires');
 require('./app/routes/mrs-resume');
 require('./app/routes/notes');
 require('./app/routes/pieces');
+require('./app/routes/plugins');
 require('./app/routes/programmation');
 require('./app/routes/questions');
 require('./app/routes/repos');
@@ -256,11 +257,13 @@ const server = app.listen(PORT, HOST, () => {
   );
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
-  /* La veille de fond : conteneurs tombés, builds Jenkins lancés d'ici et terminés depuis.
-     Une minute — la cadence de ce qu'on surveille, pas celle d'un tableau de bord —, et rien
-     n'est demandé à Jenkins tant qu'aucun lancement n'est attendu. */
-  if (!demoDocker.isDemo()) veille.demarrer({ getConfig, periodeMs: 60000 });
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
+  /* LES PLUGINS, puis le bus : `app.ready` part quand tout — cœur et plugins — est en place.
+     Un plugin qui lève à l'activation est marqué en erreur et le serveur continue. */
+  plugins.demarrer({ log: (m) => console.log(m) })
+    .then((liste) => { const actifs = liste.filter((p) => p.active).map((p) => p.name); if (actifs.length) console.log(`  plugins : ${actifs.join(', ')}`); })
+    .catch((e) => console.log(`[plugins] ${e.message}`))
+    .then(() => events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoMode.isDemo() }).catch(() => {}));
 });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
@@ -270,17 +273,18 @@ module.exports = {
   app,
   server,
   /* Exportée pour les tests : elle ANNOTE des lignes de branches avec ce que la base sait
-     (ticket, verdict, session, job Jenkins). La route complète, elle, parle à la forge et au
+     (ticket, verdict, session). La route complète, elle, parle à la forge et au
      clone — la passer par un faux GitLab pour vérifier trois annotations n'éprouverait que le
      faux GitLab. */
   nommerBranches,
-  close() {
+  async close() {
+    await events.emit('app.shutdown', {}).catch(() => {});
+    await plugins.arreter().catch(() => {});
     planification.arreterAutoRefresh();
     // Un timer oublié garde le process en vie : la suite de tests ne rendrait jamais la main.
     arreterJiraWatch();
     if (retentionTimer) { clearInterval(retentionTimer); retentionTimer = null; }
     if (archiveTimer) { clearInterval(archiveTimer); archiveTimer = null; }
-    veille.arreter();
     // Même raison pour le tic des horaires d'agents.
     agentschedule.arreter();
     jobs.programmation.arreter();

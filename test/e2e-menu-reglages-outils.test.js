@@ -205,7 +205,7 @@ describe('Menu Réglages — apparence, langue, notifications, sauvegarde, tests
   test('Notifications : chaque case et le seuil sont retenus par ce navigateur', async () => {
     await ouvrir('notif');
     const cases = await page.$$eval('#sub-notif [data-notif]', (els) => els.map((e) => [e.dataset.notif, e.checked]));
-    assert.equal(cases.length, 16, 'les seize familles de notifications');
+    assert.equal(cases.length, 14, 'les quatorze familles de notifications du cœur (celles des plugins sont déclarées par eux)');
     // On inverse TOUTES les cases, et on règle le seuil.
     for (const [nom] of cases) await page.locator(`#sub-notif [data-notif="${nom}"]`).click();
     await page.locator('#notifThreshold').fill('3.5');

@@ -10,7 +10,7 @@ const { t } = i18n;
 const notify = require('../../core/notify');
 const notes = require('../../notes/notes');
 const forge = require('../../forge');
-const demoJenkins = require('../../demo/jenkins');
+const demoMode = require('../../demo/mode');
 const diffnum = require('../../git/diffnum');   // A7 : sur quelles lignes un commentaire peut s'accrocher
 const demoComments = require('../../demo/comments');
 const path = require('path');
@@ -150,7 +150,7 @@ app.post('/api/mrs/:id/comment-drafts/send', wrap(async (req, res) => {
   if (!liste.length) throw new Error(t('err.aucun-brouillon'));
   const supprimer = db.prepare('DELETE FROM mr_comment_draft WHERE id = ?');
 
-  if (demoJenkins.isDemo()) {
+  if (demoMode.isDemo()) {
     for (const d of liste) {
       demoComments.post(mr.id, d.body, { new_path: d.new_path, old_path: d.old_path, new_line: d.new_line, old_line: d.old_line });
       supprimer.run(d.id);

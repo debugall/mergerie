@@ -30,7 +30,7 @@ function setupAutoRefreshPolling(minutes) {
   if (m <= 0) return;
   autoRefreshPoll = setInterval(() => {
     loadToReview().catch(() => {});
-    if (currentSeg !== 'to_review') loadReports(currentSeg).catch(() => {});
+    rafraichirApresDecouverte().catch(() => {});   // la liste du stade affiché ET le rapport ouvert
     refreshStatus();
   }, m * 60 * 1000);
 }
@@ -144,6 +144,7 @@ async function decouvrirSiPerime() {
     await api('/discover', { method: 'POST' });
     statutAgent.lastDiscoveryAt = new Date().toISOString();
     if (typeof loadToReview === 'function') loadToReview().catch(() => {});
+    if (typeof rafraichirApresDecouverte === 'function') rafraichirApresDecouverte().catch(() => {});
   } catch { /* la prochaine ouverture réessaiera */ } finally { decouverteEnVol = false; }
 }
 /* ---------- Ce qu'un collègue a changé, à l'écran ----------
@@ -219,12 +220,6 @@ async function refreshStatus() {
     marquerEnCours(s.running ? s.targets : null);
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin
-    /* Cadence Jenkins : relue à chaque état, donc changer le réglage s'applique tout de suite.
-       Absente (vieux serveur) → on garde la valeur en cours plutôt que de couper le sondage. */
-    if (s.jenkinsRefreshMinutes !== undefined) {
-      const ms = Number(s.jenkinsRefreshMinutes) > 0 ? Number(s.jenkinsRefreshMinutes) * 60000 : 0;
-      if (ms !== jkPeriodeMs) { jkPeriodeMs = ms; jkAutoRelance(); }
-    }
     $('#dryBadge').hidden = !s.dryRun;
     const job = s.job;
     const running = s.running;
@@ -270,8 +265,8 @@ async function refreshStatus() {
         // Et le brief, qui compte les MR fraîches et les rapports qui attendent une décision.
         if ($('#tab-notes').classList.contains('active')) loadBrief();
         if ($('#tab-task').classList.contains('active')) loadTasks();
-        // action Docker terminée (up/restart/down…) → recharger la liste pour voir le nouvel état
-        if ($('#tab-docker').classList.contains('active')) loadDocker();
+        // Un job fini intéresse aussi les plugins (une action Docker terminée recharge sa liste) : le bus front le dit.
+        pluginsEvenements.emit('job.finished', { id: job.id, kind: job.kind, status: job.status });
         // `keep` : ne réécrit l'écran que si quelque chose d'affiché a changé.
         if (selectedMr) {
           const rendu = openReport(selectedMr, { keep: true });

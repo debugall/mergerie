@@ -373,17 +373,30 @@ describe('Rattraper la branche de départ', () => {
       iid: 77, title: 'X', state: 'opened', source_branch: 'feature/decouverte',
       target_branch: 'main', web_url: 'http://x/77', sha: 'abc',
       created_at: new Date().toISOString(), author: { name: 'A' },
-      has_conflicts: true,
+      has_conflicts: true, diverged_commits_count: 4,
     }];
     app.state.projects = [{ id: 1, path_with_namespace: 'grp/app', http_url_to_repo: distant }];
     const appels = app.state.calls.length;
     await app.api('POST', '/api/discover');
     assert.equal(app.db.prepare('SELECT mr_conflicts c FROM task_target WHERE id = ?').get(tg.id).c, 1);
+    /* LE RETARD SUR LA CIBLE vient du même détail (`include_diverged_commits_count`) : écrit sur
+       la merge request, rendu par la liste. */
+    const lu = () => (app.db.prepare('SELECT behind_by b FROM mr WHERE repo_id = (SELECT repo_id FROM task_target WHERE id = ?) AND iid = 77').get(tg.id) || {}).b;
+    assert.equal(lu(), 4, 'quatre commits de retard, relevés à la découverte');
+    assert.equal((await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 77).behind_by, 4);
 
     // Et l'inverse se relit aussi : une MR redevenue mergeable éteint le bouton.
     app.state.mrs['grp/app'][0].has_conflicts = false;
+    app.state.mrs['grp/app'][0].diverged_commits_count = 0;
     await app.api('POST', '/api/discover');
     assert.equal(app.db.prepare('SELECT mr_conflicts c FROM task_target WHERE id = ?').get(tg.id).c, 0);
+    assert.equal(lu(), 0, 'rattrapée : zéro, pas « pas encore su »');
+    // La forge qui ne le dit pas laisse la valeur connue, jamais un zéro inventé.
+    app.state.mrs['grp/app'][0].diverged_commits_count = 2;
+    await app.api('POST', '/api/discover');
+    delete app.state.mrs['grp/app'][0].diverged_commits_count;
+    await app.api('POST', '/api/discover');
+    assert.equal(lu(), 2);
     assert.ok(app.state.calls.length > appels, 'la découverte a bien interrogé la forge');
   });
 
@@ -499,6 +512,11 @@ describe('Rattraper la branche de départ', () => {
         const id = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 88).id;
         return (await app.api('GET', `/api/mrs/${id}/merge-check`)).body.has_conflicts === false;
       }, 'la forge ne signale plus de conflit');
+      /* La modale relève aussi le retard : GitLab le rend avec le détail déjà lu. */
+      app.state.mrs['grp/app'][0].diverged_commits_count = 5;
+      const id88 = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 88).id;
+      assert.equal((await app.api('GET', `/api/mrs/${id88}/merge-check`)).body.behind_by, 5);
+      assert.equal(app.db.prepare('SELECT behind_by b FROM mr WHERE id = ?').get(id88).b, 5, 'écrit sur la merge request');
       assert.equal(await page.locator('#mergeConflictNote').isVisible(), false);
       assert.equal(await page.locator('#mergeRebase').isVisible(), false);
       await page.locator('#mergeCancel').click();

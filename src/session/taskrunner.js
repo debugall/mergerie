@@ -14,6 +14,8 @@ const protocolesecret = require('../core/protocolesecret');
 const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
+const specTicket = require('./spec');
+const jiraspec = require('../integrations/jiraspec');
 const { avecConsignes } = require('../core/prompts');
 const agentpass = require('../agent/pass');
 const protocol = require('../agent/protocol');
@@ -638,7 +640,11 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     agentpass.attacherDiff('task', task.id, tg.id, passeN, { baseSha: shaDepart, headSha: sha, diff: dePasse });
   }
 
-  const pushCommand = `git push -u origin ${tg.branch}`;
+  /* Une cible marquée « push forcé » (créée pour réécrire l'historique, ou rattrapée depuis)
+     montre la commande qui passera vraiment : un `git push -u` affiché puis refusé enverrait
+     chercher comment forcer, alors que le bouton le fera de lui-même. */
+  const forcerPush = !!(db.prepare('SELECT force_push FROM task_target WHERE id = ?').get(tg.id) || {}).force_push;
+  const pushCommand = forcerPush ? `git push --force-with-lease origin ${tg.branch}` : `git push -u origin ${tg.branch}`;
   setTarget(tg.id, {
     base_branch: base, commit_sha: sha, diff_path: dpath, push_command: pushCommand,
     last_error: null, status: 'committed', questions_json: null, // questions soldées
@@ -772,7 +778,7 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
      qu'elle n'a pas — les autres dépôts, ce qui vient d'être mergé, la connaissance d'un agent
      de domaine — vit à la RACINE des clones, qui n'appartient à aucun dépôt. Rien n'est écrit
      pour une session sans agent. */
-  const entrees = apres.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
+  const entrees = await apres.ecrireEntrees(task, root, dirs.map((d) => ({ repo_id: d.repo_id, project: d.project })));
   const blocEntrees = apres.blocEntrees(task, entrees);
   const listing = dirs.map((d) => `- \`${d.dir}/\` → projet **${d.project}**, branche \`${d.branch}\``).join('\n');
 
@@ -866,6 +872,16 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
          n'apparaître nulle part — carte à « — tokens », footer de télémétrie muet, démo qui
          montre un écran vide de la seule mesure qu'il porte. L'estimation ne demande aucune
          IA : le prompt est vrai, la sortie est celle du décor. */
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
+    } else if (copilot.isDryRun() && specTicket.specDeTache(task.id) && (apresReponses || previous || !task.ask_questions)) {
+      /* DRY-RUN + SPEC DE TICKET : la sortie est un bloc <<<SPEC>>> complet au nonce que le
+         prompt demande — c'est ce qu'exerce la chaîne entière (job → extraction → version →
+         commentaire) sans binaire d'IA. Le mock générique rendrait un rapport de revue. Avant
+         la branche des questions : un SUIVI de spec ne repose pas ses questions, il réécrit. */
+      const sp = specTicket.specDeTache(task.id);
+      onLog('$ (DRY-RUN — proposition de spec simulée)');
+      stdout = jiraspec.sortieDryRun(sp.nonce, sp.ticket_key);
+      fs.writeFileSync(outAbs, stdout, 'utf8');
       copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {
       /* Dry-run, première passe : l'agent simule ses questions au lieu de répondre — et il les

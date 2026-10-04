@@ -7,13 +7,14 @@
  * millisecondes — trop vite pour observer « en cours », et parier sur sa durée serait parier
  * sur la vitesse de la machine.
  *
- * On passe donc par la seule saveur de job qui exécute une commande qu'on écrit soi-même : une
- * cible `make` à côté d'un fichier compose (job « docker », `op: make`). Chaque cible `porte-*`
+ * On passe donc par un job qui exécute une commande qu'on écrit soi-même : une cible `make`, lancée
+ * par un plugin de test (`fixtures/plugins/jobs-pilotables`, par `ctx.jobs` — le même chemin que le
+ * plugin Docker : file du cœur, journal, Stop). Chaque cible `porte-*`
  * attend un FEU VERT — un fichier que le test pose — au lieu d'un délai : le job dure exactement
  * le temps que le test décide, sur un runner lent comme sur une machine rapide. Un plafond de
  * deux minutes l'empêche de survivre à un test qui aurait oublié de le libérer.
  *
- * Un job docker ne touche aucun dépôt : il peut tourner à côté de n'importe quel autre, ce qui
+ * Un job de plugin ne touche aucun dépôt : il peut tourner à côté de n'importe quel autre, ce qui
  * rend la voie parallèle (« Lancer en parallèle ») exerçable sans conflit.
  *
  * Aucun module de `src/` n'est chargé ici : ce helper peut être requis en tête de fichier. */
@@ -50,22 +51,22 @@ const MAKEFILE = [
   '',
 ].join('\n');
 
-/* Crée le chantier (un compose + ce Makefile) sous `racine` et l'enregistre comme répertoire
-   local : c'est ce que le serveur exige avant d'exécuter une cible make. */
+/* Crée le chantier (ce Makefile) sous `racine`, et installe + active le plugin qui lance ses cibles. */
 async function preparerChantier(app, racine) {
   const dir = path.join(racine, 'chantier');
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'compose.yaml'), 'name: chantier\nservices: {}\n');
   fs.writeFileSync(path.join(dir, 'Makefile'), MAKEFILE);
-  const r = await app.api('POST', '/api/local-roots', { path: racine });
-  if (r.status !== 200) throw new Error(`répertoire local refusé : ${r.status} ${r.text}`);
+  const inst = await app.api('POST', '/api/plugins/install', { path: path.join(__dirname, '..', 'fixtures', 'plugins', 'jobs-pilotables') });
+  if (inst.status !== 200) throw new Error(`plugin de test refusé : ${inst.status} ${inst.text}`);
+  const act = await app.api('POST', '/api/plugins/jobs-pilotables/enable');
+  if (!act.body || !act.body.ok) throw new Error(`plugin de test non activé : ${act.text}`);
 
   return {
     dir,
     // Lance une cible (le feu vert d'une exécution précédente est retiré d'abord).
     async lancer(cible) {
       try { fs.rmSync(path.join(dir, `.feu-${cible}`)); } catch { /* absent */ }
-      const res = await app.api('POST', '/api/docker/make/run', { dir, target: cible });
+      const res = await app.api('POST', '/api/plugins/jobs-pilotables/lancer', { dir, target: cible });
       if (res.status !== 200 || !res.body || !res.body.id) throw new Error(`lancement de ${cible} refusé : ${res.status} ${res.text}`);
       return res.body.id;
     },

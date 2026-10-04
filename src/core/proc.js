@@ -96,4 +96,9 @@ function tuerTout(signal = 'SIGTERM') {
 // un contexte ambiant annulé ferait échouer à tort les opérations git lancées d'un écran.
 function reset() { ambient.cancelled = false; ambient.activeChild = null; }
 
-module.exports = { run, setActive, clearActive, isCancelled, cancel, reset, options, suivre, tuerGroupe, tuerTout };
+/* Le contexte d'annulation du job courant, et de quoi y RENTRER : un travail qui arrive d'ailleurs (le relais d'un plugin tiers, dont les
+   opérations passent par un message) lance ses processus « dans » le job, et c'est son Stop qui les tue. */
+const courant = () => ctx();
+const dans = (c, fn) => als.run(c, fn);
+
+module.exports = { courant, dans, run, setActive, clearActive, isCancelled, cancel, reset, options, suivre, tuerGroupe, tuerTout };

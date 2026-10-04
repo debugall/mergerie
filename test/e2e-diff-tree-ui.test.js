@@ -80,6 +80,31 @@ describe('Explorateur de code — l’arbre ne se referme pas sous les doigts', 
     if (app) await app.stop();
   });
 
+  test('les trois panneaux se masquent chacun, le code aussi, et le dernier reste', async () => {
+    const corps = page.locator('#splitView .code-body');
+    const largeur = async (sel) => page.locator(sel).evaluate((el) => el.getBoundingClientRect().width);
+    const rapportAvant = await largeur('#reportPane');
+    // Masquer le code : le rapport gagne en largeur, le fichier disparaît.
+    await page.locator('#codeToggle').click();
+    await page.waitForSelector('#splitView .code-body.no-code');
+    assert.equal(await page.locator('#filePane').isVisible(), false);
+    assert.ok(await largeur('#reportPane') > rapportAvant, 'le rapport prend la place du code');
+    assert.ok(await page.locator('#codeToggle').evaluate((b) => b.classList.contains('off')));
+    // Masquer aussi l'arbre : le rapport seul, toute la largeur.
+    await page.locator('#treeToggle').click();
+    await page.waitForSelector('#splitView .code-body.no-code.no-tree');
+    assert.equal(await page.locator('#treePane').isVisible(), false);
+    // Le dernier panneau refuse de partir : le rapport reste, le bouton ne bascule pas.
+    await page.locator('#reportToggle').click();
+    assert.equal(await corps.evaluate((el) => el.classList.contains('no-report')), false);
+    assert.equal(await page.locator('#reportPane').isVisible(), true);
+    // Retour : tout se réaffiche.
+    await page.locator('#treeToggle').click();
+    await page.locator('#codeToggle').click();
+    await page.waitForSelector('#splitView .code-body:not(.no-code):not(.no-tree)');
+    assert.equal(await page.locator('#filePane').isVisible(), true);
+  });
+
   test('un dossier ouvert à la main le reste quand on clique un de ses fichiers', async () => {
     await page.waitForSelector('#treeList details.tree-folder[data-dir="docs"]');
     assert.equal(await ouvert('docs'), false, 'sans changement, il est replié au départ — c’est la règle voulue');

@@ -173,7 +173,7 @@ $('#jiraWatchCheck') && $('#jiraWatchCheck').addEventListener('click', (e) => bu
 }));
 
 // Bouton « Surveiller » du détail d'un ticket : bascule, puis redessine l'en-tête.
-/* Le détail vit dans deux panneaux (Mes tickets · Surveillés) et porte les mêmes actions.
+/* Le détail vit dans trois panneaux (Mes tickets · Surveillés · Analysés) et porte les mêmes actions.
    On câble donc chaque gestionnaire SUR LES DEUX, une fois pour toutes : dupliquer les
    écouteurs par sous-onglet, c'est se garantir qu'une action marchera d'un côté seulement. */
 function surLeDetailJira(type, handler) {
@@ -181,7 +181,7 @@ function surLeDetailJira(type, handler) {
      la distribution de l'événement, et relu après une requête il valait toujours null — toute
      action passait pour venir de « Mes tickets ». */
   $$('.js-jira-detail').forEach((el) => el.addEventListener(type, (e) => {
-    e.panneauJira = el.id === 'jiraWatchDetail' ? 'watch' : 'mine';
+    e.panneauJira = el.id === 'jiraWatchDetail' ? 'watch' : el.id === 'jiraAnalysedDetail' ? 'analysed' : 'mine';
     return handler(e);
   }));
 }
@@ -204,7 +204,9 @@ function showJiraSub(sub) {
   $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.classList.toggle('active', b.dataset.jsub === sub));
   $('#jiraSubMine').hidden = sub !== 'mine';
   $('#jiraSubWatch').hidden = sub !== 'watch';
+  $('#jiraSubAnalysed').hidden = sub !== 'analysed';
   if (sub === 'watch') loadJiraWatch();
+  if (sub === 'analysed') chargerAnalyses();
 }
 $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.addEventListener('click', () => showJiraSub(b.dataset.jsub)));
 
@@ -311,7 +313,7 @@ surLeDetailJira('change', async (e) => {
   /* A/Jira 2 (C9) — CHANGER L'ÉTAT D'UN TICKET EST UNE ÉCRITURE CHEZ LES AUTRES, et c'était
      la seule de l'outil sans confirmation : un `<select>` natif applique au `change`, donc
      une flèche du clavier suffisait à faire passer PROJ-1408 en « Terminé » devant toute
-     l'équipe. Le lancement Jenkins, la publication d'un rapport et « Prévenir Jira »
+     l'équipe. Le lancement d'un job de CI, la publication d'un rapport et « Prévenir Jira »
      demandent tous ; celui-ci demande aussi, et NOMME le ticket et l'état visé. */
   const versEtat = (sel.options[sel.selectedIndex] || {}).textContent || '';
   if (!await confirmDialog({

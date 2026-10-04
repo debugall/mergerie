@@ -1,0 +1,11 @@
+{
+  "name": "ui-cibles",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "UI cibles",
+  "description": "Pose une décoration sur la ligne d'un dépôt (repo-row) et sur la fenêtre de lancement d'une vérification (verify-launch), écoute job.finished, inscrit un job : prouve ce que le cœur rend aux plugins pour ces cibles.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["ui.actions", "jobs", "http"],
+  "ui": { "scripts": ["ui/main.js"] }
+}

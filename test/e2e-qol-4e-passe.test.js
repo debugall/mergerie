@@ -34,7 +34,7 @@ describe('Qualité de vie · 4ᵉ passe', () => {
      au milieu de libellés en clair. Un libellé manquant se voit ici, pas à l'écran. */
   test('toutes les saveurs de job et d’appel ont un libellé, dans les deux langues', () => {
     const rt = require('../public/runtime/i18n-runtime.js');
-    const jobs = ['review', 'rereview', 'modify', 'explain', 'task', 'local', 'gitops', 'docker',
+    const jobs = ['review', 'rereview', 'modify', 'explain', 'task', 'local', 'gitops',
       'converge', 'verify', 'ask', 'ask-review', 'reconcile'];
     const appels = ['review', 'explain', 'modify', 'task', 'explore', 'ask', 'question'];
     for (const lang of ['fr', 'en']) {
@@ -106,14 +106,6 @@ describe('Qualité de vie · 4ᵉ passe', () => {
     assert.equal(j.can_retry, false);
     assert.ok(j.no_retry_reason, 'la raison est donnée');
     assert.ok(!/^job\./.test(j.no_retry_reason), `clé brute : ${j.no_retry_reason}`);
-  });
-
-  /* C25 — les noms de conteneurs servent à filtrer les liens (routes/links.js).
-     On ne sonde pas Docker pour autant : on lit ce que le badge de santé a déjà vu. */
-  test('les noms de conteneurs déjà vus se lisent sans sonder Docker', () => {
-    const docker = require('../src/integrations/docker');
-    assert.deepEqual(docker.nomsConnus(), [], 'rien tant que Docker n’a pas été regardé');
-    assert.doesNotThrow(() => docker.nomsConnus());
   });
 
   describe('à l’écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
@@ -213,12 +205,12 @@ describe('Qualité de vie · 4ᵉ passe', () => {
        de l'écran ne prouve rien), puis décocher et relire. */
     test('une case des réglages s’enregistre, et se décoche aussi', async () => {
       await page.locator('nav button[data-tab="admin"]').click();
-      await page.locator('#tab-admin .subnav [data-sub="config"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="aisession"]').click();
       const caseAsk = page.locator('#configForm [name="task_default_ask_questions"], [form="configForm"][name="task_default_ask_questions"]').first();
       await caseAsk.waitFor({ state: 'visible' });
 
       await caseAsk.click();
-      await page.locator('#sub-config button[type="submit"][form="configForm"]').first().click();
+      await page.locator('#sub-aisession button[type="submit"][form="configForm"]').first().click();
       /* `String(...)` : la colonne est un INTEGER, l'API rend donc 1 et non '1' — c'est
          exactement le piège qui faisait revenir la case décochée. */
       await attendreServeur(async () => String((await app.api('GET', '/api/config')).body.task_default_ask_questions) === '1',
@@ -227,14 +219,14 @@ describe('Qualité de vie · 4ᵉ passe', () => {
       // …et l'écran la montre cochée après un rechargement complet : c'est ce que voit l'utilisateur.
       await page.reload();
       await page.locator('nav button[data-tab="admin"]').click();
-      await page.locator('#tab-admin .subnav [data-sub="config"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="aisession"]').click();
       await page.waitForFunction(() => {
         const el = document.querySelector('#configForm') && document.querySelector('#configForm').task_default_ask_questions;
         return el && el.checked;
       });
 
       await caseAsk.click();
-      await page.locator('#sub-config button[type="submit"][form="configForm"]').first().click();
+      await page.locator('#sub-aisession button[type="submit"][form="configForm"]').first().click();
       await attendreServeur(async () => String((await app.api('GET', '/api/config')).body.task_default_ask_questions) === '0',
         'et décochée, comme « 0 » — pas « on » dans les deux cas');
     });

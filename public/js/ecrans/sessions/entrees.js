@@ -1,6 +1,6 @@
 'use strict';
 /* Les portes d'entrée de la modale : faire coder à partir de cette réponse (B9), d'une question (B18), d'un ticket, d'une page de notes ; dupliquer. */
-// @expose openTaskForJira, openTaskForNote
+// @expose openTaskForJira, openTaskForNote, openTaskForSpec
 /* ---------- B9 : « Faire coder à partir de cette réponse » ----------
    L'exploration a lu trois dépôts et répondu. Le codage qui suit part des MÊMES dépôts, avec
    la question et la réponse en contexte, et surtout DANS LA SESSION D'AGENT de l'exploration :
@@ -222,6 +222,34 @@ async function openTaskForJira(key) {
   showTaskModal();
   f.prompt.focus();
   // Curseur après le bloc de contexte : on écrit SA demande, pas au milieu du ticket.
+  const end = f.prompt.value.length;
+  try { f.prompt.setSelectionRange(end, end); } catch { /* champ non focusable */ }
+}
+
+/* UNE SESSION DEPUIS LA PRÉCISION TECHNIQUE D'UN TICKET : les cibles sont les dépôts de la
+   spec, la consigne est la proposition validée — la boucle ticket → spec → session → MR. */
+async function openTaskForSpec(pre) {
+  const f = $('#taskForm');
+  f.reset(); resetTaskFiles();
+  editingTaskId = null; taskKind = 'code';
+  launchAfterCreate = false;
+  await loadRepoOptions();
+  applyKindToModal('code');
+  const branch = pre.branch_hint || `feature/${pre.key}`;
+  // La branche lue pour l'analyse est celle où se trouve le code décrit : la session de code en part (branche de départ), sauf si on n'en avait pas choisi.
+  renderTargetRows((pre.repos || []).map((r) => ({ repo_id: r.id, branch, base_branch: r.base_branch || '' })));
+  renderCtxRepoRows([]);
+  setupTaskJira(branch);
+  f.prompt.value = `${pre.prompt || ''}\n\n---\n\n`;
+  if (f.commit_message) f.commit_message.value = `${pre.key} `;
+  cleJiraDeLaSession = pre.key;
+  await majVerificateursSession('');
+  await appliquerDefautsSession(f);
+  $('#taskModalTitle').textContent = tr('jira.code-modal-title', { key: pre.key });
+  $('#taskExistingImgs').textContent = '';
+  boutonsCreation();
+  showTaskModal();
+  f.prompt.focus();
   const end = f.prompt.value.length;
   try { f.prompt.setSelectionRange(end, end); } catch { /* champ non focusable */ }
 }

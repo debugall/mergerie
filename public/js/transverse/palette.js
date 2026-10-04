@@ -20,8 +20,6 @@ const PALETTE_ACTIONS = [
   { key: 'palette.go.pages', tab: 'notes', run: () => { navTab('notes'); showNotesSub('pages'); } },
   { key: 'palette.go.jira', tab: 'jira', run: () => $('nav button[data-tab="jira"]').click() },
   { key: 'palette.go.git', tab: 'git', run: () => $('nav button[data-tab="git"]').click() },
-  { key: 'palette.go.docker', tab: 'docker', run: () => $('nav button[data-tab="docker"]').click() },
-  { key: 'palette.go.jenkins', tab: 'jenkins', run: () => $('nav button[data-tab="jenkins"]').click() },
   { key: 'palette.go.stats', tab: 'dashboard', run: () => $('nav button[data-tab="dashboard"]').click() },
   { key: 'palette.go.agents', tab: 'agents', run: () => $('nav button[data-tab="agents"]').click() },
   { key: 'palette.go.settings', run: () => $('nav button[data-tab="admin"]').click() },
@@ -46,8 +44,12 @@ let paletteSeq = 0;
 /* Un menu masqué ne s'ouvre pas non plus par la palette : masquer, c'est dire « je ne me sers
    pas de ça » — proposer quand même l'entrée ouvrirait un écran sans entrée de menu, donc sans
    moyen évident d'y revenir. L'index reste celui de PALETTE_ACTIONS : c'est lui qui exécute. */
-const paletteActions = () => PALETTE_ACTIONS
-  .map((a, i) => ({ id: `act:${i}`, label: tr(a.key), tab: a.tab }))
+/* Les actions du cœur, puis celles que les plugins ont enregistrées (`mergerie.ui.registerPaletteAction`) :
+   un seul tableau, un seul index. */
+const actionsPalette = () => [...PALETTE_ACTIONS, ...pluginsPaletteActions()];
+const libelleAction = (a) => (a.key ? tr(a.key) : a.label);
+const paletteActions = () => actionsPalette()
+  .map((a, i) => ({ id: `act:${i}`, label: libelleAction(a), tab: a.tab }))
   .filter((a) => !a.tab || !navMasque(a.tab))
   .map(({ id, label }) => ({ id, label }));
 
@@ -83,25 +85,26 @@ async function paletteChercher(q) {
    Dans les deux cas on note l'usage — c'est ce qui fait remonter demain ce qu'on ouvre
    aujourd'hui. */
 function ouvrirResultatPalette(r) {
-  api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
+  /* La frécence du cœur ne compte que SES résultats : un résultat de plugin (`nav.plugin`) tient la sienne, au moment où le plugin l'ouvre. */
+  if (!(r.nav && r.nav.plugin)) api('/launcher/used', { method: 'POST', body: { kind: r.kind, ref: r.ref } }).catch(() => {});
   if (r.url) { window.open(safeUrl(r.url), '_blank', 'noopener,noreferrer'); return; }
   if (r.action) {
     const i = Number(String(r.action).split(':')[1]);
-    const a = PALETTE_ACTIONS[i];
+    const a = actionsPalette()[i];
     if (a) a.run();
     return;
   }
+  // Un résultat d'un fournisseur de plugin : le plugin sait l'ouvrir.
+  if (pluginsOuvrirResultatPalette(r)) return;
   /* UN AGENT : on ouvre sa carte et on clique SON bouton, plutôt que de refaire le geste ici.
      La palette ne sait rien faire que l'écran ne sache déjà faire — c'est ce qui garantit
      qu'elle ne se met pas à diverger de lui. */
   if (r.kind === 'agent' || r.kind === 'agent-investigate') { lancerAgentDepuisPalette(r); return; }
   const n = r.nav || {};
   /* B13/TOP 12 — LES QUATRE GESTES. Chacun ouvre l'écran qui sait le faire et y pose ce qu'on
-     vient de désigner ; aucun ne lance quoi que ce soit tout seul — un job Jenkins et une
+     vient de désigner ; aucun ne lance quoi que ce soit tout seul — un job de CI et une
      commande git se lancent en connaissance de cause, pas au clavier depuis une liste. */
   if (n.verifier_id) { ouvrirVerifBranche(Number(n.verifier_id)); return; }
-  if (n.jenkins_path) { navTab('jenkins'); loadJenkins().then(() => openJenkinsJob(n.jenkins_path)); return; }
-  if (n.compose) { navTab('docker'); showDockerSub('compose'); return; }
   if (n.git_command) {
     navTab('git'); showGitSub('commands');
     const champ = $('#cmdInput');
@@ -120,8 +123,8 @@ function ouvrirResultatPalette(r) {
 
 // Conservé pour les tests hors ligne et l'ouverture instantanée : les actions locales.
 function paletteMatches(q) {
-  const out = PALETTE_ACTIONS.filter((a) => tr(a.key).toLowerCase().includes(q))
-    .map((a) => ({ label: tr(a.key), kind: tr('palette.kind.action'), group: 'nav', run: a.run }));
+  const out = actionsPalette().filter((a) => libelleAction(a).toLowerCase().includes(q))
+    .map((a) => ({ label: libelleAction(a), kind: tr('palette.kind.action'), group: 'nav', run: a.run }));
   if (q.length >= 2) {
     for (const m of [...toReviewRows, ...reportRows]) {
       if (!matchMr(m, q)) continue;

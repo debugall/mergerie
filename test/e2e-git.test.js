@@ -93,6 +93,50 @@ describe('Opérations Git de bout en bout', () => {
     await app.api('DELETE', `/api/repos/${r2.id}`); // ne pas polluer les tests suivants
   });
 
+  test('GET /api/git/tags-period liste les tags posés entre deux jours, tous dépôts confondus', async () => {
+    // Un tag annoté dont la forge donne la date de CRÉATION (created_at), distincte de celle
+    // du commit pointé : c'est la création qui compte pour « posé cette semaine ».
+    app.state.tags['grp/app'].push({ name: 'v1.1.0', target: 'tagobj2', message: 'Release 1.1\n\nDétails', created_at: '2026-03-05T09:00:00Z',
+      commit: { id: repo.mainSha, committed_date: '2026-02-20T00:00:00Z', author_name: 'Alice' } });
+    try {
+      const janv = (await app.api('GET', '/api/git/tags-period?from=2026-01-01&to=2026-01-31')).body;
+      assert.equal(janv.from, '2026-01-01');
+      const app1 = janv.repos.find((r) => r.project === 'grp/app');
+      assert.deepEqual(app1.tags.map((x) => x.name), ['v1.0.0']);
+      assert.match(app1.tags[0].url, /\/-\/tags\/v1\.0\.0$/);
+      assert.equal(app1.error, null);
+
+      const mars = (await app.api('GET', '/api/git/tags-period?from=2026-03-01&to=2026-03-31')).body;
+      const app2 = mars.repos.find((r) => r.project === 'grp/app');
+      assert.deepEqual(app2.tags.map((x) => x.name), ['v1.1.0'], 'la date de création prime sur celle du commit');
+      assert.equal(app2.tags[0].message, 'Release 1.1', 'la première ligne du message seulement');
+
+      // Bornes inclusives au jour : le 10 janvier retient un tag du 10 janvier.
+      const jour = (await app.api('GET', '/api/git/tags-period?from=2026-01-10&to=2026-01-10')).body;
+      assert.deepEqual(jour.repos.find((r) => r.project === 'grp/app').tags.map((x) => x.name), ['v1.0.0']);
+      // Hors période : rien, mais le dépôt est bien là.
+      const vide = (await app.api('GET', '/api/git/tags-period?from=2025-01-01&to=2025-12-31')).body;
+      assert.equal(vide.repos.find((r) => r.project === 'grp/app').tags.length, 0);
+
+      // Paramètres : les deux dates, au format jour, dans l'ordre.
+      assert.equal((await app.api('GET', '/api/git/tags-period?from=2026-01-01')).status, 400);
+      assert.equal((await app.api('GET', '/api/git/tags-period?from=01/01/2026&to=2026-01-31')).status, 400);
+      assert.equal((await app.api('GET', '/api/git/tags-period?from=2026-02-01&to=2026-01-01')).status, 400);
+    } finally {
+      app.state.tags['grp/app'] = app.state.tags['grp/app'].filter((x) => x.name !== 'v1.1.0');
+    }
+  });
+
+  test('git.tagDates date chaque tag du clone : le tagger pour un annoté, le commit pour un léger', async () => {
+    // v-annot et v-light ont été posés sur repo.work par le test de tag-author.
+    const git = require('../src/git/git');
+    const dates = await git.tagDates(repo.work);
+    assert.ok(dates.has('v-annot') && dates.has('v-light'));
+    assert.match(dates.get('v-annot').date, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(dates.get('v-annot').message, 'release annotée');
+    assert.match(dates.get('v-light').date, /^\d{4}-\d{2}-\d{2}T/);
+  });
+
   test('GET /api/git/refs marque la branche par défaut et les refs protégées', async () => {
     const branches = await app.api('GET', `/api/git/refs?repo_id=${repoId}`);
     assert.equal(branches.body.kind, 'branches');

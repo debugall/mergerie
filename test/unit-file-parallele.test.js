@@ -15,7 +15,8 @@ const file = require('../src/jobs/file');
 const ordo = require('../src/jobs/ordonnanceur');
 
 const gitops = (jobId, repoId, opts = {}) => ({ jobId, kind: 'gitops', payload: { targets: [{ repo_id: repoId }] }, opts });
-const docker = (jobId, opts = {}) => ({ jobId, kind: 'docker', payload: {}, opts });
+/* Un job de plugin (celui du plugin Docker, ici) ne touche aucun dépôt : jamais en conflit. */
+const docker = (jobId, opts = {}) => ({ jobId, kind: 'plugin:docker', payload: {}, opts });
 
 describe('File de jobs · parallélisme automatique', () => {
   after(() => { file.queue.splice(0); file.active.clear(); });

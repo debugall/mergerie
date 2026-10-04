@@ -4,7 +4,7 @@
  * Deux frontières, éprouvées entre DEUX VRAIS POSTES (ce serveur piloté par l'écran, et Claire,
  * seconde instance de Mergerie en processus enfant — `helpers/synchro-collegue`) :
  *
- * 1. CE QUI NE QUITTE PAS CE POSTE. Les jetons saisis À L'ÉCRAN (GitLab, GitHub, Jira, Jenkins),
+ * 1. CE QUI NE QUITTE PAS CE POSTE. Les jetons saisis À L'ÉCRAN (GitLab, GitHub, Jira) et ceux d'un plugin (Jenkins, chez lui, a les siens),
  *    l'e-mail et l'utilisateur de connexion, les VALEURS d'environnement d'un
  *    vérificateur, les chemins de ce disque (dossier de clonage, dossier d'une session hors
  *    dépôt), les poignées de session d'agent. On ne regarde pas un libellé : on fouille TOUT
@@ -40,8 +40,8 @@ const SECRETS = {
   github_token: 'ghp-FUITE-ECRAN-GITHUB',
   jira_email: 'fuite-jira@poste.test',
   jira_token: 'ATATT-FUITE-ECRAN-JIRA',
-  jenkins_user: 'fuite-jenkins-utilisateur',
-  jenkins_token: 'jk-FUITE-ECRAN-JENKINS',
+  plugin_url: 'https://fuite-plugin.equipe.test',
+  plugin_token: 'pl-FUITE-ECRAN-PLUGIN',
   env: 'postgres://FUITE-VERIF@db.interne/app',
   session_key: 'SESSION-FUITE-POIGNEE',
 };
@@ -74,7 +74,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
-    await afficherMenusOptionnels(page);   // le sous-onglet Jenkins suit son menu, replié d'office
+    await afficherMenusOptionnels(page);   // le sous-onglet d'un plugin suit son menu, replié d'office
     page.on('pageerror', (e) => erreurs.push(e.message));
     await page.goto(app.base);
     await page.waitForSelector('nav button[data-tab="admin"]');
@@ -116,8 +116,11 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       ['gitcfg', { access_token: SECRETS.access_token, github_url: 'https://github.equipe.test', github_token: SECRETS.github_token,
         clone_path: path.join(app.dataDir, 'CLONES-DE-CE-POSTE') }],
       ['jiracfg', { jira_url: 'https://jira.equipe.test', jira_email: SECRETS.jira_email, jira_token: SECRETS.jira_token }],
-      ['jenkinscfg', { jenkins_url: 'https://jenkins.equipe.test', jenkins_user: SECRETS.jenkins_user, jenkins_token: SECRETS.jenkins_token }],
     ];
+    // Un plugin (ici une doublure) a ses réglages et son jeton dans les tables de plugin, de poste elles aussi.
+    assert.equal((await app.api('POST', '/api/plugins/install', { path: path.join(__dirname, 'fixtures', 'plugins', 'hello-fixture') })).status, 200);
+    assert.equal((await app.api('POST', '/api/plugins/hello-fixture/enable')).body.ok, true);
+    assert.equal((await app.api('PUT', '/api/plugins/hello-fixture/settings', { url: SECRETS.plugin_url, token: SECRETS.plugin_token })).status, 200);
     for (const [sub, champs] of groupes) {
       await ouvrirReglages(sub);
       for (const [nom, v] of Object.entries(champs)) {
@@ -182,7 +185,7 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       assert.ok(!histoire.includes(chemin), `un chemin de ce disque a fui dans le dépôt : ${chemin}`);
     }
     const reglages = JSON.parse(gitNu('show', 'main:settings.json'));
-    for (const cle of ['access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token',
+    for (const cle of ['access_token', 'github_token', 'jira_email', 'jira_token', 'jenkins_user', 'jenkins_token', 'token',
       'clone_path', 'data_repo_url', 'data_repo_branch', 'data_sync_seconds']) {
       assert.ok(!(cle in reglages), `settings.json ne porte pas « ${cle} »`);
     }
@@ -247,6 +250,24 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
     assert.match(await carte.locator('.approval-box').innerText(), /\+ npm run lint/, 'ce qui change est montré comme tel');
 
     // …pendant que la synchro apporte ENCORE autre chose, sans redessiner l'écran.
+    /* L'ÉCRAN PÉRIMÉ EST UNE MISE EN SCÈNE : l'application, elle, relit `/api/status` toutes
+       les cinq secondes et redessine le sous-onglet ouvert dès que la version des données
+       bouge — c'est la synchro qui « arrive à l'écran ». Sur un runner lent, la synchro de
+       Claire et la nôtre durent plus qu'un cycle : le sondage passait entre les deux, la liste
+       se redessinait avec la nouvelle signature, et le clic approuvait la version à jour —
+       aucun refus, aucun toast. On cache la version des données au sondage le temps de la
+       scène, pour que l'écran reste ce qu'il montre : la version à trois commandes. */
+    /* UN SONDAGE EN VOL AU MOMENT DE `unroute` (ou de la fermeture de la page) : son `route.fetch()` revient APRÈS, et `route.fulfill()` lève « Route is already
+       handled! » — une rejection que rien n'attend, que Node attribue au `before` du fichier et qui fait échouer tout le fichier sur un runner lent. La réponse
+       n'a plus de destinataire : on l'abandonne sans bruit. */
+    await page.route('**/api/status', async (route) => {
+      try {
+        const rep = await route.fetch();
+        const corps = await rep.json();
+        delete corps.dataVersion;
+        await route.fulfill({ response: rep, json: corps });
+      } catch { /* la route a été retirée ou la page fermée pendant le fetch */ }
+    });
     await claire.api('PUT', `/api/verifiers/${chezElle.id}`, { ...chezElle, commands: ['npm ci', 'npm test', 'npm run lint', 'node scripts/telecharge-et-lance.js'], repos: [] });
     await claire.synchroniser();
     await app.api('POST', '/api/data-sync/now');
@@ -254,10 +275,12 @@ describe('Données partagées · ce qui ne part jamais, ce qui n’entre pas san
       .find((x) => x.id === recu.id).commands.length === 4, 'la dernière version de Claire est arrivée');
 
     await oublierToasts();
+    assert.doesNotMatch(await carte.locator('.approval-box').innerText(), /telecharge-et-lance/, 'l’écran montre toujours la version à trois commandes');
     await carte.locator(`[data-vapprove="${recu.id}"]`).click();
     await page.locator('.toast.err', { hasText: /a changé depuis/ }).first().waitFor();
     assert.equal((await app.api('GET', '/api/verifiers')).body.find((x) => x.id === recu.id).approval_pending, true,
       'la version jamais montrée n’est pas approuvée');
+    await page.unroute('**/api/status', { behavior: 'ignoreErrors' });   // les sondages encore en vol finissent sans erreur
 
     // L'écran se redessine avec ce qui est arrivé : c'est CELA qu'on approuve.
     await page.waitForFunction((id) => /node scripts\/telecharge-et-lance\.js/.test(

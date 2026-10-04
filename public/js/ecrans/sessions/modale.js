@@ -4,6 +4,9 @@
 /* ---- Modale ---- */
 let editingTaskId = null;
 let launchAfterCreate = false;
+/* La session à créer réécrira l'historique de sa branche (mise à jour d'une merge request en
+   conflit) : « Pousser » devra forcer. Posé par l'ouverture qui le sait, lu à la création. */
+let forcePushCreation = false;
 
 /* La case « partager » du formulaire de session : montrée seulement en mode partagé, et jamais
    remplie d'office. `partageActif()` lit `/api/whoami` une fois pour toute la page. */
@@ -252,7 +255,7 @@ document.addEventListener('click', (e) => {
 });
 
 async function openTaskModal(kind = taskKind) {
-  editingTaskId = null; launchAfterCreate = false; cleJiraDeLaSession = null;
+  editingTaskId = null; launchAfterCreate = false; cleJiraDeLaSession = null; forcePushCreation = false;
   /* A18 — un essai n'est valable que pour LA session qu'on ouvre : sans cet oubli, la suivante
      repartirait avec un profil que personne n'a redemandé (le piège des skills cochés, §5.6). */
   essaiAgent = null;
@@ -296,7 +299,7 @@ function showTaskModal() {
 async function openTaskForMr(m, opts = {}) {
   const f = $('#taskForm');
   f.reset(); resetTaskFiles();
-  editingTaskId = null; taskKind = 'code';
+  editingTaskId = null; taskKind = 'code'; forcePushCreation = !!opts.forcePush;
   await loadRepoOptions();
   applyKindToModal('code');
   // branche de travail = la branche de la MR ; départ = sa branche cible
@@ -321,8 +324,11 @@ async function openTaskForMr(m, opts = {}) {
      « Nouvelle session » et « depuis une note » : depuis une merge request ou un ticket — les
      deux entrées les plus fréquentes — on repartait de zéro et on recochait à la main. */
   await appliquerDefautsSession(f);
+  /* « Je relis avant de pousser » : l'ouverture qui le demande décoche le push automatique, quels
+     que soient les défauts de session — pré-rempli, pas verrouillé. */
+  if (opts.autoPush === false && f.auto_push) f.auto_push.checked = false;
   $('#taskModalTitle').textContent = opts.title || `Faire coder l'IA sur ${m.source_branch}`;
-  $('#taskExistingImgs').textContent = tr('task.from-mr', { branch: m.source_branch, iid: m.iid });
+  $('#taskExistingImgs').textContent = opts.fromMrText || tr('task.from-mr', { branch: m.source_branch, iid: m.iid });
   boutonsCreation();
   showTaskModal();
   f.prompt.focus();

@@ -118,11 +118,24 @@ describe('agentprofile : la demande composée', () => {
     assert.ok(m.prompt.indexOf('Fais la carte') < m.prompt.indexOf('et surtout'), 'le gabarit d’abord');
   });
 
-  test('les sous-agents sont NOMMÉS dans la demande, avec leur description', () => {
+  test('les sous-agents sont NOMMÉS dans la demande, avec leur description — quand le CLI les reçoit', () => {
     const a = creer({ name: 'AvecSous', subagents_json: { chercheur: { description: 'Cherche dans un dépôt.', prompt: 'p' } } });
-    const m = agentprofile.materialize(a, { mode: 'ask', question: 'q' });
+    const m = agentprofile.composer(a, { question: 'q', targets: [], kind: 'explore', backend: 'claude' });
     assert.match(m.prompt, /chercheur/);
     assert.match(m.prompt, /Cherche dans un dépôt\./);
+  });
+  /* `--agents` n'existe que chez Claude. Sur Copilot, le cartographe lisait « confie la recherche
+     au sous-agent `chercheur` », ne le trouvait pas, et rendait ce constat à la place de la
+     connaissance demandée. Un sous-agent que le CLI ne recevra pas n'est pas nommé. */
+  test('sur un backend qui ignore --agents, la demande ne nomme aucun sous-agent', () => {
+    const a = creer({ name: 'SansSous', subagents_json: { chercheur: { description: 'Cherche dans un dépôt.', prompt: 'p' } } });
+    for (const backend of ['copilot', 'codex', 'gemini', 'unknown']) {
+      const m = agentprofile.composer(a, { question: 'q', targets: [], kind: 'explore', backend });
+      assert.doesNotMatch(m.prompt, /chercheur/, backend);
+      assert.doesNotMatch(m.prompt, /sous-agents suivants/, backend);
+    }
+    /* Sans backend dit, c'est celui du binaire des réglages : `copilot` par défaut ici. */
+    assert.doesNotMatch(agentprofile.materialize(a, { mode: 'ask', question: 'q' }).prompt, /chercheur/);
   });
 
   test('l’enquêteur reçoit le protocole REPO, le cartographe AGENT, un agent de domaine STALE', () => {

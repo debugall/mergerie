@@ -13,7 +13,7 @@ const jobs = require('../../jobs');
 const forge = require('../../forge');
 const git = require('../../git/git');
 const demoGit = require('../../demo/git');
-const demoDocker = require('../../demo/docker');
+const demoMode = require('../../demo/mode');
 const aisession = require('../../agent/aisession');
 const localrepos = require('../../git/localrepos');
 const { wrap } = require('../http');
@@ -29,11 +29,11 @@ const DEMO_GIT_COMMANDS = [
 ];
 // Palette (Réglages → Git) : CRUD. Le `command` = arguments git figés (sans le mot « git »).
 app.get('/api/git-commands', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json(DEMO_GIT_COMMANDS);
+  if (demoMode.isDemo()) return res.json(DEMO_GIT_COMMANDS);
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command ORDER BY sort_order, id').all());
 }));
 app.post('/api/git-commands', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ demo: true });
+  if (demoMode.isDemo()) return res.json({ demo: true });
   const label = String((req.body && req.body.label) || '').trim();
   const command = String((req.body && req.body.command) || '').trim();
   if (!label || !command) throw new Error(t('err.gitcmd.label-command-required'));
@@ -45,7 +45,7 @@ app.post('/api/git-commands', wrap((req, res) => {
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command WHERE id = ?').get(info.lastInsertRowid));
 }));
 app.put('/api/git-commands/:id', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ demo: true });
+  if (demoMode.isDemo()) return res.json({ demo: true });
   const cur = db.prepare('SELECT * FROM git_command WHERE id = ?').get(Number(req.params.id));
   if (!cur) throw new Error(t('err.gitcmd.unknown'));
   const label = String((req.body && req.body.label) != null ? req.body.label : cur.label).trim();
@@ -56,7 +56,7 @@ app.put('/api/git-commands/:id', wrap((req, res) => {
   res.json(db.prepare('SELECT id, label, command, sort_order FROM git_command WHERE id = ?').get(cur.id));
 }));
 app.delete('/api/git-commands/:id', wrap((req, res) => {
-  if (demoDocker.isDemo()) return res.json({ demo: true });
+  if (demoMode.isDemo()) return res.json({ demo: true });
   db.prepare('DELETE FROM git_command WHERE id = ?').run(Number(req.params.id));
   res.json({ ok: true });
 }));
@@ -205,6 +205,53 @@ app.get('/api/git/find-ref', wrap(async (req, res) => {
     return { project: r.project, repo_id: r.id, matches, error };
   }));
   res.json({ name, type, repos: results });
+}));
+/* TAGS POSÉS SUR UNE PÉRIODE, tous dépôts actifs confondus : « qu'a-t-on livré ces deux
+   semaines ? » se répond par un tableau à coller dans Teams, pas en ouvrant vingt dépôts. La date
+   d'un tag est sa date de CRÉATION quand la forge la donne (GitLab, tag annoté), sinon celle du
+   commit pointé ; un dépôt dont la forge ne date pas ses tags (GitHub) est lu dans le clone
+   local, best-effort — un tag qu'on n'arrive pas à dater est COMPTÉ, jamais inventé. Les bornes
+   sont des jours, inclusifs, dans l'heure du serveur. */
+function bornesPeriode(q) {
+  const from = String(q.from || '').trim();
+  const to = String(q.to || '').trim();
+  if (!from || !to) throw new Error(t('err.git.period-required'));
+  const jour = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(`${s}T00:00:00`));
+  if (!jour(from) || !jour(to)) throw new Error(t('err.git.period-invalid'));
+  if (from > to) throw new Error(t('err.git.period-order'));
+  return { from, to, debut: Date.parse(`${from}T00:00:00`), fin: Date.parse(`${to}T23:59:59.999`) };
+}
+app.get('/api/git/tags-period', wrap(async (req, res) => {
+  const { from, to, debut, fin } = bornesPeriode(req.query);
+  const repos = db.prepare('SELECT * FROM repo WHERE enabled = 1 ORDER BY project').all();
+  if (demoGit.isDemo()) return res.json(demoGit.tagsPeriod(from, to, repos));
+  const cfg = getConfig();
+  if (!forge.isConfigured(cfg, 'gitlab') && !forge.isConfigured(cfg, 'github')) throw new Error(t('err.aucune-forge-configuree'));
+  const premiereLigne = (m) => String(m || '').split('\n')[0].trim().slice(0, 200);
+  const results = await Promise.all(repos.map(async (r) => {
+    const base = { project: r.project, repo_id: r.id, forge: forge.forgeOf(r), tags: [], undated: 0, error: null };
+    try {
+      let tags = await forge.clientFor(r).listTags(cfg, r.project);
+      if (tags.some((x) => !x.created_at && !x.committed_date)) {
+        try {
+          const cwd = await git.ensureRepo(cfg, r, () => {});
+          const dates = await git.tagDates(cwd);
+          tags = tags.map((x) => (dates.has(x.name)
+            ? { ...x, created_at: x.created_at || dates.get(x.name).date, message: x.message || dates.get(x.name).message }
+            : x));
+        } catch { /* clone injoignable : les tags restent sans date, et c'est dit */ }
+      }
+      for (const x of tags) {
+        const d = Date.parse(x.created_at || x.committed_date || '');
+        if (isNaN(d)) { base.undated++; continue; }
+        if (d < debut || d > fin) continue;
+        base.tags.push({ name: x.name, date: new Date(d).toISOString(), message: premiereLigne(x.message), author: x.author || '', url: forge.refUrl(cfg, r, 'tag', x.name) });
+      }
+      base.tags.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    } catch (e) { base.error = String(e.message).slice(0, 200); }
+    return base;
+  }));
+  res.json({ from, to, repos: results });
 }));
 // Banc d'essai « reprise de session IA » (Réglages → AI sessions). Enchaîne deux passes
 // dans la même session d'agent pour vérifier que la reprise conserve le contexte. Appel

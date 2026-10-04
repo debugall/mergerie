@@ -181,6 +181,35 @@ document.addEventListener('click', (e) => {
   renderTasks();
 });
 
+/* AVEC / SANS / SEULEMENT les analyses de tickets (la session d'exploration qui produit la
+   précision technique d'un ticket Jira). Un refinement hebdomadaire ou une epic en lot en
+   crée des dizaines, dont le vrai écran est Jira : on les masque d'un geste, sans rien ranger.
+   Une analyse qui ATTEND une réponse reste visible quel que soit le filtre — la masquer ferait
+   croire que rien n'est bloqué. Mémorisé dans le navigateur, comme le filtre de propriétaire. */
+let filtreSpec = 'avec';
+try { filtreSpec = localStorage.getItem('mergerie_task_spec') || 'avec'; } catch { /* ignore */ }
+function renderFiltreSpec() {
+  const box = $('#taskSpecFiltre');
+  if (!box) return;
+  const existe = allTasks.some((t) => t.spec_key);
+  box.hidden = !existe;
+  if (!existe) return;
+  const opts = [['avec', 'session.filter.spec.with'], ['sans', 'session.filter.spec.without'], ['seulement', 'session.filter.spec.only']];
+  box.innerHTML = opts.map(([v, k]) => `<button type="button" class="chip${filtreSpec === v ? ' active' : ''}" data-task-spec="${v}">${esc(tr(k))}</button>`).join('');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-task-spec]');
+  if (!b) return;
+  filtreSpec = b.dataset.taskSpec;
+  try { localStorage.setItem('mergerie_task_spec', filtreSpec); } catch { /* ignore */ }
+  renderTasks();
+});
+function duSpec(t) {
+  if (filtreSpec === 'avec') return true;
+  if (t.spec_key && t.status === 'needs_input') return true;
+  return filtreSpec === 'sans' ? !t.spec_key : !!t.spec_key;
+}
+
 /* « Les miennes » = ce que personne d'autre n'a écrit : une session sans auteur n'est jamais
    partie dans le dépôt, elle est donc à moi. */
 function duProprio(t) {
@@ -190,7 +219,7 @@ function duProprio(t) {
 }
 
 // Une session rangée ne sort que si la case le demande.
-const taskVisible = (t) => (showHiddenTasks || !t.hidden) && duProprio(t);
+const taskVisible = (t) => (showHiddenTasks || !t.hidden) && duProprio(t) && duSpec(t);
 
 /* Combien de sessions le rangement retire de la vue. Affiché à côté de la case : une
    session qui disparaît sans laisser de trace se croit supprimée, et on la recrée. */
@@ -202,6 +231,7 @@ function reportHiddenCount(n) {
 
 function renderTasks() {
   renderFiltreProprio();
+  renderFiltreSpec();
   const isLocal = taskKind === 'local';
   const isAsk = taskKind === 'ask';
   const el = $('#taskList');
@@ -232,7 +262,8 @@ function renderTasks() {
   // comme celui de « Reviews » qui compte les MR à traiter — pas un total.
   const nav = $('#navCountTask');
   if (nav) {
-    const pending = allTasks.filter((t) => t.status === 'new').length
+    // Le compteur suit le filtre des analyses de tickets : « sans », elles ne comptent plus.
+    const pending = allTasks.filter((t) => t.status === 'new' && duSpec(t)).length
       + localTasks.filter((t) => t.status === 'new').length
       + questions.filter((q) => q.status === 'new').length;
     nav.textContent = pending;
@@ -272,6 +303,5 @@ function renderTasks() {
   wirePromptToggles('#taskList');
   wireTaskActions();
   restoreTaskForms(openForms);
-  remplirLiensDifferes(el);      // les boutons contextuels des lignes de projet
 }
 
