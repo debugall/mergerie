@@ -16,7 +16,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **An "Update" button on each installed plugin** (Settings → Plugins). Mergerie keeps where a plugin was installed from (git address and branch or tag, or folder); one click clones it again,
   disables the plugin, replaces its folder with the latest version and enables it again if it was — its data, settings and secrets untouched, the page reloading when it was active. A
   network failure leaves the plugin as it was. A plugin installed before this release has the button greyed out with a hint: install it once more from git and the address is kept.
-- **The Jenkins plugin can announce EVERY job, not only the builds you started from Mergerie.** A new setting, *Announce ALL jobs* (off by default), makes it ask Jenkins once a
+- **The Jenkins plugin can announce EVERY job, not only the builds you started from Mergerie.** A new setting, *Announce ALL jobs* (on by default; untick it to only follow your own launches), makes it ask Jenkins once a
   minute (one call for the whole job tree) and emit `jenkins.job.started` / `jenkins.job.finished` for every build, whoever started it. Each event now carries `source`
   (`"mergerie"` or `"jenkins"`) so a listener can tell them apart; plugins such as Jenkins Teams Notify use it to post about a chosen list of jobs whoever launched them.
 - **Jenkins Teams Notify has a single "Jobs notified" choice list**, fed by the Jenkins plugin (new `jenkins.jobs` service: the full job names). Tick the jobs to notify, whoever started the
