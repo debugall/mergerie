@@ -42,6 +42,14 @@ describe('Réglages → Jira : prévenir Jira et son gabarit', { skip: dispo ? f
     }
   });
 
+  test('chaque case d’une nouvelle session porte son « i » d’explication, rempli', async () => {
+    await ouvrir('aisession');
+    for (const nom of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_converge']) {
+      const tip = await page.locator(`#sub-aisession label:has([name="${nom}"]) .hint`).getAttribute('data-tip');
+      assert.ok(tip && tip.length > 40, `${nom} : une explication, pas un bouton vide`);
+    }
+  });
+
   test('l’aperçu montre le message livré, puis le gabarit tapé avec des valeurs d’exemple', async () => {
     await ouvrir('jiracfg');
     await page.waitForFunction(() => document.querySelector('#jiraNotifyPreview').textContent.includes('214'));
