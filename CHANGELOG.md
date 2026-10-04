@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-10-04
+
 ### Added
 
 - **A branch per repository in a ticket's technical brief, an "Analysed" tab in Jira, and an "Analysis" filter on "My tickets".** Ticking a repository in the brief now offers its **branch**
@@ -4136,7 +4138,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/debugall/mergerie/compare/v2.0.1...v3.0.0
 [2.0.1]: https://github.com/debugall/mergerie/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/debugall/mergerie/compare/v1.7.0...v2.0.0
 [1.7.0]: https://github.com/debugall/mergerie/compare/v1.6.0...v1.7.0

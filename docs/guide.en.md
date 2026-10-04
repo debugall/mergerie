@@ -33,8 +33,10 @@ security model. For a quick start, stay on the [README](../README.md).
 3. **Connect the forge** — GitLab (URL + token, scopes `api` and `read_repository`) **or** GitHub
    (token, scope `repo`). One *Test* button per forge.
 4. **Pick your repositories** — Settings → Repositories, in bulk from the forge or one address at a time.
-5. **What your team uses** — Jira, Jenkins, Docker, environments: what is ticked unfolds its menu,
-   the rest stays folded. Nothing is lost: Settings → General → Menus.
+5. **What your team uses** — Jira is built in, folded by default: tick it in Settings → General →
+   Menus to unfold its menu. Jenkins, Docker and the environments grid (Links) are **plugins**:
+   install the ones you use from Settings → Plugins (from a git address), then enable them — the
+   tab appears once they are. Nothing already running is lost either way.
 6. **Fetch MRs** — the queue fills up (and refreshes every 5 minutes by default). On a card,
    **Review**: the report lands in the right-hand panel, with its score.
 
@@ -1881,6 +1883,16 @@ alone is not enough. **`Test Jenkins`** returns the **account name** the server 
 that answers does not prove the token is right. The token is stored locally and **masked**;
 saving the settings again without touching it does not erase it.
 
+- **Announce ALL jobs, not only yours** — on by default; untick it in *Settings → Jenkins* to go
+  back to following only the builds you started from Mergerie. On, the plugin asks Jenkins once a
+  minute for the whole job tree (a single call) and emits its `started`/`finished` events for
+  **every** build, whoever launched it; each event carries `source` (`"mergerie"` or `"jenkins"`)
+  so a listener can tell a build you triggered from one someone else or the scheduler started.
+  This is what lets another plugin, such as **Jenkins Teams Notify**, post about a chosen list of
+  jobs no matter who launched them — and the finished event now also carries the build's
+  **parameters** (secret-looking ones left out), so a notification template can say which
+  environment it deployed to.
+
 ### Links
 > **Links is a plugin**: the tab lives in its own repository ([link-mergerie](https://gitlab.com/amady/link-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the environment buttons on merge requests, sessions and tickets, the "local" box suggested from Docker, the links in the palette) exists. **Your links are not lost**: the grid, the addresses, the templates, the free links and their order stay in your database and come back once it is installed. Everything below describes its screen; the `Ctrl`/`Cmd`+`K` palette itself stays in the core.
 
@@ -2293,10 +2305,14 @@ policies, the forge address — two reviews of the same merge request written un
 instructions are not comparable, so those settings are meant to be shared. A **this machine**
 setting belongs to your computer alone: the API tokens, the clone folder, the language. They are
 stored apart, in a table that is never meant to travel: that is what will later let a team share
-its tool without a single secret leaving anyone's machine.
+its tool without a single secret leaving anyone's machine. A **copy** button sits next to every
+token field (GitLab, GitHub, Jira, Confluence, a plugin's own secret…): the field itself still
+only ever shows `***`, the button asks the server for the value on that click and writes it
+straight to the clipboard.
 
 Sub-tabs, **in the order of the journey** — connect, choose the code, tune the review, tune the
-tool, the optional integrations, the test bench:
+tool, the optional integrations, the test bench. Every save, on any sub-tab, now confirms with a
+**toast** once it lands (an error toast if the server refuses):
 
 **Git** (the **GitLab connection** — URL + access token, with
 *Test the connection* —, the **GitHub connection** — URL (empty = github.com, otherwise GitHub Enterprise)
@@ -2318,7 +2334,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
@@ -2336,22 +2352,34 @@ on disk, **nothing is executed** — to add in one click; when a compose file is
 **`docker compose run --rm <service> <command>`** variant of every test command is offered too: the commands run
 **on the host**, and it is in the line that you say to enter a container; every suggestion is an **exact line**,
 the one that will be approved as is) ·
-**Notifications** (a dedicated sub-tab, see below) ·
 **General** (with its own **Save** button — the fields of every sub-tab belong to the same form,
-and this one had none: you ticked a box and nothing left; the **four boxes ticked by default** on a new session — auto-push, AI questions, tell Jira, converge afterwards: these are working habits, set once instead of starting unticked at every opening; light/dark/auto theme, language, density, **menu arrangement**, morning brief, data retention, backup,
-and a **danger zone** for a full reset) ·
+and this one had none: you ticked a box and nothing left; light/dark/auto theme, language, density,
+**menu arrangement**, morning brief, data retention, backup, and a **danger zone** for a full
+reset) ·
+**Notifications** (a dedicated sub-tab, see below) ·
+**Shared data** (the git repository a team uses to share its accumulated settings, templates and
+rules — see *Sharing with a team* below) ·
 **Jira** (the **Jira connection** —
-URL + email + API token, with a *Test Jira* button —; feeds the *Jira* tab and the enrichment of a session
-from a ticket) ·
-**Jenkins** (URL, user and API token, with a test button, the jobs' **refresh interval**, and the **jobs
-linked to repositories**: a job declared for a repository is offered on its **verified green** merge
-requests, with the branch prefilled into the parameter you name — the job page opens, nothing is launched
-without the usual confirmation) ·
+URL + email + API token, with a *Test Jira* button —, and **“Tell Jira when the merge request is
+created”** — ticked by default in a new session's window — with an editable **comment
+template** (`{url}`, `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, a live
+preview; empty keeps the shipped message, shared with the team like the review-link template) —;
+feeds the *Jira* tab and the enrichment of a session from a ticket) ·
+**Plugins** (every installed plugin, its version, state and permissions; enable or disable it
+**without restarting**; install a third-party plugin from a local folder or a git address — this
+is where Jenkins, Docker and Links are installed and updated. An **enabled** plugin that declares
+its own settings adds its own sub-tab here, right after this one — Jenkins, for instance, brings
+back its URL, user, API token, jobs' refresh interval, linked jobs and **“Announce ALL jobs”**
+setting exactly where they used to live) ·
 **AI sessions** (the **agent binaries** — the default and the others, see *Configuration* —, the **standing
-instructions**, see below, the daily limits, secure or yolo mode, and a technical test: two passes inside the
+instructions**, see below, the daily limits, secure or yolo mode, the **three boxes ticked by
+default on a new session** — auto-push, the AI may ask questions, converge afterwards — moved
+here from General, and a technical test: two passes inside the
 same agent session — it memorises a marker then
 recalls it on resume — to check that **session resuming** works with your CLI; it is the foundation of
-context continuity between review, fixes and convergence).
+context continuity between review, fixes and convergence. **One Save bar**, pinned to the bottom
+of the screen, now covers every section above instead of five identical buttons — it says
+*unsaved changes* as soon as a field changes, then *saved*).
 
 The first three are what you fill in to get started; **Rules** and **Verifiers** complete the review; the
 rest is tuned when the need arises. The **last sub-tab you visited is remembered** — you come back to

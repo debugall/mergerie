@@ -14,7 +14,7 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 ## Sommaire
 
 - [Première review réelle en 5 minutes](#première-review-réelle-en-5-minutes)
-- [Les onglets en détail](#les-onglets-en-détail) — Reviews, Dev IA, Agents, Notes, Jira, Git, Docker, Jenkins, Liens, Stats, Réglages
+- [Les onglets en détail](#les-onglets-en-détail) — Reviews, Dev IA, Agents, Notes, Jira, Git, Stats, Réglages, et trois plugins tiers (Docker, Jenkins, Liens)
 - [Vérification objective (vérificateurs)](#vérification-objective-vérificateurs)
 - [Configuration (.env)](#configuration-env)
 - [GitLab self-hosted / GitHub Enterprise / Jenkins interne / certificat d'entreprise](#gitlab-self-hosted--github-enterprise--jenkins-interne--certificat-dentreprise)
@@ -35,8 +35,10 @@ données & sauvegarde et le modèle de sécurité. Pour une prise en main rapide
 3. **Connecter la forge** — GitLab (URL + jeton, scopes `api` et `read_repository`) **ou** GitHub
    (jeton, scope `repo`). Un bouton *Tester* par forge.
 4. **Choisir tes dépôts** — Réglages → Dépôts, en masse depuis la forge ou une adresse à la fois.
-5. **Ce que ton équipe utilise** — Jira, Jenkins, Docker, des environnements : ce qui est coché
-   déplie son menu, le reste reste replié. Rien n'est perdu : Réglages → Général → Menus.
+5. **Ce que ton équipe utilise** — Jira est au cœur : coché, son menu se déplie. Jenkins, Docker et
+   les environnements (Liens) sont des plugins tiers ; si ton équipe s'en sert, installe-les depuis
+   *Réglages → Plugins* (une adresse git), active-les, puis même logique : coché déplie, le reste
+   reste replié. Rien n'est perdu : Réglages → Général → Menus.
 6. **Chercher les MR** — la file se remplit (et se rafraîchit toutes les 5 minutes d'office).
    Sur une carte, **Reviewer** : le rapport arrive dans le panneau de droite, avec sa note.
 
@@ -45,16 +47,22 @@ le rapport ne commence pas par « (mock) ».
 
 ## Les onglets en détail
 
-Onze onglets, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que j'ai à
-faire, ma machine et ses liens, le méta :
-**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Liens** — **Stats** · **Réglages**.
-**Quatre d'entre eux — Git, Docker, Jenkins et Liens — démarrent repliés** : ce sont des commodités,
-on y va le jour où on en a besoin, et une barre de sept entrées se lit mieux qu'une barre de onze.
-Rien n'est désactivé : une case dans *Réglages → Général → Menus* les ramène, définitivement — et une
-**porte contextuelle** aussi : « Résoudre dans Git → Merge » sur une merge request en conflit, « Voir les
-logs » depuis le brief, un job Jenkins ouvert depuis une carte, « ce dépôt a un compose : afficher Docker »
-sur la ligne d'un dépôt. Le menu ainsi ouvert reste dans la barre, et le sous-onglet Jenkins des Réglages
-suit son menu.
+Huit onglets au cœur, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que
+j'ai à faire, ma machine, le méta :
+**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** — **Stats** · **Réglages**.
+**Git démarre replié** : une commodité, on y va le jour où on en a besoin, et une barre de sept
+entrées se lit mieux qu'une barre de huit. Rien n'est désactivé : une case dans
+*Réglages → Général → Menus* le ramène, définitivement — et une **porte contextuelle** aussi :
+« Résoudre dans Git → Merge » sur une merge request en conflit.
+
+**Docker, Jenkins et Liens ne sont pas dans le cœur : ce sont des plugins tiers**, chacun dans son
+propre dépôt git, à installer depuis *Réglages → Plugins* (une adresse git) puis à activer. Tant
+que ce n'est pas fait, ni leur onglet ni ce qui s'y rattache n'existe : pas de job Jenkins sur une
+carte, pas de « ce dépôt a un compose : afficher Docker » sur la ligne d'un dépôt, pas de bouton
+d'environnement Liens sur une merge request. Une fois actifs, ils rejoignent la barre et démarrent
+repliés, pour la même raison que Git ; une porte contextuelle les ouvre aussi (« Voir les logs »
+depuis le brief, un job Jenkins ouvert depuis une carte…), et le menu ainsi ouvert reste dans la
+barre — le sous-onglet Jenkins des Réglages suit son menu.
 La barre se **réduit en icônes** d'un bouton en pied de colonne (choix mémorisé), et se réduit d'elle-même
 sous 1100 px de large.
 Les badges signalent le **travail en attente** (MR à traiter, sessions non lancées), pas des totaux.
@@ -1859,6 +1867,11 @@ d'agents — ce que Jenkins fait très bien, et qu'on n'a pas à refaire.
   de fond ne fait pas clignoter la liste, et un réseau qui hoquette n'efface pas l'écran : on
   garde le précédent. Le menu **ne porte pas de pastille** — elle supposerait d'interroger
   Jenkins à chaque ouverture de l'application, même sans être sur l'onglet.
+- **`Annoncer TOUS les jobs`** (*Réglages → Jenkins*, coché par défaut) interroge Jenkins une fois
+  par minute (un seul appel pour tout l'arbre des jobs) et dit à l'application **chaque** build
+  démarré ou terminé, qui que l'ait lancé — pas seulement les tiens. Décoché, Mergerie ne suit à
+  nouveau que ce que **toi** as lancé d'ici. Ce que tu vois dans cet onglet ne change pas : c'est
+  ce qu'un **autre plugin** (Jenkins Teams Notify, par exemple) peut annoncer qui en dépend.
 - **Le menu porte un badge : combien de jobs ont tourné aujourd'hui.** La question qu'on se
   pose en passant devant l'onglet est « est-ce que ça a bougé ce matin ? ». Il est rempli une
   fois au démarrage, puis entretenu par le rafraîchissement de l'onglet — Jenkins n'est pas
@@ -2408,7 +2421,8 @@ services de la grille, projets liés par défaut, agents dont il fait partie. La
 concerne LUI ; la fiche répond à « qu'est-ce qui casse si je le retire ? » et « quel vérificateur le teste,
 déjà ? ». Chaque entrée mène à l'écran où l'objet se modifie, et rien n'est demandé au serveur tant que le
 panneau n'est pas déplié) ·
-**Merge Request** (rafraîchissement auto, convergence, templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
+**Merge Request** (rafraîchissement auto, convergence, le seuil **« dormante » après N jours** (venu
+de Général), templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
 🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
 une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une
 installation restée sur l'ancien défaut passe au nouveau d'elle-même, dans sa langue ; il n'invoque
@@ -2432,24 +2446,37 @@ chaque commande de test : les commandes tournent **sur l'hôte**, c'est dans la 
 dans un conteneur. Chaque suggestion est une **ligne exacte**, celle qui sera approuvée telle quelle — à
 ajouter d'un clic) ·
 **Notifications** (sous-onglet dédié, voir ci-dessous) ·
-**Général** (avec son propre bouton **Enregistrer** — les champs de tous les sous-onglets
-appartiennent au même formulaire, et celui-ci n'en avait aucun : on cochait une case et rien ne
-partait ; les **quatre cases cochées d'office** d'une nouvelle session — auto-push, questions de l'IA, prévenir Jira, converger après : ce sont des habitudes de travail, elles se règlent une fois au lieu de repartir décochées à chaque ouverture ; thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin, conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Général** (thème clair/sombre/auto, langue, densité, **arrangement des menus**, brief du matin,
+conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
+**Données partagées** (le dépôt git où l'équipe partage son travail accumulé, voir *Partager avec une
+équipe* plus bas) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
-*Jira* et l'enrichissement d'une session depuis un ticket) ·
-**Jenkins** (URL, utilisateur et jeton d'API, avec un bouton de test, la **fréquence de
-rafraîchissement** des jobs, et les **jobs liés aux dépôts** : un job déclaré pour un dépôt est proposé
-sur ses merge requests **vérifiées vertes**, avec la branche pré-remplie dans le paramètre que tu
-désignes — la page du job s'ouvre, rien n'est lancé sans la confirmation habituelle) ·
+*Jira* et l'enrichissement d'une session depuis un ticket ; et la case **« Prévenir Jira » à la création
+d'une merge request**, cochée d'office, avec son propre **gabarit de commentaire** — `{url}` obligatoire,
+plus `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, aperçu en direct ; vide reprend le
+texte livré) ·
+**Plugins** (la liste des plugins installés — version, état, permissions, événements —, activer ou
+désactiver **sans redémarrer** (la page recharge, les données restent), un bouton **Mettre à jour** par
+plugin installé depuis git ou un dossier (reclone, désactive, remplace le dossier, réactive si besoin,
+sans toucher à ses données ni ses secrets ; un échec réseau laisse le plugin tel quel ; grisé pour un
+plugin installé avant cette fonctionnalité — une réinstallation depuis git l'active), et l'installation
+d'un nouveau plugin depuis un dossier local ou une **adresse git** — Jenkins, Docker et Liens, entre
+autres, s'installent ainsi) ·
 **AI sessions** (les **binaires de l'agent** — le défaut et les autres, voir *Configuration* —, les
-**consignes permanentes**, voir ci-dessous, les bornes du jour, le mode sécurisé ou yolo, et un test technique : deux passes
+**consignes permanentes**, voir ci-dessous, les bornes du jour, le mode sécurisé ou yolo, les **trois
+cases cochées d'office** d'une nouvelle session — auto-push, questions de l'IA, converger après (venues
+de Général) — et un test technique : deux passes
 dans la même session d'agent — mémorise un marqueur
 puis le rappelle en reprise — pour vérifier que la **reprise de session** fonctionne avec ton CLI ;
 c'est le socle de la continuité de contexte entre review, corrections et convergence).
 
 Les trois premiers sont ce qu'on remplit pour démarrer ; **Règles** et **Vérificateurs** complètent
 la review ; le reste se règle quand le besoin s'en fait sentir. Le **dernier sous-onglet consulté est
-mémorisé** — on revient dans Réglages pour finir ce qu'on y faisait.
+mémorisé** — on revient dans Réglages pour finir ce qu'on y faisait. Toute la page tient sous une seule
+barre **Enregistrer**, fixée en bas : elle dit « modifications non enregistrées » dès qu'un champ change,
+puis confirme par un **toast** à chaque sauvegarde (une erreur si le serveur refuse) — et un jeton déjà
+enregistré (affiché `***`) a un bouton **copier** à côté : la valeur part dans le presse-papiers sans
+jamais s'afficher à l'écran, y compris pour un jeton qu'un plugin déclare secret.
 
 #### Consignes permanentes
 *Réglages → AI sessions.* Un texte libre **ajouté à la fin du prompt de toutes les sessions de codage**
