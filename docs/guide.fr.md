@@ -752,7 +752,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   commente le ticket avec le lien de la MR puis le passe en revue quand Jira propose la transition,
   derrière une confirmation qui nomme le ticket. Une case de la modale de session, **décochée par
   défaut**, le fait à chaque création de merge request — son défaut, avec le **gabarit du commentaire** (`{url}` `{iid}` `{project}` `{title}`
-  `{branch}` `{key}`, aperçu en direct), se règle dans *Réglages → Jira*.
+  `{branch}` `{target}` `{key}`, aperçu en direct), se règle dans *Réglages → Jira*.
   **`Voir le diff`** ouvre le **même explorateur plein écran que celui des merge requests** —
   arborescence complète du projet au milieu, fichier entier avec les changements en place à droite
   (navigation d'un changement à l'autre, mini-carte) — avec, à gauche, le **retour de l'IA** au lieu

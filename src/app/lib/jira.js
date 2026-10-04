@@ -220,7 +220,7 @@ function restartJiraWatch() {
 function texteJira(cfg, v) {
   const gabarit = String((cfg && cfg.jira_notify_template) || '').trim();
   if (!gabarit) return t('jira.notify.body', { iid: v.iid, project: v.project, url: v.url });
-  const valeurs = { url: v.url, iid: v.iid, project: v.project, title: v.title || '', branch: v.branch || '', key: v.key || '' };
+  const valeurs = { url: v.url, iid: v.iid, project: v.project, title: v.title || '', branch: v.branch || '', target: v.target || '', key: v.key || '' };
   return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
 }
 
@@ -230,7 +230,7 @@ async function prevenirJira(cible) {
   const iid = cible.mr_iid || cible.existing_mr_iid;
   if (!iid) throw new Error(t('err.jira.no-mr-yet'));
   const cfg = getConfig();
-  const texte = texteJira(cfg, { iid, project: cible.project, url: cible.mr_url || '', title: cible.mr_title || '', branch: cible.branch || '', key: cle });
+  const texte = texteJira(cfg, { iid, project: cible.project, url: cible.mr_url || '', title: cible.mr_title || '', branch: cible.branch || '', target: cible.mr_target || cible.base_branch || '', key: cle });
   if (demoMode.isDemo()) return { demo: true, key: cle, commented: true, transitioned: true };
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   await jira.addComment(cfg, cle, texte);

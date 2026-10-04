@@ -61,7 +61,7 @@ describe('Réglages — cases d’une nouvelle session et gabarit Jira : afficha
     assert.equal(await champ.inputValue(), '', 'vide au départ : c’est le message livré qui partira');
     assert.match(await champ.getAttribute('placeholder'), /Merge request ouverte : !214 sur groupe\/projet/, 'le placeholder montre EXACTEMENT ce message');
     const variables = await page.locator('#sub-jiracfg .template-vars').innerText();
-    for (const v of ['{url}', '{iid}', '{project}', '{title}', '{branch}', '{key}']) assert.ok(variables.includes(v), `la variable ${v} est expliquée`);
+    for (const v of ['{url}', '{iid}', '{project}', '{title}', '{branch}', '{target}', '{key}']) assert.ok(variables.includes(v), `la variable ${v} est expliquée`);
     assert.match(await page.locator('#jiraNotifyPreview').innerText(), /merge_requests\/214/, 'l’aperçu montre le message livré');
   });
 
@@ -96,7 +96,7 @@ describe('Réglages — cases d’une nouvelle session et gabarit Jira : afficha
   });
 
   test('édition du gabarit : multi-ligne enregistré tel quel, relu après rechargement, aperçu mis à jour, puis vidé', async () => {
-    const gabarit = 'MR !{iid} « {title} » ouverte sur {project}\n→ {url}\nBranche : {branch}';
+    const gabarit = 'MR !{iid} « {title} » ouverte sur {project}\n→ {url}\nBranche : {branch} vers {target}';
     await ouvrir('jiracfg');
     await coche('jiracfg', 'jira_notify_template').fill(gabarit);
     await page.waitForFunction(() => document.querySelector('#jiraNotifyPreview').textContent.includes('MR !214 « Ajout du paiement »'));
@@ -104,7 +104,7 @@ describe('Réglages — cases d’une nouvelle session et gabarit Jira : afficha
     await attendreServeur(async () => (await config()).jira_notify_template === gabarit, 'le gabarit est enregistré, retours à la ligne compris');
     await recharger('jiracfg');
     assert.equal(await coche('jiracfg', 'jira_notify_template').inputValue(), gabarit);
-    assert.match(await page.locator('#jiraNotifyPreview').innerText(), /Branche : feature\/PROJ-42-paiement/);
+    assert.match(await page.locator('#jiraNotifyPreview').innerText(), /Branche : feature\/PROJ-42-paiement vers main/);
 
     await coche('jiracfg', 'jira_notify_template').fill('');
     await enregistrer('jiracfg');

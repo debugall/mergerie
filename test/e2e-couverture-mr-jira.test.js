@@ -173,13 +173,13 @@ describe('Couverture — merge request, projet de session, Jira', () => {
   test('prévenir Jira avec le gabarit de l’équipe : variables remplacées, inconnue laissée, et un gabarit sans {url} refusé', async () => {
     assert.equal((await app.api('PUT', '/api/config', { jira_notify_template: 'Pas de lien ici' })).status, 400, 'sans {url}, le ticket ne dirait pas laquelle');
     assert.equal((await app.api('GET', '/api/config')).body.jira_notify_template || '', '', 'et rien n’est enregistré');
-    assert.equal((await app.api('PUT', '/api/config', { jira_notify_template: '[{key}] MR !{iid} « {title} » ({project}, {branch}) : {url} {inconnue}' })).status, 200);
+    assert.equal((await app.api('PUT', '/api/config', { jira_notify_template: '[{key}] MR !{iid} « {title} » ({project}, {branch} → {target}) : {url} {inconnue}' })).status, 200);
     app.state.calls.length = 0;
     assert.equal((await app.api('POST', `/api/mrs/${mrId}/notify-jira`)).status, 200);
     const commentaire = app.state.calls.find((c) => c.method === 'POST' && /\/issue\/PROJ-42\/comment/.test(c.path));
     assert.ok(commentaire, 'un commentaire a été posté');
     const texte = JSON.stringify(commentaire.body);
-    assert.match(texte, /\[PROJ-42\] MR !7 « Ajout de b » \(grp\/app, feature\//, 'les variables sont remplacées');
+    assert.match(texte, /\[PROJ-42\] MR !7 « Ajout de b » \(grp\/app, feature\/[^ ]* → main\)/, 'les variables sont remplacées, dont la branche de destination');
     assert.match(texte, /merge_requests\/7/);
     assert.match(texte, /\{inconnue\}/, 'une variable inconnue reste telle quelle');
     await app.api('PUT', '/api/config', { jira_notify_template: '' });

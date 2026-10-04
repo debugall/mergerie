@@ -477,7 +477,7 @@
             <label><span data-i18n="settings.lbl.jira-notify-template">Gabarit du commentaire posté dans Jira</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-notify-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <textarea form="configForm" name="jira_notify_template" rows="4"></textarea>
-                <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{key}</code> la clé du ticket.</span>
+                <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{target}</code> la branche de destination · <code>{key}</code> la clé du ticket.</span>
             </label>
             <p class="field-note"><span data-i18n="settings.jira-notify-preview">Aperçu :</span> <span id="jiraNotifyPreview" class="template-preview"></span></p>
             <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>

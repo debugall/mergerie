@@ -129,7 +129,7 @@ function majApercuJira() {
   const champ = $('#configForm') && $('#configForm').elements.jira_notify_template;
   const boite = $('#jiraNotifyPreview');
   if (!champ || !boite) return;
-  const exemple = { url: 'https://gitlab.exemple/groupe/projet/-/merge_requests/214', iid: 214, project: 'groupe/projet', title: 'Ajout du paiement', branch: 'feature/PROJ-42-paiement', key: 'PROJ-42' };
+  const exemple = { url: 'https://gitlab.exemple/groupe/projet/-/merge_requests/214', iid: 214, project: 'groupe/projet', title: 'Ajout du paiement', branch: 'feature/PROJ-42-paiement', target: 'main', key: 'PROJ-42' };
   const gabarit = String(champ.value || '').trim() || tr('jira.notify.body', { iid: exemple.iid, project: exemple.project, url: exemple.url });
   boite.textContent = gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in exemple ? String(exemple[cle]) : brut));
 }
