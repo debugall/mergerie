@@ -227,6 +227,7 @@ _(aucun champ en dehors de `version`)_
 | `url` | `string` |
 | `duration` | `number` |
 | `startedBy` | `string` |
+| `parameters` | `Record<string, string>` |
 
 ```json
 {
@@ -238,7 +239,10 @@ _(aucun champ en dehors de `version`)_
   "ok": true,
   "url": "url-example",
   "duration": 42,
-  "startedBy": "startedBy-example"
+  "startedBy": "startedBy-example",
+  "parameters": {
+    "BRANCH": "main"
+  }
 }
 ```
 

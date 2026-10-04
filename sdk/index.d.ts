@@ -111,6 +111,7 @@ export interface JenkinsJobFinishedPayload {
   url: string;
   duration: number;
   startedBy: string;
+  parameters: Record<string, string>;
 }
 
 export interface EventPayloads {

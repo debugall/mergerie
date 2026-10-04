@@ -1,6 +1,6 @@
 {
   "name": "@mergerie/plugin-sdk",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Write and test a Mergerie plugin without starting Mergerie: the ctx contract, TypeScript types, an in-memory test context and a plugin generator.",
   "license": "AGPL-3.0-only",
   "author": "Amady (https://github.com/debugall)",

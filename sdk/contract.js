@@ -111,7 +111,7 @@ const EVENTS = {
   'converge.finished': { version: 1, source: 'cœur', when: 'une boucle de convergence s’arrête', payload: { mr_id: 'number', iid: 'number', status: 'string', note10: 'number | null', passes: 'number' } },
   'verify.finished': { version: 1, source: 'cœur', when: 'une vérification objective a rendu son verdict (ou échoué)', payload: { verification_id: 'number', verdict: 'string' } },
   'jenkins.job.started': { version: 1, source: 'plugin jenkins', when: 'un build démarre : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui', payload: { source: '"mergerie" | "jenkins"', path: 'string', since: 'number', parameters: 'Record<string, string>', url: 'string', startedBy: 'string' } },
-  'jenkins.job.finished': { version: 1, source: 'plugin jenkins', when: 'un build s’est terminé : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui', payload: { source: '"mergerie" | "jenkins"', path: 'string', number: 'number', result: 'string', ok: 'boolean', url: 'string', duration: 'number', startedBy: 'string' } },
+  'jenkins.job.finished': { version: 1, source: 'plugin jenkins', when: 'un build s’est terminé : lancé depuis Mergerie, ou — si « Annoncer tous les jobs » est coché dans le plugin — lancé par n’importe qui', payload: { source: '"mergerie" | "jenkins"', path: 'string', number: 'number', result: 'string', ok: 'boolean', url: 'string', duration: 'number', startedBy: 'string', parameters: 'Record<string, string>' } },
 };
 
 /* Les champs obligatoires et la forme de `plugin.json`. */

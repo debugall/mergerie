@@ -22,6 +22,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 - **Jenkins Teams Notify has a single "Jobs notified" choice list**, fed by the Jenkins plugin (new `jenkins.jobs` service: the full job names). Tick the jobs to notify, whoever started the
   build; a filter box hides rows without unticking any, a glob pattern can be added by hand, nothing ticked means nothing notifies. The former second list ("whoever started them") is merged into it at startup.
   The plugin also installs Playwright and Chromium from a Settings button, and reports the outcome of a test or sign-in on screen.
+- **Job parameters in the Teams message.** `jenkins.job.finished` now carries `parameters` like `started` did (secret-looking ones left out), so a Jenkins Teams Notify template can say which environment a
+  build deployed to: `{{param.ENV}}` for one parameter, `{{params}}` for all of them. Plugin SDK 1.2.0 (additive).
 - **A "copy" button next to every token in Settings** — GitLab, GitHub, Jira, Confluence and Jenkins. Tokens still never reach the page
   (the field keeps showing `***`): the button asks the server for the value on that click, writes it to the clipboard and keeps it out
   of the screen. A token you just typed and have not saved is copied as is. A plugin gets the same button for any setting its schema
