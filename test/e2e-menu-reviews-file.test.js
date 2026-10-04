@@ -111,6 +111,22 @@ describe('Menu Reviews — la file « À traiter »', { skip: dispo ? false : MS
     await carte(i).locator(`[data-more="${id[i]}"]`).click();
     await carte(i).locator('.btn-split:has([data-more]) .split-menu:not([hidden])').waitFor();
   }
+  /* Entre l'ouverture du menu et le clic sur son contenu, un poll de fond (statut, job qui
+     démarre ou se termine) peut redessiner la carte en entier — le menu se referme alors tout
+     seul, sans rien casser côté app : c'est une carte qui se re-rend, pas un bug (voir CLAUDE.md,
+     "une carte qui se re-rend invalide les handles d'éléments"). On rouvre et on retente plutôt
+     que de rester 30 s à attendre un menu qui ne se rouvrira pas de lui-même. */
+  async function menuCarteCliquer(i, attribut) {
+    for (let essai = 0; ; essai += 1) {
+      await menuCarte(i);
+      try {
+        await carte(i).locator(`[data-${attribut}="${id[i]}"]`).click({ timeout: 2000 });
+        return;
+      } catch (e) {
+        if (essai >= 4) throw e;
+      }
+    }
+  }
   const cocher = (i) => carte(i).locator('.mr-pick').click();
   async function toutDecocher() {
     if (!(await page.locator('#mrBulkBar').isHidden())) await page.locator('#btnBulkClear').click();
@@ -315,8 +331,7 @@ describe('Menu Reviews — la file « À traiter »', { skip: dispo ? false : MS
   test('⋯ → « Vérifier » sur une carte lance la vérification de cette seule MR', async () => {
     const avant = (await verificationsDe(2)).length;
     assert.equal(avant, 0);
-    await menuCarte(2);
-    await carte(2).locator(`[data-verify="${id[2]}"]`).click();
+    await menuCarteCliquer(2, 'verify');
     await choisirVerificateurEtLancer();
     await attendreServeur(async () => (await verificationsDe(2)).length > 0, 'la vérification de !2 existe');
     const [v] = await verificationsDe(2);
@@ -338,8 +353,7 @@ describe('Menu Reviews — la file « À traiter »', { skip: dispo ? false : MS
   });
 
   test('⋯ → « Faire coder » ouvre la modale de session sur la branche de la MR', async () => {
-    await menuCarte(4);
-    await carte(4).locator(`[data-dev="${id[4]}"]`).click();
+    await menuCarteCliquer(4, 'dev');
     await page.waitForSelector('#taskModal:not([hidden])');
     assert.match(await page.locator('#taskModalTitle').textContent(), /feature\/PROJ-42-client/);
     assert.match(await page.locator('#taskExistingImgs').textContent(), /!4/);
@@ -349,8 +363,7 @@ describe('Menu Reviews — la file « À traiter »', { skip: dispo ? false : MS
   });
 
   test('⋯ → « Classer sans review » retire la carte, et « Annuler l’action » la ramène', async () => {
-    await menuCarte(6);
-    await carte(6).locator(`[data-done="${id[6]}"]`).click();
+    await menuCarteCliquer(6, 'done');
     await attendreFile([1, 2, 3, 4, 5]);
     assert.equal(await statut(6), 'done');
     await page.locator('.toast .toast-btn').filter({ hasText: /Annuler/ }).click();
@@ -410,8 +423,7 @@ describe('Menu Reviews — la file « À traiter »', { skip: dispo ? false : MS
   });
 
   test('⋯ → « Merger » ouvre la modale de merge, et la confirmation merge sur la forge puis sort la MR de la file', async () => {
-    await menuCarte(6);
-    await carte(6).locator(`[data-merge="${id[6]}"]`).click();
+    await menuCarteCliquer(6, 'merge');
     await page.waitForSelector('#mergeModal:not([hidden])');
     assert.match(await page.locator('#mergeModalIntro').textContent(), /!6/);
     await page.locator('#mergeGo').click();
