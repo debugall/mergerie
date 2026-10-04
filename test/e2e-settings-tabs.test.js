@@ -64,7 +64,7 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
     /* « Données partagées » suit « Général » : les deux règlent L'OUTIL, l'un pour soi, l'autre
        à plusieurs. Elle passe avant Jira (et les plugins), qui branchent des services du dehors. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'notif', 'config', 'datasync', 'jiracfg', 'plugins', 'aisession']);
+      'config', 'notif', 'datasync', 'jiracfg', 'plugins', 'aisession']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne

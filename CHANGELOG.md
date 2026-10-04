@@ -89,6 +89,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Changed
 
+- **Settings tabs reordered**: General now comes first of the tool settings, then Notifications and Shared data, so the bar reads connect → code → review → tool → integrations.
 - **The Jenkins tab is now a third-party plugin**, in its own repository (https://gitlab.com/amady/jenkins-mergerie), installed from Settings → Plugins (from git)
   and enabled like any third-party plugin; it no longer ships with Mergerie. Nothing changes on screen once it is on: the job list and sheet, launches, the
   linked jobs and their buttons on merge requests, branches and sessions, the badges, the end-of-build notification, the "CI red" section of the brief and the
