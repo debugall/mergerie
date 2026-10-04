@@ -326,6 +326,7 @@ app.post('/api/mrs/:id/notify-jira', wrap(async (req, res) => {
     project: repo.project || '',
     mr_iid: mr.iid,
     mr_url: mr.web_url || '',
+    mr_title: mr.title || '',
   }));
 }));
 app.post('/api/tasks/:id/targets/:tid/notify-jira', wrap(async (req, res) => {

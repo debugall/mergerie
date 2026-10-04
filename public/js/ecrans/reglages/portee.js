@@ -70,6 +70,9 @@ async function loadConfig() {
       url: 'https://…/reviews/…/rapport.md', v: 2, note: '8,4',
     });
   }
+  // Le message de Jira qui partira si l'on ne touche à rien : montré tel quel, pas deviné.
+  if (f.jira_notify_template) f.jira_notify_template.placeholder = tr('jira.notify.body', { iid: 214, project: 'groupe/projet', url: 'https://…/merge_requests/214' });
+  majApercuJira();
   /* La ligne « publier le lien » n'a de sens qu'avec un dépôt de données : on retient ici ce
      que le serveur vient de dire, `syncAutoPostBlocking` s'en sert à chaque changement. */
   depotDonneesConfigure = !!String(c.data_repo_url || '').trim();

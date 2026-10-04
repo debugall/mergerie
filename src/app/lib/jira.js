@@ -216,13 +216,21 @@ function restartJiraWatch() {
    la première dont l'état d'arrivée est de catégorie « en cours » (`indeterminate`). Aucune ne
    correspond ? On commente quand même et on le dit — écrire chez les autres est déjà le
    principal, et inventer un état serait pire que de n'en changer aucun. */
+/** LE TEXTE DU COMMENTAIRE. Le gabarit de l'équipe (`jira_notify_template`) ou, vide, le message livré ; les variables inconnues restent telles quelles. */
+function texteJira(cfg, v) {
+  const gabarit = String((cfg && cfg.jira_notify_template) || '').trim();
+  if (!gabarit) return t('jira.notify.body', { iid: v.iid, project: v.project, url: v.url });
+  const valeurs = { url: v.url, iid: v.iid, project: v.project, title: v.title || '', branch: v.branch || '', key: v.key || '' };
+  return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
+}
+
 async function prevenirJira(cible) {
   const cle = jira.ticketKey(cible.branch || '', cible.branch || '');
   if (!cle) throw new Error(t('err.jira.no-key-in-branch'));
   const iid = cible.mr_iid || cible.existing_mr_iid;
   if (!iid) throw new Error(t('err.jira.no-mr-yet'));
   const cfg = getConfig();
-  const texte = t('jira.notify.body', { iid, project: cible.project, url: cible.mr_url || '' });
+  const texte = texteJira(cfg, { iid, project: cible.project, url: cible.mr_url || '', title: cible.mr_title || '', branch: cible.branch || '', key: cle });
   if (demoMode.isDemo()) return { demo: true, key: cle, commented: true, transitioned: true };
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   await jira.addComment(cfg, cle, texte);
@@ -248,5 +256,5 @@ function lireJiraBadge() { return jiraBadge; }
 function arreterJiraWatch() { if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; } }
 
 module.exports = {
-  statutsParProjet, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
+  texteJira, statutsParProjet, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
 };

@@ -317,7 +317,6 @@
             <p class="form-group-title" data-i18n="settings.task-defaults.title">Nouvelle session — cases cochées d'office</p>
             <label class="inline-check"><input form="configForm" name="task_default_auto_push" type="checkbox" /> <span data-i18n="settings.lbl.default-auto-push">Auto-push</span></label>
             <label class="inline-check"><input form="configForm" name="task_default_ask_questions" type="checkbox" /> <span data-i18n="settings.lbl.default-ask">L'IA peut poser des questions</span></label>
-            <label class="inline-check"><input form="configForm" name="task_default_notify_jira" type="checkbox" /> <span data-i18n="settings.lbl.default-notify-jira">Prévenir Jira à la création de la MR</span></label>
             <label class="inline-check"><input form="configForm" name="task_default_converge" type="checkbox" /> <span data-i18n="settings.lbl.default-converge">Converger après</span></label>
             <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
                  parce que ça ne concerne ni les MR ni une forge en particulier. -->
@@ -479,6 +478,18 @@
                  défaut, comme « Prévenir Jira » : le ticket est lu par la QA et le support,
                  écrire chez eux ne se décide pas à la place de l'utilisateur. -->
             <label class="inline-check"><input form="configForm" name="verify_jira_comment" type="checkbox" /> <span data-i18n="settings.lbl.verify-jira-comment">Commenter le ticket quand une vérification casse</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.verify-jira-comment" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- PRÉVENIR JIRA : ce qui part vers le ticket quand une session ouvre sa merge request. La case (cochée d'office dans la modale de session) et le
+                 texte du commentaire vivent ici, avec le reste de Jira, et non plus dans « Général ». -->
+            <h3 data-i18n="settings.jira.notify.title">Prévenir Jira à la création de la merge request</h3>
+            <label class="inline-check"><input form="configForm" name="task_default_notify_jira" type="checkbox" /> <span data-i18n="settings.lbl.default-notify-jira">Prévenir Jira à la création de la merge request</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.default-notify-jira" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LE TEXTE DU COMMENTAIRE. Laissé vide, c'est le message livré (il suit la langue de l'interface) ; le `placeholder` le montre EXACTEMENT. -->
+            <label><span data-i18n="settings.lbl.jira-notify-template">Gabarit du commentaire posté dans Jira</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-notify-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea form="configForm" name="jira_notify_template" rows="4"></textarea>
+                <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{key}</code> la clé du ticket.</span>
+            </label>
+            <p class="field-note"><span data-i18n="settings.jira-notify-preview">Aperçu :</span> <span id="jiraNotifyPreview" class="template-preview"></span></p>
             <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
             <!-- PRÉCISION TECHNIQUE D'UN TICKET. Confluence Cloud se lit avec le compte Jira
                  ci-dessus : ces deux champs ne servent qu'à un Confluence Server / Data Center.

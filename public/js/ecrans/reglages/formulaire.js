@@ -15,7 +15,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'task_default_auto_push', 'task_default_ask_questions',
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
-  'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template',
+  'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template', 'jira_notify_template',
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */
@@ -123,6 +123,17 @@ document.addEventListener('change', (e) => {
   if (e.target.name === 'auto_post_review' || e.target.name === 'auto_post_review_link'
     || e.target.name === 'review_link_template') syncAutoPostBlocking();
 });
+
+/* L'APERÇU DU COMMENTAIRE JIRA, avec des valeurs d'exemple : on voit ce que le gabarit donnera avant d'enregistrer. Même règle que le serveur : une variable inconnue reste telle quelle. */
+function majApercuJira() {
+  const champ = $('#configForm') && $('#configForm').elements.jira_notify_template;
+  const boite = $('#jiraNotifyPreview');
+  if (!champ || !boite) return;
+  const exemple = { url: 'https://gitlab.exemple/groupe/projet/-/merge_requests/214', iid: 214, project: 'groupe/projet', title: 'Ajout du paiement', branch: 'feature/PROJ-42-paiement', key: 'PROJ-42' };
+  const gabarit = String(champ.value || '').trim() || tr('jira.notify.body', { iid: exemple.iid, project: exemple.project, url: exemple.url });
+  boite.textContent = gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in exemple ? String(exemple[cle]) : brut));
+}
+document.addEventListener('input', (e) => { if (e.target && e.target.name === 'jira_notify_template') majApercuJira(); });
 
 /* CE QUE LE FORMULAIRE ENVERRAIT, champ par champ. Lu deux fois : au chargement (la référence)
    et à l'enregistrement (ce qui a changé depuis). */

@@ -1792,6 +1792,8 @@ const REGISTRE = [
       'auto_post_review_link',
       // Le gabarit du commentaire qui porte le lien : écrit une fois, posté par tout le monde.
       'review_link_template',
+      // Le gabarit du commentaire posté sur le ticket Jira : une convention d'équipe, comme celui du lien de review.
+      'jira_notify_template',
       /* L'EXÉCUTANT EST D'ÉQUIPE : c'est une décision collective (« c'est Claire qui fait
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',

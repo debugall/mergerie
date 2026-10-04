@@ -729,7 +729,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **what it became** — score, verdict, pending comments — instead of a bare `MR !216 ↗` that sent you back
   to Reviews, and **`Tell Jira`** comments the ticket with the merge request link then moves it to review
   when Jira offers the transition, behind a confirmation that names the ticket. A checkbox in the session
-  dialog, **unchecked by default**, does it at every merge request creation. **`Diff`** opens the **same full-screen explorer as the
+  dialog, **unchecked by default**, does it at every merge request creation — and its default, together with the **template of the comment**
+  (`{url}` `{iid}` `{project}` `{title}` `{branch}` `{key}`, with a live preview), lives in *Settings → Jira*. **`Diff`** opens the **same full-screen explorer as the
   merge requests** — the whole project tree in the middle, the entire file with the changes in place on the
   right (navigation from one change to the next, mini-map) — with, on the left, the **AI's report** instead
   of the review report. So you read what the AI says it did *and* what it actually wrote, side by side, in

@@ -63,7 +63,6 @@ function groupes(app) {
     { sub: 'config', champs: [
       ['task_default_auto_push', true],
       ['task_default_ask_questions', true],
-      ['task_default_notify_jira', true],
       ['task_default_converge', true],
       ['retention_days', '30'],
       ['mr_retention_days', '60'],
@@ -77,6 +76,8 @@ function groupes(app) {
       ['jira_token', 'ATATT-reglages-ecran'],
       ['jira_watch_minutes', '15'],
       ['verify_jira_comment', true],
+      ['task_default_notify_jira', true],
+      ['jira_notify_template', 'MR {iid} ({title}) sur {project} : {url}'],
       ['jira_test_key', 'PROJ-77'],
     ] },
     /* Jenkins est un plugin : son sous-onglet enregistre par les réglages du plugin, éprouvés dans e2e-jenkins-ui. */
