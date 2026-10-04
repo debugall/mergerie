@@ -35,6 +35,13 @@ describe('Réglages → Jira : prévenir Jira et son gabarit', { skip: dispo ? f
     assert.equal(await page.locator('#sub-config [name="task_default_notify_jira"]').count(), 0);
   });
 
+  test('les autres cases d’une nouvelle session sont dans « Sessions IA », plus dans Général', async () => {
+    for (const nom of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_converge']) {
+      assert.equal(await page.locator(`#sub-aisession [name="${nom}"]`).count(), 1, nom);
+      assert.equal(await page.locator(`#sub-config [name="${nom}"]`).count(), 0, nom);
+    }
+  });
+
   test('l’aperçu montre le message livré, puis le gabarit tapé avec des valeurs d’exemple', async () => {
     await ouvrir('jiracfg');
     await page.waitForFunction(() => document.querySelector('#jiraNotifyPreview').textContent.includes('214'));

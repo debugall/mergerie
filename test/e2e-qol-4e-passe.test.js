@@ -205,12 +205,12 @@ describe('Qualité de vie · 4ᵉ passe', () => {
        de l'écran ne prouve rien), puis décocher et relire. */
     test('une case des réglages s’enregistre, et se décoche aussi', async () => {
       await page.locator('nav button[data-tab="admin"]').click();
-      await page.locator('#tab-admin .subnav [data-sub="config"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="aisession"]').click();
       const caseAsk = page.locator('#configForm [name="task_default_ask_questions"], [form="configForm"][name="task_default_ask_questions"]').first();
       await caseAsk.waitFor({ state: 'visible' });
 
       await caseAsk.click();
-      await page.locator('#sub-config button[type="submit"][form="configForm"]').first().click();
+      await page.locator('#sub-aisession button[type="submit"][form="configForm"]').first().click();
       /* `String(...)` : la colonne est un INTEGER, l'API rend donc 1 et non '1' — c'est
          exactement le piège qui faisait revenir la case décochée. */
       await attendreServeur(async () => String((await app.api('GET', '/api/config')).body.task_default_ask_questions) === '1',
@@ -219,14 +219,14 @@ describe('Qualité de vie · 4ᵉ passe', () => {
       // …et l'écran la montre cochée après un rechargement complet : c'est ce que voit l'utilisateur.
       await page.reload();
       await page.locator('nav button[data-tab="admin"]').click();
-      await page.locator('#tab-admin .subnav [data-sub="config"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="aisession"]').click();
       await page.waitForFunction(() => {
         const el = document.querySelector('#configForm') && document.querySelector('#configForm').task_default_ask_questions;
         return el && el.checked;
       });
 
       await caseAsk.click();
-      await page.locator('#sub-config button[type="submit"][form="configForm"]').first().click();
+      await page.locator('#sub-aisession button[type="submit"][form="configForm"]').first().click();
       await attendreServeur(async () => String((await app.api('GET', '/api/config')).body.task_default_ask_questions) === '0',
         'et décochée, comme « 0 » — pas « on » dans les deux cas');
     });

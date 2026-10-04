@@ -61,14 +61,16 @@ function groupes(app) {
       ['verif_auto_authors', 'all'],
     ] },
     { sub: 'config', champs: [
-      ['task_default_auto_push', true],
-      ['task_default_ask_questions', true],
-      ['task_default_converge', true],
       ['retention_days', '30'],
       ['mr_retention_days', '60'],
       ['brief_on_open', true],
       ['todo_close_on_merge', false],
       ['stale_mr_days', '12'],
+    ] },
+    { sub: 'aisession', champs: [
+      ['task_default_auto_push', true],
+      ['task_default_ask_questions', true],
+      ['task_default_converge', true],
     ] },
     { sub: 'jiracfg', champs: [
       ['jira_url', 'https://jira.reglages.test'],

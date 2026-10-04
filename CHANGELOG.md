@@ -96,6 +96,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 - **"Tell Jira when the merge request is created" moved to Settings → Jira, and the comment is editable.** The checkbox (which ticks "Tell Jira" by default in the new-session window) left the General tab for the Jira tab, and
   a new **template** field sets the text posted on the ticket: `{url}` (required), `{iid}`, `{project}`, `{title}`, `{branch}`, `{key}`, with a live preview; empty keeps the shipped message. The template is shared with the team like the review-link template.
+- **"New session — boxes ticked by default" (Auto-push, the AI may ask questions, Converge after) moved from Settings → General to Settings → AI sessions**, with the other agent settings.
 - **Settings tabs reordered**: General now comes first of the tool settings, then Notifications and Shared data, so the bar reads connect → code → review → tool → integrations.
 - **The Jenkins tab is now a third-party plugin**, in its own repository (https://gitlab.com/amady/jenkins-mergerie), installed from Settings → Plugins (from git)
   and enabled like any third-party plugin; it no longer ships with Mergerie. Nothing changes on screen once it is on: the job list and sheet, launches, the

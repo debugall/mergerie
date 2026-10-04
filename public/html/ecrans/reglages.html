@@ -311,13 +311,6 @@
                 <button type="button" id="navPrefsReset" class="btn btn-sm" data-i18n="settings.nav.reset">Rétablir les menus d'origine</button>
                 <div id="navPrefs" class="nav-prefs"></div>
             </div>
-            <!-- A/Réglages 1 : les quatre cases de la modale de session repartaient décochées
-                 à chaque ouverture. Ce sont des habitudes de TRAVAIL (les habitudes de dépôt,
-                 elles, sont déjà mémorisées par dépôt) : elles se règlent une fois. -->
-            <p class="form-group-title" data-i18n="settings.task-defaults.title">Nouvelle session — cases cochées d'office</p>
-            <label class="inline-check"><input form="configForm" name="task_default_auto_push" type="checkbox" /> <span data-i18n="settings.lbl.default-auto-push">Auto-push</span></label>
-            <label class="inline-check"><input form="configForm" name="task_default_ask_questions" type="checkbox" /> <span data-i18n="settings.lbl.default-ask">L'IA peut poser des questions</span></label>
-            <label class="inline-check"><input form="configForm" name="task_default_converge" type="checkbox" /> <span data-i18n="settings.lbl.default-converge">Converger après</span></label>
             <!-- Données : ce qu'on garde, et comment on l'emporte. Placé dans « Général »
                  parce que ça ne concerne ni les MR ni une forge en particulier. -->
             <label><span data-i18n="settings.lbl.retention">Conserver l'historique (jours, 0 = sans limite)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.retention" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
@@ -650,6 +643,19 @@
                 </div>
             </form>
             <div id="cliTestResult"></div>
+
+            <!-- A/Réglages 1 : les cases de la modale de session repartaient décochées à chaque ouverture. Ce sont des habitudes de TRAVAIL (les habitudes de dépôt,
+                 elles, sont déjà mémorisées par dépôt) : elles se règlent une fois — ici, avec le reste de ce qui concerne les sessions d'agent. « Prévenir Jira »
+                 a la sienne dans Réglages → Jira, avec le gabarit du commentaire. -->
+            <h2 data-i18n="settings.task-defaults.title">Nouvelle session — cases cochées d'office</h2>
+            <div class="form">
+                <label class="inline-check"><input form="configForm" name="task_default_auto_push" type="checkbox" /> <span data-i18n="settings.lbl.default-auto-push">Auto-push</span></label>
+                <label class="inline-check"><input form="configForm" name="task_default_ask_questions" type="checkbox" /> <span data-i18n="settings.lbl.default-ask">L'IA peut poser des questions</span></label>
+                <label class="inline-check"><input form="configForm" name="task_default_converge" type="checkbox" /> <span data-i18n="settings.lbl.default-converge">Converger après</span></label>
+                <p>
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                </p>
+            </div>
 
             <!-- CE QU'ON REDIT À CHAQUE SESSION SANS VOULOIR LE RETAPER. Le champ vit ici parce
                  qu'il s'applique aux sessions de codage — dépôt ET hors dépôt —, au même endroit
