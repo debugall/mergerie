@@ -151,8 +151,9 @@ async function principal() {
     try {
       localStorage.setItem('aidevtools_lang', lang);
       localStorage.setItem('aidevtools_theme', 'dark');
-      /* TOUS LES ONGLETS VISIBLES. Git, Docker, Jenkins et Liens sont masqués par défaut (menus
-         optionnels, Réglages → Général) ; le film les parcourt, et la narration compte onze. */
+      /* TOUS LES ONGLETS VISIBLES. Git est masqué par défaut (menu optionnel, Réglages → Général) ;
+         le film le parcourt, et la narration compte huit onglets. Docker, Jenkins et Liens sont des
+         plugins : la base de démo est semée SANS eux (MERGERIE_DEMO_PLUGINS, voir SKILL.md). */
       localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] }));
     } catch { /* stockage indisponible */ }
   }, LANGUE);
@@ -578,10 +579,9 @@ async function principal() {
   await clique(onglet('notes'));
   await versEl('#briefBox .brief-sec >> nth=0'); await dit();
   await versEl('#briefBox .brief-sec >> nth=2'); await dit();
-  /* CE QUE LA SURVEILLANCE A VU PENDANT QU'ON N'ÉTAIT PAS LÀ. Les sections du brief sont
-     rendues dans un ordre fixé par le code, pas par la langue : le rang est donc sûr dans
-     les deux versions. 12 = les conteneurs tombés, 8 = ce que les agents ont fait. */
-  await versEl('#briefBox .brief-sec >> nth=12'); await dit();
+  /* Les sections du brief sont rendues dans un ordre fixé par le code, pas par la langue : le rang
+     est donc sûr dans les deux versions. 8 = ce que les agents ont fait. (Les conteneurs tombés et
+     les builds Jenkins viennent des plugins Docker et Jenkins : absents de la démo.) */
   await versEl('#briefBox .brief-sec >> nth=8'); await dit();
   await versEl('#briefCopy'); await dit();
   await clique(sous('notes', 1));
@@ -593,19 +593,6 @@ async function principal() {
   await clique('#pageList .note-item >> nth=0');
   await page.waitForTimeout(700);
   await versEl('#pageEditor'); await dit();
-
-  /* Liens — la grille services × environnements, et la recherche qui la traverse. */
-  await versEl(onglet('links')); await dit();
-  await clique(onglet('links'));
-  await versEl('.link-grid'); await dit();
-  /* LE FILTRE PAR ÉTIQUETTE : les pastilles de filtre ne s'affichent qu'une fois un filtre
-     posé — on ouvre donc le menu, qui montre les étiquettes réellement présentes. */
-  await clique('#linkTagBtn');
-  await versEl('#linkTagMenu'); await dit();
-  await clique('#linkTagBtn');
-  /* COLLER UNE ADRESSE : l'outil lit l'URL et propose où la ranger. */
-  await versEl('#linkPaste'); await dit();
-  await versEl('#linkSearch'); await dit();
 
   // Statistiques
   await versEl(onglet('dashboard')); await dit();
@@ -640,44 +627,6 @@ async function principal() {
   await versEl('#tab-git input[placeholder*="v1.2.0"]'); await dit();
   await clique(sous('git', 7));
   await versEl('#tab-git'); await dit();
-
-  // Docker
-  await versEl(onglet('docker')); await dit();
-  await clique(onglet('docker'));
-  await versEl(page.locator('#tab-docker').getByText('DB_POOL_SIZE', { exact: false }).first()); await dit();
-  await versEl('#dcState'); await dit();
-  await versEl(page.locator('#tab-docker button', { hasText: 'Up' }).first()); await dit();
-  await clique(sous('docker', 1));
-  await versEl(page.locator('#tab-docker button', { hasText: L.reconstruct }).first()); await dit();
-  await clique(sous('docker', 2));
-  await versEl(`#tab-docker input[placeholder*="${L.phLog}"]`); await dit();
-  await clique(sous('docker', 3));
-  await versEl('#dactAction'); await dit();
-
-  /* Jenkins — voir et lancer les jobs sans quitter l'outil. Rien n'est sondé en continu :
-     l'écran demande, on demande à Jenkins. */
-  await versEl(onglet('jenkins')); await dit();
-  await clique(onglet('jenkins'));
-  await page.waitForTimeout(1200);
-  await versEl('#jenkinsBox .jk-row >> nth=0'); await dit();
-  await versEl('#jenkinsBox .jk-row >> nth=0 >> .jk-params'); await dit();
-  await versEl('.jk-folders'); await dit();
-  await versEl('#jenkinsParamFiltres .jk-pf >> nth=0'); await dit();
-  /* La fiche d'un job PARAMÉTRÉ : c'est elle qui montre les trois blocs — ce qu'on s'apprête
-     à lancer, l'historique, et le détail de l'exécution choisie. */
-  await clique('#jenkinsBox [data-jkopen="boutique/api-deploy-prod"]');
-  await page.waitForTimeout(1400);
-  await versEl('#jenkinsModalBody .jk-bloc >> nth=0'); await dit();
-  /* L'HISTORIQUE VIT DANS UN `<details>` que la fiche referme selon la place disponible :
-     replié, ses lignes sont dans le DOM mais invisibles, et le parcours attendait quinze
-     secondes un élément qui ne s'afficherait jamais. On l'ouvre — c'est le vrai contrôle. */
-  await page.evaluate(() => { const d = document.querySelector('details.jk-fiche-repli'); if (d) d.open = true; });
-  await page.waitForTimeout(500);
-  await versEl('#jenkinsFiche .jk-col-histo .jk-build >> nth=0'); await dit();
-  await versEl('#jenkinsFiche .jk-col-detail'); await dit();
-  await versEl('#jenkinsFiche [data-jkreuse] >> nth=0'); await dit();
-  await fermeModale();
-  await versEl('#navCountJenkins'); await dit();
 
   // Jira
   await versEl(onglet('jira')); await dit();

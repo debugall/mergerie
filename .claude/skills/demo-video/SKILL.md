@@ -38,6 +38,10 @@ Les deux sont **bilingues** et parcourent la même application, mais ne partagen
 fonctionnalité nouvelle doit entrer dans les deux — et les deux se lancent sur le port 4321.
 Corriger un sélecteur ici ne corrige rien là-bas.
 
+## État au 07/10/2026 : Docker, Jenkins et Liens sont des plugins — le film ne les montre plus
+
+**134 étapes** (157 avant), ~28 min. Les trois onglets sont des plugins tiers : les parcours Liens (5 étapes), Docker (7), Jenkins (10) et l'étape « ce que la surveillance a vu » du brief (conteneurs tombés, builds) sont retirés des deux narrations et de `parcours.mjs`. **La base de démo doit être semée SANS les plugins** — `MERGERIE_DEMO_PLUGINS=/nonexistent` devant `demo-seed.js` ET devant les serveurs — sinon `mergerie demo` les installe s'ils sont voisins (`../docker-mergerie`…) et leurs menus réapparaissent dans la colonne. Le menu compte alors **huit** onglets (Reviews, Dev IA, Agents, Notes, Jira, Git, Stats, Réglages), et la narration le dit. Les rangs du brief (`.brief-sec`) changent aussi : sans le plugin Docker, il n'y a plus que 12 sections (celle des agents reste au rang 8).
+
 ## État au 27/09/2026 : voix neuronale, et les nouveautés de septembre
 
 Refaits à la demande de l'utilisateur (« la voix fait IA », « il faut que tout soit clair pour

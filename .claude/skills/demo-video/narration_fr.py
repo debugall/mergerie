@@ -14,7 +14,7 @@ l'orthographe correcte ici, jamais une graphie phonétique.
 
 NARRATION = [
     (
-        "Tu connais la journée : des merge requests qui s'empilent, des tickets à faire avancer, cinq dépôts, et une IA qui sait coder mais qu'on n'ose pas laisser seule. Mergerie, c'est un cockpit local qui règle ça. L'IA relit, code, teste et prépare. Toi, tu décides, et tu merges. Tout tourne sur ta machine, avec l'agent que tu as déjà. Onze onglets à gauche ; les pastilles ne montrent que ce qui attend un geste. "
+        "Tu connais la journée : des merge requests qui s'empilent, des tickets à faire avancer, cinq dépôts, et une IA qui sait coder mais qu'on n'ose pas laisser seule. Mergerie, c'est un cockpit local qui règle ça. L'IA relit, code, teste et prépare. Toi, tu décides, et tu merges. Tout tourne sur ta machine, avec l'agent que tu as déjà. Huit onglets à gauche ; les pastilles ne montrent que ce qui attend un geste. "
     ),
     (
         "On commence par ce qui arrive tous les jours : une merge request à relire. Chaque carte donne l'essentiel en un regard : le numéro, le titre, le projet, l'auteur, les branches, et les liens vers le ticket et vers GitLab ou GitHub. "
@@ -275,9 +275,6 @@ NARRATION = [
         "Il compte aussi les sessions de développement en attente : jamais lancées, non poussées, sans merge request. Le travail est fait, il ne manque qu'un clic. "
     ),
     (
-        "Le brief dit aussi ce que la surveillance a vu pendant que tu n'étais pas là : un conteneur tombé, un build Jenkins terminé, un plafond automatique atteint. "
-    ),
-    (
         "Et ce que les agents ont fait tout seuls, avec ce qu'ils ont produit. "
     ),
     (
@@ -290,28 +287,13 @@ NARRATION = [
         "Celle-ci a été posée par l'outil : une session s'est arrêtée pour poser une question. La notification est fermée depuis longtemps ; la todo, elle, reste sous les yeux. Répondre la referme. "
     ),
     (
-        "Une todo se repousse d'une heure ou à demain matin, et garde le lien vers ce qui l'a fait naître : une merge request, un ticket, un conteneur. "
+        "Une todo se repousse d'une heure ou à demain matin, et garde le lien vers ce qui l'a fait naître : une merge request, un ticket. "
     ),
     (
         "Les pages sont des notes libres en Markdown, cherchables. "
     ),
     (
         "Une clé de ticket ou un numéro de merge request écrit dans le texte devient un lien vers l'écran correspondant, sans rien coller. "
-    ),
-    (
-        "L'onglet Liens répond à une question banale et pénible : où est l'adresse de ce service, dans cet environnement ? "
-    ),
-    (
-        "Une grille : les services en lignes, les environnements en colonnes. Une case peut porter plusieurs adresses nommées. "
-    ),
-    (
-        "On filtre par environnement, par service, par étiquette, et la grille reste lisible sans jamais défiler de côté. "
-    ),
-    (
-        "Coller une adresse suffit : l'outil lit l'URL, reconnaît le service et l'environnement, et propose le libellé. "
-    ),
-    (
-        "La recherche traverse tout, et la palette de commandes cherche dans la même base : un lien, une merge request, un ticket, une todo. "
     ),
     (
         "L'onglet Statistiques répond à une seule question : est-ce que la qualité monte ? "
@@ -360,57 +342,6 @@ NARRATION = [
     ),
     (
         "Et l'historique garde la trace de chaque opération : chaque suppression de branche ou de tag reste restaurable. "
-    ),
-    (
-        "L'onglet Docker montre l'état réel de tes projets compose. "
-    ),
-    (
-        "Chaque service affiche son état, et surtout le drift de configuration : ce que le compose demande, comparé à ce qui tourne vraiment, variable par variable. Ici, la taille du pool est passée de dix à vingt-cinq. Les valeurs sensibles sont masquées. "
-    ),
-    (
-        "La recherche et le filtre d'état séparent les conteneurs en cours, ceux arrêtés proprement, et ceux qui ont vraiment échoué. La pastille rouge ne compte que les derniers. "
-    ),
-    (
-        "Chaque projet compose se monte et se démonte depuis l'outil. "
-    ),
-    (
-        "Les conteneurs lancés hors compose ont leur propre onglet. Reconstituer la commande retrouve le docker run qui a servi à les créer : précieux pour un conteneur démarré à la main il y a six mois. "
-    ),
-    (
-        "Les logs se lisent conteneur par conteneur, avec une recherche par mot-clé. "
-    ),
-    (
-        "Et l'onglet Actions applique recréation, build, redémarrage ou arrêt à une sélection de services, avec le même aperçu préalable qu'ailleurs. "
-    ),
-    (
-        "L'onglet Jenkins montre les jobs et sait les lancer, sans quitter l'outil. Rien n'est sondé en continu : l'écran demande, on demande à Jenkins. "
-    ),
-    (
-        "Chaque ligne répond à quatre questions : quel job, dans quel état, quand pour la dernière fois, et lancé par qui, sur quelle branche. "
-    ),
-    (
-        "Avec quels paramètres, aussi. Un paramètre qui revient d'un job à l'autre porte une couleur tirée de son nom : l'œil descend la colonne sans lire. "
-    ),
-    (
-        "Les dossiers se cochent en tête de liste, et ceux qu'on n'utilise jamais se rangent hors de la barre. "
-    ),
-    (
-        "On filtre sur la valeur d'un paramètre : qu'est-ce qui est parti en prod ? Le champ suggère les valeurs qu'il a vues, sans y enfermer. "
-    ),
-    (
-        "La fiche d'un job tient en trois blocs. D'abord les paramètres de lancement : les valeurs proposées sont celles du job. "
-    ),
-    (
-        "Ensuite l'historique, avec sous chaque ligne les paramètres de ce lancement-là : deux exécutions vertes du même après-midi ne se distinguent que par là. "
-    ),
-    (
-        "Et à droite le détail de celle qu'on choisit : quand, combien de temps, par qui, sur quelle branche. "
-    ),
-    (
-        "Reprendre remplit le formulaire avec les valeurs de cette exécution, sans rien lancer. Relancer, juste à côté, part tout de suite, avec confirmation. "
-    ),
-    (
-        "Le menu porte le nombre de jobs du jour, et les échecs en rouge. Un lancement suivi depuis l'outil est surveillé jusqu'à sa fin : la notification arrive quand le build se termine. "
     ),
     (
         "L'onglet Jira récupère automatiquement les tickets qui te sont affectés. "
@@ -470,13 +401,13 @@ NARRATION = [
         "L'onglet Git porte l'adresse de la forge, le jeton d'accès et le répertoire de clonage, avec un bouton qui teste la connexion. "
     ),
     (
-        "Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel tu veux être alerté. La surveillance de fond en ajoute : un build terminé, un conteneur qui tombe. "
+        "Et les notifications préviennent quand un job se termine, avec un seuil de note en dessous duquel tu veux être alerté. "
     ),
     (
         "En bas de l'écran, une barre suit les jobs en direct : ce qui tourne, les tokens consommés, et un journal qui se déplie. Sa vue Activité liste ce qui a été lancé et ce qui s'est terminé, avec un lien vers l'objet concerné. "
     ),
     (
-        "Contrôle K ouvre la palette : elle cherche partout à la fois, liens, merge requests, tickets, notes, todos, et remonte d'abord ce que tu ouvres souvent. "
+        "Contrôle K ouvre la palette : elle cherche partout à la fois, merge requests, tickets, notes, todos, et remonte d'abord ce que tu ouvres souvent. "
     ),
     (
         "La touche point d'interrogation affiche tous les raccourcis. "

@@ -13,7 +13,7 @@ spelling here, never a phonetic one.
 
 NARRATION = [
     (
-        "You know the day: merge requests piling up, tickets to move forward, five repositories, and an AI that can code but that nobody dares to leave alone. Mergerie is a local cockpit that fixes that. The AI reviews, codes, tests and prepares. You decide, and you merge. Everything runs on your machine, with the agent you already use. Eleven tabs on the left; the badges only show what is waiting for you. "
+        "You know the day: merge requests piling up, tickets to move forward, five repositories, and an AI that can code but that nobody dares to leave alone. Mergerie is a local cockpit that fixes that. The AI reviews, codes, tests and prepares. You decide, and you merge. Everything runs on your machine, with the agent you already use. Eight tabs on the left; the badges only show what is waiting for you. "
     ),
     (
         "Let's start with what lands every day: a merge request to review. Each card gives the essentials at a glance: the number, the title, the project, the author, the branches, and links to the ticket and to GitLab or GitHub. "
@@ -274,9 +274,6 @@ NARRATION = [
         "It also counts the development sessions waiting: never launched, not pushed, without a merge request. The work is done, only a click is missing. "
     ),
     (
-        "The brief also says what the watch saw while you were away: a container down, a Jenkins build finished, an automatic ceiling reached. "
-    ),
-    (
         "And what the agents did on their own, with what they produced. "
     ),
     (
@@ -289,28 +286,13 @@ NARRATION = [
         "This one was placed by the tool: a session stopped to ask a question. The notification was closed long ago; the todo stays in sight. Answering closes it. "
     ),
     (
-        "A todo can be pushed back an hour or to tomorrow morning, and keeps the link to what created it: a merge request, a ticket, a container. "
+        "A todo can be pushed back an hour or to tomorrow morning, and keeps the link to what created it: a merge request, a ticket. "
     ),
     (
         "Pages are free Markdown notes, searchable. "
     ),
     (
         "A ticket key or a merge request number written in the text becomes a link to the matching screen, without pasting anything. "
-    ),
-    (
-        "The Links tab answers a mundane, painful question: where is the address of this service, in this environment? "
-    ),
-    (
-        "A grid: services as rows, environments as columns. A cell can hold several named addresses. "
-    ),
-    (
-        "You filter by environment, by service, by tag, and the grid stays readable without ever scrolling sideways. "
-    ),
-    (
-        "Pasting an address is enough: the tool reads the URL, recognises the service and the environment, and suggests the label. "
-    ),
-    (
-        "The search goes through everything, and the command palette searches the same base: a link, a merge request, a ticket, a todo. "
     ),
     (
         "The Statistics tab answers a single question: is quality going up? "
@@ -359,57 +341,6 @@ NARRATION = [
     ),
     (
         "And the history keeps track of every operation: every branch or tag deletion stays restorable. "
-    ),
-    (
-        "The Docker tab shows the real state of your compose projects. "
-    ),
-    (
-        "Each service shows its state, and above all its configuration drift: what the compose file asks for, compared with what is really running, variable by variable. Here, the pool size went from ten to twenty-five. Sensitive values are masked. "
-    ),
-    (
-        "The search and the state filter separate running containers, those stopped cleanly, and those that really failed. The red badge only counts the last ones. "
-    ),
-    (
-        "Each compose project comes up and down from the tool. "
-    ),
-    (
-        "Containers started outside compose have their own tab. Reconstruct command finds the docker run that created them: precious for a container started by hand six months ago. "
-    ),
-    (
-        "Logs are read container by container, with a keyword search. "
-    ),
-    (
-        "And the Actions tab applies recreate, build, restart or stop to a selection of services, with the same preview as everywhere else. "
-    ),
-    (
-        "The Jenkins tab shows jobs and can launch them, without leaving the tool. Nothing is polled continuously: the screen asks, you ask Jenkins. "
-    ),
-    (
-        "Each row answers four questions: which job, in what state, when last, and launched by whom, on which branch. "
-    ),
-    (
-        "With which parameters, too. A parameter that comes back from one job to the next carries a colour derived from its name: the eye goes down the column without reading. "
-    ),
-    (
-        "Folders tick at the top of the list, and the ones you never use tuck away out of the bar. "
-    ),
-    (
-        "You filter on a parameter's value: what went to prod? The field suggests the values it has seen, without locking you in. "
-    ),
-    (
-        "A job's sheet fits in three blocks. First the launch parameters: the proposed values are the job's own. "
-    ),
-    (
-        "Then the history, with under each row the parameters of that run: two green runs from the same afternoon only differ there. "
-    ),
-    (
-        "And on the right the detail of the one you choose: when, how long, by whom, on which branch. "
-    ),
-    (
-        "Reuse fills the form with that run's values, without launching anything. Re-run, right next to it, starts at once, with confirmation. "
-    ),
-    (
-        "The menu carries the number of jobs today, and the failures in red. A launch followed from the tool is watched until it ends: the notification arrives when the build finishes. "
     ),
     (
         "The Jira tab automatically fetches the tickets assigned to you. "
@@ -469,13 +400,13 @@ NARRATION = [
         "The Git tab carries the forge address, the access token and the clone directory, with a button that tests the connection. "
     ),
     (
-        "And notifications warn when a job ends, with a score threshold below which you want to be alerted. The background watch adds to it: a finished build, a container going down. "
+        "And notifications warn when a job ends, with a score threshold below which you want to be alerted. "
     ),
     (
         "At the bottom of the screen, a bar follows jobs live: what is running, the tokens consumed, and a log that unfolds. Its Activity view lists what was launched and what finished, with a link to the object concerned. "
     ),
     (
-        "Control K opens the palette: it searches everywhere at once, links, merge requests, tickets, notes, todos, and surfaces first what you open often. "
+        "Control K opens the palette: it searches everywhere at once, merge requests, tickets, notes, todos, and surfaces first what you open often. "
     ),
     (
         "The question mark key shows every shortcut. "
