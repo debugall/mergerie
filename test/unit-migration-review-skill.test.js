@@ -20,7 +20,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const RACINE = path.resolve(__dirname, '..');
-const { PROMPTS, ANCIENS_PROMPTS } = require('../src/core/prompts');
+const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER } = require('../src/core/prompts');
 
 // La table `config` telle qu'elle était, avec le champ et les gabarits à trous.
 const ANCIEN = `
@@ -145,5 +145,20 @@ describe('Migration : le skill de review passe dans le gabarit', () => {
     const dir = semer({ review: ANCIENS_PROMPTS.fr.prompt_review, explain: '', modify: '' }, 'git-review');
     assert.equal(migrer(dir).prompt_review, PROMPTS.fr.prompt_review);
     assert.equal(migrer(dir).prompt_review, PROMPTS.fr.prompt_review);
+  });
+  /* LA RÈGLE « OUVRE LE FICHIER EN ENTIER » : le diff n'a que trois lignes de contexte, et l'IA
+     signalait comme « manquants » des imports qui étaient hors du diff. Le défaut la porte ;
+     une installation restée au défaut d'avant la reçoit, une installation retouchée non. */
+  for (const lang of ['fr', 'en']) {
+    test(`(${lang}) le défaut dit d'ouvrir le fichier entier avant de signaler un manque, et l'ancien défaut est mis à jour`, () => {
+      assert.match(PROMPTS[lang].prompt_review, lang === 'fr' ? /ouvre le fichier modifié en entier/ : /open the whole changed\s+file/);
+      assert.doesNotMatch(ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER[lang], lang === 'fr' ? /en entier/ : /whole changed/);
+      const cfg = migrer(semer({ review: ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER[lang], explain: '', modify: '' }, 'git-review'));
+      assert.equal(cfg.prompt_review, PROMPTS[lang].prompt_review);
+    });
+  }
+  test('un gabarit retouché à partir de l\'ancien défaut n\'est pas touché par la règle', () => {
+    const perso = `${ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER.fr} Et sois bref.`;
+    assert.equal(migrer(semer({ review: perso, explain: '', modify: '' }, 'git-review')).prompt_review, perso);
   });
 });

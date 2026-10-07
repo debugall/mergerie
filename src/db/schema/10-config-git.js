@@ -3,7 +3,7 @@
    Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
-const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT } = require('../../core/prompts');
+const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT, ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER } = require('../../core/prompts');
 const { DEFAULT_CLONE_DIR } = require('../../core/paths');
 
 /* Cocher une todo liée quand sa merge request est mergée. Coché par défaut : la todo perd sa
@@ -72,6 +72,12 @@ for (const lang of ['fr', 'en']) {
 for (const lang of ['fr', 'en']) {
   db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
     .run(PROMPTS[lang].prompt_review, ANCIEN_PROMPT_REVIEW_COURT[lang]);
+}
+
+/* LE DÉFAUT GAGNE UNE RÈGLE : ouvrir le fichier entier avant de signaler un import ou une définition « manquant » (le diff n'en montre que les abords). Même garde-fou : seul un gabarit rigoureusement identique à l'ancien défaut, dans sa langue, est remplacé. Rejouable. */
+for (const lang of ['fr', 'en']) {
+  db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
+    .run(PROMPTS[lang].prompt_review, ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER[lang]);
 }
 
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
