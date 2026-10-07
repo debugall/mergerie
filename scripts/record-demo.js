@@ -73,14 +73,9 @@ const TEXTES = {
     jira: 'Tes tickets Jira, leur contexte injecté automatiquement dans les reviews',
     git: 'Opérations git sur tous tes dépôts — toujours avec aperçu, suppressions restaurables',
     gitExplore: 'L’explorateur dit ce qu’il fait pendant qu’il travaille, et chaque dépôt se replie',
-    liens: 'Un service par ligne, un environnement par colonne — l’adresse écrite, jamais devinée',
-    palette: 'La palette cherche partout à la fois — liens, MR, tickets, notes, todos',
-    jenkins: 'Tes jobs Jenkins, leur dernier résultat et leurs paramètres — filtrables par dossier, relançables d’ici',
-    jenkinsDetail: 'L’historique d’un job run par run, les paramètres de chacun, et le détail à droite',
-    docker: 'Le drift .env détecté variable par variable — secrets masqués',
-    logs: 'Logs live multi-containers, filtrables',
+    palette: 'La palette cherche partout à la fois — MR, tickets, notes, todos',
     stats: 'La qualité progresse-t-elle ? Notes, taux de résolution, coût en tokens',
-    sidebar: 'Onze onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
+    sidebar: 'Tous les onglets tiennent dans une colonne, qui se replie en icônes quand l’écran manque',
     finTitre: 'Mergerie — npm run demo',
     finSous: (u) => `30 secondes pour l’essayer. Aucune config, aucun token\n${u}`,
   },
@@ -104,14 +99,9 @@ const TEXTES = {
     jira: 'Your Jira tickets, their context fed into reviews automatically',
     git: 'Git operations across every repository — always with a preview, deletions restorable',
     gitExplore: 'The explorer says what it is doing while it works, and each repository folds away',
-    liens: 'One service per row, one environment per column — the address written out, never guessed',
-    palette: 'The palette searches everything at once — links, MRs, tickets, notes, todos',
-    jenkins: 'Your Jenkins jobs, their latest result and their parameters — filter by folder, relaunch from here',
-    jenkinsDetail: 'A job’s history run by run, the parameters of each, and the detail on the right',
-    docker: '.env drift caught variable by variable — secrets masked',
-    logs: 'Live logs across containers, filterable',
+    palette: 'The palette searches everything at once — MRs, tickets, notes, todos',
     stats: 'Is quality improving? Scores, resolution rate, token cost',
-    sidebar: 'Eleven tabs fit in one column, which folds down to icons when the screen runs short',
+    sidebar: 'Every tab fits in one column, which folds down to icons when the screen runs short',
     finTitre: 'Mergerie — npm run demo',
     finSous: (u) => `Thirty seconds to try it. No config, no token\n${u}`,
   },
@@ -243,7 +233,8 @@ function startDemo() {
   // déjà lancée (et rester en mode démo isolé : data-demo/, dry-run, sans token).
   const child = spawn('npm', ['run', 'demo'], {
     cwd: ROOT, detached: true, stdio: 'ignore',
-    env: { ...process.env, PORT: String(PORT) },
+    /* Docker, Jenkins et Liens sont des plugins tiers : la démo les installe s'ils sont voisins. La visite ne les montre plus — un dossier inexistant les écarte, et leurs entrées de menu avec. */
+    env: { ...process.env, PORT: String(PORT), MERGERIE_DEMO_PLUGINS: path.join(ROOT, '.sans-plugins-tiers') },
   });
   child.unref();
   return child;
@@ -381,8 +372,8 @@ async function enregistrer(lang) {
     try {
       localStorage.setItem(k, v);
       localStorage.setItem('aidevtools_theme', 'dark');
-      /* Tous les onglets visibles : Git, Docker, Jenkins et Liens sont masqués par défaut
-         (menus optionnels), et la visite les parcourt. */
+      /* Tous les onglets visibles : Git est masqué par défaut (menu optionnel), et la visite le parcourt.
+         Docker, Jenkins et Liens sont des plugins : la démo est semée sans eux (MERGERIE_DEMO_PLUGINS) */
       localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] }));
     } catch { /* stockage indisponible */ }
   }, [LANG_KEY, lang]);
@@ -588,106 +579,16 @@ async function enregistrer(lang) {
       await sleep(3800);
     });
 
-    /* ═══ 9) Liens : la grille, la santé, puis la palette globale ═══
-       C'est la fonctionnalité qui se raconte le plus mal en mots et le mieux à l'écran :
-       une grille services × environnements, et un lanceur qui trouve tout au clavier. */
-    await section('Liens · grille, santé et palette', async () => {
-      await clickEl(page, page.locator('nav button[data-tab="links"]'));
-      await page.waitForSelector('.link-grid', { state: 'visible', timeout: 12000 }).catch(() => {});
-      if (!(await need(page, '.link-grid', 'Grille de liens'))) return;
-      await cap(page, T.liens);
-      await sleep(900);
-      await glide(page, W * 0.5, H * 0.4);
-      await sleep(2400);
-      // La palette : on l'ouvre par son champ, on tape, les résultats tombent.
+    /* ═══ 9) La palette globale ═══
+       Un lanceur qui trouve tout au clavier. « paiement » et non « kib » : c'est le fil rouge
+       de la démo, et le mot qui ressort à la fois d'une merge request, d'un ticket surveillé
+       et d'une todo — la légende promet que la palette traverse tout le cockpit. */
+    await section('Palette · recherche globale', async () => {
       await clickEl(page, page.locator('#paletteTrigger'));
       await sleep(500);
       await cap(page, T.palette);
-      /* « paiement » et non « kib » : c'est le fil rouge de la démo, et le seul mot qui
-         ressorte à la fois d'un lien, d'une merge request, d'un ticket surveillé et d'une
-         todo. La légende promet que la palette traverse tout le cockpit — autant que
-         l'écran le prouve au lieu de rendre deux lignes de la même famille. */
       await page.locator('#paletteInput').type('paiement', { delay: 130 });
       await sleep(2800);
-      await page.keyboard.press('Escape');
-      await sleep(700);
-    });
-
-    // ═══ 10) Docker : liste compose + drift de variables ═══
-    await section('Docker · drift .env', async () => {
-      await clickEl(page, page.locator('nav button[data-tab="docker"]'));
-      await page.waitForSelector('#dockerComposeBox .docker-svc', { state: 'visible', timeout: 12000 }).catch(() => {});
-      await cap(page, T.docker);
-      await sleep(900);
-      // le diff de variables du service en drift (rendu inline sur sa carte)
-      await page.waitForSelector('.env-diff', { state: 'visible', timeout: 8000 }).catch(() => {});
-      if (!(await need(page, '.env-diff', 'Diff de variables'))) return;
-      await moveTo(page, page.locator('.env-diff').first());
-      await sleep(1200);
-      if (await present(page, '.env-diff .env-added, .env-diff .env-removed')) {
-        await moveTo(page, page.locator('.env-diff .env-added, .env-diff .env-removed').first(), 450);
-      }
-      await sleep(2400);
-    });
-
-    // ═══ 11) Docker → Logs : tail live de 2 containers ═══
-    await section('Docker · logs live', async () => {
-      await clickEl(page, page.locator('button[data-dsub="logs"]'));
-      await page.waitForSelector('#dlogContainers .dlog-citem', { state: 'visible', timeout: 8000 });
-      await cap(page, T.logs);
-      await sleep(900);
-      const items = page.locator('#dlogContainers .dlog-citem');
-      const n = Math.min(await items.count(), 2);
-      if (n === 0) { warnings.push('« Docker · logs » : aucun container en démo (non filmé)'); return; }
-      for (let i = 0; i < n; i += 1) { await clickEl(page, items.nth(i)); await sleep(250); }
-      await clickEl(page, page.locator('#dlogStart'));
-      // on laisse le flux fictif remplir la vue, puis on vérifie qu'il y a bien du contenu.
-      await sleep(2600);
-      const gotLines = await page.evaluate(() => {
-        const v = document.querySelector('#dlogView'); return !!v && v.textContent.trim().length > 20;
-      }).catch(() => false);
-      if (!gotLines) warnings.push('« Docker · logs » : aucune ligne reçue (flux vide) — écran peu parlant');
-      await glide(page, W * 0.5, H * 0.55);
-      await sleep(gotLines ? 4000 : 1000);
-    });
-
-    // ═══ 12) Statistiques : vue d'ensemble ═══
-    /* ═══ 10 bis) Jenkins ═══
-       Un onglet entier absent des vidéos précédentes. Le job se voit dans la liste, son
-       historique dans la modale — et les paramètres de chaque run, qui sont la raison pour
-       laquelle on ouvre un job plutôt que de lire un mail d'échec. */
-    await section('Jenkins · jobs et historique', async () => {
-      await clickEl(page, page.locator('nav button[data-tab="jenkins"]'));
-      await page.waitForSelector('#jenkinsBox .jk-row', { state: 'visible', timeout: 12000 }).catch(() => {});
-      if (!(await need(page, '#jenkinsBox .jk-row', 'Liste des jobs Jenkins'))) return;
-      await cap(page, T.jenkins);
-      await sleep(900);
-      const jobs = page.locator('#jenkinsBox .jk-row');
-      const nj = Math.min(await jobs.count(), 3);
-      for (let i = 0; i < nj; i += 1) { await moveTo(page, jobs.nth(i), 460); await sleep(650); }
-      await sleep(1400);
-
-      /* UN JOB PARAMÉTRÉ, pas le premier de la liste. La légende annonce « les paramètres de
-         chacun » : ouvert sur un job qui n'en a pas, l'écran dit « cette exécution est partie
-         sans paramètre » pendant qu'on affirme le contraire. */
-      await cap(page, T.jenkinsDetail);
-      // `data-jkjob` porte sur le bouton du NOM, à l'intérieur de la ligne — pas sur la ligne.
-      const parametre = page.locator('#jenkinsBox [data-jkjob="boutique/api-deploy-prod"]');
-      const cible = (await parametre.count()) ? parametre.first() : jobs.first();
-      if (!(await parametre.count())) warnings.push('« Jenkins · historique » : job paramétré absent, ouvert sur le premier de la liste');
-      await clickEl(page, cible);
-      await page.waitForSelector('#jenkinsFiche', { state: 'attached', timeout: 10000 }).catch(() => {});
-      /* SUR UN JOB PARAMÉTRÉ, L'HISTORIQUE EST REPLIÉ à l'ouverture (la fenêtre sert alors à
-         lancer, et « Derniers builds » déplié repoussait le bouton hors écran). La légende,
-         elle, annonce « l'historique run par run » : on le déplie donc avant de filmer,
-         sinon on commente un panneau fermé. */
-      const repli = page.locator('.jk-fiche-repli:not([open]) > summary');
-      if (await repli.count()) { await clickEl(page, repli.first()); await sleep(800); }
-      await sleep(1200);
-      await glide(page, W * 0.35, H * 0.5);
-      await sleep(2600);
-      await glide(page, W * 0.7, H * 0.5);
-      await sleep(3200);
       await page.keyboard.press('Escape');
       await sleep(700);
     });
