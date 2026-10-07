@@ -152,6 +152,14 @@
 .jira-section { margin-top: 18px; }
 .jira-card { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
 
+/* La précision technique est générée, pas écrite par le PO : elle doit se voir d'un
+   coup d'œil comme un ajout de Mergerie, jamais comme un paragraphe du ticket lui-même. */
+.jira-spec { border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 12px;
+  padding: 14px 16px; background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+.jira-spec > h4 { display: flex; align-items: center; gap: 7px; color: var(--accent-text, var(--accent)); margin-top: 0; }
+.jira-spec > h4 .ico { color: var(--accent); flex-shrink: 0; }
+.jira-spec .jira-spec-md { background: var(--panel); }
+
 .jira-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; font-size: 13px; }
 .jira-meta-row { display: contents; }
 .jira-meta-label { white-space: nowrap; }
