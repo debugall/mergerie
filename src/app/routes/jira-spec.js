@@ -176,6 +176,22 @@ app.post('/api/jira/spec', wrap(async (req, res) => {
   res.json({ spec: vueComplete(r.spec), job: r.job });
 }));
 
+/* ENREGISTRER SANS ANALYSER : les choix saisis (dépôts, branches, pages, complément…) sont gardés, rien n'est lancé — l'analyse partira plus tard, du même formulaire. Une session en cours n'est pas touchée. */
+app.post('/api/jira/spec/draft', wrap((req, res) => {
+  const b = req.body || {};
+  const existante = spec.specByKey(b.key);
+  const enCours = existante && existante.task_id ? db.prepare('SELECT status FROM task WHERE id = ?').get(existante.task_id) : null;
+  if (enCours && ['running', 'needs_input'].includes(enCours.status)) throw new Error(t('err.spec.session-busy'));
+  const s = spec.creerOuReprendre({
+    ticketKey: b.key, repoIds: b.repo_ids, repoBranches: b.repo_branches, complement: b.complement, confluenceUrls: b.confluence_urls, detail: b.detail,
+    includeEpic: b.include_epic, askQuestions: b.ask_questions, epicKey: b.epic_key, verifierOrigine: !demoMode.isDemo(), brouillon: true,
+  });
+  // Le titre pour l'onglet « Analysés » (aucun appel Jira à l'affichage) ; l'analyse le remplacera par la vraie photo du ticket.
+  const titre = String(b.summary || '').trim().slice(0, 300);
+  if (titre && !s.ticket_snapshot) spec.poser(s.id, { ticket_snapshot: JSON.stringify({ summary: titre }) });
+  res.json({ spec: vueComplete(spec.specById(s.id)) });
+}));
+
 /* Relancer l'analyse : le contexte est relu (le ticket a pu changer), la session est neuve, les
    versions et le commentaire posté restent. */
 app.post('/api/jira/spec/:id/rerun', wrap(async (req, res) => {

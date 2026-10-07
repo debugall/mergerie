@@ -53,11 +53,12 @@ function normaliserBranches(repos, brut) {
 /* Crée la spec d'un ticket, ou REPREND celle qui existe : une seule par ticket, c'est l'identité.
    Les choix (dépôts, pages, complément, détail) sont réécrits ; l'id du commentaire posté et
    les versions restent — c'est ce qui fait qu'une relance met à jour le même commentaire. */
-function creerOuReprendre({ ticketKey, repoIds, repoBranches, complement, confluenceUrls, detail, includeEpic, askQuestions, epicKey, batchId, verifierOrigine = true }) {
+function creerOuReprendre({ ticketKey, repoIds, repoBranches, complement, confluenceUrls, detail, includeEpic, askQuestions, epicKey, batchId, verifierOrigine = true, brouillon = false }) {
   const cle = jiraspec.normaliserCle(ticketKey);
   if (!jiraspec.cleValide(cle)) throw new Error(t('err.jira.invalid-key'));
   const repos = [...new Set((repoIds || []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
-  if (!repos.length) throw new Error(t('err.spec.repo-required'));
+  // Un brouillon n'a pas à nommer de dépôt : on garde ce qu'on a saisi, l'analyse l'exigera.
+  if (!repos.length && !brouillon) throw new Error(t('err.spec.repo-required'));
   for (const id of repos) if (!db.prepare('SELECT 1 FROM repo WHERE id = ?').get(id)) throw new Error(t('err.depot-introuvable'));
   const urls = [...new Set((confluenceUrls || []).map((u) => String(u || '').trim()).filter((u) => /^https?:\/\//i.test(u)))].slice(0, 5);
   /* UNE PAGE D'UNE AUTRE ORIGINE EST REFUSÉE ICI, pas seulement à la lecture : les identifiants ne

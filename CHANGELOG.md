@@ -11,6 +11,12 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **Save a ticket's technical brief without running it.** The brief form (Jira → a ticket → *Technical brief*) has a new **Save without analysing** button: what you typed
+  (repositories and their branches, Confluence pages, complement, options) is kept, no AI session is started and nothing is spent. The ticket shows up as *to run* — in the
+  **Analysed** tab and in the *already analysed* filter of My tickets — and the form comes back filled when you reopen it: start the analysis whenever you want. Unlike the analysis, saving does not require a repository yet.
+
 ## [3.0.0] - 2026-10-04
 
 ### Added

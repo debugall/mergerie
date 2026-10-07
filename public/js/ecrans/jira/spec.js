@@ -24,7 +24,7 @@ async function reposOptions() {
 function formulaireDe(cle, vue) {
   if (!SPEC.formulaire[cle]) {
     SPEC.formulaire[cle] = {
-      ouvert: !vue, repos: vue ? vue.repo_ids.slice() : [], branches: vue ? { ...vue.repo_branches } : {}, pages: vue ? vue.confluence.map((p) => p.url) : [],
+      ouvert: !vue || vue.status === 'new', repos: vue ? vue.repo_ids.slice() : [], branches: vue ? { ...vue.repo_branches } : {}, pages: vue ? vue.confluence.map((p) => p.url) : [],
       complement: vue ? vue.complement : '', detail: vue ? vue.detail : 'synthese', epic: vue ? vue.include_epic : true,
       ask: vue ? vue.ask_questions : true, edition: false, filtre: '',
     };
@@ -79,6 +79,7 @@ function formulaireHtml(cle, it, vue) {
       </div>
       <div class="jira-spec-actions">
         <button type="submit" class="btn btn-primary btn-sm"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr(vue ? 'jira.spec.btn.rerun' : 'jira.spec.btn.analyse'))}</button>
+        <button type="button" class="btn btn-sm" data-spec-draft title="${esc(tr('jira.spec.btn.draft-title'))}">${esc(tr('jira.spec.btn.draft'))}</button>
         <span class="muted">${esc(tr('jira.spec.cost'))}</span>
         ${epic ? `<button type="button" class="btn btn-sm" data-spec-epic-lot="${esc(epic.key)}"><svg class="ico ico-sm"><use href="#i-grid"/></svg>${esc(tr('jira.spec.btn.epic'))}</button>` : ''}
         ${vue ? `<button type="button" class="btn btn-sm" data-spec-form-close>${esc(tr('jira.spec.btn.cancel'))}</button>` : ''}
@@ -136,7 +137,7 @@ function propositionHtml(cle, vue) {
 /** Le bloc inséré par le détail du ticket : vide tant que la spec n'est pas chargée. */
 function sectionSpecHtml(it) {
   return `<div class="jira-section jira-spec" data-spec-box="${esc(it.key)}" hidden>
-      <h4>${esc(tr('jira.spec.title'))}</h4>
+      <h4><svg class="ico"><use href="#i-edit"/></svg>${esc(tr('jira.spec.title'))}</h4>
       <div class="jira-spec-body"></div>
     </div>`;
 }
@@ -186,10 +187,10 @@ async function majSpecsListe(cles) {
   /* La table des tickets analysés suit : un ticket qui vient d'avoir sa proposition entre dans le filtre « Déjà analysés » sans recharger la page. */
   let change = false;
   for (const cle of cles) {
-    const s = d.specs[cle]; const etait = !!(JIRA.analyses[cle] && JIRA.analyses[cle].analysed);
-    if (!!(s && s.version > 0) !== etait) change = true;
+    const s = d.specs[cle]; const etait = !!JIRA.analyses[cle];
+    if (!!s !== etait) change = true;
   }
-  if (change || !$('#jiraSubAnalysed').hidden) chargerAnalyses().then((vraiChangement) => { if (vraiChangement && jiraSpecFiltre() !== 'all') renderJiraList(); });
+  if (change || !$('#jiraSubAnalysed').hidden || cles.some((c) => !JIRA.analyses[c] !== !d.specs[c])) chargerAnalyses().then((vraiChangement) => { if (vraiChangement && jiraSpecFiltre() !== 'all') renderJiraList(); });
   for (const el of $$('[data-spec-chip]')) {
     // Seules les cartes DEMANDÉES sont relues : un rafraîchissement d'un ticket ne doit pas éteindre les autres.
     if (!demandees.has(el.dataset.specChip)) continue;
@@ -286,6 +287,18 @@ document.addEventListener('click', async (e) => {
     const form = b.closest('[data-spec-form]'); const cle = form.dataset.specForm;
     const f = lireFormulaire(form, cle); f.pages.splice(Number(b.dataset.specPageDel), 1);
     rendreSpec(cle, boxDe(b)); return;
+  }
+  if ((b = closest('[data-spec-draft]'))) {
+    const form = b.closest('[data-spec-form]'); const cle = form.dataset.specForm;
+    const f = lireFormulaire(form, cle);
+    b.disabled = true;
+    try {
+      const d = await api('/jira/spec/draft', { method: 'POST', body: corpsDe(cle, f, { summary: JIRA.current && JIRA.current.key === cle ? JIRA.current.summary : '' }) });
+      SPEC.parCle[cle] = d.spec;
+      toast(tr('jira.spec.draft-saved'));
+      rendreSpec(cle, boxDe(b)); majSpecsListe([cle]);
+    } catch (err) { toast(explainError(err.message), true); b.disabled = false; }
+    return;
   }
   if ((b = closest('[data-spec-form-open]'))) { const cle = cleDe(b); formulaireDe(cle, SPEC.parCle[cle]).ouvert = true; rendreSpec(cle, boxDe(b)); return; }
   if ((b = closest('[data-spec-form-close]'))) { const cle = cleDe(b); formulaireDe(cle, SPEC.parCle[cle]).ouvert = false; rendreSpec(cle, boxDe(b)); return; }

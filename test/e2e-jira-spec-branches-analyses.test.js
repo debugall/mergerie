@@ -187,5 +187,56 @@ describe('Menu Jira — branches lues, onglet Analysés, filtre Analyse', { skip
     await page.waitForFunction(() => document.querySelectorAll('#jiraAnaList [data-jiraanaopen]').length === 3);
   });
 
+  test('« Enregistrer sans analyser » garde la saisie et les dépôts cochés sans lancer l’IA ; l’analyse part plus tard du même formulaire', async () => {
+    app.state.jiraIssues['PROJ-23'] = { key: 'PROJ-23', fields: { assignee: MOI, project: { key: 'PROJ', name: 'Boutique' }, updated: '2026-09-11T10:00:00.000+0000', status: etat('À faire', 'new'), issuetype: { name: 'Story' }, summary: 'Export comptable', description: adf('Exporter la compta.') }, comments: [] };
+    await ouvrirJira();
+    await ouvrirTicket('PROJ-23', 'Export comptable');
+    await page.locator('#jiraDetail [data-spec-goto="PROJ-23"]').click();
+    let form = boite('PROJ-23').locator('[data-spec-form="PROJ-23"]');
+    await form.waitFor({ state: 'visible' });
+    await form.locator(`[data-spec-row="${repoId}"] [data-spec-repo]`).check();
+    await form.locator('[data-spec-complement]').fill('Voir le module billing.');
+    await form.locator('[data-spec-draft]').click();
+    await attendreServeur(async () => { const s = await specDe('PROJ-23'); return !!s && s.status === 'new'; }, 'le brouillon est enregistré');
+    const brouillon = await specDe('PROJ-23');
+    assert.deepEqual(brouillon.repo_ids, [repoId]);
+    assert.equal(brouillon.complement, 'Voir le module billing.');
+    assert.equal(brouillon.task_id, null, 'aucune session lancée');
+    assert.equal(brouillon.version, 0, 'aucune proposition');
+    // Le brouillon est dans l'onglet « Analysés », avec son titre et son état « à lancer ».
+    await page.locator('#tab-jira .subnav [data-jsub="analysed"]').click();
+    const carte = page.locator('#jiraAnaList [data-jiraanaopen="PROJ-23"]');
+    await carte.waitFor({ state: 'visible' });
+    assert.match(await carte.innerText(), /Export comptable/);
+    assert.match(await carte.innerText(), /à lancer|to run/);
+    await page.locator('#tab-jira .subnav [data-jsub="mine"]').click();
+    // Le filtre « Déjà analysés » de « Mes tickets » inclut le brouillon.
+    await choisirAnalyse('done');
+    await page.waitForFunction(() => [...document.querySelectorAll('#jiraList [data-jira]')].some((x) => x.dataset.jira === 'PROJ-23'));
+    await choisirAnalyse('todo');
+    await page.waitForFunction(() => ![...document.querySelectorAll('#jiraList [data-jira]')].some((x) => x.dataset.jira === 'PROJ-23'));
+    await choisirAnalyse('all');
+    // Rechargé : le formulaire est toujours là, avec la saisie, et l'analyse peut partir.
+    await ouvrirJira();
+    await ouvrirTicket('PROJ-23', 'Export comptable');
+    form = boite('PROJ-23').locator('[data-spec-form="PROJ-23"]');
+    await form.waitFor({ state: 'visible' });
+    assert.equal(await form.locator('[data-spec-complement]').inputValue(), 'Voir le module billing.');
+    assert.equal(await form.locator(`[data-spec-row="${repoId}"] [data-spec-repo]`).isChecked(), true);
+    await form.locator('[data-spec-ask]').uncheck();
+    await form.locator('button[type="submit"]').click();
+    await attendreStatut('PROJ-23', 'proposed');
+  });
+
+  test('un brouillon n’exige pas de dépôt ; l’analyse, si', async () => {
+    const d = await app.api('POST', '/api/jira/spec/draft', { key: 'PROJ-24', complement: 'à préciser' });
+    assert.equal(d.status, 200, JSON.stringify(d.body));
+    assert.deepEqual(d.body.spec.repo_ids, []);
+    assert.equal(d.body.spec.status, 'new');
+    const r = await app.api('POST', `/api/jira/spec/${d.body.spec.id}/rerun`, { repo_ids: [] });
+    assert.equal(r.status, 400);
+    await app.api('DELETE', `/api/jira/spec/${d.body.spec.id}`);
+  });
+
   test('aucune erreur de page', () => { assert.deepEqual(erreurs, []); });
 });
