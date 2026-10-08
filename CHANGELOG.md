@@ -13,6 +13,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A long request no longer pushes the AI's answer off screen.** In a session's "Retour de l'IA" view, the *What was asked* block now has a bounded height and scrolls on its own, so the answer stays within reach however long the prompt was.
 - **The AI no longer reports an "import missing from the file" because it only saw the diff.** The diff handed to a review shows a few lines around each change, so the top of a file (imports, declarations) is usually absent from it, and the AI sometimes took that for a missing import. The default review prompt now tells it to open the whole changed file before reporting anything as missing. An installation whose prompt is still the default gets the new one automatically; a prompt you edited is left alone — add the same rule to it by hand if you want it.
 
 ### Added

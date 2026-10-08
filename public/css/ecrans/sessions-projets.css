@@ -63,7 +63,9 @@
   border-radius: var(--r-sm); padding: 3px 8px; font: inherit; font-size: var(--fs-xs); max-width: 320px; }
 /* Prompt d'une itération : texte brut (ce qui a été envoyé à l'agent), pas du Markdown. */
 .pass-prompt { white-space: pre-wrap; background: var(--panel2); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 10px 12px; font-size: var(--fs-sm); overflow-x: auto; }
+  border-radius: var(--radius); padding: 10px 12px; font-size: var(--fs-sm); overflow-x: auto;
+  /* Une demande longue ne repousse pas la réponse hors de l'écran : la demande défile dans sa boîte. */
+  max-height: 30vh; overflow-y: auto; }
 /* « Voir ce que cette itération a changé » : collé sous la demande, séparé du retour de l'IA
    qui suit. Les deux variantes — le bouton et la phrase « rien changé » — occupent la même
    place, pour que l'œil trouve la réponse toujours au même endroit. */

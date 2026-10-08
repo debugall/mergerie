@@ -99,6 +99,22 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
     assert.equal(await page.locator('.pass-item.active').count(), 1, 'une seule à la fois');
   });
 
+  /* Une demande longue ne repousse pas la réponse : la boîte de la demande a une hauteur bornée
+     et défile, la réponse reste à portée d'un coup d'œil. */
+  test('une demande très longue défile dans sa boîte au lieu de repousser la réponse', async () => {
+    await ouvrirRetour(multi.id);
+    await page.waitForSelector('#taskMdBody .pass-prompt');
+    const m = await page.evaluate(() => {
+      const pre = document.querySelector('#taskMdBody .pass-prompt');
+      pre.textContent = Array.from({ length: 300 }, (_, i) => `ligne ${i} de la demande`).join('\n');
+      const r = pre.getBoundingClientRect();
+      return { h: r.height, scrolle: pre.scrollHeight > pre.clientHeight, fenetre: window.innerHeight, overflowY: getComputedStyle(pre).overflowY };
+    });
+    assert.ok(m.scrolle, 'le contenu dépasse la boîte : elle défile');
+    assert.equal(m.overflowY, 'auto');
+    assert.ok(m.h <= m.fenetre * 0.35, `la boîte reste bornée (${m.h}px pour une fenêtre de ${m.fenetre}px)`);
+  });
+
   test('la recherche porte sur mes demandes et masque le reste', async () => {
     await ouvrirRetour(multi.id);
     await page.locator('#taskPassSearch').fill('compteur');
