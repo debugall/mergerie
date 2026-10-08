@@ -85,6 +85,8 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
    son bouton n'était plus cliquable. Elle vit donc au-dessus des autres modales, sous les
    messages (300), qui doivent rester lisibles par-dessus tout. */
 #confirmModal { z-index: 150; }
+/* Idem pour toute fenêtre modale ouverte : la page derrière reste où elle était. */
+html:has(.modal:not([hidden])) { overflow: hidden; scrollbar-gutter: stable; }
 .modal { position: fixed; inset: 0; z-index: 110; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 20px; }
-.modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; width: 640px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
+.modal-box { overscroll-behavior: contain; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; width: 640px; max-width: 100%; max-height: 90vh; overflow-y: auto; }
 .modal-box h3 { margin: 0 0 4px; font-size: 16px; }

@@ -115,6 +115,28 @@ describe('Retour de l’IA · itérations', { skip: dispo ? false : MSG_NAVIGATE
     assert.ok(m.h <= m.fenetre * 0.35, `la boîte reste bornée (${m.h}px pour une fenêtre de ${m.fenetre}px)`);
   });
 
+  /* La molette, arrivée en bout de volet, ne doit pas faire défiler la page DERRIÈRE : à la fermeture
+     on se retrouvait tout en bas. La page est figée tant que la vue est ouverte, sa position intacte. */
+  test('la page derrière la vue plein écran est figée, et retrouvée telle quelle à la fermeture', async () => {
+    if (await page.locator('#taskMdView').isVisible()) await page.locator('#taskMdClose').click();
+    await page.evaluate(() => { document.body.style.minHeight = '4000px'; window.scrollTo(0, 300); });
+    const avant = await page.evaluate(() => window.scrollY);
+    await page.locator(`#localList .card[data-local="${multi.id}"] [data-lout]`).click();
+    await page.waitForSelector('#taskMdView:not([hidden])');
+    const ouvert = await page.evaluate(() => ({ ov: getComputedStyle(document.documentElement).overflow, y: window.scrollY }));
+    assert.equal(ouvert.ov, 'hidden', 'la page ne défile plus tant que la vue est ouverte');
+    await page.mouse.move(700, 500);
+    await page.mouse.wheel(0, 2000);
+    assert.equal(await page.evaluate(() => window.scrollY), ouvert.y, 'la molette ne fait pas bouger la page derrière');
+    await page.locator('#taskMdClose').click();
+    await page.waitForSelector('#taskMdView', { state: 'hidden' });
+    const ferme = await page.evaluate(() => ({ ov: getComputedStyle(document.documentElement).overflow, y: window.scrollY }));
+    assert.notEqual(ferme.ov, 'hidden', 'à la fermeture la page redéfile');
+    assert.equal(ferme.y, ouvert.y, 'et elle est exactement où on l\'avait laissée');
+    assert.ok(avant >= 0);
+    await page.evaluate(() => { document.body.style.minHeight = ''; window.scrollTo(0, 0); });
+  });
+
   test('la recherche porte sur mes demandes et masque le reste', async () => {
     await ouvrirRetour(multi.id);
     await page.locator('#taskPassSearch').fill('compteur');
