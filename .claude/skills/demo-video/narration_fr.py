@@ -14,7 +14,7 @@ l'orthographe correcte ici, jamais une graphie phonétique.
 
 NARRATION = [
     (
-        "Tu connais la journée : des merge requests qui s'empilent, des tickets à faire avancer, cinq dépôts, et une IA qui sait coder mais qu'on n'ose pas laisser seule. Mergerie, c'est un cockpit local qui règle ça. L'IA relit, code, teste et prépare. Toi, tu décides, et tu merges. Tout tourne sur ta machine, avec l'agent que tu as déjà. Huit onglets à gauche ; les pastilles ne montrent que ce qui attend un geste. "
+        "Tu connais la journée : des merge requests qui s'empilent, des tickets à faire avancer, cinq dépôts, et une IA qui sait coder mais qu'on n'ose pas laisser seule. Mergerie, c'est un cockpit local qui règle ça. L'IA relit, code, teste et prépare. Toi, tu décides, et tu merges. Tout tourne sur ta machine, avec l'agent que tu as déjà. Sept onglets à gauche ; les pastilles ne montrent que ce qui attend un geste. "
     ),
     (
         "On commence par ce qui arrive tous les jours : une merge request à relire. Chaque carte donne l'essentiel en un regard : le numéro, le titre, le projet, l'auteur, les branches, et les liens vers le ticket et vers GitLab ou GitHub. "
@@ -306,42 +306,6 @@ NARRATION = [
     ),
     (
         "Le coût en tokens est affiché comme un minorant assumé : le travail interne de l'agent n'est pas compté, et l'outil le dit plutôt que de faire semblant. "
-    ),
-    (
-        "Les opérations git sont comptées aussi, avec leur taux d'échec, et les constats qui reviennent d'une review à l'autre sont regroupés : c'est là qu'on voit ce qui mérite une règle plutôt qu'une remarque de plus. "
-    ),
-    (
-        "L'onglet Git applique la même opération à plusieurs dépôts en même temps. Ce qu'on faisait dépôt par dépôt, en terminal, on le fait ici en une fois. "
-    ),
-    (
-        "Huit outils. Le premier crée ou supprime des branches et des tags sur une sélection de dépôts. "
-    ),
-    (
-        "Les dépôts se filtrent par recherche, et les branches aussi : un dépôt actif en compte des centaines. "
-    ),
-    (
-        "Rien ne s'exécute sans un aperçu ligne par ligne : tu vois exactement ce qui va être fait, dépôt par dépôt, avant de confirmer. "
-    ),
-    (
-        "Le deuxième fusionne une branche dans une autre, et quand il y a conflit, il se résout ici, fichier par fichier, sans quitter l'outil. "
-    ),
-    (
-        "La navigation positionne tous les dépôts locaux sur une branche donnée, en une fois. "
-    ),
-    (
-        "Les commandes git lancent la même commande partout : une palette de commandes courantes est fournie, et tu peux écrire la tienne. "
-    ),
-    (
-        "L'explorateur de branches compare l'état des branches entre les dépôts : ce qui est en avance, en retard, ou absent. "
-    ),
-    (
-        "Comparer met deux dépôts côte à côte, branche par branche ou tag par tag, même sans histoire commune. "
-    ),
-    (
-        "Trouver une ref cherche un tag ou une branche dans tous les dépôts actifs et dit lesquels le possèdent. "
-    ),
-    (
-        "Et l'historique garde la trace de chaque opération : chaque suppression de branche ou de tag reste restaurable. "
     ),
     (
         "L'onglet Jira récupère automatiquement les tickets qui te sont affectés. "

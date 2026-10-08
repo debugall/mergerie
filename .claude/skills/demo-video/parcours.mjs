@@ -151,10 +151,9 @@ async function principal() {
     try {
       localStorage.setItem('aidevtools_lang', lang);
       localStorage.setItem('aidevtools_theme', 'dark');
-      /* TOUS LES ONGLETS VISIBLES. Git est masqué par défaut (menu optionnel, Réglages → Général) ;
-         le film le parcourt, et la narration compte huit onglets. Docker, Jenkins et Liens sont des
-         plugins : la base de démo est semée SANS eux (MERGERIE_DEMO_PLUGINS, voir SKILL.md). */
-      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: [] }));
+      /* LE MENU GIT EST MASQUÉ (menu optionnel, Réglages → Général) : le film ne le présente pas, et la
+         narration compte sept onglets. Docker, Jenkins et Liens sont des plugins : la base de démo est semée SANS eux (MERGERIE_DEMO_PLUGINS, voir SKILL.md). */
+      localStorage.setItem('mergerie_nav', JSON.stringify({ ordre: [], masques: ['git'] }));
     } catch { /* stockage indisponible */ }
   }, LANGUE);
   const page = await ctx.newPage();
@@ -600,33 +599,6 @@ async function principal() {
   await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.distribution }).first()); await dit();
   await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.byProject }).first()); await dit();
   await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.devSessions }).first()); await dit();
-  await versEl(page.locator('#tab-dashboard h2, #tab-dashboard h3, #tab-dashboard h4', { hasText: L.gitOps }).first()); await dit();
-
-  // Git
-  await versEl(onglet('git')); await dit();
-  await clique(onglet('git'));
-  await versEl('#tab-git select >> nth=0'); await dit();
-  await versEl('#tab-git input[placeholder*="branch"]'); await dit();
-  await versEl(page.locator('#tab-git button', { hasText: L.preview }).first()); await dit();
-
-  /* HUIT OUTILS, et deux sont arrivés depuis le tournage précédent : « Merge » en deuxième
-     position et « Comparer » en sixième ont DÉCALÉ tous les rangs suivants. Un index périmé
-     ne lève rien du tout — il ouvre simplement le mauvais panneau, et cela ne se voit qu'à
-     l'image, une fois le film monté. */
-  await clique(sous('git', 1));
-  await versEl('#tab-git'); await dit();
-  await clique(sous('git', 2));
-  await versEl(page.locator('#tab-git button', { hasText: L.checkout }).first()); await dit();
-  await clique(sous('git', 3));
-  await versEl('#tab-git input[placeholder*="fetch"]'); await dit();
-  await clique(sous('git', 4));
-  await versEl(page.locator('#tab-git button', { hasText: L.analyse }).first()); await dit();
-  await clique(sous('git', 5));
-  await versEl('#tab-git'); await dit();
-  await clique(sous('git', 6));
-  await versEl('#tab-git input[placeholder*="v1.2.0"]'); await dit();
-  await clique(sous('git', 7));
-  await versEl('#tab-git'); await dit();
 
   // Jira
   await versEl(onglet('jira')); await dit();

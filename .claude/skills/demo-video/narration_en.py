@@ -13,7 +13,7 @@ spelling here, never a phonetic one.
 
 NARRATION = [
     (
-        "You know the day: merge requests piling up, tickets to move forward, five repositories, and an AI that can code but that nobody dares to leave alone. Mergerie is a local cockpit that fixes that. The AI reviews, codes, tests and prepares. You decide, and you merge. Everything runs on your machine, with the agent you already use. Eight tabs on the left; the badges only show what is waiting for you. "
+        "You know the day: merge requests piling up, tickets to move forward, five repositories, and an AI that can code but that nobody dares to leave alone. Mergerie is a local cockpit that fixes that. The AI reviews, codes, tests and prepares. You decide, and you merge. Everything runs on your machine, with the agent you already use. Seven tabs on the left; the badges only show what is waiting for you. "
     ),
     (
         "Let's start with what lands every day: a merge request to review. Each card gives the essentials at a glance: the number, the title, the project, the author, the branches, and links to the ticket and to GitLab or GitHub. "
@@ -305,42 +305,6 @@ NARRATION = [
     ),
     (
         "The token cost is shown as an admitted lower bound: the agent's internal work is not counted, and the tool says so rather than pretending. "
-    ),
-    (
-        "Git operations are counted too, with their failure rate, and findings that come back from one review to the next are grouped: that is where you see what deserves a rule rather than one more remark. "
-    ),
-    (
-        "The Git tab applies the same operation to several repositories at the same time. What you did repository by repository, in a terminal, you do here in one go. "
-    ),
-    (
-        "Eight tools. The first creates or deletes branches and tags on a selection of repositories. "
-    ),
-    (
-        "Repositories filter by search, and so do branches: an active repository has hundreds of them. "
-    ),
-    (
-        "Nothing runs without a line-by-line preview: you see exactly what will be done, repository by repository, before confirming. "
-    ),
-    (
-        "The second merges one branch into another, and when there is a conflict, it is resolved here, file by file, without leaving the tool. "
-    ),
-    (
-        "Navigation puts every local repository on a given branch, in one go. "
-    ),
-    (
-        "Git commands run the same command everywhere: a palette of common commands is provided, and you can write your own. "
-    ),
-    (
-        "The branch explorer compares the state of branches across repositories: what is ahead, behind, or missing. "
-    ),
-    (
-        "Compare puts two repositories side by side, branch by branch or tag by tag, even without a common history. "
-    ),
-    (
-        "Find a ref looks for a tag or a branch in every active repository and says which ones have it. "
-    ),
-    (
-        "And the history keeps track of every operation: every branch or tag deletion stays restorable. "
     ),
     (
         "The Jira tab automatically fetches the tickets assigned to you. "

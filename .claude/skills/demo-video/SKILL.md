@@ -42,6 +42,10 @@ Corriger un sélecteur ici ne corrige rien là-bas.
 
 **134 étapes** (157 avant), ~28 min. Les trois onglets sont des plugins tiers : les parcours Liens (5 étapes), Docker (7), Jenkins (10) et l'étape « ce que la surveillance a vu » du brief (conteneurs tombés, builds) sont retirés des deux narrations et de `parcours.mjs`. **La base de démo doit être semée SANS les plugins** — `MERGERIE_DEMO_PLUGINS=/nonexistent` devant `demo-seed.js` ET devant les serveurs — sinon `mergerie demo` les installe s'ils sont voisins (`../docker-mergerie`…) et leurs menus réapparaissent dans la colonne. Le menu compte alors **huit** onglets (Reviews, Dev IA, Agents, Notes, Jira, Git, Stats, Réglages), et la narration le dit. Les rangs du brief (`.brief-sec`) changent aussi : sans le plugin Docker, il n'y a plus que 12 sections (celle des agents reste au rang 8).
 
+## État au 07/10/2026 (bis) : le menu Git n'est plus présenté, « commit » respellé
+
+**122 étapes**, ~26 min. Le menu Git (onglet, 11 étapes) et l'étape « opérations git » des stats sont retirés ; `mergerie_nav` pose `masques: ['git']` et la colonne compte **sept** onglets. Les Réglages → Git (adresse de la forge) restent : ce n'est pas le menu. Voix FR : `commit(s)` est respellé `comitte(s)` dans `FR_NEURONAL` (edge-tts l'avalait ou le lisait à l'anglaise) — à ÉCOUTER, rien n'a pu être entendu ici.
+
 ## État au 27/09/2026 : voix neuronale, et les nouveautés de septembre
 
 Refaits à la demande de l'utilisateur (« la voix fait IA », « il faut que tout soit clair pour
