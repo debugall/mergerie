@@ -152,7 +152,7 @@ const PROTO_STALE = (nonce) => `\n\n---\n${t('agents.proto.stale')}\n\n<<<STALE 
 const PROTO_PAGES = (nonce) => `\n\n---\n${t('agents.proto.pages')}\n\n<<<PAGE ${nonce}\ntitle: <titre de la sous-page>\n<son contenu en Markdown>\nPAGE ${nonce}>>>\n`;
 /* ---------- Matérialiser et lancer ---------- */
 
-function ciblesDe(agent, { repoIds }) {
+function ciblesDe(agent, { repoIds, branches = null }) {
   /* LES DÉPÔTS REÇUS RESTREIGNENT, TOUJOURS — quel que soit le périmètre du profil et quel
      que soit le mode. Ils ne l'élargissent jamais : ce qui n'est pas dans le périmètre, ou
      qui n'est plus actif, ne devient pas une cible parce qu'un appelant l'a nommé.
@@ -163,21 +163,24 @@ function ciblesDe(agent, { repoIds }) {
      se perdait à chaque mise à jour — vingt dépôts clonés, lus et payés pour un sujet qui
      n'en concerne qu'un. */
   const vises = Array.isArray(repoIds) && repoIds.length ? repoIds.map(Number) : null;
+  /* Une BRANCHE par dépôt, choisie pour CE run (créer un agent de domaine, le mettre à jour) :
+     elle prime sur celle du profil, vide = celle du profil, puis la branche par défaut. */
+  const brancheDe = (id, repli) => String((branches && branches[id]) || '').trim() || repli || null;
   if (agent.scope_kind === 'all_repos') {
     return db.prepare('SELECT id FROM repo WHERE enabled = 1 ORDER BY project').all()
       .filter((r) => !vises || vises.includes(r.id))
-      .map((r) => ({ repo_id: r.id, branch: null, base_branch: null }));
+      .map((r) => ({ repo_id: r.id, branch: brancheDe(r.id, null), base_branch: null }));
   }
   /* `agent.repos` s'il est fourni sur l'objet : c'est ce qui permet de restreindre un run à
      un sous-ensemble SANS modifier le profil — un cartographe lancé sur trois dépôts ne doit
      pas devenir un cartographe à trois dépôts. */
   const perimetre = Array.isArray(agent.repos) ? agent.repos : repos(agent.id);
   const gardes = vises ? perimetre.filter((r) => vises.includes(r.repo_id)) : perimetre;
-  return gardes.map((r) => ({ repo_id: r.repo_id, branch: r.branch || null, base_branch: null }));
+  return gardes.map((r) => ({ repo_id: r.repo_id, branch: brancheDe(r.repo_id, r.branch), base_branch: null }));
 }
-function materialize(agent, { mode = 'ask', question = '', repoIds = null } = {}) {
+function materialize(agent, { mode = 'ask', question = '', repoIds = null, branches = null } = {}) {
   const defauts = jsonOu(agent.defaults_json, {});
-  const targets = ciblesDe(agent, { repoIds });
+  const targets = ciblesDe(agent, { repoIds, branches });
   const kind = mode === 'code' ? 'code' : 'explore';
   const { prompt } = composer(agent, { question, targets, kind });
   return {

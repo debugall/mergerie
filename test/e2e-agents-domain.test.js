@@ -223,6 +223,11 @@ describe('Agents de domaine', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
     await page.waitForFunction(() => document.querySelectorAll('#domainRepos .dom-repo').length >= 3);
     await page.locator('#domainSubject').fill('la facturation : calcul, remises, export comptable');
     await page.locator(`#domainRepos .dom-repo[value="${idApi}"]`).click();
+    // Et la branche à lire, choisie dans le combo à recherche de la ligne (les refs viennent de la forge).
+    await page.route('**/api/git/refs?*', (r) => r.fulfill({ json: { refs: [{ name: 'main', default: true }, { name: 'dev' }] } }));
+    await page.locator(`#domainRepos .agent-repo-row[data-repo="${idApi}"] .cb-search`).click();
+    await page.locator('.combo-options:not([hidden]) .combo-opt[data-l="main"]').click();
+    await page.waitForFunction((id) => document.querySelector(`#domainRepos .agent-repo-row[data-repo="${id}"] .dom-branch`).value === 'main', idApi);
     await page.locator('#domainStart').click();
     await page.waitForSelector('#domainModal', { state: 'hidden' });
     await attendreServeur(async () => (await app.api('GET', '/api/tasks')).body.some((x) => /facturation/i.test(x.prompt)),
@@ -231,6 +236,7 @@ describe('Agents de domaine', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
     const vue = (await app.api('GET', `/api/tasks/${t.id}`)).body.task;
     assert.deepEqual(vue.targets.map((x) => x.project), ['groupe/api-core'],
       'les deux autres dépôts ne sont ni clonés ni lus');
+    assert.equal(vue.targets[0].branch, 'main', 'la branche choisie est celle qui est lue');
     await waitForJobs(app.api, { timeout: 120000 });
   });
 

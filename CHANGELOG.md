@@ -19,6 +19,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Pick a branch per repository for an agent.** In an agent's scope (chosen repositories) and when creating a domain agent, each repository has a searchable branch field; left empty, the default branch is used as before. A domain agent keeps the branches it was mapped on, so its updates read the same ones.
 - **Save a ticket's technical brief without running it.** The brief form (Jira → a ticket → *Technical brief*) has a new **Save without analysing** button: what you typed
   (repositories and their branches, Confluence pages, complement, options) is kept, no AI session is started and nothing is spent. The ticket shows up as *to run* — in the
   **Analysed** tab and in the *already analysed* filter of My tickets — and the form comes back filled when you reopen it: start the analysis whenever you want. Unlike the analysis, saving does not require a repository yet.
