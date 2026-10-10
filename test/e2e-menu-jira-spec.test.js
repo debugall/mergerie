@@ -68,8 +68,11 @@ describe('Menu Jira — précision technique d’un ticket', { skip: dispo ? fal
     await ouvrirJira();
     await ouvrirTicket('PROJ-20', 'Paiement en trois fois');
     const b = boite();
-    await b.waitFor({ state: 'visible' });
+    // Rien d'enregistré : la section reste fermée tant qu'on n'a pas cliqué « Préciser techniquement ».
+    await page.waitForSelector('#jiraDetail [data-spec-goto="PROJ-20"]');
+    await page.waitForFunction(() => document.querySelector('#jiraDetail [data-spec-box="PROJ-20"]').hidden === true);
     await page.locator('#jiraDetail [data-spec-goto="PROJ-20"]').click();
+    await b.waitFor({ state: 'visible' });
     const form = b.locator('[data-spec-form="PROJ-20"]');
     await form.waitFor({ state: 'visible' });
     // Le filtre des dépôts masque sans décocher.

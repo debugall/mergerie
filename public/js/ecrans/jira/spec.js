@@ -150,7 +150,8 @@ function rendreSpec(cle, box) {
   if (!corps) return;
   corps.innerHTML = `${vue ? propositionHtml(cle, vue) : ''}${(!vue || f.ouvert) ? formulaireHtml(cle, it, vue) : ''}`;
   brancherCombosBranche(corps);
-  box.hidden = false;
+  // Sans précision enregistrée, la section reste fermée jusqu'au clic sur « Préciser techniquement ».
+  box.hidden = !vue && !f.demande;
   // Tant qu'une analyse tourne, on relit l'état : la proposition arrive sans recharger la page.
   clearTimeout(SPEC.timers[cle]);
   if (vue && (vue.status === 'running' || vue.status === 'needs_input')) {
@@ -308,7 +309,7 @@ document.addEventListener('click', async (e) => {
     const cle = b.dataset.specGoto;
     const box = (b.closest('.js-jira-detail') || document).querySelector(`[data-spec-box="${CSS.escape(cle)}"]`);
     if (!box) return;
-    formulaireDe(cle, SPEC.parCle[cle]).ouvert = true; rendreSpec(cle, box);
+    const fg = formulaireDe(cle, SPEC.parCle[cle]); fg.ouvert = true; fg.demande = true; rendreSpec(cle, box);
     box.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return;
   }
