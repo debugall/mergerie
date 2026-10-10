@@ -1,6 +1,6 @@
 'use strict';
 /* Les portes d'entrée de la modale : faire coder à partir de cette réponse (B9), d'une question (B18), d'un ticket, d'une page de notes ; dupliquer. */
-// @expose openTaskForJira, openTaskForNote, openTaskForSpec
+// @expose openLocalTaskForJira, openTaskForJira, openTaskForNote, openTaskForSpec
 /* ---------- B9 : « Faire coder à partir de cette réponse » ----------
    L'exploration a lu trois dépôts et répondu. Le codage qui suit part des MÊMES dépôts, avec
    la question et la réponse en contexte, et surtout DANS LA SESSION D'AGENT de l'exploration :
@@ -176,6 +176,29 @@ async function piecesNoteCochees() {
     } catch { /* pièce injoignable : la session part sans elle */ }
   }
   return out;
+}
+
+/* UNE SESSION HORS DÉPÔT DEPUIS UN TICKET, avec ou sans précision technique. Pas de dépôt ni de
+   branche : on choisit les dossiers dans la modale. La consigne reprend le ticket et, s'il y en
+   a une, la précision technique courante (proposition, brouillon exclu). */
+async function openLocalTaskForJira(key) {
+  await openTaskModal('local');
+  const f = $('#taskForm');
+  const [issue, sp] = await Promise.all([
+    api('/jira/fetch', { method: 'POST', body: { key } }).catch((e) => { toast(explainError(e.message), true); return null; }),
+    api(`/jira/spec/${encodeURIComponent(key)}`).catch(() => null),
+  ]);
+  const md = String((sp && sp.spec && sp.spec.markdown) || '').trim();
+  const blocs = [];
+  if (issue) blocs.push(`${tr('task.jira.context-header', { key })}\n\n${(issue.context || '').trim()}`);
+  if (md) blocs.push(`${tr('task.jira.spec-header', { key })}\n\n${md}`);
+  f.prompt.value = blocs.length ? `${blocs.join('\n\n---\n\n')}\n\n---\n\n` : '';
+  if (f.label) f.label.value = `${key} ${(issue && issue.summary) || ''}`.trim();
+  $('#taskModalTitle').textContent = tr('jira.local-modal-title', { key });
+  $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key, summary: issue.summary || '' }) : '';
+  f.prompt.focus();
+  const end = f.prompt.value.length;
+  try { f.prompt.setSelectionRange(end, end); } catch { /* champ non focusable */ }
 }
 
 async function openTaskForJira(key) {

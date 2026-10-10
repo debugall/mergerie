@@ -1414,6 +1414,7 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   Le **dépôt proposé** est le dernier utilisé pour ce projet Jira, et les **captures d'écran du ticket**
   sont offertes en cases à cocher (les trois premières cochées) : les images retenues partent en pièces
   jointes de la session, sans détour par le dossier des téléchargements.
+- **`Coder hors dépôt` depuis le ticket.** À côté, ouvre une **session de codage hors dépôt** (dossiers locaux, ni dépôt ni branche) pré-remplie avec le ticket et, si vous en avez écrit une, sa **précision technique**. Avec ou sans précision ; rien ne part tant que vous ne lancez pas.
 - **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
   permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
   + liste). Rien n'est proposé si tu n'as pas les droits.

@@ -1354,6 +1354,7 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
   The **repository proposed** is the last one used for that Jira project, and the ticket's **screenshots**
   are offered as checkboxes (the first three ticked): the images you keep are attached to the session,
   without a round trip through the Downloads folder.
+- **`Code outside a repo` from the ticket.** Next to it, opens an **out-of-repo coding session** (local folders, no repository or branch) pre-filled with the ticket and — if you wrote one — its **technical brief**. With or without a brief; nothing is launched until you do.
 - **Change the ticket's state**: a selector in the header lists the **allowed transitions** (what Jira lets
   *you* do on this ticket); picking one **applies the transition** and refreshes the status (detail + list).
   Nothing is offered if you do not have the rights.

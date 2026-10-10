@@ -142,6 +142,21 @@ describe('Menu Jira — précision technique d’un ticket', { skip: dispo ? fal
     assert.equal(app.state.jiraIssues['PROJ-20'].comments.length, 1);
   });
 
+  test('« Coder hors dépôt » reprend aussi la précision technique du ticket', async () => {
+    const b = boite();
+    await b.waitFor({ state: 'visible' });
+    await page.locator('#jiraDetail [data-jiralocal="PROJ-20"]').click();
+    await page.locator('#taskModal').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => /Précision technique du ticket PROJ-20/.test(document.querySelector('#taskPrompt').value));
+    try {
+      assert.equal(await page.locator('#taskLocalWrap').isVisible(), true);
+      assert.match(await page.locator('#taskPrompt').inputValue(), /Contexte du ticket Jira PROJ-20/);
+    } finally {
+      await page.locator('#taskCancel').click();
+      await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    }
+  });
+
   test('Dev IA : la session porte la clé du ticket, et une pastille la masque — mémorisée', async () => {
     await page.locator('nav button[data-tab="task"]').click();
     await page.locator('#tab-task .subnav [data-kind="explore"]').click();

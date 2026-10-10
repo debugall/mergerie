@@ -330,6 +330,26 @@ describe('Menu Jira — le ticket ouvert', { skip: dispo ? false : MSG_NAVIGATEU
     await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
   });
 
+  test('« Coder hors dépôt » ouvre une session hors dépôt avec le ticket, sans précision technique', async () => {
+    await ouvrirJira();
+    await ouvrirTicket('PROJ-10', TITRE);
+    await page.locator('#jiraDetail [data-jiralocal="PROJ-10"]').click();
+    await page.locator('#taskModal').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => /PROJ-10/.test(document.querySelector('#taskPrompt').value));
+    try {
+      assert.equal(await page.locator('#taskLocalWrap').isVisible(), true, 'la saveur hors dépôt : des dossiers, pas de dépôt');
+      assert.equal(await page.locator('#taskReposWrap').isVisible(), false);
+      assert.equal(await page.locator('#taskModalTitle').textContent(), 'Coder hors dépôt — PROJ-10');
+      const prompt = await page.locator('#taskPrompt').inputValue();
+      assert.match(prompt, /Contexte du ticket Jira PROJ-10/);
+      assert.doesNotMatch(prompt, /Précision technique du ticket/, 'rien d’enregistré, rien d’ajouté');
+      assert.equal(await page.locator('#taskForm [name="label"]').inputValue(), `PROJ-10 ${TITRE}`);
+    } finally {
+      await page.locator('#taskCancel').click();
+      await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    }
+  });
+
   /* B10 — les captures d'un ticket proposées en cases à cocher dans la modale. L'écran lit
      `attachments` dans la réponse de POST /api/jira/fetch ; la route les recopie depuis
      `jira.fetchIssue`… qui ne demande à Jira que `summary,description` et ne renvoie aucune
