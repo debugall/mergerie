@@ -189,6 +189,9 @@ async function openLocalTaskForJira(key) {
     api(`/jira/spec/${encodeURIComponent(key)}`).catch(() => null),
   ]);
   const md = String((sp && sp.spec && sp.spec.markdown) || '').trim();
+  $('#taskJiraKey').value = key;
+  cleJiraDeLaSession = key;
+  await proposerPiecesJira(issue);   // les captures du ticket, à cocher
   const blocs = [];
   if (issue) blocs.push(`${tr('task.jira.context-header', { key })}\n\n${(issue.context || '').trim()}`);
   if (md) blocs.push(`${tr('task.jira.spec-header', { key })}\n\n${md}`);

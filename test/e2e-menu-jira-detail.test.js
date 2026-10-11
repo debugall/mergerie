@@ -344,6 +344,26 @@ describe('Menu Jira — le ticket ouvert', { skip: dispo ? false : MSG_NAVIGATEU
       assert.match(prompt, /Contexte du ticket Jira PROJ-10/);
       assert.doesNotMatch(prompt, /Précision technique du ticket/, 'rien d’enregistré, rien d’ajouté');
       assert.equal(await page.locator('#taskForm [name="label"]').inputValue(), `PROJ-10 ${TITRE}`);
+      assert.equal(await page.locator('#taskJiraKey').inputValue(), 'PROJ-10', 'le champ ticket est là, hors dépôt aussi');
+      await page.waitForSelector('#taskJiraPieces .jira-piece');
+      assert.equal(await page.locator('#taskJiraPieces [data-jira-piece="0"]').isChecked(), true, 'la capture du ticket est proposée, cochée');
+    } finally {
+      await page.locator('#taskCancel').click();
+      await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    }
+  });
+
+  test('une session hors dépôt vierge : saisir un ticket récupère son contexte et ses captures', async () => {
+    await ouvrirJira();
+    await page.evaluate(() => openTaskModal('local'));
+    await page.locator('#taskModal').waitFor({ state: 'visible' });
+    try {
+      assert.equal(await page.locator('#taskJiraRow').isVisible(), true, 'le champ « ticket Jira » existe hors dépôt');
+      await page.locator('#taskJiraKey').fill('PROJ-10');
+      await page.locator('#taskJiraFetch').click();
+      await page.waitForFunction(() => /Contexte du ticket Jira PROJ-10/.test(document.querySelector('#taskPrompt').value));
+      await page.waitForSelector('#taskJiraPieces .jira-piece');
+      assert.deepEqual(await page.locator('#taskJiraPieces .jira-piece').allInnerTexts().then((l) => l.map((x) => x.trim())), ['maquette.png']);
     } finally {
       await page.locator('#taskCancel').click();
       await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });

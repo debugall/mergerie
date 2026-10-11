@@ -20,6 +20,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Out-of-repo sessions can start from a Jira ticket.** The out-of-repo session dialog now has the *Enrich from a Jira ticket* field like coding sessions: type or pick a ticket to put its context at the top of the prompt, and tick the ticket's screenshots to attach them. *Fetch* now offers the screenshots in every kind of session.
 - **Start an out-of-repo coding session from a Jira ticket.** A new *Code outside a repo* button on the ticket opens the out-of-repo session dialog pre-filled with the ticket and, when there is one, its technical brief — whether or not you ran the brief.
 - **Pick a branch per repository for an agent.** In an agent's scope (chosen repositories) and when creating a domain agent, each repository has a searchable branch field; left empty, the default branch is used as before. A domain agent keeps the branches it was mapped on, so its updates read the same ones.
 - **Save a ticket's technical brief without running it.** The brief form (Jira → a ticket → *Technical brief*) has a new **Save without analysing** button: what you typed

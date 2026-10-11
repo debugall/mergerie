@@ -54,7 +54,7 @@ function applyKindToModal(kind) {
   const ctxRow = $('#taskContextRepos'); if (ctxRow) ctxRow.hidden = kind !== 'code';
   $('#taskLocalWrap').hidden = !isLocal;
   $('#taskLocalWarn').hidden = !isLocal;
-  if (isLocal) { $('#taskJiraRow').hidden = true; renderLocalRootPicker(); renderLocalDirRows(); }
+  if (isLocal) { setupTaskJira(''); renderLocalRootPicker(); renderLocalDirRows(); }   // le contexte d'un ticket vaut aussi hors dépôt
   if (isAsk) $('#taskJiraRow').hidden = true;
   /* La case « l'IA peut me poser des questions » et l'identifiant de session supposent une
      cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien

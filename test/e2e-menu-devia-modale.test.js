@@ -110,7 +110,8 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     app.state.branches['grp/lib'] = branches(r2.mainSha);
     app.state.jiraIssues['PROJ-7'] = {
       key: 'PROJ-7',
-      fields: { summary: 'Mettre les paniers en cache', status: { name: 'À faire', statusCategory: { key: 'new' } }, description: 'Le panier se recharge à chaque page.', issuetype: { name: 'Tâche' } },
+      fields: { summary: 'Mettre les paniers en cache', status: { name: 'À faire', statusCategory: { key: 'new' } }, description: 'Le panier se recharge à chaque page.', issuetype: { name: 'Tâche' },
+        attachment: [{ id: '701', filename: 'capture.png', mimeType: 'image/png', size: 12 }] },
     };
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira' });
     repoApp = (await app.api('POST', '/api/repos', { url: r1.url, project: 'grp/app' })).body.id;
@@ -156,7 +157,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     //                  dépôts local  avert. codeOnly commit agent jira  avancé skills
     code: [true, false, false, true, true, true, true, true, true],
     explore: [true, false, false, false, false, true, true, true, true],
-    local: [false, true, true, false, false, false, false, true, true],
+    local: [false, true, true, false, false, false, true, true, true],
     ask: [false, false, false, false, false, false, false, false, false],
   };
   const BLOCS = ['#taskReposWrap', '#taskLocalWrap', '#taskLocalWarn', '#codeOnlyFields', '#taskCommitRow',
@@ -554,6 +555,26 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.deepEqual(body.task.dirs.map((d) => d.path).sort(),
       [path.join(racine, 'outils'), path.join(racine, 'scripts')].sort(), 'le projet retiré n’est pas parti');
     assert.equal(body.images.length, 1);
+  });
+
+  test('hors dépôt : un ticket Jira saisi donne son contexte et ses captures à la session', async () => {
+    const avant = compte('local_task');
+    await ouvrir('local');
+    await choisirDansCombo(
+      () => page.locator('#taskLocalDirRows .cb-search').nth(0).click(),
+      () => page.locator('.combo-options:not([hidden]) .combo-opt[data-v]', { hasText: 'scripts' }),
+      { fn: ([j, n]) => document.querySelectorAll('#taskLocalDirRows .cb-search')[j].value === n, arg: [0, 'scripts'] },
+    );
+    await page.locator('#taskJiraKey').fill('PROJ-7');
+    await page.locator('#taskJiraFetch').click();
+    await page.waitForFunction(() => /Mettre les paniers en cache/.test(document.querySelector('#taskPrompt').value) || /Le panier se recharge/.test(document.querySelector('#taskPrompt').value));
+    await page.waitForSelector('#taskJiraPieces [data-jira-piece="0"]:checked');
+    assert.match(await page.locator('#taskForm [name="label"]').inputValue(), /^PROJ-7 Mettre les paniers/, 'le libellé reprend le ticket');
+    await page.locator('#taskSubmitOnly').click();
+    await attendreServeur(async () => compte('local_task') === avant + 1, 'la session hors dépôt est créée');
+    const { body } = await app.api('GET', `/api/local-tasks/${derniere('local_task').id}`);
+    assert.match(body.task.prompt, /Contexte du ticket Jira PROJ-7/);
+    assert.equal(body.images.length, 1, 'la capture du ticket est jointe');
   });
 
   test('hors dépôt : « Créer et lancer » code dans le dossier', async () => {

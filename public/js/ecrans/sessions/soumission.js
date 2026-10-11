@@ -124,6 +124,9 @@ function setupTaskJira(branch) {
   row.hidden = !jiraConfigured;
   const st = $('#taskJiraStatus'); if (st) st.textContent = '';
   const key = $('#taskJiraKey'); if (key) key.value = jiraKeyFromBranch(branch);
+  // Les captures proposées appartiennent à l'ouverture précédente.
+  piecesJiraProposees = [];
+  const pieces = $('#taskJiraPieces'); if (pieces) { pieces.hidden = true; pieces.innerHTML = ''; }
 }
 /* MES TICKETS, SOUS LE CHAMP. La plupart des sessions de codage partent d'un ticket : le champ
    propose ceux qui me sont affectés dès qu'on y entre, filtrés à la frappe (clé ou titre) ; en
@@ -190,6 +193,7 @@ $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () =>
     if (f.label && !f.label.value.trim()) f.label.value = resume.slice(0, 120);
     if (f.commit_message && !f.commit_message.value.trim()) f.commit_message.value = resume;
     cleJiraDeLaSession = d.key;
+    await proposerPiecesJira(d);   // ses captures, à cocher, comme depuis « Faire coder l'IA »
     $('#taskJiraStatus').textContent = tr('task.jira.added', { key: d.key });
     f.prompt.focus();
   } catch (e) { $('#taskJiraStatus').textContent = ''; toast(explainError(e.message), true); }
@@ -256,12 +260,18 @@ $('#taskForm').addEventListener('submit', async (e) => {
        silencieusement retiré de la session. À la création c'est déjà fâcheux ; à l'édition
        ce serait une perte de données. On refuse plutôt que d'enregistrer une liste amputée. */
     if (dirs.length !== picks.length) { toast(tr('local.dirs-unresolved'), true); return; }
+    // Les captures cochées du ticket s'ajoutent aux pièces déjà choisies, comme en codage.
+    let fichiers = taskNewImages;
+    if (cleJiraDeLaSession) {
+      const pieces = await piecesJiraCochees();
+      if (pieces.length) fichiers = [...fichiers, ...pieces];
+    }
     const btn = $('#taskSubmit');
     try {
       if (editingTaskId) {
         await busy(btn, () => api(`/local-tasks/${editingTaskId}`, { method: 'PUT', body: {
           label: f.label ? f.label.value : '',
-          prompt: f.prompt.value, dirs, files: taskNewImages,
+          prompt: f.prompt.value, dirs, files: fichiers,
           session_id: f.session_id ? f.session_id.value : '',
           ask_questions: f.ask_questions ? f.ask_questions.checked : false,
           cli_id: f.cli_id ? f.cli_id.value : '',
@@ -273,7 +283,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
       }
       const created = await busy(btn, () => api('/local-tasks', { method: 'POST', body: {
         label: f.label ? f.label.value : '',
-        prompt: f.prompt.value, dirs, files: taskNewImages, session_id: f.session_id ? f.session_id.value : '',
+        prompt: f.prompt.value, dirs, files: fichiers, session_id: f.session_id ? f.session_id.value : '',
         ask_questions: f.ask_questions ? f.ask_questions.checked : false,
         /* La modale est commune aux trois saveurs, mais CHAQUE SAVEUR A SON ENVOI : la case
            « partager » doit donc être câblée trois fois, sans quoi elle ne ferait rien ici. */
