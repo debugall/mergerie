@@ -158,6 +158,29 @@ describe('Transverse — les adresses des objets et l’historique du navigateur
     await page.waitForFunction((h) => window.location.hash === h, `#/notes/${pageNote.id}`);
   });
 
+  test('deux ouvertures de rapport en vol : le dernier rapport demandé reste à l’écran, et son adresse', async () => {
+    const page = await nouvellePage();
+    await page.goto(app.base);
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.locator('.segmented [data-seg="reviewed"]').click();
+    await page.waitForSelector(`#reportList .card[data-id="${donnees.mr.b1}"]`);
+    // La réponse du premier rapport arrive APRÈS celle du second : l'ordre que la lenteur d'un runner produit.
+    let liberer; const retenue = new Promise((r) => { liberer = r; });
+    let demandee; const partie = new Promise((r) => { demandee = r; });
+    await page.route(`**/api/mrs/${donnees.mr.b1}`, async (route) => { demandee(); await retenue; await route.continue(); });
+    await page.locator(`#reportList .card[data-id="${donnees.mr.b1}"]`).click();
+    await partie;                                   // la requête du premier est en vol
+    await page.locator(`#reportList .card[data-id="${donnees.mr.a2}"]`).click();
+    await rapportOuvert(page, donnees.mr.a2, 'Alpha mal notée');
+    const arrivee = page.waitForResponse((r) => r.url().endsWith(`/api/mrs/${donnees.mr.b1}`));
+    liberer();
+    await arrivee;
+    // Deux frames : le temps que la réponse en retard soit traitée par l'écran.
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    assert.match(await page.locator('#reportDetail').innerText(), /Alpha mal notée/, 'le rapport en retard ne remplace pas le dernier demandé');
+    assert.equal(await hash(page), `#/reviews/${donnees.mr.a2}`, 'et ne repose pas son adresse');
+  });
+
   test('changer d’onglet oublie l’adresse ; le rechargement rouvre l’onglet, pas l’objet', async () => {
     const page = await nouvellePage();
     await page.goto(`${app.base}/#/reviews/${donnees.mr.a2}`);

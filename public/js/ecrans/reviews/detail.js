@@ -43,6 +43,10 @@ async function openReport(id, opts = {}) {
   // on met simplement à jour la sélection.
   $$('#reportList .card').forEach((c) => c.classList.toggle('active', Number(c.dataset.id) === id));
   const d = await api(`/mrs/${id}`);
+  /* Le dernier rapport demandé gagne. Deux ouvertures en vol (Précédent deux fois de suite, deux
+     clics rapprochés) finissent dans le désordre : la plus lente rendait un rapport qu'on avait
+     déjà quitté — et reposait son adresse, ce qui ajoutait une entrée à l'historique. */
+  if (selectedMr !== id) return;
   poserAdresse(`#/reviews/${id}`);   // le rapport existe : l'adresse mène quelque part
   const sig = reportSig(d);
   const stamp = (d.review && d.review.updated_at) || '';
