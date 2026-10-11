@@ -130,6 +130,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     const ordre = await ordreAffiche('local');
     assert.deepEqual(ordre, [
       'prompt',
+      'taskJiraRow',                   // le ticket remplit le prompt, hors dépôt aussi
       'taskLocalWrap',
       'taskLocalWarn',
       'label',
@@ -141,7 +142,6 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     assert.equal(ordre[ordre.indexOf('taskLocalWrap') + 1], 'taskLocalWarn',
       '« l’IA modifie en place, sans commit » qualifie le choix des dossiers : il le suit '
       + 'immédiatement, au lieu d’attendre le bas du formulaire');
-    assert.ok(!ordre.includes('taskJiraRow'), 'pas de ticket Jira hors dépôt : il n’y a pas de branche');
   });
 
   test('exploration : rien de ce qui suppose un commit', async () => {
