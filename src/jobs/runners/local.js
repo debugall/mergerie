@@ -8,6 +8,7 @@ const events = require('../../core/events');
 const localcoder = require('../../session/localcoder');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestionLocal } = require('../apres-session');
+const apresLocal = require('../apres-local');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
 const cli = require('../../agent/cli');
 
@@ -39,8 +40,10 @@ async function runLocalJob(jobId, taskId, opts = {}) {
       fin = 'needs_input';
       notify.push('needs_input', { local_task_id: taskId });
       todoQuestionLocal(taskId);
-    } else if (!suiviAutomatique('local', taskId, onLog)) {
-      notify.push('session_done', { local_task_id: taskId });
+    } else {
+      // La MR et la convergence d'abord : un suivi armé repartirait sur une branche encore en chantier.
+      await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog, () => apresLocal.publier(taskId, onLog));
+      if (!suiviAutomatique('local', taskId, onLog)) notify.push('session_done', { local_task_id: taskId });
     }
   } catch (e) {
     if (proc.isCancelled()) {

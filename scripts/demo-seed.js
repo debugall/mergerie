@@ -844,6 +844,23 @@ const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
   .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
   .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
+/* Codage hors dépôt AVEC UNE BRANCHE : le dossier est un dépôt git (`boutique-api`), la session y a créé
+   sa branche, commité, poussé, et la merge request s'est ouverte parce que son remote est un dépôt connu.
+   C'est la carte qui montre la branche, l'état du commit et le lien de la MR sur chaque dossier. */
+{
+  const lt = db.prepare(`INSERT INTO local_task (prompt, label, status, branch, auto_push, create_mr, created_at, updated_at)
+    VALUES (?,?,?,?,1,1,?,?)`)
+    .run('Ajoute la pagination à GET /orders (limit/offset) et un test de bout en bout.', 'Pagination des commandes', 'done',
+      'feature/orders-pagination', at(1.2), at(1.2));
+  const dir = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, branch, base_branch, git_status, mr_iid, mr_url, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(lt.lastInsertRowid, '/home/moi/dev/boutique-api', 'done', 'feature/orders-pagination', 'main', 'pushed', 312,
+      'https://gitlab.demo/groupe/boutique-api/-/merge_requests/312', at(1.2));
+  const sortie = ensureDir(path.join(TASKS_DIR, 'local', String(lt.lastInsertRowid), String(dir.lastInsertRowid)));
+  fs.writeFileSync(path.join(sortie, 'output.md'),
+    '## Ce que j\'ai fait\n\n- `GET /orders` accepte `limit` (50 par défaut, 200 max) et `offset`.\n- Test de bout en bout ajouté.\n- Branche `feature/orders-pagination` commitée et poussée ; merge request !312 ouverte.\n', 'utf8');
+  db.prepare('UPDATE local_task_dir SET output_path = ? WHERE id = ?').run(path.join(sortie, 'output.md'), dir.lastInsertRowid);
+}
 /* …ET PROGRAMMÉE : elle partira demain à 7:00, toute seule. La date est de poste (`local_pref`,
    sous l'uid de la session) — c'est cette machine qui la lancera —, et c'est ce que la carte
    montre : le badge à l'horloge et sa croix. */

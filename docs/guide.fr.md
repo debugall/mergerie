@@ -931,6 +931,16 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   aussi **joindre des fichiers** — captures, PDF, tableurs, texte (bouton ou Ctrl+V) — pour enrichir le prompt. Le même prompt est
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
   son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
+  **Git, en option.** Un champ **`Branche à créer`** (facultatif) donne au dossier le parcours d'une session de
+  codage : la branche est créée **dans le dossier**, l'IA y travaille, son travail est **commité** (message de
+  commit au choix, sinon la première ligne du prompt), puis, selon les cases, **poussé**, la **merge request**
+  ouverte et la **convergence** lancée dessus — converger implique la MR, la MR implique le push. Le dossier doit être
+  un **dépôt git propre** : avec des modifications non commitées, la session s'arrête avant tout travail plutôt que de
+  les embarquer dans son commit. La forge est retrouvée par le **remote `origin`** du dossier, qui doit être un dépôt
+  enregistré dans Mergerie ; sinon la branche est poussée et la carte dit pourquoi la MR manque. Sans nom de branche,
+  rien ne change : l'IA écrit en place et rien n'est commité. Chaque dossier affiche sa branche, l'état de son commit
+  et le lien de sa MR. La convergence travaille sur le clone de Mergerie : un `git pull` dans ton dossier rapporte ses
+  corrections.
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout

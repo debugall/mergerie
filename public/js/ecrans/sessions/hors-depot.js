@@ -44,10 +44,24 @@ $('#taskLocalAddDir') && $('#taskLocalAddDir').addEventListener('click', () => {
   localPicks.push(''); renderLocalDirRows();
 });
 
+/* Ce que le git d'un dossier a donné : sa branche, où en est le commit, la MR ouverte, et pourquoi pas
+   de MR quand Mergerie n'a pas pu la faire. Rien du tout sans branche demandée. */
+function localGitTags(d) {
+  if (!d.branch) return '';
+  const note = d.git_note || '';
+  const noteTxt = note.startsWith('mr-error') ? tr('local.git.note.mr-error', { detail: note.replace(/^mr-error:\s*/, '') })
+    : (note ? tr(`local.git.note.${note}`) : '');
+  return `<span class="tag" title="${esc(tr('local.git.branch-tag'))}">${svgIco('branch')} ${esc(d.branch)}</span>`
+    + `${d.git_status ? `<span class="tag">${esc(tr(`local.git.status.${d.git_status}`))}</span>` : ''}`
+    + `${d.mr_iid ? (d.mr_url ? `<a class="tag" href="${esc(safeUrl(d.mr_url))}" target="_blank" rel="noopener noreferrer">MR !${d.mr_iid} ↗</a>` : `<span class="tag">MR !${d.mr_iid}</span>`) : ''}`
+    + `${noteTxt ? `<span class="muted" title="${esc(noteTxt)}">${svgIco('alert')} ${esc(noteTxt)}</span>` : ''}`;
+}
+
 function localDirLine(d, t) {
   const st = TASK_STATUS[d.status] || { label: d.status, cls: '' };
   return `<div class="target-line"><span class="tag ${st.cls}">${st.label}</span>`
     + `<code class="local-dir-path">${esc(d.path)}</code>`
+    + localGitTags(d)
     + `${d.last_error ? `<span class="muted" title="${esc(d.last_error)}">${svgIco('alert')}</span>` : ''}`
     + `<span class="spacer"></span>`
     /* RELANCER CE DOSSIER-LÀ. Les dossiers d'une session sont indépendants : refaire les

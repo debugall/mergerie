@@ -59,7 +59,8 @@ no token required. On the **Agents** side it carries the three shipped agents, t
 their versioned knowledge — one version awaiting validation, one unverified path, one reported gap — and a
 run triggered by a **schedule** that rewrote a note page. One coding session carries **three iterations, the
 last one with its diff**, and the out-of-repo session likewise, so the per-follow-up diff is
-visible on both sides without an agent.
+visible on both sides without an agent. A second out-of-repo session shows the optional git flow — its
+branch, pushed commit and open merge request on the folder's line.
 
 ```bash
 npm run demo       # http://localhost:4319

@@ -1,6 +1,7 @@
 'use strict';
 /* « Codage hors dépôt » : l'IA réalise le prompt DIRECTEMENT dans des dossiers locaux
-   arbitraires, EN PLACE — aucun git (ni branche, ni commit, ni push, ni diff). Chaque
+   arbitraires, EN PLACE — par défaut aucun git (ni branche, ni commit, ni push) ; un nom de
+   branche donné à la création active le parcours de `localgit.js`. Chaque
    dossier est traité l'un après l'autre ; un dossier en échec n'interrompt pas les autres.
 
    ⚠ Pas de filet : l'agent modifie les fichiers du dossier fourni par l'utilisateur.
@@ -16,6 +17,8 @@ const agentsession = require('../agent/session');
 const proc = require('../core/proc');
 const agentpass = require('../agent/pass');
 const localsnapshot = require('./localsnapshot');
+const localgit = require('./localgit');
+const { commitMessageFor } = require('./taskrunner');
 const { getConfig } = require('../data/config');
 const { avecConsignes } = require('../core/prompts');
 const { nonceRun } = require('../core/nonfiable');
@@ -167,6 +170,12 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
          suivi, ce que CE suivi a changé. Le dossier de l'utilisateur ne reçoit rien — le
          dépôt de suivi vit dans le dossier de travail de Mergerie (`localsnapshot`). `null`
          quand la mesure est impossible ou renoncée : on code quand même, l'écran se tait. */
+      /* UNE BRANCHE DEMANDÉE : elle est posée AVANT l'agent, pour que le diff de la passe et le
+         commit qui suit tombent dessus. Un dossier sale est refusé ici, avant tout travail. */
+      if (task.branch) {
+        const g = await localgit.preparer(d.path, task.branch, onLog);
+        setDir(d.id, { branch: task.branch, base_branch: g.base || d.base_branch || null });
+      }
       const avant = await localsnapshot.avant(taskId, d.id, d.path, onLog);
       let passeN = null;
       /* …et la borne d'arrivée, posée dès que l'agent a rendu la main — y compris quand il
@@ -219,6 +228,12 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
         if (attendQuestions(task, taskId, d, out, onLog)) { await mesurer(); continue; }
       }
       await mesurer();
+      if (task.branch) {
+        // Pousser est impliqué par la MR et par la convergence : elles lisent la forge, pas le dossier.
+        const push = !!(task.auto_push || task.create_mr || task.converge_after);
+        const r = await localgit.enregistrer(d.path, { branch: task.branch, message: commitMessageFor(task), push }, onLog);
+        setDir(d.id, { commit_sha: r.sha, git_status: r.pushed ? 'pushed' : (r.committed ? 'committed' : 'unchanged'), git_note: null });
+      }
       setDir(d.id, { status: 'done', last_error: null });
       onLog(`✅ ${d.path}`);
       ok += 1;

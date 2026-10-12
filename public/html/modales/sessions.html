@@ -71,11 +71,20 @@
             <label><span data-i18n="task.lbl.label">Libellé (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input name="label" maxlength="120" placeholder="ex. Migration TypeORM des entités" data-i18n-placeholder="task.ph.label" />
             </label>
+            <!-- UNE BRANCHE, FACULTATIVE. Vide, l'agent écrit en place et rien n'est commité (comme avant) ; donnée,
+                 elle est créée dans le dossier, commitée, et les cases « Une fois le code écrit » prennent leur sens. -->
+            <div id="taskLocalBranchRow" hidden>
+                <label><span data-i18n="local.git.branch">Branche à créer (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="local.git.branch-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <input name="branch" id="taskLocalBranch" maxlength="200" autocomplete="off" spellcheck="false" placeholder="ex. feature/PROJ-123-migration" data-i18n-placeholder="local.git.branch-ph" />
+                </label>
+            </div>
             <!-- LES DEUX DÉCISIONS QUI CHANGENT LE RÉSULTAT : ce qu'on vérifie après, et
                  si ça part sur la forge. Elles fermaient le formulaire, derrière un message de
                  commit qu'on ne remplit presque jamais. -->
             <div id="codeOnlyFields">
                 <p class="form-group-title" data-i18n="task.group.after">Une fois le code écrit</p>
+                <!-- Tout ce qui suppose un dépôt enregistré : absent hors dépôt, où la MR se retrouve par le remote. -->
+                <div id="taskCodeChecks">
                 <!-- FACULTATIF, et lié à l'auto-push : un vérificateur travaille sur ce que la
                      forge expose, donc sur du code poussé. Le choisir coche l'auto-push ; le
                      décocher retire le vérificateur. La note dit pourquoi, avant le clic. -->
@@ -95,8 +104,12 @@
                      engage TOUT le parc ; ici on ne demande l'avis de l'IA que sur ce que CETTE
                      session vient d'écrire. Décochée par défaut — une review coûte un appel. -->
                 <label id="taskReviewAfterRow" class="inline-check"><input type="checkbox" name="review_after" /> <span data-i18n="task.lbl.review-after">Reviewer la merge request dès sa création</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.review-after" data-tip="Dès que la session ouvre sa merge request, la review IA part. Sans attendre la prochaine découverte, et sans engager les autres dépôts.">ⓘ</button></label>
+                </div>
                 <label id="taskConvergeRow" class="inline-check"><input type="checkbox" name="converge_after" /> <span id="taskConvergeLbl" data-i18n="task.lbl.converge-after">…puis converger</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.converge-after" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
-                <label class="inline-check"><input type="checkbox" name="auto_push" /> <span data-i18n="task.lbl.auto-push">Auto-push (pousser automatiquement après le commit, sans validation)</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-tip="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-i18n-tip="task.tip.coche-la-branche-est-poussee"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <label id="taskAutoPushRow" class="inline-check"><input type="checkbox" name="auto_push" /> <span data-i18n="task.lbl.auto-push">Auto-push (pousser automatiquement après le commit, sans validation)</span> <button type="button" class="hint" tabindex="-1" aria-label="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-tip="Coché, la branche est poussée dès la fin du commit. Décoché, tu relis le diff puis pousses toi-même depuis Dev IA." data-i18n-tip="task.tip.coche-la-branche-est-poussee"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                <!-- HORS DÉPÔT SEULEMENT : sur dépôt, la MR se crée depuis la carte ou par la convergence. Ici la
+                     forge se retrouve par le remote du dossier ; sans remote connu, la branche est poussée et c'est tout. -->
+                <label id="taskCreateMrRow" class="inline-check" hidden><input type="checkbox" name="create_mr" /> <span data-i18n="local.git.create-mr">Créer la merge request (implique le push)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="local.git.create-mr-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             </div>
             <!-- UNE LIGNE, PAS UNE BOÎTE POINTILLÉE DE 80 PIXELS VIDE : joindre un fichier est
                  une possibilité, pas une étape. -->

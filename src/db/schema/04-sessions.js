@@ -178,6 +178,19 @@ try { db.exec('ALTER TABLE local_task_dir ADD COLUMN output_path TEXT'); } catch
    DOSSIER — chacun a sa propre session d'agent, donc ses propres hésitations. */
 try { db.exec('ALTER TABLE local_task ADD COLUMN ask_questions INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE local_task_dir ADD COLUMN questions_json TEXT'); } catch { /* déjà présente */ }
+/* « Une branche, un commit, un push, une MR, une convergence » hors dépôt — FACULTATIF, et
+   seulement quand `branch` est renseignée : sans nom de branche, la session reste ce qu'elle a
+   toujours été (l'agent écrit en place, rien n'est commité). Les cinq colonnes de `local_task`
+   sont les CHOIX de l'utilisateur ; celles de `local_task_dir` sont ce qui s'est PASSÉ dans ce
+   dossier — branche posée, commit, MR ouverte —, propre à ce poste. */
+for (const col of ['branch TEXT', 'commit_message TEXT', 'auto_push INTEGER DEFAULT 0',
+  'create_mr INTEGER DEFAULT 0', 'converge_after INTEGER DEFAULT 0']) {
+  try { db.exec(`ALTER TABLE local_task ADD COLUMN ${col}`); } catch { /* déjà présente */ }
+}
+for (const col of ['branch TEXT', 'base_branch TEXT', 'commit_sha TEXT', 'repo_id INTEGER', 'mr_iid INTEGER',
+  'mr_url TEXT', 'git_note TEXT', 'git_status TEXT']) {
+  try { db.exec(`ALTER TABLE local_task_dir ADD COLUMN ${col}`); } catch { /* déjà présente */ }
+}
 // Rangement d'une session hors dépôt — même principe que `task.hidden`.
 
 /* ---------- Question libre ----------

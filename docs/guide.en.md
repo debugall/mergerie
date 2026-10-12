@@ -888,6 +888,15 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   (projects + prompt) lives in **the same dialog as coding** — so you can also **attach files** (screenshots, PDFs, spreadsheets, text)
   (button or Ctrl+V) to enrich the prompt. The same prompt is applied to **each folder**, one after another
   — a failing folder does not stop the others, and the status is shown per folder. As with repository
+  **Git, optionally.** A **`Branch to create`** field (optional) gives the folder the path of a coding
+  session: the branch is created **in the folder**, the AI works on it, its work is **committed** (your commit
+  message, otherwise the first line of the prompt), then, depending on the boxes, **pushed**, the **merge request**
+  opened and the **convergence** started on it — converging implies the MR, the MR implies the push. The folder must be a
+  **clean git repository**: with uncommitted changes the session stops before any work rather than sweeping them
+  into its commit. The forge is found through the folder's **`origin` remote**, which must be a repository registered
+  in Mergerie; otherwise the branch is pushed and the card says why there is no MR. Without a branch name nothing
+  changes: the AI writes in place and nothing is committed. Each folder shows its branch, the state of its commit and
+  its MR link. Convergence works on Mergerie's clone: a `git pull` in your folder brings its fixes back.
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI

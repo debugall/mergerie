@@ -1,5 +1,25 @@
 'use strict';
 /* Dupliquer hors dépôt, éditer une question, reprendre une session, la branche suit le libellé, le `submit` de la modale. */
+/* Les choix git d'une session hors dépôt, de la carte vers le formulaire — pour l'édition ET la duplication. */
+function relireGitLocal(f, t) {
+  if (f.branch) f.branch.value = t.branch || '';
+  if (f.commit_message) f.commit_message.value = t.commit_message || '';
+  if (f.auto_push) f.auto_push.checked = !!t.auto_push;
+  if (f.create_mr) f.create_mr.checked = !!t.create_mr;
+  if (f.converge_after) f.converge_after.checked = !!t.converge_after;
+  majGitLocal('local');
+}
+/* …et du formulaire vers le corps de la requête. Branche vide = pas de git : le serveur ignore alors le reste. */
+function corpsGitLocal(f) {
+  return {
+    branch: f.branch ? f.branch.value.trim() : '',
+    commit_message: f.commit_message ? f.commit_message.value : '',
+    auto_push: f.auto_push ? f.auto_push.checked : false,
+    create_mr: f.create_mr ? f.create_mr.checked : false,
+    converge_after: f.converge_after ? f.converge_after.checked : false,
+  };
+}
+
 /* DUPLIQUER une session HORS DÉPÔT. Même geste, mais son propre câblage : les dossiers sont
    stockés en chemins absolus et la modale se pilote en « répertoire + noms de projets » —
    c'est la relecture d'`openLocalTaskEdit`, sans l'identifiant. Aucune branche ici : rien à
@@ -26,6 +46,7 @@ async function dupliquerLocalTask(id) {
   if (f.review_after) f.review_after.checked = !!t.review_after;
   cliPreselection = t.cli_id || '';    // le binaire fait partie de ce qu'on copie
   if (f.session_id) f.session_id.value = '';
+  relireGitLocal(f, t);
   $('#taskModalTitle').textContent = tr('task.duplicate.title-local');
   infoDuplication(false, (d.images && d.images.length) || 0);
   boutonsCreation();
@@ -71,6 +92,7 @@ async function openLocalTaskEdit(id) {
   cliPreselection = t.cli_id || '';    // le binaire choisi, relu par showTaskModal
   poserDateProgrammee(f, t.scheduled_at);
   if (f.session_id) f.session_id.value = sharedSessionKey(t.dirs);
+  relireGitLocal(f, t);
   deplierAvanceSiRempli(f);
   $('#taskModalTitle').textContent = tr('local.edit-title');
   setTaskPieces('local', d.images);
@@ -275,6 +297,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
           session_id: f.session_id ? f.session_id.value : '',
           ask_questions: f.ask_questions ? f.ask_questions.checked : false,
           cli_id: f.cli_id ? f.cli_id.value : '',
+          ...corpsGitLocal(f),
         } }));
         await majProgrammationEdition(f, `/local-tasks/${editingTaskId}/schedule`, programmeA);
         toast(tr('toast.session-mise-a-jour'));
@@ -289,6 +312,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
            « partager » doit donc être câblée trois fois, sans quoi elle ne ferait rien ici. */
         shared: f.shared ? f.shared.checked : false,
         cli_id: f.cli_id ? f.cli_id.value : '',   // le binaire : câblé ici aussi, même raison
+        ...corpsGitLocal(f),                      // branche, message, push, MR, convergence : idem
       } }));
       if (programmeA) {
         await api(`/local-tasks/${created.id}/schedule`, { method: 'PUT', body: { at: programmeA } });

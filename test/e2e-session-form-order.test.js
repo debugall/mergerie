@@ -78,7 +78,8 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       const marche = (parent) => {
         for (const el of parent.children) {
           if (el.hidden || el.getClientRects().length === 0) continue;
-          if (el.id === 'codeOnlyFields') { marche(el); continue; }
+          // `taskCodeChecks` n'est qu'une enveloppe (elle se masque d'un bloc hors dépôt) : on lit ce qu'elle contient.
+          if (el.id === 'codeOnlyFields' || el.id === 'taskCodeChecks') { marche(el); continue; }
           if (el.classList.contains('modal-actions')) continue;
           out.push(cle(el));
         }
@@ -113,7 +114,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
          des deux (un avis sur ce qui vient d'être écrit), et la convergence l'englobe. */
       'taskReviewAfterRow',
       'taskConvergeRow',
-      'auto_push',
+      'taskAutoPushRow',
       'taskImages',                    // une possibilité, pas une étape
       'taskAskQuestionsRow',           // COMMENT : l'IA peut demander, hors de l'accordéon
       'taskPlanFirstRow',              // …et planifier d'abord : même famille, codage seulement
@@ -134,6 +135,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskLocalWrap',
       'taskLocalWarn',
       'label',
+      'taskLocalBranchRow',            // la branche, facultative : sans elle, rien de « une fois le code écrit »
       'taskImages',
       'taskAskQuestionsRow',
       'taskScheduleRow',

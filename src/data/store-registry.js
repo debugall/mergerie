@@ -1268,6 +1268,11 @@ const REGISTRE = [
       label: r.label || null,
       status: r.status,
       ask_questions: r.ask_questions ? 1 : 0,
+      branch: r.branch || null,
+      commit_message: r.commit_message || null,
+      auto_push: r.auto_push ? 1 : 0,
+      create_mr: r.create_mr ? 1 : 0,
+      converge_after: r.converge_after ? 1 : 0,
       cli_name: r.cli_name || null,
       last_error: ctx.masquer(r.last_error) || null,
       followup_auto: r.followup_auto ? 1 : 0,
@@ -1290,6 +1295,11 @@ const REGISTRE = [
       label: doc.label || null,
       status: doc.status || 'new',
       ask_questions: doc.ask_questions ? 1 : 0,
+      branch: doc.branch || null,
+      commit_message: doc.commit_message || null,
+      auto_push: doc.auto_push ? 1 : 0,
+      create_mr: doc.create_mr ? 1 : 0,
+      converge_after: doc.converge_after ? 1 : 0,
       cli_name: doc.cli_name || null,
       last_error: doc.last_error || null,
       followup_auto: doc.followup_auto ? 1 : 0,
@@ -1311,7 +1321,8 @@ const REGISTRE = [
   },
   {
     table: 'local_task_dir', famille: 'P', uidPropre: true, parent: 'local_task', liste: 'dirs', fusion: 'parent',
-    locales: ['path', 'session_key', 'session_backend', 'session_cwd', 'output_path'],
+    locales: ['path', 'session_key', 'session_backend', 'session_cwd', 'output_path',
+      'branch', 'base_branch', 'commit_sha', 'repo_id', 'mr_iid', 'mr_url', 'git_note', 'git_status'],
     note: '`path` est vidé et gelé : le chemin vit dans `local_dir_map`, sur le poste qui le '
       + 'connaît. La ligne porte `dir_hash`, `dir_label` et `owner`, qui eux voyagent — chez le '
       + 'voisin la session se relit avec son libellé, et « Relancer » est refusé plutôt que de '
