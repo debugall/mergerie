@@ -13,6 +13,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **YOLO exploration was still told to stay read-only.** The prompt of an exploration session forbade writing even with the agent in YOLO mode, so the agent refused to write outside its working directory. In YOLO nothing in the instructions blocks it any more; secure mode keeps the read-only rule.
 - **Opening reports in quick succession could show the wrong one.** Two report openings in flight (Back twice, two quick clicks) could finish out of order: the slower one replaced the report on screen and added a stray entry to the browser history. The last report asked for now wins.
 - **A ticket opened from My tickets no longer shows an empty *Technical brief* section.** It stays closed until you click *Specify technically* — or when a brief (even a draft) is already saved.
 - **Scrolling a full-screen view or a dialog no longer scrolls the page behind it.** Reading a long AI answer, the wheel used to carry on to the screen underneath once the end of the pane was reached, and closing the view left you at the bottom of the page. The page now stays still while a full-screen view or a dialog is open and is exactly where you left it when you close it.

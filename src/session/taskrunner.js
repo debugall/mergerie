@@ -811,8 +811,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     `Tu explores ${dirs.length} dépôt(s) de code, chacun dans un sous-dossier du répertoire courant :\n${listing}\n\n`
     + `QUESTION : ${question}${blocEntrees}\n\n`
     + `Explore librement le code de ces dépôts (lecture de fichiers, recherche) pour y répondre.\n`
-    + `IMPORTANT : c'est une exploration en LECTURE SEULE — ne modifie, ne crée et ne supprime AUCUN fichier `
-    + `dans les dépôts, et ne fais aucun commit.${prev}${imgBlock}\n\n`
+    + (agentpolicy.modeSecurise()
+      ? `IMPORTANT : c'est une exploration en LECTURE SEULE — ne modifie, ne crée et ne supprime AUCUN fichier `
+        + `dans les dépôts, et ne fais aucun commit.`
+      // Yolo : rien n'est bloqué, y compris l'écriture hors du répertoire de travail — la consigne ne doit pas le re-bloquer.
+      : `Tu as le droit d'écrire où il le faut, dans ces dépôts comme dans d'autres dossiers, si la demande l'exige.`)
+    + `${prev}${imgBlock}\n\n`
     + `Rédige UNE SEULE réponse de synthèse, transversale aux dépôts, en Markdown (français), `
     + (agentpolicy.sortieSurStdout('explore', copilot.COPILOT_BIN)
       // Lecture seule tenue par le lanceur : aucun fichier ne peut être écrit, la réponse finale en tient lieu.
