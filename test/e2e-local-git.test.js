@@ -108,18 +108,21 @@ describe('Codage hors dépôt : branche, commit, push, merge request, convergenc
     assert.equal(git(inconnu.bare, ['rev-parse', 'refs/heads/feature/orpheline']), git(inconnu.work, ['rev-parse', 'HEAD']));
   });
 
-  test('un dossier avec du travail non commité est refusé : rien n’est avalé dans le commit de la session', async () => {
+  test('un dossier avec du travail non commité ne bloque pas : il reste en place, hors du commit de la session', async () => {
     retourSurMain(connu);
     const perso = path.join(connu.work, '.env');
     fs.writeFileSync(perso, 'SECRET=1\n');
     const lt = await creer({ dirs: [connu.work], branch: 'feature/sale', auto_push: true });
     const fin = await lancer(lt.id);
-    assert.equal(fin.dirs[0].status, 'error');
-    assert.match(fin.dirs[0].last_error, /feature\/sale/);
-    assert.equal(git(connu.work, ['rev-parse', '--abbrev-ref', 'HEAD']), 'main', 'on n’a pas changé de branche');
-    assert.equal(fs.readFileSync(perso, 'utf8'), 'SECRET=1\n', 'et le fichier est intact');
-    assert.throws(() => git(connu.bare, ['rev-parse', '--verify', 'refs/heads/feature/sale']));
+    assert.equal(fin.dirs[0].status, 'done');
+    assert.equal(fin.dirs[0].git_status, 'pushed');
+    assert.equal(git(connu.work, ['rev-parse', '--abbrev-ref', 'HEAD']), 'feature/sale');
+    const commites = git(connu.work, ['show', '--name-only', '--format=', 'HEAD']).split('\n').filter(Boolean);
+    assert.ok(commites.length > 0, 'ce que l’agent a écrit est commité');
+    assert.ok(!commites.includes('.env'), 'le fichier de l’utilisateur n’est pas avalé');
+    assert.equal(fs.readFileSync(perso, 'utf8'), 'SECRET=1\n', 'et il est intact');
     fs.rmSync(perso);
+    retourSurMain(connu);
   });
 
   test('un dossier qui n’est pas un dépôt git est refusé, sans y toucher', async () => {

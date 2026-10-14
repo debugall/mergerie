@@ -171,10 +171,12 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
          dépôt de suivi vit dans le dossier de travail de Mergerie (`localsnapshot`). `null`
          quand la mesure est impossible ou renoncée : on code quand même, l'écran se tait. */
       /* UNE BRANCHE DEMANDÉE : elle est posée AVANT l'agent, pour que le diff de la passe et le
-         commit qui suit tombent dessus. Un dossier sale est refusé ici, avant tout travail. */
+         commit qui suit tombent dessus. Un dossier sale passe : ce qui y traîne est relevé, le commit le laissera. */
+      let saleAvant = null;
       if (task.branch) {
         const g = await localgit.preparer(d.path, task.branch, onLog);
         setDir(d.id, { branch: task.branch, base_branch: g.base || d.base_branch || null });
+        saleAvant = g.sales;
       }
       const avant = await localsnapshot.avant(taskId, d.id, d.path, onLog);
       let passeN = null;
@@ -231,7 +233,7 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
       if (task.branch) {
         // Pousser est impliqué par la MR et par la convergence : elles lisent la forge, pas le dossier.
         const push = !!(task.auto_push || task.create_mr || task.converge_after);
-        const r = await localgit.enregistrer(d.path, { branch: task.branch, message: commitMessageFor(task), push }, onLog);
+        const r = await localgit.enregistrer(d.path, { branch: task.branch, message: commitMessageFor(task), push, sales: saleAvant }, onLog);
         setDir(d.id, { commit_sha: r.sha, git_status: r.pushed ? 'pushed' : (r.committed ? 'committed' : 'unchanged'), git_note: null });
       }
       setDir(d.id, { status: 'done', last_error: null });

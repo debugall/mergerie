@@ -935,8 +935,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   codage : la branche est créée **dans le dossier**, l'IA y travaille, son travail est **commité** (message de
   commit au choix, sinon la première ligne du prompt), puis, selon les cases, **poussé**, la **merge request**
   ouverte et la **convergence** lancée dessus — converger implique la MR, la MR implique le push. Le dossier doit être
-  un **dépôt git propre** : avec des modifications non commitées, la session s'arrête avant tout travail plutôt que de
-  les embarquer dans son commit. La forge est retrouvée par le **remote `origin`** du dossier, qui doit être un dépôt
+  un **dépôt git**. Les fichiers modifiés ou non suivis déjà présents ne bloquent pas la session : ils restent en
+  place et ne partent pas dans son commit, sauf si l'IA y a elle-même touché. La forge est retrouvée par le **remote `origin`** du dossier, qui doit être un dépôt
   enregistré dans Mergerie ; sinon la branche est poussée et la carte dit pourquoi la MR manque. Sans nom de branche,
   rien ne change : l'IA écrit en place et rien n'est commité. Chaque dossier affiche sa branche, l'état de son commit
   et le lien de sa MR. La convergence travaille sur le clone de Mergerie : un `git pull` dans ton dossier rapporte ses

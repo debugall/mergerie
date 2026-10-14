@@ -892,8 +892,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   session: the branch is created **in the folder**, the AI works on it, its work is **committed** (your commit
   message, otherwise the first line of the prompt), then, depending on the boxes, **pushed**, the **merge request**
   opened and the **convergence** started on it — converging implies the MR, the MR implies the push. The folder must be a
-  **clean git repository**: with uncommitted changes the session stops before any work rather than sweeping them
-  into its commit. The forge is found through the folder's **`origin` remote**, which must be a repository registered
+  **git repository**. Uncommitted or untracked files already there do not block the session: they stay where
+  they are and are left out of its commit, unless the AI itself changed them. The forge is found through the folder's **`origin` remote**, which must be a repository registered
   in Mergerie; otherwise the branch is pushed and the card says why there is no MR. Without a branch name nothing
   changes: the AI writes in place and nothing is committed. Each folder shows its branch, the state of its commit and
   its MR link. Convergence works on Mergerie's clone: a `git pull` in your folder brings its fixes back.

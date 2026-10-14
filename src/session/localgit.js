@@ -7,12 +7,15 @@
    branche est posée AVANT l'agent, le commit et le push viennent APRÈS. La différence tient en
    une phrase — c'est SON dossier, avec son travail dedans —, d'où deux gardes que `taskrunner`
    n'a pas :
-   — on ne change de branche que sur un dossier PROPRE, fichiers non suivis compris (le commit
-     fait `add -A` : un `.env` traînant partirait dans l'historique) ;
+   — un dossier SALE n'empêche rien : ce qui y traîne avant la passe (modifié, non suivi) est
+     relevé avec son empreinte, et le commit le LAISSE de côté tant que l'agent n'y a pas touché
+     (le commit fait `add -A` : sans cela un `.env` partirait dans l'historique) ;
    — on ne jette jamais rien (`ensureCleanWorktree` fait un `clean -fd`, ici il détruirait le
      travail de l'utilisateur).
    La merge request et la convergence ne sont pas ici : elles demandent la forge, et vivent dans
    `jobs/apres-local.js`. */
+const fs = require('node:fs');
+const path = require('node:path');
 const git = require('../git/git');
 const { getConfig } = require('../data/config');
 const { t } = require('../core/i18n');
@@ -29,6 +32,30 @@ function brancheValide(nom) {
   return !n.split('/').some((s) => !s || s.startsWith('.') || s.endsWith('.lock'));
 }
 
+/* Empreinte du contenu d'un fichier, `absent` quand il n'existe plus (ou n'est pas un fichier). */
+async function empreinte(cwd, chemin) {
+  try {
+    if (!fs.statSync(path.join(cwd, chemin)).isFile()) return 'absent';
+    return await sortie(cwd, ['hash-object', '--', chemin]);
+  } catch { return 'absent'; }
+}
+
+/* Les fichiers sales du dossier, avec une empreinte de leur contenu (`absent` s'ils sont supprimés) :
+   de quoi reconnaître, après la passe, ceux que l'agent n'a pas touchés. */
+async function releverSales(cwd) {
+  const brut = (await git.run('git', ['status', '--porcelain', '-z', '-uall'], { cwd })).stdout;
+  const chemins = [];
+  const morceaux = brut.split('\0').filter(Boolean);
+  for (let i = 0; i < morceaux.length; i++) {
+    const m = morceaux[i];
+    chemins.push(m.slice(3));
+    if (m[0] === 'R' || m[0] === 'C') i += 1;   // le chemin d'origine suit
+  }
+  const sales = new Map();
+  for (const c of chemins) sales.set(c, await empreinte(cwd, c));
+  return sales;
+}
+
 async function estDepotGit(cwd) {
   try { return (await sortie(cwd, ['rev-parse', '--is-inside-work-tree'])) === 'true'; } catch { return false; }
 }
@@ -41,19 +68,20 @@ async function brancheCourante(cwd) {
 
 /**
  * Place la branche de la session dans le dossier, avant que l'agent n'y touche.
- * @returns {Promise<{ base: string|null }>} `base` = la branche sur laquelle se trouvait le
- *   dossier (le point de départ de la MR), `null` quand il était déjà sur la branche de la session.
+ * @returns {Promise<{ base: string|null, sales: Map<string,string> }>} `base` = la branche sur
+ *   laquelle se trouvait le dossier (le point de départ de la MR), `null` quand il était déjà sur la
+ *   branche de la session ; `sales` = ce qui traînait avant la passe, à passer à `enregistrer`.
  */
 async function preparer(cwd, branch, onLog = () => {}) {
   if (!(await estDepotGit(cwd))) throw new Error(t('err.local.git-not-repo', { path: cwd }));
   const courante = await brancheCourante(cwd);
-  if (courante === branch) return { base: null };
-  const sale = await sortie(cwd, ['status', '--porcelain']);
-  if (sale) throw new Error(t('err.local.git-dirty', { branch, n: sale.split('\n').length }));
+  const sales = await releverSales(cwd);
+  if (courante === branch) return { base: null, sales };
+  if (sales.size) onLog(t('log.local.git-dirty-kept', { n: sales.size }));
   if (await git.refExists(cwd, `refs/heads/${branch}`)) await git.checkoutBranch(cwd, branch, onLog);
   else if (await git.refExists(cwd, `origin/${branch}`)) await git.createBranchFrom(cwd, branch, `origin/${branch}`, onLog);
   else await git.run('git', ['checkout', '-b', branch], { cwd, onLog });
-  return { base: courante };
+  return { base: courante, sales };
 }
 
 /**
@@ -61,9 +89,19 @@ async function preparer(cwd, branch, onLog = () => {}) {
  * répondre au lieu de coder — le retour de la passe le dit déjà.
  * @returns {Promise<{ committed: boolean, sha: string, pushed: boolean }>}
  */
-async function enregistrer(cwd, { branch, message, push }, onLog = () => {}) {
+async function enregistrer(cwd, { branch, message, push, sales }, onLog = () => {}) {
   onLog(`commit : ${message}`);
-  const committed = await git.commitAll(cwd, message, onLog);
+  let committed;
+  if (sales && sales.size) {
+    await git.run('git', ['add', '-A'], { cwd, onLog });
+    const intacts = [];
+    for (const [c, h] of sales) if (await empreinte(cwd, c) === h) intacts.push(c);
+    for (const c of intacts) await git.run('git', ['reset', '-q', '--', c], { cwd }).catch(() => {});
+    const reste = await sortie(cwd, ['diff', '--cached', '--name-only']);
+    if (reste) { await git.run('git', ['commit', '-m', message], { cwd, onLog }); committed = true; } else committed = false;
+  } else {
+    committed = await git.commitAll(cwd, message, onLog);
+  }
   const sha = await git.headSha(cwd);
   let pushed = false;
   /* Pousser une branche sans commit de plus que `origin/<branche>` n'a pas de sens ; mais une
