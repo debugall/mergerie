@@ -13,6 +13,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **YOLO out-of-repo coding sessions no longer treat their folder as a fence.** The prompt said “in this folder”, which the agent read as a ban on writing elsewhere even though nothing blocked it. In YOLO mode the prompt now says it may read and write outside the folder; secure mode is unchanged.
 - **An out-of-repo session with a branch no longer refuses a folder that has uncommitted files.** Modified or untracked files already there stay in place and are left out of the session's commit (unless the AI changed them itself).
 - **YOLO exploration was still told to stay read-only.** The prompt of an exploration session forbade writing even with the agent in YOLO mode, so the agent refused to write outside its working directory. In YOLO nothing in the instructions blocks it any more; secure mode keeps the read-only rule.
 - **Opening reports in quick succession could show the wrong one.** Two report openings in flight (Back twice, two quick clicks) could finish out of order: the slower one replaced the report on screen and added a stray entry to the browser history. The last report asked for now wins.

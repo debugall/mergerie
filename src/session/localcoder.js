@@ -14,6 +14,7 @@ const localdirs = require('../data/localdirs');
 const localsession = require('../data/localsession');
 const copilot = require('../agent/copilot');
 const agentsession = require('../agent/session');
+const agentpolicy = require('../agent/policy');
 const proc = require('../core/proc');
 const agentpass = require('../agent/pass');
 const localsnapshot = require('./localsnapshot');
@@ -125,12 +126,16 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
   const repondu = reponses
     ? questions.buildAnswerInstruction(lireQuestions(dirs[0]))
     : null;
+  /* « Dans ce dossier » se lit comme une clôture : l'agent refuse alors d'écrire à côté, alors que
+     le lanceur ne l'en empêche pas. En yolo rien n'est bloqué — la consigne le dit. */
+  const libre = agentpolicy.modeSecurise() ? ''
+    : '\n\nTu peux lire et écrire des fichiers en dehors de ce dossier si la tâche l’exige : rien ne te l’interdit.';
   const promptText = avecConsignes(repondu || (followup
     ? 'Tu as déjà travaillé dans ce dossier lors d’une passe précédente. Applique la demande '
       + `de suivi ci-dessous en modifiant directement les fichiers.\n\nDemande de suivi : ${followup}${imgBlock}`
     : 'Réalise la tâche de développement suivante dans ce dossier. '
       + `Modifie directement les fichiers nécessaires.\n\n${task.prompt}${imgBlock}`),
-  getConfig().ai_extra_instructions)
+  getConfig().ai_extra_instructions) + libre
     /* Option « l'IA peut poser des questions » : hors dépôt aussi. C'est même là qu'elle
        compte le plus — l'agent travaille EN PLACE, sans branche ni commit à relire : mieux
        vaut une question qu'un fichier réécrit selon une hypothèse qu'on n'a pas validée. */
