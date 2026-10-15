@@ -353,6 +353,24 @@ describe('agentpolicy : copilot', () => {
    reste en liste blanche : c'est une limite du serveur, pas de l'agent. */
 describe('agentpolicy : le mode yolo rend tout, le mode sécurisé retire — et yolo est le défaut', { skip: process.platform === 'win32' ? 'faux binaire sh' : false }, () => {
   beforeEach(() => pol.oublierCapacites());
+  test('yolo, copilot : --allow-all-tools ne lève pas la clôture des chemins — --allow-all-paths et --allow-all-urls suivent quand le CLI les connaît', () => {
+    updateConfig({ agent_mode: 'yolo' });
+    pol.oublierCapacites();
+    const bin = fauxAide('copilot', '--allow-all-tools\n--allow-all-paths\n--allow-all-urls');
+    for (const kind of ['code', 'explore', 'local']) {
+      const r = pol.argvPermissions({ backend: 'copilot', bin, extra: [], kind });
+      assert.deepEqual(r.args, ['--allow-all-tools', '--allow-all-paths', '--allow-all-urls'], kind);
+    }
+    // Déjà dit dans COPILOT_ARGS : pas de doublon.
+    const r = pol.argvPermissions({ backend: 'copilot', bin, extra: ['--allow-all-tools', '--allow-all-paths'], kind: 'code' });
+    assert.deepEqual(r.args, ['--allow-all-urls']);
+    // Un CLI qui ne connaît pas ces drapeaux n'en reçoit pas.
+    pol.oublierCapacites();
+    const vieux = fauxAide('copilot', '--allow-all-tools');
+    assert.deepEqual(pol.argvPermissions({ backend: 'copilot', bin: vieux, extra: [], kind: 'code' }).args, ['--allow-all-tools']);
+    pol.oublierCapacites();
+  });
+
   test('yolo : AGENT_ARGS intact, aucune option ajoutée, en lecture comme en écriture, sur chaque backend', () => {
     updateConfig({ agent_mode: 'yolo' });
     try {
