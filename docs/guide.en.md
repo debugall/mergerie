@@ -1056,9 +1056,10 @@ them, and the list filters by agent. The **statistics** add a cost per agent as 
 
 ### Notes
 The sticky notes and the notepad tab of everyday work, **inside the tool** — so **anchored** to what it
-tracks (merge requests, tickets) and **inside the backup**. Three sub-tabs: **Today** (the brief),
-**Todos**, **Pages**. Nothing goes to the AI or to a forge: everything lives in the local database, and
-this tab **spends no tokens at all**.
+tracks (merge requests, tickets) and **inside the backup**. Four sub-tabs: **Today** (the brief),
+**Todos**, **Pages**, **Period** (catching up on a window of dates). Nothing goes to the AI or to a forge
+without an explicit gesture: the brief, todos and pages live in the local database and **spend no tokens at
+all**; Period queries the forge and the clones, and spends AI only if you start a review.
 
 #### Today — the morning brief
 Sections **ordered action-first**: what calls for a gesture before what merely informs. Each is
@@ -1265,6 +1266,80 @@ default, *Settings → Notifications*).
 
 The notes, the todos and their history live in the **database of the data folder**: they are therefore
 covered by the **backup** (*Settings → General*), just like the review reports.
+
+#### Period — catching up on what happened
+
+“I am away for ten days. When I am back, what moved on the repositories?” While you are away the
+workstation is off: discovery did not run, and what was opened **and** merged in between shows up nowhere.
+*Period* therefore rebuilds a window of dates **from the forge and the clone of each repository**, not from
+what Mergerie saw. Two dates, *Build*, and a job queries everything; the screen fills in when it ends. The
+window also serves to re-read a sprint, prepare a retro or pick up a repository you did not follow — it is
+a period, not a leave.
+
+The sections, in the order of the gestures to make:
+
+1. **Direct pushes on watched branches** — in red, at the top: commits that entered `main` (or a protected
+   branch) **without a merge request**. Nobody reviewed them; it is the most valuable information on the
+   screen. Grouped by push (consecutive commits by the same author), labelled *revert*, *manual merge* or
+   *bot* (bots are hidden by default). A commit that went through a merge request is **never** there,
+   whatever the merge strategy — merge commit, squash, fast-forward, or GitHub's rebase-merge that rewrites
+   SHAs (recognised by the patch content). What the forge could not confirm is marked **unverified**, in
+   orange: a visible doubt beats a colleague wrongly accused. Gestures: *See the diff*, *Review this push*
+   (a pre-filled exploration session: the AI reads the commits like a review), *Verify this branch*, *Add
+   to todos*, *Fix session*.
+2. **Merged merge requests** — each one says whether it was reviewed before the merge (by you, or by a
+   colleague on the shared database) or never. *Review after the fact* reads the merge request **as it was
+   merged**, by its SHAs: the base at the time of the MR and its head, fetched from the ref the forge keeps
+   even once the branch is deleted — a three-dot diff would be empty once the head is in the target. The
+   prompt tells the AI the MR is already merged and asks it to sort findings into *fix now / watch / nothing
+   to report*; nothing is posted to the forge on its own. *Review the N unreviewed* starts the batch and
+   announces the cost.
+3. **Arrived, still open** — they are in the *Reviews* queue; here they are only flagged.
+4. **Closed without merge**, **known before and active during** (collapsed: a label change is enough to
+   touch an MR), **tags, deleted branches and pipelines** — a **red pipeline** on a watched branch at the
+   date of your return opens the section by itself.
+5. **Done by the team in Mergerie** — with a shared data repository: the reviews, sessions, todos and pages
+   written by someone else during the window, **and what the sync brought in** since the start of the
+   window, whatever date the colleague wrote (marked *arrived through the sync*: that signal depends on no
+   clock but yours). An MR merged *and* reviewed by a colleague appears once, under “merged”, with the
+   mention. In *Reviews*, a **new for you** badge marks the cards whose report arrived through the sync and
+   was never opened here — useful every day, not only when you are back.
+6. **Jira** (when configured) — the tickets that **changed status** or were **assigned to you** during the
+   window: yours, the watched ones, those of the period's merge requests. A Jira that fails makes the
+   section partial, never the period.
+7. **Meanwhile, Mergerie did…** — if the workstation stayed on: the **scheduled agents'** passes (one line
+   per agent, with its failures) and the **verifications** started in the window, the report one click away.
+
+On GitLab, direct pushes are grouped **exactly** as the forge saw them (its push events); GitHub does not
+expose them, so the heuristic (same author, less than thirty minutes) stays there. *Review the N unreviewed*
+orders the batch by **decreasing risk** (sensitive files, then size), bots excluded.
+
+**Summarise the period (≈ 1 AI call)** — the option, never the default: ten lines per repository on what
+changes for someone coming back, citing the `!iid`, rendered at the top like an agent report and labelled
+*written by an AI, not to be trusted blindly*. Useful beyond thirty merge requests; below that, the list
+reads faster.
+
+Each line carries **seen**: the screen is a list to empty. The state survives a reload and *Rebuild*; the
+sub-tab counter is the number of unseen lines. A repository whose forge was down, or where a cap was hit,
+is **partial** and says so on its section — never exhaustive in appearance only.
+
+**Along the way the database is repaired**: merge requests merged during the absence are written with their
+dates and SHAs, the session that had opened the branch is linked (“Create the MR” does not reappear on a
+branch already merged), linked todos are ticked, and the brief's journal is dated **at the merge**, not at
+your return.
+
+**The brief's banner.** When this workstation has not seen a gesture (keyboard, mouse) for more than N days
+(*Settings → General*, 3 by default — a weekend is not an absence), *Today* opens on “You have not opened
+Mergerie for 12 days — see what happened”: one click builds the period of the absence. Presence is measured
+on a real gesture, not on a tab left open: an office desktop left on for the whole leave is not “present”.
+And the first gesture of your return does not drop the banner: the absence is frozen at the moment it ends,
+until the period is opened or the banner is dismissed with its cross. **I am leaving**, in the Period bar,
+sets the start of the absence to the minute: a quick stop at the office no longer moves it, and the window
+offered on your return is exact; *Cancel* forgets it.
+
+**Settings.** *General*: the banner threshold, hide bots, watch protected branches on top of the default
+branch (a team decision: it is the definition of “entered without review”). *Repositories*: a list of
+watched branches specific to a repository, in its edit row.
 
 ### Jira
 Two sub-tabs: **My tickets** and **Watched**. The menu carries a **badge** = the number of tickets

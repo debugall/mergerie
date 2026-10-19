@@ -49,6 +49,7 @@ const ALLOWED = [
   'verify_jira_comment',
   'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
+  'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -125,6 +126,15 @@ function updateConfig(patch) {
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
+  /* Le rattrapage d'une période : la bannière au-delà de N jours sans geste (0 = jamais, 3 par
+     défaut — un week-end n'est pas une absence), les bots masqués d'office, les branches
+     protégées surveillées avec la branche par défaut. */
+  if ('periode_banner_days' in patch) {
+    const pb = parseInt(patch.periode_banner_days, 10);
+    next.periode_banner_days = Number.isFinite(pb) && pb >= 0 ? Math.min(365, pb) : 3;
+  }
+  next.periode_hide_bots = next.periode_hide_bots === '0' ? '0' : '1';
+  next.periode_watch_protected = next.periode_watch_protected === '0' ? '0' : '1';
   /* Coché par défaut : une todo « suivre !201 » n'a plus de raison d'être une fois !201
      mergée, et la cocher soi-même après coup est le geste qu'on oublie. */
   next.todo_close_on_merge = next.todo_close_on_merge === '0' ? '0' : '1';
@@ -282,7 +292,8 @@ function updateConfig(patch) {
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
-      agent_auto_max = @agent_auto_max
+      agent_auto_max = @agent_auto_max,
+      periode_watch_protected = @periode_watch_protected
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
@@ -304,6 +315,8 @@ function updateConfig(patch) {
       auto_refresh_minutes = @auto_refresh_minutes,
       jira_watch_minutes = @jira_watch_minutes,
       todo_close_on_merge = @todo_close_on_merge,
+      periode_banner_days = @periode_banner_days,
+      periode_hide_bots = @periode_hide_bots,
       task_default_auto_push = @task_default_auto_push,
       task_default_ask_questions = @task_default_ask_questions,
       task_default_notify_jira = @task_default_notify_jira,

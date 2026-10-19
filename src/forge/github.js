@@ -150,6 +150,16 @@ function toMr(pr) {
     created_at: pr.created_at,
     merged_at: pr.merged_at || null,
     author: pr.user ? (pr.user.login || '') : '',
+    /* LES QUATRE SHA, sous les noms que GitLab rend aussi (`shasDe`). `base.sha` est le
+       merge-base au moment de la pull request : `base_sha..head_sha` relit une PR mergée quelle
+       que soit la stratégie. GitHub n'a pas de `squash_commit_sha` : pour un squash,
+       `merge_commit_sha` EST le commit de squash — le rattrapage le traite comme tel. */
+    head_sha: (pr.head && pr.head.sha) || null,
+    base_sha: (pr.base && pr.base.sha) || null,
+    merge_commit_sha: pr.merge_commit_sha || null,
+    squash_commit_sha: null,
+    closed_at: pr.closed_at || null,
+    updated_at: pr.updated_at || null,
     /* CONFLITS. `mergeable` est calculé de façon ASYNCHRONE par GitHub : il vaut `null` tant
        que le calcul n'a pas tourné, et il n'est renvoyé que par la route d'une PR unique —
        jamais par la liste. On rend donc trois valeurs et pas deux : `true` (conflits), `false`
@@ -214,15 +224,48 @@ async function divergence(cfg, project, mr) {
   return { behind_by: Number.isInteger(n) && n >= 0 ? n : null, has_conflicts: null };
 }
 
-async function listAllMRs(cfg, project) {
-  const items = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/pulls?state=all&sort=updated&direction=desc`);
-  return items.map((pr) => ({
-    iid: pr.number, state: mrState(pr),
-    source_branch: pr.head && pr.head.ref, target_branch: pr.base && pr.base.ref,
-    merged_at: pr.merged_at, web_url: pr.html_url, title: pr.title,
-    author: (pr.user && (pr.user.login || pr.user.name)) || '',
-    created_at: pr.created_at || null,
-  }));
+/* TOUTES LES PULL REQUESTS — ou celles touchées depuis une date (`updatedAfter`). L'API n'a pas
+   de `since` sur les pull requests : la liste est triée par `updated_at` décroissant, et la
+   pagination S'ARRÊTE à la première page dont le dernier élément est plus ancien que la borne. */
+async function listAllMRs(cfg, project, { updatedAfter = null } = {}) {
+  const enc = encodeProject(project);
+  const out = [];
+  let url = `/repos/${enc}/pulls?state=all&sort=updated&direction=desc&per_page=100`;
+  for (let i = 0; i < 50 && url; i += 1) {
+    const { data, headers } = await githubFetchRaw(cfg, url);
+    if (!Array.isArray(data) || !data.length) break;
+    out.push(...data);
+    const dernier = data[data.length - 1];
+    if (updatedAfter && dernier && dernier.updated_at && dernier.updated_at < updatedAfter) break;
+    url = nextLink(headers);
+  }
+  return out
+    .filter((pr) => !updatedAfter || !pr.updated_at || pr.updated_at >= updatedAfter)
+    .map((pr) => ({
+      iid: pr.number, state: mrState(pr),
+      source_branch: pr.head && pr.head.ref, target_branch: pr.base && pr.base.ref,
+      merged_at: pr.merged_at, web_url: pr.html_url, title: pr.title,
+      author: (pr.user && (pr.user.login || pr.user.name)) || '',
+      created_at: pr.created_at || null,
+      updated_at: pr.updated_at || null,
+      // Une PR fermée SANS merge : `closed_at` posé, `merged_at` vide.
+      closed_at: pr.merged_at ? null : (pr.closed_at || null),
+      sha: (pr.head && pr.head.sha) || null,
+    }));
+}
+
+/* La ref que GitHub conserve pour chaque pull request, même après le merge et la suppression
+   de la branche. Pure. */
+function mrHeadRef(iid) { return `refs/pull/${iid}/head`; }
+
+/* QUELLES PULL REQUESTS ONT INTRODUIT CE COMMIT. GitHub associe aussi les commits RÉÉCRITS par
+   un rebase-merge : c'est ce qui fait de cet appel le dernier recours du rattrapage. */
+async function mergeRequestsOfCommit(cfg, project, sha) {
+  const enc = encodeProject(project);
+  const items = await githubFetch(cfg, `/repos/${enc}/commits/${encodeURIComponent(sha)}/pulls`);
+  return (Array.isArray(items) ? items : [])
+    .filter((pr) => pr && (pr.merged_at || pr.merged))
+    .map((pr) => ({ iid: pr.number, merged_at: pr.merged_at || null, target_branch: (pr.base && pr.base.ref) || null }));
 }
 
 /* Création d'une PR. ⚠ Contrairement à GitLab, l'API GitHub n'accepte NI le squash NI
@@ -387,6 +430,26 @@ async function pipelineStatus(cfg, project, iid, sha) {
   let head = sha;
   if (!head) { const pr = await githubFetch(cfg, `/repos/${enc}/pulls/${iid}`); head = pr && pr.head && pr.head.sha; }
   if (!head) return { state: 'none', url: null, label: '' };
+  return pipelineDuSha(cfg, enc, head, `${webBase(cfg)}/${enc}/pull/${iid}/checks`);
+}
+
+/* LE PIPELINE D'UNE BRANCHE (Notes → Période, « pipeline rouge sur main ») : GitHub n'a de CI
+   que par SHA — on résout la ref, puis le même verdict que pour une pull request. */
+async function refPipeline(cfg, project, ref) {
+  const enc = encodeProject(project);
+  const c = await githubFetch(cfg, `/repos/${enc}/commits/${encodeURIComponent(ref)}`);
+  const head = c && c.sha;
+  if (!head) return { state: 'none', url: null, label: '', sha: null, at: null };
+  const r = await pipelineDuSha(cfg, enc, head, `${webBase(cfg)}/${enc}/commits/${encodeURIComponent(ref)}`);
+  return { ...r, sha: head, at: null };
+}
+
+/* GitHub n'expose pas les pushs hors webhooks (les `events` du dépôt sont partiels et expirent
+   vite) : `null` dit à l'appelant de regrouper les commits directs par l'heuristique. */
+async function pushEvents() { return null; }
+
+/* Le verdict CI d'un SHA : check-runs + statut combiné, le pire l'emporte. */
+async function pipelineDuSha(cfg, enc, head, urlRepli) {
   const [runs, combined] = await Promise.all([
     githubFetch(cfg, `/repos/${enc}/commits/${head}/check-runs?per_page=100`).catch(() => null),
     githubFetch(cfg, `/repos/${enc}/commits/${head}/status`).catch(() => null),
@@ -399,7 +462,7 @@ async function pipelineStatus(cfg, project, iid, sha) {
     items.push({ etat: st.state === 'success' ? 'success' : st.state === 'pending' ? 'running' : 'failed', url: st.target_url || null });
   }
   if (!items.length) return { state: 'none', url: null, label: '' };
-  const url = (items.find((i) => i.etat === 'failed') || items[0]).url || `${webBase(cfg)}/${enc}/pull/${iid}/checks`;
+  const url = (items.find((i) => i.etat === 'failed') || items[0]).url || urlRepli;
   const state = items.some((i) => i.etat === 'failed') ? 'failed'
     : items.some((i) => i.etat === 'running') ? 'running'
       : items.every((i) => i.etat === 'success' || i.etat === 'canceled') ? (items.some((i) => i.etat === 'success') ? 'success' : 'canceled') : 'pending';
@@ -767,7 +830,7 @@ module.exports = {
   latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus,
-  listProtectedTags, listMrChangedPaths, listMrChanges, createBranch, deleteBranch, createTag, deleteTag, listAllMRs,
+  listProtectedTags, listMrChangedPaths, listMrChanges, createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents,
   // propres à GitHub
   isConfigured, testConnection, apiBase, webBase, refWebUrl,
 };

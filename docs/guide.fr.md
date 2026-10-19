@@ -1104,9 +1104,11 @@ agent dès qu'un agent a tourné.
 
 ### Notes
 Les post-it et l'onglet bloc-notes du quotidien, **dans l'outil** — donc **ancrés** à ce qu'on y suit
-(merge requests, tickets) et **dans la sauvegarde**. Trois sous-onglets : **Aujourd'hui** (le brief),
-**Todos**, **Pages**. Rien ne part vers l'IA ni vers une forge : tout vit dans la base locale, et
-**aucun token n'est consommé** par cet onglet.
+(merge requests, tickets) et **dans la sauvegarde**. Quatre sous-onglets : **Aujourd'hui** (le brief),
+**Todos**, **Pages**, **Période** (le rattrapage d'une fenêtre de dates). Rien ne part vers l'IA ni vers
+une forge sans un geste explicite : le brief, les todos et les pages vivent dans la base locale et
+**ne consomment aucun token** ; Période interroge la forge et les clones, et ne dépense de l'IA que si
+tu lances une review.
 
 #### Aujourd'hui — le brief du matin
 Des sections **ordonnées « action d'abord »** : ce qui réclame un geste avant ce qui informe. Chacune
@@ -1318,6 +1320,83 @@ Le canal est celui des **notifications bureau** existantes, avec sa propre caté
 
 Les notes, les todos et leur historique vivent dans la **base du dossier de données** : ils sont donc
 couverts par la **sauvegarde** (*Réglages → Général*), au même titre que les rapports de review.
+
+#### Période — rattraper ce qui s'est passé
+
+« Je pars dix jours. À mon retour, qu'est-ce qui a bougé sur les dépôts ? » Pendant l'absence, le poste
+est éteint : la découverte n'a pas tourné, et ce qui a été ouvert **et** mergé entre-temps n'apparaît
+nulle part. *Période* reconstruit donc une fenêtre de dates **depuis la forge et le clone de chaque
+dépôt**, pas depuis ce que Mergerie a vu. Deux dates, *Construire*, et un job interroge tout ; l'écran
+se remplit à sa fin. La fenêtre vaut aussi pour relire un sprint, préparer une rétro ou reprendre un
+dépôt qu'on n'a pas suivi — c'est une période, pas un congé.
+
+Les sections, dans l'ordre des gestes à faire :
+
+1. **Pushs directs sur des branches surveillées** — en rouge, en tête : des commits entrés dans `main`
+   (ou une branche protégée) **sans merge request**. Personne ne les a relus, c'est l'information la plus
+   précieuse de l'écran. Regroupés par push (commits consécutifs du même auteur), étiquetés *revert*,
+   *merge manuel* ou *bot* (les bots sont masqués d'office). Un commit passé par une merge request n'y
+   est **jamais**, quelle que soit la stratégie de merge — merge commit, squash, fast-forward, ou le
+   rebase-merge de GitHub qui réécrit les SHA (reconnu par le contenu du patch). Ce que la forge n'a pas pu
+   confirmer est marqué **non vérifié**, en orange : un doute affiché vaut mieux qu'un collègue accusé à
+   tort. Gestes : *Voir le diff*, *Relire ce push* (une session d'exploration pré-remplie, l'IA relit les
+   commits comme une review), *Vérifier cette branche*, *Ajouter aux todos*, *Session de correction*.
+2. **Merge requests mergées** — chacune dit si elle a été reviewée avant le merge (par toi, ou par un
+   collègue sur la base partagée) ou jamais. *Reviewer a posteriori* relit la merge request **telle qu'elle a
+   été mergée**, par ses SHA : la base au moment de la MR et sa tête, ramenée par la ref que la forge
+   conserve même branche supprimée — un diff à trois points serait vide une fois la tête dans la cible.
+   Le prompt dit à l'IA que la MR est déjà mergée et lui demande de classer en *à corriger maintenant /
+   à surveiller / RAS* ; rien n'est publié sur la forge tout seul. *Reviewer les N non relues* lance le
+   lot, en annonçant le coût.
+3. **Arrivées, toujours ouvertes** — elles sont dans la file de *Reviews* ; ici on les signale seulement.
+4. **Fermées sans merge**, **connues avant et actives pendant** (repliée : un changement d'étiquette suffit
+   à bouger une MR), **tags, branches supprimées et pipelines** — un **pipeline rouge** sur une branche
+   surveillée à la date du retour ouvre la section de lui-même.
+5. **Fait par l'équipe dans Mergerie** — avec un dépôt de données partagé : les reviews, sessions, todos et
+   pages écrites par quelqu'un d'autre pendant la fenêtre, **et ce que la synchro a fait entrer** depuis le
+   début de la fenêtre, quelle que soit la date écrite par le collègue (marqué *arrivé par la synchro* : ce
+   signal ne dépend d'aucune horloge que la tienne). Une MR mergée *et* reviewée par un collègue n'apparaît
+   qu'une fois, dans « mergées », avec la mention. Dans *Reviews*, une pastille **nouveau pour toi** marque
+   les cartes dont le rapport est arrivé par la synchro et n'a jamais été ouvert ici — utile tous les jours,
+   pas seulement au retour.
+6. **Jira** (si configuré) — les tickets qui ont **changé d'état** ou t'ont été **affectés** pendant la
+   fenêtre : les tiens, les surveillés, ceux des merge requests de la période. Un Jira qui tombe rend la
+   section partielle, jamais la période.
+7. **Pendant ce temps, Mergerie a…** — si le poste est resté allumé : les passes des **agents planifiés**
+   (une ligne par agent, avec ses erreurs) et les **vérifications** lancées dans la fenêtre, le rapport à
+   un clic.
+
+Sur GitLab, les pushs directs sont regroupés **exactement** comme la forge les a vus (ses événements de
+push) ; GitHub ne les expose pas, l'heuristique (même auteur, moins de trente minutes) y reste. *Reviewer
+les N non relues* ordonne le lot par **risque décroissant** (fichiers sensibles, puis taille), bots exclus.
+
+**Résumer la période (≈ 1 appel IA)** — l'option, jamais par défaut : dix lignes par dépôt sur ce qui change
+pour quelqu'un qui revient, en citant les `!iid`, rendues en tête comme un rapport d'agent et balisées
+*texte d'une IA, non fiable*. Utile au-delà de trente merge requests ; en dessous, la liste se lit plus vite.
+
+Chaque ligne porte **vu** : l'écran est une liste qu'on vide. L'état survit à un rechargement et à
+*Recalculer* ; le compteur du sous-onglet est le nombre de lignes non vues. Un dépôt dont la forge est
+tombée, ou dont un plafond a été atteint, est **partiel** et le dit sur sa section — jamais exhaustif en
+apparence.
+
+**Au passage, la base est réparée** : les merge requests mergées pendant l'absence sont écrites avec leurs
+dates et leurs SHA, la session qui avait ouvert la branche est liée (« Créer la MR » ne réapparaît pas sur
+une branche déjà mergée), les todos liées sont cochées, et le journal du brief est daté **au merge**, pas au
+retour.
+
+**La bannière du brief.** Quand ce poste n'a pas vu un geste (clavier, souris) depuis plus de N jours
+(*Réglages → Général*, 3 par défaut — un week-end n'est pas une absence), *Aujourd'hui* ouvre sur « Tu n'as
+pas ouvert Mergerie depuis 12 jours — voir ce qui s'est passé » : un clic construit la période de
+l'absence. La présence se mesure sur un geste réel, pas sur un onglet resté ouvert : un poste de bureau
+allumé pendant tout le congé n'est pas « présent ». Et le premier geste du retour ne fait pas tomber la
+bannière : l'absence est figée au moment où elle se termine, jusqu'à ce que la période soit ouverte ou
+la bannière écartée d'une croix. **Je pars**, dans la barre de Période, pose le début de l'absence à la
+minute : un passage furtif au bureau ne le décale plus, et la fenêtre proposée au retour est exacte ;
+*Annuler* l'oublie.
+
+**Réglages.** *Général* : le seuil de la bannière, masquer les bots, surveiller les branches protégées en
+plus de la branche par défaut (une décision d'équipe : c'est la définition de « entré sans relecture »).
+*Dépôts* : une liste de branches surveillées propre à un dépôt, dans sa ligne d'édition.
 
 ### Jira
 Deux sous-onglets : **Mes tickets** et **Surveillés**. Le menu porte une **pastille** = le nombre de

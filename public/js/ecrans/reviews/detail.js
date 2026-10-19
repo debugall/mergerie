@@ -43,6 +43,9 @@ async function openReport(id, opts = {}) {
   // on met simplement à jour la sélection.
   $$('#reportList .card').forEach((c) => c.classList.toggle('active', Number(c.dataset.id) === id));
   const d = await api(`/mrs/${id}`);
+  /* Le rapport est ouvert ICI : la pastille « nouveau pour toi » tombe (état de ce poste). Sans
+     attendre — l'écran n'en dépend pas, et une liste rechargée le relira. */
+  if (d.review) api(`/mrs/${id}/seen`, { method: 'POST' }).catch(() => {});
   /* Le dernier rapport demandé gagne. Deux ouvertures en vol (Précédent deux fois de suite, deux
      clics rapprochés) finissent dans le désordre : la plus lente rendait un rapport qu'on avait
      déjà quitté — et reposait son adresse, ce qui ajoutait une entrée à l'historique. */

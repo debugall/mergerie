@@ -125,6 +125,20 @@ function jobKeys(entry) {
       }
       return keys;
     }
+    case 'periode-resume':                            // un appel IA sur la base : aucun clone, aucun dossier
+      return keys;
+    case 'periode': {
+      /* Le rattrapage FETCH dans le clone de chaque dépôt visé (ou de tous les dépôts actifs) :
+         il réserve ces clones comme une review le ferait. */
+      const p = db.prepare('SELECT repo_ids FROM periode WHERE id = ?').get(entry.periodeId);
+      let ids = null;
+      try { ids = p && p.repo_ids ? JSON.parse(p.repo_ids) : null; } catch { ids = null; }
+      const lignes = Array.isArray(ids) && ids.length
+        ? ids.map((id) => ({ id: Number(id) }))
+        : db.prepare('SELECT id FROM repo WHERE enabled = 1 AND COALESCE(fetch_mrs, 1) = 1').all();
+      for (const r of lignes) repo(r.id);
+      return keys;
+    }
     case 'gitops':
       for (const t2 of (entry.payload && entry.payload.targets) || []) repo(t2.repo_id);
       if (entry.payload && entry.payload.restoreOpId) keys.add('*'); // cible relue en base au moment du run

@@ -5,6 +5,9 @@
             <button data-nsub="today" class="active" role="tab" data-i18n-title="notes.sub.today-title"><svg class="ico"><use href="#i-zap"/></svg><span data-i18n="notes.sub.today">Aujourd'hui</span></button>
             <button data-nsub="todos" role="tab" data-i18n-title="notes.sub.todos-title"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="notes.sub.todos">Todos</span><span class="nav-count" id="notesTodoCount" hidden>0</span></button>
             <button data-nsub="pages" role="tab" data-i18n-title="notes.sub.pages-title"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="notes.sub.pages">Pages</span></button>
+            <!-- Le rattrapage d'une période : ce qui s'est passé sur les dépôts entre deux dates. Le
+                 compteur = les lignes non vues de la dernière période construite. -->
+            <button data-nsub="periode" role="tab" data-i18n-title="notes.sub.periode-title"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="notes.sub.periode">Période</span><span class="nav-count" id="notesPeriodeCount" hidden>0</span></button>
         </div>
 
         <div id="notesSubToday">
@@ -28,6 +31,12 @@
                  que par qui a lu le CHANGELOG. -->
             <p class="muted todo-syntaxe" data-i18n-html="notes.todo.syntax-help">Astuce : <code>!217</code> lie à une MR, <code>PROJ-42</code> à un ticket, <code>@demain</code> pose l'échéance, <code>!!</code> la priorité haute.</p>
             <div id="todoList" class="todo-list"></div>
+        </div>
+
+        <!-- Période : la barre de dates et de filtres est rendue par js/ecrans/notes/periode.js,
+             les sections au-dessous. Tout vient d'un job : rien n'est calculé à l'affichage. -->
+        <div id="notesSubPeriode" hidden>
+            <div id="periodeBox" class="notes-periode"></div>
         </div>
 
         <div id="notesSubPages" hidden>

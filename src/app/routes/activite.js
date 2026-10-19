@@ -30,8 +30,7 @@ const TTL_MOIS_COURANT_MS = 30 * 60 * 1000;
    pour éviter. On écarte donc leurs commits du compte, jours comme contributeurs.
    `noreply@github.com` n'est PAS un motif : les commits faits depuis l'interface web de
    GitHub par de vrais humains le portent aussi. */
-const MOTIFS_BOT = [/\[bot\]/i, /\bdependabot\b/i, /\brenovate\b/i, /\bgithub-actions\b/i, /\bmergify\b/i];
-const estBot = (auteur) => MOTIFS_BOT.some((re) => re.test(String(auteur || '')));
+const { estBot } = require('../../core/bots');   // les motifs vivent dans le cœur : le rattrapage d'une période juge pareil
 // Les 6 derniers mois, du plus ancien au plus récent, en 'YYYY-MM'.
 function derniersMois(n = 6, maintenant = new Date()) {
   const out = [];

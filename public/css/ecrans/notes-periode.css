@@ -1,0 +1,48 @@
+/* ============ Notes → Période : le rattrapage d'une fenêtre de dates ============
+   Même grammaire que le brief (sections, lignes, croix de « vu ») : c'est sa version longue. */
+.notes-periode { max-width: 980px; }
+.notes-periode-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; }
+.notes-periode-bar label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.notes-periode-bar input[type="date"] { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
+.notes-periode-bar select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); max-width: 260px; }
+.notes-periode-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 6px 0 12px; }
+.notes-periode-head .notes-periode-span { font-size: 20px; font-weight: 650; }
+.notes-periode-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+.notes-periode-filtres label { display: inline-flex; align-items: center; gap: 5px; }
+.notes-periode-partiel { border: 1px solid var(--orange); color: var(--orange); border-radius: 8px; padding: 6px 10px; margin: 0 0 12px; font-size: 12px; }
+.notes-periode-partiel p { margin: 2px 0; }
+.notes-periode-building { display: flex; align-items: center; gap: 10px; color: var(--muted); margin: 8px 0 14px; }
+.notes-periode-sec { margin-bottom: 22px; }
+.notes-periode-sec > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 15px; margin-bottom: 6px; }
+.notes-periode-sec > summary::-webkit-details-marker { display: none; }
+.notes-periode-sec > summary .ico { width: 15px; height: 15px; }
+.notes-periode-sec > summary .notes-periode-n { color: var(--muted); font-weight: 500; font-size: 12px; }
+.notes-periode-sec.notes-periode-push > summary { color: var(--red); }
+.notes-periode-hint { margin: -2px 0 8px; font-size: 12px; color: var(--muted); }
+.notes-periode-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin-bottom: 6px; }
+.notes-periode-item.seen { opacity: .55; }
+.notes-periode-item .notes-periode-main { flex: 1; min-width: 0; }
+.notes-periode-item .notes-periode-title { font-weight: 550; overflow-wrap: anywhere; }
+.notes-periode-item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 2px; }
+.notes-periode-item .notes-periode-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.notes-periode-commits { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.notes-periode-commits li { display: flex; gap: 8px; align-items: baseline; }
+.notes-periode-commits code { font-size: 11px; color: var(--muted); }
+.notes-periode-item.unverified { border-color: var(--orange); }
+.notes-periode-seen { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.notes-periode-batch { margin: 0 0 8px; }
+.notes-periode-hidden-foot { color: var(--muted); font-size: 12px; margin-top: 12px; }
+.notes-periode-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin: 0 0 16px; border: 1px solid var(--accent); border-radius: 8px; background: var(--panel2); }
+.notes-periode-banner .notes-periode-banner-text { flex: 1; font-weight: 550; }
+.notes-periode-diff-box { width: min(1100px, 96vw); }
+.notes-periode-diff { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); font-size: 12px; }
+.notes-periode-diff pre { margin: 0; padding: 8px 10px; white-space: pre; font-family: var(--mono, ui-monospace, monospace); }
+.notes-periode-diff .d-add { color: var(--green); }
+.notes-periode-diff .d-del { color: var(--red); }
+.notes-periode-diff .d-head { color: var(--muted); font-weight: 600; }
+.notes-periode-history { font-size: 12px; color: var(--muted); }
+.notes-periode-depart { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.notes-periode-resume > summary { color: var(--accent); }
+.notes-periode-resume-texte { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 8px 14px; font-size: 13px; }
+.notes-periode-sec.notes-periode-jira > summary .ico, .notes-periode-sec.notes-periode-mergerie > summary .ico { opacity: .8; }
+.notes-periode-pipeline { border-color: var(--red); }

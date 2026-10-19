@@ -532,6 +532,23 @@ async function statusOfKeys(cfg, keys) {
 /* Combien de tickets me sont affectés ET en cours. « En cours » = catégorie de statut
    `indeterminate` côté Jira : c'est la seule définition qui traverse les workflows, les
    noms d'états étant libres d'un projet à l'autre. */
+/* LES TICKETS QUI ONT BOUGÉ SUR UNE FENÊTRE (Notes → Période) : ceux qui ont changé d'état, et
+   ceux qui m'ont été affectés pendant. Bornés à ce qui me concerne — mes tickets, les
+   surveillés, ceux des merge requests de la fenêtre — : « tout ce qui a changé d'état dans
+   l'instance » serait des milliers de lignes. Les dates vont à Jira au format `yyyy-MM-dd HH:mm`,
+   dans le fuseau du compte. */
+async function changedDuring(cfg, { depuis, jusqua, keys = [], max = 100 } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const jj = (iso) => { const d = new Date(iso); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const d1 = jj(depuis); const d2 = jj(jusqua);
+  const propres = [...new Set((keys || []).map((k) => String(k).trim().toUpperCase()).filter(cleValide))].slice(0, 50);
+  const miens = propres.length ? `(assignee = currentUser() OR key IN (${propres.join(', ')}))` : 'assignee = currentUser()';
+  const changes = await runSearch(cfg, `${miens} AND status CHANGED DURING ("${d1}", "${d2}") ORDER BY updated DESC`, TICKET_FIELDS, max);
+  const affectes = await runSearch(cfg, `assignee CHANGED TO currentUser() DURING ("${d1}", "${d2}") ORDER BY updated DESC`, TICKET_FIELDS, max);
+  const vers = (data) => (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
+  return { changed: vers(changes), assigned: vers(affectes) };
+}
+
 async function countMineInProgress(cfg) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const data = await runSearch(cfg, 'assignee = currentUser() AND statusCategory = "In Progress"', 'summary', 1);
@@ -832,4 +849,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, changedDuring, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

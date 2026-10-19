@@ -337,6 +337,91 @@ async function diffTroisPoints(cwd, baseRef, ref, onLog = () => {}) {
 }
 
 // Auteur PRÉCIS d'un tag, lu dans le clone local (la seule source du « tagger ») :
+/* ---------- Ce que le rattrapage d'une période lit dans le clone ----------
+   Les merge requests viennent de la forge ; les COMMITS viennent d'ici. Le clone porte les
+   parents, les dates et le contenu des commits — ce que l'API ne donne pas, ou pas en un
+   appel —, et git répond localement, sans pagination ni rate limit. */
+
+/* Récupère des refs PRÉCISES de l'origine (les têtes de merge requests, que les deux forges
+   conservent après le merge) sous un espace à nous, que `--prune` ne touche pas. Une seule
+   commande pour toutes. Best-effort : une ref absente (MR très ancienne) ne fait pas échouer
+   les autres — on retente alors une par une, et l'appelant lit ce qui est là. */
+async function fetchRefs(cwd, refspecs, onLog = () => {}) {
+  if (!refspecs.length) return;
+  const tls = gitTlsArgs();
+  try { await run('git', [...tls, 'fetch', 'origin', '--force', ...refspecs], { cwd, onLog }); return; }
+  catch { /* une ref manque : on les reprend une par une */ }
+  for (const r of refspecs) {
+    try { await run('git', [...tls, 'fetch', 'origin', '--force', r], { cwd }); }
+    catch { onLog(`⚠ ref absente : ${r}`); }
+  }
+}
+
+/* L'histoire d'une branche TELLE QU'ON L'A ÉCRITE : `--first-parent` suit la branche sans
+   descendre dans ce qu'elle a absorbé. Avec des merge commits, les commits des MR n'y sont pas,
+   seul leur merge l'est ; en fast-forward, rebase ou squash, ils y sont sous leur propre SHA.
+   `--since`/`--until` filtrent sur la date de committer, comme l'API des forges. */
+async function logFirstParent(cwd, ref, { since, until, max = 2000 } = {}) {
+  const args = ['log', '--first-parent', `--max-count=${max + 1}`, '--format=%H%x00%P%x00%an%x00%ae%x00%cI%x00%s', ref];
+  if (since) args.splice(2, 0, `--since=${since}`);
+  if (until) args.splice(2, 0, `--until=${until}`);
+  const { stdout } = await run('git', args, { cwd, maxBuffer: 1024 * 1024 * 64 });
+  const lignes = stdout.split('\n').filter(Boolean);
+  const partiel = lignes.length > max;
+  return {
+    partiel,
+    commits: lignes.slice(0, max).map((l) => {
+      const [sha, parents, author, email, date, title] = l.split('\0');
+      return { sha, parents: (parents || '').split(' ').filter(Boolean), author: author || '', author_email: email || '', date: date || null, title: title || '' };
+    }),
+  };
+}
+
+/* Les commits d'une plage (`base..head`), du plus ancien au plus récent. */
+async function revList(cwd, range, { max = 500 } = {}) {
+  const { stdout } = await run('git', ['rev-list', '--reverse', `--max-count=${max}`, range], { cwd });
+  return stdout.split('\n').map((x) => x.trim()).filter(Boolean);
+}
+
+/* L'EMPREINTE DU CONTENU d'un commit, indépendante de son SHA : deux commits de même patch-id
+   sont le même changement, rebasé. C'est ce qui reconnaît les commits RÉÉCRITS par un
+   rebase-merge GitHub — sur `main` ils ne sont plus ceux de la pull request, mais leur patch, si.
+   `null` pour un commit sans diff (merge vide, commit vide). */
+async function patchId(cwd, sha) {
+  const { stdout } = await run('git', ['diff-tree', '-p', '--no-commit-id', '--root', sha], { cwd, maxBuffer: 1024 * 1024 * 64 });
+  if (!stdout.trim()) return null;
+  const { spawn } = require('child_process');
+  return new Promise((resolve) => {
+    const child = spawn('git', ['patch-id', '--stable'], { cwd, env: envGit(), stdio: ['pipe', 'pipe', 'ignore'] });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('error', () => resolve(null));
+    child.on('close', () => resolve((out.trim().split(/\s+/)[0]) || null));
+    child.stdin.end(stdout);
+  });
+}
+
+/* `a` est-il un ancêtre de `b` ? Faux aussi quand l'un des deux manque au clone. */
+async function isAncestor(cwd, a, b) {
+  try { await run('git', ['merge-base', '--is-ancestor', a, b], { cwd }); return true; }
+  catch { return false; }
+}
+
+/* Le diffstat d'une plage, pour afficher « +84 −12 » sur un push sans ouvrir le diff. */
+async function diffStat(cwd, base, head) {
+  try {
+    const { stdout } = await run('git', ['diff', '--numstat', `${base}..${head}`], { cwd, maxBuffer: 1024 * 1024 * 16 });
+    let plus = 0; let moins = 0; let fichiers = 0;
+    for (const l of stdout.split('\n')) {
+      const [a, d] = l.split('\t');
+      if (a === undefined || d === undefined) continue;
+      fichiers += 1;
+      plus += Number(a) || 0; moins += Number(d) || 0;
+    }
+    return { files: fichiers, additions: plus, deletions: moins };
+  } catch { return null; }
+}
+
 //  - tag ANNOTÉ → le tagger (celui qui a créé le tag), + sa date ;
 //  - tag LÉGER  → pas de tagger, on retombe sur l'auteur du commit pointé.
 // L'API GitLab n'expose pas le tagger, d'où cette lecture git à la demande.
@@ -690,4 +775,5 @@ module.exports = {
   envGit, enTetesForge, sansIdentifiants, nettoyerOrigines, argsDurcis,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
   lsTree, showFile, fileDiffFull, fileDiffRange,
+  fetchRefs, logFirstParent, revList, patchId, isAncestor, diffStat,
 };

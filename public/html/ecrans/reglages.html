@@ -336,6 +336,16 @@
                  Cochée, jamais supprimée — et débrayable pour qui préfère cocher lui-même. -->
             <label class="inline-check"><input form="configForm" name="todo_close_on_merge" type="checkbox" /> <span data-i18n="settings.lbl.todo-close-on-merge">Cocher les todos liées quand leur merge request est mergée</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.todo-close-on-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- Le rattrapage d'une période (Notes → Période) : le seuil de la bannière et le masquage
+                 des bots sont des habitudes de ce poste ; surveiller les branches protégées est une
+                 décision d'équipe — c'est la définition de « entré sans relecture ». -->
+            <label><span data-i18n="settings.lbl.periode-banner-days">Bannière « que s’est-il passé » au-delà de (jours, 0 = jamais)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.periode-banner-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="periode_banner_days" type="number" min="0" max="365" step="1" placeholder="3" />
+            </label>
+            <label class="inline-check"><input form="configForm" name="periode_hide_bots" type="checkbox" /> <span data-i18n="settings.lbl.periode-hide-bots">Masquer les bots dans une période</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.periode-hide-bots" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="inline-check"><input form="configForm" name="periode_watch_protected" type="checkbox" /> <span data-i18n="settings.lbl.periode-watch-protected">Surveiller aussi les branches protégées</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.periode-watch-protected" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <!-- Sauvegarde : la seule chose que Mergerie ne sait pas reconstruire. -->
             <div class="backup-row">
                 <button type="button" id="btnBackup" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.backup.btn">Sauvegarder les données</span></button>

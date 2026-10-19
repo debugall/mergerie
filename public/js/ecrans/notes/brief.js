@@ -14,6 +14,9 @@ async function loadBrief() {
   await notesIndex();
   let d;
   try { d = await api('/brief'); } catch (err) { box.innerHTML = `<p class="err">${esc(explainError(err.message))}</p>`; return; }
+  /* L'ABSENCE : « tu n'as pas ouvert Mergerie depuis 12 jours ». Mesurée sur un geste, pas sur
+     le poll (voir transverse/presence.js) ; sans réponse, pas de bannière — jamais une fausse. */
+  try { d.absence = await api('/periode/absence'); } catch { d.absence = null; }
   /* Le seuil du filtre « prêtes à merger » de l'onglet Reviews vient d'ICI : le brief est la
      seule source de cette règle, et les deux écrans doivent compter la même chose. */
   if (d.ready_threshold) seuilPret = Number(d.ready_threshold) || 8;
@@ -239,7 +242,14 @@ function renderBrief(d) {
     pluginsBriefSections(d),
   ].join('');
 
-  box.innerHTML = `<header class="brief-head">
+  const absence = d.absence && d.absence.banner ? `<div class="notes-periode-banner">
+      ${svgIco('clock')}<span class="notes-periode-banner-text">${esc(d.absence.explicit
+    ? tr('notes.periode.banner.explicit', { n: d.absence.days, count: d.absence.days, date: fmtDate(d.absence.depart) })
+    : tr('notes.periode.banner', { n: d.absence.days, count: d.absence.days }))}</span>
+      <button type="button" class="btn btn-primary btn-sm" id="briefAbsenceGo">${esc(tr('notes.periode.banner.go'))}</button>
+      <button type="button" class="btn btn-icon btn-sm brief-hide" id="briefAbsenceHide" title="${esc(tr('notes.brief.hide'))}" aria-label="${esc(tr('notes.brief.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+    </div>` : '';
+  box.innerHTML = `${absence}<header class="brief-head">
       <div class="brief-hello">${esc(tr('notes.brief.hello'))}</div>
       <div class="brief-date">${esc(jour)}</div>
       <span class="spacer"></span>
@@ -252,6 +262,12 @@ function renderBrief(d) {
     ${corps || emptyState({ icon: 'check', title: esc(tr('notes.brief.empty.title')), text: esc(tr('notes.brief.empty.text')) })}
     ${d.hidden_count ? `<p class="brief-hidden-foot muted">${esc(tr('notes.brief.hidden', { n: d.hidden_count, count: d.hidden_count }))}
       <button type="button" class="btn btn-sm" id="briefRestore">${esc(tr('notes.brief.restore'))}</button></p>` : ''}`;
+  const btnAbsence = $('#briefAbsenceGo');
+  if (btnAbsence) btnAbsence.addEventListener('click', () => ouvrirPeriodeDepuis(d.absence.last_seen, d.absence.last_periode));
+  const btnAbsenceHide = $('#briefAbsenceHide');
+  if (btnAbsenceHide) btnAbsenceHide.addEventListener('click', async () => {
+    try { await api('/periode/absence/dismiss', { method: 'POST' }); loadBrief(); } catch (err) { toast(explainError(err.message), true); }
+  });
   const btnCopie = $('#briefCopy');
   if (btnCopie) {
     btnCopie.addEventListener('click', () => {

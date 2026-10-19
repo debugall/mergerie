@@ -59,6 +59,9 @@ const COLONNES_LOCALES = [
   ['auto_refresh_minutes', 'INTEGER DEFAULT 5'],
   ['jira_watch_minutes', 'INTEGER DEFAULT 5'],
   ["todo_close_on_merge", "TEXT DEFAULT '1'"],
+  // Le rattrapage d'une période : le seuil de la bannière du brief et le masquage des bots.
+  ['periode_banner_days', 'INTEGER DEFAULT 3'],
+  ["periode_hide_bots", "TEXT DEFAULT '1'"],
   ['task_default_auto_push', 'INTEGER DEFAULT 0'],
   ['task_default_ask_questions', 'INTEGER DEFAULT 0'],
   ['task_default_notify_jira', 'INTEGER DEFAULT 0'],

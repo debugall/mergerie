@@ -99,6 +99,7 @@ async function loadRepos() {
         <input data-f="url" value="${esc(r.url)}" placeholder="${tr('settings.repo.ph.url')}" />
         <input data-f="project" value="${esc(r.project)}" placeholder="${tr('settings.repo.ph.project')}" />
         <input data-f="branch_pattern" value="${esc(r.branch_pattern || '')}" placeholder="${tr('settings.repo.ph.pattern')}" />
+        <input data-f="periode_branches" value="${esc(r.periode_branches || '')}" placeholder="${tr('settings.repo.ph.periode-branches')}" title="${esc(tr('settings.repo.periode-branches-title'))}" />
         <div class="repo-edit-actions">
           <button class="btn" data-cancel="${r.id}" title="${tr('settings.repo.cancel-title')}">${tr('ui.cancel')}</button>
           <button class="btn btn-primary" data-save="${r.id}" title="${tr('settings.repo.save-title')}">${tr('ui.save')}</button>

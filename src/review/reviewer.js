@@ -6,6 +6,7 @@ const localsession = require('../data/localsession');
 const { getConfig } = require('../data/config');
 const { REVIEWS_DIR, TMP_DIR, ensureDir, slugify } = require('../core/paths');
 const git = require('../git/git');
+const mrref = require('../git/mrref');
 const copilot = require('../agent/copilot');
 const agentpolicy = require('../agent/policy');
 const { nonFiable, nonceRun } = require('../core/nonfiable');
@@ -85,6 +86,19 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       onLog(t('log.review.diff-fallback', { raison: String(e.message).split('\n')[0] }));
       diff = null;
     }
+  }
+  /* UNE MERGE REQUEST DÉJÀ MERGÉE SE RELIT PAR SES SHA, pas par ses branches : la source est
+     souvent supprimée, et surtout `target...source` est VIDE par construction une fois la tête
+     dans la cible — la review tournerait sur zéro ligne et rendrait une note sur rien. La règle
+     vit dans `git/mrref.js`, la même que pour le viewer. */
+  let refMergee = null;
+  const mergee = !!(mr.merged_at || mr.merge_commit_sha || mr.squash_commit_sha);
+  if (diff == null && !enDemo && (mergee || !(mr.source_branch && await git.refExists(cwd, `origin/${mr.source_branch}`)))) {
+    refMergee = await mrref.refARelire(cwd, mr, repo, onLog).catch(() => null);
+    if (refMergee && refMergee.mode === 'merged') {
+      onLog(t('log.review.merged-diff', { base: String(refMergee.base).slice(0, 8), head: String(refMergee.headSha || refMergee.head).slice(0, 8) }));
+      diff = await mrref.diffARelire(cwd, refMergee, onLog);
+    } else refMergee = null;
   }
   if (diff == null) {
     onLog(`calcul du diff ${mr.source_branch}...${mr.target_branch}`);
@@ -380,7 +394,7 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     }
     return diffs.length ? diffs.join(' ; ') : null;
   };
-  return { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental, nonceFindings, releve, derive };
+  return { refMergee, cwd, outDir, diffStorePath, generate, cleanupLinked, incremental: usedIncremental, nonceFindings, releve, derive };
 }
 
 // Enregistre une NOUVELLE version de la review au lieu d'écraser la précédente.
@@ -440,8 +454,11 @@ function saveReviewVersion(mr, outDir, { reviewContent, explainContent, diffStor
    La règle est ici, isolée et exportée, parce qu'elle décide de ce qui est lu par des
    collègues : elle se teste ligne à ligne, sans faire tourner une review entière. Le bouton
    « Publier » du rapport, lui, ne la consulte jamais — un geste explicite n'a pas de filtre. */
-function publicationAutoRequise(cfg, findings) {
+function publicationAutoRequise(cfg, findings, mr = null) {
   if (cfg.auto_post_review !== '1') return false;
+  /* RIEN NE PART TOUT SEUL SUR UNE MERGE REQUEST DÉJÀ MERGÉE : une note sur une MR mergée il y a
+     dix jours, c'est du bruit pour son auteur. Le bouton « Publier » reste là pour qui le veut. */
+  if (mr && mr.merged_at) return false;
   if (cfg.auto_post_blocking_only !== '1') return true;
   return (findings || []).some((f) => f && f.severity === 'blocker');
 }
@@ -598,7 +615,7 @@ async function publierLienRapport(mr, cfg, { onLog = () => {} } = {}) {
 async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
   const cfg = getConfig();
   const explain = opts.explain != null ? !!opts.explain : cfg.review_explain !== '0';
-  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings, releve, derive } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
+  const { cwd, outDir, diffStorePath, generate, cleanupLinked, incremental, nonceFindings, releve, derive, refMergee } = await prepareContext(cfg, repo, mr, onLog, { incremental: opts.incremental });
   /* LECTURE SEULE, PROUVÉE APRÈS COUP (plan_secure.md, lot A, point 5) : `--restricted` et
      `Write`/`Edit` interdits sont des FLAGS — ils ne prouvent rien sur Copilot, ni sur un bug du
      CLI, ni sur un outil qu'on aurait oublié d'interdire. Le relevé d'AVANT sert à comparer
@@ -619,6 +636,14 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
       onLog(t('log.review.incremental'));
     }
 
+    /* RELIRE A POSTERIORI. Une merge request mergée ne se corrige plus DANS la MR : le préfixe
+       le dit à l'IA, qui classe alors ce qu'elle trouve en « à corriger maintenant / à
+       surveiller / RAS » — même format de sortie, même parseur, même note. Un préfixe injecté,
+       pas un gabarit de plus à administrer. */
+    if (mr.merged_at || refMergee) {
+      extra += `\n\n${t('review.merged-prefix', { target: mr.target_branch || '', merged_at: mr.merged_at || '' })}`;
+      onLog(t('log.review.a-posteriori'));
+    }
     onLog(t('log.review.run', { mode: copilot.isDryRun() ? 'dry-run' : 'copilot', incremental: incremental ? t('log.review.run-inc') : '' }));
     const rawReview = await generate(groupes.configPourDepot(cfg, mr.repo_id).config.prompt_review, 'ai-dev-tools-internal/review.md', 'review', extra);
     // On retire le bloc de constats du rapport affiché : il ne doit pas polluer la
@@ -666,8 +691,11 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     // Suivi de résolution : compare aux constats de la passe précédente.
     await trackResolution({ cwd, mr, version, findings, newSha: mr.current_sha, onLog });
 
-    db.prepare(`UPDATE mr SET reviewed_sha = current_sha, status = 'reviewed', last_error = NULL, updated_at = ?, status_at = ? WHERE id = ?`)
-      .run(now, now, mr.id);
+    /* Le SHA relu : la tête de la branche — ou, pour une MR mergée relue par sa ref, la tête
+       de la MR telle que la forge la garde (`current_sha` peut dater d'avant le merge). */
+    const shaRelu = refMergee && refMergee.headSha ? refMergee.headSha : null;
+    db.prepare(`UPDATE mr SET reviewed_sha = COALESCE(?, current_sha), current_sha = COALESCE(current_sha, ?), status = 'reviewed', last_error = NULL, updated_at = ?, status_at = ? WHERE id = ?`)
+      .run(shaRelu, shaRelu, now, now, mr.id);
 
     /* Publication automatique, si — et seulement si — le réglage le demande. Elle a lieu APRÈS
        l'enregistrement : le rapport est acquis, et une forge injoignable ne doit pas le faire
@@ -688,7 +716,7 @@ async function reviewMr(repo, mr, onLog = () => {}, opts = {}) {
     if (cfg.auto_post_review === '1' && !blocComplet) {
       onLog(t('log.review.post-no-findings'));
     } else if (cfg.auto_post_review === '1') {
-      if (publicationAutoRequise(cfg, findings)) {
+      if (publicationAutoRequise(cfg, findings, mr)) {
         /* LE RAPPORT, OU SON LIEN. Quand l'équipe partage un dépôt de données, elle peut
            demander que ce soit l'ADRESSE du rapport qui parte : trois lignes au lieu de six
            cents, et un seul exemplaire relu au même endroit.

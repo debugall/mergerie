@@ -1517,6 +1517,69 @@ const counts = {
   gitOps: db.prepare('SELECT COUNT(*) c FROM git_op').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
 };
+/* ---------- Notes → Période : le retour de congé ----------
+   Dix jours d'absence, terminés hier. La forge n'existe pas en démo : la période est semée
+   telle que le job l'aurait construite — six merge requests mergées (deux reviewées avant le
+   merge, quatre jamais), deux arrivées, une fermée sans merge, trois pushs directs dont un
+   revert et un bot (masqué d'office), deux tags —, et `last_seen` à dix jours pour que le brief
+   affiche la bannière « tu n'as pas ouvert Mergerie depuis 10 jours » à l'ouverture. */
+{
+  const depuis = at(11); const jusqua = at(1);
+  const pid = db.prepare('INSERT INTO periode (depuis, jusqua, built_at, partiel) VALUES (?, ?, ?, 0)').run(depuis, jusqua, at(0.5)).lastInsertRowid;
+  const insItem = db.prepare(`INSERT INTO periode_item (periode_id, repo_id, kind, ref, author, title, at, extra, mr_id, seen_at)
+    VALUES (?,?,?,?,?,?,?,?,?,NULL)`);
+  const item = (repo, kind, ref, author, title, when, extra = {}, mrId = null) => insItem.run(pid, repoIds[repo], kind, String(ref), author, title, when, JSON.stringify(extra), mrId);
+  const sha20 = () => require('crypto').randomBytes(20).toString('hex');
+  // Les mergées : des MR déjà en base (reviewées avant le merge), et quatre jamais vues, écrites ici.
+  const dejaLa = db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.author, mr.source_branch, mr.target_branch, mr.web_url, repo.project
+    FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.status IN ('reviewed', 'done') ORDER BY mr.iid LIMIT 2`).all();
+  dejaLa.forEach((m, i) => {
+    db.prepare('UPDATE mr SET closed_seen = 1, merged_at = COALESCE(merged_at, ?), head_sha = COALESCE(head_sha, current_sha), base_sha = COALESCE(base_sha, ?), merge_commit_sha = COALESCE(merge_commit_sha, ?) WHERE id = ?').run(at(3 + i), sha20(), sha20(), m.id);
+    item(m.project, 'mr_merged', m.iid, m.author, m.title, at(3 + i), { source_branch: m.source_branch, target_branch: m.target_branch, web_url: m.web_url, bot: false }, m.id);
+  });
+  const nouvelles = [
+    { project: 'groupe/api-core', title: 'Quotas par organisation', branch: 'feat/PROJ-860-quotas', author: 'sofia', j: 8, changed: ['src/middleware/quota.js', 'src/dao/orgs.js'], summary: 'ajoute des quotas par organisation' },
+    { project: 'groupe/api-core', title: 'Journal d’audit des exports', branch: 'feat/PROJ-871-audit', author: 'karim', j: 6, changed: ['src/audit.js'], summary: 'journalise chaque export' },
+    { project: 'groupe/webapp-front', title: 'Tableau des commandes : tri serveur', branch: 'feat/PROJ-866-orders-sort', author: 'lina', j: 5, changed: ['src/pages/Orders.jsx'], summary: 'trie les commandes côté serveur' },
+    { project: 'groupe/batch-jobs', title: 'Purge des exports de plus de 90 jours', branch: 'feat/PROJ-852-purge', author: 'noah', j: 2, changed: ['jobs/purgeExports.js'], summary: 'purge les vieux exports' },
+  ];
+  for (const n of nouvelles) {
+    const mr = insertMr({ ...n, status: 'to_review' }, { date: at(n.j + 4), author: n.author });
+    db.prepare('UPDATE mr SET closed_seen = 1, merged_at = ?, head_sha = current_sha, base_sha = ?, merge_commit_sha = ? WHERE id = ?').run(at(n.j), sha20(), sha20(), mr.id);
+    item(n.project, 'mr_merged', mr.iid, n.author, n.title, at(n.j), { source_branch: n.branch, target_branch: 'main', web_url: `https://gitlab.demo/${n.project}/-/merge_requests/${mr.iid}`, bot: false }, mr.id);
+  }
+  // Deux arrivées (encore ouvertes, déjà dans la file « à traiter ») et une fermée sans merge.
+  for (const m of mrsAtraiter.slice(0, 2)) item(m.project, 'mr_new', m.iid, m.author || 'lina', m.title, at(1.5), { source_branch: m.source_branch, target_branch: 'main', bot: false }, m.id);
+  item('groupe/webapp-front', 'mr_closed', 299, 'karim', 'Essai de bundler, abandonné', at(4), { source_branch: 'spike/bundler', target_branch: 'main', bot: false });
+  // Trois pushs directs : un hotfix de deux commits, un revert, un bot.
+  const push = (repo, author, when, commits, extra) => item(repo, 'push', commits[commits.length - 1].sha, author, commits.map((c) => c.title).join(' · '), when,
+    { branche: 'main', base_sha: sha20(), head_sha: commits[commits.length - 1].sha, author_email: `${author}@demo`, commits, revert: false, merge_manuel: false, bot: false, non_verifie: false, ...extra });
+  push('groupe/api-core', 'karim', at(7), [{ sha: sha20(), title: 'hotfix: timeout on /health', date: at(7.01), author: 'karim' }, { sha: sha20(), title: 'bump version 2.3.1', date: at(7), author: 'karim' }], { stat: { files: 2, additions: 84, deletions: 12 } });
+  push('groupe/api-core', 'lina', at(4), [{ sha: sha20(), title: 'Revert "feat: cache Redis sur le catalogue"', date: at(4), author: 'lina' }], { revert: true, stat: { files: 2, additions: 3, deletions: 61 } });
+  push('groupe/webapp-front', 'renovate[bot]', at(9), [{ sha: sha20(), title: 'chore(deps): update dependency react to v19.1.2', date: at(9), author: 'renovate[bot]' }], { bot: true, stat: { files: 2, additions: 4, deletions: 4 } });
+  // Deux tags, une branche supprimée.
+  item('groupe/api-core', 'tag', 'v2.3.1', 'karim', 'Hotfix /health', at(7), { sha: sha20() });
+  item('groupe/api-core', 'tag', 'v2.4.0', 'sofia', 'Quotas et audit', at(2), { sha: sha20() });
+  item('groupe/api-core', 'branch_gone', 'feat/PROJ-860-quotas', 'sofia', 'Quotas par organisation', at(8), { iid: 0 });
+  // Un pipeline rouge sur main à la date du retour, deux tickets Jira qui ont bougé, et ce que
+  // Mergerie a fait seul pendant ce temps (une passe d'agent planifié, une vérification rouge).
+  item('groupe/api-core', 'pipeline', 'main', '', '#4812', at(1.2), { state: 'failed', url: 'https://gitlab.demo/groupe/api-core/-/pipelines/4812', sha: sha20(), branche: 'main' });
+  const jiraItem = (key, title, author, when, extra) => insItem.run(pid, null, 'jira', key, author, title, when, JSON.stringify(extra), null);
+  jiraItem('PROJ-860', 'Quotas par organisation', 'sofia', at(7.5), { objet: 'status', status: 'Done', category: 'done', url: 'https://jira.demo/browse/PROJ-860', type: 'Story', project: 'PROJ', done: true, status_changed: true });
+  jiraItem('PROJ-902', 'Relance automatique des exports en échec', 'Amady', at(2.2), { objet: 'assigned', status: 'À faire', category: 'new', url: 'https://jira.demo/browse/PROJ-902', type: 'Story', project: 'PROJ', done: false });
+  const agentDemo = db.prepare('SELECT id, name FROM agent ORDER BY id LIMIT 1').get();
+  const runDemo = agentDemo ? db.prepare('SELECT id, kind FROM task WHERE agent_id = ? ORDER BY id DESC LIMIT 1').get(agentDemo.id) : null;
+  if (agentDemo && runDemo) insItem.run(pid, null, 'mergerie', `agent:${agentDemo.id}`, '', agentDemo.name, at(1), JSON.stringify({ objet: 'agent', agent_id: agentDemo.id, runs: 3, erreurs: 0, task_id: runDemo.id, task_kind: runDemo.kind || 'explore' }), null);
+  const verifDemo = db.prepare("SELECT id, verifier_name, lot_name, verdict FROM verification WHERE verdict = 'verified_fail' ORDER BY id LIMIT 1").get();
+  if (verifDemo) insItem.run(pid, null, 'mergerie', `verif:${verifDemo.id}`, '', `${verifDemo.verifier_name}${verifDemo.lot_name ? ` · ${verifDemo.lot_name}` : ''}`, at(1.4), JSON.stringify({ objet: 'verification', verification_id: verifDemo.id, verdict: verifDemo.verdict, status: 'done', rouge: true }), null);
+  // L'absence : dix jours sans geste, le seuil est à trois.
+  const poser = db.prepare("INSERT OR REPLACE INTO local_state (kind, ref, key, value, updated_at) VALUES ('absence', 'poste', ?, ?, ?)");
+  poser.run('last_seen', at(0.01), at(0.01));
+  poser.run('depart', at(10.5), at(0.01));  // l'absence FIGÉE : dix jours, terminée à l'instant
+  poser.run('retour', at(0.01), at(0.01));
+  counts.periode_items = db.prepare('SELECT COUNT(*) c FROM periode_item').get().c;
+}
+
 /* ---------- des branches mortes à nettoyer (décor Git) ----------
    Une merge request vue fermée porte encore sa branche source : c'est ce que « Supprimer les
    N branches de merge requests mergées » ramasse. Sans elles, le bouton n'existerait pas dans
