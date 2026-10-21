@@ -44,3 +44,14 @@ try { db.exec('ALTER TABLE periode ADD COLUMN partiel_detail TEXT'); } catch { /
    rendu comme un rapport, non fiable. `resume_at` date l'appel. */
 try { db.exec('ALTER TABLE periode ADD COLUMN resume TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE periode ADD COLUMN resume_at TEXT'); } catch { /* déjà présente */ }
+/* LES FENÊTRES DE DATES que le rattrapage lit dans les tables des autres (« fait par l'équipe »,
+   « fait par Mergerie ») et le dédoublonnage du journal `feed` que la découverte exécute par
+   MR classée : sans index, des parcours complets, répétés. Placés ici — la dernière tranche —
+   donc APRÈS chaque `CREATE TABLE` concerné. `note_page` a un index, mais il commence par
+   `pinned` : inutilisable pour une borne sur `updated_at` seule. */
+db.exec('CREATE INDEX IF NOT EXISTS idx_feed_mr ON feed(type, project, mr_iid)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_task_created ON task(created_at)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_todo_updated ON todo(updated_at)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_updated ON note_page(updated_at)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_verification_created ON verification(created_at)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_review_version_created ON review_version(created_at)');
