@@ -40,6 +40,7 @@ const MAX_DETAILS_MR = 200;        // détails de MR mergées demandés à la fo
 const MAX_CANDIDATS = 1500;        // commits first-parent lus par branche
 const MAX_PATCH_IDS = 400;         // empreintes calculées pour les candidats, par dépôt
 const MAX_COMMITS_PAR_MR = 60;     // commits d'une MR dont on calcule l'empreinte
+const MAX_EMPREINTES_MR = 600;     // empreintes calculées sur les MR mergées, par dépôt (2 processus chacune, en série)
 const MAX_FORGE_PAR_DEPOT = 100;   // passe 3 : appels `mergeRequestsOfCommit`
 const MAX_BRANCHES = 12;           // branches surveillées par dépôt
 const MAX_EVENEMENTS_PUSH = 300;   // pushs lus sur la forge (GitLab) pour un regroupement exact
@@ -223,11 +224,17 @@ async function construireDepot(cfg, repo, { depuis, jusqua, onLog }) {
   const patchIdsParMr = new Map();
   if (resultat.directs.length) {
     // Passe 2 — l'empreinte des commits des MR mergées, puis celle des candidats restants.
+    /* Plafonné en TOUT, pas seulement par MR : 200 MR × 60 commits feraient 24 000 processus en
+       série sur le clone réservé. Au-delà, les MR restantes ne sont pas empreintées et leurs
+       commits finissent « non vérifiés » ou en passe 3 — dit dans `partiel`. */
+    let empreintesMr = 0;
     for (const m of mrs) {
       if (!m.base_sha || !m.head_sha) continue;
+      if (empreintesMr >= MAX_EMPREINTES_MR) { partiel.push(`empreintes de MR plafonnées à ${MAX_EMPREINTES_MR}`); break; }
       let shas = [];
       try { shas = await git.revList(cwd, `${m.base_sha}..${m.head_sha}`, { max: MAX_COMMITS_PAR_MR }); } catch { continue; }
-      for (const sha of shas) {
+      for (const sha of shas.slice(0, MAX_EMPREINTES_MR - empreintesMr)) {
+        empreintesMr += 1;
         const pid = await git.patchId(cwd, sha).catch(() => null);
         if (pid && !patchIdsParMr.has(pid)) patchIdsParMr.set(pid, m.iid);
       }
@@ -411,8 +418,10 @@ function lire(id) {
 }
 
 function lister(limite = 10) {
-  return db.prepare('SELECT id, depuis, jusqua, built_at, partiel, job_id FROM periode ORDER BY id DESC LIMIT ?').all(limite)
-    .map((p) => ({ ...p, unseen: db.prepare('SELECT COUNT(*) n FROM periode_item WHERE periode_id = ? AND seen_at IS NULL').get(p.id).n }));
+  const n = Math.min(Math.max(Number(limite) || 10, 1), 100);
+  return db.prepare(`SELECT p.id, p.depuis, p.jusqua, p.built_at, p.partiel, p.job_id,
+      (SELECT COUNT(*) FROM periode_item i WHERE i.periode_id = p.id AND i.seen_at IS NULL) AS unseen
+    FROM periode p ORDER BY p.id DESC LIMIT ?`).all(n);
 }
 
 function marquerVu(periodeId, { itemIds = null, tout = false, seen = true } = {}) {

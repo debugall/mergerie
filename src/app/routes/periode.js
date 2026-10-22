@@ -35,7 +35,7 @@ app.post('/api/periode/depart', wrap((req, res) => {
 }));
 
 app.get('/api/periode', wrap((req, res) => {
-  res.json({ periodes: periode.lister(Number(req.query.limit) || 10), hide_bots: getConfig().periode_hide_bots !== '0' });
+  res.json({ periodes: periode.lister(Math.min(Number(req.query.limit) || 10, 100)), hide_bots: getConfig().periode_hide_bots !== '0' });
 }));
 
 /* Construire : la ligne est créée tout de suite (l'écran a un identifiant à suivre), le
