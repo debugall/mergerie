@@ -30,6 +30,7 @@ const TRANCHES = [
   '16-slug',
   '17-store',
   '18-plugins',
+  '19-periode',
 ];
 for (const nom of TRANCHES) require(`./schema/${nom}`);
 const { DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY } = require('./schema/10-config-git');

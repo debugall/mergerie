@@ -120,6 +120,7 @@ require('./app/routes/mrs');
 require('./app/routes/mrs-commentaires');
 require('./app/routes/mrs-resume');
 require('./app/routes/notes');
+require('./app/routes/periode');
 require('./app/routes/pieces');
 require('./app/routes/plugins');
 require('./app/routes/programmation');

@@ -9,6 +9,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const forge = require('../../forge');
 const git = require('../../git/git');
+const mrref = require('../../git/mrref');
 const path = require('path');
 const fs = require('fs');
 const { readFileSafe } = require('../http');
@@ -57,6 +58,14 @@ async function diffDeLaMr(mr, cwdConnu = null) {
     if (!cwdConnu && (!ref || !await git.refExists(cwd, base))) {
       cwd = await git.ensureRepo(getConfig(), repo, () => {});
       ref = await vise();
+    }
+    /* MERGÉE, OU BRANCHE DISPARUE : par les SHA (`git/mrref.js`), jamais par un trois-points qui
+       serait vide par construction. */
+    const mergee = !!(mr.merged_at || mr.merge_commit_sha || mr.squash_commit_sha);
+    if (mergee || !ref) {
+      const r = await mrref.refARelire(cwd, mr, repo);
+      if (r) return await mrref.diffARelire(cwd, r);
+      if (!ref) return null;
     }
     if (!ref || !await git.refExists(cwd, base)) return null;
     return await git.diffTroisPoints(cwd, base, ref);

@@ -10,6 +10,9 @@ try { db.exec("ALTER TABLE repo ADD COLUMN forge TEXT DEFAULT 'gitlab'"); } catc
    cesse seulement de ramener ses MR. Par défaut à 1 : les dépôts existants ne changent pas
    de comportement. */
 try { db.exec('ALTER TABLE repo ADD COLUMN fetch_mrs INTEGER DEFAULT 1'); } catch { /* déjà présente */ }
+/* Les branches que le rattrapage d'une période surveille pour CE dépôt (une par ligne ou
+   séparées par des virgules) ; vide = la branche par défaut + les protégées. */
+try { db.exec('ALTER TABLE repo ADD COLUMN periode_branches TEXT'); } catch { /* déjà présente */ }
 // Migration : connexion GitHub (URL vide = github.com ; sinon GitHub Enterprise).
 try { db.exec("ALTER TABLE config ADD COLUMN github_url TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN github_token TEXT DEFAULT ''"); } catch { /* déjà présente */ }
@@ -202,3 +205,13 @@ try { db.exec('ALTER TABLE git_merge ADD COLUMN ai_json TEXT'); } catch { /* dé
    caractères, un outil Edit tient sur une ligne) ; ce qui a été coupé — le texte complet, le diff
    de l'outil — vit ICI, en JSON, lu à la demande par « … voir », jamais par le polling. */
 try { db.exec('ALTER TABLE job_log ADD COLUMN annexe TEXT'); } catch { /* déjà présente */ }
+/* LES QUATRE SHA D'UNE MERGE REQUEST, écrits une fois connus (détail de la forge, rattrapage
+   d'une période). `base_sha` est le merge-base AU MOMENT de la MR : `base_sha..head_sha` relit
+   une merge request déjà mergée, quelle que soit la stratégie de merge — le diff à trois points
+   `target...source` est vide par construction dès que `head` est dans `target`. Les SHA de
+   merge et de squash servent au rattrapage à reconnaître ce qui est passé par une MR.
+   Immuables une fois la MR mergée : ils voyagent dans la base partagée, comme `merged_at`. */
+try { db.exec('ALTER TABLE mr ADD COLUMN head_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN base_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN merge_commit_sha TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN squash_commit_sha TEXT'); } catch { /* déjà présente */ }

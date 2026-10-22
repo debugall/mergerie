@@ -191,6 +191,7 @@ body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
    résout le conflit est déjà juste à côté (« Mettre à jour avec {base} »). */
 .tag.conflict-info { color: var(--red); border-color: var(--red); }
 .tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
+.tag.new-for-me { color: var(--accent); border-color: var(--accent); } /* rapport d'un collègue, jamais ouvert ici */
 .muted { color: var(--muted); font-size: 13px; }
 
 .split { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding-top: 12px; }

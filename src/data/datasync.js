@@ -361,8 +361,28 @@ async function hydraterDepuis(avant, apres) {
   if (diff === null) { const bilan = store.hydraterTout(); poserHydrate(apres); return bilan; }
   const fichiers = diff.split('\n').map((x) => x.trim()).filter(Boolean);
   const bilan = fichiers.length ? store.hydraterFichiers(fichiers) : { ecrits: 0, supprimes: 0, orphelins: [] };
+  if (fichiers.length) journaliserHydratation(apres, fichiers);
   poserHydrate(apres);
   return bilan;
+}
+
+/* LE JOURNAL DE CE QUI EST ENTRÉ DANS LA BASE, par commit hydraté. C'est le signal le plus fiable
+   de « ce que l'équipe a fait pendant mon absence » : il ne dépend d'aucune horloge que la
+   mienne, là où les dates écrites par les collègues peuvent être fausses. Quatre-vingt-dix jours,
+   puis oubli ; au plus deux mille chemins par commit. */
+const JOURNAL_HYDRATATION_JOURS = 90;
+function journaliserHydratation(sha, fichiers) {
+  try {
+    etat.ecrire('data', `hydrated:${sha}`, 'files', JSON.stringify(fichiers.slice(0, 2000)));
+    const limite = new Date(Date.now() - JOURNAL_HYDRATATION_JOURS * 86400e3).toISOString();
+    db.prepare("DELETE FROM local_state WHERE kind = 'data' AND ref LIKE 'hydrated:%' AND updated_at < ?").run(limite);
+  } catch { /* un journal qui manque ne doit pas faire échouer une synchro */ }
+}
+
+/** Les fichiers entrés par la synchro depuis une date : `[{ at, files }]`, du plus récent au plus ancien. */
+function hydratesDepuis(depuis) {
+  const lignes = db.prepare("SELECT ref, value, updated_at FROM local_state WHERE kind = 'data' AND ref LIKE 'hydrated:%' AND updated_at >= ? ORDER BY updated_at DESC").all(depuis);
+  return lignes.map((l) => { let files = []; try { files = JSON.parse(l.value || '[]'); } catch { files = []; } return { at: l.updated_at, files }; });
 }
 
 /**
@@ -892,6 +912,7 @@ module.exports = {
   reprendreVersion,
   oublierConflit,
   hydraterDepuis,
+  hydratesDepuis,
   demarrer,
   arreter,
 };

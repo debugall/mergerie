@@ -12,6 +12,13 @@ try { db.exec("ALTER TABLE config ADD COLUMN todo_close_on_merge TEXT DEFAULT '1
 /* Au-delà de combien de jours une MR reviewée et toujours ouverte est « dormante ». Cinq
    jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
 try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* LE RATTRAPAGE D'UNE PÉRIODE (Notes → Période). Le seuil de la bannière « tu n'as pas ouvert
+   Mergerie depuis N jours » et le masquage des bots sont des habitudes de CE poste (drainées
+   vers `local_config`) ; surveiller les branches protégées en plus de la branche par défaut
+   est une décision d'équipe : c'est la définition de « ce qui est entré sans relecture ». */
+try { db.exec('ALTER TABLE config ADD COLUMN periode_banner_days INTEGER DEFAULT 3'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN periode_hide_bots TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN periode_watch_protected TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
 
 /* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
 try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }

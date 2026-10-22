@@ -532,6 +532,39 @@ async function statusOfKeys(cfg, keys) {
 /* Combien de tickets me sont affectés ET en cours. « En cours » = catégorie de statut
    `indeterminate` côté Jira : c'est la seule définition qui traverse les workflows, les
    noms d'états étant libres d'un projet à l'autre. */
+/* Une date ISO au format JQL `yyyy-MM-dd HH:mm`, dans un fuseau IANA donné (celui du compte
+   Jira) ; sans fuseau, ou s'il est inconnu d'ici, dans celui du serveur. Pure. */
+function dateJql(iso, tz = null) {
+  const d = new Date(iso);
+  if (tz) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(d);
+      const v = (type) => (parts.find((x) => x.type === type) || {}).value;
+      return `${v('year')}-${v('month')}-${v('day')} ${v('hour')}:${v('minute')}`;
+    } catch { /* fuseau inconnu : celui du serveur */ }
+  }
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* LES TICKETS QUI ONT BOUGÉ SUR UNE FENÊTRE (Notes → Période) : ceux qui ont changé d'état, et
+   ceux qui m'ont été affectés pendant. Bornés à ce qui me concerne — mes tickets, les
+   surveillés, ceux des merge requests de la fenêtre — : « tout ce qui a changé d'état dans
+   l'instance » serait des milliers de lignes. Les dates vont à Jira au format `yyyy-MM-dd HH:mm`,
+   que Jira lit DANS LE FUSEAU DU COMPTE (`/myself` → `timeZone`) : on formate dans celui-là,
+   et dans celui du serveur seulement si le compte n'en dit rien. */
+async function changedDuring(cfg, { depuis, jusqua, keys = [], max = 100 } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const tz = await jiraGet(cfg, '/rest/api/3/myself').then((me) => (me && me.timeZone) || null).catch(() => null);
+  const d1 = dateJql(depuis, tz); const d2 = dateJql(jusqua, tz);
+  const propres = [...new Set((keys || []).map((k) => String(k).trim().toUpperCase()).filter(cleValide))].slice(0, 50);
+  const miens = propres.length ? `(assignee = currentUser() OR key IN (${propres.join(', ')}))` : 'assignee = currentUser()';
+  const changes = await runSearch(cfg, `${miens} AND status CHANGED DURING ("${d1}", "${d2}") ORDER BY updated DESC`, TICKET_FIELDS, max);
+  const affectes = await runSearch(cfg, `assignee CHANGED TO currentUser() DURING ("${d1}", "${d2}") ORDER BY updated DESC`, TICKET_FIELDS, max);
+  const vers = (data) => (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
+  return { changed: vers(changes), assigned: vers(affectes) };
+}
+
 async function countMineInProgress(cfg) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const data = await runSearch(cfg, 'assignee = currentUser() AND statusCategory = "In Progress"', 'summary', 1);
@@ -832,4 +865,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

@@ -16,7 +16,7 @@ const JOB_KIND_LABEL = {
   gitops: 'job.kind.gitops',
   converge: 'job.kind.converge', 'converge-session': 'job.kind.converge',
   verify: 'job.kind.verify', ask: 'job.kind.ask',
-  'ask-review': 'job.kind.ask-review', reconcile: 'job.kind.reconcile',
+  'ask-review': 'job.kind.ask-review', reconcile: 'job.kind.reconcile', periode: 'job.kind.periode', 'periode-resume': 'job.kind.periode-resume',
 };
 /* Un job de PLUGIN a pour genre `plugin:<nom>` : on le nomme comme le plugin se nomme (« Docker »). */
 const jobKindLabel = (k) => {

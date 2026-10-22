@@ -171,17 +171,10 @@ async function discoverAll() {
            qu'une MR a existé — « Créer la MR » réapparaît sur une branche déjà mergée. `COALESCE`
            ne prend la main que si la session ne savait pas déjà mieux ; et une cible déjà liée à UNE
            AUTRE merge request (branche réutilisée) n'est pas touchée : ce merge n'est pas le sien. */
-        if (mergee && g.source_branch) {
-          db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
-            WHERE repo_id = ? AND branch = ? AND (mr_iid IS NULL OR mr_iid = ?)`).run(g.iid, now, repo.id, g.source_branch, g.iid);
-        }
-        /* B1 — LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE. Elle se
-           coche, avec la mention de ce qui l'a fermée ; rien n'est supprimé. Débrayable
-           (Réglages → Général) pour qui veut cocher lui-même. */
-        if (cfg.todo_close_on_merge !== '0') {
-          const n = notes.fermerTodosDeMr(g.id, t('notes.todo.closed-by-merge', { iid: g.iid }));
-          if (n) result.todos_closed = (result.todos_closed || 0) + n;
-        }
+        /* B1 — ET LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE : les deux
+           gestes vivent dans `apresMerge`, que le rattrapage d'une période appelle aussi. */
+        const n = apresMerge(repo, g, { mergee, cfg, now });
+        if (n) result.todos_closed = (result.todos_closed || 0) + n;
       }
 
       /* LE RATTRAPAGE DES MERGE REQUESTS FERMÉES, UNE FOIS PAR DÉPÔT.
@@ -299,6 +292,22 @@ async function discoverAll() {
   return result;
 }
 
+/* CE QU'UN MERGE ENTRAÎNE DANS LA BASE, quel que soit celui qui l'a vu — la découverte au tour
+   suivant, ou le rattrapage d'une période dix jours plus tard. Lier la session qui a ouvert la
+   branche (`task_target.mr_merged`, voir le commentaire de la boucle `gone`), et cocher les
+   todos qui suivaient la merge request (débrayable, Réglages → Général). Rend le nombre de
+   todos cochées. Idempotent : rejoué sur une MR déjà traitée, il ne change rien. */
+function apresMerge(repo, mr, { mergee = true, cfg = getConfig(), now = new Date().toISOString() } = {}) {
+  // La session n'est liée que sur un merge AVÉRÉ : une fermeture sans merge n'est pas le sien.
+  if (mergee && mr.source_branch) {
+    db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
+      WHERE repo_id = ? AND branch = ? AND (mr_iid IS NULL OR mr_iid = ?)`).run(mr.iid, now, repo.id, mr.source_branch, mr.iid);
+  }
+  // La todo, elle, n'a plus de raison d'être dès que la merge request n'est plus ouverte — mergée OU fermée.
+  if (cfg.todo_close_on_merge === '0') return 0;
+  return notes.fermerTodosDeMr(mr.id, t('notes.todo.closed-by-merge', { iid: mr.iid }));
+}
+
 /* Upsert CIBLÉ d'une seule MR (objet API GitLab) dans la table `mr`, sans balayer
    tout GitLab. Utilisé quand une session de dev vient de créer sa MR et qu'on veut
    immédiatement une ligne `mr` pour la convergence. Renvoie l'id local de la MR.
@@ -338,4 +347,4 @@ async function upsertMrFromApi(repoId, m) {
   return id;
 }
 
-module.exports = { discoverAll, upsertMrFromApi };
+module.exports = { discoverAll, upsertMrFromApi, apresMerge };

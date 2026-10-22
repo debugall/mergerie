@@ -175,7 +175,13 @@ function purger(jours, { maintenant = Date.now() } = {}) {
   try { runTests = db.prepare('DELETE FROM verify_run_test WHERE created_at IS NOT NULL AND created_at < ?').run(limite).changes; }
   catch { /* table absente sur une base très ancienne */ }
 
-  return { jours: n, job_log: logs, job: jobs, feed, git_op: gitOps, verify_run_test: runTests };
+  /* LES PÉRIODES RATTRAPÉES vieillissent comme les journaux : un retour de congé relu, c'est
+     fait. La cascade emporte les lignes de la période. */
+  let periodes = 0;
+  try { periodes = db.prepare('DELETE FROM periode WHERE built_at IS NOT NULL AND built_at < ?').run(limite).changes; }
+  catch { /* table absente sur une base très ancienne */ }
+
+  return { jours: n, job_log: logs, job: jobs, feed, git_op: gitOps, verify_run_test: runTests, periode: periodes };
 }
 
 /* LE MÉNAGE COMPLET, en un appel : la rétention des journaux, celle des merge requests fermées, les

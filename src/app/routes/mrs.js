@@ -28,6 +28,8 @@ const fs = require('fs');
 const { servirFichierNonFiable } = require('../fichiers');
 const { gardeConfigAgent, mrById, parseConvergeOpts, readFileSafe, ticketUrl, wrap } = require('../http');
 const { auteurs } = require('../lib/partage');
+const identite = require('../../core/identite');
+const { etat: etatLocal } = require('../../data/localstate');
 const { assertValidBranch, insertTargets } = require('../lib/sessions');
 const { dernieresVerificationsParMr, detailVerification, resumeVerification } = require('../lib/verifications');
 const { changedFilesFromDiff, diffDeLaMr, mrCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
@@ -61,11 +63,21 @@ app.get('/api/mrs', wrap((req, res) => {
      qu'on veut, pas celui de la merge request — la question est « qui l'a reviewée ? ». Lu du
      cache alimenté par git, sans aucune colonne à tenir. */
   const parQui = auteurs('review_version', versions);
+  /* « NOUVEAU POUR TOI » : un rapport arrivé par la synchro du dépôt d'équipe, écrit par un
+     collègue, et jamais ouvert sur CE poste. Une MR reviewée par Claire pendant mon absence
+     ressemble sinon, dans « reviewées », à une MR que j'ai reviewée moi-même en septembre —
+     noyée dans la masse. L'ouverture du rapport la marque vue (`POST /api/mrs/:id/seen`) ;
+     l'uid de la version et non son id, qui ne survit pas au partage. */
+  const moi = identite.nom() || '';
+  const vuesIci = etatLocal.carte('review', 'seen');
+  const nouveauPourMoi = {};
   for (const v of versions) {
+    const auteur = parQui.get(v.id) || null;
     derniereVersion[v.mr_id] = {
-      version: v.version, at: v.created_at, author: parQui.get(v.id) || null,
+      version: v.version, at: v.created_at, author: auteur,
       n_new: v.n_new, n_persistent: v.n_persistent, n_resolved: v.n_resolved, n_disappeared: v.n_disappeared,
     };
+    if (auteur && auteur !== moi && v.uid && !vuesIci.has(String(v.uid))) nouveauPourMoi[v.mr_id] = true;
   }
   /* COMBIEN DE BLOQUANTS, ET DE MAJEURS. Le détail disait « 1 résolu · 1 persistant » — le
      nombre, jamais la GRAVITÉ, alors que la sévérité est stockée par constat et déjà comptée
@@ -197,8 +209,18 @@ app.get('/api/mrs', wrap((req, res) => {
       risk: riskOf(r.changed_paths),
       cards: agentknowledge.cartesTouchees(indexCartes, r.repo_id, r.changed_paths),
       stale: r.reviewed_sha && r.reviewed_sha !== r.current_sha,
+      new_for_me: !!nouveauPourMoi[r.id],
     };
   }));
+}));
+/* Le rapport d'un collègue vient d'être ouvert ici : la pastille « nouveau pour toi » tombe.
+   État de CE poste (`local_state`), par l'uid de la dernière version. */
+app.post('/api/mrs/:id/seen', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const v = db.prepare('SELECT uid FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id);
+  if (v && v.uid) etatLocal.ecrire('review', String(v.uid), 'seen', new Date().toISOString());
+  res.json({ ok: true });
 }));
 /* Retrouve la session de codage qui a produit une branche. Le lien n'est pas stocké en dur :
    il se reconstitue par (dépôt, branche). En cas d'ambiguïté — plusieurs sessions sur la même

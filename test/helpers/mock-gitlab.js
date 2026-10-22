@@ -19,6 +19,11 @@ function freshState() {
     commits: {},             // project -> [{ id, short_id, title, author_name, committed_date, web_url }] (le plus récent d'abord)
     tags: {},                // project -> [{ name, target, message, commit:{ id, committed_date } }]
     compare: {},             // project -> [commit] rendus par /repository/compare (commits depuis la review)
+    commitMrs: {},           // project -> { sha -> [mr] } rendus par /repository/commits/:sha/merge_requests
+    events: {},              // project -> [{ action_name:'pushed', created_at, author:{name}, push_data:{ ref, ref_type, commit_from, commit_to, commit_count } }]
+    refPipelines: {},        // project -> { ref -> [{ id, status, web_url, sha }] } rendus par /pipelines?ref=
+    jiraStatusChanged: {},   // KEY -> date ISO du dernier changement d'état (JQL `status CHANGED DURING`)
+    jiraAssignedAt: {},      // KEY -> date ISO de l'affectation au compte courant (JQL `assignee CHANGED TO currentUser() DURING`)
     protectedBranches: {},   // project -> [name]
     protectedTags: {},       // project -> [name]
     discussions: {},         // `${project}!${iid}` -> [discussion]
@@ -191,8 +196,26 @@ function handleGitlab(req, res, pathname, query, body) {
     return json(res, 404, { message: '404 Not Found' });
   }
 
+  /* Les pushs vus par GitLab (`events?action=pushed`) et le pipeline d'une BRANCHE (`pipelines?ref=`),
+     pour Notes → Période : posés par le test ; sans eux, des listes vides. */
+  if (rest === '/events' && req.method === 'GET') {
+    const action = query.get('action');
+    return json(res, 200, paged((state.events[project] || []).filter((e) => !action || e.action_name === action)));
+  }
+  if (rest === '/pipelines' && req.method === 'GET') {
+    const ref = query.get('ref');
+    return json(res, 200, ((state.refPipelines[project] || {})[ref] || []).slice(0, 1));
+  }
+
   // --- Commits (dernier commit d'un projet) ---
   if (rest === '/repository/commits' && req.method === 'GET') return json(res, 200, paged(commitsOf()));
+  /* Les merge requests qui contiennent un commit (passe 3 du rattrapage d'une période) : posées
+     par le test dans `state.commitMrs[project][sha]` ; sans elles, GitLab répond une liste vide. */
+  m = /^\/repository\/commits\/([^/]+)\/merge_requests$/.exec(rest);
+  if (m && req.method === 'GET') {
+    const sha = decodeURIComponent(m[1]);
+    return json(res, 200, ((state.commitMrs || {})[project] || {})[sha] || []);
+  }
   /* Comparaison entre deux SHA (commits arrivés depuis la review) : la liste est posée par le
      test dans `state.compare[project]` ; sans elle, GitLab répond une comparaison vide. */
   if (rest === '/repository/compare' && req.method === 'GET') {
@@ -278,8 +301,27 @@ function handleJira(req, res, pathname, body = {}) {
      émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
      menu). Sans ça, un test de surveillance passerait quoi qu'on demande, et ne prouverait rien. */
   if (/^\/rest\/api\/3\/search/.test(pathname)) {
-    const jql = String(new URL(req.url, 'http://localhost').searchParams.get('jql') || '');
+    let jql = String(new URL(req.url, 'http://localhost').searchParams.get('jql') || '');
     let issues = Object.values(state.jiraIssues);
+    /* Notes → Période : « les miens ou ces clés », les changements d'état et les affectations
+       DANS une fenêtre (`CHANGED … DURING`), lus dans `jiraStatusChanged` / `jiraAssignedAt`. */
+    const borne = (x) => Date.parse(String(x).trim().replace(/^"|"$/g, '').replace(' ', 'T'));
+    const miens = /\(assignee = currentUser\(\) OR key IN \(([^)]*)\)\)/i.exec(jql);
+    if (miens) {
+      const set = new Set(miens[1].split(',').map((k) => k.trim().toUpperCase()));
+      issues = issues.filter((i) => set.has(String(i.key).toUpperCase()) || (i.fields && i.fields.assignee && i.fields.assignee.accountId === 'me-test'));
+      jql = jql.replace(miens[0], '');
+    }
+    const chg = /status CHANGED DURING \(([^,]+),([^)]+)\)/i.exec(jql);
+    if (chg) {
+      const [a, b] = [borne(chg[1]), borne(chg[2])];
+      issues = issues.filter((i) => { const d = Date.parse(state.jiraStatusChanged[i.key] || ''); return d >= a && d <= b; });
+    }
+    const aff = /assignee CHANGED TO currentUser\(\) DURING \(([^,]+),([^)]+)\)/i.exec(jql);
+    if (aff) {
+      const [a, b] = [borne(aff[1]), borne(aff[2])];
+      issues = issues.filter((i) => { const d = Date.parse(state.jiraAssignedAt[i.key] || ''); return d >= a && d <= b; });
+    }
     const keys = /key\s+IN\s*\(([^)]*)\)/i.exec(jql);
     if (keys) {
       const set = new Set(keys[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '').toUpperCase()));

@@ -16,6 +16,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template', 'jira_notify_template',
+  'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */

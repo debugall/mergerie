@@ -435,6 +435,9 @@ function mrCard(m) {
         ${badgeCIForge(m)}
         ${verifyBadge(m.verification)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+        ${/* « NOUVEAU POUR TOI » : un rapport d'un collègue, arrivé par la synchro, jamais ouvert ici.
+              C'est le correctif du « noyé dans la masse » du retour de congé — et il vaut tous les jours. */''}
+        ${m.new_for_me ? `<span class="tag new-for-me" title="${esc(tr('mr.tag.new-for-me-title'))}">${svgIco('users')} ${tr('mr.tag.new-for-me')}</span>` : ''}
         ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
       </div>
     </div>

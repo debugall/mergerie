@@ -96,6 +96,10 @@ async function loadConfig() {
     if (f[k]) f[k].checked = String(c[k]) === '1';
   }
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
+  // Période : le seuil s'écrit (0 est une valeur, « jamais »), les deux cases sont cochées d'office.
+  if (f.periode_banner_days) f.periode_banner_days.value = c.periode_banner_days == null || c.periode_banner_days === '' ? 3 : Number(c.periode_banner_days);
+  if (f.periode_hide_bots) f.periode_hide_bots.checked = c.periode_hide_bots !== '0';
+  if (f.periode_watch_protected) f.periode_watch_protected.checked = c.periode_watch_protected !== '0';
   // Partager sa dépense : DÉCOCHÉ par défaut, donc `=== '1'`, comme les autres réglages prudents.
   if (f.usage_share) f.usage_share.checked = c.usage_share === '1';
   /* C15 — LE DÉFAUT EFFECTIF S'ÉCRIT, il ne se devine pas dans un `placeholder`. Un champ vide

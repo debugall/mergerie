@@ -225,6 +225,9 @@ const REGISTRE = [
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'status_at', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
       'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
+      /* LES SHA DE MERGE, du même bois que `merged_at` : immuables une fois la MR mergée, et
+         c'est avec eux qu'un poste relit une merge request dont la branche a disparu. */
+      'head_sha', 'base_sha', 'merge_commit_sha', 'squash_commit_sha',
       /* CES QUATRE-LÀ SONT UN REPLI, PAS UNE VÉRITÉ — voir `toFile` : la découverte locale les
          réécrit depuis la forge, et le fichier ne sert qu'au poste qui n'a pas encore vu la MR
          (ou pas de jeton pour la voir). */
@@ -250,6 +253,10 @@ const REGISTRE = [
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
+        head_sha: r.head_sha || null,
+        base_sha: r.base_sha || null,
+        merge_commit_sha: r.merge_commit_sha || null,
+        squash_commit_sha: r.squash_commit_sha || null,
         /* TITRE, BRANCHES ET AUTEUR VOYAGENT, OUVERTE OU FERMÉE — et c'est un revirement.
            Ils ne partaient d'abord que pour une MR fermée, au motif qu'un titre se réécrit et
            qu'une branche se renomme : partager du mutable, c'est faire voyager du périmé, et
@@ -310,6 +317,10 @@ const REGISTRE = [
       merged_at: doc.merged_at || null,
       /* On ne pose ces colonnes QUE si le fichier les porte : les absentes ne doivent pas
          devenir des `null` qui effaceraient ce que la découverte sait déjà. */
+      ...(doc.head_sha ? { head_sha: doc.head_sha } : {}),
+      ...(doc.base_sha ? { base_sha: doc.base_sha } : {}),
+      ...(doc.merge_commit_sha ? { merge_commit_sha: doc.merge_commit_sha } : {}),
+      ...(doc.squash_commit_sha ? { squash_commit_sha: doc.squash_commit_sha } : {}),
       ...(doc.title ? { title: doc.title } : {}),
       ...(doc.source_branch ? { source_branch: doc.source_branch } : {}),
       ...(doc.target_branch ? { target_branch: doc.target_branch } : {}),
@@ -1758,6 +1769,12 @@ const REGISTRE = [
   { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
+  /* LE RATTRAPAGE D'UNE PÉRIODE RESTE À SOI. Une période est MON retour de congé, bornée par
+     MES dates ; ses faits se recalculent depuis la forge et le clone ; et « vu » est personnel.
+     Partagée, la période du voisin remplirait l'écran de tout le monde avec des lignes que lui
+     seul a à vider. */
+  { table: 'periode', famille: 'L', note: 'une fenêtre de dates rattrapée depuis CE poste' },
+  { table: 'periode_item', famille: 'L', note: 'les lignes d’une période, et ce que CE poste a marqué vu' },
 
   /* ── Réglages ────────────────────────────────────────────────────────────────────────── */
   /* `config` est la seule table dont CHAQUE colonne est classée nommément, et dont les deux
@@ -1784,6 +1801,8 @@ const REGISTRE = [
       'brief_on_open', 'auto_refresh_minutes', 'jira_watch_minutes', 'todo_close_on_merge',
       'task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira',
       'task_default_converge',
+      // Le rattrapage d'une période : une bannière et un filtre d'affichage, à soi.
+      'periode_banner_days', 'periode_hide_bots',
       // Les bornes d'un agent : le budget se dépense sur CE poste, et une borne d'équipe se
       // relâcherait chez tout le monde d'un seul push.
       'agent_max_turns', 'agent_daily_budget_usd',
@@ -1816,7 +1835,9 @@ const REGISTRE = [
          elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
          réglé à sept jours efface l'historique des autres. */
       'retention_days', 'mr_retention_days', 'review_explain', 'verify_jira_comment',
-      'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key'],
+      'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key',
+      // Ce qu'on appelle « entré sans relecture » : la branche par défaut, et les protégées ou non.
+      'periode_watch_protected'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que
