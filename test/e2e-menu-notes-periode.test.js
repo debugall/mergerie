@@ -3,7 +3,7 @@
  *
  * Le sous-onglet, vide puis plein : deux dates, « Construire », le job, et l'écran qui se
  * redessine à sa fin — jamais un délai, toujours l'effet. Les pushs directs en tête, « vu » qui
- * fait sortir la ligne, le filtre des bots, le diff d'un push dans sa modale, la session
+ * fait sortir la ligne, le filtre des bots, le diff d'un push dans le viewer plein écran, la session
  * d'exploration pré-remplie. Puis la bannière du brief : absente tant qu'aucun geste n'a été
  * vu, présente au-delà du seuil, et son bouton qui ouvre la période de l'absence.
  *
@@ -134,13 +134,36 @@ describe('Menu Notes · Période', { skip: dispo ? false : MSG_NAVIGATEUR }, () 
     await page.waitForSelector('#periodeCorps .notes-periode-push .notes-periode-item.seen');
   });
 
-  test('le diff d’un push s’ouvre dans sa modale ; « Relire ce push » ouvre une exploration pré-remplie', async () => {
+  test('le filtre de dépôt est un combo avec recherche : choisir un dépôt, puis « tous » revient', async () => {
+    const champ = page.locator('#periodeCorps .notes-periode-filtre-repo .cb-search');
+    await champ.click();
+    await page.waitForSelector('#periodeCorps .notes-periode-filtre-repo .combo-opt[data-v]');
+    await champ.type('grp');
+    const opt = page.locator('#periodeCorps .notes-periode-filtre-repo .combo-opt[data-v]:not([data-v=""])');
+    await opt.first().waitFor();
+    assert.match(await opt.first().innerText(), /grp\/app/);
+    await opt.first().dispatchEvent('mousedown');
+    await page.waitForFunction(() => (document.querySelector('#periodeCorps .notes-periode-filtre-repo .cb-search') || {}).value === 'grp/app');
+    assert.ok(await page.locator('#periodeCorps .notes-periode-merged .notes-periode-item').count() >= 1);
+    // Retour à « tous les dépôts » par la première option.
+    await page.locator('#periodeCorps .notes-periode-filtre-repo .cb-search').click();
+    await page.waitForSelector('#periodeCorps .notes-periode-filtre-repo .combo-opt[data-v=""]');
+    await page.locator('#periodeCorps .notes-periode-filtre-repo .combo-opt[data-v=""]').dispatchEvent('mousedown');
+    await page.waitForFunction(() => /Tous les dépôts|All repositories/.test((document.querySelector('#periodeCorps .notes-periode-filtre-repo .cb-search') || {}).value || ''));
+  });
+
+  test('le diff d’un push s’ouvre dans le viewer plein écran avec toute l’arborescence ; « Relire ce push » ouvre une exploration pré-remplie', async () => {
     const ligne = page.locator('#periodeCorps .notes-periode-push .notes-periode-item').first();
     await ligne.locator('[data-pdiff]').click();
-    await page.waitForSelector('#periodeDiffModal:not([hidden])');
-    assert.match(await page.locator('#periodeDiffBody').innerText(), /src\/hotfix\.js/);
-    await page.locator('#periodeDiffClose').click();
-    await page.waitForSelector('#periodeDiffModal[hidden]', { state: 'attached' });
+    await page.waitForSelector('#splitView:not([hidden])');
+    // L'arbre porte TOUT le commit, pas seulement les fichiers touchés : le fichier modifié est
+    // marqué, un fichier intact du dépôt est là aussi.
+    await page.waitForSelector('#treeList .tree-file.changed[data-path="src/hotfix.js"]');
+    assert.ok(await page.locator('#treeList .tree-file:not(.changed)').count() >= 1);
+    await page.waitForFunction(() => /module\.exports = 4/.test((document.querySelector('#fileContent') || {}).innerText || ''));
+    assert.match(await page.locator('#splitMd').innerText(), /hotfix: timeout on \/health/);
+    await page.locator('#splitClose').click();
+    await page.waitForSelector('#splitView[hidden]', { state: 'attached' });
     await ligne.locator('[data-pexplore]').click();
     await page.waitForSelector('#taskModal:not([hidden])');
     const prompt = await page.locator('#taskForm [name="prompt"]').inputValue();

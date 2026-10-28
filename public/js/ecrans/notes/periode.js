@@ -101,16 +101,24 @@ function renderPeriodeBarre(periodes, d) {
     box.innerHTML = '<div id="periodeBarre" class="notes-periode-bar"></div><div id="periodeCorps"></div>';
     barre = $('#periodeBarre');
   }
+  /* Deux rangées : la FENÊTRE (dates, construire, l'historique à droite), puis les GESTES sur la
+     période affichée (recalculer, tout marquer vu, résumer — et « je pars » à part, à droite). */
+  const construite = !!(d && d.built_at);
   barre.innerHTML = `
-    <label>${esc(tr('notes.periode.from'))} <input type="date" id="periodeFrom" value="${depuis}" /></label>
-    <label>${esc(tr('notes.periode.to'))} <input type="date" id="periodeTo" value="${jusqua}" /></label>
-    <button type="button" class="btn btn-primary" id="periodeBuild" title="${esc(tr('notes.periode.build-title'))}">${svgIco('play')}${esc(tr('notes.periode.build'))}</button>
-    <span class="spacer"></span>
-    ${hist ? `<label class="notes-periode-history">${esc(tr('notes.periode.history'))} <select id="periodeHist">${hist}</select></label>` : ''}
-    ${d && d.built_at ? `<button type="button" class="btn btn-sm" id="periodeRebuild">${svgIco('refresh')}${esc(tr('notes.periode.rebuild'))}</button>` : ''}
-    ${d && d.built_at ? `<button type="button" class="btn btn-sm" id="periodeSeenAll">${svgIco('check')}${esc(tr('notes.periode.seen-all'))}</button>` : ''}
-    ${d && d.built_at ? `<button type="button" class="btn btn-sm" id="periodeResume" title="${esc(tr('notes.periode.resume-title'))}">${svgIco('bot')}${esc(tr('notes.periode.resume'))}</button>` : ''}
-    ${pDepartHtml()}`;
+    <div class="notes-periode-bar-row">
+      <label>${esc(tr('notes.periode.from'))} <input type="date" id="periodeFrom" value="${depuis}" /></label>
+      <label>${esc(tr('notes.periode.to'))} <input type="date" id="periodeTo" value="${jusqua}" /></label>
+      <button type="button" class="btn btn-primary" id="periodeBuild" title="${esc(tr('notes.periode.build-title'))}">${svgIco('play')}${esc(tr('notes.periode.build'))}</button>
+      <span class="spacer"></span>
+      ${hist ? `<label class="notes-periode-history">${svgIco('clock')}<span>${esc(tr('notes.periode.history'))}</span> <select id="periodeHist">${hist}</select></label>` : ''}
+    </div>
+    ${construite || pDepartHtml() ? `<div class="notes-periode-bar-row notes-periode-bar-actions">
+      ${construite ? `<button type="button" class="btn btn-sm" id="periodeRebuild">${svgIco('refresh')}${esc(tr('notes.periode.rebuild'))}</button>` : ''}
+      ${construite ? `<button type="button" class="btn btn-sm" id="periodeSeenAll">${svgIco('check')}${esc(tr('notes.periode.seen-all'))}</button>` : ''}
+      ${construite ? `<button type="button" class="btn btn-sm" id="periodeResume" title="${esc(tr('notes.periode.resume-title'))}">${svgIco('bot')}${esc(tr('notes.periode.resume'))}</button>` : ''}
+      <span class="spacer"></span>
+      ${pDepartHtml()}
+    </div>` : ''}`;
   $('#periodeBuild').addEventListener('click', () => construirePeriode($('#periodeFrom').value, $('#periodeTo').value));
   brancherDepart(periodes, d);
   const rs = $('#periodeResume');
@@ -218,11 +226,15 @@ function renderPeriodeCorps(d, { enCours = false } = {}) {
     return;
   }
   const repos = d.repos.filter((r) => d.items.some((it) => it.repo_id === r.id) || (r.partiel));
+  /* Le dépôt se choisit dans un combo avec recherche (règle projet : un dépôt actif en a des
+     dizaines) ; les auteurs dans un segmenté ; les deux options en pastilles cochables. */
+  const repoChoisi = repos.find((r) => String(r.id) === PERIODE.filtres.repo);
+  const nParDepot = (id) => d.items.filter((it) => it.repo_id === id).length;
   const filtres = `<div class="notes-periode-filtres">
-      <select id="periodeFiltreRepo"><option value="">${esc(tr('notes.periode.filter.repo'))}</option>${repos.map((r) => `<option value="${r.id}" ${PERIODE.filtres.repo === String(r.id) ? 'selected' : ''}>${esc(r.project)}</option>`).join('')}</select>
+      ${comboHtml('periodeFiltreRepoVal', { value: repoChoisi ? repoChoisi.id : '', label: repoChoisi ? repoChoisi.project : tr('notes.periode.filter.repo'), ph: tr('notes.periode.filter.repo'), wrapClass: 'notes-periode-filtre-repo' })}
       <div class="segmented" role="tablist">${['all', 'others', 'mine'].map((k) => `<button type="button" data-pauthor="${k}" class="${PERIODE.filtres.author === k ? 'active' : ''}">${esc(tr(`notes.periode.filter.author.${k}`))}</button>`).join('')}</div>
-      <label><input type="checkbox" id="periodeFiltreBots" ${PERIODE.filtres.bots ? 'checked' : ''}/> ${esc(tr('notes.periode.filter.bots'))}</label>
-      <label><input type="checkbox" id="periodeFiltreSeen" ${PERIODE.filtres.seen ? 'checked' : ''}/> ${esc(tr('notes.periode.filter.seen'))}</label>
+      <label class="notes-periode-filtre-case"><input type="checkbox" id="periodeFiltreBots" ${PERIODE.filtres.bots ? 'checked' : ''}/> ${esc(tr('notes.periode.filter.bots'))}</label>
+      <label class="notes-periode-filtre-case"><input type="checkbox" id="periodeFiltreSeen" ${PERIODE.filtres.seen ? 'checked' : ''}/> ${esc(tr('notes.periode.filter.seen'))}</label>
     </div>`;
   // Ce que chaque dépôt n'a pas pu livrer : affiché, jamais caché.
   const partiels = d.repos.filter((r) => r.partiel).map((r) => (r.partiel.non_calcule && r.partiel.non_calcule.length
@@ -246,7 +258,11 @@ function renderPeriodeCorps(d, { enCours = false } = {}) {
   corps.innerHTML = `${tete}${filtres}${partiels ? `<div class="notes-periode-partiel">${partiels}</div>` : ''}
     ${sections || emptyState({ icon: 'check', title: esc(tr('notes.periode.empty.title')), text: esc(tr('notes.periode.empty.text')) })}
     ${caches ? `<p class="notes-periode-hidden-foot">${esc(tr('notes.periode.hidden', { n: caches, count: caches }))}</p>` : ''}`;
-  $('#periodeFiltreRepo').addEventListener('change', (e) => { PERIODE.filtres.repo = e.target.value; renderPeriodeCorps(d); });
+  wireCombo(corps, 'periodeFiltreRepoVal', async () => [
+    { value: '', label: tr('notes.periode.filter.repo') },
+    ...repos.map((r) => ({ value: String(r.id), label: r.project, hint: String(nParDepot(r.id)) })),
+  ]);
+  $('.periodeFiltreRepoVal', corps).addEventListener('change', (e) => { PERIODE.filtres.repo = e.target.value; renderPeriodeCorps(d); });
   $$('#periodeCorps [data-pauthor]').forEach((b) => b.addEventListener('click', () => { PERIODE.filtres.author = b.dataset.pauthor; renderPeriodeCorps(d); }));
   $('#periodeFiltreBots').addEventListener('change', (e) => { PERIODE.filtres.bots = e.target.checked; renderPeriodeCorps(d); });
   $('#periodeFiltreSeen').addEventListener('change', (e) => { PERIODE.filtres.seen = e.target.checked; renderPeriodeCorps(d); });
@@ -449,22 +465,37 @@ function brancherGestesPeriode(d) {
   brancherGestesPied(corps);
 }
 
+/* « Voir le diff » d'un push : le viewer plein écran des MR et des sessions — l'arborescence
+   complète du commit, le fichier entier avec ses changements en place, la navigation — et non
+   un diff brut dans une modale. Seule la base d'URL change ; le panneau de gauche rappelle
+   ce que le push a apporté (auteur, commits), faute de rapport ou de retour d'IA à montrer. */
 async function ouvrirDiffPush(d, it) {
   if (!it) return;
-  let r;
-  try { r = await api(`/periode/${d.id}/items/${it.id}/diff`); } catch (err) { toast(explainError(err.message), true); return; }
+  const base = `/periode/${d.id}/items/${it.id}`;
+  let dv;
+  try { dv = await api(`${base}/diffview`); } catch (err) { toast(explainError(err.message), true); return; }
   const x = it.extra || {};
-  $('#periodeDiffTitle').textContent = `${pProjetDe(d, it.repo_id)} · ${x.branche || ''} · ${String(r.base || '').slice(0, 8)}..${String(r.head || '').slice(0, 8)}`;
-  const lignes = String(r.diff || '').split('\n').map((l) => {
-    const cls = l.startsWith('+++') || l.startsWith('---') || l.startsWith('diff ') || l.startsWith('@@') ? 'd-head' : (l.startsWith('+') ? 'd-add' : (l.startsWith('-') ? 'd-del' : ''));
-    return `<span class="${cls}">${esc(l)}</span>`;
-  }).join('\n');
-  $('#periodeDiffBody').innerHTML = `<pre>${lignes || esc('(vide)')}</pre>`;
-  $('#periodeDiffModal').hidden = false;
+  split = {
+    mrId: null, base, session: true,
+    md: '', explanation: '',
+    diffByFile: parseDiffByFile(dv.diff),
+    files: dv.files || [],
+    target: dv.target || '',
+    discussions: [],
+    path: null, fullCache: {}, diffFullCache: {},
+  };
+  $('#splitView').classList.add('session-mode');
+  $('#splitTitle').textContent = `${pProjetDe(d, it.repo_id)} · ${x.branche || ''} · ${String(dv.base || '').slice(0, 8)}..${String(dv.head || '').slice(0, 8)}`;
+  const commits = (x.commits || []).map((c) => `<li><code>${esc(String(c.sha || '').slice(0, 8))}</code> <span>${esc(c.title || '')}</span></li>`).join('');
+  const n = (x.commits || []).length;
+  $('#splitMd').innerHTML = `<p class="muted">${esc(tr('notes.periode.push.by', { author: it.author || '', when: fmtDate(it.at) }))} · ${esc(tr('notes.periode.push.commits', { n, count: n }))}</p>
+    <ul class="notes-periode-commits">${commits}</ul>`;
+  renderTree();
+  $('#splitView').hidden = false;
+  const premier = split.files.find((f) => f.changed) || split.files[0];
+  if (premier) selectFile(premier.path);
+  else { $('#fileName').textContent = tr('preview.no-file'); $('#fileContent').innerHTML = `<p class="muted">${tr('preview.no-file')}</p>`; }
 }
-document.addEventListener('click', (e) => {
-  if (e.target.closest && e.target.closest('#periodeDiffClose')) $('#periodeDiffModal').hidden = true;
-});
 
 /* La session pré-remplie pour un push : exploration (relire) ou codage (corriger). On ouvre la
    modale de session comme « Nouvelle session » le ferait, puis on pose le dépôt, la branche et

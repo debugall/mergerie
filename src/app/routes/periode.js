@@ -9,6 +9,7 @@ const jobs = require('../../jobs');
 const periode = require('../../notes/periode');
 const git = require('../../git/git');
 const { repoById, wrap } = require('../http');
+const { viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 /* La PRÉSENCE : le front n'appelle cette route qu'après un geste réel (clavier, pointeur), au
    plus une fois par minute — jamais depuis le poll de statut, qu'un poste resté allumé envoie
@@ -84,8 +85,10 @@ app.post('/api/periode/:id/seen', wrap((req, res) => {
 }));
 
 /* LE DIFF D'UN PUSH DIRECT — deux SHA résolus dans le clone, `base..head`. Lecture du clone
-   local (pas de fetch : le job vient de le faire), comme `/api/mrs/:id/diff`. */
-app.get('/api/periode/:id/items/:item/diff', wrap(async (req, res) => {
+   local (pas de fetch : le job vient de le faire), comme `/api/mrs/:id/diff`. Le viewer plein
+   écran est celui des MR et des sessions (arbre complet + fichier entier) : mêmes trois routes
+   `/diffview`, `/file`, `/filediff`, seul le contexte change — les deux bornes sont des commits. */
+async function ctxDuPush(req) {
   const it = db.prepare('SELECT * FROM periode_item WHERE id = ? AND periode_id = ?').get(Number(req.params.item), Number(req.params.id));
   if (!it || it.kind !== 'push') throw new Error(t('err.periode.introuvable'));
   let extra = {};
@@ -94,5 +97,23 @@ app.get('/api/periode/:id/items/:item/diff', wrap(async (req, res) => {
   if (!repo || !extra.base_sha || !extra.head_sha) throw new Error(t('err.periode.diff-indisponible'));
   const cwd = git.cloneDirFor(getConfig(), repo);
   if (!await git.refExists(cwd, extra.head_sha)) throw new Error(t('err.periode.diff-indisponible'));
-  res.json({ diff: await git.diffRange(cwd, extra.base_sha, extra.head_sha), base: extra.base_sha, head: extra.head_sha, branch: extra.branche });
+  return { cwd, ref: extra.head_sha, target: extra.base_sha, shaRange: true, repo, extra };
+}
+app.get('/api/periode/:id/items/:item/diff', wrap(async (req, res) => {
+  const ctx = await ctxDuPush(req);
+  res.json({ diff: await git.diffRange(ctx.cwd, ctx.target, ctx.ref), base: ctx.target, head: ctx.ref, branch: ctx.extra.branche });
+}));
+app.get('/api/periode/:id/items/:item/diffview', wrap(async (req, res) => {
+  const ctx = await ctxDuPush(req);
+  const diff = await git.diffRange(ctx.cwd, ctx.target, ctx.ref);
+  res.json({
+    ...(await viewerPayload(ctx, { diff, source: ctx.extra.branche || '' })),
+    project: ctx.repo.project, branch: ctx.extra.branche || '', base: ctx.target, head: ctx.ref,
+  });
+}));
+app.get('/api/periode/:id/items/:item/file', wrap(async (req, res) => {
+  res.json(await viewerFile(await ctxDuPush(req), String(req.query.path || '')));
+}));
+app.get('/api/periode/:id/items/:item/filediff', wrap(async (req, res) => {
+  res.json(await viewerFileDiff(await ctxDuPush(req), String(req.query.path || '')));
 }));

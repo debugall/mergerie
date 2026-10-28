@@ -1,14 +1,34 @@
 /* ============ Notes → Période : le rattrapage d'une fenêtre de dates ============
    Même grammaire que le brief (sections, lignes, croix de « vu ») : c'est sa version longue. */
 .notes-periode { max-width: 980px; }
-.notes-periode-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; }
+/* La barre : deux rangées (la fenêtre, puis les gestes), chaque contrôle à la hauteur d'un `.btn`
+   (32 px) pour que dates, bouton et liste s'alignent au pixel. */
+.notes-periode-bar { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+.notes-periode-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.notes-periode-bar-row .spacer { flex: 1; }
 .notes-periode-bar label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-.notes-periode-bar input[type="date"] { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); }
-.notes-periode-bar select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); max-width: 260px; }
+.notes-periode-bar input[type="date"], .notes-periode-bar select { height: 32px; box-sizing: border-box; font: inherit; font-size: var(--fs-sm); padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); color: var(--text); }
+/* L'historique : la flèche a sa place à droite, le libellé long se coupe avec des points. */
+.notes-periode-bar select { max-width: 300px; padding-right: 26px; text-overflow: ellipsis; cursor: pointer; }
+.notes-periode-history .ico { width: 14px; height: 14px; }
+.notes-periode-bar-actions { padding-top: 8px; border-top: 1px solid var(--line); }
 .notes-periode-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; margin: 6px 0 12px; }
 .notes-periode-head .notes-periode-span { font-size: 20px; font-weight: 650; }
-.notes-periode-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
-.notes-periode-filtres label { display: inline-flex; align-items: center; gap: 5px; }
+/* Les filtres, sur une ligne : combo de dépôt, segmenté des auteurs, deux pastilles cochables —
+   tous à 32 px de haut. Le segmenté a une marge verticale propre (il vit seul sous un titre
+   ailleurs) : ici elle sauterait l'alignement. */
+.notes-periode-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 14px; font-size: 13px; color: var(--muted); }
+.notes-periode-filtres .segmented { margin: 0; height: 32px; box-sizing: border-box; }
+.notes-periode-filtres .segmented button { padding: 0 12px; }
+.notes-periode-filtre-repo { width: 240px; }
+.notes-periode-filtre-repo input { height: 32px; box-sizing: border-box; padding: 0 28px 0 10px; font-size: var(--fs-sm); cursor: pointer; }
+/* Un chevron, sinon le combo se lit comme un champ de saisie et non comme une liste. */
+.notes-periode-filtre-repo::after { content: ''; position: absolute; right: 12px; top: 50%; width: 6px; height: 6px; margin-top: -5px; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none; }
+.notes-periode-filtre-repo:focus-within::after { border-color: var(--accent); }
+.notes-periode-filtre-case { display: inline-flex; align-items: center; gap: 6px; height: 32px; box-sizing: border-box; padding: 0 12px 0 9px; border: 1px solid var(--line); border-radius: var(--r-full); background: var(--panel2); color: var(--muted); cursor: pointer; user-select: none; white-space: nowrap; }
+.notes-periode-filtre-case:hover { color: var(--text); border-color: var(--accent); }
+.notes-periode-filtre-case:has(input:checked) { color: var(--text); border-color: var(--accent); }
+.notes-periode-filtre-case input { margin: 0; cursor: pointer; accent-color: var(--accent); }
 .notes-periode-partiel { border: 1px solid var(--orange); color: var(--orange); border-radius: 8px; padding: 6px 10px; margin: 0 0 12px; font-size: 12px; }
 .notes-periode-partiel p { margin: 2px 0; }
 .notes-periode-building { display: flex; align-items: center; gap: 10px; color: var(--muted); margin: 8px 0 14px; }
@@ -34,12 +54,6 @@
 .notes-periode-hidden-foot { color: var(--muted); font-size: 12px; margin-top: 12px; }
 .notes-periode-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin: 0 0 16px; border: 1px solid var(--accent); border-radius: 8px; background: var(--panel2); }
 .notes-periode-banner .notes-periode-banner-text { flex: 1; font-weight: 550; }
-.notes-periode-diff-box { width: min(1100px, 96vw); }
-.notes-periode-diff { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); font-size: 12px; }
-.notes-periode-diff pre { margin: 0; padding: 8px 10px; white-space: pre; font-family: var(--mono, ui-monospace, monospace); }
-.notes-periode-diff .d-add { color: var(--green); }
-.notes-periode-diff .d-del { color: var(--red); }
-.notes-periode-diff .d-head { color: var(--muted); font-weight: 600; }
 .notes-periode-history { font-size: 12px; color: var(--muted); }
 .notes-periode-depart { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
 .notes-periode-resume > summary { color: var(--accent); }
