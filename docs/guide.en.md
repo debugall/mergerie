@@ -1284,9 +1284,12 @@ The sections, in the order of the gestures to make:
    *bot* (bots are hidden by default). A commit that went through a merge request is **never** there,
    whatever the merge strategy — merge commit, squash, fast-forward, or GitHub's rebase-merge that rewrites
    SHAs (recognised by the patch content). What the forge could not confirm is marked **unverified**, in
-   orange: a visible doubt beats a colleague wrongly accused. Gestures: *See the diff*, *Review this push*
-   (a pre-filled exploration session: the AI reads the commits like a review), *Verify this branch*, *Add
-   to todos*, *Fix session*.
+   orange: a visible doubt beats a colleague wrongly accused. Gestures: *See the diff* (the
+   full-screen explorer of *⛶ Open the code*, the same as for a merge request or a session: the whole
+   tree of the commit, the touched files marked, each file in full with its changes in place, and on the
+   left the author and the push's list of commits), *Review this push* (a pre-filled
+   exploration session: the AI reads the commits like a review), *Verify this branch*, *Add to todos*,
+   *Fix session*.
 2. **Merged merge requests** — each one says whether it was reviewed before the merge (by you, or by a
    colleague on the shared database) or never. *Review after the fact* reads the merge request **as it was
    merged**, by its SHAs: the base at the time of the MR and its head, fetched from the ref the forge keeps

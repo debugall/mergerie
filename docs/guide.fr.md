@@ -1339,7 +1339,10 @@ Les sections, dans l'ordre des gestes à faire :
    est **jamais**, quelle que soit la stratégie de merge — merge commit, squash, fast-forward, ou le
    rebase-merge de GitHub qui réécrit les SHA (reconnu par le contenu du patch). Ce que la forge n'a pas pu
    confirmer est marqué **non vérifié**, en orange : un doute affiché vaut mieux qu'un collègue accusé à
-   tort. Gestes : *Voir le diff*, *Relire ce push* (une session d'exploration pré-remplie, l'IA relit les
+   tort. Gestes : *Voir le diff* (l'explorateur plein écran de *⛶ Ouvrir le code*,
+   le même que pour une merge request ou une session : toute l'arborescence du commit, les fichiers
+   touchés marqués, chaque fichier entier avec ses changements en place, et à gauche l'auteur et la liste
+   des commits du push), *Relire ce push* (une session d'exploration pré-remplie, l'IA relit les
    commits comme une review), *Vérifier cette branche*, *Ajouter aux todos*, *Session de correction*.
 2. **Merge requests mergées** — chacune dit si elle a été reviewée avant le merge (par toi, ou par un
    collègue sur la base partagée) ou jamais. *Reviewer a posteriori* relit la merge request **telle qu'elle a
