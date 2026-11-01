@@ -20,6 +20,12 @@ try { db.exec('ALTER TABLE config ADD COLUMN periode_banner_days INTEGER DEFAULT
 try { db.exec("ALTER TABLE config ADD COLUMN periode_hide_bots TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN periode_watch_protected TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
 
+/* JIRA → STATS : quels noms de type comptent comme « bug » et comme « US ». Le nom d'un type est
+   libre d'une instance à l'autre (Bug / Anomalie, Story / User Story / Récit) : une décision
+   d'équipe, partagée comme le reste de `config`. */
+try { db.exec("ALTER TABLE config ADD COLUMN jira_stats_bug_types TEXT DEFAULT 'Bug'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN jira_stats_us_types TEXT DEFAULT 'Story, User Story'"); } catch { /* déjà présente */ }
+
 /* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
 try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }
 

@@ -287,6 +287,19 @@ async function jiraGet(cfg, pathAndQuery) {
   try { return JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
 }
 
+// Le même appel en POST, corps JSON — pour les points d'entrée que Jira n'offre qu'ainsi.
+async function jiraPost(cfg, pathAndQuery, body) {
+  const res = await request(jiraBase(cfg) + pathAndQuery, {
+    method: 'POST',
+    headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.denied', { status: res.status }));
+  if (res.status === 404) throw new Error('Jira 404 : ressource introuvable');
+  if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${detailErreur(res.body)}`);
+  try { return JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
+}
+
 const personOf = (p) => (p ? {
   accountId: p.accountId || p.name || p.key || '', name: p.displayName || p.name || '',
   email: p.emailAddress || '', avatar: (p.avatarUrls && (p.avatarUrls['24x24'] || p.avatarUrls['32x32'])) || '',
@@ -299,6 +312,45 @@ async function runSearch(cfg, jql, fields, max = 50) {
   const qs = `jql=${encodeURIComponent(jql)}&maxResults=${n}&fields=${encodeURIComponent(fields)}`;
   try { return await jiraGet(cfg, `/rest/api/3/search/jql?${qs}`); }
   catch (e) { if (/Jira 404/.test(e.message)) return jiraGet(cfg, `/rest/api/3/search?${qs}`); throw e; }
+}
+
+const PLAFOND_PAGES = 1000;           // tickets lus au plus par une recherche paginée : dix pages, quelques secondes
+const PAGE = 100;                     // la page maximale de Jira
+/* Toutes les pages d'une recherche, jusqu'au plafond. Jira Cloud pagine `/search/jql` par
+   jeton (`nextPageToken`, pas de total) ; Server/DC pagine `/search` par `startAt` et donne
+   `total`. Même boucle, deux curseurs.
+
+   Sur Cloud, la DERNIÈRE page est celle que `isLast` désigne — et non « celle sans jeton » : Jira
+   a été vu rendre un jeton avec `isLast: true`, et la boucle relisait alors une page vide jusqu'au
+   plafond, d'où un « plafond atteint sur 1 000 » sur un Jira qui n'en compte pas tant. Quand le
+   plafond est vraiment atteint, Cloud ne donnant pas de total, on le demande à part
+   (`approximate-count`) — et s'il refuse, on dit « plafond atteint » sans chiffrer l'ensemble. */
+async function searchAll(cfg, jql, fields, plafond = PLAFOND_PAGES) {
+  const issues = []; let total = null; let token = null; let startAt = 0; let enhanced = true; let encore = true;
+  while (encore && issues.length < plafond) {
+    const n = Math.min(PAGE, plafond - issues.length);
+    const base = `jql=${encodeURIComponent(jql)}&maxResults=${n}&fields=${encodeURIComponent(fields)}`;
+    let data;
+    if (enhanced) {
+      try { data = await jiraGet(cfg, `/rest/api/3/search/jql?${base}${token ? `&nextPageToken=${encodeURIComponent(token)}` : ''}`); }
+      catch (e) { if (!/Jira 404/.test(e.message) || token) throw e; enhanced = false; }
+    }
+    if (!enhanced) data = await jiraGet(cfg, `/rest/api/3/search?${base}&startAt=${startAt}`);
+    const page = data.issues || [];
+    issues.push(...page);
+    if (data.total != null) total = data.total;
+    if (enhanced) {
+      const suivant = data.isLast === true ? null : (data.nextPageToken || null);
+      encore = !!suivant && suivant !== token && page.length > 0;
+      token = suivant;
+    } else { startAt += page.length; encore = page.length > 0 && (total == null || startAt < total); }
+  }
+  const tronque = encore && issues.length >= plafond;
+  if (tronque && total == null) {
+    try { const c = await jiraPost(cfg, '/rest/api/3/search/approximate-count', { jql }); if (Number.isFinite(Number(c && c.count))) total = Number(c.count); }
+    catch { /* pas de total : on dira « plafond atteint » sans chiffrer */ }
+  }
+  return { issues, total: tronque ? total : (total != null ? total : issues.length), tronque };
 }
 
 // Métadonnées d'un ticket depuis l'objet issue (partagé liste + détail).
@@ -472,8 +524,10 @@ async function listAssignees(cfg) {
 
 // Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
 // Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
-  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+/* LES CONTRAINTES D'UNE LISTE DE TICKETS, EN JQL. Partagées entre « Mes tickets » et les
+   statistiques : ce que l'une filtre, l'autre compte, sinon les chiffres parleraient d'un autre
+   ensemble que la liste. */
+function jqlDe({ accountIds = [], includeDone = false, projects = [], sprints = [], hideStatuses = [] } = {}) {
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
   /* Sélection VIDE = aucune contrainte d'assigné : on prend tout ce que le compte voit, même
@@ -491,10 +545,19 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (sprintIds.length) clauses.push(`sprint IN (${sprintIds.join(', ')})`);
   /* Statuts masqués : exclus PAR Jira. Un nom de statut est libre (workflow personnalisé),
      donc on n'accepte ni guillemet ni saut de ligne — le reste est quoté tel quel. */
-  const exclus = [...new Set((hideStatuses || []).map(String)
-    .filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
+  const exclus = valeursJql(hideStatuses);
   if (exclus.length) clauses.push(`status NOT IN (${exclus.map((x) => `"${x}"`).join(', ')})`);
   if (!includeDone) clauses.push('statusCategory != Done');
+  return clauses;
+}
+/* Une valeur libre (statut, étiquette, composant…) admise dans une chaîne JQL : ni guillemet
+   ni saut de ligne, longueur bornée, dédoublonnée. Ce qui ne passe pas est simplement ignoré. */
+function valeursJql(liste) {
+  return [...new Set((liste || []).map(String).filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
+}
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = PLAFOND_PAGES, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const clauses = jqlDe({ accountIds, includeDone, projects, sprints, hideStatuses });
   /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
      ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur
      l'activité récente — sans effet visible, la liste étant de toute façon triée par date de
@@ -502,9 +565,12 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (!clauses.length) clauses.push('updated >= -365d');
   const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
   const champ = CHAMP_SPRINT.test(sprintField) ? sprintField : '';
-  const data = await runSearch(cfg, jql, champ ? `${TICKET_FIELDS},${champ}` : TICKET_FIELDS, max);
-  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i, champ)));
-  return { issues, total: data.total != null ? data.total : issues.length };
+  /* TOUTES LES PAGES, pas la première : la liste s'arrêtait à cent tickets (une page Jira), et les
+     filtres du navigateur — recherche, champs — ne triaient qu'un extrait. On pagine jusqu'au même
+     plafond que les stats ; au-delà, `tronque` le dit et le compteur l'affiche. */
+  const lu = await searchAll(cfg, jql, champ ? `${TICKET_FIELDS},${champ}` : TICKET_FIELDS, max);
+  const issues = lu.issues.map((i) => withUrls(cfg, issueMeta(i, champ)));
+  return { issues, total: lu.total != null ? lu.total : issues.length, tronque: lu.tronque };
 }
 
 /* Clé de ticket Jira : PROJET-123. Tout ce qui n'a pas cette forme est refusé avant de
@@ -865,4 +931,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

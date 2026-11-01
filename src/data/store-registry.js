@@ -1837,7 +1837,9 @@ const REGISTRE = [
       'retention_days', 'mr_retention_days', 'review_explain', 'verify_jira_comment',
       'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key',
       // Ce qu'on appelle « entré sans relecture » : la branche par défaut, et les protégées ou non.
-      'periode_watch_protected'],
+      'periode_watch_protected',
+      // Jira → Stats : ce qui compte comme « bug » et comme « US » — une convention d'équipe.
+      'jira_stats_bug_types', 'jira_stats_us_types'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que

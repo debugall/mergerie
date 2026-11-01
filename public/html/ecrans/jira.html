@@ -1,9 +1,10 @@
     <!-- Jira : mes tickets affectés (liste) → détail (contenu, métadonnées, commentaires). -->
     <section id="tab-jira" class="tab">
         <div class="segmented subnav" role="tablist">
-            <button data-jsub="mine" class="active" role="tab" data-i18n-title="jira.sub.mine-title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="jira.sub.mine">Mes tickets</span></button>
+            <button data-jsub="mine" class="active" role="tab" data-i18n-title="jira.sub.mine-title"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="jira.sub.mine">Mes tickets</span><span class="nav-count" id="jiraMineCount" hidden>0</span></button>
             <button data-jsub="watch" role="tab" data-i18n-title="jira.sub.watch-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="jira.sub.watch">Surveillés</span><span class="nav-count" id="jiraWatchCount" hidden>0</span></button>
             <button data-jsub="analysed" role="tab" data-i18n-title="jira.sub.analysed-title"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="jira.sub.analysed">Analysés</span><span class="nav-count" id="jiraAnalysedCount" hidden>0</span></button>
+            <button data-jsub="stats" role="tab" data-i18n-title="jira.sub.stats-title"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="jira.sub.stats">Stats</span></button>
         </div>
         <div id="jiraSubMine">
         <div class="toolbar">
@@ -111,5 +112,69 @@
                     <div id="jiraAnalysedDetail" class="jira-detail js-jira-detail"></div>
                 </div>
             </div>
+        </div>
+
+        <!-- STATS : les comptes d'un ensemble de tickets — bugs, US, US liées à un bug, par statut.
+             Les mêmes filtres que « Mes tickets », mais À PART : ce qu'on filtre ici ne touche pas la
+             liste, et inversement. Les comptes portent sur l'ensemble ENTIER (le serveur pagine), pas
+             sur les cent tickets qu'une liste affiche. -->
+        <div id="jiraSubStats" hidden>
+            <div class="toolbar">
+                <button id="jiraStatsRefresh" class="btn" data-i18n-title="jira.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.refresh">Rafraîchir</span></button>
+                <label class="inline-check"><input type="checkbox" id="jiraStatsIncludeDone" /> <span data-i18n="jira.include-done">Inclure les terminés</span></label>
+                <!-- La plage de MOUVEMENT, facultative : seuls les tickets qui ont bougé dedans (création,
+                     mise à jour, changement de statut, d'assigné, de priorité, de résolution) sont comptés. -->
+                <span class="jira-stats-plage" data-i18n-title="jira.stats.dates.hint" title="">
+                    <span class="muted" data-i18n="jira.stats.dates.from">Mouvement du</span>
+                    <input type="date" id="jiraStatsDepuis" />
+                    <span class="muted" data-i18n="jira.stats.dates.to">au</span>
+                    <input type="date" id="jiraStatsJusqua" />
+                    <button type="button" class="btn btn-icon btn-sm" id="jiraStatsDatesClear" data-i18n-title="jira.stats.dates.clear" title="" hidden><svg class="ico"><use href="#i-close"/></svg></button>
+                </span>
+                <span id="jiraStatsInfo" class="muted"></span>
+            </div>
+            <div class="jira-filters jira-stats-filters">
+                <details id="jiraStatsAssigneeFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-bot"/></svg> <span data-i18n="jira.assignees">Assignés</span> <span id="jiraStatsAssigneeFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraStatsAssigneeSearch" type="search" class="jira-sf-search" data-jss="assignee" placeholder="Rechercher une personne…" data-i18n-placeholder="jira.people-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsall="assignee" data-i18n="jira.sf.all">Tout cocher</button>
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsnone="assignee" data-i18n-title="jira.sf.none-assignee-title" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraStatsAssigneeFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
+                <details id="jiraStatsStatusFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.statuses">Statuts</span> <span id="jiraStatsStatusFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraStatsStatusSearch" type="search" class="jira-sf-search" data-jss="status" placeholder="Rechercher un statut…" data-i18n-placeholder="jira.status-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsall="status" data-i18n="jira.sf.all">Tout cocher</button>
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsnone="status" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraStatsStatusFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
+                <details id="jiraStatsSprintFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-repeat"/></svg> <span data-i18n="jira.sprints">Sprints</span> <span id="jiraStatsSprintFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <input id="jiraStatsSprintSearch" type="search" class="jira-sf-search" data-jss="sprint" placeholder="Rechercher un sprint…" data-i18n-placeholder="jira.sprint-search" />
+                        <div class="jira-sf-actions">
+                            <button type="button" class="btn btn-sm btn-ghost" data-jsnone="sprint" data-i18n="jira.sf.none">Tout décocher</button>
+                        </div>
+                        <div id="jiraStatsSprintFilterBody" class="jira-status-filter-body"></div>
+                    </div>
+                </details>
+                <details id="jiraStatsFieldFilter" class="jira-status-filter" hidden>
+                    <summary><svg class="ico ico-sm"><use href="#i-sliders"/></svg> <span data-i18n="jira.ff.title">Filtres</span> <span id="jiraStatsFieldFilterCount" class="muted"></span></summary>
+                    <div class="jira-sf-pop">
+                        <div id="jiraStatsFieldFilterPick" class="jira-ff-pick"></div>
+                        <div id="jiraStatsFieldFilterBody"></div>
+                    </div>
+                </details>
+            </div>
+            <div id="jiraStatsError"></div>
+            <div id="jiraStatsCorps" class="jira-stats"></div>
         </div>
     </section>

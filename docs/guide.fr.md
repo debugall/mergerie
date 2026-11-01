@@ -1402,7 +1402,7 @@ plus de la branche par défaut (une décision d'équipe : c'est la définition d
 *Dépôts* : une liste de branches surveillées propre à un dépôt, dans sa ligne d'édition.
 
 ### Jira
-Deux sous-onglets : **Mes tickets** et **Surveillés**. Le menu porte une **pastille** = le nombre de
+Quatre sous-onglets : **Mes tickets**, **Surveillés**, **Analysés** et **Stats**. Le menu porte une **pastille** = le nombre de
 tickets **en cours qui te sont affectés** (catégorie de statut *In Progress*, la seule définition qui
 traverse les workflows, les noms d'états étant libres d'un projet à l'autre). Elle est alimentée par un
 compteur **mis en cache côté serveur** et rafraîchi par la surveillance : l'afficher ne coûte pas un appel
@@ -1413,6 +1413,8 @@ Jira à chaque passage.
 affichés, mais un **filtre par personne** permet de **cocher d'autres assignés** pour voir aussi leurs
 tickets (la liste des personnes = les assignés récents ; **toi coché par défaut**, choix **persisté**). En
 **liste → détail** :
+- Le **nombre de tickets** de la liste est affiché dans la barre et **sur l'onglet** lui-même, et suit chaque
+  filtre (recherche, statuts, assignés, champs), pas seulement le chargement.
 - La **liste** (à gauche, avec recherche) montre chaque ticket en carte compacte : clé, **epic** de
   rattachement quand il y en a un, résumé, **statut** (pastille colorée selon la catégorie : à faire /
   en cours / terminé), type, priorité, date de mise à jour. **La recherche couvre aussi l'epic** —
@@ -1450,10 +1452,10 @@ tickets (la liste des personnes = les assignés récents ; **toi coché par déf
   permet de choisir d'abord
   **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
   correctives) puis **une ou plusieurs valeurs**. Le critère **Projet** fait exception : il est appliqué
-  **par Jira**, pas après coup. Jira plafonne une recherche à cent tickets triés par date de mise à jour ;
-  filtrer côté navigateur ne filtrerait donc qu'un extrait, et les tickets du projet voulu pouvaient se
-  trouver hors de cet extrait — ils disparaissaient au lieu d'apparaître. Quand la liste est plafonnée,
-  le compteur le dit (« 100 affichés sur 340 »). Les valeurs proposées sont celles **réellement
+  **par Jira**, pas après coup. La liste **pagine** la recherche Jira jusqu'à **1 000 tickets** triés par
+  date de mise à jour (une page Jira en fait cent) ; un filtre appliqué par Jira garantit que les tickets
+  du projet voulu sont dans ce qu'on lit, et non au-delà. Quand le plafond est atteint, le compteur le dit
+  (« 1000 affichés sur 2340 — plafond atteint »). Les valeurs proposées sont celles **réellement
   présentes** dans les tickets chargés, avec le nombre de tickets pour chacune — proposer une valeur qui
   ne ramène rien n'aide personne. Le choix du champ et chaque liste de valeurs ont leur **recherche** ;
   celle des valeurs **masque les lignes sans rien décocher**, pour ne jamais perdre une sélection en
@@ -1555,6 +1557,33 @@ proposée — avec leurs dépôts et branches lus, leur état (proposée, posté
 ouvre le ticket et sa précision à côté de la liste, et la pastille compte ceux qui ont une proposition. Dans
 **Mes tickets**, le filtre **Analyse** montre tout, seulement les tickets *déjà analysés*, ou seulement ceux *pas
 encore analysés* (le choix est mémorisé, et la liste se met à jour dès qu'une proposition arrive).
+
+#### Stats — compter un ensemble de tickets
+**Combien de bugs, combien d'US, combien d'US liées à un bug, et où en est chaque statut ?** L'onglet
+**Stats** répond sur l'ensemble que ses filtres décrivent — les **mêmes filtres que Mes tickets** (assignés,
+statuts, sprints, filtres par champ, « Inclure les terminés »), mais **indépendants** : ce qu'on coche ici ne
+touche pas la liste, et inversement. Au premier passage, Stats hérite des choix de Mes tickets, puis chacun
+vit sa vie.
+
+- **Tout l'ensemble, côté serveur.** Les comptes sont calculés par le serveur, en paginant la recherche
+  Jira jusqu'à **1 000 tickets** (comme la liste) — au-delà, l'écran le dit (« plafond atteint ») et invite
+  à affiner ; la recherche texte de la liste, elle, n'entre pas dans les comptes. Les filtres par champ partent **en JQL** (type, priorité,
+  étiquettes, composants, versions, epic) ; un rapporteur ou un assigné coché par son nom est traduit en
+  identifiant de compte — un nom que Jira ne sait pas traduire est **ignoré et dit**, plutôt que compté en
+  silence sur un périmètre plus large.
+- **Quatre tuiles** : tickets, bugs, US, **US liées à un bug** (chaque part en pourcentage, la dernière en
+  part des US) — et « autres types » quand il y en a. Une US est « liée à un bug » par **n'importe quel
+  lien** Jira, dans les deux sens, par une **sous-tâche** bug ou par un **parent** bug.
+- **Par statut** : chaque statut avec son nombre de tickets, son pourcentage et une barre, les plus nombreux
+  d'abord. **Par assigné** : la même chose par personne, les plus chargées d'abord, « non assigné » à part.
+- **Une plage de dates, facultative** (« Mouvement du … au … ») : ne compter que les tickets qui ont **bougé
+  dans la plage**, quel que soit le mouvement — créés, mis à jour (commentaire, édition, pièce jointe…), ou dont
+  le statut, l'assigné, la priorité ou la résolution a changé (ce que JQL sait historiser). Jours entiers, dans
+  le fuseau du compte Jira ; une seule borne suffit ; la croix retire la plage, et le choix est mémorisé.
+- **Ce qui compte comme bug et comme US** se règle dans **Réglages → Jira** (noms de type séparés par des
+  virgules, sans tenir compte de la casse ; par défaut *Bug* et *Story, User Story*) : le nom d'un type est
+  libre d'une instance à l'autre (Anomalie, Récit…). C'est une décision d'équipe, partagée comme le reste
+  des réglages, et l'écran rappelle en pied ce qu'il a compté.
 
 #### Préciser un ticket techniquement
 Un ticket écrit par un Product Owner dit le *quoi* fonctionnel, jamais le *où* (quels dépôts, quels

@@ -368,6 +368,7 @@ async function loadJiraTickets() {
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
   JIRA.total = d.total != null ? d.total : null;
+  JIRA.tronque = !!d.tronque;   // le plafond de pagination atteint : la liste n'est pas tout
   /* On ne mémorise que ce qu'on a vu SANS la contrainte correspondante : sinon on figerait
      une liste déjà réduite par le filtre lui-même. */
   if (!sprints) jiraMemoriseValeurs('sprint', JIRA.issues.flatMap((i) => i.sprints || []));

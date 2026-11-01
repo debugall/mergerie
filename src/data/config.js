@@ -50,6 +50,7 @@ const ALLOWED = [
   'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
   'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
+  'jira_stats_bug_types', 'jira_stats_us_types',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -135,6 +136,9 @@ function updateConfig(patch) {
   }
   next.periode_hide_bots = next.periode_hide_bots === '0' ? '0' : '1';
   next.periode_watch_protected = next.periode_watch_protected === '0' ? '0' : '1';
+  // Jira → Stats : un champ vidé retombe sur le défaut, l'écran montre toujours ce qui est compté.
+  next.jira_stats_bug_types = String(next.jira_stats_bug_types || '').trim() || 'Bug';
+  next.jira_stats_us_types = String(next.jira_stats_us_types || '').trim() || 'Story, User Story';
   /* Coché par défaut : une todo « suivre !201 » n'a plus de raison d'être une fois !201
      mergée, et la cocher soi-même après coup est le geste qu'on oublie. */
   next.todo_close_on_merge = next.todo_close_on_merge === '0' ? '0' : '1';
@@ -293,7 +297,9 @@ function updateConfig(patch) {
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
       agent_auto_max = @agent_auto_max,
-      periode_watch_protected = @periode_watch_protected
+      periode_watch_protected = @periode_watch_protected,
+      jira_stats_bug_types = @jira_stats_bug_types,
+      jira_stats_us_types = @jira_stats_us_types
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */

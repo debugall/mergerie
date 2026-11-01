@@ -113,6 +113,7 @@ require('./app/routes/groupes');
 require('./app/routes/maintenance');
 require('./app/routes/jira');
 require('./app/routes/jira-spec');
+require('./app/routes/jira-stats');
 require('./app/routes/jobs');
 require('./app/routes/launcher');
 require('./app/routes/local-tasks');

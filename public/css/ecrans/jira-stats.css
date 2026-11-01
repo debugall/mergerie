@@ -1,0 +1,27 @@
+/* ===== Jira → Stats : tuiles de comptes et répartition par statut ===== */
+/* Les filtres tiennent sur une ligne, comme dans « Mes tickets », mais la rangée est libre de
+   toute colonne : on borne sa largeur pour que les puces gardent une taille lisible. */
+.jira-stats-filters { max-width: 720px; margin-bottom: 14px; }
+.jira-stats { max-width: 960px; }
+.jira-stats-tuiles { margin-top: 0; }
+.jira-stats-sous { font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.jira-stats-h { font-size: 15px; margin: 18px 0 8px; }
+.jira-stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.jira-stats-table th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.jira-stats-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.jira-stats-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jira-stats-table .bar { width: 40%; }
+.jira-stats-bar { height: 8px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.jira-stats-bar-fill { height: 100%; border-radius: 4px; background: var(--muted); }
+.jira-stats-bar-todo { background: var(--muted); }
+.jira-stats-bar-progress { background: var(--accent); }
+.jira-stats-bar-done { background: var(--green); }
+.jira-stats-note { margin: 0 0 10px; font-size: 13px; }
+.jira-stats-note.warn { color: var(--amber); }
+.jira-stats-types { font-size: 12px; margin-top: 12px; }
+/* La plage de dates dans la barre : deux champs courts, une croix qui n'apparaît qu'une fois posée. */
+.jira-stats-plage { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.jira-stats-plage input[type="date"] { padding: 5px 8px; font: inherit; font-size: 13px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; }
+.jira-stats-plage input[type="date"]:focus { border-color: var(--accent); outline: none; }
+/* L'avatar est un flex en colonne dans la liste ; en cellule, il doit rester une pastille en ligne. */
+.jira-stats-table td .jira-avatar { display: inline-flex; width: 22px; height: 22px; flex: none; vertical-align: middle; margin-right: 6px; }

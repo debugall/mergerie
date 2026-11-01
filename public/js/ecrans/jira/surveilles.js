@@ -205,8 +205,10 @@ function showJiraSub(sub) {
   $('#jiraSubMine').hidden = sub !== 'mine';
   $('#jiraSubWatch').hidden = sub !== 'watch';
   $('#jiraSubAnalysed').hidden = sub !== 'analysed';
+  $('#jiraSubStats').hidden = sub !== 'stats';
   if (sub === 'watch') loadJiraWatch();
   if (sub === 'analysed') chargerAnalyses();
+  if (sub === 'stats') chargerJiraStats();
 }
 $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.addEventListener('click', () => showJiraSub(b.dataset.jsub)));
 

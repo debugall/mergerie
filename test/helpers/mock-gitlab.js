@@ -312,6 +312,17 @@ function handleJira(req, res, pathname, body = {}) {
       issues = issues.filter((i) => set.has(String(i.key).toUpperCase()) || (i.fields && i.fields.assignee && i.fields.assignee.accountId === 'me-test'));
       jql = jql.replace(miens[0], '');
     }
+    /* Jira → Stats, la plage de mouvement : un seul bloc OR (créé / mis à jour / statut, assigné,
+       priorité, résolution changés). Le mock le lit d'un coup — créé ou mis à jour dans la plage,
+       ou statut changé dans la plage (`jiraStatusChanged`) — puis le RETIRE de la JQL, sinon le
+       `status CHANGED DURING` plus bas le rejouerait seul, en ET. */
+    const mvt = /\(\(created >= "([^"]+)" AND created <= "([^"]+)"\) OR \(updated >= [^)]+\)(?: OR \w+ CHANGED DURING \([^)]+\))+\)/i.exec(jql);
+    if (mvt) {
+      const [a, b] = [borne(mvt[1]), borne(mvt[2])];
+      const dedans = (x) => { const d = Date.parse(String(x || '').replace(/(\d{2})(\d{2})$/, '$1:$2')); return Number.isFinite(d) && d >= a && d <= b; };
+      issues = issues.filter((i) => dedans(i.fields && i.fields.created) || dedans(i.fields && i.fields.updated) || dedans(state.jiraStatusChanged[i.key]));
+      jql = jql.replace(mvt[0], '');
+    }
     const chg = /status CHANGED DURING \(([^,]+),([^)]+)\)/i.exec(jql);
     if (chg) {
       const [a, b] = [borne(chg[1]), borne(chg[2])];
@@ -343,6 +354,16 @@ function handleJira(req, res, pathname, body = {}) {
       const cle = par[1].toUpperCase();
       issues = issues.filter((i) => i.fields && i.fields.parent && String(i.fields.parent.key).toUpperCase() === cle);
     }
+    /* Jira → Stats : les filtres de champ partent en JQL (`issuetype IN`, `labels IN`, `priority IN`). */
+    const champIn = (nom, lire) => {
+      const m = new RegExp(`(?:^|\\s)${nom}\\s+IN\\s*\\(([^)]*)\\)`, 'i').exec(jql);
+      if (!m) return;
+      const set = new Set(m[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => lire(i.fields || {}).some((v) => set.has(v)));
+    };
+    champIn('issuetype', (f) => [f.issuetype && f.issuetype.name]);
+    champIn('labels', (f) => f.labels || []);
+    champIn('priority', (f) => [f.priority && f.priority.name]);
     const nonStat = /status\s+NOT\s+IN\s*\(([^)]*)\)/i.exec(jql);
     if (nonStat) {
       const exclus = new Set(nonStat[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
@@ -355,6 +376,11 @@ function handleJira(req, res, pathname, body = {}) {
         const v = i.fields && i.fields.customfield_10020;
         return Array.isArray(v) && v.some((sp) => ids.has(String(sp.id)));
       });
+    }
+    // « Mes tickets » et les stats écartent les terminés PAR Jira : le mock doit le faire aussi,
+    // sinon « Inclure les terminés » ne changerait rien de visible et ne prouverait rien.
+    if (/statusCategory\s*!=\s*"?Done"?/i.test(jql)) {
+      issues = issues.filter((i) => !(i.fields && i.fields.status && i.fields.status.statusCategory && i.fields.status.statusCategory.key === 'done'));
     }
     if (/statusCategory\s*=\s*"?In Progress"?/i.test(jql)) {
       issues = issues.filter((i) => i.fields && i.fields.status

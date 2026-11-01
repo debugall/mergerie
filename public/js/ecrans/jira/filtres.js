@@ -275,12 +275,18 @@ function renderJiraList() {
   const items = jiraVisibleIssues();
   // Compteur = nombre de tickets APRÈS filtres (assigné côté serveur + statut/recherche côté client).
   if ($('#jiraInfo')) {
-    /* Jira plafonne à cent résultats, triés par date de mise à jour. Sans le dire, on croit voir
-       « tous » les tickets et on s'étonne qu'un filtre en fasse disparaître. */
-    const tronque = JIRA.total != null && JIRA.total > JIRA.issues.length;
+    /* La liste pagine jusqu'à mille tickets, triés par date de mise à jour. Au-delà, le dire : sans
+       ça on croit voir « tous » les tickets et on s'étonne qu'un filtre en fasse disparaître. Le total
+       n'est pas toujours connu (Jira Cloud ne le donne pas) : le message s'en passe alors. */
+    const tronque = JIRA.tronque || (JIRA.total != null && JIRA.total > JIRA.issues.length);
+    const avecTotal = JIRA.total != null && JIRA.total > JIRA.issues.length;
     $('#jiraInfo').textContent = tr('jira.count', { n: items.length, count: items.length })
-      + (tronque ? ` · ${tr('jira.truncated', { total: JIRA.total, shown: JIRA.issues.length })}` : '');
+      + (tronque ? ` · ${tr(avecTotal ? 'jira.truncated' : 'jira.truncated-nototal', { total: JIRA.total, shown: JIRA.issues.length })}` : '');
   }
+  /* Le même nombre sur l'onglet, comme « Surveillés » et « Analysés » : c'est là qu'on le cherche,
+     et il suit chaque filtre — recherche, statuts, assignés, champs — pas seulement le chargement. */
+  const badge = $('#jiraMineCount');
+  if (badge) { badge.textContent = String(items.length); badge.hidden = !JIRA.issues.length; }
   if (!items.length) { box.innerHTML = `<p class="muted jira-empty">${esc(tr('jira.no-match'))}</p>`; return; }
   box.innerHTML = items.map((it) => `<button class="jira-item jira-cat-${JIRA_CAT[it.statusCategory] || 'todo'}${it.key === JIRA.selectedKey ? ' active' : ''}" data-jira="${esc(it.key)}">
       <div class="jira-item-row1"><code class="jira-key">${esc(it.key)}</code> ${jiraStatusChip(it)} <span class="jira-spec-chip" data-spec-chip="${esc(it.key)}" hidden></span></div>

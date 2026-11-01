@@ -1345,7 +1345,7 @@ branch (a team decision: it is the definition of “entered without review”). 
 watched branches specific to a repository, in its edit row.
 
 ### Jira
-Two sub-tabs: **My tickets** and **Watched**. The menu carries a **badge** = the number of tickets
+Four sub-tabs: **My tickets**, **Watched**, **Analysed** and **Stats**. The menu carries a **badge** = the number of tickets
 **in progress that are assigned to you** (status category *In Progress*, the only definition that survives
 across workflows, since state names are free from one project to the next). It is fed by a counter
 **cached server-side** and refreshed by the watcher: showing it does not cost a Jira call every time you
@@ -1355,6 +1355,8 @@ walk past.
 **The Jira tickets**, fetched automatically when you open the menu. By **default only yours** are shown, but
 a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the
 recent assignees; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
+- The **number of tickets** in the list is shown in the toolbar and **on the tab** itself, and follows every
+  filter (search, statuses, assignees, fields), not only the load.
 - The **list** (on the left, with search) shows each ticket as a compact card: key, the **epic** it belongs
   to when there is one, summary, **status** (a dot coloured by category: to do / in progress / done), type,
   priority, update date. **The search covers the epic too** — “show me the tickets of that epic” is a common
@@ -1388,10 +1390,10 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
   **above the detail panel**; the one you open floats over the page, so neither the row nor the list moves,
   and a click outside closes it. The **Filters** panel lets you choose the **field** first (epic, type,
   priority, project, assignee, reporter, labels, components, fix versions) then **one or more values**. The
-  **Project** criterion is an exception: it is applied **by Jira**, not afterwards. Jira caps a search at a
-  hundred tickets sorted by update date; filtering browser-side would therefore filter only an excerpt, and
-  the tickets of the wanted project could sit outside that excerpt — they disappeared instead of appearing.
-  When the list is capped, the counter says so (“100 of 340 shown”). The values on offer are the ones
+  **Project** criterion is an exception: it is applied **by Jira**, not afterwards. The list **pages** the
+  Jira search up to **1,000 tickets** sorted by update date (a Jira page holds a hundred); a filter applied by
+  Jira guarantees the tickets of the wanted project are within what is read, not beyond it. When the cap is
+  reached, the counter says so (“1000 of 2340 shown — cap reached”). The values on offer are the ones
   **actually present** in the loaded tickets, with the number of tickets for each — offering a value that
   brings back nothing helps nobody. The field picker and each value list have their own **search**; the
   values' one **hides rows without unticking anything**, so a selection is never lost by hiding. Several
@@ -1489,6 +1491,34 @@ the repositories and branches read, its state (proposed, posted, to review…) a
 the ticket and its brief next to the list, and the badge counts those with a proposal. In **My tickets**,
 the **Analysis** filter shows everything, only the tickets *already analysed*, or only those *not analysed yet*
 (the choice is remembered, and the list updates as soon as a brief arrives).
+
+#### Stats — counting a set of tickets
+**How many bugs, how many user stories, how many user stories linked to a bug, and where does each status
+stand?** The **Stats** tab answers over the set its filters describe — the **same filters as My tickets**
+(assignees, statuses, sprints, field filters, “Include done”), but **independent**: what you tick here does
+not touch the list, and the other way round. On the first visit Stats inherits the choices of My tickets,
+then each lives its own life.
+
+- **The whole set, server-side.** The counts are computed by the server, paging the Jira search up to
+  **1,000 tickets** (like the list) — beyond that the screen says so (“cap reached”) and invites you to
+  narrow; the list's text search, on the other hand, does not enter the counts. Field filters go **into the JQL** (type,
+  priority, labels, components, versions, epic); a reporter or an assignee ticked by name is turned into an
+  account id — a name Jira cannot translate is **ignored and said**, rather than counted silently over a
+  wider scope.
+- **Four tiles**: tickets, bugs, user stories, **user stories linked to a bug** (each share as a percentage,
+  the last one as a share of the user stories) — and “other types” when there are any. A user story is
+  “linked to a bug” through **any** Jira link, in either direction, through a bug **sub-task** or a bug
+  **parent**.
+- **By status**: each status with its number of tickets, its percentage and a bar, the most numerous first.
+  **By assignee**: the same per person, the most loaded first, “unassigned” apart.
+- **An optional date range** (“Moved from … to …”): count only the tickets that **moved within the range**,
+  whatever the movement — created, updated (comment, edit, attachment…), or whose status, assignee, priority
+  or resolution changed (what JQL keeps a history of). Whole days, in the Jira account's timezone; one bound is
+  enough; the cross removes the range, and the choice is remembered.
+- **What counts as a bug and as a user story** is set in **Settings → Jira** (type names separated by
+  commas, case-insensitive; by default *Bug* and *Story, User Story*): a type's name is free from one
+  instance to the next (Defect, Récit…). It is a team decision, shared like the rest of the settings, and
+  the screen reminds you at the bottom what it counted.
 
 #### Technical brief of a ticket
 A ticket written by a Product Owner says the functional *what*, never the *where* (which repositories,
