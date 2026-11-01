@@ -24,8 +24,9 @@ describe('typesDe : les noms de type d’un réglage', () => {
 describe('statsDe : les comptes', () => {
   const types = { bugTypes: 'Bug', usTypes: 'Story, User Story' };
   test('total, bugs, US, autres — et le type se lit sans tenir compte de la casse', () => {
-    const r = jirastats.statsDe([brut('A-1', 'BUG'), brut('A-2', 'Story'), brut('A-3', 'user story'), brut('A-4', 'Tâche')], types);
-    assert.equal(r.total, 4); assert.equal(r.bugs, 1); assert.equal(r.us, 2); assert.equal(r.autres, 1);
+    const r = jirastats.statsDe([brut('A-1', 'BUG'), brut('A-2', 'Story'), brut('A-3', 'user story'), brut('A-4', 'Tâche'), brut('A-5', 'Epic'), brut('A-6', 'Tâche')], types);
+    assert.equal(r.total, 6); assert.equal(r.bugs, 1); assert.equal(r.us, 2); assert.equal(r.autres, 3);
+    assert.deepEqual(r.autresTypes, [{ name: 'Tâche', n: 2 }, { name: 'Epic', n: 1 }], 'les autres types nommés, les plus nombreux d’abord');
   });
   test('une US est « liée à un bug » par un lien entrant, sortant, une sous-tâche ou un parent — un lien vers une tâche ne compte pas', () => {
     const r = jirastats.statsDe([
@@ -54,7 +55,7 @@ describe('statsDe : les comptes', () => {
   });
   test('vide : des zéros, pas une division par zéro', () => {
     const r = jirastats.statsDe([], types);
-    assert.deepEqual(r, { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, statuts: [], assignes: [] });
+    assert.deepEqual(r, { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [] });
   });
 });
 

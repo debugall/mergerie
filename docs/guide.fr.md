@@ -1572,7 +1572,7 @@ vit sa vie.
   identifiant de compte — un nom que Jira ne sait pas traduire est **ignoré et dit**, plutôt que compté en
   silence sur un périmètre plus large.
 - **Quatre tuiles** : tickets, bugs, US, **US liées à un bug** (chaque part en pourcentage, la dernière en
-  part des US) — et « autres types » quand il y en a. Une US est « liée à un bug » par **n'importe quel
+  part des US) — et « autres types » quand il y en a, le survol de cette tuile nommant ces types. Une US est « liée à un bug » par **n'importe quel
   lien** Jira, dans les deux sens, par une **sous-tâche** bug ou par un **parent** bug.
 - **Par statut** : chaque statut avec son nombre de tickets, son pourcentage et une barre, les plus nombreux
   d'abord. **Par assigné** : la même chose par personne, les plus chargées d'abord, « non assigné » à part.

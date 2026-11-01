@@ -64,8 +64,8 @@ function typesLies(f) {
 function statsDe(issues, { bugTypes, usTypes }) {
   const bugs = bugTypes instanceof Set ? bugTypes : typesDe(bugTypes, 'Bug');
   const us = usTypes instanceof Set ? usTypes : typesDe(usTypes, 'Story, User Story');
-  const r = { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, statuts: [], assignes: [] };
-  const parStatut = new Map(); const parAssigne = new Map();
+  const r = { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [] };
+  const parStatut = new Map(); const parAssigne = new Map(); const parAutre = new Map();
   for (const i of (issues || [])) {
     const f = (i && i.fields) || {};
     const type = nomType(f);
@@ -74,7 +74,12 @@ function statsDe(issues, { bugTypes, usTypes }) {
     else if (us.has(type)) {
       r.us += 1;
       if (typesLies(f).some((x) => bugs.has(x))) r.usLieesBug += 1;
-    } else r.autres += 1;
+    } else {
+      r.autres += 1;
+      // Les « autres » nommés : le nom tel que Jira l'affiche (pas en minuscules), pour le survol de la tuile.
+      const nom = String((f.issuetype && f.issuetype.name) || '').trim() || '—';
+      parAutre.set(type, { name: nom, n: ((parAutre.get(type) || {}).n || 0) + 1 });
+    }
     const nom = (f.status && f.status.name) || '—';
     const cat = (f.status && f.status.statusCategory && f.status.statusCategory.key) || '';
     const e = parStatut.get(nom) || { name: nom, cat, n: 0 };
@@ -89,6 +94,7 @@ function statsDe(issues, { bugTypes, usTypes }) {
   r.statuts = [...parStatut.values()]
     .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
     .map((s) => ({ ...s, pct: part(s.n) }));
+  r.autresTypes = [...parAutre.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   // Les plus chargés d'abord ; « non assigné » en dernier à nombre égal.
   r.assignes = [...parAssigne.values()]
     .sort((a, b) => b.n - a.n || (a.accountId ? 0 : 1) - (b.accountId ? 0 : 1) || a.name.localeCompare(b.name))

@@ -79,6 +79,7 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.equal(await tuile('us'), '3');
     assert.equal(await tuile('us-linked'), '2', 'un lien entrant et une sous-tâche ; un lien vers une tâche ne compte pas');
     assert.equal(await tuile('others'), '1');
+    assert.equal(await page.locator('#jiraStatsCorps .stat-tile[data-stats="others"]').getAttribute('title'), 'Tâche (1)', 'le survol de « Autres types » nomme ces types');
     assert.match(await page.locator('#jiraStatsInfo').innerText(), /5 tickets comptés/);
     const lignes = await page.locator('#jiraStatsCorps tr[data-stats-status]').allInnerTexts();
     assert.equal(lignes.length, 2);

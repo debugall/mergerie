@@ -1506,7 +1506,8 @@ then each lives its own life.
   account id — a name Jira cannot translate is **ignored and said**, rather than counted silently over a
   wider scope.
 - **Four tiles**: tickets, bugs, user stories, **user stories linked to a bug** (each share as a percentage,
-  the last one as a share of the user stories) — and “other types” when there are any. A user story is
+  the last one as a share of the user stories) — and “other types” when there are any, hovering that tile
+  naming those types. A user story is
   “linked to a bug” through **any** Jira link, in either direction, through a bug **sub-task** or a bug
   **parent**.
 - **By status**: each status with its number of tickets, its percentage and a bar, the most numerous first.

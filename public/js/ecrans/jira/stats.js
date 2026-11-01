@@ -138,7 +138,7 @@ async function jsCompter(seq = JSTATS.seq) {
 function jsRendre(d) {
   const corps = $('#jiraStatsCorps');
   const pct = (n, t) => (t ? `${Math.round((n / t) * 1000) / 10} %` : '—');
-  const tuile = (cls, val, lbl, sous = '', cle = '') => `<div class="stat-tile ${cls}" data-stats="${cle}"><div class="stat-val">${esc(String(val))}</div><div class="stat-lbl">${esc(lbl)}</div>${sous ? `<div class="jira-stats-sous muted">${esc(sous)}</div>` : ''}</div>`;
+  const tuile = (cls, val, lbl, sous = '', cle = '', titre = '') => `<div class="stat-tile ${cls}" data-stats="${cle}"${titre ? ` title="${esc(titre)}"` : ''}><div class="stat-val">${esc(String(val))}</div><div class="stat-lbl">${esc(lbl)}</div>${sous ? `<div class="jira-stats-sous muted">${esc(sous)}</div>` : ''}</div>`;
   const dates = jsDates();
   const plage = (dates.depuis || dates.jusqua) ? ` · ${tr('jira.stats.dates.scope', { from: dates.depuis ? fmtDate(dates.depuis) : '…', to: dates.jusqua ? fmtDate(dates.jusqua) : '…' })}` : '';
   $('#jiraStatsInfo').textContent = tr('jira.stats.scope', { n: d.lus, count: d.lus }) + plage;
@@ -152,7 +152,7 @@ function jsRendre(d) {
       ${tuile('amber', d.bugs, tr('jira.stats.bugs'), pct(d.bugs, d.total), 'bugs')}
       ${tuile('accent', d.us, tr('jira.stats.us'), pct(d.us, d.total), 'us')}
       ${tuile('green', d.usLieesBug, tr('jira.stats.us-linked'), tr('jira.stats.of-us', { pct: pct(d.usLieesBug, d.us) }), 'us-linked')}
-      ${d.autres ? tuile('', d.autres, tr('jira.stats.others'), pct(d.autres, d.total), 'others') : ''}
+      ${d.autres ? tuile('', d.autres, tr('jira.stats.others'), pct(d.autres, d.total), 'others', (d.autresTypes || []).map((x) => `${x.name} (${x.n})`).join(', ')) : ''}
     </div>
     <h3 class="jira-stats-h">${esc(tr('jira.stats.by-status'))}</h3>
     <table class="jira-stats-table">
