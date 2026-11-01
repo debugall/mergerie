@@ -5,6 +5,7 @@
 const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
+    team: { v: 'eq-tunnel', l: 'Équipe Tunnel de commande' },
     sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
@@ -32,6 +33,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
+    team: { v: 'eq-paiement', l: 'Équipe Paiement' },
     sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     /* « En revue » : c'est l'état qui fait remonter ses merge requests en tête de la file —
@@ -50,6 +52,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
+    team: { v: 'eq-plateforme', l: 'Équipe Plateforme' },
     sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
     epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
@@ -231,7 +234,7 @@ function statsIssues(c = {}, filtres = {}, plage = {}) {
   const f = filtres || {};
   const gardes = issues.filter((m) => ok(f.type, [m.type]) && ok(f.priority, [m.priority])
     && ok(f.labels, m.labels || []) && ok(f.components, m.components || []) && ok(f.fixVersions, m.fixVersions || [])
-    && ok(f.epic, m.epic ? [m.epic.key] : []) && ok(f.reporter, m.reporter ? [m.reporter.name] : [])
+    && ok(f.epic, m.epic ? [m.epic.key] : []) && ok(f.reporter, m.reporter ? [m.reporter.name] : []) && ok(f.team, m.team ? [m.team.v] : [])
     && ok(f.assignee, m.assignee ? [m.assignee.name] : []));
   const tous = [...ISSUES, ...DONE];
   const brutDe = (k) => { const x = tous.find((i) => i.key === k); return x ? { key: x.key, fields: { issuetype: { name: x.type } } } : null; };

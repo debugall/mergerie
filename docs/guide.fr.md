@@ -1452,8 +1452,9 @@ bougé sur la fenêtre, dans les projets du filtre s'il y en a, comptes désacti
   puces alignées **au-dessus du panneau de détail** ; celui qu'on ouvre flotte au-dessus de la page, si
   bien que ni la ligne ni la liste ne bougent, et un clic à l'extérieur referme. Le panneau **Filtres**
   permet de choisir d'abord
-  **le champ** (epic, type, priorité, projet, assigné, rapporteur, étiquettes, composants, versions
-  correctives) puis **une ou plusieurs valeurs**. Le critère **Projet** fait exception : il est appliqué
+  **le champ** (epic, type, priorité, projet, **équipe** — le champ *Team* d'Atlassian, repéré par son schéma ou
+  son nom « Team » / « Équipe » —, assigné, rapporteur, étiquettes, composants, versions correctives) puis **une
+  ou plusieurs valeurs**. Le critère **Projet** fait exception : il est appliqué
   **par Jira**, pas après coup. La liste **pagine** la recherche Jira jusqu'à **1 000 tickets** triés par
   date de mise à jour (une page Jira en fait cent) ; un filtre appliqué par Jira garantit que les tickets
   du projet voulu sont dans ce qu'on lit, et non au-delà. Quand le plafond est atteint, le compteur le dit

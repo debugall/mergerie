@@ -42,12 +42,14 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
 
   before(async () => {
     app = await startApp();
+    // L'instance connaît un champ « Équipe » (personnalisé, repéré par son schéma).
+    app.state.jiraFields = [{ id: 'summary', name: 'Résumé' }, { id: 'customfield_10030', name: 'Équipe', custom: true, schema: { custom: 'com.atlassian.jira.plugin.system.customfieldtypes:atlassian-team' } }];
     app.state.jiraProjectStatuses.PROJ = [{ id: '1', name: 'Tâche', statuses: [
       etat('À faire', 'new'), etat('En cours', 'indeterminate'), etat('Terminé', 'done'),
     ] }];
     const ticket = (key, f) => { app.state.jiraIssues[key] = { key, fields: { issuetype: { name: 'Tâche' }, updated: '2026-09-10T10:00:00.000+0000', assignee: MOI, project: { key: 'PROJ', name: 'Boutique' }, status: etat('À faire', 'new'), ...f } }; };
-    ticket('PROJ-1', { summary: 'Un bug', issuetype: { name: 'Bug' }, labels: ['facturation'], updated: '2026-08-02T10:00:00.000+0000' });
-    ticket('PROJ-2', { summary: 'Une US liée au bug', issuetype: { name: 'Story' }, status: etat('En cours', 'indeterminate'), issuelinks: [{ type: { name: 'Relates' }, inwardIssue: lie('PROJ-1', 'Bug') }] });
+    ticket('PROJ-1', { summary: 'Un bug', issuetype: { name: 'Bug' }, labels: ['facturation'], updated: '2026-08-02T10:00:00.000+0000', customfield_10030: { id: 'eq-paiement', name: 'Paiement' } });
+    ticket('PROJ-2', { summary: 'Une US liée au bug', issuetype: { name: 'Story' }, status: etat('En cours', 'indeterminate'), issuelinks: [{ type: { name: 'Relates' }, inwardIssue: lie('PROJ-1', 'Bug') }], customfield_10030: { id: 'eq-paiement', name: 'Paiement' } });
     ticket('PROJ-3', { summary: 'Une US avec un bug en sous-tâche', issuetype: { name: 'User Story' }, subtasks: [lie('PROJ-9', 'Bug')] });
     ticket('PROJ-4', { summary: 'Une US sans bug', issuetype: { name: 'Story' }, issuelinks: [{ type: { name: 'Relates' }, outwardIssue: lie('PROJ-5', 'Tâche') }] });
     ticket('PROJ-5', { summary: 'Une tâche', status: etat('En cours', 'indeterminate'), updated: '2026-07-20T10:00:00.000+0000', created: '2026-07-01T10:00:00.000+0000' });
@@ -133,6 +135,21 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     const balayage = app.state.calls.map((c) => decodeURIComponent(c.path)).find((p) => /assignee IS NOT EMPTY AND updated >= -180d/.test(p));
     assert.ok(balayage, 'la JQL du filtre porte la fenêtre de six mois');
     await page.locator('#jiraStatsAssigneeFilter > summary').click();
+  });
+
+  test('le filtre « Équipe » : un champ personnalisé de l’instance, proposé par son nom, envoyé à Jira par son identifiant', async () => {
+    await page.locator('#jiraStatsFieldFilter > summary').click();
+    await page.locator('#jiraStatsFieldFilterPick .cb-search').click();
+    await page.locator('#jiraStatsFieldFilterPick .combo-opt[data-v="team"]').click();
+    await page.waitForSelector('#jiraStatsFieldFilterBody [data-jscrit="team"]');
+    assert.match(await page.locator('#jiraStatsFieldFilterBody [data-jscrit="team"]').innerText(), /Paiement/);
+    await page.locator('#jiraStatsFieldFilterBody [data-jsval="team"][value="eq-paiement"]').check();
+    await attendreTotal(2);
+    assert.match(derniereJqlStats(), /cf\[10030\] IN \("eq-paiement"\)/);
+    assert.equal(await tuile('bugs'), '1'); assert.equal(await tuile('us'), '1');
+    await page.locator('#jiraStatsFieldFilterBody [data-jsdel="team"]').click();
+    await attendreTotal(5);
+    await page.locator('#jiraStatsFieldFilter > summary').click();
   });
 
   test('cocher Bob dans les assignés : sa clé part dans la JQL, son bug est compté', async () => {

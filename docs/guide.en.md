@@ -1390,7 +1390,8 @@ projects if any, deactivated accounts and applications excluded; **you ticked by
 - **Filters by field, generic.** The three filters — Assignees, Statuses and **Filters** — are chips lined up
   **above the detail panel**; the one you open floats over the page, so neither the row nor the list moves,
   and a click outside closes it. The **Filters** panel lets you choose the **field** first (epic, type,
-  priority, project, assignee, reporter, labels, components, fix versions) then **one or more values**. The
+  priority, project, **team** — Atlassian's *Team* field, found by its schema or its name “Team” / “Équipe” —,
+  assignee, reporter, labels, components, fix versions) then **one or more values**. The
   **Project** criterion is an exception: it is applied **by Jira**, not afterwards. The list **pages** the
   Jira search up to **1,000 tickets** sorted by update date (a Jira page holds a hundred); a filter applied by
   Jira guarantees the tickets of the wanted project are within what is read, not beyond it. When the cap is

@@ -19,7 +19,7 @@ const tasks = require('../../agent/tasks');
 const { servirFichierNonFiable } = require('../fichiers');
 const { mrById, wrap } = require('../http');
 const { exigerJetonFrais, noterTest } = require('../lib/connexions');
-const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, statutsDesProjets, personnesAssignables, watchRows } = require('../lib/jira');
+const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, teamFieldId, statutsDesProjets, personnesAssignables, watchRows } = require('../lib/jira');
 const { targetById } = require('../lib/sessions');
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -74,7 +74,7 @@ app.get('/api/jira/tickets', wrap(async (req, res) => {
   const max = Math.min(jira.PLAFOND_PAGES, Math.max(1, parseInt(req.query.max, 10) || jira.PLAFOND_PAGES));
   res.json({ configured: true, ...(await jira.searchByAssignees(cfg, {
     accountIds, includeDone: req.query.includeDone === '1', projects, sprints, hideStatuses, max,
-    sprintField: await sprintFieldId(cfg),
+    sprintField: await sprintFieldId(cfg), teamField: await teamFieldId(cfg),
   })) });
 }));
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.

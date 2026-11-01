@@ -108,6 +108,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
     (it.labels && it.labels.length) ? jiraMetaRow(tr('jira.meta.labels'), it.labels.map((l) => `<span class="jira-label">${esc(l)}</span>`).join(' ')) : '',
     (it.components && it.components.length) ? jiraMetaRow(tr('jira.meta.components'), esc(it.components.join(', '))) : '',
     (it.fixVersions && it.fixVersions.length) ? jiraMetaRow(tr('jira.meta.fixversions'), esc(it.fixVersions.join(', '))) : '',
+    it.team ? jiraMetaRow(tr('jira.meta.team'), esc(it.team.l)) : '',
   ].join('');
   const cList = (it.comments || []).length
     ? (it.comments || []).map((c) => `<div class="jira-comment">

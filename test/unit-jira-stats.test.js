@@ -91,8 +91,27 @@ describe('clausesFiltres : les filtres de champ en JQL', () => {
     assert.deepEqual(clauses, ['reporter IN ("acc-1")', 'assignee IN ("acc-1")']);
     assert.deepEqual(ignores, [{ champ: 'reporter', valeur: 'Inconnue' }]);
   });
+  test('l’équipe : un champ personnalisé, interrogé par son identifiant ; sans champ connu, ignoré et dit', () => {
+    assert.deepEqual(jirastats.clausesFiltres({ team: ['eq-1', 'eq-2'] }, [], { teamField: 'customfield_10030' }).clauses, ['cf[10030] IN ("eq-1", "eq-2")']);
+    assert.deepEqual(jirastats.clausesFiltres({ team: ['eq-1'] }, [], {}).ignores, [{ champ: 'team', valeur: 'eq-1' }]);
+  });
   test('sans filtre : rien', () => {
     assert.deepEqual(jirastats.clausesFiltres(null), { clauses: [], ignores: [] });
+  });
+});
+
+describe('le champ équipe : détection et lecture', () => {
+  const jira = require('../src/integrations/jira.js');
+  test('repéré par son schéma, sinon par son nom (Team / Équipe), jamais un champ standard', () => {
+    assert.deepEqual(jira.detectTeamField([{ id: 'customfield_1', name: 'Squad', marqueur: 'com.atlassian.jira.plugin.system.customfieldtypes:atlassian-team' }]), { id: 'customfield_1', name: 'Squad' });
+    assert.deepEqual(jira.detectTeamField([{ id: 'customfield_2', name: 'Équipe', marqueur: 'x' }]), { id: 'customfield_2', name: 'Équipe' });
+    assert.equal(jira.detectTeamField([{ id: 'team', name: 'Team', marqueur: '' }]), null);
+  });
+  test('la valeur : { id, name } récent, { id, title } ancien, ou une chaîne', () => {
+    assert.deepEqual(jira.teamDe({ id: 'a1', name: 'Paiement' }), { v: 'a1', l: 'Paiement' });
+    assert.deepEqual(jira.teamDe({ id: 7, title: 'Plateforme' }), { v: '7', l: 'Plateforme' });
+    assert.deepEqual(jira.teamDe('Tunnel'), { v: 'Tunnel', l: 'Tunnel' });
+    assert.equal(jira.teamDe(null), null);
   });
 });
 

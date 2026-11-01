@@ -369,6 +369,12 @@ function handleJira(req, res, pathname, body = {}) {
       issues = issues.filter((i) => lire(i.fields || {}).some((v) => set.has(v)));
     };
     champIn('issuetype', (f) => [f.issuetype && f.issuetype.name]);
+    // Un champ personnalisé par identifiant (`cf[10030] IN (…)`) : l'équipe, par son id ou son nom.
+    const cfm = /cf\[(\d+)\]\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (cfm) {
+      const set = new Set(cfm[2].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => { const v = (i.fields || {})[`customfield_${cfm[1]}`]; return v && (set.has(String(v.id)) || set.has(String(v.name))); });
+    }
     champIn('labels', (f) => f.labels || []);
     champIn('priority', (f) => [f.priority && f.priority.name]);
     const nonStat = /status\s+NOT\s+IN\s*\(([^)]*)\)/i.exec(jql);

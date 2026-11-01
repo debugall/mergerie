@@ -16,6 +16,7 @@ const JIRA_CHAMPS = [
   { cle: 'type', i18n: 'jira.meta.type', vals: (it) => (it.type ? [{ v: it.type, l: it.type }] : []) },
   { cle: 'priority', i18n: 'jira.meta.priority', vals: (it) => (it.priority ? [{ v: it.priority, l: it.priority }] : []) },
   { cle: 'project', i18n: 'jira.meta.project', vals: (it) => (it.projectKey ? [{ v: it.projectKey, l: it.project || it.projectKey }] : []) },
+  { cle: 'team', i18n: 'jira.meta.team', vals: (it) => (it.team ? [{ v: it.team.v, l: it.team.l }] : []) },
   { cle: 'reporter', i18n: 'jira.meta.reporter', vals: (it) => (it.reporter && it.reporter.name ? [{ v: it.reporter.name, l: it.reporter.name }] : []) },
   { cle: 'assignee', i18n: 'jira.meta.assignee', vals: (it) => (it.assignee && it.assignee.name ? [{ v: it.assignee.name, l: it.assignee.name }] : []) },
   { cle: 'labels', i18n: 'jira.meta.labels', vals: (it) => (it.labels || []).map((x) => ({ v: x, l: x })) },

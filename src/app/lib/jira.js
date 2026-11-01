@@ -50,23 +50,25 @@ async function statutsDesProjets(cfg, cles) {
   }
   return [...par.values()];
 }
-/* Identifiant du champ « sprint », résolu une fois puis mémorisé : il ne change pas en cours
-   de route, et le redemander à chaque chargement coûterait un appel Jira pour rien. Remis à
-   zéro à l'enregistrement de la configuration (l'instance visée peut changer). */
+/* Identifiants des champs « sprint » et « équipe », résolus en UN appel puis mémorisés : ils ne
+   changent pas en cours de route, et les redemander à chaque chargement coûterait un appel Jira
+   pour rien. Remis à zéro à l'enregistrement de la configuration (l'instance visée peut changer). */
 let champSprint = null;   // null = pas encore cherché ; '' = cherché, absent
-async function sprintFieldId(cfg) {
-  if (champSprint !== null) return champSprint;
+let champTeam = null;     // idem, pour le champ « équipe » — trouvé dans le MÊME appel /field
+async function chercherChamps(cfg) {
+  if (champSprint !== null) return;
   try {
-    const trouve = jira.detectSprintField(await jira.allFields(cfg));
-    champSprint = trouve ? trouve.id : '';
+    const tous = await jira.allFields(cfg);
+    const sprint = jira.detectSprintField(tous); const team = jira.detectTeamField(tous);
+    champSprint = sprint ? sprint.id : ''; champTeam = team ? team.id : '';
   } catch {
     /* Droits manquants ou panne : on s'en passe cette fois, sans casser l'onglet — mais sans le
        mémoriser, sinon une coupure de quelques secondes cachait le filtre Sprints jusqu'au
        prochain enregistrement des réglages. */
-    return '';
   }
-  return champSprint;
 }
+async function sprintFieldId(cfg) { await chercherChamps(cfg); return champSprint || ''; }
+async function teamFieldId(cfg) { await chercherChamps(cfg); return champTeam || ''; }
 /* ---------- Tickets Jira surveillés ----------------------------------------
    Surveiller un ticket = mémoriser son état, et être prévenu quand il change. On stocke le
    DERNIER état connu au moment de l'ajout : sans ça, la première vérification comparerait
@@ -274,7 +276,7 @@ async function prevenirJira(cible) {
 
 /* Le champ sprint se recherche sur l'instance Jira configurée : quand elle change, on oublie
    ce qu'on avait trouvé. Appelé par PUT /api/config. */
-function oublierChampSprint() { champSprint = null; }
+function oublierChampSprint() { champSprint = null; champTeam = null; }
 
 /* Le compteur du menu est un état de module que `refreshJiraBadge` REMPLACE : un module qui
    l'importerait n'en verrait que la première valeur. On le lit donc par une fonction. */
@@ -285,5 +287,5 @@ function lireJiraBadge() { return jiraBadge; }
 function arreterJiraWatch() { if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; } }
 
 module.exports = {
-  texteJira, statutsParProjet, statutsDesProjets, personnesAssignables, oublierAssignes, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
+  texteJira, statutsParProjet, statutsDesProjets, personnesAssignables, oublierAssignes, champSprint, sprintFieldId, teamFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
 };

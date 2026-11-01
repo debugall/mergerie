@@ -23,10 +23,18 @@ function typesDe(texte, defaut) {
    compter en silence sur un périmètre plus large que celui demandé. */
 const CLE_TICKET = /^[A-Z][A-Z0-9]{0,20}-[1-9][0-9]{0,9}$/;
 const CHAMP_JQL = { type: 'issuetype', priority: 'priority', labels: 'labels', components: 'component', fixVersions: 'fixVersion' };
-function clausesFiltres(filtres, people = []) {
+function clausesFiltres(filtres, people = [], { teamField = '' } = {}) {
   const f = filtres && typeof filtres === 'object' ? filtres : {};
   const clauses = []; const ignores = [];
   const quote = (l) => l.map((x) => `"${x}"`).join(', ');
+  /* L'équipe est un champ personnalisé : JQL l'interroge par son identifiant (`cf[10030]`), par la
+     valeur (l'identifiant d'équipe). Sans champ connu de l'instance, le critère est ignoré et dit. */
+  const equipes = jira.valeursJql(f.team);
+  if (equipes.length) {
+    const m = /^customfield_(\d+)$/.exec(String(teamField || ''));
+    if (m) clauses.push(`cf[${m[1]}] IN (${quote(equipes)})`);
+    else for (const v of equipes) ignores.push({ champ: 'team', valeur: v });
+  }
   for (const [cle, champ] of Object.entries(CHAMP_JQL)) {
     const vals = jira.valeursJql(f[cle]);
     if (vals.length) clauses.push(`${champ} IN (${quote(vals)})`);
@@ -132,9 +140,9 @@ function clauseMouvement(depuis, jusqua, tz = null) {
 }
 
 /* Le tout : contraintes de la liste + filtres de champ + plage → JQL → toutes les pages → comptes. */
-async function stats(cfg, { accountIds, includeDone, projects, sprints, hideStatuses, filtres, people, bugTypes, usTypes, depuis, jusqua, tz, workflowDe = null } = {}) {
+async function stats(cfg, { accountIds, includeDone, projects, sprints, hideStatuses, filtres, people, bugTypes, usTypes, depuis, jusqua, tz, workflowDe = null, teamField = '' } = {}) {
   const clauses = jira.jqlDe({ accountIds, includeDone, projects, sprints, hideStatuses });
-  const { clauses: cf, ignores } = clausesFiltres(filtres, people);
+  const { clauses: cf, ignores } = clausesFiltres(filtres, people, { teamField });
   const plage = clauseMouvement(depuis, jusqua, tz);
   const toutes = [...clauses, ...cf, ...(plage ? [plage] : [])];
   if (!toutes.length) toutes.push('updated >= -365d');   // Jira refuse une recherche sans borne

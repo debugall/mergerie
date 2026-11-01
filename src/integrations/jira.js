@@ -390,7 +390,7 @@ async function searchAll(cfg, jql, fields, plafond = PLAFOND_PAGES) {
 }
 
 // Métadonnées d'un ticket depuis l'objet issue (partagé liste + détail).
-function issueMeta(data, champSprint = '') {
+function issueMeta(data, champSprint = '', champTeam = '') {
   const f = data.fields || {};
   const person = personOf;
   return {
@@ -408,6 +408,7 @@ function issueMeta(data, champSprint = '') {
     projectKey: f.project ? f.project.key : '',
     // Vide si le champ sprint n'est pas connu de l'instance ou pas demandé.
     sprints: champSprint ? sprintsDe(f[champSprint]) : [],
+    team: champTeam ? teamDe(f[champTeam]) : null,   // idem : null si le champ n'existe pas ou n'est pas demandé
     created: f.created || '',
     updated: f.updated || '',
     duedate: f.duedate || '',
@@ -471,6 +472,28 @@ function detectSprintField(fields) {
   // Repli sur le nom, pour une instance qui n'exposerait pas le schéma.
   const parNom = par.find((f) => String(f.name).trim().toLowerCase() === 'sprint');
   return parNom ? { id: parNom.id, name: parNom.name } : null;
+}
+
+/* LE CHAMP « ÉQUIPE » (Team) : un champ personnalisé lui aussi, posé par Atlassian (type
+   `atlassian-team`, ou l'ancien `rm-teams-custom-field-team`), repéré par son schéma — et, à
+   défaut, par son nom, « Team » ou « Équipe » selon la langue de l'instance. */
+const MARQUEURS_TEAM = ['atlassian-team', 'teams-custom-field-team'];
+const NOMS_TEAM = ['team', 'équipe', 'equipe'];
+function detectTeamField(fields) {
+  const par = (fields || []).filter((f) => CHAMP_SPRINT.test(f.id));
+  const parMarqueur = par.find((f) => MARQUEURS_TEAM.some((m) => String(f.marqueur).includes(m)));
+  if (parMarqueur) return { id: parMarqueur.id, name: parMarqueur.name };
+  const parNom = par.find((f) => NOMS_TEAM.includes(String(f.name).trim().toLowerCase()));
+  return parNom ? { id: parNom.id, name: parNom.name } : null;
+}
+/* La valeur du champ équipe d'un ticket, ramenée à { v: id, l: nom } : le type récent donne
+   `{ id, name }`, l'ancien `{ id, title }`, et une instance peut n'y mettre qu'une chaîne. */
+function teamDe(brut) {
+  if (!brut) return null;
+  if (typeof brut === 'string') return { v: brut, l: brut };
+  const id = brut.id != null ? String(brut.id) : '';
+  const nom = String(brut.name || brut.title || brut.value || id || '').trim();
+  return (id || nom) ? { v: id || nom, l: nom || id } : null;
 }
 
 /* Valeurs de sprint d'un ticket, ramenées à { v: id, l: nom }. Jira renvoie soit des objets
@@ -602,7 +625,7 @@ function jqlDe({ accountIds = [], includeDone = false, projects = [], sprints = 
 function valeursJql(liste) {
   return [...new Set((liste || []).map(String).filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
 }
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = PLAFOND_PAGES, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = PLAFOND_PAGES, projects = [], sprintField = '', teamField = '', sprints = [], hideStatuses = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const clauses = jqlDe({ accountIds, includeDone, projects, sprints, hideStatuses });
   /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
@@ -612,11 +635,12 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (!clauses.length) clauses.push('updated >= -365d');
   const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
   const champ = CHAMP_SPRINT.test(sprintField) ? sprintField : '';
+  const equipe = CHAMP_SPRINT.test(teamField) ? teamField : '';
   /* TOUTES LES PAGES, pas la première : la liste s'arrêtait à cent tickets (une page Jira), et les
      filtres du navigateur — recherche, champs — ne triaient qu'un extrait. On pagine jusqu'au même
      plafond que les stats ; au-delà, `tronque` le dit et le compteur l'affiche. */
-  const lu = await searchAll(cfg, jql, champ ? `${TICKET_FIELDS},${champ}` : TICKET_FIELDS, max);
-  const issues = lu.issues.map((i) => withUrls(cfg, issueMeta(i, champ)));
+  const lu = await searchAll(cfg, jql, [TICKET_FIELDS, champ, equipe].filter(Boolean).join(','), max);
+  const issues = lu.issues.map((i) => withUrls(cfg, issueMeta(i, champ, equipe)));
   return { issues, total: lu.total != null ? lu.total : issues.length, tronque: lu.tronque };
 }
 
@@ -978,4 +1002,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, request, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, request, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
