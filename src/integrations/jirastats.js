@@ -7,7 +7,7 @@
 const jira = require('./jira');
 
 const PLAFOND = jira.PLAFOND_PAGES;   // tickets lus au plus : dix pages Jira, quelques secondes
-const CHAMPS = 'issuetype,status,issuelinks,parent,subtasks,assignee,project';
+const CHAMPS = 'summary,issuetype,status,issuelinks,parent,subtasks,assignee,project';
 
 /* Les noms de type d'un réglage (« Story, User Story ») : minuscules, sans blancs, dédoublonnés ;
    vide → le défaut. Le nom d'un type est libre d'une instance à l'autre (Bug / Anomalie / Récit). */
@@ -76,17 +76,32 @@ function typesLies(f) {
 function statsDe(issues, { bugTypes, usTypes, workflow = null }) {
   const bugs = bugTypes instanceof Set ? bugTypes : typesDe(bugTypes, 'Bug');
   const us = usTypes instanceof Set ? usTypes : typesDe(usTypes, 'Story, User Story');
-  const r = { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [], projets: [] };
+  /* `tickets` : la liste légère de ce qui a été compté (clé, libellé, statut, type, assigné) — c'est
+     elle que l'écran montre quand on clique un nombre, SANS un appel Jira de plus : tout a déjà
+     été lu pour compter. `groupe` dit dans quelle tuile le ticket est tombé, `usLie` s'il a compté
+     comme US liée à un bug. */
+  const r = { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [], parType: [], projets: [], tickets: [] };
   const projets = new Set();
-  const parStatut = new Map(); const parAssigne = new Map(); const parAutre = new Map();
+  const parStatut = new Map(); const parAssigne = new Map(); const parAutre = new Map(); const parType = new Map();
   for (const i of (issues || [])) {
     const f = (i && i.fields) || {};
     const type = nomType(f);
     r.total += 1;
-    if (bugs.has(type)) r.bugs += 1;
+    const fiche = {
+      key: i.key, summary: f.summary || '', type: String((f.issuetype && f.issuetype.name) || '').trim(),
+      status: (f.status && f.status.name) || '', cat: (f.status && f.status.statusCategory && f.status.statusCategory.key) || '',
+      assignee: f.assignee ? { accountId: String(f.assignee.accountId || f.assignee.name || f.assignee.key || ''), name: f.assignee.displayName || f.assignee.name || '' } : null,
+      groupe: 'other', usLie: false,
+    };
+    r.tickets.push(fiche);
+    // Par type, tel que Jira le nomme (Bug, Story, Tâche, Epic…) — bugs et US compris, c'est la répartition entière.
+    const nomT = String((f.issuetype && f.issuetype.name) || '').trim() || '—';
+    const pt = parType.get(type || nomT) || { name: nomT, n: 0 };
+    pt.n += 1; parType.set(type || nomT, pt);
+    if (bugs.has(type)) { r.bugs += 1; fiche.groupe = 'bug'; }
     else if (us.has(type)) {
-      r.us += 1;
-      if (typesLies(f).some((x) => bugs.has(x))) r.usLieesBug += 1;
+      r.us += 1; fiche.groupe = 'us';
+      if (typesLies(f).some((x) => bugs.has(x))) { r.usLieesBug += 1; fiche.usLie = true; }
     } else {
       r.autres += 1;
       // Les « autres » nommés : le nom tel que Jira l'affiche (pas en minuscules), pour le survol de la tuile.
@@ -115,6 +130,7 @@ function statsDe(issues, { bugTypes, usTypes, workflow = null }) {
   r.statuts = ordonnes.concat(restants).map((s) => ({ ...s, pct: part(s.n) }));
   r.projets = [...projets].sort();
   r.autresTypes = [...parAutre.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  r.parType = [...parType.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name)).map((x) => ({ ...x, pct: part(x.n) }));
   // Les plus chargés d'abord ; « non assigné » en dernier à nombre égal.
   r.assignes = [...parAssigne.values()]
     .sort((a, b) => b.n - a.n || (a.accountId ? 0 : 1) - (b.accountId ? 0 : 1) || a.name.localeCompare(b.name))

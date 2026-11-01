@@ -1577,6 +1577,8 @@ vit sa vie.
 - **Quatre tuiles** : tickets, bugs, US, **US liées à un bug** (chaque part en pourcentage, la dernière en
   part des US) — et « autres types » quand il y en a, le survol de cette tuile nommant ces types. Une US est « liée à un bug » par **n'importe quel
   lien** Jira, dans les deux sens, par une **sous-tâche** bug ou par un **parent** bug.
+- **Par type** : chaque type de ticket (Bug, Story, Tâche, Epic…) avec son nombre, son pourcentage et une barre,
+  les plus nombreux d'abord — la répartition entière, bugs et US compris.
 - **Par statut** : les états **dans l'ordre du workflow** des projets concernés (Backlog, puis En cours, puis
   Terminé…), chacun avec son nombre de tickets, son pourcentage et une barre ; un état sans ticket n'a pas de
   ligne, et un statut porté par un ticket mais étranger au workflow suit. **Par assigné** : la même chose par personne, les plus chargées d'abord, « non assigné » à part.
@@ -1584,6 +1586,9 @@ vit sa vie.
   dans la plage**, quel que soit le mouvement — créés, mis à jour (commentaire, édition, pièce jointe…), ou dont
   le statut, l'assigné, la priorité ou la résolution a changé (ce que JQL sait historiser). Jours entiers, dans
   le fuseau du compte Jira ; une seule borne suffit ; la croix retire la plage, et le choix est mémorisé.
+- **Chaque nombre se clique** — une tuile, ou le compte d'une ligne des tableaux — et ouvre **la liste des
+  tickets qu'il compte** : clé (lien vers Jira), libellé, statut, type, assigné. Rien n'est redemandé à
+  Jira : tout a déjà été lu pour compter.
 - **Ce que ça coûte en appels Jira** : une page de cent tickets = un appel. La liste et les stats en font
   donc au plus dix chacune (plafond de 1 000) ; les valeurs des filtres de Stats viennent d'une seule page ;
   la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les

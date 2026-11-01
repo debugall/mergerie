@@ -93,6 +93,37 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.equal(lignes.length, 2);
     assert.match(lignes[0], /À faire\s+3\s+60 %/i);
     assert.match(lignes[1], /En cours\s+2\s+40 %/i);
+    // Par type : la répartition entière, bugs et US compris.
+    const types = await page.locator('#jiraStatsCorps tr[data-stats-type]').allInnerTexts();
+    assert.equal(types.length, 4);
+    assert.match(types[0], /Story\s+2\s+40 %/);
+    assert.match(types.join('\n'), /Bug\s+1\s+20 %/);
+    assert.match(types.join('\n'), /User Story\s+1\s+20 %/);
+    assert.match(types.join('\n'), /Tâche\s+1\s+20 %/);
+  });
+
+  test('un nombre se clique : la liste des tickets comptés, avec le lien vers Jira — sans rappeler Jira', async () => {
+    const avant = app.state.calls.filter((c) => /^\/rest\/api\/3\/search/.test(c.path)).length;
+    await page.locator('#jiraStatsCorps tr[data-stats-status="À faire"] td.num button').click();
+    await page.waitForSelector('#jiraStatsListModal:not([hidden])');
+    assert.match(await page.locator('#jiraStatsListTitle').innerText(), /3 tickets — À faire/);
+    const lignes = page.locator('#jiraStatsListBody .jira-stats-list-row');
+    assert.equal(await lignes.count(), 3);
+    const premiere = lignes.first();
+    assert.match(await premiere.innerText(), /PROJ-\d.*À faire/is);
+    assert.match(await premiere.locator('a.jira-key').getAttribute('href'), /\/browse\/PROJ-\d$/);
+    assert.equal(await premiere.locator('a.jira-key').getAttribute('target'), '_blank');
+    assert.ok((await page.locator('#jiraStatsListBody').innerText()).includes('Testeur courant'), 'l’assigné est nommé');
+    await page.locator('#jiraStatsListClose').click();
+    await page.waitForSelector('#jiraStatsListModal[hidden]', { state: 'attached' });
+    // Une tuile aussi : « US liées à un bug » → les deux US concernées.
+    await page.locator('#jiraStatsCorps .stat-tile[data-stats="us-linked"]').click();
+    await page.waitForSelector('#jiraStatsListModal:not([hidden])');
+    assert.match(await page.locator('#jiraStatsListTitle').innerText(), /2 tickets — US liées à un bug/);
+    assert.deepEqual((await page.locator('#jiraStatsListBody .jira-stats-list-row').evaluateAll((l) => l.map((x) => x.dataset.jslKey))).sort(), ['PROJ-2', 'PROJ-3']);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#jiraStatsListModal[hidden]', { state: 'attached' });
+    assert.equal(app.state.calls.filter((c) => /^\/rest\/api\/3\/search/.test(c.path)).length, avant, 'aucun appel Jira pour ouvrir une liste');
   });
 
   test('« Inclure les terminés » : la contrainte part de la JQL, le bug terminé entre dans les comptes', async () => {

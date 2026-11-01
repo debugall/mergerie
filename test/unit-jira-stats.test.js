@@ -27,6 +27,7 @@ describe('statsDe : les comptes', () => {
     const r = jirastats.statsDe([brut('A-1', 'BUG'), brut('A-2', 'Story'), brut('A-3', 'user story'), brut('A-4', 'Tâche'), brut('A-5', 'Epic'), brut('A-6', 'Tâche')], types);
     assert.equal(r.total, 6); assert.equal(r.bugs, 1); assert.equal(r.us, 2); assert.equal(r.autres, 3);
     assert.deepEqual(r.autresTypes, [{ name: 'Tâche', n: 2 }, { name: 'Epic', n: 1 }], 'les autres types nommés, les plus nombreux d’abord');
+    assert.deepEqual(r.parType, [{ name: 'Tâche', n: 2, pct: 33.3 }, { name: 'BUG', n: 1, pct: 16.7 }, { name: 'Epic', n: 1, pct: 16.7 }, { name: 'Story', n: 1, pct: 16.7 }, { name: 'user story', n: 1, pct: 16.7 }], 'par type, tous types confondus, avec la part');
   });
   test('une US est « liée à un bug » par un lien entrant, sortant, une sous-tâche ou un parent — un lien vers une tâche ne compte pas', () => {
     const r = jirastats.statsDe([
@@ -65,9 +66,19 @@ describe('statsDe : les comptes', () => {
       { accountId: 'b', name: 'Bob', n: 2, pct: 50 }, { accountId: 'a', name: 'Ana', n: 1, pct: 25 }, { accountId: '', name: '', n: 1, pct: 25 },
     ]);
   });
+  test('la liste de ce qui a été compté : une fiche par ticket, avec sa tuile et son lien à un bug', () => {
+    const r = jirastats.statsDe([
+      brut('A-1', 'Bug', 'À faire', 'new', { summary: 'Le bug', assignee: { accountId: 'b', displayName: 'Bob' } }),
+      brut('A-2', 'Story', 'En cours', 'indeterminate', { summary: 'L’US', issuelinks: [{ inwardIssue: lie('Bug') }] }),
+    ], types);
+    assert.deepEqual(r.tickets, [
+      { key: 'A-1', summary: 'Le bug', type: 'Bug', status: 'À faire', cat: 'new', assignee: { accountId: 'b', name: 'Bob' }, groupe: 'bug', usLie: false },
+      { key: 'A-2', summary: 'L’US', type: 'Story', status: 'En cours', cat: 'indeterminate', assignee: null, groupe: 'us', usLie: true },
+    ]);
+  });
   test('vide : des zéros, pas une division par zéro', () => {
     const r = jirastats.statsDe([], types);
-    assert.deepEqual(r, { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [], projets: [] });
+    assert.deepEqual(r, { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [], parType: [], projets: [], tickets: [] });
   });
 });
 

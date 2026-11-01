@@ -35,7 +35,9 @@ app.get('/api/jira/stats', wrap(async (req, res) => {
   if (demoMode.isDemo()) {
     const lus = demoJira.statsIssues(contraintes, filtres, plage);
     const cles = contraintes.projects.length ? contraintes.projects : jirastats.statsDe(lus, types).projets;
-    return res.json({ configured: true, types: nommes, ...jirastats.statsDe(lus, { ...types, workflow: demoJira.projectStatuses(cles) }), lus: lus.length, total: lus.length, tronque: false, plafond: jirastats.PLAFOND, ignores: [] });
+    const r = jirastats.statsDe(lus, { ...types, workflow: demoJira.projectStatuses(cles) });
+    r.tickets = r.tickets.map((x) => ({ ...x, url: demoJira.issueUrl(x.key) }));
+    return res.json({ configured: true, types: nommes, ...r, lus: lus.length, total: lus.length, tronque: false, plafond: jirastats.PLAFOND, ignores: [] });
   }
   if (!jira.isConfigured(cfg)) return res.json({ configured: false });
   /* Les personnes ne servent qu'à traduire un filtre « rapporteur » ou « assigné » (nom → compte) :
@@ -44,5 +46,7 @@ app.get('/api/jira/stats', wrap(async (req, res) => {
   const people = besoinPersonnes ? ((await personnesAssignables(cfg, contraintes.projects)).people || []) : [];
   // Les bornes de la plage s'écrivent dans le fuseau du compte Jira — lu seulement si une plage est posée.
   const tz = (plage.depuis || plage.jusqua) ? await jira.jiraGet(cfg, '/rest/api/3/myself').then((me) => (me && me.timeZone) || null).catch(() => null) : null;
-  res.json({ configured: true, types: nommes, ...(await jirastats.stats(cfg, { ...contraintes, filtres, people, ...types, ...plage, tz, workflowDe: (cles) => statutsDesProjets(cfg, cles), teamField: await teamFieldId(cfg) })) });
+  const r = await jirastats.stats(cfg, { ...contraintes, filtres, people, ...types, ...plage, tz, workflowDe: (cles) => statutsDesProjets(cfg, cles), teamField: await teamFieldId(cfg) });
+  r.tickets = r.tickets.map((x) => ({ ...x, url: jira.issueUrl(cfg, x.key) }));   // le lien vers Jira, pour la liste d'un nombre
+  res.json({ configured: true, types: nommes, ...r });
 }));

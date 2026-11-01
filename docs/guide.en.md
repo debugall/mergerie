@@ -1512,6 +1512,8 @@ then each lives its own life.
   naming those types. A user story is
   “linked to a bug” through **any** Jira link, in either direction, through a bug **sub-task** or a bug
   **parent**.
+- **By type**: each ticket type (Bug, Story, Task, Epic…) with its number, its percentage and a bar, the most
+  numerous first — the whole breakdown, bugs and user stories included.
 - **By status**: the states **in the workflow order** of the projects involved (Backlog, then In progress, then
   Done…), each with its number of tickets, its percentage and a bar; a state without a ticket has no row, and a
   status carried by a ticket but foreign to the workflow follows.
@@ -1520,6 +1522,9 @@ then each lives its own life.
   whatever the movement — created, updated (comment, edit, attachment…), or whose status, assignee, priority
   or resolution changed (what JQL keeps a history of). Whole days, in the Jira account's timezone; one bound is
   enough; the cross removes the range, and the choice is remembered.
+- **Every number can be clicked** — a tile, or the count of a row in the tables — and opens **the list of the
+  tickets it counts**: key (link to Jira), summary, status, type, assignee. Nothing is asked of Jira again:
+  everything was already read to count.
 - **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
   most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
   (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are

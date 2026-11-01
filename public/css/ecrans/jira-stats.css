@@ -25,3 +25,17 @@
 .jira-stats-plage input[type="date"]:focus { border-color: var(--accent); outline: none; }
 /* L'avatar est un flex en colonne dans la liste ; en cellule, il doit rester une pastille en ligne. */
 .jira-stats-table td .jira-avatar { display: inline-flex; width: 22px; height: 22px; flex: none; vertical-align: middle; margin-right: 6px; }
+/* Un nombre se clique : il ouvre la liste des tickets qu'il compte. */
+.jira-stats-table td.num button, .jira-stats-tuiles .stat-tile[data-stats] { cursor: pointer; }
+.jira-stats-table td.num button { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline dotted; font-variant-numeric: tabular-nums; }
+.jira-stats-table td.num button:hover { text-decoration-style: solid; }
+.jira-stats-tuiles .stat-tile[data-stats]:hover { border-color: var(--accent); }
+.jira-stats-list-box { width: min(960px, 96vw); }
+.jira-stats-list { max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.jira-stats-list-row { display: grid; grid-template-columns: 110px 1fr auto auto 180px 28px; gap: 10px; align-items: center; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); font-size: 13px; }
+.jira-stats-list-row .jira-key { font-family: var(--ff-mono); }
+.jira-stats-list-row .muted { font-size: 12px; }
+.jira-stats-list-row .jira-stats-list-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.jira-stats-list-row .jira-stats-list-who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jira-stats-list-row .jira-avatar { display: inline-flex; width: 22px; height: 22px; flex: none; }
+@media (max-width: 900px) { .jira-stats-list-row { grid-template-columns: 1fr auto; } }

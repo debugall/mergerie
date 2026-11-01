@@ -244,6 +244,7 @@ function statsIssues(c = {}, filtres = {}, plage = {}) {
     return {
       key: i.key,
       fields: {
+        summary: i.summary,
         issuetype: { name: i.type },
         status: { name: i.status, statusCategory: { key: i.statusCategory } },
         assignee: i.assignee ? { accountId: i.assignee.accountId, displayName: i.assignee.name } : null,

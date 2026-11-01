@@ -138,8 +138,10 @@ async function jsCompter(seq = JSTATS.seq) {
 /* ---------- Le rendu des comptes ---------- */
 function jsRendre(d) {
   const corps = $('#jiraStatsCorps');
+  JSTATS.dernier = d;   // ce qui a été compté : la liste derrière un nombre se lit ici, sans appel
+  const compte = (n, sel) => `<button type="button" data-jsl="${esc(sel)}" title="${esc(tr('jira.stats.list.open'))}">${n}</button>`;
   const pct = (n, t) => (t ? `${Math.round((n / t) * 1000) / 10} %` : '—');
-  const tuile = (cls, val, lbl, sous = '', cle = '', titre = '') => `<div class="stat-tile ${cls}" data-stats="${cle}"${titre ? ` title="${esc(titre)}"` : ''}><div class="stat-val">${esc(String(val))}</div><div class="stat-lbl">${esc(lbl)}</div>${sous ? `<div class="jira-stats-sous muted">${esc(sous)}</div>` : ''}</div>`;
+  const tuile = (cls, val, lbl, sous = '', cle = '', titre = '') => `<div class="stat-tile ${cls}" data-stats="${cle}" data-jsl="groupe:${cle}" role="button" tabindex="0"${titre ? ` title="${esc(titre)}"` : ''}><div class="stat-val">${esc(String(val))}</div><div class="stat-lbl">${esc(lbl)}</div>${sous ? `<div class="jira-stats-sous muted">${esc(sous)}</div>` : ''}</div>`;
   const dates = jsDates();
   const plage = (dates.depuis || dates.jusqua) ? ` · ${tr('jira.stats.dates.scope', { from: dates.depuis ? fmtDate(dates.depuis) : '…', to: dates.jusqua ? fmtDate(dates.jusqua) : '…' })}` : '';
   $('#jiraStatsInfo').textContent = tr('jira.stats.scope', { n: d.lus, count: d.lus }) + plage;
@@ -160,8 +162,17 @@ function jsRendre(d) {
       <thead><tr><th>${esc(tr('jira.stats.col.status'))}</th><th class="num">${esc(tr('jira.stats.col.n'))}</th><th class="num">${esc(tr('jira.stats.col.pct'))}</th><th class="bar"></th></tr></thead>
       <tbody>${(d.statuts || []).map((s) => `<tr data-stats-status="${esc(s.name)}">
           <td><span class="jira-status jira-status-${JIRA_CAT[s.cat] || 'todo'}">${esc(s.name)}</span></td>
-          <td class="num">${s.n}</td><td class="num">${esc(String(s.pct))} %</td>
+          <td class="num">${compte(s.n, `status:${s.name}`)}</td><td class="num">${esc(String(s.pct))} %</td>
           <td class="bar"><div class="jira-stats-bar"><div class="jira-stats-bar-fill jira-stats-bar-${JIRA_CAT[s.cat] || 'todo'}" style="width:${Math.max(0, Math.min(100, s.pct))}%"></div></div></td>
+        </tr>`).join('')}</tbody>
+    </table>
+    <h3 class="jira-stats-h">${esc(tr('jira.stats.by-type'))}</h3>
+    <table class="jira-stats-table">
+      <thead><tr><th>${esc(tr('jira.stats.col.type'))}</th><th class="num">${esc(tr('jira.stats.col.n'))}</th><th class="num">${esc(tr('jira.stats.col.pct'))}</th><th class="bar"></th></tr></thead>
+      <tbody>${(d.parType || []).map((x) => `<tr data-stats-type="${esc(x.name)}">
+          <td>${esc(x.name)}</td>
+          <td class="num">${compte(x.n, `type:${x.name}`)}</td><td class="num">${esc(String(x.pct))} %</td>
+          <td class="bar"><div class="jira-stats-bar"><div class="jira-stats-bar-fill jira-stats-bar-progress" style="width:${Math.max(0, Math.min(100, x.pct))}%"></div></div></td>
         </tr>`).join('')}</tbody>
     </table>
     <h3 class="jira-stats-h">${esc(tr('jira.stats.by-assignee'))}</h3>
@@ -169,11 +180,48 @@ function jsRendre(d) {
       <thead><tr><th>${esc(tr('jira.stats.col.assignee'))}</th><th class="num">${esc(tr('jira.stats.col.n'))}</th><th class="num">${esc(tr('jira.stats.col.pct'))}</th><th class="bar"></th></tr></thead>
       <tbody>${(d.assignes || []).map((a) => `<tr data-stats-assignee="${esc(a.accountId)}">
           <td>${a.accountId ? `<span class="jira-avatar jira-avatar-sm" aria-hidden="true">${esc(jiraInitials(a.name))}</span> ${esc(a.name)}${JSTATS.me && a.accountId === JSTATS.me.accountId ? ` <span class="muted">(${esc(tr('jira.me'))})</span>` : ''}` : `<span class="muted">${esc(tr('jira.stats.unassigned'))}</span>`}</td>
-          <td class="num">${a.n}</td><td class="num">${esc(String(a.pct))} %</td>
+          <td class="num">${compte(a.n, `assignee:${a.accountId}`)}</td><td class="num">${esc(String(a.pct))} %</td>
           <td class="bar"><div class="jira-stats-bar"><div class="jira-stats-bar-fill jira-stats-bar-progress" style="width:${Math.max(0, Math.min(100, a.pct))}%"></div></div></td>
         </tr>`).join('')}</tbody>
     </table>
     <p class="muted jira-stats-types">${esc(tr('jira.stats.types-hint', { bug: (d.types && d.types.bug) || '', us: (d.types && d.types.us) || '' }))}</p>`;
+}
+
+/* ---------- La liste derrière un nombre ---------- */
+/* `sel` : « groupe:bugs », « status:En cours », « type:Bug », « assignee:<compte> » — la même
+   règle que le compte, appliquée à la liste déjà reçue. Chaque ligne mène au ticket dans Jira. */
+function jsTicketsDe(sel) {
+  const d = JSTATS.dernier; if (!d) return { quoi: '', tickets: [] };
+  const [genre, ...reste] = sel.split(':'); const val = reste.join(':');
+  const tous = d.tickets || [];
+  const groupes = {
+    total: { quoi: tr('jira.stats.total'), garde: () => true },
+    bugs: { quoi: tr('jira.stats.bugs'), garde: (t) => t.groupe === 'bug' },
+    us: { quoi: tr('jira.stats.us'), garde: (t) => t.groupe === 'us' },
+    'us-linked': { quoi: tr('jira.stats.us-linked'), garde: (t) => t.usLie },
+    others: { quoi: tr('jira.stats.others'), garde: (t) => t.groupe === 'other' },
+  };
+  if (genre === 'groupe') { const g = groupes[val]; return g ? { quoi: g.quoi, tickets: tous.filter(g.garde) } : { quoi: '', tickets: [] }; }
+  if (genre === 'status') return { quoi: val, tickets: tous.filter((t) => t.status === val) };
+  if (genre === 'type') return { quoi: val, tickets: tous.filter((t) => t.type === val) };
+  if (genre === 'assignee') {
+    const a = (d.assignes || []).find((x) => x.accountId === val);
+    return { quoi: val ? ((a && a.name) || val) : tr('jira.stats.unassigned'), tickets: tous.filter((t) => (t.assignee ? t.assignee.accountId : '') === val) };
+  }
+  return { quoi: '', tickets: [] };
+}
+function jsOuvrirListe(sel) {
+  const { quoi, tickets } = jsTicketsDe(sel);
+  $('#jiraStatsListTitle').textContent = tr('jira.stats.list.title', { n: tickets.length, count: tickets.length, what: quoi });
+  $('#jiraStatsListBody').innerHTML = tickets.length ? tickets.map((t) => `<div class="jira-stats-list-row" data-jsl-key="${esc(t.key)}">
+      <a class="jira-key" href="${safeUrl(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.key)}</a>
+      <span class="jira-stats-list-sum">${esc(t.summary)}</span>
+      <span class="jira-status jira-status-${JIRA_CAT[t.cat] || 'todo'}">${esc(t.status || '—')}</span>
+      <span class="muted">${esc(t.type || '')}</span>
+      <span class="jira-stats-list-who">${t.assignee ? `<span class="jira-avatar jira-avatar-sm" aria-hidden="true">${esc(jiraInitials(t.assignee.name))}</span><span>${esc(t.assignee.name)}</span>` : `<span class="muted">${esc(tr('jira.stats.unassigned'))}</span>`}</span>
+      <a class="btn btn-icon btn-sm" href="${safeUrl(t.url)}" target="_blank" rel="noopener noreferrer" title="${esc(tr('jira.open-new-tab'))}"><svg class="ico"><use href="#i-external"/></svg></a>
+    </div>`).join('') : `<p class="muted jira-empty">${esc(tr('jira.stats.list.empty'))}</p>`;
+  $('#jiraStatsListModal').hidden = false;
 }
 
 /* ---------- Les quatre panneaux de filtres ---------- */
@@ -269,6 +317,18 @@ function jsRecherche(quel) {
 /* ---------- Les gestes ---------- */
 $('#jiraSubStats') && (() => {
   $('#jiraStatsRefresh').addEventListener('click', () => { JSTATS.people = []; chargerJiraStats(); });
+  // Un nombre (tableau) ou une tuile ouvre la liste de ce qu'il compte.
+  $('#jiraStatsCorps').addEventListener('click', (e) => {
+    const el = e.target.closest('[data-jsl]'); if (!el) return;
+    jsOuvrirListe(el.dataset.jsl);
+  });
+  $('#jiraStatsCorps').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target.closest('.stat-tile[data-jsl]'); if (!el) return;
+    e.preventDefault(); jsOuvrirListe(el.dataset.jsl);
+  });
+  $('#jiraStatsListClose').addEventListener('click', () => { $('#jiraStatsListModal').hidden = true; });
+  fermerAuFond('#jiraStatsListModal', null, { salissable: false });
   $('#jiraStatsIncludeDone').addEventListener('change', (e) => { jsEcrire('done', e.target.checked); chargerJiraStats(); });
   // La plage ne change que les comptes, pas les valeurs proposées par les filtres : on recompte seulement.
   const recompter = () => { $('#jiraStatsCorps').innerHTML = skeleton(3); jsCompter(++JSTATS.seq); };
