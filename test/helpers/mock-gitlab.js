@@ -34,6 +34,7 @@ function freshState() {
     jiraFail: null,          // { status, body } pour forcer un refus Jira
     jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
     jiraProjectStatuses: {}, // clé projet -> [{ id, name, statuses:[…] }] (par type de ticket)
+    jiraAssignable: [],      // utilisateurs assignables dans les projets (bruts : accountId, displayName, active)
     jiraCommentDenied: false, // vrai = Jira refuse la mise à jour d'un commentaire (403), comme pour celui d'un collègue
     confluencePages: {},     // id de page -> { title, storage } servis sous /wiki/api/v2/pages/:id
     calls: [],               // journal { method, path, body } pour les assertions
@@ -297,6 +298,8 @@ function handleJira(req, res, pathname, body = {}) {
     return json(res, 200, state.jiraProjectStatuses[cle]);
   }
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
+  // Qui peut être assigné dans des projets (`jiraAssignable`, tableau d'utilisateurs Jira bruts).
+  if (pathname === '/rest/api/3/user/assignable/multiProjectSearch') return json(res, 200, state.jiraAssignable || []);
   /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
      émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
      menu). Sans ça, un test de surveillance passerait quoi qu'on demande, et ne prouverait rien. */

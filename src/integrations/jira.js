@@ -506,24 +506,53 @@ async function myself(cfg) {
 
 // Découvre les personnes ASSIGNÉES récemment (pour proposer les cases du filtre par assigné) :
 // pool des tickets assignés les plus récemment mis à jour → assignés distincts, « moi » en tête.
-async function listAssignees(cfg) {
+/* QUI PEUT ÊTRE ASSIGNÉ dans les projets concernés — ce que Jira sait dire (`assignable/
+   multiProjectSearch`, comptes actifs seulement), PLUS les assignés des tickets récents (un ticket
+   affecté à quelqu'un d'un autre projet doit rester filtrable). Avant, la liste ne venait que des
+   cent derniers tickets touchés : quelqu'un d'actif ailleurs manquait, et un compte parti y restait
+   tant qu'un de ses vieux tickets bougeait. Un compte désactivé (`active: false`) est écarté des
+   deux sources, et un « utilisateur » d'application (`accountType: app`) aussi. */
+const PAGE_UTILISATEURS = 1000;   // la page maximale de la recherche d'utilisateurs Jira
+const MAX_UTILISATEURS = 3000;
+const compteActif = (u) => !!u && u.active !== false && (!u.accountType || u.accountType === 'atlassian');
+async function assignablesDe(cfg, projectKeys) {
+  const cles = [...new Set((projectKeys || []).map(String).filter((k) => CLE_PROJET.test(k)))].slice(0, 50);
+  if (!cles.length) return [];
+  const out = [];
+  for (let startAt = 0; startAt < MAX_UTILISATEURS;) {
+    const page = await jiraGet(cfg, `/rest/api/3/user/assignable/multiProjectSearch?projectKeys=${encodeURIComponent(cles.join(','))}&maxResults=${PAGE_UTILISATEURS}&startAt=${startAt}`);
+    const liste = Array.isArray(page) ? page : [];
+    out.push(...liste.filter(compteActif));
+    if (liste.length < PAGE_UTILISATEURS) break;
+    startAt += liste.length;
+  }
+  return out;
+}
+async function listAssignees(cfg, { projects = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const me = await myself(cfg).catch(() => ({ accountId: '', name: 'Moi', email: '', avatar: '' }));
   const byId = new Map();
+  const projets = new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)));
   try {
-    const data = await runSearch(cfg, 'assignee IS NOT EMPTY ORDER BY updated DESC', 'assignee', 100);
+    const data = await runSearch(cfg, 'assignee IS NOT EMPTY ORDER BY updated DESC', 'assignee,project', 100);
     for (const i of (data.issues || [])) {
-      const p = personOf(i.fields && i.fields.assignee);
+      const f = i.fields || {};
+      if (f.project && f.project.key) projets.add(String(f.project.key));
+      const p = compteActif(f.assignee) ? personOf(f.assignee) : null;
       if (p && p.accountId && !byId.has(p.accountId)) byId.set(p.accountId, p);
     }
   } catch { /* pas de découverte → au moins « moi » */ }
+  try {
+    for (const u of await assignablesDe(cfg, [...projets])) {
+      const p = personOf(u);
+      if (p && p.accountId && !byId.has(p.accountId)) byId.set(p.accountId, p);
+    }
+  } catch { /* droits manquants (« Parcourir les utilisateurs ») : la découverte par les tickets suffit */ }
   if (me.accountId && !byId.has(me.accountId)) byId.set(me.accountId, me);
   const people = [...byId.values()].sort((a, b) => (a.accountId === me.accountId ? -1 : b.accountId === me.accountId ? 1 : a.name.localeCompare(b.name)));
   return { me, people };
 }
 
-// Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
-// Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
 /* LES CONTRAINTES D'UNE LISTE DE TICKETS, EN JQL. Partagées entre « Mes tickets » et les
    statistiques : ce que l'une filtre, l'autre compte, sinon les chiffres parleraient d'un autre
    ensemble que la liste. */

@@ -13,6 +13,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **The Jira *Assignees* filter now shows everyone, and no longer the departed.** The list used to come from the hundred most recently updated tickets only: a colleague active elsewhere was missing, and a deactivated account stayed as long as one of its old tickets moved. The filter now asks Jira who can be assigned in the projects involved (active accounts only, applications excluded), plus the assignees of recent tickets, deactivated accounts left out.
 - **The period catch-up's *See the diff* on a push now opens the full-screen viewer.** It used to show the raw diff in a dialog. It now opens the same viewer as merge requests and sessions: the whole tree of the commit with the changed files marked, each file shown in full with its changes in place, and the change navigation.
 - **YOLO with Copilot CLI now really blocks nothing.** `--allow-all-tools` lifts the tool prompts but not the path fence: a file outside the working directory stayed “access denied”, read or write. In YOLO Mergerie also passes `--allow-all-paths` and `--allow-all-urls` when the installed CLI knows them.
 - **YOLO out-of-repo coding sessions no longer treat their folder as a fence.** The prompt said “in this folder”, which the agent read as a ban on writing elsewhere even though nothing blocked it. In YOLO mode the prompt now says it may read and write outside the folder; secure mode is unchanged.

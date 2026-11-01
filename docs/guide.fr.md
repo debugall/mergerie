@@ -1411,7 +1411,8 @@ Jira à chaque passage.
 #### Mes tickets
 **Les tickets Jira**, récupérés automatiquement à l'ouverture du menu. Par **défaut seuls les tiens** sont
 affichés, mais un **filtre par personne** permet de **cocher d'autres assignés** pour voir aussi leurs
-tickets (la liste des personnes = les assignés récents ; **toi coché par défaut**, choix **persisté**). En
+tickets (la liste des personnes = **qui peut être assigné** dans les projets concernés, comptes actifs seulement,
+plus les assignés des tickets récents ; **toi coché par défaut**, choix **persisté**). En
 **liste → détail** :
 - Le **nombre de tickets** de la liste est affiché dans la barre et **sur l'onglet** lui-même, et suit chaque
   filtre (recherche, statuts, assignés, champs), pas seulement le chargement.

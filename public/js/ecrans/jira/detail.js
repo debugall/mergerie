@@ -331,7 +331,7 @@ async function loadJira() {
   $('#jiraList').innerHTML = skeleton(3); $('#jiraDetail').innerHTML = ''; $('#jiraInfo').textContent = '';
   try { $('#jiraIncludeDone').checked = localStorage.getItem('aidevtools_jira_done') === '1'; } catch { /* ignore */ }
   let a;
-  try { a = await api('/jira/assignees'); }
+  try { a = await api(`/jira/assignees?projects=${encodeURIComponent((jiraFiltres().project || []).join(','))}`); }
   catch (e) { $('#jiraList').innerHTML = ''; errBox.innerHTML = errorBox(explainError(e.message)); return; }
   if (!a.configured) {
     errBox.innerHTML = '';

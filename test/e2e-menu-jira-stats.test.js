@@ -55,6 +55,9 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     app.state.jiraStatusChanged['PROJ-5'] = '2026-08-20T10:00:00.000+0000';
     ticket('PROJ-6', { summary: 'Un bug terminé', issuetype: { name: 'Bug' }, status: etat('Terminé', 'done') });
     ticket('PROJ-7', { summary: 'Le bug de Bob', issuetype: { name: 'Bug' }, assignee: BOB });
+    // Un compte parti (désactivé) sur un ticket récent, et un collègue assignable sans ticket récent.
+    ticket('PROJ-8', { summary: 'Le vieux ticket', issuetype: { name: 'Bug' }, assignee: { accountId: 'old-1', displayName: 'Ancien Parti', active: false } });
+    app.state.jiraAssignable = [{ accountId: 'carl-1', displayName: 'Carl Nouveau', active: true }, { accountId: 'old-1', displayName: 'Ancien Parti', active: false }, { accountId: 'app-1', displayName: 'Automation for Jira', accountType: 'app', active: true }];
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira', jira_watch_minutes: '0' });
 
     navigateur = await lancerNavigateur();
@@ -116,6 +119,17 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     await attendreTotal(5);
   });
 
+  test('le filtre Assignés : les assignables des projets (comptes actifs), sans les comptes partis ni les applications', async () => {
+    await page.locator('#jiraStatsAssigneeFilter > summary').click();
+    const noms = await page.locator('#jiraStatsAssigneeFilterBody .jira-sf-item').allInnerTexts();
+    assert.ok(noms.some((n) => /Carl Nouveau/.test(n)), 'un collègue assignable sans ticket récent est proposé');
+    assert.ok(noms.some((n) => /Bob Leclerc/.test(n)), 'un assigné récent reste proposé');
+    assert.ok(!noms.some((n) => /Ancien Parti/.test(n)), 'un compte désactivé n’est pas proposé, même sur un ticket récent');
+    assert.ok(!noms.some((n) => /Automation for Jira/.test(n)), 'une application n’est pas une personne');
+    assert.match(await page.locator('#jiraStatsAssigneeFilterCount').innerText(), /1\/3/);
+    await page.locator('#jiraStatsAssigneeFilter > summary').click();
+  });
+
   test('cocher Bob dans les assignés : sa clé part dans la JQL, son bug est compté', async () => {
     await page.locator('#jiraStatsAssigneeFilter > summary').click();
     await page.locator('#jiraStatsAssigneeFilterBody input[value="bob-1"]').check();
@@ -127,7 +141,7 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.equal(parAssigne.length, 2);
     assert.match(parAssigne[0], /Testeur courant.*5\s+83\.3 %/s);
     assert.match(parAssigne[1], /Bob Leclerc.*1\s+16\.7 %/s);
-    assert.match(await page.locator('#jiraStatsAssigneeFilterCount').innerText(), /2\/2/);
+    assert.match(await page.locator('#jiraStatsAssigneeFilterCount').innerText(), /2\/3/);
   });
 
   test('au premier passage, Stats hérite des filtres de « Mes tickets » — puis chacun vit sa vie', async () => {

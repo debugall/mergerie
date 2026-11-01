@@ -1353,8 +1353,9 @@ walk past.
 
 #### My tickets
 **The Jira tickets**, fetched automatically when you open the menu. By **default only yours** are shown, but
-a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the
-recent assignees; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
+a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = **who can
+be assigned** in the projects involved, active accounts only, plus the assignees of recent tickets; **you ticked
+by default**, a **persisted** choice). A **list → detail** layout:
 - The **number of tickets** in the list is shown in the toolbar and **on the tab** itself, and follows every
   filter (search, statuses, assignees, fields), not only the load.
 - The **list** (on the left, with search) shows each ticket as a compact card: key, the **epic** it belongs

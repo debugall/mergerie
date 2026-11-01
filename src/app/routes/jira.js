@@ -46,7 +46,9 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
   if (demoMode.isDemo()) return res.json({ configured: true, ...demoJira.assignees() });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, me: null, people: [] });
-  res.json({ configured: true, ...(await jira.listAssignees(cfg)) });
+  // Les projets cochés dans le filtre : les assignables de CES projets, en plus des assignés récents.
+  const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
+  res.json({ configured: true, ...(await jira.listAssignees(cfg, { projects })) });
 }));
 app.get('/api/jira/statuses', wrap(async (req, res) => {
   const cles = [...new Set(String(req.query.projects || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 20);

@@ -81,7 +81,7 @@ async function chargerJiraStats() {
   const seq = ++JSTATS.seq;
   if (!JSTATS.people.length) {
     let a;
-    try { a = await api('/jira/assignees'); } catch (e) { corps.innerHTML = ''; err.innerHTML = errorBox(explainError(e.message)); return; }
+    try { a = await api(`/jira/assignees?projects=${encodeURIComponent((jsFiltres().project || []).join(','))}`); } catch (e) { corps.innerHTML = ''; err.innerHTML = errorBox(explainError(e.message)); return; }
     if (seq !== JSTATS.seq) return;
     if (!a.configured) {
       $$('#jiraSubStats .jira-status-filter').forEach((d) => { d.hidden = true; });
