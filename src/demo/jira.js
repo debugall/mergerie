@@ -244,6 +244,7 @@ function statsIssues(c = {}, filtres = {}, plage = {}) {
         issuetype: { name: i.type },
         status: { name: i.status, statusCategory: { key: i.statusCategory } },
         assignee: i.assignee ? { accountId: i.assignee.accountId, displayName: i.assignee.name } : null,
+        project: { key: String(i.project || '').split(' ')[0] },
         issuelinks: liens.filter((l) => l.direction !== 'subtask').map((l) => (l.direction === 'inward' ? { inwardIssue: l.autre } : { outwardIssue: l.autre })),
         subtasks: liens.filter((l) => l.direction === 'subtask').map((l) => l.autre),
       },

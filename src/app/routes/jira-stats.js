@@ -9,6 +9,7 @@ const jirastats = require('../../integrations/jirastats');
 const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const { wrap } = require('../http');
+const { statutsDesProjets } = require('../lib/jira');
 
 const liste = (v, sep = ',') => String(v || '').split(sep).map((x) => x.trim()).filter(Boolean);
 
@@ -33,7 +34,8 @@ app.get('/api/jira/stats', wrap(async (req, res) => {
   const nommes = { bug: String(cfg.jira_stats_bug_types || '').trim() || 'Bug', us: String(cfg.jira_stats_us_types || '').trim() || 'Story, User Story' };
   if (demoMode.isDemo()) {
     const lus = demoJira.statsIssues(contraintes, filtres, plage);
-    return res.json({ configured: true, types: nommes, ...jirastats.statsDe(lus, types), lus: lus.length, total: lus.length, tronque: false, plafond: jirastats.PLAFOND, ignores: [] });
+    const cles = contraintes.projects.length ? contraintes.projects : jirastats.statsDe(lus, types).projets;
+    return res.json({ configured: true, types: nommes, ...jirastats.statsDe(lus, { ...types, workflow: demoJira.projectStatuses(cles) }), lus: lus.length, total: lus.length, tronque: false, plafond: jirastats.PLAFOND, ignores: [] });
   }
   if (!jira.isConfigured(cfg)) return res.json({ configured: false });
   /* Les personnes ne servent qu'à traduire un filtre « rapporteur » ou « assigné » (nom → compte) :
@@ -42,5 +44,5 @@ app.get('/api/jira/stats', wrap(async (req, res) => {
   const people = besoinPersonnes ? ((await jira.listAssignees(cfg)).people || []) : [];
   // Les bornes de la plage s'écrivent dans le fuseau du compte Jira — lu seulement si une plage est posée.
   const tz = (plage.depuis || plage.jusqua) ? await jira.jiraGet(cfg, '/rest/api/3/myself').then((me) => (me && me.timeZone) || null).catch(() => null) : null;
-  res.json({ configured: true, types: nommes, ...(await jirastats.stats(cfg, { ...contraintes, filtres, people, ...types, ...plage, tz })) });
+  res.json({ configured: true, types: nommes, ...(await jirastats.stats(cfg, { ...contraintes, filtres, people, ...types, ...plage, tz, workflowDe: (cles) => statutsDesProjets(cfg, cles) })) });
 }));

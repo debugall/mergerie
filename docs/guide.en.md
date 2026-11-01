@@ -1510,7 +1510,9 @@ then each lives its own life.
   naming those types. A user story is
   “linked to a bug” through **any** Jira link, in either direction, through a bug **sub-task** or a bug
   **parent**.
-- **By status**: each status with its number of tickets, its percentage and a bar, the most numerous first.
+- **By status**: the states **in the workflow order** of the projects involved (Backlog, then In progress, then
+  Done…), each with its number of tickets, its percentage and a bar; a state without a ticket has no row, and a
+  status carried by a ticket but foreign to the workflow follows.
   **By assignee**: the same per person, the most loaded first, “unassigned” apart.
 - **An optional date range** (“Moved from … to …”): count only the tickets that **moved within the range**,
   whatever the movement — created, updated (comment, edit, attachment…), or whose status, assignee, priority

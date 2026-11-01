@@ -7,7 +7,7 @@
 const jira = require('./jira');
 
 const PLAFOND = jira.PLAFOND_PAGES;   // tickets lus au plus : dix pages Jira, quelques secondes
-const CHAMPS = 'issuetype,status,issuelinks,parent,subtasks,assignee';
+const CHAMPS = 'issuetype,status,issuelinks,parent,subtasks,assignee,project';
 
 /* Les noms de type d'un réglage (« Story, User Story ») : minuscules, sans blancs, dédoublonnés ;
    vide → le défaut. Le nom d'un type est libre d'une instance à l'autre (Bug / Anomalie / Récit). */
@@ -61,10 +61,15 @@ function typesLies(f) {
   if (f.parent) out.push(nomType(f.parent.fields));
   return out;
 }
-function statsDe(issues, { bugTypes, usTypes }) {
+/* `workflow` : les états du workflow des projets concernés (`[{ name, cat }]`, dans l'ordre de
+   Jira). Donné, le tableau par statut suit CET ordre — Backlog, puis En cours, puis Terminé, comme
+   le workflow se lit — sans les états vides ; un statut porté par un ticket mais absent du
+   workflow (autre projet) suit, par nombre décroissant. */
+function statsDe(issues, { bugTypes, usTypes, workflow = null }) {
   const bugs = bugTypes instanceof Set ? bugTypes : typesDe(bugTypes, 'Bug');
   const us = usTypes instanceof Set ? usTypes : typesDe(usTypes, 'Story, User Story');
-  const r = { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [] };
+  const r = { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [], projets: [] };
+  const projets = new Set();
   const parStatut = new Map(); const parAssigne = new Map(); const parAutre = new Map();
   for (const i of (issues || [])) {
     const f = (i && i.fields) || {};
@@ -80,6 +85,7 @@ function statsDe(issues, { bugTypes, usTypes }) {
       const nom = String((f.issuetype && f.issuetype.name) || '').trim() || '—';
       parAutre.set(type, { name: nom, n: ((parAutre.get(type) || {}).n || 0) + 1 });
     }
+    if (f.project && f.project.key) projets.add(String(f.project.key));
     const nom = (f.status && f.status.name) || '—';
     const cat = (f.status && f.status.statusCategory && f.status.statusCategory.key) || '';
     const e = parStatut.get(nom) || { name: nom, cat, n: 0 };
@@ -91,9 +97,15 @@ function statsDe(issues, { bugTypes, usTypes }) {
     pa.n += 1; parAssigne.set(id, pa);
   }
   const part = (n) => (r.total ? Math.round((n / r.total) * 1000) / 10 : 0);
-  r.statuts = [...parStatut.values()]
-    .sort((a, b) => b.n - a.n || a.name.localeCompare(b.name))
-    .map((s) => ({ ...s, pct: part(s.n) }));
+  const restants = [...parStatut.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  const ordonnes = [];
+  for (const st of (Array.isArray(workflow) ? workflow : [])) {
+    if (!st || !st.name || ordonnes.some((x) => x.name === st.name)) continue;
+    const i = restants.findIndex((x) => x.name === st.name);
+    if (i >= 0) ordonnes.push(restants.splice(i, 1)[0]);   // un état sans ticket n'a pas de ligne
+  }
+  r.statuts = ordonnes.concat(restants).map((s) => ({ ...s, pct: part(s.n) }));
+  r.projets = [...projets].sort();
   r.autresTypes = [...parAutre.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   // Les plus chargés d'abord ; « non assigné » en dernier à nombre égal.
   r.assignes = [...parAssigne.values()]
@@ -120,7 +132,7 @@ function clauseMouvement(depuis, jusqua, tz = null) {
 }
 
 /* Le tout : contraintes de la liste + filtres de champ + plage → JQL → toutes les pages → comptes. */
-async function stats(cfg, { accountIds, includeDone, projects, sprints, hideStatuses, filtres, people, bugTypes, usTypes, depuis, jusqua, tz } = {}) {
+async function stats(cfg, { accountIds, includeDone, projects, sprints, hideStatuses, filtres, people, bugTypes, usTypes, depuis, jusqua, tz, workflowDe = null } = {}) {
   const clauses = jira.jqlDe({ accountIds, includeDone, projects, sprints, hideStatuses });
   const { clauses: cf, ignores } = clausesFiltres(filtres, people);
   const plage = clauseMouvement(depuis, jusqua, tz);
@@ -128,7 +140,13 @@ async function stats(cfg, { accountIds, includeDone, projects, sprints, hideStat
   if (!toutes.length) toutes.push('updated >= -365d');   // Jira refuse une recherche sans borne
   const jql = `${toutes.join(' AND ')} ORDER BY updated DESC`;
   const lu = await jira.searchAll(cfg, jql, CHAMPS, PLAFOND);
-  return { ...statsDe(lu.issues, { bugTypes, usTypes }), lus: lu.issues.length, total: lu.total, tronque: lu.tronque, plafond: PLAFOND, ignores, jql };
+  /* Le workflow des projets concernés : ceux du filtre, sinon ceux des tickets lus. Demandé à
+     l'appelant (il tient le cache) ; sans lui, le tableau ne montre que ce qui porte un ticket. */
+  const premier = statsDe(lu.issues, { bugTypes, usTypes });
+  const cles = (projects || []).length ? projects : premier.projets;
+  let workflow = null;
+  if (workflowDe && cles.length) { try { workflow = await workflowDe(cles); } catch { workflow = null; } }
+  return { ...(workflow ? statsDe(lu.issues, { bugTypes, usTypes, workflow }) : premier), lus: lu.issues.length, total: lu.total, tronque: lu.tronque, plafond: PLAFOND, ignores, jql };
 }
 
 module.exports = { PLAFOND, CHAMPS, typesDe, clausesFiltres, clauseMouvement, searchAll: jira.searchAll, statsDe, stats };

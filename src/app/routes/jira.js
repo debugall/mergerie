@@ -19,7 +19,7 @@ const tasks = require('../../agent/tasks');
 const { servirFichierNonFiable } = require('../fichiers');
 const { mrById, wrap } = require('../http');
 const { exigerJetonFrais, noterTest } = require('../lib/connexions');
-const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, statutsParProjet, watchRows } = require('../lib/jira');
+const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, statutsDesProjets, watchRows } = require('../lib/jira');
 const { targetById } = require('../lib/sessions');
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -53,17 +53,7 @@ app.get('/api/jira/statuses', wrap(async (req, res) => {
   if (demoMode.isDemo()) return res.json({ configured: true, statuses: demoJira.projectStatuses(cles) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, statuses: [] });
-  const par = new Map();
-  for (const cle of cles) {
-    if (!statutsParProjet.has(cle)) {
-      /* Un projet inaccessible ne doit pas priver le filtre des statuts des autres. L'échec
-         n'est PAS mémorisé : une panne passagère aurait vidé ce filtre jusqu'au redémarrage. */
-      try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
-      catch { /* on retentera au prochain chargement */ }
-    }
-    for (const st of statutsParProjet.get(cle) || []) if (!par.has(st.name)) par.set(st.name, st);
-  }
-  res.json({ configured: true, statuses: [...par.values()] });
+  res.json({ configured: true, statuses: await statutsDesProjets(cfg, cles) });
 }));
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);

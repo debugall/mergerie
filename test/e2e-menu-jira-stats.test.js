@@ -81,6 +81,7 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.equal(await tuile('others'), '1');
     assert.equal(await page.locator('#jiraStatsCorps .stat-tile[data-stats="others"]').getAttribute('title'), 'Tâche (1)', 'le survol de « Autres types » nomme ces types');
     assert.match(await page.locator('#jiraStatsInfo').innerText(), /5 tickets comptés/);
+    // Dans l'ordre du WORKFLOW ; « Terminé », vide, n'a pas de ligne.
     const lignes = await page.locator('#jiraStatsCorps tr[data-stats-status]').allInnerTexts();
     assert.equal(lignes.length, 2);
     assert.match(lignes[0], /À faire\s+3\s+60 %/i);

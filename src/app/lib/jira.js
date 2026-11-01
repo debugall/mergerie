@@ -21,6 +21,20 @@ const { dernieresVerificationsParMr } = require('./verifications');
    filtre les redemanderait à chaque chargement de l'onglet. Vidé à l'enregistrement de la
    configuration, l'instance visée pouvant changer. */
 const statutsParProjet = new Map();
+/* Les statuts du workflow de plusieurs projets, dédoublonnés par nom, dans l'ordre où Jira les
+   donne. Un projet inaccessible ne prive pas des statuts des autres, et l'échec n'est PAS
+   mémorisé : une panne passagère aurait vidé le filtre jusqu'au redémarrage. */
+async function statutsDesProjets(cfg, cles) {
+  const par = new Map();
+  for (const cle of [...new Set((cles || []).map(String).filter(Boolean))].slice(0, 20)) {
+    if (!statutsParProjet.has(cle)) {
+      try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
+      catch { /* on retentera au prochain chargement */ }
+    }
+    for (const st of statutsParProjet.get(cle) || []) if (!par.has(st.name)) par.set(st.name, st);
+  }
+  return [...par.values()];
+}
 /* Identifiant du champ « sprint », résolu une fois puis mémorisé : il ne change pas en cours
    de route, et le redemander à chaque chargement coûterait un appel Jira pour rien. Remis à
    zéro à l'enregistrement de la configuration (l'instance visée peut changer). */
@@ -256,5 +270,5 @@ function lireJiraBadge() { return jiraBadge; }
 function arreterJiraWatch() { if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; } }
 
 module.exports = {
-  texteJira, statutsParProjet, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
+  texteJira, statutsParProjet, statutsDesProjets, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
 };

@@ -43,6 +43,18 @@ describe('statsDe : les comptes', () => {
     const r = jirastats.statsDe([brut('A-1', 'Bug', 'En cours', 'indeterminate'), brut('A-2', 'Bug', 'En cours', 'indeterminate'), brut('A-3', 'Story', 'Terminé', 'done')], types);
     assert.deepEqual(r.statuts, [{ name: 'En cours', cat: 'indeterminate', n: 2, pct: 66.7 }, { name: 'Terminé', cat: 'done', n: 1, pct: 33.3 }]);
   });
+  test('avec le workflow : ses états dans son ordre, sans les vides, puis les statuts hors workflow par nombre', () => {
+    const workflow = [{ name: 'Backlog', cat: 'new' }, { name: 'En cours', cat: 'indeterminate' }, { name: 'Terminé', cat: 'done' }];
+    const r = jirastats.statsDe([
+      brut('A-1', 'Bug', 'Terminé', 'done', { project: { key: 'A' } }), brut('A-2', 'Bug', 'En cours', 'indeterminate', { project: { key: 'A' } }),
+      brut('B-1', 'Bug', 'Recette', 'indeterminate', { project: { key: 'B' } }),
+    ], { ...types, workflow });
+    assert.deepEqual(r.statuts, [
+      { name: 'En cours', cat: 'indeterminate', n: 1, pct: 33.3 },
+      { name: 'Terminé', cat: 'done', n: 1, pct: 33.3 }, { name: 'Recette', cat: 'indeterminate', n: 1, pct: 33.3 },
+    ]);
+    assert.deepEqual(r.projets, ['A', 'B'], 'les projets lus, pour demander leur workflow');
+  });
   test('par assigné : nombre et part par personne, les plus chargés d’abord, « non assigné » à part', () => {
     const bob = { accountId: 'b', displayName: 'Bob' }; const ana = { accountId: 'a', displayName: 'Ana' };
     const r = jirastats.statsDe([
@@ -55,7 +67,7 @@ describe('statsDe : les comptes', () => {
   });
   test('vide : des zéros, pas une division par zéro', () => {
     const r = jirastats.statsDe([], types);
-    assert.deepEqual(r, { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [] });
+    assert.deepEqual(r, { total: 0, bugs: 0, us: 0, usLieesBug: 0, autres: 0, autresTypes: [], statuts: [], assignes: [], projets: [] });
   });
 });
 
