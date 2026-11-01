@@ -104,7 +104,8 @@ async function jsEchantillon() {
   const assignees = [...jsCoches()].join(',');
   const done = $('#jiraStatsIncludeDone').checked ? 1 : 0;
   try {
-    const d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}`);
+    // Une seule page (un appel Jira) : il s'agit de proposer des valeurs, pas de compter.
+    const d = await api(`/jira/tickets?assignees=${encodeURIComponent(assignees)}&includeDone=${done}&projects=${encodeURIComponent(projects)}&max=100`);
     JSTATS.echantillon = d.issues || [];
   } catch { JSTATS.echantillon = []; }
   jsMemorise('sprint', JSTATS.echantillon.flatMap((i) => i.sprints || []));

@@ -12,7 +12,33 @@ const http = require('http');
 const { t } = require('../core/i18n');
 
 // Client HTTP autonome (Jira Cloud est en TLS public : pas d'agent CA self-signed).
-function request(url, { method = 'GET', headers = {}, body = null } = {}) {
+/* LE QUOTA D'APPELS DE JIRA, RESPECTÉ PLUTÔT QUE DEVINÉ. Jira Cloud ne publie pas de budget : il
+   répond 429 (ou 503) avec `Retry-After` quand on dépasse. On fait donc deux choses : au plus
+   `PARALLELE_JIRA` requêtes en vol (deux écrans qui paginent en même temps ne font pas une rafale),
+   et sur 429/503 on attend le délai demandé (borné) avant de rejouer, quelques fois ; au-delà, une
+   erreur qui dit « Jira limite les appels », pas un « Jira 429 » muet. */
+const PARALLELE_JIRA = 4;
+const REJOUES_MAX = 3;
+const ATTENTE_MAX_MS = 30000;
+let enVol = 0; const fileAttente = [];
+function prendreTour() {
+  if (enVol < PARALLELE_JIRA) { enVol += 1; return Promise.resolve(); }
+  return new Promise((ok) => fileAttente.push(ok));
+}
+function rendreTour() {
+  const suivant = fileAttente.shift();
+  if (suivant) suivant(); else enVol -= 1;
+}
+const attendre = (ms) => new Promise((ok) => setTimeout(ok, ms));
+function delaiDemande(res, tentative) {
+  const brut = String(res.headers && res.headers['retry-after'] || '').trim();
+  const secondes = Number(brut);
+  if (Number.isFinite(secondes) && secondes >= 0 && brut !== '') return Math.min(ATTENTE_MAX_MS, secondes * 1000);
+  const date = Date.parse(brut);
+  if (Number.isFinite(date)) return Math.min(ATTENTE_MAX_MS, Math.max(0, date - Date.now()));
+  return Math.min(ATTENTE_MAX_MS, 1000 * 2 ** tentative);   // sans indication : 1 s, 2 s, 4 s
+}
+function requeteBrute(url, { method = 'GET', headers = {}, body = null } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const lib = u.protocol === 'http:' ? http : https;
@@ -22,7 +48,7 @@ function request(url, { method = 'GET', headers = {}, body = null } = {}) {
     }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, statusText: res.statusMessage || '', body: data }));
+      res.on('end', () => resolve({ status: res.statusCode, statusText: res.statusMessage || '', body: data, headers: res.headers || {} }));
     });
     req.on('error', reject);
     req.setTimeout(15000, () => { req.destroy(new Error('timeout Jira (15 s)')); });
@@ -30,10 +56,20 @@ function request(url, { method = 'GET', headers = {}, body = null } = {}) {
     req.end();
   });
 }
+async function request(url, opts = {}) {
+  await prendreTour();
+  try {
+    for (let tentative = 0; ; tentative += 1) {
+      const res = await requeteBrute(url, opts);
+      const limite = res.status === 429 || (res.status === 503 && res.headers['retry-after'] != null);
+      if (!limite) return res;
+      const delai = delaiDemande(res, tentative);
+      if (tentative >= REJOUES_MAX) { const e = new Error(t('err.jira.rate-limited', { seconds: Math.ceil(delai / 1000) })); e.code = 'JIRA_RATE_LIMITED'; e.status = res.status; throw e; }
+      await attendre(delai);
+    }
+  } finally { rendreTour(); }
+}
 
-/* ---------- Convertisseur ADF → Markdown ---------- */
-
-// Applique les marks d'un nœud texte (gras, italique, code, lien) autour du texte.
 function applyMarks(text, marks) {
   let s = text;
   for (const m of marks || []) {
@@ -506,48 +542,30 @@ async function myself(cfg) {
 
 // Découvre les personnes ASSIGNÉES récemment (pour proposer les cases du filtre par assigné) :
 // pool des tickets assignés les plus récemment mis à jour → assignés distincts, « moi » en tête.
-/* QUI PEUT ÊTRE ASSIGNÉ dans les projets concernés — ce que Jira sait dire (`assignable/
-   multiProjectSearch`, comptes actifs seulement), PLUS les assignés des tickets récents (un ticket
-   affecté à quelqu'un d'un autre projet doit rester filtrable). Avant, la liste ne venait que des
-   cent derniers tickets touchés : quelqu'un d'actif ailleurs manquait, et un compte parti y restait
-   tant qu'un de ses vieux tickets bougeait. Un compte désactivé (`active: false`) est écarté des
-   deux sources, et un « utilisateur » d'application (`accountType: app`) aussi. */
-const PAGE_UTILISATEURS = 1000;   // la page maximale de la recherche d'utilisateurs Jira
-const MAX_UTILISATEURS = 3000;
+/* LES PERSONNES DU FILTRE « ASSIGNÉS » : qui a eu un ticket assigné qui a BOUGÉ ces six derniers
+   mois — un compte actif sur la période, pas un annuaire. Avant, la liste ne venait que des cent
+   derniers tickets touchés : quelqu'un d'actif ailleurs manquait, et un compte parti y restait tant
+   qu'un de ses vieux tickets bougeait. On balaie donc les tickets mis à jour sur la fenêtre (jusqu'à
+   `MAX_TICKETS_ACTIVITE`, les plus récents d'abord), restreints aux projets du filtre s'il y en a ;
+   un compte désactivé (`active: false`) ou une application (`accountType: app`) est écarté. */
+const JOURS_ACTIVITE = 180;
+const MAX_TICKETS_ACTIVITE = 1000;   // dix pages Jira au plus — et le résultat est mémorisé côté app
 const compteActif = (u) => !!u && u.active !== false && (!u.accountType || u.accountType === 'atlassian');
-async function assignablesDe(cfg, projectKeys) {
-  const cles = [...new Set((projectKeys || []).map(String).filter((k) => CLE_PROJET.test(k)))].slice(0, 50);
-  if (!cles.length) return [];
-  const out = [];
-  for (let startAt = 0; startAt < MAX_UTILISATEURS;) {
-    const page = await jiraGet(cfg, `/rest/api/3/user/assignable/multiProjectSearch?projectKeys=${encodeURIComponent(cles.join(','))}&maxResults=${PAGE_UTILISATEURS}&startAt=${startAt}`);
-    const liste = Array.isArray(page) ? page : [];
-    out.push(...liste.filter(compteActif));
-    if (liste.length < PAGE_UTILISATEURS) break;
-    startAt += liste.length;
-  }
-  return out;
-}
 async function listAssignees(cfg, { projects = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const me = await myself(cfg).catch(() => ({ accountId: '', name: 'Moi', email: '', avatar: '' }));
   const byId = new Map();
-  const projets = new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)));
+  const cles = [...new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)))];
+  const clauses = [`assignee IS NOT EMPTY`, `updated >= -${JOURS_ACTIVITE}d`];
+  if (cles.length) clauses.push(`project IN (${cles.map((k) => `"${k}"`).join(', ')})`);
   try {
-    const data = await runSearch(cfg, 'assignee IS NOT EMPTY ORDER BY updated DESC', 'assignee,project', 100);
-    for (const i of (data.issues || [])) {
+    const lu = await searchAll(cfg, `${clauses.join(' AND ')} ORDER BY updated DESC`, 'assignee', MAX_TICKETS_ACTIVITE);
+    for (const i of lu.issues) {
       const f = i.fields || {};
-      if (f.project && f.project.key) projets.add(String(f.project.key));
       const p = compteActif(f.assignee) ? personOf(f.assignee) : null;
       if (p && p.accountId && !byId.has(p.accountId)) byId.set(p.accountId, p);
     }
   } catch { /* pas de découverte → au moins « moi » */ }
-  try {
-    for (const u of await assignablesDe(cfg, [...projets])) {
-      const p = personOf(u);
-      if (p && p.accountId && !byId.has(p.accountId)) byId.set(p.accountId, p);
-    }
-  } catch { /* droits manquants (« Parcourir les utilisateurs ») : la découverte par les tickets suffit */ }
   if (me.accountId && !byId.has(me.accountId)) byId.set(me.accountId, me);
   const people = [...byId.values()].sort((a, b) => (a.accountId === me.accountId ? -1 : b.accountId === me.accountId ? 1 : a.name.localeCompare(b.name)));
   return { me, people };
@@ -960,4 +978,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, request, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

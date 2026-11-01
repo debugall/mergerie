@@ -21,6 +21,21 @@ const { dernieresVerificationsParMr } = require('./verifications');
    filtre les redemanderait à chaque chargement de l'onglet. Vidé à l'enregistrement de la
    configuration, l'instance visée pouvant changer. */
 const statutsParProjet = new Map();
+/* Les personnes du filtre « Assignés », mémorisées trente minutes par sélection de projets : le
+   balayage lit jusqu'à dix pages Jira, et l'onglet le redemanderait à chaque ouverture — qui a été
+   actif sur six mois ne change pas d'une demi-heure à l'autre. Vidé à l'enregistrement de la
+   configuration, comme les statuts. */
+const assignesMemo = new Map();
+const TTL_ASSIGNES_MS = 30 * 60 * 1000;
+async function personnesAssignables(cfg, projects) {
+  const cle = [...new Set(projects || [])].sort().join(',');
+  const memo = assignesMemo.get(cle);
+  if (memo && Date.now() - memo.at < TTL_ASSIGNES_MS) return memo.val;
+  const val = await jira.listAssignees(cfg, { projects });
+  assignesMemo.set(cle, { at: Date.now(), val });
+  return val;
+}
+const oublierAssignes = () => assignesMemo.clear();
 /* Les statuts du workflow de plusieurs projets, dédoublonnés par nom, dans l'ordre où Jira les
    donne. Un projet inaccessible ne prive pas des statuts des autres, et l'échec n'est PAS
    mémorisé : une panne passagère aurait vidé le filtre jusqu'au redémarrage. */
@@ -270,5 +285,5 @@ function lireJiraBadge() { return jiraBadge; }
 function arreterJiraWatch() { if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; } }
 
 module.exports = {
-  texteJira, statutsParProjet, statutsDesProjets, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
+  texteJira, statutsParProjet, statutsDesProjets, personnesAssignables, oublierAssignes, champSprint, sprintFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
 };

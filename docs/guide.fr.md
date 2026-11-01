@@ -1411,8 +1411,9 @@ Jira à chaque passage.
 #### Mes tickets
 **Les tickets Jira**, récupérés automatiquement à l'ouverture du menu. Par **défaut seuls les tiens** sont
 affichés, mais un **filtre par personne** permet de **cocher d'autres assignés** pour voir aussi leurs
-tickets (la liste des personnes = **qui peut être assigné** dans les projets concernés, comptes actifs seulement,
-plus les assignés des tickets récents ; **toi coché par défaut**, choix **persisté**). En
+tickets (la liste des personnes = les comptes **actifs sur les six derniers mois** — assignés d'un ticket qui a
+bougé sur la fenêtre, dans les projets du filtre s'il y en a, comptes désactivés et applications exclus ;
+**toi coché par défaut**, choix **persisté**). En
 **liste → détail** :
 - Le **nombre de tickets** de la liste est affiché dans la barre et **sur l'onglet** lui-même, et suit chaque
   filtre (recherche, statuts, assignés, champs), pas seulement le chargement.
@@ -1582,6 +1583,13 @@ vit sa vie.
   dans la plage**, quel que soit le mouvement — créés, mis à jour (commentaire, édition, pièce jointe…), ou dont
   le statut, l'assigné, la priorité ou la résolution a changé (ce que JQL sait historiser). Jours entiers, dans
   le fuseau du compte Jira ; une seule borne suffit ; la croix retire la plage, et le choix est mémorisé.
+- **Ce que ça coûte en appels Jira** : une page de cent tickets = un appel. La liste et les stats en font
+  donc au plus dix chacune (plafond de 1 000) ; les valeurs des filtres de Stats viennent d'une seule page ;
+  la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les
+  statuts d'un workflow le sont jusqu'au prochain enregistrement des réglages. Et le **quota** de Jira est
+  respecté tel qu'il le dit : au plus quatre requêtes en vol, et sur une réponse 429 (ou 503 avec délai)
+  Mergerie attend le délai demandé (`Retry-After`, 30 s au plus) et rejoue, trois fois ; au-delà, l'écran dit
+  « Jira limite les appels » plutôt qu'un code muet.
 - **Ce qui compte comme bug et comme US** se règle dans **Réglages → Jira** (noms de type séparés par des
   virgules, sans tenir compte de la casse ; par défaut *Bug* et *Story, User Story*) : le nom d'un type est
   libre d'une instance à l'autre (Anomalie, Récit…). C'est une décision d'équipe, partagée comme le reste

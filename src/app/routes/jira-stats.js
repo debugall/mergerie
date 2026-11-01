@@ -9,7 +9,7 @@ const jirastats = require('../../integrations/jirastats');
 const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const { wrap } = require('../http');
-const { statutsDesProjets } = require('../lib/jira');
+const { personnesAssignables, statutsDesProjets } = require('../lib/jira');
 
 const liste = (v, sep = ',') => String(v || '').split(sep).map((x) => x.trim()).filter(Boolean);
 
@@ -41,7 +41,7 @@ app.get('/api/jira/stats', wrap(async (req, res) => {
   /* Les personnes ne servent qu'à traduire un filtre « rapporteur » ou « assigné » (nom → compte) :
      on ne paie l'appel que si un tel filtre est posé. */
   const besoinPersonnes = ['reporter', 'assignee'].some((k) => Array.isArray(filtres[k]) && filtres[k].length);
-  const people = besoinPersonnes ? ((await jira.listAssignees(cfg)).people || []) : [];
+  const people = besoinPersonnes ? ((await personnesAssignables(cfg, contraintes.projects)).people || []) : [];
   // Les bornes de la plage s'écrivent dans le fuseau du compte Jira — lu seulement si une plage est posée.
   const tz = (plage.depuis || plage.jusqua) ? await jira.jiraGet(cfg, '/rest/api/3/myself').then((me) => (me && me.timeZone) || null).catch(() => null) : null;
   res.json({ configured: true, types: nommes, ...(await jirastats.stats(cfg, { ...contraintes, filtres, people, ...types, ...plage, tz, workflowDe: (cles) => statutsDesProjets(cfg, cles) })) });

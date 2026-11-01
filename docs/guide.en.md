@@ -1353,9 +1353,9 @@ walk past.
 
 #### My tickets
 **The Jira tickets**, fetched automatically when you open the menu. By **default only yours** are shown, but
-a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = **who can
-be assigned** in the projects involved, active accounts only, plus the assignees of recent tickets; **you ticked
-by default**, a **persisted** choice). A **list → detail** layout:
+a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the accounts
+**active over the last six months** — assignees of a ticket that moved in that window, within the filter's
+projects if any, deactivated accounts and applications excluded; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
 - The **number of tickets** in the list is shown in the toolbar and **on the tab** itself, and follows every
   filter (search, statuses, assignees, fields), not only the load.
 - The **list** (on the left, with search) shows each ticket as a compact card: key, the **epic** it belongs
@@ -1519,6 +1519,13 @@ then each lives its own life.
   whatever the movement — created, updated (comment, edit, attachment…), or whose status, assignee, priority
   or resolution changed (what JQL keeps a history of). Whole days, in the Jira account's timezone; one bound is
   enough; the cross removes the range, and the choice is remembered.
+- **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
+  most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
+  (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are
+  cached until the settings are next saved. And Jira's **quota** is honoured as Jira states it: at most four
+  requests in flight, and on a 429 (or a 503 with a delay) Mergerie waits the requested delay (`Retry-After`,
+  30 s at most) and retries, three times; beyond that the screen says “Jira is rate-limiting calls” rather
+  than a mute code.
 - **What counts as a bug and as a user story** is set in **Settings → Jira** (type names separated by
   commas, case-insensitive; by default *Bug* and *Story, User Story*): a type's name is free from one
   instance to the next (Defect, Récit…). It is a team decision, shared like the rest of the settings, and
