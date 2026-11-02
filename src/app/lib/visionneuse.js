@@ -77,7 +77,11 @@ function mrCloneCtx(mr) {
   if (!fs.existsSync(path.join(cwd, '.git'))) {
     throw new Error(t('err.depot-non-clone-localement-lance'));
   }
-  const ref = mr.reviewed_sha || `origin/${mr.source_branch}`;
+  /* MERGÉE : la branche source a souvent disparu du remote ; la tête relue est celle que la
+     forge a donnée (`head_sha`), fetchée sous `refs/mergerie/mr/` par `diffDeLaMr`. Ouverte : la
+     tête vivante, pour que l'arborescence et le diff à trois points parlent du même commit. */
+  const mergee = !!(mr.merged_at || mr.merge_commit_sha || mr.squash_commit_sha);
+  const ref = mr.reviewed_sha || (mergee && mr.head_sha) || `origin/${mr.source_branch}`;
   return { cwd, ref, target: mr.target_branch || 'main' };
 }
 /* Même contexte pour un PROJET DE SESSION : le viewer plein écran est identique,

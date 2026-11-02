@@ -7,6 +7,23 @@ const notify = require('../core/notify');
 const notes = require('./notes');
 const { etat } = require('../data/localstate');
 const { t } = require('../core/i18n');
+const git = require('../git/git');
+const mrref = require('../git/mrref');
+const fs = require('fs');
+const path = require('path');
+
+/* LES QUATRE SHA QUI PERMETTENT DE RELIRE UNE MERGE REQUEST MERGÉE (`git/mrref.js`) : la
+   branche source est souvent supprimée et le diff à trois points est vide par construction une
+   fois la tête dans la cible — sans `base_sha..head_sha`, « Ouvrir le code » n'a rien à montrer.
+   La forge les rend avec le détail de la MR ; on les écrit dès qu'on le lit, sans jamais effacer
+   une valeur connue par un `null`. */
+const poserShas = (mrId, d) => db.prepare(`UPDATE mr SET
+    head_sha = COALESCE(@head_sha, head_sha), base_sha = COALESCE(@base_sha, base_sha),
+    merge_commit_sha = COALESCE(@merge_commit_sha, merge_commit_sha), squash_commit_sha = COALESCE(@squash_commit_sha, squash_commit_sha)
+  WHERE id = @id`).run({
+  id: mrId, head_sha: d.head_sha || d.sha || null, base_sha: d.base_sha || null,
+  merge_commit_sha: d.merge_commit_sha || null, squash_commit_sha: d.squash_commit_sha || null,
+});
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
    Best-effort ABSOLU : toute erreur est capturée et stockée, jamais propagée —
@@ -158,6 +175,7 @@ async function discoverAll() {
         try {
           const detail = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, g.iid);
           if (detail && detail.merged_at) { poserMerge.run(detail.merged_at, g.id); mergee = true; }
+          if (detail) poserShas(g.id, detail); // ce qu'il faut pour relire son diff plus tard
         } catch { /* la forge n'a pas répondu : le rattrapage ci-dessous s'en chargera */ }
         const recent = g.updated_at && (Date.parse(now) - Date.parse(g.updated_at)) < FRESH_MS;
         if (recent) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
@@ -396,6 +414,7 @@ async function rafraichirMr(mrId) {
   if (!brut || typeof brut !== 'object') throw new Error(t('err.mr-introuvable'));
   const d = detailNormalise(brut);
   const stale = !!(d.sha && avant.current_sha && d.sha !== avant.current_sha);
+  poserShas(avant.id, brut);
   db.prepare(`UPDATE mr SET
       title = @title, source_branch = COALESCE(@source_branch, source_branch), target_branch = COALESCE(@target_branch, target_branch),
       web_url = COALESCE(@web_url, web_url), current_sha = COALESCE(@sha, current_sha), gitlab_created_at = COALESCE(@created_at, gitlab_created_at),
@@ -415,6 +434,17 @@ async function rafraichirMr(mrId) {
         notify.push('mr_merged', { iid: avant.iid, project: repo.project, title: d.title || avant.title || '' });
       }
       apresMerge(repo, { ...avant, source_branch: d.source_branch || avant.source_branch }, { mergee, cfg, now });
+    }
+    /* LE DIFF À JOUR, TOUT DE SUITE. « Ouvrir le code » sur une MR mergée relit `base_sha..head_sha`
+       par la ref que la forge conserve (`refs/merge-requests/<iid>/head`) : si le clone est déjà
+       là, on le met à jour et on ramène cette ref maintenant — l'ouverture n'aura plus rien à
+       aller chercher. Pas de clone : on ne crée pas un dépôt entier pour un bouton ; la
+       visionneuse le fera à la première ouverture, comme avant. Best-effort. */
+    if (fs.existsSync(path.join(git.cloneDirFor(cfg, repo), '.git'))) {
+      try {
+        const cwd = await git.ensureRepo(cfg, repo, () => {});
+        await mrref.fetchMrRefs(cwd, repo, [avant.iid]);
+      } catch { /* la ref n'est plus sur la forge, ou le réseau : la visionneuse réessaiera */ }
     }
   } else {
     // Réapparue ouverte (rouverte sur la forge) : elle revient dans la file.

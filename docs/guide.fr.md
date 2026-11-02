@@ -326,7 +326,10 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   découverte aurait déclenché (re-review et vérifications automatiques « sur péremption », si elles
   sont activées) ; une merge request mergée ou fermée entre-temps prend son badge **mergée**. Le
   message dit ce que la forge a répondu : mise à jour, rien de nouveau, nouveaux commits, mergée,
-  fermée. Côté appels : le détail de la MR (un appel), plus les fichiers changés quand le commit a
+  fermée. Sur une merge request **mergée**, il écrit aussi les SHA qui permettent de la relire
+  (merge-base d'alors et tête, que la forge conserve même après la suppression de la branche) et,
+  si le dépôt est déjà cloné, ramène cette tête : `Ouvrir le code` montre alors le diff au lieu
+  d'un écran vide. Côté appels : le détail de la MR (un appel), plus les fichiers changés quand le commit a
   bougé, et chez GitHub la comparaison avec la cible — jamais plus de trois.
 - Les reviews s'empilent dans une **file** — deux jobs sur le même dépôt gardent leur ordre, ceux qui
   n'ont rien en commun partent en parallèle d'eux-mêmes (voir *Dev IA*) ; un **panneau de log en direct** montre les

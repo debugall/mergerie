@@ -310,7 +310,10 @@ than sorting on a guessed identity.
   reviewers, and its state. A commit that landed since makes the report **stale** and triggers what
   discovery would have (the automatic re-review and the “on stale” verifications, when enabled); a
   merge request merged or closed in the meantime gets its **merged** badge. The message says what the
-  forge answered: refreshed, nothing new, new commits, merged, closed. Call budget: the MR's detail
+  forge answered: refreshed, nothing new, new commits, merged, closed. On a **merged** merge request
+  it also records the SHAs that let it be re-read (the merge-base of the time and the head, which the
+  forge keeps even after the branch is deleted) and, when the repository is already cloned, fetches
+  that head: `Open the code` then shows the diff instead of an empty screen. Call budget: the MR's detail
   (one call), plus the changed files when the commit moved, and on GitHub the comparison with the
   target — never more than three.
 - Jobs on the **same repository run one after the other**, in the order they were asked; a **live log panel**
