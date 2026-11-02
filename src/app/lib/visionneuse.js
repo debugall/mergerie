@@ -68,7 +68,16 @@ async function diffDeLaMr(mr, cwdConnu = null) {
       if (!ref) return null;
     }
     if (!ref || !await git.refExists(cwd, base)) return null;
-    return await git.diffTroisPoints(cwd, base, ref);
+    try {
+      return await git.diffTroisPoints(cwd, base, ref);
+    } catch (e) {
+      // Aucune base commune : comme la review, par les `diff_refs` de la forge (voir `mrref`).
+      if (e.code !== 'NO_MERGE_BASE') throw e;
+      const r = await mrref.diffSansBaseCommune(cwd, mr, repo, getConfig());
+      if (!r) return null;
+      db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
+      return r.diff;
+    }
   } catch { return null; }
 }
 function mrCloneCtx(mr) {

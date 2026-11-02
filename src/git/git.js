@@ -326,11 +326,21 @@ async function targetedDiff(cwd, sourceBranch, targetBranch, onLog = () => {}) {
 async function diffTroisPoints(cwd, baseRef, ref, onLog = () => {}) {
   // on log la commande mais PAS la sortie (le diff peut être énorme) : juste un résumé.
   onLog(`$ git diff ${baseRef}...${ref}`);
-  const { stdout } = await run(
-    'git',
-    ['diff', `${baseRef}...${ref}`],
-    { cwd, maxBuffer: 1024 * 1024 * 64 },
-  );
+  let stdout;
+  try {
+    ({ stdout } = await run('git', ['diff', `${baseRef}...${ref}`], { cwd, maxBuffer: 1024 * 1024 * 64 }));
+  } catch (e) {
+    /* « NO MERGE BASE » : les deux refs n'ont aucun ancêtre commun — cible changée sur la forge,
+       historique de la cible réécrit, branche orpheline, ou homonyme d'une branche de fork. Le
+       `fatal` de git décrit la commande, pas la situation : on la nomme, et on marque l'erreur
+       pour que l'appelant puisse relire la MR par les SHA de la forge (`mrref`). */
+    if (/no merge base/i.test(String(e.message))) {
+      const err = new Error(t('err.git.no-merge-base', { base: baseRef, ref }));
+      err.code = 'NO_MERGE_BASE';
+      throw err;
+    }
+    throw e;
+  }
   const lines = stdout ? stdout.split('\n').length : 0;
   onLog(`diff obtenu : ${lines} lignes, ${stdout.length} octets`);
   return stdout;

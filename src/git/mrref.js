@@ -82,4 +82,25 @@ async function diffARelire(cwd, ref, onLog = () => {}) {
     : git.diffTroisPoints(cwd, ref.base, ref.head, onLog);
 }
 
-module.exports = { refLocale, refspec, fetchMrRefs, refARelire, diffARelire };
+/* SANS BASE COMMUNE ENTRE LA CIBLE ET LA SOURCE (`diffTroisPoints` a levé `NO_MERGE_BASE`) :
+   on relit la merge request comme la forge l'affiche elle-même, `base_sha..head_sha` de ses
+   `diff_refs` — les SHA déjà connus de la ligne `mr`, sinon le détail de la MR (un appel). La
+   tête est ramenée par la ref que la forge conserve si le clone ne l'a pas. Rend
+   `{ base, head, diff }`, ou `null` quand la forge ne donne pas de quoi relire. */
+async function diffSansBaseCommune(cwd, mr, repo, cfg, onLog = () => {}) {
+  let base = mr.base_sha || null;
+  let head = mr.head_sha || null;
+  if (!(base && head)) {
+    const d = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, mr.iid);
+    base = (d && d.base_sha) || null;
+    head = (d && (d.head_sha || d.sha)) || null;
+  }
+  if (!base || !head || base === head) return null;
+  if (!await existe(cwd, head) && mr.iid) {
+    try { await fetchMrRefs(cwd, repo, [mr.iid], onLog); } catch { /* la forge n'a plus la ref */ }
+  }
+  if (!await existe(cwd, head) || !await existe(cwd, base)) return null;
+  return { base, head, diff: await git.diffRange(cwd, base, head, onLog) };
+}
+
+module.exports = { refLocale, refspec, fetchMrRefs, refARelire, diffARelire, diffSansBaseCommune };

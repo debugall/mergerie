@@ -316,6 +316,12 @@ than sorting on a guessed identity.
   that head: `Open the code` then shows the diff instead of an empty screen. Call budget: the MR's detail
   (one call), plus the changed files when the commit moved, and on GitHub the comparison with the
   target — never more than three.
+- **A merge request with no common ancestor is still re-read.** When the target and the source share no
+  ancestor in the clone (target changed on the forge, target history rewritten, orphan branch),
+  `git diff target...source` answers “no merge base”. The review and `View diff` then re-read the merge
+  request **as the forge shows it**, by the SHAs of its `diff_refs` (one call), and keep them on the row.
+  When the forge has nothing to offer, the error names the situation and suggests refreshing the merge
+  request from the forge, instead of git's `fatal`.
 - Jobs on the **same repository run one after the other**, in the order they were asked; a **live log panel**
   shows the commands, the output and the progress, with a **Stop** button (which also empties the queue — the
   confirmation says so), a **stopwatch** since the start and, once a rhythm is established, an **estimate of

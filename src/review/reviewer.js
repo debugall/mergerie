@@ -102,8 +102,20 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   }
   if (diff == null) {
     onLog(`calcul du diff ${mr.source_branch}...${mr.target_branch}`);
-    diff = enDemo ? demoDiff.diffPour(mr)
-      : await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
+    try {
+      diff = enDemo ? demoDiff.diffPour(mr)
+        : await git.targetedDiff(cwd, mr.source_branch, mr.target_branch, onLog);
+    } catch (e) {
+      /* AUCUNE BASE COMMUNE entre la cible et la source : la forge, elle, affiche un diff — celui
+         de ses `diff_refs`. On relit la MR pareil, et on garde ces SHA sur la ligne pour que
+         « Ouvrir le code » les trouve sans redemander. Sinon, l'erreur claire de `git.js`. */
+      if (enDemo || e.code !== 'NO_MERGE_BASE') throw e;
+      const r = await mrref.diffSansBaseCommune(cwd, mr, repo, cfg, onLog).catch(() => null);
+      if (!r) throw e;
+      onLog(t('log.review.no-merge-base', { base: r.base.slice(0, 8), head: r.head.slice(0, 8) }));
+      db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
+      diff = r.diff;
+    }
   }
 
   /* L'EXPLORATEUR VOIT TOUTE LA MERGE REQUEST. Le delta n'est que ce qu'on DONNE À L'IA pour
