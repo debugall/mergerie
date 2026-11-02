@@ -6,7 +6,7 @@
  *
  * Ce qu'on attend désormais : la review et la visionneuse relisent la merge request comme la
  * forge l'affiche — `base_sha..head_sha` de ses `diff_refs` —, les SHA sont gardés sur la ligne
- * `mr`, et quand la forge n'a rien à offrir l'erreur dit la situation, pas la commande.
+ * `mr` ; quand la forge n'a pas de base non plus, les deux arbres sont comparés tels quels.
  * Sans navigateur : tout se lit par l'API et la base.
  */
 
@@ -77,11 +77,20 @@ describe('Review et diff d’une merge request sans base commune', () => {
     assert.equal(enBase(41).last_error, null, 'aucune erreur posée sur la merge request');
   });
 
-  test('quand la forge n’a pas de diff_refs, l’erreur nomme la situation et non la commande', async () => {
+  test('quand la forge n’a pas de diff_refs non plus, les deux arbres sont comparés tels quels', async () => {
+    /* GitLab rend des `diff_refs` sans `base_sha` quand il ne trouve pas d'ancêtre commun : c'est
+       le cas réel rencontré. Le diff est alors celui des deux arbres, cible et source. */
     const r = await app.api('GET', `/api/mrs/${id[42]}/diffview`);
-    assert.notEqual(r.status, 200);
-    const msg = String((r.body && r.body.error) || JSON.stringify(r.body));
-    assert.match(msg, /[Aa]ucune base commune|[Nn]o common ancestor/, msg);
-    assert.doesNotMatch(msg, /fatal:/, 'le fatal de git ne remonte plus tel quel');
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.match(String(r.body.diff), /const z = 26/);
+    assert.match(String(r.body.diff), /README\.md/, 'un fichier absent de la source apparaît supprimé : les arbres sont comparés tels quels');
+    const m = enBase(42);
+    assert.equal(m.base_sha, null, 'aucun SHA inventé sur la ligne');
+    const rev = await app.api('POST', `/api/mrs/${id[42]}/review`, { explain: false });
+    assert.equal(rev.status, 200);
+    await waitForJobs(app.api);
+    const row = app.db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(id[42]);
+    assert.ok(row && row.diff_path, 'la review a tourné sur le diff des deux arbres');
+    assert.match(fs.readFileSync(row.diff_path, 'utf8'), /const z = 26/);
   });
 });

@@ -85,8 +85,9 @@ async function diffARelire(cwd, ref, onLog = () => {}) {
 /* SANS BASE COMMUNE ENTRE LA CIBLE ET LA SOURCE (`diffTroisPoints` a levé `NO_MERGE_BASE`) :
    on relit la merge request comme la forge l'affiche elle-même, `base_sha..head_sha` de ses
    `diff_refs` — les SHA déjà connus de la ligne `mr`, sinon le détail de la MR (un appel). La
-   tête est ramenée par la ref que la forge conserve si le clone ne l'a pas. Rend
-   `{ base, head, diff }`, ou `null` quand la forge ne donne pas de quoi relire. */
+   tête est ramenée par la ref que la forge conserve si le clone ne l'a pas ; et si la forge
+   elle-même n'a pas de base, les deux arbres sont comparés tels quels (`arbres: true`). Rend
+   `{ base, head, diff, arbres?, raison? }`, ou `{ diff: null, raison }` quand rien ne permet de relire. */
 async function diffSansBaseCommune(cwd, mr, repo, cfg, onLog = () => {}) {
   /* TOUJOURS LE DÉTAIL DE LA FORGE, même quand la ligne porte déjà des SHA : ceux-là datent du
      dernier rafraîchissement, et c'est précisément la tête courante qu'il faut relire. Les SHA de
@@ -102,13 +103,25 @@ async function diffSansBaseCommune(cwd, mr, repo, cfg, onLog = () => {}) {
     if (!base || !head) raison = `détail de la MR injoignable : ${String(e.message).split('\n')[0]}`;
   }
   if (base && head && base === head) raison = `diff_refs vides : base = tête = ${base.slice(0, 8)}`;
-  if (raison) return { diff: null, raison };
-  if (!await existe(cwd, head) && mr.iid) {
-    try { await fetchMrRefs(cwd, repo, [mr.iid], onLog); } catch { /* la forge n'a plus la ref */ }
+  if (!raison) {
+    if (!await existe(cwd, head) && mr.iid) {
+      try { await fetchMrRefs(cwd, repo, [mr.iid], onLog); } catch { /* la forge n'a plus la ref */ }
+    }
+    if (!await existe(cwd, head)) raison = `tête ${head.slice(0, 8)} absente du clone, même après fetch de la ref de la MR`;
+    else if (!await existe(cwd, base)) raison = `base ${base.slice(0, 8)} absente du clone`;
+    else return { base, head, diff: await git.diffRange(cwd, base, head, onLog) };
   }
-  if (!await existe(cwd, head)) return { diff: null, raison: `tête ${head.slice(0, 8)} absente du clone, même après fetch de la ref de la MR` };
-  if (!await existe(cwd, base)) return { diff: null, raison: `base ${base.slice(0, 8)} absente du clone` };
-  return { base, head, diff: await git.diffRange(cwd, base, head, onLog) };
+  /* LA FORGE NON PLUS N'A PAS DE BASE (GitLab rend des `diff_refs` sans `base_sha` quand il ne
+     trouve pas d'ancêtre commun). Dernier repli : comparer les deux ARBRES, cible et source,
+     sans histoire. Le cas réel derrière : une cible réimportée (historique réécrit) et des
+     branches nées avant — les deux arbres ne diffèrent que de ce que la branche change. */
+  const cible = mr.target_branch ? `origin/${mr.target_branch}` : null;
+  const source = mr.source_branch ? `origin/${mr.source_branch}` : null;
+  if (cible && source && await existe(cwd, cible) && await existe(cwd, source)) {
+    onLog(`${raison} → comparaison des deux arbres ${cible} et ${source}`);
+    return { base: cible, head: source, arbres: true, raison, diff: await git.diffDeuxArbres(cwd, cible, source, onLog) };
+  }
+  return { diff: null, raison };
 }
 
 module.exports = { refLocale, refspec, fetchMrRefs, refARelire, diffARelire, diffSansBaseCommune };

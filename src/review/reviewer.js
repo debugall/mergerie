@@ -112,8 +112,11 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
       if (enDemo || e.code !== 'NO_MERGE_BASE') throw e;
       const r = await mrref.diffSansBaseCommune(cwd, mr, repo, cfg, onLog).catch((x) => ({ diff: null, raison: String(x.message).split('\n')[0] }));
       if (!r.diff) { e.message += ` — ${t('err.git.no-merge-base.why', { raison: r.raison })}`; throw e; }
-      onLog(t('log.review.no-merge-base', { base: r.base.slice(0, 8), head: r.head.slice(0, 8) }));
-      db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
+      if (r.arbres) onLog(t('log.review.no-merge-base-trees', { base: r.base, head: r.head }));
+      else {
+        onLog(t('log.review.no-merge-base', { base: r.base.slice(0, 8), head: r.head.slice(0, 8) }));
+        db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
+      }
       diff = r.diff;
     }
   }

@@ -335,8 +335,11 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
   ancêtre commun dans le clone (cible changée sur la forge, historique de la cible réécrit, branche
   orpheline), `git diff cible...source` répond « no merge base ». La review et `Voir le diff` relisent
   alors la merge request **comme la forge l'affiche**, par les SHA de ses `diff_refs` (un appel), et les
-  gardent sur la ligne. Si la forge n'a rien à offrir, l'erreur dit la situation et propose de mettre
-  la merge request à jour depuis la forge, au lieu du `fatal` de git.
+  gardent sur la ligne. Quand la forge n'a pas de base non plus (GitLab rend des `diff_refs` sans
+  `base_sha`), les **deux arbres** cible et source sont comparés tels quels : pour une cible réimportée
+  à l'identique, c'est exactement ce que la branche change ; pour deux histoires vraiment étrangères,
+  le diff est grand mais vrai, et le journal le dit. Si rien ne permet de relire, l'erreur dit la
+  situation et la raison, au lieu du `fatal` de git.
 - Les reviews s'empilent dans une **file** — deux jobs sur le même dépôt gardent leur ordre, ceux qui
   n'ont rien en commun partent en parallèle d'eux-mêmes (voir *Dev IA*) ; un **panneau de log en direct** montre les
   commandes, la sortie et la progression, avec un bouton **Stop** (qui vide aussi la file — la

@@ -75,7 +75,7 @@ async function diffDeLaMr(mr, cwdConnu = null) {
       if (e.code !== 'NO_MERGE_BASE') throw e;
       const r = await mrref.diffSansBaseCommune(cwd, mr, repo, getConfig());
       if (!r.diff) { e.message += ` — ${t('err.git.no-merge-base.why', { raison: r.raison })}`; throw e; }
-      db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
+      if (!r.arbres) db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
       return r.diff;
     }
   } catch (e) {

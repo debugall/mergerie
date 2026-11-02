@@ -319,6 +319,18 @@ async function targetedDiff(cwd, sourceBranch, targetBranch, onLog = () => {}) {
   return diffTroisPoints(cwd, `origin/${nom(targetBranch)}`, `origin/${nom(sourceBranch)}`, onLog);
 }
 
+/* DEUX ARBRES, SANS HISTOIRE : `git diff A B` compare ce que contiennent les deux têtes, sans
+   chercher d'ancêtre commun. C'est le repli quand il n'y en a pas (historique réécrit, branche
+   orpheline) : pour une cible réimportée à l'identique, le résultat est exactement ce que la
+   branche change ; pour deux histoires vraiment étrangères, il est grand mais vrai. */
+async function diffDeuxArbres(cwd, a, b, onLog = () => {}) {
+  onLog(`$ git diff ${a} ${b}`);
+  const { stdout } = await run('git', ['diff', a, b], { cwd, maxBuffer: 1024 * 1024 * 64 });
+  const lines = stdout ? stdout.split('\n').length : 0;
+  onLog(`diff des deux arbres : ${lines} lignes, ${stdout.length} octets`);
+  return stdout;
+}
+
 /* LE MÊME DIFF, MAIS VERS UNE RÉFÉRENCE DÉJÀ RÉSOLUE — un SHA relu, par exemple. L'arbre
    affiché et les fichiers marqués « modifiés » doivent parler du MÊME commit : marquer un
    fichier d'après la tête de branche pendant qu'on liste l'arbre du commit relu fait apparaître
@@ -777,6 +789,7 @@ async function ensureCleanWorktree(cwd, onLog = () => {}) {
 }
 
 module.exports = {
+  diffDeuxArbres,
   surClone,
   aheadOf, behindOf, isPushed, renommerDernierCommit, nonPousses,
   rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
