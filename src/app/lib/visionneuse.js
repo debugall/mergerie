@@ -74,11 +74,14 @@ async function diffDeLaMr(mr, cwdConnu = null) {
       // Aucune base commune : comme la review, par les `diff_refs` de la forge (voir `mrref`).
       if (e.code !== 'NO_MERGE_BASE') throw e;
       const r = await mrref.diffSansBaseCommune(cwd, mr, repo, getConfig());
-      if (!r) return null;
+      if (!r.diff) { e.message += ` — ${t('err.git.no-merge-base.why', { raison: r.raison })}`; throw e; }
       db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
       return r.diff;
     }
-  } catch { return null; }
+  } catch (e) {
+    if (e && e.code === 'NO_MERGE_BASE') throw e; // la raison précise vaut mieux qu'un écran vide
+    return null;
+  }
 }
 function mrCloneCtx(mr) {
   const cfg = getConfig();

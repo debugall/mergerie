@@ -88,18 +88,26 @@ async function diffARelire(cwd, ref, onLog = () => {}) {
    tête est ramenée par la ref que la forge conserve si le clone ne l'a pas. Rend
    `{ base, head, diff }`, ou `null` quand la forge ne donne pas de quoi relire. */
 async function diffSansBaseCommune(cwd, mr, repo, cfg, onLog = () => {}) {
-  let base = mr.base_sha || null;
-  let head = mr.head_sha || null;
-  if (!(base && head)) {
+  /* TOUJOURS LE DÉTAIL DE LA FORGE, même quand la ligne porte déjà des SHA : ceux-là datent du
+     dernier rafraîchissement, et c'est précisément la tête courante qu'il faut relire. Les SHA de
+     la ligne ne servent que de repli si la forge ne répond pas. */
+  let base = null; let head = null; let raison = null;
+  try {
     const d = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, mr.iid);
     base = (d && d.base_sha) || null;
     head = (d && (d.head_sha || d.sha)) || null;
+    if (!base) raison = `la forge ne donne pas de diff_refs.base_sha (cible ${d && d.target_branch}, source ${d && d.source_branch}, état ${d && d.state})`;
+  } catch (e) {
+    base = mr.base_sha || null; head = mr.head_sha || null;
+    if (!base || !head) raison = `détail de la MR injoignable : ${String(e.message).split('\n')[0]}`;
   }
-  if (!base || !head || base === head) return null;
+  if (base && head && base === head) raison = `diff_refs vides : base = tête = ${base.slice(0, 8)}`;
+  if (raison) return { diff: null, raison };
   if (!await existe(cwd, head) && mr.iid) {
     try { await fetchMrRefs(cwd, repo, [mr.iid], onLog); } catch { /* la forge n'a plus la ref */ }
   }
-  if (!await existe(cwd, head) || !await existe(cwd, base)) return null;
+  if (!await existe(cwd, head)) return { diff: null, raison: `tête ${head.slice(0, 8)} absente du clone, même après fetch de la ref de la MR` };
+  if (!await existe(cwd, base)) return { diff: null, raison: `base ${base.slice(0, 8)} absente du clone` };
   return { base, head, diff: await git.diffRange(cwd, base, head, onLog) };
 }
 
