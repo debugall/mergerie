@@ -130,6 +130,7 @@ async function openReport(id, opts = {}) {
                   sur GitLab, une review APPROVE sur GitHub, sans aucun commentaire inline. Dans le
                   menu, comme Publier : la barre garde ses trois actions. L'état (qui a déjà
                   approuvé, moi compris) arrive à part, après le rendu — c'est un appel à la forge. */''}
+            <button id="aRefresh" role="menuitem" title="${esc(tr('mr.btn.refresh-title', { forge: forgeLabel(m.forge) }))}">${tr('mr.btn.refresh')}</button>
             ${m.closed_seen ? '' : `<button id="aApprove" role="menuitem" data-mine="0" title="${esc(tr('report.btn.approve-title', { forge: forgeLabel(m.forge) }))}">${tr('report.btn.approve')}</button>`}
             ${d.review ? (() => {
               /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
@@ -476,6 +477,16 @@ async function openReport(id, opts = {}) {
   const done = $('#aDone'); if (done) done.addEventListener('click', async () => {
     await api(`/mrs/${id}/done`, { method: 'POST' });
     toast(tr('toast.marquee-done'));
+    openReport(id); loadSegment(); refreshCounts();
+  });
+  /* Relire la merge request à la forge : le rapport se redessine (en-tête, badges, « périmé »),
+     et la liste suit — mergée ou fermée, sa carte le dit. */
+  const aRefresh = $('#aRefresh'); if (aRefresh) aRefresh.addEventListener('click', async () => {
+    try {
+      const r = await api(`/mrs/${id}/refresh`, { method: 'POST' });
+      const cle = r.etat === 'merged' ? 'merged' : r.etat === 'closed' ? 'closed' : r.stale ? 'stale' : r.changed ? 'updated' : 'same';
+      toast(tr(`mr.refresh.${cle}`, { forge: forgeLabel(m.forge) }));
+    } catch (e) { toast(explainError(e.message), true); return; }
     openReport(id); loadSegment(); refreshCounts();
   });
   const reopen = $('#aReopen'); if (reopen) reopen.addEventListener('click', async () => {

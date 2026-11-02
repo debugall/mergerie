@@ -474,6 +474,10 @@ function mrCard(m) {
         ${/* Les actions qu'un plugin ajoute au menu d'une merge request (cible « mr »). */''}
         ${pluginsHtml('mr', m)}
         <button role="menuitem" data-copy-ref="${m.id}">${tr('mr.btn.copy-ref')}</button>
+        ${/* RELIRE CETTE MERGE REQUEST À LA FORGE, sans attendre le prochain tour de découverte ni
+              le déclencher pour tous les dépôts : titre, branches, SHA, conflits, et son état
+              (mergée ou fermée, la carte le dit). */''}
+        <button role="menuitem" data-refresh="${m.id}" title="${esc(tr('mr.btn.refresh-title', { forge: forgeLabel(m.forge) }))}">${tr('mr.btn.refresh')}</button>
         ${/* C11 — SURVEILLER LE TICKET DE CETTE MR. La clé est déjà déduite (elle est écrite
               sur la carte) ; il fallait pourtant aller dans Jira → Surveillés et la retaper.
               L'entrée n'apparaît que si Jira est connecté et qu'une clé a été trouvée. */''}
@@ -536,6 +540,24 @@ document.addEventListener('click', (e) => {
   if (!m) return;
   copyText(refMr(m), null);
   toast(tr('mr.ref.copied'));
+});
+
+/* « Mettre à jour depuis la forge » : un appel pour CETTE merge request. Le message dit ce que la
+   forge a répondu — mergée, fermée, de nouveaux commits, mise à jour, ou rien de neuf — puis la
+   liste se recharge : une MR qui n'est plus ouverte prend son badge « mergée » sous les yeux. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-refresh]');
+  if (!b) return;
+  const id = Number(b.dataset.refresh);
+  const m = (toReviewRows || []).concat(reportRows || []).find((x) => x.id === id);
+  const forge = forgeLabel(m && m.forge);
+  try {
+    const r = await busy(b, () => api(`/mrs/${id}/refresh`, { method: 'POST' }));
+    const cle = r.etat === 'merged' ? 'merged' : r.etat === 'closed' ? 'closed' : r.stale ? 'stale' : r.changed ? 'updated' : 'same';
+    toast(tr(`mr.refresh.${cle}`, { forge }));
+  } catch (err) { toast(explainError(err.message), true); return; }
+  loadSegment();
+  refreshCounts();
 });
 
 $('#btnDiscover').addEventListener('click', async () => {

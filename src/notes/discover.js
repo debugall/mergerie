@@ -347,4 +347,101 @@ async function upsertMrFromApi(repoId, m) {
   return id;
 }
 
-module.exports = { discoverAll, upsertMrFromApi, apresMerge };
+/* UNE SEULE MERGE REQUEST, RELUE À LA FORGE — le bouton « Mettre à jour depuis la forge » du
+   menu ⋯. La découverte balaie tous les dépôts activés (une page par dépôt, puis des appels
+   plafonnés) : quand on vient de pousser un commit ou de changer la cible d'UNE merge request,
+   c'est beaucoup pour rafraîchir une carte. Ici : le détail de cette MR (un appel, le retard sur
+   la cible vient avec chez GitLab), les fichiers changés si le SHA a bougé (un appel), et le
+   retard chez GitHub (un appel de comparaison). Les mêmes colonnes que la découverte, les mêmes
+   suites : une MR qui n'est plus ouverte passe par `apresMerge`, un SHA qui a changé est
+   renvoyé (`stale`) pour que l'appelant relance ce que la découverte relancerait.
+   Rend `{ id, etat: 'open' | 'merged' | 'closed', stale, changed }`. */
+function detailNormalise(m) {
+  const auteur = m.author && typeof m.author === 'object' ? m.author : null;
+  const titre = String(m.title || '');
+  const reviewers = Array.isArray(m.reviewers)
+    ? m.reviewers.map((r) => (typeof r === 'string' ? r : (r && (r.username || r.name)) || '')).filter(Boolean)
+    : null;
+  return {
+    title: titre, source_branch: m.source_branch || null, target_branch: m.target_branch || null,
+    web_url: m.web_url || null, sha: m.sha || m.head_sha || null, created_at: m.created_at || null,
+    author: auteur ? (auteur.name || auteur.username || '') : String(m.author || ''),
+    author_username: auteur ? (auteur.username || '') : String(m.author || ''),
+    // GitHub ne rend pas le corps dans la forme normalisée du détail : `null` garde l'existant.
+    description: m.description != null || m.body != null ? String(m.description || m.body || '').slice(0, 4000) : null,
+    has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
+    is_draft: m.draft === true || m.work_in_progress === true || /^\s*(draft|wip)\s*:/i.test(titre) ? 1 : 0,
+    reviewers: reviewers ? reviewers.join(',') : null,
+    is_fork: m.source_project_id != null && m.target_project_id != null
+      ? (m.source_project_id !== m.target_project_id ? 1 : 0) : null,
+    behind_by: Number.isInteger(m.behind_by) && m.behind_by >= 0 ? m.behind_by : null,
+    merged_at: m.merged_at || null,
+    etat: m.state === 'merged' || m.merged_at ? 'merged' : (m.state === 'closed' || m.state === 'locked' ? 'closed' : 'open'),
+  };
+}
+const COLONNES_SUIVIES = ['title', 'source_branch', 'target_branch', 'web_url', 'current_sha', 'author', 'has_conflicts',
+  'is_draft', 'reviewers', 'description', 'behind_by', 'closed_seen', 'merged_at', 'changed_paths'];
+async function rafraichirMr(mrId) {
+  const avant = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
+  if (!avant) return null;
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(avant.repo_id);
+  if (!repo) return null;
+  const etatDe = (mr) => (mr.closed_seen ? (mr.merged_at ? 'merged' : 'closed') : 'open');
+  // En démo la forge n'existe pas : la carte est déjà ce qu'elle sera.
+  if (isDemo()) return { id: avant.id, etat: etatDe(avant), stale: false, changed: false };
+  const cfg = getConfig();
+  const now = new Date().toISOString();
+  const client = forge.clientFor(repo);
+  const brut = await client.getMergeRequest(cfg, repo.project, avant.iid);
+  if (!brut || typeof brut !== 'object') throw new Error(t('err.mr-introuvable'));
+  const d = detailNormalise(brut);
+  const stale = !!(d.sha && avant.current_sha && d.sha !== avant.current_sha);
+  db.prepare(`UPDATE mr SET
+      title = @title, source_branch = COALESCE(@source_branch, source_branch), target_branch = COALESCE(@target_branch, target_branch),
+      web_url = COALESCE(@web_url, web_url), current_sha = COALESCE(@sha, current_sha), gitlab_created_at = COALESCE(@created_at, gitlab_created_at),
+      author = @author, author_username = @author_username, updated_at = @now,
+      has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft,
+      reviewers = COALESCE(@reviewers, reviewers), description = COALESCE(@description, description),
+      is_fork = COALESCE(@is_fork, is_fork), behind_by = COALESCE(@behind_by, behind_by)
+    WHERE id = @id`).run({ ...d, now, id: avant.id });
+  if (d.etat !== 'open') {
+    const mergee = d.etat === 'merged';
+    if (mergee) db.prepare('UPDATE mr SET merged_at = ? WHERE id = ? AND merged_at IS NULL').run(d.merged_at || now, avant.id);
+    if (!avant.closed_seen) {
+      db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?').run(avant.id);
+      if (mergee) {
+        db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)')
+          .run('mr_merged', avant.iid, repo.project, avant.author || '', d.title || avant.title || '', now);
+        notify.push('mr_merged', { iid: avant.iid, project: repo.project, title: d.title || avant.title || '' });
+      }
+      apresMerge(repo, { ...avant, source_branch: d.source_branch || avant.source_branch }, { mergee, cfg, now });
+    }
+  } else {
+    // Réapparue ouverte (rouverte sur la forge) : elle revient dans la file.
+    db.prepare('UPDATE mr SET closed_seen = 0 WHERE id = ?').run(avant.id);
+    /* Le retard sur la cible : GitLab le rend avec le détail, GitHub par une comparaison —
+       un appel de plus, seulement là où le détail ne l'a pas dit. Best-effort. */
+    if (d.behind_by == null && d.is_fork !== 1 && avant.is_fork !== 1) {
+      try {
+        const div = await client.divergence(cfg, repo.project, { ...d, iid: avant.iid, is_fork: avant.is_fork === 1 });
+        if (div && Number.isInteger(div.behind_by)) {
+          db.prepare('UPDATE mr SET behind_by = ?, has_conflicts = COALESCE(?, has_conflicts) WHERE id = ?')
+            .run(div.behind_by, div.has_conflicts === true ? 1 : (div.has_conflicts === false ? 0 : null), avant.id);
+        }
+      } catch { /* la forge n'a pas répondu : la valeur connue reste */ }
+    }
+    // Les fichiers changés suivent le SHA : relus quand il bouge, ou quand on ne les a jamais eus.
+    if (stale || avant.changed_paths == null) {
+      try {
+        const ch = await client.listMrChanges(cfg, repo.project, avant.iid);
+        db.prepare('UPDATE mr SET changed_paths = ?, changed_files = ?, changed_additions = ?, changed_deletions = ? WHERE id = ?')
+          .run(ch.paths.join('\n'), ch.files, ch.additions, ch.deletions, avant.id);
+      } catch { /* best-effort : le badge « risque » attendra la prochaine découverte */ }
+    }
+  }
+  const apres = db.prepare('SELECT * FROM mr WHERE id = ?').get(avant.id);
+  const changed = COLONNES_SUIVIES.some((c) => (avant[c] ?? null) !== (apres[c] ?? null));
+  return { id: avant.id, etat: etatDe(apres), stale, changed };
+}
+
+module.exports = { discoverAll, upsertMrFromApi, apresMerge, rafraichirMr };

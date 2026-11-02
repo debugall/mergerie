@@ -269,7 +269,7 @@ than sorting on a guessed identity.
   button ignores this filter — an explicit gesture always goes out.
 - **The card holds a single row of actions**: `View diff` · `Context` | `Review ▾` | `⋯`.
   The **`⋯`** menu gathers everything else — *Let the AI code it*, *Verify*, *See results*,
-  *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
+  *Copy the reference*, *Refresh from the forge*, *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
   which one was the normal path, and their number changed from one card to the next: the action
   column was never twice in the same place. The gestures are unchanged, one extra click for the
   less frequent ones.
@@ -304,6 +304,15 @@ than sorting on a guessed identity.
   really happens the MR leaves the queue (marked done). Also available in the decision panel of
   `View diff`, which is precisely where triviality is judged.
 - `Dismiss without review` takes an MR out of the queue, with a few seconds to **undo**.
+- **`Refresh from the forge`** (⋯ menu of the card and of the report) re-reads **this merge request
+  alone** on GitLab or GitHub, without waiting for the automatic refresh or running a discovery over
+  every repository: title, branches, latest commit, conflicts, how far behind the target it is, draft,
+  reviewers, and its state. A commit that landed since makes the report **stale** and triggers what
+  discovery would have (the automatic re-review and the “on stale” verifications, when enabled); a
+  merge request merged or closed in the meantime gets its **merged** badge. The message says what the
+  forge answered: refreshed, nothing new, new commits, merged, closed. Call budget: the MR's detail
+  (one call), plus the changed files when the commit moved, and on GitHub the comparison with the
+  target — never more than three.
 - Jobs on the **same repository run one after the other**, in the order they were asked; a **live log panel**
   shows the commands, the output and the progress, with a **Stop** button (which also empties the queue — the
   confirmation says so), a **stopwatch** since the start and, once a rhythm is established, an **estimate of

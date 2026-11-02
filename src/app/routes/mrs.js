@@ -28,6 +28,7 @@ const fs = require('fs');
 const { servirFichierNonFiable } = require('../fichiers');
 const { gardeConfigAgent, mrById, parseConvergeOpts, readFileSafe, ticketUrl, wrap } = require('../http');
 const { auteurs } = require('../lib/partage');
+const { rafraichirUne } = require('../lib/decouverte');
 const identite = require('../../core/identite');
 const { etat: etatLocal } = require('../../data/localstate');
 const { assertValidBranch, insertTargets } = require('../lib/sessions');
@@ -212,6 +213,14 @@ app.get('/api/mrs', wrap((req, res) => {
       new_for_me: !!nouveauPourMoi[r.id],
     };
   }));
+}));
+/* « METTRE À JOUR DEPUIS LA FORGE » : cette merge request seule, sans balayer tous les dépôts. */
+app.post('/api/mrs/:id/refresh', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const r = await rafraichirUne(mr.id);
+  if (!r) throw new Error(t('err.mr-introuvable'));
+  res.json(r);
 }));
 /* Le rapport d'un collègue vient d'être ouvert ici : la pastille « nouveau pour toi » tombe.
    État de CE poste (`local_state`), par l'uid de la dernière version. */

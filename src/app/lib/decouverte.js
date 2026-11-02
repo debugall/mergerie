@@ -10,7 +10,7 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const notify = require('../../core/notify');
-const { discoverAll } = require('../../notes/discover');
+const { discoverAll, rafraichirMr } = require('../../notes/discover');
 const jobs = require('../../jobs');
 const forge = require('../../forge');
 const plugins = require('../../plugins');
@@ -318,6 +318,17 @@ async function decouvrir() {
   return result;
 }
 
+/* UNE MERGE REQUEST RELUE À LA DEMANDE — et les mêmes suites qu'un tour de découverte quand
+   son SHA a bougé : la re-review et les vérifications « sur péremption », avec leurs plafonds. */
+async function rafraichirUne(mrId) {
+  const r = await rafraichirMr(mrId);
+  if (r && r.stale && r.etat === 'open') {
+    r.auto_rereview = await lancerRereviewsAuto([r.id]);
+    r.auto_verify_stale = await lancerVerificationsAuto([r.id], { colonne: 'auto_on_stale' });
+  }
+  return r;
+}
+
 module.exports = {
-  plafondVerifAuto, servicesPretsPour, lancerVerificationsAuto, plafondReviewAuto, lancerLotReview, AUTEUR_AUTO, executantAuto, dernierRefusAuto, direRefusAuto, mrDeMoi, mrsAMoi, lancerReviewsAuto, lancerRereviewsAuto, decouvrir, derniereDecouverteA,
+  rafraichirUne, plafondVerifAuto, servicesPretsPour, lancerVerificationsAuto, plafondReviewAuto, lancerLotReview, AUTEUR_AUTO, executantAuto, dernierRefusAuto, direRefusAuto, mrDeMoi, mrsAMoi, lancerReviewsAuto, lancerRereviewsAuto, decouvrir, derniereDecouverteA,
 };
