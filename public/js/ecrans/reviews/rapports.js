@@ -326,9 +326,10 @@ function badgeConflit(m) {
       + ` title="${esc(tr('mr.tag.behind-title', { n, target: m.target_branch || '' }))}">`
       + `${svgIco('clock')} ${esc(tr('mr.tag.behind', { n }))}</button>`)
     /* …ET LA VOIE PAR L'IA, à côté. Résoudre soi-même dans Git → Merge est une voie ; l'autre est
-       de confier à l'agent la mise à jour de la branche — rejouer ses changements par-dessus la
-       cible, en comprenant ce qu'ils voulaient — et de relire avant de pousser. Le bouton ouvre la
-       modale de session pré-remplie : rien n'est lancé ni poussé sans le clic suivant. */
+       de confier à l'agent la mise à jour de la branche — fusionner la cible dans la branche, en
+       comprenant ce que la branche voulait — et de relire avant de pousser. Par des commits AJOUTÉS,
+       jamais un rebase : l'historique poussé reste intact et « Pousser » ne force pas. Le bouton
+       ouvre la modale de session pré-remplie : rien n'est lancé ni poussé sans le clic suivant. */
     + ` <button type="button" class="btn btn-sm mr-rebase-ia" data-mr-rebase="${m.id}"`
     + ` title="${esc(tr('mr.rebase.button-title', { target: m.target_branch || '' }))}">`
     + `${svgIco('bot')} ${esc(tr('mr.rebase.button'))}</button>`;
@@ -345,7 +346,7 @@ document.addEventListener('click', (e) => {
     title: tr('mr.rebase.title', vars),
     commitMessage: tr('mr.rebase.commit', vars),
     autoPush: false,
-    forcePush: true,
+    forcePush: false,
     fromMrText: tr('task.from-mr-rebase', vars),
   }).catch((err) => toast(tr('toast.ouverture-impossible', { message: err.message }), true));
 });

@@ -79,18 +79,19 @@ decision.
 **A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
 direction that unblocks it (the target branch into the MR's branch). Next to it, **`Update with the AI`**
 opens the coding session modal already filled in: the MR's branch, its target branch as the base,
-automatic push unticked, and the instruction — first understand what the branch changes and why, replay
-those changes on top of the target's current state (`git rebase`), resolve each conflict keeping what
-the target brings and the branch's intent, check, commit, **do not push**. You re-read the instruction,
-launch, re-read the diff, then `Push` — which forces by itself (`--force-with-lease`), the history
-having been rewritten. It works on a colleague's merge request as well as yours; *Update with main* on
+automatic push unticked, and the instruction — first understand what the branch changes and why, merge
+the target's current state into the branch (`git merge`), resolve each conflict keeping what the target
+brings and the branch's intent, check, commit, **do not push**. The instruction says in so many words to
+add commits to fix the conflicts, with no rebase or amend: the history already pushed stays intact, and
+nobody has a force push to do. You re-read the instruction, launch, re-read the diff, then `Push` —
+normally, without forcing. It works on a colleague's merge request as well as yours; *Update with main* on
 a project line stays the shortcut with no instruction to re-read, for merge requests born from a session.
 
 **A merge request behind its target says so too**, without waiting for a conflict: the card carries
 "N commit(s) behind" — what the target branch received and this branch never saw. It still merges, but
 its code never ran with those commits; the badge opens `Git → Merge` as a conflict does, and
 **`Update with the AI`** is there as well, with an instruction that states the delay rather than a
-conflict that does not exist — and rebases the same way. The count comes from the forge (GitLab's
+conflict that does not exist — and merges the same way. The count comes from the forge (GitLab's
 diverged commits count, GitHub's `base...head` comparison), read at discovery — one call per open merge
 request, capped per round — and when the merge modal opens. "Not known yet" shows nothing: a branch
 from a fork, or a silent forge, never becomes "up to date" by default.

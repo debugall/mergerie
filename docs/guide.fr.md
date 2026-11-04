@@ -91,10 +91,11 @@ rien ; il dit combien de merge requests n'attendent plus qu'une décision.
 sens qui débloque (la branche cible dans la branche de la MR). À côté, **`Mettre à jour avec l'IA`**
 ouvre la modale de session de codage déjà remplie : la branche de la MR, sa branche cible pour base, le
 push automatique décoché, et la consigne — comprendre d'abord ce que la branche change et pourquoi,
-rejouer ces changements par-dessus l'état actuel de la cible (`git rebase`), résoudre chaque conflit en
-gardant ce que la cible apporte et l'intention de la branche, vérifier, commiter, **ne pas pousser**.
-Tu relis la consigne, tu lances, tu relis le diff, puis `Pousser` — qui forcera de lui-même
-(`--force-with-lease`), l'historique ayant été réécrit. Cela vaut pour la merge request d'un collègue
+fusionner l'état actuel de la cible dans la branche (`git merge`), résoudre chaque conflit en gardant ce
+que la cible apporte et l'intention de la branche, vérifier, commiter, **ne pas pousser**. La consigne
+dit en toutes lettres d'ajouter des commits pour corriger les conflits, sans rebase ni amend : l'historique
+déjà poussé reste intact, et personne n'a de force push à faire. Tu relis la consigne, tu lances, tu relis
+le diff, puis `Pousser` — normalement, sans forcer. Cela vaut pour la merge request d'un collègue
 comme pour la tienne ; *Mettre à jour avec main* sur une ligne de projet reste le raccourci sans
 consigne à relire, pour les merge requests nées d'une session.
 
@@ -102,7 +103,7 @@ consigne à relire, pour les merge requests nées d'une session.
 « N commit(s) de retard » — ce que la branche cible a reçu et que cette branche n'a jamais vu. Elle se
 merge encore, mais son code n'a pas tourné avec ces commits ; le badge ouvre `Git → Merge` comme pour un
 conflit, et **`Mettre à jour avec l'IA`** est là aussi, avec une consigne qui dit le retard plutôt qu'un
-conflit inexistant — et rebase de la même façon. Le compte vient de la forge (le nombre de commits
+conflit inexistant — et fusionne de la même façon. Le compte vient de la forge (le nombre de commits
 divergents chez GitLab, la comparaison `cible...source` chez GitHub), relevé à la découverte — un appel
 par merge request ouverte, plafonné par tour — et à l'ouverture de la modale de merge. « Pas encore su »
 n'affiche rien : une branche venue d'un fork, ou une forge muette, ne devient jamais « à jour » par
