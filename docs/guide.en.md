@@ -79,7 +79,7 @@ decision.
 **A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
 direction that unblocks it (the target branch into the MR's branch). Next to it, **`Update with the AI`**
 opens the coding session modal already filled in: the MR's branch, its target branch as the base,
-automatic push unticked, and the instruction — first understand what the branch changes and why, merge
+automatic push unticked, the label (“MR !N: update … with …”), and the instruction — first understand what the branch changes and why, merge
 the target's current state into the branch (`git merge`), resolve each conflict keeping what the target
 brings and the branch's intent, check, commit, **do not push**. The instruction says in so many words to
 add commits to fix the conflicts, with no rebase or amend: the history already pushed stays intact, and

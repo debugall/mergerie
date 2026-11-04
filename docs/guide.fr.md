@@ -90,7 +90,7 @@ rien ; il dit combien de merge requests n'attendent plus qu'une décision.
 **Une merge request en conflit le dit sur sa carte**, et le badge ouvre `Git → Merge` pré-rempli dans le
 sens qui débloque (la branche cible dans la branche de la MR). À côté, **`Mettre à jour avec l'IA`**
 ouvre la modale de session de codage déjà remplie : la branche de la MR, sa branche cible pour base, le
-push automatique décoché, et la consigne — comprendre d'abord ce que la branche change et pourquoi,
+push automatique décoché, le libellé (« MR !N : mise à jour de … avec … »), et la consigne — comprendre d'abord ce que la branche change et pourquoi,
 fusionner l'état actuel de la cible dans la branche (`git merge`), résoudre chaque conflit en gardant ce
 que la cible apporte et l'intention de la branche, vérifier, commiter, **ne pas pousser**. La consigne
 dit en toutes lettres d'ajouter des commits pour corriger les conflits, sans rebase ni amend : l'historique

@@ -341,6 +341,7 @@ async function openTaskForMr(m, opts = {}) {
   setupTaskJira(m.source_branch);
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
+  if (opts.label && f.label) f.label.value = String(opts.label).slice(0, 120);
   /* Reprendre la session de codage d'origine évite à l'IA de redécouvrir un code qu'elle vient
      d'écrire. Le champ est PRÉ-REMPLI, pas verrouillé : le lien est déduit de (dépôt, branche),
      ce qui n'est pas une preuve — la branche a pu être reprise à la main. On voit donc ce qui

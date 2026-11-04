@@ -345,6 +345,7 @@ document.addEventListener('click', (e) => {
     prompt: tr(m.has_conflicts ? 'mr.rebase.prompt' : 'mr.rebase.prompt-behind', vars),
     title: tr('mr.rebase.title', vars),
     commitMessage: tr('mr.rebase.commit', vars),
+    label: tr('mr.rebase.label', vars),
     autoPush: false,
     forcePush: false,
     fromMrText: tr('task.from-mr-rebase', vars),

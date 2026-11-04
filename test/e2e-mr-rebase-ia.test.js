@@ -82,6 +82,7 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
       assert.match(await page.locator('#taskExistingImgs').innerText(), /sans forcer/);
       assert.doesNotMatch(await page.locator('#taskExistingImgs').innerText(), /force-with-lease/);
       assert.match(await page.locator('#taskForm [name="commit_message"]').inputValue(), /feat\/paiement[\s\S]*main/);
+      assert.match(await page.locator('#taskForm [name="label"]').inputValue(), /!77[\s\S]*feat\/paiement[\s\S]*main/, 'le libellé est pré-rempli : la session se retrouve dans la liste');
     });
 
     test('créer sans lancer : la session vise la branche de la MR depuis sa cible, et ne poussera PAS en forçant', async () => {
@@ -94,6 +95,7 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
       const task = app.db.prepare('SELECT * FROM task ORDER BY id DESC LIMIT 1').get();
       assert.equal(task.status, 'new', 'rien n’est lancé sans le clic suivant');
       assert.equal(task.auto_push, 0);
+      assert.match(task.label, /!77/);
       assert.match(task.prompt, /git merge origin\/main/);
       assert.match(task.prompt, /pas besoin de faire des force push/);
       const tg = app.db.prepare('SELECT * FROM task_target WHERE task_id = ?').get(task.id);
