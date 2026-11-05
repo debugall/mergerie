@@ -72,6 +72,7 @@ async function loadConfig() {
   }
   // Le message de Jira qui partira si l'on ne touche à rien : montré tel quel, pas deviné.
   if (f.jira_notify_template) f.jira_notify_template.placeholder = tr('jira.notify.body', { iid: 214, project: 'groupe/projet', url: 'https://…/merge_requests/214' });
+  if (f.jira_merge_template) f.jira_merge_template.placeholder = tr('jira.merged.body', { iid: 214, project: 'groupe/projet', url: 'https://…/merge_requests/214' });
   majApercuJira();
   /* La ligne « publier le lien » n'a de sens qu'avec un dépôt de données : on retient ici ce
      que le serveur vient de dire, `syncAutoPostBlocking` s'en sert à chaque changement. */
@@ -92,7 +93,7 @@ async function loadConfig() {
   // tant qu'on n'y a pas touché.
   /* `String(...)` : ces colonnes-là sont des INTEGER, SQLite rend donc 1 et non '1'. Comparer
      strictement laissait la case décochée au rechargement — voir `defautsSession`. */
-  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment', 'clone_blobless']) {
+  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment', 'jira_notify_merge', 'clone_blobless']) {
     if (f[k]) f[k].checked = String(c[k]) === '1';
   }
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;

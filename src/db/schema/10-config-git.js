@@ -151,6 +151,23 @@ try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review_link TEXT DEFAULT 
 try { db.exec("ALTER TABLE config ADD COLUMN review_link_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Le gabarit du commentaire que « Prévenir Jira » poste sur le ticket (vide = le message livré, dans la langue de l'interface).
 try { db.exec("ALTER TABLE config ADD COLUMN jira_notify_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* PRÉVENIR JIRA À LA FUSION : la case (politique d'équipe, décochée par défaut — écrire sur le
+   ticket se décide) et le gabarit du commentaire (vide = le message livré, dans la langue de
+   l'interface). Le marqueur `mr.jira_merge_notified_at` garantit UN commentaire par merge request,
+   quel que soit le chemin qui a vu le merge (découverte, « Mettre à jour depuis la forge »). */
+try { db.exec('ALTER TABLE config ADD COLUMN jira_notify_merge INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN jira_merge_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN jira_merge_notified_at TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN jira_merge_key TEXT'); } catch { /* déjà présente */ }
+/* UN TICKET, UN COMMENTAIRE : cinq merge requests d'un même ticket ne lui écrivent pas cinq fois.
+   Le commentaire posté à la première fusion est RÉÉCRIT à chaque suivante avec la liste complète ;
+   on retient donc son id par clé de ticket. Une ligne par ticket, de poste (Jira ne se consulte pas
+   par la synchro). */
+db.exec(`CREATE TABLE IF NOT EXISTS jira_merge_comment (
+  cle TEXT PRIMARY KEY,
+  comment_id TEXT NOT NULL,
+  updated_at TEXT
+)`);
 /* L'amorçage des commandes git a déménagé À LA FIN de ce fichier : son drapeau
    (`git_commands_seeded`) est devenu une donnée de POSTE, et il faut donc que `local_config`
    existe et soit remplie avant de le lire. Lu ici, il aurait valu 0 sur une installation qui

@@ -315,15 +315,80 @@ async function discoverAll() {
    branche (`task_target.mr_merged`, voir le commentaire de la boucle `gone`), et cocher les
    todos qui suivaient la merge request (débrayable, Réglages → Général). Rend le nombre de
    todos cochées. Idempotent : rejoué sur une MR déjà traitée, il ne change rien. */
-function apresMerge(repo, mr, { mergee = true, cfg = getConfig(), now = new Date().toISOString() } = {}) {
+function apresMerge(repo, mr, { mergee = true, cfg = getConfig(), now = new Date().toISOString(), prevenirJira = true } = {}) {
   // La session n'est liée que sur un merge AVÉRÉ : une fermeture sans merge n'est pas le sien.
   if (mergee && mr.source_branch) {
     db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
       WHERE repo_id = ? AND branch = ? AND (mr_iid IS NULL OR mr_iid = ?)`).run(mr.iid, now, repo.id, mr.source_branch, mr.iid);
   }
+  // Et le ticket apprend la fusion — en tâche de fond, best-effort : Jira ne retarde jamais la découverte.
+  if (mergee && prevenirJira) prevenirJiraDuMerge(repo, mr.id, cfg, now).catch(() => {});
   // La todo, elle, n'a plus de raison d'être dès que la merge request n'est plus ouverte — mergée OU fermée.
   if (cfg.todo_close_on_merge === '0') return 0;
   return notes.fermerTodosDeMr(mr.id, t('notes.todo.closed-by-merge', { iid: mr.iid }));
+}
+
+/* PRÉVENIR JIRA QUE LA MERGE REQUEST EST MERGÉE (Réglages → Jira). Le ticket est lu par la QA, le
+   support, le chef de projet — ceux qui demandent « c'est livré ? » sans ouvrir la forge. Opt-in
+   d'équipe (`jira_notify_merge`), décoché par défaut : écrire chez les autres se décide. UN
+   commentaire par TICKET : la première fusion le poste, chaque suivante le RÉÉCRIT avec la liste
+   complète des merge requests mergées (une entrée du gabarit par MR) — cinq merge requests d'un
+   même ticket ne font pas cinq commentaires. `jira_merge_notified_at` est posé AVANT l'appel, par
+   une mise à jour conditionnelle, pour que deux chemins qui voient le même merge (découverte puis
+   « Mettre à jour depuis la forge ») n'écrivent pas deux fois ; un échec de Jira libère le marqueur,
+   le tour suivant réessaiera. Le texte : le gabarit de l'équipe (`jira_merge_template`), ou le
+   message livré ; les variables sont celles du commentaire « à la création », une inconnue reste telle quelle. */
+/* LES COMMENTAIRES JIRA DE FUSION PARTENT UN PAR UN : deux merge requests du même ticket vues dans le
+   même tour de découverte liraient toutes deux « pas encore de commentaire » et en posteraient deux. */
+let fileJiraMerge = Promise.resolve();
+function texteJiraMerge(cfg, v) {
+  const gabarit = String((cfg && cfg.jira_merge_template) || '').trim();
+  if (!gabarit) return t('jira.merged.body', { iid: v.iid, project: v.project, url: v.url });
+  const valeurs = { url: v.url, iid: v.iid, project: v.project, title: v.title || '', branch: v.branch || '', target: v.target || '', key: v.key || '' };
+  return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
+}
+/* Le corps du commentaire d'un ticket : TOUTES ses merge requests mergées (celles déjà annoncées,
+   dans l'ordre de leur fusion), une entrée du gabarit par merge request. */
+function corpsJiraMerge(cfg, cle) {
+  const lignes = db.prepare(`SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
+    WHERE mr.jira_merge_key = ? AND mr.jira_merge_notified_at IS NOT NULL
+    ORDER BY COALESCE(mr.merged_at, mr.jira_merge_notified_at), mr.id`).all(cle);
+  return lignes.map((m) => texteJiraMerge(cfg, {
+    iid: m.iid, project: m.project, url: m.web_url || '', title: m.title || '',
+    branch: m.source_branch || '', target: m.target_branch || '', key: cle,
+  })).join('\n\n');
+}
+function prevenirJiraDuMerge(repo, mrId, cfg, now = new Date().toISOString()) {
+  if (String((cfg && cfg.jira_notify_merge) || '') !== '1' || isDemo() || !jira.isConfigured(cfg)) return Promise.resolve(null);
+  const mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
+  if (!mr) return Promise.resolve(null);
+  const cle = mr.ticket_jira_key || jira.ticketKey(mr.title, mr.source_branch);
+  if (!cle) return Promise.resolve(null);
+  const pris = db.prepare('UPDATE mr SET jira_merge_notified_at = ?, jira_merge_key = ? WHERE id = ? AND jira_merge_notified_at IS NULL').run(now, cle, mrId);
+  if (!pris.changes) return Promise.resolve(null); // déjà prévenu (ou en cours) par un autre chemin
+  const envoyer = async () => {
+    const texte = corpsJiraMerge(cfg, cle);
+    const connu = db.prepare('SELECT comment_id FROM jira_merge_comment WHERE cle = ?').get(cle);
+    let poste = null;
+    /* Le commentaire existant est RÉÉCRIT avec la liste complète. Disparu, ou plus le nôtre (403) : un
+       nouveau commentaire reprend la liste, et c'est lui qu'on suivra désormais. */
+    if (connu) {
+      try { poste = await jira.updateComment(cfg, cle, connu.comment_id, texte); } catch { poste = null; }
+    }
+    if (!poste) poste = await jira.addComment(cfg, cle, texte);
+    if (poste && poste.id) {
+      db.prepare(`INSERT INTO jira_merge_comment (cle, comment_id, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(cle) DO UPDATE SET comment_id = excluded.comment_id, updated_at = excluded.updated_at`).run(cle, String(poste.id), now);
+    }
+    return cle;
+  };
+  const tour = fileJiraMerge.then(envoyer, envoyer).catch((e) => {
+    db.prepare('UPDATE mr SET jira_merge_notified_at = NULL, jira_merge_key = NULL WHERE id = ? AND jira_merge_notified_at = ?').run(mrId, now);
+    console.error(t('jira.merged.failed', { iid: mr.iid, project: repo.project, key: cle, message: e.message }));
+    throw e;
+  });
+  fileJiraMerge = tour.catch(() => {});
+  return tour;
 }
 
 /* Upsert CIBLÉ d'une seule MR (objet API GitLab) dans la table `mr`, sans balayer
@@ -474,4 +539,4 @@ async function rafraichirMr(mrId) {
   return { id: avant.id, etat: etatDe(apres), stale, changed };
 }
 
-module.exports = { discoverAll, upsertMrFromApi, apresMerge, rafraichirMr };
+module.exports = { discoverAll, upsertMrFromApi, apresMerge, rafraichirMr, prevenirJiraDuMerge, texteJiraMerge };

@@ -1610,6 +1610,7 @@ const REGISTRE = [
      d'un collègue remplissait la liste de tout le monde. Comme Docker, Git et Liens :
      ça décrit une façon de travailler, pas un produit. */
   { table: 'jira_watch', famille: 'L', note: 'les tickets que CE poste surveille' },
+  { table: 'jira_merge_comment', famille: 'L', note: 'l’id du commentaire « mergée » posé sur un ticket par CE poste, réécrit à chaque fusion suivante' },
 
   /* ── Précision technique d'un ticket Jira (spec) ───────────────────────────────────────── */
   {
@@ -1827,6 +1828,8 @@ const REGISTRE = [
       'review_link_template',
       // Le gabarit du commentaire posté sur le ticket Jira : une convention d'équipe, comme celui du lien de review.
       'jira_notify_template',
+      // Prévenir Jira à la fusion : écrire sur le ticket est une politique d'équipe, et son gabarit une convention.
+      'jira_notify_merge', 'jira_merge_template',
       /* L'EXÉCUTANT EST D'ÉQUIPE : c'est une décision collective (« c'est Claire qui fait
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',

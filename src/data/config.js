@@ -36,7 +36,7 @@ const ALLOWED = [
   'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
-  'review_link_template', 'jira_notify_template',
+  'review_link_template', 'jira_notify_template', 'jira_notify_merge', 'jira_merge_template',
   'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'auto_runner',
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
@@ -258,6 +258,9 @@ function updateConfig(patch) {
   if (String(next.jira_notify_template || '').trim() && !String(next.jira_notify_template).includes('{url}')) {
     throw new Error(t('err.config.jira-template-no-url'));
   }
+  if (String(next.jira_merge_template || '').trim() && !String(next.jira_merge_template).includes('{url}')) {
+    throw new Error(t('err.config.jira-merge-template-no-url'));
+  }
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
@@ -285,6 +288,8 @@ function updateConfig(patch) {
       auto_post_review_link = @auto_post_review_link,
       review_link_template = @review_link_template,
       jira_notify_template = @jira_notify_template,
+      jira_notify_merge = @jira_notify_merge,
+      jira_merge_template = @jira_merge_template,
       auto_review_new = @auto_review_new,
       auto_rereview_stale = @auto_rereview_stale,
       auto_runner = @auto_runner,

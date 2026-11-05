@@ -494,6 +494,18 @@
                 <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{target}</code> la branche de destination · <code>{key}</code> la clé du ticket.</span>
             </label>
             <p class="field-note"><span data-i18n="settings.jira-notify-preview">Aperçu :</span> <span id="jiraNotifyPreview" class="template-preview"></span></p>
+            <!-- PRÉVENIR JIRA À LA FUSION : le ticket apprend que la merge request est mergée, quel que soit
+                 celui qui a vu le merge (découverte, « Mettre à jour depuis la forge »). Décoché par défaut :
+                 écrire chez la QA et le support se décide. Même mécanique de gabarit que ci-dessus. -->
+            <h3 data-i18n="settings.jira.merge.title">Prévenir Jira à la fusion de la merge request</h3>
+            <label class="inline-check"><input form="configForm" name="jira_notify_merge" type="checkbox" /> <span data-i18n="settings.lbl.jira-notify-merge">Prévenir Jira quand une merge request est mergée</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-notify-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label><span data-i18n="settings.lbl.jira-merge-template">Gabarit du commentaire posté dans Jira à la fusion</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-merge-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea form="configForm" name="jira_merge_template" rows="4"></textarea>
+                <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{target}</code> la branche de destination · <code>{key}</code> la clé du ticket.</span>
+            </label>
+            <p class="field-note"><span data-i18n="settings.jira-notify-preview">Aperçu :</span> <span id="jiraMergePreview" class="template-preview"></span></p>
             <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
             <!-- PRÉCISION TECHNIQUE D'UN TICKET. Confluence Cloud se lit avec le compte Jira
                  ci-dessus : ces deux champs ne servent qu'à un Confluence Server / Data Center.

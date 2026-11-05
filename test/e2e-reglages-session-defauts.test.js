@@ -60,7 +60,7 @@ describe('Réglages — cases d’une nouvelle session et gabarit Jira : afficha
     assert.equal(await champ.isVisible(), true);
     assert.equal(await champ.inputValue(), '', 'vide au départ : c’est le message livré qui partira');
     assert.match(await champ.getAttribute('placeholder'), /Merge request ouverte : !214 sur groupe\/projet/, 'le placeholder montre EXACTEMENT ce message');
-    const variables = await page.locator('#sub-jiracfg .template-vars').innerText();
+    const variables = await page.locator('#sub-jiracfg .template-vars').first().innerText();
     for (const v of ['{url}', '{iid}', '{project}', '{title}', '{branch}', '{target}', '{key}']) assert.ok(variables.includes(v), `la variable ${v} est expliquée`);
     assert.match(await page.locator('#jiraNotifyPreview').innerText(), /merge_requests\/214/, 'l’aperçu montre le message livré');
   });

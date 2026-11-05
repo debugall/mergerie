@@ -16,6 +16,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment',
   'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template', 'jira_notify_template',
+  'jira_notify_merge', 'jira_merge_template',
   'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
   'jira_stats_bug_types', 'jira_stats_us_types',
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
@@ -126,16 +127,25 @@ document.addEventListener('change', (e) => {
     || e.target.name === 'review_link_template') syncAutoPostBlocking();
 });
 
-/* L'APERÇU DU COMMENTAIRE JIRA, avec des valeurs d'exemple : on voit ce que le gabarit donnera avant d'enregistrer. Même règle que le serveur : une variable inconnue reste telle quelle. */
+/* L'APERÇU DU COMMENTAIRE JIRA, avec des valeurs d'exemple : on voit ce que le gabarit donnera avant d'enregistrer. Même règle que le serveur : une variable inconnue reste telle quelle.
+   Deux gabarits, la même mécanique : « à la création » (`jira_notify_template`) et « à la fusion » (`jira_merge_template`). */
+const APERCUS_JIRA = [
+  { champ: 'jira_notify_template', boite: '#jiraNotifyPreview', defaut: 'jira.notify.body' },
+  { champ: 'jira_merge_template', boite: '#jiraMergePreview', defaut: 'jira.merged.body' },
+];
 function majApercuJira() {
-  const champ = $('#configForm') && $('#configForm').elements.jira_notify_template;
-  const boite = $('#jiraNotifyPreview');
-  if (!champ || !boite) return;
+  const f = $('#configForm');
+  if (!f) return;
   const exemple = { url: 'https://gitlab.exemple/groupe/projet/-/merge_requests/214', iid: 214, project: 'groupe/projet', title: 'Ajout du paiement', branch: 'feature/PROJ-42-paiement', target: 'main', key: 'PROJ-42' };
-  const gabarit = String(champ.value || '').trim() || tr('jira.notify.body', { iid: exemple.iid, project: exemple.project, url: exemple.url });
-  boite.textContent = gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in exemple ? String(exemple[cle]) : brut));
+  for (const a of APERCUS_JIRA) {
+    const champ = f.elements[a.champ];
+    const boite = $(a.boite);
+    if (!champ || !boite) continue;
+    const gabarit = String(champ.value || '').trim() || tr(a.defaut, { iid: exemple.iid, project: exemple.project, url: exemple.url });
+    boite.textContent = gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in exemple ? String(exemple[cle]) : brut));
+  }
 }
-document.addEventListener('input', (e) => { if (e.target && e.target.name === 'jira_notify_template') majApercuJira(); });
+document.addEventListener('input', (e) => { if (e.target && APERCUS_JIRA.some((a) => a.champ === e.target.name)) majApercuJira(); });
 
 /* CE QUE LE FORMULAIRE ENVERRAIT, champ par champ. Lu deux fois : au chargement (la référence)
    et à l'enregistrement (ce qui a changé depuis). */

@@ -2064,7 +2064,11 @@ conservation des données, sauvegarde, et une **zone dangereuse** pour la remise
 *Jira* et l'enrichissement d'une session depuis un ticket ; et la case **« Prévenir Jira » à la création
 d'une merge request**, cochée d'office, avec son propre **gabarit de commentaire** — `{url}` obligatoire,
 plus `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, aperçu en direct ; vide reprend le
-texte livré) ·
+texte livré ; et la case **« Prévenir Jira quand une merge request est mergée »**, décochée par défaut,
+avec son gabarit à elle — mêmes variables, même aperçu : quand Mergerie voit la merge request mergée
+(découverte, *Mettre à jour depuis la forge*), le ticket reçoit **un** commentaire — un seul par ticket,
+réécrit avec la liste complète à chaque merge request suivante —, rien pour une fermeture sans merge
+ni depuis le rattrapage d'une période) ·
 **Plugins** (la liste des plugins installés — version, état, permissions, événements —, activer ou
 désactiver **sans redémarrer** (la page recharge, les données restent), un bouton **Mettre à jour** par
 plugin installé depuis git ou un dossier (reclone, désactive, remplace le dossier, réactive si besoin,
@@ -2453,6 +2457,20 @@ fait commenter le ticket de la merge request quand une vérification casse. Mêm
 de forge : uniquement « la base passait, la branche casse », **jamais** sur un vert ni sur une base déjà
 rouge, et **une seule fois par ticket** même si le lot porte cinq merge requests du même. Jira injoignable
 ne remet pas en cause un verdict acquis : l'échec est noté dans le journal du job.
+
+**Et quand la merge request est mergée.** Une seconde case dans *Réglages → Jira*, **décochée par
+défaut** elle aussi, fait commenter le ticket dès que Mergerie voit la merge request mergée — par la
+découverte ou par *Mettre à jour depuis la forge*. Le texte est celui du **gabarit** de l'équipe
+(`{url}` obligatoire, plus `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`) ou, vide, le
+message livré dans la langue de l'interface. **Un commentaire par ticket** : la première merge request
+mergée le poste, chaque suivante du même ticket le **réécrit** avec la liste complète (une entrée du
+gabarit par merge request, dans l'ordre des fusions) — cinq merge requests d'un même ticket ne font pas
+cinq commentaires. Si Jira ne laisse plus modifier ce commentaire (supprimé, ou plus le vôtre), un
+nouveau reprend la liste et devient celui qui est suivi. Une merge request n'est annoncée qu'une fois,
+quel que soit le nombre de chemins qui voient le même merge ; rien pour une merge request fermée sans merge, rien sans clé
+de ticket dans la branche ou le titre, et rien depuis le rattrapage d'une *Période* — dix jours de
+tickets n'ont pas à apprendre d'un coup ce que l'équipe sait déjà. Jira qui refuse : le marqueur est
+relâché et le tour de découverte suivant réessaie.
 
 **Un verdict rouge laisse une todo.** La notification passe et s'oublie ; le badge suppose qu'on rouvre
 *Reviews*. Entre les deux, rien ne portait « il y a un test cassé sur !218 » jusqu'au lendemain matin.

@@ -165,7 +165,8 @@ async function construireDepot(cfg, repo, { depuis, jusqua, onLog }) {
     if (cle) clesJira.add(cle);
     const ligne = upsertMr(repo, m, details.get(m.iid), now);
     if (ligne && kind === 'mr_merged') {
-      apresMerge(repo, { id: ligne.id, iid: m.iid, source_branch: m.source_branch }, { cfg, now });
+      // Pas de commentaire Jira depuis un rattrapage : une fenêtre de dix jours écrirait sur dix jours de tickets.
+      apresMerge(repo, { id: ligne.id, iid: m.iid, source_branch: m.source_branch }, { cfg, now, prevenirJira: false });
       journal('mr_merged', repo, m, m.merged_at);
       if (ligne.cree) journal('mr_opened', repo, m, m.created_at);
     } else if (ligne && kind === 'mr_closed') {

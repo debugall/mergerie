@@ -1990,8 +1990,11 @@ rules — see *Sharing with a team* below) ·
 URL + email + API token, with a *Test Jira* button —, and **“Tell Jira when the merge request is
 created”** — ticked by default in a new session's window — with an editable **comment
 template** (`{url}`, `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, a live
-preview; empty keeps the shipped message, shared with the team like the review-link template) —;
-feeds the *Jira* tab and the enrichment of a session from a ticket) ·
+preview; empty keeps the shipped message, shared with the team like the review-link template) —, and
+**“Tell Jira when a merge request is merged”**, unticked by default, with its own template — same
+variables, same preview: when Mergerie sees the merge request merged (discovery, *Refresh from the
+forge*), the ticket gets **one** comment — a single one per ticket, rewritten with the full list at
+each following merge request —, nothing for a close without merge nor from a period catch-up —; feeds the *Jira* tab and the enrichment of a session from a ticket) ·
 **Plugins** (every installed plugin, its version, state and permissions; enable or disable it
 **without restarting**; install a third-party plugin from a local folder or a git address — this
 is where Jenkins, Docker and Links are installed and updated. An **enabled** plugin that declares
@@ -2368,6 +2371,19 @@ merge request's ticket receive a comment when a verification breaks. Same guards
 only “the base passed, the branch breaks”, **never** on a green run nor on an already-red base, and **once
 per ticket** even when the batch holds five merge requests of the same one. Jira being unreachable does
 not call an acquired verdict into question: the failure is noted in the job log.
+
+**And when the merge request is merged.** A second checkbox in *Settings → Jira*, **unticked by
+default** as well, comments the ticket as soon as Mergerie sees the merge request merged — through
+discovery or *Refresh from the forge*. The text is the team's **template** (`{url}` required, plus
+`{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`) or, when empty, the shipped message in
+the interface language. **One comment per ticket**: the first merged merge request posts it, each
+following one of the same ticket **rewrites** it with the full list (one template entry per merge
+request, in merge order) — five merge requests of one ticket do not make five comments. If Jira no
+longer lets that comment be edited (deleted, or no longer yours), a new one takes over the list and is
+the one followed from then on. A merge request is announced once, however many paths see the same merge;
+nothing for a merge request closed without merging, nothing without a ticket key in the branch or the
+title, and nothing from a *Period* catch-up — ten days of tickets need not learn at once what the team
+already knows. When Jira refuses, the marker is released and the next discovery round retries.
 
 **A red verdict leaves a todo behind.** The notification goes by and is forgotten; the badge assumes you
 reopen *Reviews*. Between the two, nothing carried “there is a broken test on !218” through to the next
