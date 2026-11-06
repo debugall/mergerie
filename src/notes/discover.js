@@ -80,9 +80,9 @@ async function discoverAll() {
   let retardsReleves = 0;
   const insertMr = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at,
-     has_conflicts, is_draft, reviewers, description, author_username, is_fork)
+     has_conflicts, is_draft, reviewers, assignees, upvotes, description, author_username, is_fork)
     VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @gitlab_created_at, @author, 'to_review', @updated_at,
-     @has_conflicts, @is_draft, @reviewers, @description, @author_username, @is_fork)`);
+     @has_conflicts, @is_draft, @reviewers, @assignees, @upvotes, @description, @author_username, @is_fork)`);
   /* `has_conflicts` n'est écrasé QUE si la liste a une réponse : `COALESCE` garde ce qu'une
      tentative de merge (ou le détail d'une MR de session) a appris, plutôt que de le remplacer
      par « on ne sait pas » au prochain tour de découverte. */
@@ -90,6 +90,7 @@ async function discoverAll() {
     title = @title, source_branch = @source_branch, target_branch = @target_branch,
     web_url = @web_url, current_sha = @current_sha, gitlab_created_at = @gitlab_created_at, author = @author, updated_at = @updated_at,
     has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft, reviewers = @reviewers,
+    assignees = @assignees, upvotes = @upvotes,
     description = @description, author_username = @author_username, is_fork = @is_fork,
     closed_seen = 0
     WHERE id = @id`);
@@ -121,6 +122,8 @@ async function discoverAll() {
           has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
           is_draft: m.draft ? 1 : 0,
           reviewers: Array.isArray(m.reviewers) ? m.reviewers.join(',') : '',
+          assignees: Array.isArray(m.assignees) ? m.assignees.join(',') : '',
+          upvotes: Number.isInteger(m.upvotes) && m.upvotes > 0 ? m.upvotes : 0,
           author_username: String(m.author_username || ''),
           is_fork: m.is_fork === true ? 1 : (m.is_fork === false ? 0 : null),
         };
@@ -442,9 +445,11 @@ async function upsertMrFromApi(repoId, m) {
 function detailNormalise(m) {
   const auteur = m.author && typeof m.author === 'object' ? m.author : null;
   const titre = String(m.title || '');
-  const reviewers = Array.isArray(m.reviewers)
-    ? m.reviewers.map((r) => (typeof r === 'string' ? r : (r && (r.username || r.name)) || '')).filter(Boolean)
-    : null;
+  const gens = (l) => (Array.isArray(l)
+    ? l.map((r) => (typeof r === 'string' ? r : (r && (r.username || r.name || r.login)) || '')).filter(Boolean)
+    : null);
+  const reviewers = gens(m.reviewers);
+  const assignees = gens(m.assignees);
   return {
     title: titre, source_branch: m.source_branch || null, target_branch: m.target_branch || null,
     web_url: m.web_url || null, sha: m.sha || m.head_sha || null, created_at: m.created_at || null,
@@ -455,6 +460,9 @@ function detailNormalise(m) {
     has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
     is_draft: m.draft === true || m.work_in_progress === true || /^\s*(draft|wip)\s*:/i.test(titre) ? 1 : 0,
     reviewers: reviewers ? reviewers.join(',') : null,
+    assignees: assignees ? assignees.join(',') : null,
+    // Les 👍 : GitLab les met sur le détail ; GitHub non (ils vivent sur l'issue) — `null` garde l'existant.
+    upvotes: Number.isInteger(m.upvotes) && m.upvotes >= 0 ? m.upvotes : null,
     is_fork: m.source_project_id != null && m.target_project_id != null
       ? (m.source_project_id !== m.target_project_id ? 1 : 0) : null,
     behind_by: Number.isInteger(m.behind_by) && m.behind_by >= 0 ? m.behind_by : null,
@@ -463,7 +471,7 @@ function detailNormalise(m) {
   };
 }
 const COLONNES_SUIVIES = ['title', 'source_branch', 'target_branch', 'web_url', 'current_sha', 'author', 'has_conflicts',
-  'is_draft', 'reviewers', 'description', 'behind_by', 'closed_seen', 'merged_at', 'changed_paths'];
+  'is_draft', 'reviewers', 'assignees', 'upvotes', 'description', 'behind_by', 'closed_seen', 'merged_at', 'changed_paths'];
 async function rafraichirMr(mrId) {
   const avant = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
   if (!avant) return null;
@@ -486,6 +494,7 @@ async function rafraichirMr(mrId) {
       author = @author, author_username = @author_username, updated_at = @now,
       has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft,
       reviewers = COALESCE(@reviewers, reviewers), description = COALESCE(@description, description),
+      assignees = COALESCE(@assignees, assignees), upvotes = COALESCE(@upvotes, upvotes),
       is_fork = COALESCE(@is_fork, is_fork), behind_by = COALESCE(@behind_by, behind_by)
     WHERE id = @id`).run({ ...d, now, id: avant.id });
   if (d.etat !== 'open') {

@@ -269,9 +269,16 @@ function insertMr(m, extra = {}) {
   const numero = extra.iid || (iid += 1);
   const sha = require('crypto').randomBytes(20).toString('hex');
   const info = db.prepare(`INSERT INTO mr
-    (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, reviewed_sha, status, updated_at, gitlab_created_at, author, changed_paths)
-    VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @reviewed_sha, @status, @updated_at, @gitlab_created_at, @author, @changed_paths)`)
+    (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, reviewed_sha, status, updated_at, gitlab_created_at, author, changed_paths,
+     reviewers, assignees, upvotes)
+    VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @reviewed_sha, @status, @updated_at, @gitlab_created_at, @author, @changed_paths,
+     @reviewers, @assignees, @upvotes)`)
     .run({
+      /* Ce que la forge dit de QUI porte la merge request : un reviewer demandé sur une carte sur
+         deux, l'auteur assigné sur une sur trois, et quelques 👍 — assez pour voir les pastilles. */
+      reviewers: numero % 2 ? AUTHORS[(numero + 1) % AUTHORS.length] : '',
+      assignees: numero % 3 ? '' : (extra.author || AUTHORS[numero % AUTHORS.length]),
+      upvotes: numero % 4 === 0 ? 2 : (numero % 5 === 0 ? 1 : 0),
       repo_id: repoIds[m.project], iid: numero, title: m.title,
       source_branch: m.branch, target_branch: extra.target || 'main',
       web_url: (PROJECTS.find((p) => p.project === m.project) || {}).forge === 'github'

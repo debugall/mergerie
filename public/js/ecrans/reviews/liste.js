@@ -270,6 +270,7 @@ function renderToReview() {
      l'écran dans son ancienne valeur — un dépôt renommé, un ticket rattaché après coup, une
      branche cible changée passeraient inaperçus. */
   const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author, m.gitlab_created_at,
+    m.reviewers, m.assignees, m.upvotes, m.is_draft,
     m.has_ticket, m.ticket_key, m.ticket_url, m.web_url, m.forge, m.source_branch, m.target_branch,
     m.size && [m.size.files, m.size.additions, m.size.deletions].join(','), m.updated_at,
     (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error, m.ticket_category,
@@ -425,6 +426,8 @@ function mrCard(m) {
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
         ${badgeDraft(m)}
+        ${badgeGens(m)}
+        ${badgeUpvotes(m)}
         ${fenteBrouillons(m)}
         ${badgeSeverites(m)}
         ${badgeCartes(m)}

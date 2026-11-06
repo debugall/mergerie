@@ -117,6 +117,15 @@ Un tech lead regarde d'abord ce que l'équipe attend de lui, un développeur ce 
 jeton est lu **une fois par forge** ; sans lui — un jeton qui ne permet pas de lire son propre compte — les
 pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité devinée.
 
+**La carte dit qui porte la merge request, d'après la forge.** Les **reviewers demandés** (œil) et les
+**assignés** (silhouettes) relevés à la découverte y tiennent chacun leur pastille — trois noms au plus,
+le reste en infobulle —, et le nombre de **👍** (upvotes GitLab, réaction +1 GitHub) une troisième : combien
+de collègues ont déjà dit « pour moi c'est bon » sans passer par une approbation formelle. Rien ne s'affiche
+quand personne n'est désigné et que le compte est à zéro. Sur GitHub, les 👍 ne sont pas dans la liste des
+pull requests : la découverte lit la liste des issues du dépôt, un appel de plus par dépôt, et un échec de
+cet appel laisse le compte à zéro sans empêcher la découverte. La répartition elle-même se fait sur la forge :
+Mergerie la lit, il ne la remplace pas.
+
 - `Chercher les nouvelles MR` interroge la forge et remplit la liste (filtrée par pattern).
   Un **rafraîchissement automatique** le fait pour toi — toutes les 5 minutes sur une base neuve, réglable
   ou désactivable dans Réglages → Merge Request — et ouvrir l'onglet Reviews relance une recherche quand la
@@ -323,7 +332,7 @@ pastilles n'apparaissent pas du tout, plutôt que de trier sur une identité dev
 - **`Mettre à jour depuis la forge`** (menu ⋯ de la carte et du rapport) relit **cette merge request
   seule** sur GitLab ou GitHub, sans attendre le rafraîchissement automatique ni lancer une découverte
   sur tous les dépôts : titre, branches, dernier commit, conflits, retard sur la cible, brouillon,
-  reviewers, et son état. Un commit arrivé depuis rend le rapport **périmé** et déclenche ce que la
+  reviewers, assignés, 👍 (GitLab), et son état. Un commit arrivé depuis rend le rapport **périmé** et déclenche ce que la
   découverte aurait déclenché (re-review et vérifications automatiques « sur péremption », si elles
   sont activées) ; une merge request mergée ou fermée entre-temps prend son badge **mergée**. Le
   message dit ce que la forge a répondu : mise à jour, rien de nouveau, nouveaux commits, mergée,

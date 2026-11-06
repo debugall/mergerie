@@ -83,6 +83,11 @@ try { db.exec('ALTER TABLE mr ADD COLUMN behind_by INTEGER'); } catch { /* déj�
 try { db.exec("ALTER TABLE mr ADD COLUMN description TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN is_draft INTEGER'); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE mr ADD COLUMN reviewers TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* ASSIGNÉS et 👍, relevés à la découverte comme `reviewers` : la forge sait qui porte la merge
+   request et combien l'ont approuvée d'un pouce, et la carte le dit sans ouvrir la forge.
+   Locaux (cache de la forge), même forme que `reviewers`. */
+try { db.exec("ALTER TABLE mr ADD COLUMN assignees TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN upvotes INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
 /* L'IDENTIFIANT DE L'AUTEUR et L'ORIGINE (fork), relevés à la découverte : la vérification
    automatique n'exécute pas le code d'un fork, et reconnaît « mes » merge requests par
    l'identifiant, pas par le nom affiché qu'on change en deux clics. Locaux : la forge fait foi. */

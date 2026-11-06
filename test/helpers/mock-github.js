@@ -25,6 +25,7 @@ function freshState() {
     checkRuns: {},           // sha -> [{ status, conclusion, html_url }]
     statuses: {},            // sha -> [{ state, target_url }]
     issueComments: {},       // `${project}#${n}` -> [comment]
+    reactions: {},           // `${project}#${n}` -> { '+1': n } rendus par /issues (liste)
     rulesets: {},            // project -> [ruleset]
     calls: [],               // journal { method, path, body }
     fail: {},                // fragment de chemin -> { status, body }
@@ -221,6 +222,16 @@ function handle(req, res, pathname, query, body) {
       if (c) { c.body = body.body; return json(res, 200, c); }
     }
     return json(res, 404, { message: 'Not Found' });
+  }
+
+  // --- Issues (la liste contient les pull requests, avec leurs réactions) ---
+  if (rest === '/issues' && req.method === 'GET') {
+    const wanted = query.get('state') || 'open';
+    const all = pullsOf().filter((p) => wanted === 'all' || prState(p) === wanted).map((p) => ({
+      number: p.number, title: p.title, state: p.state, pull_request: { url: `pulls/${p.number}` },
+      reactions: { '+1': 0, '-1': 0, ...(state.reactions[`${project}#${p.number}`] || {}) },
+    }));
+    return paged(res, req, query, all);
   }
 
   // --- Issue comments (commentaires généraux d'une PR) ---

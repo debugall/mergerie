@@ -126,6 +126,11 @@ async function listOpenMRs(cfg, project, pattern) {
         || (typeof m.title === 'string' && /^\s*(draft|wip)\s*:/i.test(m.title)),
       reviewers: Array.isArray(m.reviewers)
         ? m.reviewers.map((r) => (r && (r.username || r.name)) || '').filter(Boolean) : [],
+      /* ASSIGNÉS et POUCES LEVÉS : la forge sait déjà qui porte la merge request et combien
+         de collègues l'ont approuvée d'un 👍 — la liste les donne, on les jetait. */
+      assignees: Array.isArray(m.assignees)
+        ? m.assignees.map((r) => (r && (r.username || r.name)) || '').filter(Boolean) : [],
+      upvotes: Number.isInteger(m.upvotes) && m.upvotes > 0 ? m.upvotes : 0,
       /* QUI, par son identifiant — le nom affiché se change en deux clics —, et D'OÙ : une
          merge request venue d'un fork porte le code de quelqu'un qui n'a pas accès au projet.
          La vérification automatique s'en sert pour ne pas l'exécuter. */

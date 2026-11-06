@@ -192,6 +192,10 @@ body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
 .tag.conflict-info { color: var(--red); border-color: var(--red); }
 .tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
 .tag.new-for-me { color: var(--accent); border-color: var(--accent); } /* rapport d'un collègue, jamais ouvert ici */
+/* Qui porte la merge request d'après la forge (reviewers, assignés) et ses 👍 : des informations,
+   dans la couleur neutre des pastilles — le vert est réservé à ce qui est vérifié. */
+.tag.people { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.tag.upvotes { color: var(--accent); border-color: var(--accent); }
 .muted { color: var(--muted); font-size: 13px; }
 
 .split { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding-top: 12px; }

@@ -99,6 +99,7 @@ function renderReports() {
     return;
   }
   const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author,
+    m.reviewers, m.assignees, m.upvotes, m.is_draft,
     m.gitlab_created_at, m.ticket_key, m.ticket_url, m.forge, m.note && m.note.raw, m.closed_seen,
     m.note_detail && [m.note_detail.version, m.note_detail.n_resolved, m.note_detail.n_persistent, m.note_detail.n_new].join(','),
     m.size && [m.size.files, m.size.additions, m.size.deletions].join(','), m.updated_at,
@@ -121,6 +122,8 @@ function renderReports() {
           ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
           ${badgeDraft(m)}
+          ${badgeGens(m)}
+          ${badgeUpvotes(m)}
           ${fenteBrouillons(m)}
           ${badgeSeverites(m)}
           ${badgeCartes(m)}
@@ -408,6 +411,28 @@ document.addEventListener('click', async (e) => {
 function badgeDraft(m) {
   if (!m || !m.is_draft) return '';
   return `<span class="tag draft" title="${esc(tr('mr.tag.draft-title'))}">${svgIco('edit')} ${esc(tr('mr.tag.draft'))}</span>`;
+}
+
+/* QUI PORTE la merge request, d'après la forge : les reviewers demandés et les assignés, relevés à
+   la découverte. Deux pastilles distinctes — on ne demande pas la même chose à l'un et à l'autre —,
+   trois noms au plus, le reste en infobulle. Rien quand la forge n'a désigné personne. */
+const nomsForge = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+function pastilleGens(noms, cle, ico) {
+  if (!noms.length) return '';
+  const visibles = noms.slice(0, 3).join(', ') + (noms.length > 3 ? ` +${noms.length - 3}` : '');
+  return `<span class="tag people" title="${esc(tr(cle, { who: noms.join(', ') }))}">${svgIco(ico)} ${esc(visibles)}</span>`;
+}
+function badgeGens(m) {
+  if (!m) return '';
+  return pastilleGens(nomsForge(m.reviewers), 'mr.tag.reviewers-title', 'eye')
+    + pastilleGens(nomsForge(m.assignees), 'mr.tag.assignees-title', 'users');
+}
+/* LES 👍 de la forge (upvotes GitLab, réaction +1 GitHub) : combien de collègues ont déjà dit
+   « pour moi c'est bon » sans passer par une approbation formelle. Rien à zéro. */
+function badgeUpvotes(m) {
+  const n = Number(m && m.upvotes) || 0;
+  if (n <= 0) return '';
+  return `<span class="tag upvotes" title="${esc(tr('mr.tag.upvotes-title', { n, count: n }))}">${svgIco('thumbs-up')} ${n}</span>`;
 }
 
 function badgeTicket(m) {

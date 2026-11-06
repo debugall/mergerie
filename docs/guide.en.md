@@ -104,6 +104,14 @@ what the team is waiting on, a developer at what they pushed. The token's accoun
 forge**; without it — a token that cannot read its own account — the chips do not appear at all, rather
 than sorting on a guessed identity.
 
+**The card says who carries the merge request, as the forge sees it.** The **requested reviewers** (eye)
+and the **assignees** (silhouettes) read at discovery each get their own chip — three names at most, the
+rest in the tooltip — and the number of **👍** (GitLab upvotes, GitHub +1 reaction) a third one: how many
+colleagues already said "fine by me" without a formal approval. Nothing shows when nobody is named and the
+count is zero. On GitHub the 👍 are not in the pull request list: discovery reads the repository's issue
+list, one more call per repository, and a failure of that call leaves the count at zero without blocking
+discovery. The assignment itself happens on the forge: Mergerie reads it, it does not replace it.
+
 - `Fetch new MRs` queries the forge and fills the list (filtered by pattern). The **automatic
   refresh** does it for you (every 5 minutes on a new database — see Settings), and **opening the Reviews tab**
   runs a discovery by itself when the last one is older than that interval. Repositories whose **fetch MRs** box is unticked (Settings →
@@ -308,7 +316,7 @@ than sorting on a guessed identity.
 - **`Refresh from the forge`** (⋯ menu of the card and of the report) re-reads **this merge request
   alone** on GitLab or GitHub, without waiting for the automatic refresh or running a discovery over
   every repository: title, branches, latest commit, conflicts, how far behind the target it is, draft,
-  reviewers, and its state. A commit that landed since makes the report **stale** and triggers what
+  reviewers, assignees, 👍 (GitLab), and its state. A commit that landed since makes the report **stale** and triggers what
   discovery would have (the automatic re-review and the “on stale” verifications, when enabled); a
   merge request merged or closed in the meantime gets its **merged** badge. The message says what the
   forge answered: refreshed, nothing new, new commits, merged, closed. On a **merged** merge request

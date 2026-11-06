@@ -150,6 +150,9 @@ function toMr(pr) {
     created_at: pr.created_at,
     merged_at: pr.merged_at || null,
     author: pr.user ? (pr.user.login || '') : '',
+    // Reviewers demandés et assignés : le détail les porte comme la liste, le rafraîchissement d'une seule MR les relit.
+    reviewers: Array.isArray(pr.requested_reviewers) ? pr.requested_reviewers.map((r) => (r && r.login) || '').filter(Boolean) : undefined,
+    assignees: Array.isArray(pr.assignees) ? pr.assignees.map((r) => (r && r.login) || '').filter(Boolean) : undefined,
     /* LES QUATRE SHA, sous les noms que GitLab rend aussi (`shasDe`). `base.sha` est le
        merge-base au moment de la pull request : `base_sha..head_sha` relit une PR mergée quelle
        que soit la stratégie. GitHub n'a pas de `squash_commit_sha` : pour un squash,
@@ -181,6 +184,17 @@ function toMr(pr) {
 async function listOpenMRs(cfg, project, pattern) {
   const items = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/pulls?state=open`);
   const p = (pattern || '').trim();
+  /* LES 👍 ne sont PAS dans `/pulls` : GitHub les porte sur l'« issue » de la pull request
+     (`reactions.+1`). Un seul appel de plus par dépôt, la liste des issues ouvertes (qui
+     contient les pull requests), plutôt qu'un appel par pull request. Si cet appel échoue,
+     les compteurs restent à zéro : une réaction n'empêche pas de découvrir une merge request. */
+  const pouces = new Map();
+  try {
+    const issues = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/issues?state=open`);
+    for (const it of issues) {
+      if (it && it.pull_request && it.reactions) pouces.set(it.number, Number(it.reactions['+1']) || 0);
+    }
+  } catch { /* best-effort */ }
   return items
     .filter((pr) => !p || ((pr.head && pr.head.ref) || '').includes(p))
     .map((pr) => {
@@ -199,6 +213,9 @@ async function listOpenMRs(cfg, project, pattern) {
         draft: pr.draft === true || /^\s*(draft|wip)\s*:/i.test(String(pr.title || '')),
         reviewers: Array.isArray(pr.requested_reviewers)
           ? pr.requested_reviewers.map((r) => (r && r.login) || '').filter(Boolean) : [],
+        assignees: Array.isArray(pr.assignees)
+          ? pr.assignees.map((r) => (r && r.login) || '').filter(Boolean) : [],
+        upvotes: pouces.get(pr.number) || 0,
         // Mêmes champs que GitLab (vérification automatique) : identifiant, et fork ou non —
         // une branche de tête sans dépôt est celle d'un fork supprimé.
         author_username: (pr.user && pr.user.login) || '',
