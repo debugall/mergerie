@@ -439,7 +439,7 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (demoDiff.isDemo()) { res.json(demoDiff.treeFor(mr)); return; }
-  const { cwd, ref } = mrCloneCtx(mr);
+  const { cwd, ref } = await mrCloneCtx(mr);
   let files;
   try { files = await git.lsTree(cwd, ref); }
   catch { files = await git.lsTree(cwd, `origin/${mr.source_branch}`); }
@@ -451,14 +451,14 @@ app.get('/api/mrs/:id/file', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(mr, String(req.query.path || ''))); return; }
-  res.json(await viewerFile(mrCloneCtx(mr), String(req.query.path || '')));
+  res.json(await viewerFile(await mrCloneCtx(mr), String(req.query.path || '')));
 }));
 // Diff d'un fichier à contexte complet (fichier entier + changements surlignés).
 app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(mr, String(req.query.path || ''))); return; }
-  res.json(await viewerFileDiff(mrCloneCtx(mr), String(req.query.path || '')));
+  res.json(await viewerFileDiff(await mrCloneCtx(mr), String(req.query.path || '')));
 }));
 app.post('/api/mrs/:id/rereview', wrap((req, res) => {
   const mr = mrById(Number(req.params.id));

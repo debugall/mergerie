@@ -545,8 +545,14 @@ async function defaultBranch(cwd) {
 }
 
 // Vrai si la référence git existe (branche locale, distante, sha…).
+/* `rev-parse --verify` ACCEPTE N'IMPORTE QUEL SHA DE 40 HEXA sans regarder si l'objet existe :
+   un commit relu ailleurs et jamais fetché ici, ou force-pushé depuis, passait pour présent, et
+   chaque repli « sur la tête de branche si le commit n'est plus là » ne se déclenchait jamais —
+   le viewer lisait ensuite l'arbre d'un objet absent. `^{commit}` oblige git à résoudre l'objet
+   (et pèle un tag annoté) : une ref qui n'est pas là répond non. */
 async function refExists(cwd, ref) {
-  try { await run('git', ['rev-parse', '--verify', '--quiet', ref], { cwd }); return true; }
+  const cible = /\^\{[a-z]*\}$/.test(ref) ? ref : `${ref}^{commit}`;
+  try { await run('git', ['rev-parse', '--verify', '--quiet', cible], { cwd }); return true; }
   catch { return false; }
 }
 

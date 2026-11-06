@@ -83,7 +83,27 @@ async function diffDeLaMr(mr, cwdConnu = null) {
     return null;
   }
 }
-function mrCloneCtx(mr) {
+/* LE CLONE N'A PAS FORCÉMENT LE COMMIT RELU. Chez le COLLÈGUE, `reviewed_sha` arrive par le
+   dépôt de données partagé et son clone n'a pas fetché depuis — ou la branche a été force-pushée
+   et le commit n'existe plus nulle part. `/tree` retombait sur la tête de branche, mais `/file`
+   et `/filediff` visaient toujours le SHA absent : `ls-tree` échouait, la liste était vide, et
+   CHAQUE fichier de l'arbre répondait « hors arborescence ». « Mettre à jour depuis la forge »
+   n'y changeait rien : il relit la merge request, pas le clone.
+   On tente donc UN fetch avant d'abandonner le commit relu — un seul à la fois par clone (les
+   trois routes partent ensemble depuis l'écran), et pas plus d'un par dix minutes : un commit
+   que le remote ne porte plus ne se refetche pas à chaque fichier ouvert. */
+const FETCH_VIEWER_TTL_MS = 10 * 60 * 1000;
+const fetchsViewer = new Map(); // cwd -> { at, promesse }
+async function fetchPourLeViewer(cwd, repo) {
+  const enCours = fetchsViewer.get(cwd);
+  if (enCours && enCours.promesse) return enCours.promesse;
+  if (enCours && Date.now() - enCours.at < FETCH_VIEWER_TTL_MS) return false;
+  const promesse = git.ensureRepo(getConfig(), repo, () => {}).then(() => true, () => false)
+    .finally(() => { fetchsViewer.set(cwd, { at: Date.now(), promesse: null }); });
+  fetchsViewer.set(cwd, { at: Date.now(), promesse });
+  return promesse;
+}
+async function mrCloneCtx(mr) {
   const cfg = getConfig();
   const cwd = git.cloneDirFor(cfg, { project: mr.project, forge: mr.forge });
   if (!fs.existsSync(path.join(cwd, '.git'))) {
@@ -93,8 +113,15 @@ function mrCloneCtx(mr) {
      forge a donnée (`head_sha`), fetchée sous `refs/mergerie/mr/` par `diffDeLaMr`. Ouverte : la
      tête vivante, pour que l'arborescence et le diff à trois points parlent du même commit. */
   const mergee = !!(mr.merged_at || mr.merge_commit_sha || mr.squash_commit_sha);
-  const ref = mr.reviewed_sha || (mergee && mr.head_sha) || `origin/${mr.source_branch}`;
-  return { cwd, ref, target: mr.target_branch || 'main' };
+  const candidats = [mr.reviewed_sha, mergee && mr.head_sha, mr.source_branch && `origin/${mr.source_branch}`].filter(Boolean);
+  const target = mr.target_branch || 'main';
+  if (!candidats.length) return { cwd, ref: `origin/${mr.source_branch}`, target };
+  if (await git.refExists(cwd, candidats[0])) return { cwd, ref: candidats[0], target };
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id);
+  if (repo && await fetchPourLeViewer(cwd, repo) && await git.refExists(cwd, candidats[0])) return { cwd, ref: candidats[0], target };
+  for (const c of candidats.slice(1)) if (await git.refExists(cwd, c)) return { cwd, ref: c, target };
+  // Rien n'existe : la ref préférée, pour que l'erreur dise ce qu'on visait.
+  return { cwd, ref: candidats[0], target };
 }
 /* Même contexte pour un PROJET DE SESSION : le viewer plein écran est identique,
    seule la source change (la branche produite par l'IA au lieu de la MR). On vise le
