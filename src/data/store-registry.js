@@ -1619,7 +1619,7 @@ const REGISTRE = [
        Jira posté par l'un est celui que l'autre mettra à jour. */
     table: 'ticket_spec', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['ticket_key'],
     chemin: 'specs/{ticket_key}.json', fusion: 'last-writer',
-    locales: ['batch_id', 'last_error', 'pending_instruction'],
+    locales: ['batch_id', 'last_error', 'pending_instruction', 'hidden_at'],
     ligneDuChemin: (db, v) => db.prepare('SELECT ticket_spec.rowid AS r, ticket_spec.* FROM ticket_spec WHERE ticket_key = ?').get(v.ticket_key),
     note: 'la précision technique d’un ticket : ce qu’une équipe se dit sur le ticket, d’où le partage ; '
       + 'le lot d’epic et la dernière erreur sont des commodités de poste',

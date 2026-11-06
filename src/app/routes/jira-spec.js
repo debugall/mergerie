@@ -63,7 +63,7 @@ app.get('/api/jira/specs/all', wrap((req, res) => {
     return {
       id: s.id, key: s.ticket_key, summary: photo.summary || '', epic_key: s.epic_key || null, status: s.status, stale: !!s.stale,
       version: v ? v.version : 0, posted_version: s.posted_version, unposted: !!(v && (s.posted_version == null || v.version > s.posted_version)),
-      analysed: !!v, repos: reposDe(s), updated_at: s.updated_at,
+      analysed: !!v, repos: reposDe(s), updated_at: s.updated_at, hidden_at: s.hidden_at || null,
     };
   });
   res.json({ specs });
@@ -244,6 +244,14 @@ app.put('/api/jira/spec/:id', wrap((req, res) => {
   spec.ajouterVersion(s, md, 'edit');
   spec.poser(s.id, { status: 'edited', last_error: null });
   res.json({ spec: vueComplete(spec.specById(s.id)) });
+}));
+
+/* MASQUER / RÉAFFICHER dans « Analysés » : un drapeau de poste, la spec n'est pas touchée. */
+app.post('/api/jira/spec/:id/hidden', wrap((req, res) => {
+  const s = specOu404(req.params.id);
+  const cache = !!(req.body || {}).hidden;
+  db.prepare('UPDATE ticket_spec SET hidden_at = ? WHERE id = ?').run(cache ? new Date().toISOString() : null, s.id);
+  res.json({ id: s.id, hidden: cache });
 }));
 
 app.delete('/api/jira/spec/:id', wrap((req, res) => {

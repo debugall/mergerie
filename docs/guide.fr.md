@@ -1579,7 +1579,11 @@ bloque le tien, et tu veux savoir **quand il bouge**, pas y penser trois fois pa
 #### Retrouver les tickets analysés
 L'onglet **Analysés** du menu Jira liste tous les tickets dont la précision technique a été enregistrée, lancée ou
 proposée — avec leurs dépôts et branches lus, leur état (proposée, postée, à revoir…) et leur version ; un clic
-ouvre le ticket et sa précision à côté de la liste, et la pastille compte ceux qui ont une proposition. Dans
+ouvre le ticket et sa précision à côté de la liste, et la pastille compte ceux qui ont une proposition. Un
+ticket **implémenté** se **masque** depuis sa ligne (l'œil barré) pour que la liste ne s'allonge pas à l'infini :
+rien n'est supprimé, la pastille et le compte l'oublient, et la case **Afficher les tickets masqués**
+(mémorisée) le ramène, estompé et marqué *masqué*, d'où il se **réaffiche** d'un clic. Le masquage est
+propre au poste : ce que tu ranges ne disparaît pas chez les collègues. Dans
 **Mes tickets**, le filtre **Analyse** montre tout, seulement les tickets *déjà analysés*, ou seulement ceux *pas
 encore analysés* (le choix est mémorisé, et la liste se met à jour dès qu'une proposition arrive).
 

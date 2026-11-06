@@ -100,6 +100,8 @@
         <div id="jiraSubAnalysed" hidden>
             <div class="toolbar">
                 <button id="jiraAnaRefresh" class="btn" data-i18n-title="jira.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.refresh">Rafraîchir</span></button>
+                <!-- Un ticket implémenté se MASQUE depuis sa ligne : la liste ne s'allonge pas à l'infini. La case ramène les masqués, mémorisée. -->
+                <label class="inline-check"><input type="checkbox" id="jiraAnaShowHidden" /> <span data-i18n="jira.ana.show-hidden">Afficher les tickets masqués</span></label>
                 <span id="jiraAnaInfo" class="muted"></span>
             </div>
             <!-- Même disposition que « Mes tickets » : la liste à gauche, le ticket (avec sa précision technique) à droite. -->

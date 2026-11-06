@@ -1512,7 +1512,11 @@ yours, and you want to know **when it moves**, not to think about it three times
 #### Finding the analysed tickets
 The **Analysed** tab of the Jira menu lists every ticket whose technical brief was saved, started or proposed — with
 the repositories and branches read, its state (proposed, posted, to review…) and its version; a click opens
-the ticket and its brief next to the list, and the badge counts those with a proposal. In **My tickets**,
+the ticket and its brief next to the list, and the badge counts those with a proposal. An **implemented**
+ticket can be **hidden** from its row (the crossed eye) so the list does not grow forever: nothing is deleted,
+the badge and the count forget it, and the **Show hidden tickets** box (remembered) brings it back, dimmed and
+marked *hidden*, from where one click **shows it again**. Hiding is per workstation: what you tidy away does
+not vanish for your colleagues. In **My tickets**,
 the **Analysis** filter shows everything, only the tickets *already analysed*, or only those *not analysed yet*
 (the choice is remembered, and the list updates as soon as a brief arrives).
 

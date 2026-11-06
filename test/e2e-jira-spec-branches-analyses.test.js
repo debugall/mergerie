@@ -156,6 +156,42 @@ describe('Menu Jira — branches lues, onglet Analysés, filtre Analyse', { skip
     assert.equal(await page.locator('#jiraAnalysedDetail [data-spec-box]').count(), 1, 'le détail s’ouvre dans SON panneau (« Mes tickets » garde le sien)');
   });
 
+  /* MASQUER UN TICKET ANALYSÉ : implémenté, il sort de la liste — la pastille et le compte suivent —, et la case « Afficher les tickets
+     masqués » (mémorisée) le ramène, pastille « masqué », d'où il se réaffiche. Le drapeau est en base ; la spec, elle, n'a pas bougé. */
+  test('masquer un ticket analysé le sort de la liste ; la case le ramène ; réafficher le remet', async () => {
+    await page.locator('#tab-jira .subnav [data-jsub="analysed"]').click();
+    await page.waitForSelector('#jiraAnaList [data-jiraanaopen="PROJ-21"]');
+    assert.equal(await page.locator('#jiraAnaShowHidden').isChecked(), false);
+    await page.locator('#jiraAnaList [data-jiraanaopen="PROJ-21"]').click();
+    await page.waitForFunction(() => document.querySelector('#jiraAnalysedDetail .jira-key-copy')?.textContent === 'PROJ-21');
+    await page.locator('#jiraAnaList [data-jiraanaopen="PROJ-21"] [data-jiraanahide]').click();
+    await page.locator('#jiraAnaList [data-jiraanaopen="PROJ-21"]').waitFor({ state: 'detached' });
+    await attendreServeur(async () => {
+      const s = (await app.api('GET', '/api/jira/specs/all')).body.specs.find((x) => x.key === 'PROJ-21');
+      return !!(s && s.hidden_at) && s.status === 'proposed';
+    }, 'le serveur porte le drapeau, la spec est intacte');
+    assert.deepEqual(await page.locator('#jiraAnaList [data-jiraanaopen]').evaluateAll((l) => l.map((x) => x.dataset.jiraanaopen)), ['PROJ-20']);
+    assert.equal(await page.locator('#jiraAnalysedCount').innerText(), '1', 'la pastille ne compte plus le masqué');
+    assert.match(await page.locator('#jiraAnaInfo').innerText(), /1 masqué/);
+    assert.equal(await page.locator('#jiraAnalysedDetail .jira-key-copy').count(), 0, 'son détail ouvert s’est vidé');
+    // La case le ramène, estompé et marqué, et le choix survit au rechargement.
+    await page.locator('#jiraAnaShowHidden').check();
+    await page.waitForSelector('#jiraAnaList [data-jiraanaopen="PROJ-21"].jira-ana-masque');
+    assert.match(await page.locator('#jiraAnaList [data-jiraanaopen="PROJ-21"]').innerText(), /masqué/);
+    await page.reload();
+    await page.locator('nav button[data-tab="jira"]').click();
+    await page.locator('#tab-jira .subnav [data-jsub="analysed"]').click();
+    await page.waitForSelector('#jiraAnaList [data-jiraanaopen="PROJ-21"].jira-ana-masque');
+    assert.equal(await page.locator('#jiraAnaShowHidden').isChecked(), true, 'la case est mémorisée');
+    // Réafficher : la ligne redevient ordinaire, la pastille remonte.
+    await page.locator('#jiraAnaList [data-jiraanaopen="PROJ-21"] [data-jiraanahide]').click();
+    await page.waitForSelector('#jiraAnaList [data-jiraanaopen="PROJ-21"]:not(.jira-ana-masque)');
+    await attendreServeur(async () => !(await app.api('GET', '/api/jira/specs/all')).body.specs.find((x) => x.key === 'PROJ-21').hidden_at, 'le drapeau est levé');
+    assert.equal(await page.locator('#jiraAnalysedCount').innerText(), '2');
+    await page.locator('#jiraAnaShowHidden').uncheck();
+    assert.equal((await app.api('POST', '/api/jira/spec/999999/hidden', { hidden: true })).status, 400, 'spec inconnue : refusée comme par les autres routes de spec');
+  });
+
   test('« Mes tickets » : le filtre Analyse montre les tickets déjà analysés, ou les autres — et se souvient', async () => {
     await ouvrirJira();
     assert.deepEqual(await cartes(), ['PROJ-20', 'PROJ-21', 'PROJ-22']);
