@@ -1842,7 +1842,9 @@ const REGISTRE = [
       // Ce qu'on appelle « entré sans relecture » : la branche par défaut, et les protégées ou non.
       'periode_watch_protected',
       // Jira → Stats : ce qui compte comme « bug » et comme « US » — une convention d'équipe.
-      'jira_stats_bug_types', 'jira_stats_us_types'],
+      'jira_stats_bug_types', 'jira_stats_us_types',
+      // Les croisements de MR : relever les fichiers, le plafond d'appels, croiser entre cibles — l'outil, pas la machine.
+      'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que
@@ -1913,6 +1915,8 @@ const REGISTRE = [
   /* ── Famille C : se recrée tout seul ─────────────────────────────────────────────────── */
   { table: 'commit_activity', famille: 'C', note: 'relu de la forge' },
   { table: 'feed', famille: 'C', note: 'relu de la forge' },
+  { table: 'mr_files', famille: 'C', note: 'les fichiers modifiés par chaque MR ouverte, relus de la forge (croisements)' },
+  { table: 'mr_file_fetch', famille: 'C', note: 'sur quel SHA et quand la liste de fichiers d’une MR a été relevée' },
   { table: 'job', famille: 'C', note: 'la file de CE poste' },
   { table: 'job_log', famille: 'C', note: 'la console des jobs de ce poste — 58 % du poids de la base' },
   { table: 'conn_test', famille: 'C', note: 'le dernier test de connexion de ce poste' },

@@ -121,6 +121,17 @@ function renderBrief(d) {
       ${briefHideBtn('mr', m.id)}
     </div>`).join('');
 
+  const joursDepuis = (iso) => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86400000));
+  /* LES MR QUI SE CROISENT : une ligne par paire, les plus anciennes d'abord. Clic : Reviews
+     filtré sur le dépôt, les deux merge requests en tête. On écarte une paire, pas un dépôt. */
+  const croisements = (d.overlaps || []).map((p) => `<div class="brief-item brief-clickable" data-brief-croise="${p.a_id},${p.b_id}" data-project="${esc(p.project)}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${esc(p.a_iid)} ↔ !${esc(p.b_iid)}</div>
+        <div class="meta">${esc(p.project)} · ${esc(tr('mr.croise.files', { n: p.shared, count: p.shared }))}${p.since ? ` · ${esc(joursDepuis(p.since) ? tr('notes.brief.overlaps.since', { n: joursDepuis(p.since), count: joursDepuis(p.since) }) : tr('notes.brief.overlaps.today'))}` : ''}</div>
+      </div>
+      ${briefHideBtn('croisement', p.key)}
+    </div>`).join('');
+
   /* LES SESSIONS QUI ATTENDENT UN GESTE. Trois attentes, un seul oubli : le travail est fait,
      il ne manque qu'un clic. Des nombres, pas des listes — le détail vit dans Dev IA, et à trois
      lignes de plus le brief cesserait d'être un brief. Une attente à zéro ne s'affiche pas. */
@@ -235,6 +246,7 @@ function renderBrief(d) {
     briefSection(tr('agents.brief.title'), agentsBrief, { icon: 'zap', hint: tr('agents.brief.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
+    briefSection(tr('notes.brief.sec.overlaps'), croisements, { icon: 'branch', hint: tr('notes.brief.overlaps.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
@@ -450,6 +462,13 @@ document.addEventListener('click', async (e) => {
   const v = e.target.closest && e.target.closest('[data-brief-verif]');
   if (v) { openVerifyReport(Number(v.dataset.briefVerif)); return; }
   const m = e.target.closest && e.target.closest('[data-brief-mr]');
-  if (m) navMrReport(Number(m.dataset.briefMr));
+  if (m) { navMrReport(Number(m.dataset.briefMr)); return; }
+  // Une paire qui se croise : Reviews filtré sur le dépôt, les deux merge requests en tête.
+  const cr = e.target.closest && e.target.closest('[data-brief-croise]');
+  if (cr) {
+    epinglerMrs(cr.dataset.briefCroise.split(',').map(Number));
+    $('#searchReview').value = cr.dataset.project || '';
+    navReviews('to_review');
+  }
 });
 

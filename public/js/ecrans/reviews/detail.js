@@ -17,7 +17,8 @@ function reportSig(d) {
     // sans elle ici, une publication automatique laissait l'ancien libellé à l'écran.
     r && r.comment_posted_at,
     d.convergence && d.convergence.status, d.stale, t2.text && t2.text.length, t2.has_image,
-    t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd].join('\u0001');
+    t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd,
+    sigCroise(d)].join('\u0001');
 }
 
 /* UNE DÉCOUVERTE PEUT CHANGER CE QUE LE RAPPORT OUVERT AFFICHE. Une branche qui a bougé rend un rapport « périmé » : le badge et « Relancer
@@ -87,6 +88,8 @@ async function openReport(id, opts = {}) {
           ${fenteBrouillons({ ...mLigne, drafts: d.drafts || mLigne.drafts })}
           ${badgeSeverites(mLigne)}
           ${badgeCartes({ cards: d.cards || mLigne.cards })}
+          ${/* Le badge de croisement, repris de la carte : le rapport est aussi l'endroit où l'on décide de merger. */''}
+          ${badgeCroise({ id: m.id, overlaps: d.overlaps || mLigne.overlaps, files_fetch: d.files_fetch || mLigne.files_fetch })}
           ${badgeConflit(mLigne)}
           ${pluginsHtml('mr-badge', m)}
           ${verifyBadge(d.verification)}

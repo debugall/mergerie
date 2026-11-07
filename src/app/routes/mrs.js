@@ -19,6 +19,7 @@ const jobs = require('../../jobs');
 const reviewer = require('../../review/reviewer');
 const prompts = require('../../core/prompts');
 const converge = require('../../review/converge');
+const croisements = require('../../review/croisements');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const agentsession = require('../../agent/session');
@@ -121,6 +122,9 @@ app.get('/api/mrs', wrap((req, res) => {
      des chemins du diff par ceux que les cartes citent, calculé sans IA et sans réseau. L'index
      est construit UNE fois pour toute la liste. */
   const indexCartes = agentknowledge.indexCartes();
+  /* LES CROISEMENTS : les MR ouvertes du même dépôt qui touchent les mêmes fichiers, et sur quel
+     SHA la liste a été relevée. Une requête pour toute la liste, zéro réseau, zéro IA. */
+  const croises = croisements.pourCartes(cfg);
   const riskOf = (changed) => {
     if (!changed || !pathRules.length) return [];
     const paths = String(changed).split('\n').filter(Boolean);
@@ -212,6 +216,10 @@ app.get('/api/mrs', wrap((req, res) => {
       cards: agentknowledge.cartesTouchees(indexCartes, r.repo_id, r.changed_paths),
       stale: r.reviewed_sha && r.reviewed_sha !== r.current_sha,
       new_for_me: !!nouveauPourMoi[r.id],
+      /* CROISE : les autres MR ouvertes qui modifient les mêmes fichiers (vide = aucun croisement
+         connu), et le relevé (`null` = liste jamais relevée : la carte ne dit rien). */
+      overlaps: (croises[r.id] || {}).overlaps || [],
+      files_fetch: (croises[r.id] || {}).fetch || null,
     };
   }));
 }));
@@ -268,6 +276,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
   const tkey = mr.ticket_jira_key
     ? (mr.ticket_jira_error ? null : mr.ticket_jira_key)
     : jira.ticketKey(mr.title, mr.source_branch);
+  const croise = croisements.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || {};
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -351,6 +360,9 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     links: db.prepare(`SELECT ml.repo_id, ml.branch, repo.project, repo.forge FROM mr_link ml JOIN repo ON repo.id = ml.repo_id WHERE ml.mr_id = ?`).all(mr.id),
     repo_links: db.prepare(`SELECT rl.linked_repo_id AS repo_id, rl.branch, repo.project FROM repo_link rl JOIN repo ON repo.id = rl.linked_repo_id WHERE rl.repo_id = ?`).all(mr.repo_id),
     stale: mr.reviewed_sha && mr.reviewed_sha !== mr.current_sha,
+    // Le badge de croisement, repris dans l'en-tête du rapport (même calcul que la liste).
+    overlaps: croise.overlaps || [],
+    files_fetch: croise.fetch || null,
   });
 }));
 // Enregistre le contexte du ticket (texte + capture facultative en data URL).

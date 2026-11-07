@@ -106,7 +106,8 @@ function renderReports() {
     m.stale, m.verifiable, (m.cards || []).map((c) => c.agent_id).join(','),
     (m.lots || []).map((l) => l.id).join(','),
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
-      m.verification.failed_count, m.verification.detail_source].join(',')].join('\u0001'))].join('\u0002');
+      m.verification.failed_count, m.verification.detail_source].join(','),
+    sigCroise(m)].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note, m)}
@@ -128,6 +129,7 @@ function renderReports() {
           ${badgeSeverites(m)}
           ${badgeCartes(m)}
           ${badgeTicket(m)}
+          ${badgeCroise(m)}
           ${badgeConflit(m)}
           ${pluginsHtml('mr-badge', m)}
           ${badgeCIForge(m)}

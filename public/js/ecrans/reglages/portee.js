@@ -108,6 +108,10 @@ async function loadConfig() {
      ne sait pas si l'on regarde un réglage ou une suggestion. `retention_days` et
      `stale_mr_days` le faisaient déjà ; le plafond de vérification automatique non. */
   if (f.verif_auto_max) f.verif_auto_max.value = Number(c.verif_auto_max) || 5;
+  // Les croisements : l'interrupteur est coché d'office, le plafond s'écrit (0 est une valeur), le croisement entre cibles est décoché d'office.
+  if (f.mr_files_enabled) f.mr_files_enabled.checked = String(c.mr_files_enabled) !== '0';
+  if (f.mr_files_cross_targets) f.mr_files_cross_targets.checked = String(c.mr_files_cross_targets) === '1';
+  if (f.mr_files_max) f.mr_files_max.value = c.mr_files_max == null || c.mr_files_max === '' ? 20 : Number(c.mr_files_max);
   syncReviewAutoMax();
   syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };

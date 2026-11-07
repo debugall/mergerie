@@ -590,7 +590,8 @@ async function listMrChanges(cfg, project, iid) {
   let additions = 0; let deletions = 0;
   for (const c of changes) { const n = compterLignes(c.diff); additions += n.plus; deletions += n.moins; }
   return {
-    paths: [...new Set(changes.map((x) => x.new_path || x.old_path).filter(Boolean))],
+    // Un renommage compte pour deux chemins (ancien et nouveau) : les deux croisent une autre MR.
+    paths: [...new Set(changes.flatMap((x) => [x.new_path, x.old_path]).filter(Boolean))],
     files: changes.length, additions, deletions,
   };
 }

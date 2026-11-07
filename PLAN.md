@@ -141,6 +141,7 @@ La review d’une merge request et sa convergence.
 | Fichier | Rôle |
 |---|---|
 | `review/converge.js` | **« Converger »** : orchestrateur (machine à états) review → correction IA (commit + push) → re-review incrémentale, jusqu'au seuil / à la régression / au plafond ; **`convergeSession`** : depuis une session de dev (dev → push → crée la MR → upsert → `convergeRun`), par projet en série |
+| `review/croisements.js` | **les croisements** : la liste des fichiers de chaque MR ouverte (relevée à la découverte, par le diff stocké → le clone → la forge, plafonnée par tour, invalidée quand le SHA de tête bouge, refusée au-delà de 5 000 chemins) et leur jointure en SQL à l'affichage — par carte, par paire pour le brief, par dépôt pour la modale de session. Zéro IA : un test le garde fermé à `agent/` |
 | `review/note.js` | extraction de la note globale d'un rapport (texte libre) |
 | `review/reviewer.js` | pipeline de review : clone → diff → prompt(s) → écriture fichier → BDD ; contexte ticket + règles ; modif IA ; re-review incrémentale — le **delta** n'est que ce que l'IA reçoit, le `diff.patch` rangé à côté du rapport (lu par « Ouvrir le code ») est toujours le diff **complet** `target...source` |
 
@@ -374,6 +375,18 @@ le front comme du texte passe par `test/helpers/front.js` (`lireFront()`, `lireF
 - **repo_link** — projets liés PAR DÉFAUT d'un dépôt (`repo_id`, `linked_repo_id`, `branch`) : copiés dans `mr_link` à la découverte d'une nouvelle MR (pré-remplissage zéro clic), définis depuis la modale Contexte.
 - **mr_link** — projets liés d'une MR (`repo_id`, `branch`) : à la review, l'IA les consulte en lecture seule (montés en symlink sous `ai-dev-tools-internal/linked/`, worktrees remis à zéro après) et analyse l'impact des changements. Auto-lien exclu.
 - **mr.changed_paths** — chemins des fichiers modifiés (rempli au discover via l'API et à la review via le diff) : source du **badge « risque »** (chemins × règles, sans IA).
+- **mr_files** (`mr_id`, `path`, index sur `(path, mr_id)`) et **mr_file_fetch** (`mr_id`, `head_sha`, `fetched_at`, `files`, `source`, `refused`) — les **croisements** : une ligne par fichier modifié par une MR ouverte (un renommage en fait deux), et le relevé qui dit sur quel SHA et quand — c'est lui qui distingue « relevée, vide » de « jamais relevée », et qui porte le refus (`too-many-files`, au-delà de 5 000). Remplies à la découverte (`croisements.releverTour`, plafond `config.mr_files_max`), purgées avec le diff stocké. Le croisement ne se stocke pas, il se calcule à l'affichage, une requête :
+  ```sql
+  SELECT a.mr_id AS mr, b.mr_id AS other, a.path
+  FROM mr_files a JOIN mr_files b ON b.path = a.path AND b.mr_id <> a.mr_id
+  JOIN mr ma ON ma.id = a.mr_id JOIN mr mb ON mb.id = b.mr_id
+  JOIN mr_file_fetch fa ON fa.mr_id = ma.id AND fa.head_sha IS ma.current_sha AND fa.refused IS NULL
+  JOIN mr_file_fetch fb ON fb.mr_id = mb.id AND fb.head_sha IS mb.current_sha AND fb.refused IS NULL
+  WHERE ma.repo_id = mb.repo_id AND COALESCE(ma.closed_seen, 0) = 0 AND COALESCE(mb.closed_seen, 0) = 0
+    AND ma.target_branch IS mb.target_branch      -- sauf `config.mr_files_cross_targets`
+  ORDER BY a.mr_id, b.mr_id, a.path;
+  ```
+  Symétrique par construction ; une MR mergée (`closed_seen`) cesse de croiser tout de suite ; un SHA qui a bougé invalide la liste jusqu'au relevé suivant. `config.mr_files_enabled` (défaut `'1'`) coupe le relevé supplémentaire et l'affichage.
 - **job** / **job_log** — jobs de fond + log en direct persistant. La colonne **`retry`** garde l'INTENTION du job (quelle fonction, sur quel objet) et non les lignes traitées : relancer une review re-déduit sa liste de l'état des MR, donc reprend là où l'arrêt a eu lieu au lieu de refaire ce qui est fait. Les opérations **git** en sont exclues — rejouer « supprimer ces douze branches » depuis un bouton de bandeau, sans repasser par l'aperçu, est précisément ce qu'il ne faut pas permettre. `started_at`/`finished_at` sont exposés par `GET /api/jobs/current/log` : le panneau de logs en tire le **temps écoulé**, calculé depuis la date serveur et non depuis l'ouverture de la page (un onglet ouvert en cours de job afficherait sinon un temps faux).
 - **comment_log** — commentaires niveau MR postés depuis l'app.
 - **task** — sessions : `kind` (`code`/`explore`), `prompt`, `commit_message`, `auto_push`, `status` (agrégé depuis les projets), `md_path` (réponse d'exploration), **`followup_draft`** / **`followup_auto`** (suivi écrit pendant la session : envoyé à la main, ou tout seul à la fin si la case est armée ; `local_task` a les siennes), `created_at`, **`finished_at`** (fin de la dernière EXÉCUTION — distinct d'`updated_at`, qui bouge aussi quand on corrige un prompt ou qu'on pousse ; c'est lui qui trie les listes Dev IA, `ORDER BY (status='running') DESC, COALESCE(finished_at, created_at) DESC`, pour montrer d'abord ce qui vient de tourner).  Champs historiques mono-projet conservés mais inutilisés. Ancien format : `prompt`, `branch`, `base_branch`, `commit_message`, `auto_push`, `status` (`new`/`running`/`committed`/`pushed`/`error`), `commit_sha`, `diff_path`, `push_command`, `mr_iid`/`mr_url`/`mr_target`/`mr_merged`, `last_error`. **`notify_jira`** : commenter le ticket Jira à chaque création de merge request (décoché par défaut). **`review_after`** : lancer la review de la merge request dès sa création (décoché par défaut).
@@ -1152,6 +1165,7 @@ Optionnel, piloté par `config.auto_refresh_minutes` (0 = off, **minimum 1 min**
 ## API REST (extrait)
 
 - Config/dépôts : `GET/PUT /api/config`, `GET/POST/PUT/DELETE /api/repos[...]`, `POST /api/repos/bulk` (champ **`forge`**, absent = `gitlab` → contrat inchangé), `GET /api/gitlab/projects|branches`, **`GET /api/github/projects`**, **`POST /api/github/test`** (valide le token, renvoie le login).
+- Croisements : `GET /api/mrs` porte `overlaps` et `files_fetch` par merge request (zéro réseau), `GET /api/brief` la section `overlaps` (écartable, `kind: 'croisement'`), **`POST /api/croisements/session`** (`{ targets: [{ repo_id, branch }], text }` : MR ouvertes du dépôt, croisements de la branche, chemins du prompt touchés).
 - Découverte/jobs : `POST /api/discover`, `POST /api/jobs/review`, `POST /api/jobs/stop` (body `job_id` optionnel) et **`POST /api/jobs/:id/stop`**, `GET /api/jobs/current[/log]`, **`GET /api/jobs/:id/log`** (l'onglet du job parallèle), **`GET /api/jobs/queue`** (`{running, queued, parallelBusy}` — chaque job en attente porte ses `keys` et ses `conflicts`, de sorte que l'écran dit POURQUOI il ne peut pas démarrer au lieu de griser un bouton) et **`POST /api/jobs/:id/start-now`**, **`POST /api/jobs/:id/retry`**.
 - Diff avant review : `GET /api/mrs/:id/diffview` (clone à la demande + diff en direct, pour juger sans appel IA).
 - Résolution : `GET /api/mrs/:id/findings[?v=N]` (constats + statut d'une version), delta inclus dans `GET /api/mrs/:id/versions`, taux dans `GET /api/stats`.

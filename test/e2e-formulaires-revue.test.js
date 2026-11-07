@@ -202,7 +202,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       sub, { timeout: ATTENTE });
   }
 
-  test('neuf réglages en vrac deviennent trois groupes titrés', async () => {
+  test('neuf réglages en vrac deviennent quatre groupes titrés', async () => {
     await ouvrirReglages('mr');
     const ordre = await page.$$eval('#sub-mr > .form > *',
       (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select, textarea') || {}).name || e.tagName))));
@@ -214,6 +214,8 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
          personne pour les exécuter. */
       '# Automatisation', 'auto_refresh_minutes', 'stale_mr_days', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
       'auto_runner', 'P',
+      // Les croisements : l'interrupteur, son plafond juste dessous, puis le croisement entre cibles.
+      '# Découverte', 'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
   });

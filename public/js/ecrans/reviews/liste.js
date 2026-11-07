@@ -1,6 +1,6 @@
 'use strict';
 /* Onglet Reviews : les statuts d'une MR, le libellé du bouton (A14), les 3 stades, recherche, à reviewer, miennes / autres, reviewers, note, constats. */
-// @expose aReviewerTotal, closeSplitMenus, currentSeg, estDeMoi, filtreAuteur, loadSegment, loadToReview, majBoutonReview, matchMr, moiSurLesForges, renderFiltreAuteur, renderToReview, toReviewRows
+// @expose aReviewerTotal, closeSplitMenus, currentSeg, epinglerMrs, estDeMoi, filtreAuteur, loadSegment, loadToReview, majBoutonReview, matchMr, moiSurLesForges, renderFiltreAuteur, renderToReview, toReviewRows
 // Statuts de MR : la base stocke de l'anglais snake_case, l'UI parle français
 // (symétrique de TASK_STATUS, qui le faisait déjà pour les tâches).
 const MR_STATUS = {
@@ -192,7 +192,12 @@ function tailleNum(m) {
   if (s.additions != null || s.deletions != null) return (s.additions || 0) + (s.deletions || 0);
   return s.files != null ? s.files : Number.MAX_SAFE_INTEGER;
 }
-const ordonnerFile = (rows) => rows.slice().sort(TRIS[triFile] || TRIS.defaut);
+/* LES MERGE REQUESTS ÉPINGLÉES EN TÊTE, le temps d'une arrivée : le brief ouvre Reviews sur une
+   paire qui se croise, et les deux doivent se lire d'abord, quel que soit le tri. Une recherche
+   tapée ensuite relâche l'épingle. */
+let mrsEnTete = new Set();
+function epinglerMrs(ids) { mrsEnTete = new Set((ids || []).map(Number)); }
+const ordonnerFile = (rows) => rows.slice().sort((a, b) => (mrsEnTete.has(b.id) - mrsEnTete.has(a.id)) || (TRIS[triFile] || TRIS.defaut)(a, b));
 
 /* Le tri restauré doit SE VOIR dans la liste déroulante : une file rangée autrement que ce
    que le contrôle affiche ferait douter de la liste avant de douter du contrôle. */
@@ -281,7 +286,9 @@ function renderToReview() {
        changement d'un autre champ. */
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(','),
-    m.verifiable, mrSelection.has(m.id)].join('\u0001')).join('\u0002');
+    m.verifiable, mrSelection.has(m.id),
+    // Le badge de croisement fait partie de ce que la carte affiche.
+    sigCroise(m)].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) { majBoutonReview(); return; }
   stagger('#toReviewList .card');
   majBoutonReview();       // la recherche et les filtres viennent peut-être de changer la liste
@@ -374,6 +381,7 @@ function renderToReview() {
 /* Debouncé : chaque frappe reconstruisait la liste entière. `debounce` existait déjà et
    servait pour les autres recherches — celle-ci avait été oubliée. */
 $('#searchReview').addEventListener('input', debounce(() => (currentSeg === 'to_review' ? renderToReview() : renderReports())));
+$('#searchReview').addEventListener('input', () => epinglerMrs([]));
 
 /* Merge d'une MR depuis la file (sans passer par une review) — pour une MR
    triviale. Confirmation obligatoire (action irréversible et visible par l'équipe).
@@ -408,7 +416,7 @@ function closeSplitMenus() {
 }
 // Un clic n'importe où ailleurs referme les menus ouverts (enregistré une seule fois).
 // `.split-menu-wrap` aussi : sans lui, le clic qui OUVRE le menu d'export le refermerait aussitôt.
-document.addEventListener('click', (e) => { if (!e.target.closest('.btn-split, .split-menu-wrap')) closeSplitMenus(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('.btn-split, .split-menu-wrap, .croise-panel')) closeSplitMenus(); });
 
 function mrCard(m) {
   return `<div class="card" data-id="${m.id}">
@@ -432,6 +440,7 @@ function mrCard(m) {
         ${badgeSeverites(m)}
         ${badgeCartes(m)}
         ${badgeTicket(m)}
+        ${badgeCroise(m)}
         ${badgeConflit(m)}
         ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
         ${pluginsHtml('mr-badge', m)}
@@ -467,7 +476,9 @@ function mrCard(m) {
           Les attributs `data-*` sont IDENTIQUES à ceux d'avant : les écouteurs délégués les
           retrouvent dans le menu comme ils les trouvaient sur la carte. */''}
     <span class="btn-split">
-      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}" aria-haspopup="true" aria-expanded="false">⋯</button>
+      ${/* Une liste de fichiers REFUSÉE (plus de 5 000 : migration massive, vendoring) se dit au
+            survol du « ⋯ » : la carte n'affiche pas de croisement, et ce n'est pas un oubli. */''}
+      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}${m.files_fetch && m.files_fetch.refused ? ` — ${esc(tr('mr.croise.refused'))}` : ''}" aria-haspopup="true" aria-expanded="false">⋯</button>
       <div class="split-menu" hidden role="menu">
         <button role="menuitem" data-dev="${m.id}" data-branch="${esc(m.source_branch)}">${tr('mr.btn.code')}</button>
         <button role="menuitem" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? '' : esc(tr('err.verify.no-verifier'))}">${tr('verify.btn.verify')}</button>

@@ -603,6 +603,19 @@
             </label>
             <p id="autoRunnerNone" class="field-note" hidden data-i18n="settings.auto-runner.none">Aucun exécutant : les automatismes cochés ne tourneront sur aucun poste.</p>
 
+            <!-- LES CROISEMENTS DE MR : relever les fichiers de chaque MR ouverte à la découverte (un
+                 appel forge par MR dont la liste manque, plafonné par tour), pour dire qu'elles
+                 touchent les mêmes fichiers AVANT que la forge ne parle de conflit. D'équipe : ils
+                 décrivent l'outil, pas la machine. -->
+            <h3 data-i18n="settings.mr.group.discover">Découverte</h3>
+            <label class="inline-check"><input form="configForm" name="mr_files_enabled" type="checkbox" /> <span data-i18n="settings.lbl.mr-files-enabled">Relever les fichiers des MR ouvertes</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.mr-files-max">Au plus N listes relevées par découverte</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="mr_files_max" type="number" min="0" max="500" step="1" placeholder="20" />
+            </label>
+            <label class="inline-check"><input form="configForm" name="mr_files_cross_targets" type="checkbox" /> <span data-i18n="settings.lbl.mr-files-cross-targets">Croiser aussi les MR de branches cibles différentes</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-cross-targets" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>
             <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="-1" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="converge_threshold" type="number" min="1" max="10" step="0.5" placeholder="8" />

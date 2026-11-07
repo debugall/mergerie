@@ -96,6 +96,22 @@ diverged commits count, GitHub's `base...head` comparison), read at discovery �
 request, capped per round — and when the merge modal opens. "Not known yet" shows nothing: a branch
 from a fork, or a silent forge, never becomes "up to date" by default.
 
+**Two merge requests that overlap say so before the conflict.** An *overlap* is a fact: two open merge
+requests of the same repository, towards the same target branch, that change **at least one file in
+common**. The card then carries `overlaps !214 · 3 files · 2 d` (several: `overlaps 3 MRs`), before "in
+conflict"; the report header repeats the badge. Clicking opens a panel anchored on the card: one line per
+overlapping merge request (number, title, author, age, score when a report exists), which leads to it in
+*Reviews*, the shared paths below it, monospace, folded past ten, and at the foot `Fetched on <sha> · 4 min
+ago` — on which commit and when the list was read. Nothing is judged, nothing recommended: only git knows
+whether there will be a conflict, the tool shows that two branches are going to meet and the human decides
+the merge order. The file list of every open merge request is fetched **at discovery**, never at display
+time — the diff a review already stored when it is about the current head, otherwise the local clone,
+otherwise one forge call per merge request, capped per round (most recently active first, the rest at the
+next round, the log says so) — and invalidated as soon as the head SHA moves, like the "stale" badge. Until
+a merge request has its list it shows **nothing**, never "no overlap"; a list of more than 5,000 files (a
+massive migration, vendoring) is not stored, and hovering the ⋯ button says `not fetched · too many files`.
+No AI call, no token: the three settings live in *Settings → Merge Request → Discovery*.
+
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
 
@@ -790,6 +806,11 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   the case of a re-run after a failure that happened *after* the commit, a rejected push say — the absence
   of new changes is **not** an error: the session goes back to its “commit ready” state, with the diff and
   the MR creation button.
+- **What the chosen repository already carries.** As soon as a repository is chosen in the session
+  modal, a grey line under the selector says `N open MRs on this repository`; when the session restarts
+  from the branch of an existing merge request, its overlaps; and when the prompt names a path that exists
+  in the clone (`src/payment/`, `tva.js`), the line becomes `2 open MRs touch src/payment/ (!214, !219)`.
+  Information only: nothing is blocked, the session starts anyway.
 - **Read-only linked projects (Advanced).** In coding, the session dialog lets you add other
   repositories as **context**: the AI reads them — their API, their schema, their contracts — to
   respect what they expose, without **ever** modifying them. A repository (with search, as
@@ -1136,6 +1157,10 @@ nothing happened, which was not the question. Every line reaches its object in o
    tab and its own badge).
 6. **Dormant MRs** — reviewed more than **N days** ago (adjustable, 5 by default) and still open: the work
    is done, the decision is missing.
+6 bis. **Overlapping MRs** — one line per pair of open merge requests of the same repository that change
+   the same files: `!214 ↔ !219 · groupe/tarification · 3 files · for 2 days`, oldest pairs first. Click:
+   *Reviews* filtered on the repository, both merge requests on top. The cross dismisses **one pair**, not a
+   repository: a new pair reappears.
 7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
    the detail lives in *Stats*.
 
@@ -1976,7 +2001,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked) —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more

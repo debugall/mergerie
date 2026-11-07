@@ -109,6 +109,23 @@ par merge request ouverte, plafonné par tour — et à l'ouverture de la modale
 n'affiche rien : une branche venue d'un fork, ou une forge muette, ne devient jamais « à jour » par
 défaut.
 
+**Deux merge requests qui se croisent le disent avant le conflit.** Un *croisement* est un fait : deux
+merge requests ouvertes du même dépôt, vers la même branche cible, qui modifient **au moins un fichier
+en commun**. La carte porte alors `croise !214 · 3 fichiers · 2 j` (plusieurs : `croise 3 MR`), avant
+« en conflit » ; le même badge est repris dans l'en-tête du rapport. Cliquer ouvre un panneau ancré sur
+la carte : une ligne par merge request croisée (numéro, titre, auteur, âge, note si un rapport existe),
+qui mène à elle dans *Reviews*, les chemins communs dessous, en monospace, repliés au-delà de dix, et en
+pied `Relevé sur <sha> · il y a 4 min` — sur quel commit et quand la liste a été lue. Rien n'est jugé,
+rien n'est recommandé : git seul sait s'il y aura conflit, l'outil montre que deux branches vont se
+rencontrer et l'humain décide l'ordre des merges. La liste des fichiers de chaque merge request ouverte
+est relevée **à la découverte**, jamais à l'affichage — le diff déjà stocké par une review s'il porte
+sur la tête actuelle, sinon le clone local, sinon un appel forge par merge request, plafonné par tour
+(les plus récemment actives d'abord, le reste au tour suivant, le journal le dit) — et invalidée dès que
+le SHA de tête change, comme le badge « périmé ». Tant qu'une merge request n'a pas sa liste, elle
+n'affiche **rien**, jamais « aucun croisement » ; une liste de plus de 5 000 fichiers (migration massive,
+vendoring) n'est pas stockée, et le survol du bouton ⋯ dit `non relevé · trop de fichiers`. Aucun appel
+d'IA, aucun token : les trois réglages sont dans *Réglages → Merge Request → Découverte*.
+
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
 
@@ -822,6 +839,11 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   vivante : c'est le seul geste qui répond à cette pause. Les boutons de remède d'une erreur (« Rattraper
   la base et réessayer », « Résoudre le conflit », « Repartir d'une session d'agent neuve », « Re-cloner le
   dépôt ») s'expliquent au survol.
+- **Ce que le dépôt choisi porte déjà.** Dès qu'un dépôt est choisi dans la modale de session, une
+  ligne grise sous le sélecteur dit `N MR ouvertes sur ce dépôt` ; si la session repart de la branche
+  d'une merge request existante, ses croisements ; et quand le prompt cite un chemin qui existe dans le
+  clone (`src/payment/`, `tva.js`), la ligne devient `2 MR ouvertes touchent src/payment/ (!214, !219)`.
+  Information seulement : rien n'est bloqué, la session se lance quand même.
 - **Projets liés en lecture seule (Avancé).** En codage, la modale de session propose d'ajouter
   d'autres dépôts comme **contexte** : l'IA les consulte — leur API, leur schéma, leurs contrats —
   pour respecter ce qu'ils exposent, sans **jamais** les modifier. Un dépôt (recherche incluse,
@@ -1185,6 +1207,10 @@ apprend qu'il ne s'est rien passé, ce qui n'était pas la question. Chaque lign
 5. **MR à traiter** — celles **arrivées depuis hier**, pas la file entière (elle a son onglet et son badge).
 6. **MR dormantes** — reviewées il y a plus de **N jours** (réglable, 5 par défaut) et toujours ouvertes :
    le travail est fait, la décision manque.
+6 bis. **MR qui se croisent** — une ligne par paire de merge requests ouvertes du même dépôt qui modifient
+   les mêmes fichiers : `!214 ↔ !219 · groupe/tarification · 3 fichiers · depuis 2 j`, les paires les plus
+   anciennes d'abord. Clic : *Reviews* filtré sur le dépôt, les deux merge requests en tête. La croix écarte
+   **une paire**, pas un dépôt : une paire nouvelle reparaît.
 7. **Activité depuis hier** — une ligne, trois nombres. Volontairement pauvre : c'est du contexte, pas une
    tâche ; le détail vit dans *Stats*.
 
@@ -2048,7 +2074,10 @@ concerne LUI ; la fiche répond à « qu'est-ce qui casse si je le retire ? » e
 déjà ? ». Chaque entrée mène à l'écran où l'objet se modifie, et rien n'est demandé au serveur tant que le
 panneau n'est pas déplié) ·
 **Merge Request** (rafraîchissement auto, convergence, le seuil **« dormante » après N jours** (venu
-de Général), templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
+de Général), et sous **Découverte** les trois réglages des **croisements** — *Relever les fichiers des MR
+ouvertes* (coché ; décoché, aucun appel forge supplémentaire et aucun badge), *Au plus N listes relevées par
+découverte* (20 ; 0 = sans limite) et *Croiser aussi les MR de branches cibles différentes* (décoché) —,
+templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
 🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
 une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une
 installation restée sur l'ancien défaut passe au nouveau d'elle-même, dans sa langue ; il n'invoque

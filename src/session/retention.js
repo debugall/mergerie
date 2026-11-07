@@ -25,6 +25,7 @@ const db = require('../db');
 const localsnapshot = require('./localsnapshot');
 const agentpass = require('../agent/pass');
 const git = require('../git/git');
+const croisements = require('../review/croisements');
 const { getConfig } = require('../data/config');
 const { DATA_DIR, DB_PATH, DEFAULT_CLONE_DIR, REVIEWS_DIR, TASKS_DIR, TICKETS_DIR, TMP_DIR, NOTES_DIR, SHARED_DIR } = require('../core/paths');
 const { t } = require('../core/i18n');
@@ -46,6 +47,8 @@ function purgerMrs(jours, { maintenant = Date.now() } = {}) {
       AND COALESCE(mr.merged_at, mr.updated_at) IS NOT NULL AND COALESCE(mr.merged_at, mr.updated_at) < ?`).all(limite);
   const rm = (p) => { try { if (p && fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true }); } catch { /* best-effort */ } };
   let mrs = 0; let versions = 0;
+  // Les listes de fichiers des croisements partent avec le diff stocké, au même délai.
+  const fichiers = croisements.purger(fermees.map((f) => f.id));
   for (const { id } of fermees) {
     const versionsMr = db.prepare('SELECT * FROM review_version WHERE mr_id = ? ORDER BY version').all(id);
     const rev = db.prepare('SELECT * FROM review WHERE mr_id = ?').get(id);
@@ -65,7 +68,7 @@ function purgerMrs(jours, { maintenant = Date.now() } = {}) {
     rm(path.join(TASKS_DIR, 'review', String(id)));
     mrs += 1;
   }
-  return { jours: n, mrs, versions };
+  return { jours: n, mrs, versions, fichiers };
 }
 
 /* LE `git gc` DES CLONES INACTIFS. Un clone jamais compacté grossit à chaque fetch ; celui d'un

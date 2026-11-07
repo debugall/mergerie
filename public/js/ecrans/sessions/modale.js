@@ -327,6 +327,7 @@ function showTaskModal() {
   if (hint && !hint.dataset.keep) { hint.textContent = ''; hint.hidden = true; }
   if (hint) delete hint.dataset.keep;
   $('#taskModal').hidden = false;
+  majCroisementsSession();   // ce que les dépôts cochés portent comme MR ouvertes
 }
 
 async function openTaskForMr(m, opts = {}) {

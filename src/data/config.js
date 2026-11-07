@@ -51,6 +51,7 @@ const ALLOWED = [
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
   'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
   'jira_stats_bug_types', 'jira_stats_us_types',
+  'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -124,6 +125,14 @@ function updateConfig(patch) {
   if ('stale_mr_days' in patch) {
     const s = parseInt(patch.stale_mr_days, 10);
     next.stale_mr_days = (!Number.isFinite(s) || s <= 0) ? 5 : Math.min(90, s);
+  }
+  /* Les croisements de MR : relever les fichiers des MR ouvertes (coché d'office), au plus N listes
+     par découverte (0 = sans limite), croiser aussi entre branches cibles différentes (décoché). */
+  next.mr_files_enabled = String(next.mr_files_enabled) === '0' ? '0' : '1';
+  next.mr_files_cross_targets = String(next.mr_files_cross_targets) === '1' ? '1' : '0';
+  if ('mr_files_max' in patch) {
+    const fm = parseInt(patch.mr_files_max, 10);
+    next.mr_files_max = Number.isFinite(fm) && fm >= 0 ? Math.min(500, fm) : 20;
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
@@ -304,7 +313,10 @@ function updateConfig(patch) {
       agent_auto_max = @agent_auto_max,
       periode_watch_protected = @periode_watch_protected,
       jira_stats_bug_types = @jira_stats_bug_types,
-      jira_stats_us_types = @jira_stats_us_types
+      jira_stats_us_types = @jira_stats_us_types,
+      mr_files_enabled = @mr_files_enabled,
+      mr_files_max = @mr_files_max,
+      mr_files_cross_targets = @mr_files_cross_targets
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */

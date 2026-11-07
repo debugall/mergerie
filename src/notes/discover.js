@@ -9,6 +9,7 @@ const { etat } = require('../data/localstate');
 const { t } = require('../core/i18n');
 const git = require('../git/git');
 const mrref = require('../git/mrref');
+const croisements = require('../review/croisements');
 const fs = require('fs');
 const path = require('path');
 
@@ -256,23 +257,11 @@ async function discoverAll() {
     for (const mr of newMrs) await fetchJiraContext(cfg, mr.id, mr.title, mr.branch);
   }
 
-  /* Chemins modifiés (pour le badge « risque » et les règles par chemin). On les
-     récupère pour les MR ouvertes qui ne les ont pas encore — nouvelles incluses,
-     et rétro-remplissage des existantes, PLAFONNÉ pour ne pas cogner l'API. Chaque
-     échec est ignoré (best-effort) : le badge sera juste absent pour cette MR. */
-  const MAX_PATH_FETCHES = 25;
-  const needPaths = db.prepare(`SELECT mr.id, mr.iid, repo.project, repo.forge
-      FROM mr JOIN repo ON repo.id = mr.repo_id
-      WHERE mr.changed_paths IS NULL AND (mr.closed_seen IS NULL OR mr.closed_seen = 0)
-      ORDER BY mr.updated_at DESC LIMIT ?`).all(MAX_PATH_FETCHES);
-  for (const m of needPaths) {
-    try {
-      const ch = await forge.clientFor(m).listMrChanges(cfg, m.project, m.iid);
-      db.prepare(`UPDATE mr SET changed_paths = ?, changed_files = ?, changed_additions = ?,
-        changed_deletions = ? WHERE id = ?`)
-        .run(ch.paths.join('\n'), ch.files, ch.additions, ch.deletions, m.id);
-    } catch { /* best-effort : pas de badge pour cette MR, on continue */ }
-  }
+  /* LES FICHIERS MODIFIÉS PAR CHAQUE MR OUVERTE (`review/croisements.js`) : la liste relevée sur la
+     tête actuelle, pour les croisements — et, au passage, les chemins du badge « risque » et des
+     règles par chemin. Dans la découverte, jamais à l'affichage ; plafonné par tour ; best-effort
+     par MR, le journal dit ce qui attend et ce qui a été refusé. */
+  result.files = await croisements.releverTour(cfg);
 
   // État réel des MR issues des Dev sessions : elles peuvent avoir été mergées
   // directement sur GitLab. Vérification CIBLÉE (uniquement les tâches dont la MR n'est
@@ -534,12 +523,12 @@ async function rafraichirMr(mrId) {
         }
       } catch { /* la forge n'a pas répondu : la valeur connue reste */ }
     }
-    // Les fichiers changés suivent le SHA : relus quand il bouge, ou quand on ne les a jamais eus.
-    if (stale || avant.changed_paths == null) {
+    /* Les fichiers changés suivent le SHA : relus quand il bouge, ou quand on ne les a jamais eus —
+       par les mêmes sources que la découverte (diff stocké, clone, forge), pour les croisements. */
+    const releve = db.prepare('SELECT head_sha FROM mr_file_fetch WHERE mr_id = ?').get(avant.id);
+    if (stale || avant.changed_paths == null || !releve || releve.head_sha !== (d.sha || avant.current_sha)) {
       try {
-        const ch = await client.listMrChanges(cfg, repo.project, avant.iid);
-        db.prepare('UPDATE mr SET changed_paths = ?, changed_files = ?, changed_additions = ?, changed_deletions = ? WHERE id = ?')
-          .run(ch.paths.join('\n'), ch.files, ch.additions, ch.deletions, avant.id);
+        await croisements.releverEtPoser(cfg, repo, { ...avant, current_sha: d.sha || avant.current_sha });
       } catch { /* best-effort : le badge « risque » attendra la prochaine découverte */ }
     }
   }

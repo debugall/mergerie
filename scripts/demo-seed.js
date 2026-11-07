@@ -1780,6 +1780,24 @@ async function semerPlugins() {
   for (const [nom, n] of Object.entries(semes)) counts[`plugin:${nom}`] = n;
 }
 
+/* LES CROISEMENTS : deux merge requests ouvertes de `groupe/tarification` qui modifient le MÊME
+   fichier (`tarification.js`), pour que le badge « croise », son panneau, la ligne de la modale de
+   session et la section du brief se voient sans forge. Puis la liste de fichiers de TOUTES les
+   merge requests, relevée sur leur SHA courant depuis leurs chemins semés — ce que la découverte
+   ferait avec une forge. */
+{
+  insertMr({ project: 'groupe/tarification', title: 'Remise fidélité portée à 10 %', branch: 'feature/remise-fidelite', status: 'to_review', changed: ['tarification.js', 'plafond.js'], summary: 'porte la remise fidélité à 10 % et ajoute un plafond' }, { iid: 260, date: at(2) });
+  insertMr({ project: 'groupe/tarification', title: 'TVA : taux réduit sur les abonnements annuels', branch: 'feature/tva-reduite', status: 'to_review', changed: ['tarification.js', 'tva.js'], summary: 'applique le taux réduit de TVA aux abonnements annuels' }, { iid: 261, date: at(0.5) });
+  // eslint-disable-next-line global-require
+  const croisements = require('../src/review/croisements');
+  let n = 0;
+  for (const m of db.prepare("SELECT id, current_sha, changed_paths FROM mr WHERE changed_paths IS NOT NULL AND changed_paths <> ''").all()) {
+    croisements.poserFichiers(m.id, m.current_sha, m.changed_paths.split('\n').filter(Boolean), { source: 'forge', now: at(0.01) });
+    n += 1;
+  }
+  counts.mr_files = n;
+}
+
 semerDiffsLocaux().then(semerPlugins).then(() => {
   console.log('Base de démo semée dans data-demo/ :', JSON.stringify(counts));
 });

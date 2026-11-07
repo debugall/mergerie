@@ -63,7 +63,14 @@ describe('Réglages → Jira : prévenir Jira et son gabarit', { skip: dispo ? f
     await ouvrir('jiracfg');
     await page.check('#sub-jiracfg [name="task_default_notify_jira"]');
     await page.fill('#sub-jiracfg [name="jira_notify_template"]', 'MR !{iid} : {url}');
+    /* LE SERVEUR PEUT TENIR LA VALEUR AVANT QUE L'ÉCRAN AIT FINI SON CYCLE : sur un runner lent, le
+       sondage de l'API passait, la saisie suivante partait, puis la réponse de l'enregistrement
+       arrivait et son rechargement remettait le gabarit valide par-dessus « sans lien » — le second
+       envoi n'avait plus rien à refuser. On attend donc l'événement que le formulaire émet à la fin
+       de son enregistrement, enregistré AVANT le clic. */
+    const sauve = page.evaluate(() => new Promise((r) => document.querySelector('#configForm').addEventListener('mergerie:config-saved', r, { once: true })));
     await page.locator('#sub-jiracfg button[type="submit"]').click();
+    await sauve;
     await attendreServeur(async () => {
       const c = (await app.api('GET', '/api/config')).body;
       return c.jira_notify_template === 'MR !{iid} : {url}' && String(c.task_default_notify_jira) === '1';
