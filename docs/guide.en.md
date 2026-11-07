@@ -124,6 +124,25 @@ The panel lists the tests touched, names the patterns that applied (a link leads
 a fresh list, nothing — never a false `0 tests`. The badge never blocks `Merge`, never changes the score,
 never triggers anything.
 
+**And which dependencies it adds.** After the tests, the card says `+2 dependencies` — emphasised as
+soon as a direct dependency *enters* the project, `· 1 major` when a major bump can be read (`^3.x` →
+`^4.x`) — or `3 dependencies changed`, discreet, when versions move or packages leave without any
+entering. It is the second question in front of a merge request produced by an agent: a package added
+for thirty lines, the first library that came up, a name that does not exist. An added dependency is a
+**manifest line that did not exist before**, read by comparing the `−` / `+` lines of the manifest's
+diff — a diff the forge already sends when the files are fetched, of which the manifests' alone is now
+kept, **with no extra call, no AI, no registry**. Recognised manifests: `package.json`, `composer.json`,
+`requirements*.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Gemfile`, `pom.xml`, `build.gradle*`,
+`*.csproj`, at any depth (a monorepo gives one section per manifest); lockfiles do not count. The panel
+lists one line per dependency, in monospace — `left-pad  ^1.3.0  added · prod`, `axios  ^0.27.2 →
+^1.7.0  major · prod`, `moment  removed · dev` —, added first, names the manifest patterns that applied
+(a link leads to the setting) and says on which commit the diff was read. No link to npm or PyPI: the
+tool recommends nothing, the name copies. A `package.json` whose scripts alone change carries nothing;
+a manifest of an ecosystem that is not analysed is said "changed (not analysed)", never counted; a
+manifest diff over 200 KB is not kept and the ⋯ button says so; without a kept diff (a fetch older than
+this version — the next round picks it up), nothing — never a false "no dependency". Nothing is judged
+or blocked: no score, no licence, no CVE.
+
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
 
@@ -839,6 +858,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   `0 tests modified` (emphasised) or `3 tests modified` (discreet), from the branch diff and the
   repository's test patterns — before the merge request exists, when a follow-up "add the tests" costs
   the least. Outside a repository: nothing.
+- **Which dependencies the branch adds.** On the same line, `2 dependencies added` (emphasised) or
+  `1 dependency changed` (discreet), read from the manifests in the branch diff — where a follow-up
+  "drop left-pad, write the function" costs the least. The detail is on the merge request's card.
 - **Read-only linked projects (Advanced).** In coding, the session dialog lets you add other
   repositories as **context**: the AI reads them — their API, their schema, their contracts — to
   respect what they expose, without **ever** modifying them. A repository (with search, as
@@ -1193,6 +1215,9 @@ nothing happened, which was not the question. Every line reaches its object in o
    `!214 — VAT refactor · groupe/tarification · 14 files · 0 tests · opened 2 days ago`, oldest first.
    Click: the merge request in *Reviews*. The cross dismisses **this merge request on this commit**: a
    fetch on a new commit brings it back.
+6 quater. **MRs adding dependencies** — one line per open merge request whose manifest gains a direct
+   dependency: `!214 — VAT refactor · groupe/tarification · +2 dependencies · 1 major · opened 2 days
+   ago`, oldest first, eight at most. Click and cross: as for the MRs without tests.
 7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
    the detail lives in *Stats*.
 
@@ -2033,7 +2058,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more

@@ -5,10 +5,15 @@
    attendre une merge request), les défauts livrés en invite des champs vides, et la note de
    dépendance quand le relevé des fichiers est décoché. */
 
+/* Les défauts livrés des trois listes — tests, neutres (tests touchés) et manifestes (dépendances) —
+   en un objet, pour « Remettre les défauts » et les invites. */
 let defautsMotifs = null;
 async function chargerDefautsMotifs() {
   if (!defautsMotifs) {
-    try { defautsMotifs = await api('/tests-touches/defauts'); } catch { return null; }
+    try {
+      const [t, d] = await Promise.all([api('/tests-touches/defauts'), api('/dependances/defauts')]);
+      defautsMotifs = { ...t, manifest_patterns: d.manifest_patterns };
+    } catch { return null; }
   }
   return defautsMotifs;
 }
@@ -48,7 +53,22 @@ async function majApercuMotifs(conteneur) {
     cible.textContent = explainError(e.message);
   }
 }
-const majApercuMotifsBientot = debounce((c) => majApercuMotifs(c), 400);
+/* L'aperçu des manifestes, même mécanique : « ces motifs désignent 3 manifestes sur 4 MR ouvertes ». */
+async function majApercuManifestes(conteneur) {
+  const cible = conteneur.querySelector('[data-manifests-apercu]');
+  if (!cible) return;
+  const zone = cible.closest('.patterns-zone');
+  const body = { ...porteeMotifs(zone), manifest_patterns: (champMotifs(conteneur, 'manifest_patterns') || {}).value || '' };
+  try {
+    const d = await api('/dependances/apercu', { method: 'POST', body });
+    cible.classList.remove('form-info-dirty');
+    cible.textContent = d.mrs ? tr('settings.manifests.apercu', { mrs: d.mrs, manifests: d.manifests, with: d.with_manifest }) : tr('settings.patterns.apercu.none');
+  } catch (e) {
+    cible.classList.add('form-info-dirty');
+    cible.textContent = explainError(e.message);
+  }
+}
+const majApercuMotifsBientot = debounce((c) => { majApercuMotifs(c); majApercuManifestes(c); }, 400);
 
 /* Les invites (défauts livrés) et l'aperçu d'un conteneur — au chargement des réglages, à
    l'ouverture d'une ligne de dépôt ou d'un formulaire de groupe. */
@@ -59,11 +79,13 @@ async function majMotifsTests(conteneur = $('#sub-mr')) {
   if (dep && relever) dep.hidden = relever.checked;
   const d = await chargerDefautsMotifs();
   if (d && conteneur === $('#sub-mr')) {
-    const t1 = champMotifs(conteneur, 'test_patterns'); const t2 = champMotifs(conteneur, 'neutral_patterns');
+    const t1 = champMotifs(conteneur, 'test_patterns'); const t2 = champMotifs(conteneur, 'neutral_patterns'); const t3 = champMotifs(conteneur, 'manifest_patterns');
     if (t1) t1.placeholder = d.test_patterns;
     if (t2) t2.placeholder = d.neutral_patterns;
+    if (t3) t3.placeholder = d.manifest_patterns;
   }
   majApercuMotifs(conteneur);
+  majApercuManifestes(conteneur);
 }
 
 document.addEventListener('click', async (e) => {

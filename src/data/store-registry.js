@@ -602,6 +602,7 @@ const REGISTRE = [
       // Les motifs de test et neutres du groupe (tests touchés) : d'équipe, comme ses gabarits.
       test_patterns: r.test_patterns || null,
       neutral_patterns: r.neutral_patterns || null,
+      manifest_patterns: r.manifest_patterns || null,
       created_at: r.created_at,
       repos: (() => {
         const locaux = ctx.enfants('repo_group_member', 'group_id', r.id)
@@ -619,6 +620,7 @@ const REGISTRE = [
       ai_extra_instructions: doc.ai_extra_instructions || '',
       test_patterns: doc.test_patterns || '',
       neutral_patterns: doc.neutral_patterns || '',
+      manifest_patterns: doc.manifest_patterns || '',
       created_at: doc.created_at,
     }),
     listes: [
@@ -1851,7 +1853,9 @@ const REGISTRE = [
       // Les croisements de MR : relever les fichiers, le plafond d'appels, croiser entre cibles — l'outil, pas la machine.
       'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
       // Les tests touchés : l'interrupteur, le seuil, et les motifs de test / neutres — un faux positif corrigé par l'un l'est pour tous.
-      'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns'],
+      'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
+      // Les dépendances ajoutées : l'interrupteur et les motifs de manifestes — d'équipe aussi.
+      'deps_enabled', 'manifest_patterns'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que
@@ -1924,6 +1928,7 @@ const REGISTRE = [
   { table: 'feed', famille: 'C', note: 'relu de la forge' },
   { table: 'mr_files', famille: 'C', note: 'les fichiers modifiés par chaque MR ouverte, relus de la forge (croisements)' },
   { table: 'mr_file_fetch', famille: 'C', note: 'sur quel SHA et quand la liste de fichiers d’une MR a été relevée' },
+  { table: 'mr_manifest_diff', famille: 'C', note: 'le diff des seuls manifestes de chaque MR ouverte, gardé au relevé (dépendances)' },
   { table: 'job', famille: 'C', note: 'la file de CE poste' },
   { table: 'job_log', famille: 'C', note: 'la console des jobs de ce poste — 58 % du poids de la base' },
   { table: 'conn_test', famille: 'C', note: 'le dernier test de connexion de ce poste' },

@@ -1,0 +1,10 @@
+diff --git a/requirements.txt b/requirements.txt
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,4 +1,6 @@
+ -r base.txt
+ # web
++requests>=2.31
+-Flask==2.3.0
++flask==3.0.0
++--index-url https://pypi.example

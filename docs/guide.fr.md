@@ -139,6 +139,26 @@ panneau liste les tests touchés, nomme les motifs qui ont servi (un lien mène 
 liste fraîche, rien — jamais un faux `0 test`. Le badge ne bloque pas `Merger`, ne change pas la note,
 ne déclenche rien.
 
+**Et quelles dépendances elle ajoute.** Après les tests, la carte dit `+2 dépendances` — accentué dès
+qu'une dépendance directe *entre* dans le projet, `· 1 majeur` quand un passage de majeur se lit
+(`^3.x` → `^4.x`) — ou `3 dépendances changées`, discret, quand des versions bougent ou des paquets
+sortent sans qu'aucun n'entre. C'est la deuxième question devant une merge request produite par un
+agent : un paquet ajouté pour trente lignes, la première bibliothèque venue, un nom qui n'existe pas.
+Une dépendance ajoutée est une **ligne de manifeste qui n'existait pas avant**, lue en comparant les
+lignes `−` / `+` du diff du manifeste — un diff que la forge envoie déjà au relevé des fichiers et dont
+on garde désormais celui des seuls manifestes, **sans aucun appel de plus, sans IA, sans registre**. Les
+manifestes reconnus : `package.json`, `composer.json`, `requirements*.txt`, `pyproject.toml`, `go.mod`,
+`Cargo.toml`, `Gemfile`, `pom.xml`, `build.gradle*`, `*.csproj`, à toute profondeur (un monorepo donne
+une section par manifeste) ; les lockfiles ne comptent pas. Le panneau liste une ligne par dépendance,
+en monospace — `left-pad  ^1.3.0  ajoutée · prod`, `axios  ^0.27.2 → ^1.7.0  majeur · prod`,
+`moment  retirée · dev` —, les ajoutées d'abord, nomme les motifs de manifestes qui ont servi (un lien
+mène au réglage) et dit sur quel commit le diff a été relevé. Aucun lien vers npm ou PyPI : l'outil ne
+recommande rien, le nom se copie. Un `package.json` dont seuls les scripts changent ne porte rien ; un
+manifeste d'un écosystème non analysé est dit « modifié (non analysé) », jamais compté ; un diff de
+manifeste de plus de 200 Ko n'est pas gardé et le bouton ⋯ le dit ; sans diff gardé (relevé antérieur à
+cette version, le tour suivant le reprend), rien — jamais un faux « aucune dépendance ». Rien n'est
+jugé ni bloqué : pas de note, pas de licence, pas de CVE.
+
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
 
@@ -873,6 +893,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   `0 test modifié` (accentué) ou `3 tests modifiés` (discret), d'après le diff de la branche et les motifs
   de test du dépôt — avant que la merge request n'existe, quand un suivi « ajoute les tests » coûte le
   moins. Hors dépôt : rien.
+- **Quelles dépendances la branche ajoute.** Sur la même ligne, `2 dépendances ajoutées` (accentué) ou
+  `1 dépendance changée` (discret), lues dans les manifestes du diff de la branche — c'est là qu'un suivi
+  « enlève left-pad, écris la fonction » coûte le moins. Le détail est sur la carte de la merge request.
 - **Projets liés en lecture seule (Avancé).** En codage, la modale de session propose d'ajouter
   d'autres dépôts comme **contexte** : l'IA les consulte — leur API, leur schéma, leurs contrats —
   pour respecter ce qu'ils exposent, sans **jamais** les modifier. Un dépôt (recherche incluse,
@@ -1244,6 +1267,9 @@ apprend qu'il ne s'est rien passé, ce qui n'était pas la question. Chaque lign
    `!214 — Refactor TVA · groupe/tarification · 14 fichiers · 0 test · ouverte il y a 2 j`, les plus
    anciennes d'abord. Clic : la merge request dans *Reviews*. La croix écarte **cette merge request sur ce
    commit** : un relevé sur un nouveau commit la fait reparaître.
+6 quater. **MR qui ajoutent des dépendances** — une ligne par merge request ouverte dont un manifeste
+   gagne une dépendance directe : `!214 — Refactor TVA · groupe/tarification · +2 dépendances · 1 majeur
+   · ouverte il y a 2 j`, les plus anciennes d'abord, huit au plus. Clic et croix : comme les MR sans test.
 7. **Activité depuis hier** — une ligne, trois nombres. Volontairement pauvre : c'est du contexte, pas une
    tâche ; le détail vit dans *Stats*.
 
@@ -2116,7 +2142,11 @@ listes de **motifs**, de test et neutres, un glob par ligne, avec `Remettre les 
 les MR ouvertes, ces motifs classent 41 fichiers en tests, 12 en neutres » ; un glob invalide est refusé à
 l'enregistrement avec sa ligne, une liste de plus de 100 lignes aussi. Les mêmes deux listes se posent sur
 un **dépôt** (sa ligne dépliée dans *Dépôts*) et sur un **groupe** (son formulaire) : remplies, elles
-remplacent le niveau au-dessus ; vides, on remonte —,
+remplacent le niveau au-dessus ; vides, on remonte ; puis ceux des **dépendances** — *Afficher les
+dépendances* (coché ; décoché, aucun diff de manifeste n'est gardé et aucun badge ne s'affiche) et les
+**motifs de manifestes**, un glob par ligne, avec `Remettre les défauts` et l'aperçu « sur les MR
+ouvertes, ces motifs désignent 3 manifestes », eux aussi posables sur un dépôt et sur un groupe, au même
+endroit que les motifs de tests —,
 templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
 🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
 une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une

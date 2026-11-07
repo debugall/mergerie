@@ -21,6 +21,7 @@ const prompts = require('../../core/prompts');
 const converge = require('../../review/converge');
 const croisements = require('../../review/croisements');
 const testsTouches = require('../../review/tests-touches');
+const dependances = require('../../review/dependances');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const agentsession = require('../../agent/session');
@@ -137,6 +138,7 @@ app.get('/api/mrs', wrap((req, res) => {
   const croises = croisements.pourCartes(cfg);
   // LES TESTS TOUCHÉS : les mêmes listes, classées par motifs de chemin. Une passe pour toute la liste.
   const testes = testsTouches.pourCartes(cfg);
+  const deps = dependances.pourCartes(cfg);
   const riskOf = (changed) => {
     if (!changed || !pathRules.length) return [];
     const paths = String(changed).split('\n').filter(Boolean);
@@ -235,6 +237,7 @@ app.get('/api/mrs', wrap((req, res) => {
       /* TESTS TOUCHÉS : code / tests / neutres, l'alerte « 0 test » au-delà du seuil, les tests
          eux-mêmes. `null` = pas de liste fraîche : la carte ne dit rien, jamais un faux « 0 test ». */
       tests: testes[r.id] || null,
+      deps: deps[r.id] || null,
       origin_task: origineParBranche.get(`${r.repo_id}\u0001${r.source_branch}`) || null,
     };
   }));
@@ -294,6 +297,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     : jira.ticketKey(mr.title, mr.source_branch);
   const croise = croisements.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || {};
   const testes = testsTouches.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
+  const deps = dependances.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -381,6 +385,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     overlaps: croise.overlaps || [],
     files_fetch: croise.fetch || null,
     tests: testes,
+    deps,
   });
 }));
 // Enregistre le contexte du ticket (texte + capture facultative en data URL).

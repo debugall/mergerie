@@ -24,6 +24,7 @@ const path = require('path');
 const db = require('../db');
 const forge = require('../forge');
 const git = require('../git/git');
+const dependances = require('./dependances');
 
 const MAX_FICHIERS = 5000;
 const PLAFOND_DEFAUT = 20;
@@ -60,8 +61,9 @@ function cheminsNameStatus(stdout) {
   return [...out];
 }
 
-/* 1. Le diff stocké par la review, s'il parle de la tête ACTUELLE. */
-function depuisLaReview(mr) {
+/* 1. Le diff stocké par la review, s'il parle de la tête ACTUELLE. `manifeste` (prédicat sur un
+   chemin, ou null) : les blocs des manifestes sont gardés au passage, pour les dépendances. */
+function depuisLaReview(mr, manifeste = null) {
   if (!mr.reviewed_sha || !mr.current_sha || mr.reviewed_sha !== mr.current_sha) return null;
   const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
   if (!rev || !rev.diff_path) return null;
@@ -69,12 +71,12 @@ function depuisLaReview(mr) {
   try { diff = fs.readFileSync(rev.diff_path, 'utf8'); } catch { return null; }
   if (!diff.trim()) return null;
   const paths = cheminsDuDiff(diff);
-  return { paths, files: paths.length, additions: null, deletions: null, source: 'review' };
+  return { paths, files: paths.length, additions: null, deletions: null, source: 'review', manifests: manifeste ? dependances.blocsManifestes(diff, manifeste) : [] };
 }
 
 /* 2. Le clone local, s'il porte la branche À SA TÊTE ACTUELLE — aucun fetch : la découverte ne
    doit pas devenir un `git fetch` par merge request. */
-async function depuisLeClone(cfg, repo, mr) {
+async function depuisLeClone(cfg, repo, mr, manifeste = null) {
   if (!mr.source_branch || !mr.target_branch || !mr.current_sha) return null;
   const cwd = git.cloneDirFor(cfg, repo);
   if (!fs.existsSync(path.join(cwd, '.git'))) return null;
@@ -84,18 +86,25 @@ async function depuisLeClone(cfg, repo, mr) {
     if (!await git.refExists(cwd, `origin/${mr.target_branch}`)) return null;
     const { stdout } = await git.run('git', ['diff', '--name-status', '--find-renames', `origin/${mr.target_branch}...origin/${mr.source_branch}`], { cwd, maxBuffer: 1024 * 1024 * 64 });
     const paths = cheminsNameStatus(stdout);
-    return { paths, files: paths.length, additions: null, deletions: null, source: 'clone' };
+    // Les manifestes seulement : un second diff, borné à leurs chemins — toujours aucun réseau.
+    let manifests = [];
+    const mans = manifeste ? paths.filter(manifeste) : [];
+    if (mans.length) {
+      const { stdout: d } = await git.run('git', ['diff', '--find-renames', `origin/${mr.target_branch}...origin/${mr.source_branch}`, '--', ...mans], { cwd, maxBuffer: 1024 * 1024 * 64 });
+      manifests = dependances.blocsManifestes(d, manifeste);
+    }
+    return { paths, files: paths.length, additions: null, deletions: null, source: 'clone', manifests };
   } catch { return null; }
 }
 
 /* 3. La forge — par `clientFor(repo)`, pour qu'une autre forge s'y branche sans toucher au calcul. */
-async function depuisLaForge(cfg, repo, mr) {
-  const ch = await forge.clientFor(repo).listMrChanges(cfg, repo.project, mr.iid);
-  return { paths: [...new Set(ch.paths || [])], files: ch.files, additions: ch.additions, deletions: ch.deletions, source: 'forge' };
+async function depuisLaForge(cfg, repo, mr, manifeste = null) {
+  const ch = await forge.clientFor(repo).listMrChanges(cfg, repo.project, mr.iid, { manifeste });
+  return { paths: [...new Set(ch.paths || [])], files: ch.files, additions: ch.additions, deletions: ch.deletions, source: 'forge', manifests: ch.manifests || [] };
 }
 
-async function releverFichiers(cfg, repo, mr) {
-  return depuisLaReview(mr) || await depuisLeClone(cfg, repo, mr) || depuisLaForge(cfg, repo, mr);
+async function releverFichiers(cfg, repo, mr, { manifeste = null } = {}) {
+  return depuisLaReview(mr, manifeste) || await depuisLeClone(cfg, repo, mr, manifeste) || depuisLaForge(cfg, repo, mr, manifeste);
 }
 
 /* ---------- Écrire ---------- */
@@ -116,12 +125,18 @@ const poserFichiers = db.transaction((mrId, sha, paths, { source = null, refused
    les colonnes de la carte (`changed_paths`, taille) que le badge « risque » et les règles par
    chemin lisent déjà. Rend `{ source, files, refused }` ; jette si aucune source n'a répondu. */
 async function releverEtPoser(cfg, repo, mr, { now = new Date().toISOString() } = {}) {
-  const r = await releverFichiers(cfg, repo, mr);
+  /* Les dépendances : le diff des seuls manifestes, gardé dans le même geste — le prédicat filtre
+     AVANT que la source ne jette le reste. Réglage décoché : pas cherché (NULL), rien affiché. */
+  const depsActives = dependances.actif(cfg);
+  const manifeste = depsActives ? dependances.predicat(dependances.motifsPour(cfg, repo.id).manifests) : null;
+  const r = await releverFichiers(cfg, repo, mr, { manifeste });
   if (r.paths.length > MAX_FICHIERS) {
     poserFichiers(mr.id, mr.current_sha, [], { source: r.source, refused: 'too-many-files', now });
+    dependances.poserManifestes(mr.id, mr.current_sha, null, { now });
     return { source: r.source, files: r.paths.length, refused: 'too-many-files' };
   }
   poserFichiers(mr.id, mr.current_sha, r.paths, { source: r.source, now });
+  dependances.poserManifestes(mr.id, mr.current_sha, depsActives ? (r.manifests || []) : null, { now });
   db.prepare(`UPDATE mr SET changed_paths = ?, changed_files = COALESCE(?, changed_files),
       changed_additions = COALESCE(?, changed_additions), changed_deletions = COALESCE(?, changed_deletions) WHERE id = ?`)
     .run(r.paths.join('\n'), r.files ?? null, r.additions ?? null, r.deletions ?? null, mr.id);
@@ -137,13 +152,18 @@ async function releverEtPoser(cfg, repo, mr, { now = new Date().toISOString() } 
    pourquoi. */
 async function releverTour(cfg, { onLog = (m) => console.log(`[croisements] ${m}`) } = {}) {
   const enService = actif(cfg);
-  const bilan = { releves: 0, restants: 0, refuses: 0, erreurs: 0, sources: {} };
+  const bilan = { releves: 0, restants: 0, refuses: 0, erreurs: 0, sources: {}, dependances: 0 };
+  /* Un relevé frais qui n'a pas cherché les manifestes (antérieur aux dépendances, ou fait réglage
+     décoché) est repris comme un SHA qui a bougé, sous le même plafond — et le journal le dit une fois.
+     Une liste REFUSÉE ne l'est pas : on ne retente pas un relevé refusé sur le même SHA. */
+  const pourDeps = enService && dependances.actif(cfg) ? 'OR (f.head_sha IS mr.current_sha AND f.refused IS NULL AND f.manifests IS NULL)' : '';
   const candidats = enService
-    ? db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge, repo.url AS url
+    ? db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge, repo.url AS url,
+          (f.mr_id IS NOT NULL AND f.head_sha IS mr.current_sha AND f.refused IS NULL AND f.manifests IS NULL) AS pour_deps
         FROM mr JOIN repo ON repo.id = mr.repo_id
         LEFT JOIN mr_file_fetch f ON f.mr_id = mr.id
         WHERE COALESCE(mr.closed_seen, 0) = 0 AND repo.enabled = 1 AND COALESCE(repo.fetch_mrs, 1) = 1
-          AND (f.mr_id IS NULL OR f.head_sha IS NOT mr.current_sha)
+          AND (f.mr_id IS NULL OR f.head_sha IS NOT mr.current_sha ${pourDeps})
         ORDER BY mr.updated_at DESC, mr.id DESC`).all()
     : db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge, repo.url AS url
         FROM mr JOIN repo ON repo.id = mr.repo_id
@@ -153,6 +173,8 @@ async function releverTour(cfg, { onLog = (m) => console.log(`[croisements] ${m}
   const max = enService ? plafond(cfg) : 25;
   const pris = max > 0 ? candidats.slice(0, max) : candidats;
   bilan.restants = candidats.length - pris.length;
+  bilan.dependances = candidats.filter((c) => c.pour_deps).length;
+  if (bilan.dependances) onLog(`${bilan.dependances} MR à relever pour les dépendances`);
   for (const mr of pris) {
     const repo = { id: mr.repo_id, project: mr.project, forge: mr.forge, url: mr.url };
     try {
@@ -332,6 +354,7 @@ function purger(mrIds) {
   if (!ids.length) return 0;
   const q = ids.map(() => '?').join(',');
   db.prepare(`DELETE FROM mr_files WHERE mr_id IN (${q})`).run(...ids);
+  dependances.purger(ids);
   return db.prepare(`DELETE FROM mr_file_fetch WHERE mr_id IN (${q})`).run(...ids).changes;
 }
 

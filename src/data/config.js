@@ -53,6 +53,7 @@ const ALLOWED = [
   'jira_stats_bug_types', 'jira_stats_us_types',
   'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
   'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
+  'deps_enabled', 'manifest_patterns',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -142,7 +143,8 @@ function updateConfig(patch) {
     const tm = parseInt(patch.tests_touched_min_code, 10);
     next.tests_touched_min_code = Number.isFinite(tm) && tm >= 0 ? Math.min(1000, tm) : 3;
   }
-  for (const champ of ['test_patterns', 'neutral_patterns']) {
+  next.deps_enabled = String(next.deps_enabled) === '0' ? '0' : '1';
+  for (const champ of ['test_patterns', 'neutral_patterns', 'manifest_patterns']) {
     if (champ in patch) next[champ] = require('../core/glob').normaliserMotifs(patch[champ]);
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
@@ -331,7 +333,9 @@ function updateConfig(patch) {
       tests_touched_enabled = @tests_touched_enabled,
       tests_touched_min_code = @tests_touched_min_code,
       test_patterns = @test_patterns,
-      neutral_patterns = @neutral_patterns
+      neutral_patterns = @neutral_patterns,
+      deps_enabled = @deps_enabled,
+      manifest_patterns = @manifest_patterns
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */

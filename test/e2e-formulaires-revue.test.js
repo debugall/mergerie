@@ -218,6 +218,8 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       '# Découverte', 'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
       // Les tests touchés : l'interrupteur, la note de dépendance (P), le seuil, puis les deux zones de motifs.
       'tests_touched_enabled', 'P', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
+      // Les dépendances ajoutées : l'interrupteur, puis la zone des motifs de manifestes.
+      'deps_enabled', 'manifest_patterns',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
   });

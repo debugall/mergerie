@@ -214,6 +214,11 @@
                             <textarea name="neutral_patterns" rows="3" spellcheck="false"></textarea></label>
                         <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-patterns-apercu></span></p>
                     </div>
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.manifest-patterns">Motifs de manifestes (un glob par ligne, vide = les réglages globaux)</span>
+                            <textarea name="manifest_patterns" rows="2" spellcheck="false"></textarea></label>
+                        <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-manifests-apercu></span></p>
+                    </div>
                 </details>
                 <p class="form-actions">
                     <button type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -644,6 +649,16 @@
                 <label><span data-i18n="settings.lbl.neutral-patterns">Motifs neutres (ni code ni test, un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.neutral-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <textarea form="configForm" name="neutral_patterns" rows="5" spellcheck="false"></textarea></label>
                 <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-patterns-apercu></span></p>
+            </div>
+            <!-- LES DÉPENDANCES AJOUTÉES : « +2 dépendances » sur la carte, lu dans le diff des seuls
+                 manifestes gardé au relevé des fichiers — sans un appel de plus, sans IA, sans registre.
+                 Les manifestes sont des MOTIFS de chemin, réglables comme ceux des tests. -->
+            <label class="inline-check"><input form="configForm" name="deps_enabled" type="checkbox" /> <span data-i18n="settings.lbl.deps-enabled">Afficher les dépendances</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.deps-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.manifest-patterns">Motifs de manifestes (un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.manifest-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="manifest_patterns" rows="4" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-manifests-apercu></span></p>
             </div>
 
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>

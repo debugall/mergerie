@@ -1,0 +1,8 @@
+diff --git a/src/App/App.csproj b/src/App/App.csproj
+--- a/src/App/App.csproj
++++ b/src/App/App.csproj
+@@ -5,4 +5,5 @@
+   <ItemGroup>
+     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
++    <PackageReference Include="Serilog" Version="3.1.1" />
+   </ItemGroup>

@@ -288,7 +288,7 @@ function renderToReview() {
       m.verification.failed_count, m.verification.detail_source].join(','),
     m.verifiable, mrSelection.has(m.id),
     // Les badges de croisement et de tests touchés font partie de ce que la carte affiche.
-    sigCroise(m), sigTests(m),
+    sigCroise(m), sigTests(m), sigDeps(m),
     m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) { majBoutonReview(); return; }
   stagger('#toReviewList .card');
@@ -433,6 +433,7 @@ function mrCard(m) {
             boutons décalait celle-ci d'une carte à l'autre selon le nombre de tags. */''}
       <div class="card-tags">
         ${badgeTests(m)}
+        ${badgeDeps(m)}
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
         ${badgeDraft(m)}
@@ -482,7 +483,7 @@ function mrCard(m) {
     <span class="btn-split">
       ${/* Une liste de fichiers REFUSÉE (plus de 5 000 : migration massive, vendoring) se dit au
             survol du « ⋯ » : la carte n'affiche pas de croisement, et ce n'est pas un oubli. */''}
-      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}${m.files_fetch && m.files_fetch.refused ? ` — ${esc(tr('mr.croise.refused'))}` : ''}" aria-haspopup="true" aria-expanded="false">⋯</button>
+      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}${m.files_fetch && m.files_fetch.refused ? ` — ${esc(tr('mr.croise.refused'))}` : ''}${m.deps && m.deps.refused ? ` — ${esc(tr('mr.deps.refused'))}` : ''}" aria-haspopup="true" aria-expanded="false">⋯</button>
       <div class="split-menu" hidden role="menu">
         <button role="menuitem" data-dev="${m.id}" data-branch="${esc(m.source_branch)}">${tr('mr.btn.code')}</button>
         ${/* …et REJOINDRE la session qui a produit la branche, quand elle existe ici — plutôt que d'en ouvrir une seconde. */''}

@@ -1792,20 +1792,47 @@ async function semerPlugins() {
     project: 'groupe/tarification', title: 'Remise fidélité portée à 10 %', branch: 'feature/remise-fidelite', status: 'to_review',
     changed: ['tarification.js', 'plafond.js', 'src/remise/calcul.js', 'src/remise/paliers.js', 'src/remise/regles.js', 'src/remise/index.js',
       'src/abonnement/annuel.js', 'src/abonnement/mensuel.js', 'src/abonnement/index.js', 'src/facture/lignes.js', 'src/facture/total.js',
-      'src/api/tarifs.js', 'src/api/remises.js', 'src/cli/simuler.js', 'README.md'],
+      'src/api/tarifs.js', 'src/api/remises.js', 'src/cli/simuler.js', 'package.json', 'README.md'],
     summary: 'porte la remise fidélité à 10 % et ajoute un plafond',
   }, { iid: 260, date: at(2) });
   insertMr({
     project: 'groupe/tarification', title: 'TVA : taux réduit sur les abonnements annuels', branch: 'feature/tva-reduite', status: 'to_review',
     changed: ['tarification.js', 'tva.js', 'src/tva/taux.js', 'src/tva/regimes.js', 'src/facture/total.js', 'src/api/tarifs.js',
-      'test/tva.test.js', 'test/tarification.test.js', 'docs/tva.md'],
+      'test/tva.test.js', 'test/tarification.test.js', 'docs/tva.md', 'package.json'],
     summary: 'applique le taux réduit de TVA aux abonnements annuels',
   }, { iid: 261, date: at(0.5) });
   // eslint-disable-next-line global-require
   const croisements = require('../src/review/croisements');
+  // eslint-disable-next-line global-require
+  const dependances = require('../src/review/dependances');
+  /* …et les DÉPENDANCES AJOUTÉES : le `package.json` de !260 fait entrer `left-pad` et `date-fns` et
+     passe `axios` de ^0.27 à ^1.7 (« +2 dépendances · 1 majeur », accentué) ; celui de !261 ne change
+     qu'un script (aucun badge). Le diff des seuls manifestes, comme le relevé le garderait. */
+  const MANIFESTES = {
+    260: `@@ -12,8 +12,10 @@
+   "scripts": {
+     "test": "node --test"
+   },
+   "dependencies": {
+-    "axios": "^0.27.2",
++    "axios": "^1.7.0",
++    "date-fns": "^3.6.0",
+     "express": "^4.18.2",
++    "left-pad": "^1.3.0",
+     "pg": "^8.11.0"
+   }`,
+    261: `@@ -10,6 +10,6 @@
+   "scripts": {
+-    "test": "node --test",
++    "test": "node --test test/",
+     "lint": "eslint ."
+   },`,
+  };
   let n = 0;
-  for (const m of db.prepare("SELECT id, current_sha, changed_paths FROM mr WHERE changed_paths IS NOT NULL AND changed_paths <> ''").all()) {
-    croisements.poserFichiers(m.id, m.current_sha, m.changed_paths.split('\n').filter(Boolean), { source: 'forge', now: at(0.01) });
+  for (const m of db.prepare("SELECT id, iid, current_sha, changed_paths FROM mr WHERE changed_paths IS NOT NULL AND changed_paths <> ''").all()) {
+    const chemins = m.changed_paths.split('\n').filter(Boolean);
+    croisements.poserFichiers(m.id, m.current_sha, chemins, { source: 'forge', now: at(0.01) });
+    dependances.poserManifestes(m.id, m.current_sha, MANIFESTES[m.iid] ? [{ path: 'package.json', diff: MANIFESTES[m.iid] }] : [], { now: at(0.01) });
     n += 1;
   }
   counts.mr_files = n;

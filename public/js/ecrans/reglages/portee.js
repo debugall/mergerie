@@ -117,6 +117,7 @@ async function loadConfig() {
   if (f.tests_touched_min_code) f.tests_touched_min_code.value = c.tests_touched_min_code == null || c.tests_touched_min_code === '' ? 3 : Number(c.tests_touched_min_code);
   if (f.test_patterns) f.test_patterns.value = c.test_patterns || '';
   if (f.neutral_patterns) f.neutral_patterns.value = c.neutral_patterns || '';
+  if (f.manifest_patterns) f.manifest_patterns.value = c.manifest_patterns || '';
   majMotifsTests();
   syncReviewAutoMax();
   syncAutoPostBlocking();

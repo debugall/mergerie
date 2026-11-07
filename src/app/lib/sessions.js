@@ -20,6 +20,7 @@ const { programmation } = require('../../jobs');
 const { verifsParMrDuTour } = require('./verifications');
 const jira = require('../../integrations/jira');
 const testsTouches = require('../../review/tests-touches');
+const dependances = require('../../review/dependances');
 const { getConfig } = require('../../data/config');
 
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
@@ -133,6 +134,8 @@ function taskTargets(taskId) {
       /* LES TESTS TOUCHÉS PAR LA BRANCHE, dès qu'un commit existe : « 0 test modifié » avant que la
          merge request n'existe — le moment où un suivi « ajoute les tests » coûte le moins. */
       tests_touched: testsTouches.pourCible(cfgTests, r),
+      // Et les dépendances que la branche ajoute ou change, lues dans le même diff.
+      deps: dependances.pourCible(cfgTests, r),
       resume_cmd: cli.avec(profilCli, () => agentsession.resumeCommand(ligne.session_backend, ligne.session_key, ligne.session_cwd, optionsAgent)),
     };
   });

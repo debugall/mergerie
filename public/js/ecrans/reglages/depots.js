@@ -109,6 +109,10 @@ async function loadRepos() {
           <textarea data-f="neutral_patterns" rows="3" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.neutral-patterns'))}" title="${esc(tr('settings.repo.neutral-patterns-title'))}">${esc(r.neutral_patterns || '')}</textarea>
           <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns">${esc(tr('settings.patterns.reset'))}</button> <span data-patterns-apercu></span></p>
         </div>
+        <div class="patterns-zone">
+          <textarea data-f="manifest_patterns" rows="2" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.manifest-patterns'))}" title="${esc(tr('settings.repo.manifest-patterns-title'))}">${esc(r.manifest_patterns || '')}</textarea>
+          <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns">${esc(tr('settings.patterns.reset'))}</button> <span data-manifests-apercu></span></p>
+        </div>
         <div class="repo-edit-actions">
           <button class="btn" data-cancel="${r.id}" title="${tr('settings.repo.cancel-title')}">${tr('ui.cancel')}</button>
           <button class="btn btn-primary" data-save="${r.id}" title="${tr('settings.repo.save-title')}">${tr('ui.save')}</button>

@@ -67,9 +67,10 @@ function ouvrirFormGroupe(g) {
   f.prompt_modify.value = g ? (g.prompt_modify || '') : '';
   f.test_patterns.value = g ? (g.test_patterns || '') : '';
   f.neutral_patterns.value = g ? (g.neutral_patterns || '') : '';
+  f.manifest_patterns.value = g ? (g.manifest_patterns || '') : '';
   renderGroupRepoList(g ? g.repos.map((r) => r.repo_id) : []);
   const det = f.querySelector('.group-overrides');
-  if (det) det.open = !!(g && (g.prompt_review || g.prompt_fix || g.prompt_modify || g.ai_extra_instructions || g.test_patterns || g.neutral_patterns));
+  if (det) det.open = !!(g && (g.prompt_review || g.prompt_fix || g.prompt_modify || g.ai_extra_instructions || g.test_patterns || g.neutral_patterns || g.manifest_patterns));
   majMotifsTests(f);   // l'aperçu des motifs, sur les dépôts de CE groupe
   $('#groupInfo').textContent = g ? tr('settings.groups.editing', { name: g.name }) : '';
   f.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -85,7 +86,7 @@ onEl($('#groupForm'), 'submit', async (e) => {
     name: f.name.value.trim(), description: f.description.value.trim(),
     ai_extra_instructions: f.ai_extra_instructions.value, prompt_review: f.prompt_review.value,
     prompt_fix: f.prompt_fix.value, prompt_modify: f.prompt_modify.value,
-    test_patterns: f.test_patterns.value, neutral_patterns: f.neutral_patterns.value,
+    test_patterns: f.test_patterns.value, neutral_patterns: f.neutral_patterns.value, manifest_patterns: f.manifest_patterns.value,
     repos: $$('#groupRepoList .gr-pick').filter((c) => c.checked).map((c) => Number(c.value)),
   };
   if (!body.name) { erreurChamp(f.name, tr('err.group.name-required')); return; }

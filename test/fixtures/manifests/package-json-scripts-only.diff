@@ -1,0 +1,11 @@
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -2,6 +2,6 @@
+   "name": "app",
+-  "description": "Old description",
++  "description": "New description",
+   "scripts": {
+-    "build": "tsc -p .",
++    "build": "tsc -p . && node scripts/copy.js",
+     "test": "node --test"

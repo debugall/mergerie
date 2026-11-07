@@ -142,6 +142,16 @@ function renderBrief(d) {
       ${briefHideBtn('sanstest', m.key)}
     </div>`).join('');
 
+  /* LES MR QUI AJOUTENT DES DÉPENDANCES : celles dont le badge est accentué, les plus anciennes
+     d'abord. Clic : la merge request dans Reviews. Écartée sur un SHA, comme les MR sans test. */
+  const avecDeps = (d.new_deps || []).map((m) => `<div class="brief-item brief-clickable" data-brief-deps="${m.mr_id}" data-status="${esc(m.status || '')}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${esc(m.iid)} — ${esc(m.title || '')}</div>
+        <div class="meta">${esc(m.project)} · <span class="tag deps alert">${esc(tr('mr.deps.added', { n: m.added, count: m.added }))}${m.major ? ` · ${esc(tr('mr.deps.major', { n: m.major, count: m.major }))}` : ''}</span>${m.created_at ? ` · ${esc(tr('mr.croise.opened', { age: depuis(m.created_at) }))}` : ''}</div>
+      </div>
+      ${briefHideBtn('dependance', m.key)}
+    </div>`).join('');
+
   /* LES SESSIONS QUI ATTENDENT UN GESTE. Trois attentes, un seul oubli : le travail est fait,
      il ne manque qu'un clic. Des nombres, pas des listes — le détail vit dans Dev IA, et à trois
      lignes de plus le brief cesserait d'être un brief. Une attente à zéro ne s'affiche pas. */
@@ -258,6 +268,7 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
     briefSection(tr('notes.brief.sec.overlaps'), croisements, { icon: 'branch', hint: tr('notes.brief.overlaps.hint') }),
     briefSection(tr('notes.brief.sec.no-tests'), sansTest, { icon: 'check', hint: tr('notes.brief.no-tests.hint') }),
+    briefSection(tr('notes.brief.sec.new-deps'), avecDeps, { icon: 'inbox', hint: tr('notes.brief.new-deps.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
@@ -477,6 +488,8 @@ document.addEventListener('click', async (e) => {
   // Une merge request sans test : sa carte si elle est à traiter, son rapport sinon.
   const nt = e.target.closest && e.target.closest('[data-brief-notest]');
   if (nt) { allerALaMr(Number(nt.dataset.briefNotest), nt.dataset.status); return; }
+  const nd = e.target.closest && e.target.closest('[data-brief-deps]');
+  if (nd) { allerALaMr(Number(nd.dataset.briefDeps), nd.dataset.status); return; }
   // Une paire qui se croise : Reviews filtré sur le dépôt, les deux merge requests en tête.
   const cr = e.target.closest && e.target.closest('[data-brief-croise]');
   if (cr) {

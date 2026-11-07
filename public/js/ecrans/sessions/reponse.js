@@ -103,6 +103,7 @@ function targetLine(t, tg) {
     <span class="tag ${st.cls}">${st.label}</span>
     ${tg.status === 'error' ? '' : targetStepper(tg)}
     ${badgeTestsCible(tg)}
+    ${badgeDepsCible(tg)}
     <span class="t-name">${esc(tg.project)}</span>
     ${chipBranche(tg.branch || '')}
     ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un

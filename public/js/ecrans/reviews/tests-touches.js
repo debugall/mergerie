@@ -52,7 +52,7 @@ function panneauTests(id, c) {
 
 /* Le réglage correspondant : la ligne du dépôt dépliée, le formulaire du groupe, ou le champ des
    réglages globaux. Les listes se chargent en asynchrone : on attend que le bouton existe. */
-async function ouvrirMotifs(cible) {
+async function ouvrirMotifs(cible, champ = 'test_patterns') {
   const [kind, id] = String(cible || '').split(':');
   fermerPanneauAncre();
   navTab('admin');
@@ -67,14 +67,14 @@ async function ouvrirMotifs(cible) {
   if (kind === 'repo') {
     showAdminSub('repos');
     const b = await attendre(`#repoList [data-edit="${Number(id)}"]`);
-    if (b) { b.click(); const z = $(`#repoList .repo-row[data-repo="${Number(id)}"] [data-f="test_patterns"]`); if (z) { z.scrollIntoView({ block: 'center' }); z.focus(); } }
+    if (b) { b.click(); const z = $(`#repoList .repo-row[data-repo="${Number(id)}"] [data-f="${champ}"]`); if (z) { z.scrollIntoView({ block: 'center' }); z.focus(); } }
   } else if (kind === 'group') {
     showAdminSub('repos');
     const b = await attendre(`#groupList [data-gedit="${Number(id)}"]`);
-    if (b) { b.click(); const det = $('#groupForm .group-overrides'); if (det) det.open = true; const z = $('#groupForm [name="test_patterns"]'); if (z) z.focus(); }
+    if (b) { b.click(); const det = $('#groupForm .group-overrides'); if (det) det.open = true; const z = $(`#groupForm [name="${champ}"]`); if (z) z.focus(); }
   } else {
     showAdminSub('mr');
-    const z = await attendre('#sub-mr [name="test_patterns"]');
+    const z = await attendre(`#sub-mr [name="${champ}"]`);
     if (z) { z.scrollIntoView({ block: 'center' }); z.focus(); }
   }
 }

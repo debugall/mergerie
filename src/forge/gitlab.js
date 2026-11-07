@@ -583,7 +583,9 @@ function compterLignes(diff) {
   return { plus, moins };
 }
 
-async function listMrChanges(cfg, project, iid) {
+/* `manifeste` : un prédicat sur un chemin ; les diffs des fichiers qu'il retient sont rendus dans
+   `manifests` (dépendances), le reste est jeté ici même — jamais tous les diffs en mémoire. */
+async function listMrChanges(cfg, project, iid, { manifeste = null } = {}) {
   const enc = encodeProject(project);
   const data = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/changes`);
   const changes = (data && data.changes) || [];
@@ -593,6 +595,7 @@ async function listMrChanges(cfg, project, iid) {
     // Un renommage compte pour deux chemins (ancien et nouveau) : les deux croisent une autre MR.
     paths: [...new Set(changes.flatMap((x) => [x.new_path, x.old_path]).filter(Boolean))],
     files: changes.length, additions, deletions,
+    manifests: manifeste ? changes.filter((c) => manifeste(c.new_path || c.old_path)).map((c) => ({ path: c.new_path || c.old_path, diff: c.diff || '' })) : [],
   };
 }
 

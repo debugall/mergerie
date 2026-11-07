@@ -107,7 +107,7 @@ function renderReports() {
     (m.lots || []).map((l) => l.id).join(','),
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(','),
-    sigCroise(m), sigTests(m),
+    sigCroise(m), sigTests(m), sigDeps(m),
     m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
@@ -122,6 +122,7 @@ function renderReports() {
         ${tailleMr(m)}
         <div class="report-tags">
           ${badgeTests(m)}
+          ${badgeDeps(m)}
           ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
           ${badgeDraft(m)}
