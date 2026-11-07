@@ -112,6 +112,18 @@ a merge request has its list it shows **nothing**, never "no overlap"; a list of
 massive migration, vendoring) is not stored, and hovering the ⋯ button says `not fetched · too many files`.
 No AI call, no token: the three settings live in *Settings → Merge Request → Discovery*.
 
+**And how many test files it changes.** Next to the size, the card says `14 files · 3 tests` — discreet —
+or `14 files · 0 tests`, emphasised like "stale", when the merge request changes at least N code files
+(3 by default, adjustable) without touching a single test file. Below N, or when everything is neutral
+(documentation, images, lockfiles, tooling), nothing: a two-line fix carries no badge. A file *is* a test
+or is not, by **path patterns** (`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), resolved repository →
+group(s) → global settings → shipped defaults, a filled level replacing the one above; it is computed on
+the overlaps' file lists, at display time, without AI — files counted, never a coverage nor a "tested".
+The panel lists the tests touched, names the patterns that applied (a link leads to the setting: a false
+`0 tests` on a Go repository is fixed in two clicks) and says on which commit the list was read. Without
+a fresh list, nothing — never a false `0 tests`. The badge never blocks `Merge`, never changes the score,
+never triggers anything.
+
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
 
@@ -811,6 +823,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   from the branch of an existing merge request, its overlaps; and when the prompt names a path that exists
   in the clone (`src/payment/`, `tva.js`), the line becomes `2 open MRs touch src/payment/ (!214, !219)`.
   Information only: nothing is blocked, the session starts anyway.
+- **How many tests the branch changes.** As soon as a session project is *committed*, its line carries
+  `0 tests modified` (emphasised) or `3 tests modified` (discreet), from the branch diff and the
+  repository's test patterns — before the merge request exists, when a follow-up "add the tests" costs
+  the least. Outside a repository: nothing.
 - **Read-only linked projects (Advanced).** In coding, the session dialog lets you add other
   repositories as **context**: the AI reads them — their API, their schema, their contracts — to
   respect what they expose, without **ever** modifying them. A repository (with search, as
@@ -1161,6 +1177,10 @@ nothing happened, which was not the question. Every line reaches its object in o
    the same files: `!214 ↔ !219 · groupe/tarification · 3 files · for 2 days`, oldest pairs first. Click:
    *Reviews* filtered on the repository, both merge requests on top. The cross dismisses **one pair**, not a
    repository: a new pair reappears.
+6 ter. **MRs without tests** — one line per open merge request carrying the emphasised badge:
+   `!214 — VAT refactor · groupe/tarification · 14 files · 0 tests · opened 2 days ago`, oldest first.
+   Click: the merge request in *Reviews*. The cross dismisses **this merge request on this commit**: a
+   fetch on a new commit brings it back.
 7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
    the detail lives in *Stats*.
 
@@ -2001,7 +2021,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked) —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more

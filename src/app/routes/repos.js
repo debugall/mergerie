@@ -148,7 +148,7 @@ app.post('/api/repos', wrap((req, res) => {
 app.put('/api/repos/:id', wrap((req, res) => {
   const cur = repoById(Number(req.params.id));
   if (!cur) throw new Error(t('err.repo-introuvable'));
-  const { url, branch_pattern, enabled, fetch_mrs, periode_branches } = req.body || {};
+  const { url, branch_pattern, enabled, fetch_mrs, periode_branches, test_patterns, neutral_patterns } = req.body || {};
   const nextUrl = url != null ? String(url).trim() : cur.url;
   // project : fourni explicitement, sinon déduit de l'URL, sinon inchangé
   let project = (req.body.project || '').trim();
@@ -157,12 +157,15 @@ app.put('/api/repos/:id', wrap((req, res) => {
   const pattern = branch_pattern != null ? String(branch_pattern).trim() : cur.branch_pattern;
   // Les branches surveillées par le rattrapage d'une période : absent = inchangé, vide = défaut.
   const surveillees = periode_branches != null ? String(periode_branches).trim() || null : (cur.periode_branches || null);
-  db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ?, fetch_mrs = ?, periode_branches = ? WHERE id = ?`)
+  // Les motifs des tests touchés de CE dépôt : absent = inchangé, vide = hérite du groupe / du global.
+  const motifs = (champ, v) => (v != null ? require('../../core/glob').normaliserMotifs(v) : (cur[champ] || ''));
+  db.prepare(`UPDATE repo SET project = ?, url = ?, branch_pattern = ?, enabled = ?, fetch_mrs = ?, periode_branches = ?, test_patterns = ?, neutral_patterns = ? WHERE id = ?`)
     .run(project || cur.project, nextUrl, pattern,
          enabled == null ? cur.enabled : (enabled ? 1 : 0),
          // absent du corps = inchangé ; NULL d'avant migration = activé, la valeur par défaut
          fetch_mrs == null ? (cur.fetch_mrs == null ? 1 : cur.fetch_mrs) : (fetch_mrs ? 1 : 0),
          surveillees,
+         motifs('test_patterns', test_patterns), motifs('neutral_patterns', neutral_patterns),
          cur.id);
   res.json(repoById(cur.id));
 }));

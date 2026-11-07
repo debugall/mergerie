@@ -126,6 +126,19 @@ n'affiche **rien**, jamais « aucun croisement » ; une liste de plus de 5 000 f
 vendoring) n'est pas stockée, et le survol du bouton ⋯ dit `non relevé · trop de fichiers`. Aucun appel
 d'IA, aucun token : les trois réglages sont dans *Réglages → Merge Request → Découverte*.
 
+**Et combien de fichiers de test elle modifie.** À côté de la taille, la carte dit `14 fichiers · 3 tests`
+— discret — ou `14 fichiers · 0 test`, accentué comme « périmé », quand la merge request modifie au moins
+N fichiers de code (3 par défaut, réglable) sans toucher un seul fichier de test. En dessous de N, ou
+quand tout est neutre (documentation, images, lockfiles, outillage), rien : une correction de deux lignes
+ne porte pas de badge. Un fichier *est* un test ou n'en est pas un selon des **motifs de chemin**
+(`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), résolus dépôt → groupe(s) → réglages globaux → défauts
+livrés, un niveau rempli remplaçant celui du dessus ; c'est calculé sur les listes de fichiers des
+croisements, à l'affichage, sans IA — des fichiers comptés, jamais une couverture ni un « testée ». Le
+panneau liste les tests touchés, nomme les motifs qui ont servi (un lien mène au réglage : un faux
+`0 test` sur un dépôt Go se corrige en deux clics) et dit sur quel commit la liste a été relevée. Sans
+liste fraîche, rien — jamais un faux `0 test`. Le badge ne bloque pas `Merger`, ne change pas la note,
+ne déclenche rien.
+
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
 
@@ -844,6 +857,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   d'une merge request existante, ses croisements ; et quand le prompt cite un chemin qui existe dans le
   clone (`src/payment/`, `tva.js`), la ligne devient `2 MR ouvertes touchent src/payment/ (!214, !219)`.
   Information seulement : rien n'est bloqué, la session se lance quand même.
+- **Combien de tests la branche modifie.** Dès qu'un projet de session est *commité*, sa ligne porte
+  `0 test modifié` (accentué) ou `3 tests modifiés` (discret), d'après le diff de la branche et les motifs
+  de test du dépôt — avant que la merge request n'existe, quand un suivi « ajoute les tests » coûte le
+  moins. Hors dépôt : rien.
 - **Projets liés en lecture seule (Avancé).** En codage, la modale de session propose d'ajouter
   d'autres dépôts comme **contexte** : l'IA les consulte — leur API, leur schéma, leurs contrats —
   pour respecter ce qu'ils exposent, sans **jamais** les modifier. Un dépôt (recherche incluse,
@@ -1211,6 +1228,10 @@ apprend qu'il ne s'est rien passé, ce qui n'était pas la question. Chaque lign
    les mêmes fichiers : `!214 ↔ !219 · groupe/tarification · 3 fichiers · depuis 2 j`, les paires les plus
    anciennes d'abord. Clic : *Reviews* filtré sur le dépôt, les deux merge requests en tête. La croix écarte
    **une paire**, pas un dépôt : une paire nouvelle reparaît.
+6 ter. **MR sans test** — une ligne par merge request ouverte qui porte le badge accentué :
+   `!214 — Refactor TVA · groupe/tarification · 14 fichiers · 0 test · ouverte il y a 2 j`, les plus
+   anciennes d'abord. Clic : la merge request dans *Reviews*. La croix écarte **cette merge request sur ce
+   commit** : un relevé sur un nouveau commit la fait reparaître.
 7. **Activité depuis hier** — une ligne, trois nombres. Volontairement pauvre : c'est du contexte, pas une
    tâche ; le détail vit dans *Stats*.
 
@@ -2077,6 +2098,13 @@ panneau n'est pas déplié) ·
 de Général), et sous **Découverte** les trois réglages des **croisements** — *Relever les fichiers des MR
 ouvertes* (coché ; décoché, aucun appel forge supplémentaire et aucun badge), *Au plus N listes relevées par
 découverte* (20 ; 0 = sans limite) et *Croiser aussi les MR de branches cibles différentes* (décoché) —,
+puis ceux des **tests touchés** — *Afficher les tests touchés* (coché ; il dépend du relevé des fichiers,
+et le dit), *Signaler l'absence de test à partir de N fichiers de code* (3 ; 0 = toujours), et les deux
+listes de **motifs**, de test et neutres, un glob par ligne, avec `Remettre les défauts` et un aperçu « sur
+les MR ouvertes, ces motifs classent 41 fichiers en tests, 12 en neutres » ; un glob invalide est refusé à
+l'enregistrement avec sa ligne, une liste de plus de 100 lignes aussi. Les mêmes deux listes se posent sur
+un **dépôt** (sa ligne dépliée dans *Dépôts*) et sur un **groupe** (son formulaire) : remplies, elles
+remplacent le niveau au-dessus ; vides, on remonte —,
 templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
 🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
 une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une

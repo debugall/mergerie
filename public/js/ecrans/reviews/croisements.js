@@ -2,7 +2,10 @@
 /* Les croisements : le badge « croise !214 · 3 fichiers · 2 j » et son panneau ancré sur la carte.
    Zéro réseau : tout vient de la liste (`overlaps`, `files_fetch`), calculé en base à la découverte.
    Un croisement est un FAIT — deux MR ouvertes du même dépôt qui touchent le même fichier — pas un
-   jugement : le panneau montre, l'humain décide l'ordre des merges. */
+   jugement : le panneau montre, l'humain décide l'ordre des merges.
+   Le PANNEAU ANCRÉ SUR LA CARTE est générique (`ouvrirPanneauAncre`) : le badge « tests touchés »
+   (`tests-touches.js`) l'utilise avec le même CSS. */
+// @expose allerALaMr
 
 /* L'âge court du badge : « 2 j », « 5 h », « 12 min » — pas la phrase du survol. */
 function ageCourt(iso) {
@@ -58,39 +61,48 @@ function panneauCroise(id, d) {
 }
 
 let panneauOuvert = null;
-function fermerCroisements() {
+let badgeOuvert = null;
+function fermerPanneauAncre() {
   if (!panneauOuvert) return;
   panneauOuvert.remove();
   panneauOuvert = null;
-  $$('[data-croise][aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  if (badgeOuvert) badgeOuvert.setAttribute('aria-expanded', 'false');
+  badgeOuvert = null;
   $$('.croise-open').forEach((el) => el.classList.remove('croise-open'));
 }
+const fermerCroisements = fermerPanneauAncre;
 /* Ancré sur la carte : la carte passe en `position: relative` (et au-dessus des suivantes), la
    liste débloque son overflow — la même mécanique que le menu « ⋯ ». Le panneau part du badge
-   et reste dans la largeur de la carte. */
-function ouvrirCroisements(b) {
-  const id = Number(b.dataset.croise);
-  const d = croiseParMr.get(id);
-  if (!d) return;
-  fermerCroisements();
+   et reste dans la largeur de la carte. Le focus va au premier élément `.croise-go`, ou au
+   panneau lui-même. */
+function ouvrirPanneauAncre(b, html) {
+  fermerPanneauAncre();
   if (typeof closeSplitMenus === 'function') closeSplitMenus();
   const carte = b.closest('.card') || b.parentElement;
   carte.classList.add('croise-open');
   const liste = carte.closest('.list'); if (liste) liste.classList.add('croise-open');
-  carte.insertAdjacentHTML('beforeend', panneauCroise(id, d));
+  carte.insertAdjacentHTML('beforeend', html);
   panneauOuvert = carte.querySelector('.croise-panel');
+  badgeOuvert = b;
   const gauche = Math.max(0, Math.min(b.offsetLeft, carte.clientWidth - panneauOuvert.offsetWidth - 8));
   panneauOuvert.style.top = `${b.offsetTop + b.offsetHeight + 4}px`;
   panneauOuvert.style.left = `${gauche}px`;
   b.setAttribute('aria-expanded', 'true');
-  const premier = panneauOuvert.querySelector('.croise-go');
+  const premier = panneauOuvert.querySelector('.croise-go, [data-croise-close]');
   if (premier) premier.focus();
+  return panneauOuvert;
+}
+function ouvrirCroisements(b) {
+  const id = Number(b.dataset.croise);
+  const d = croiseParMr.get(id);
+  if (!d) return;
+  ouvrirPanneauAncre(b, panneauCroise(id, d));
 }
 
 /* Chaque ligne mène à l'autre merge request dans Reviews : sa carte si elle est à traiter, son
    rapport sinon. */
 async function allerALaMr(id, status) {
-  fermerCroisements();
+  fermerPanneauAncre();
   if (status !== 'to_review') { navMrReport(id); return; }
   navTab('review');
   await loadSegment('to_review');
@@ -105,15 +117,15 @@ document.addEventListener('click', (e) => {
   const badge = e.target.closest && e.target.closest('[data-croise]');
   if (badge) {
     e.stopPropagation();
-    if (badge.getAttribute('aria-expanded') === 'true') fermerCroisements(); else ouvrirCroisements(badge);
+    if (badge.getAttribute('aria-expanded') === 'true') fermerPanneauAncre(); else ouvrirCroisements(badge);
     return;
   }
   const go = e.target.closest && e.target.closest('[data-croise-go]');
   if (go) { e.stopPropagation(); allerALaMr(Number(go.dataset.croiseGo), go.dataset.croiseStatus); return; }
-  if (e.target.closest && e.target.closest('[data-croise-close]')) { e.stopPropagation(); fermerCroisements(); return; }
+  if (e.target.closest && e.target.closest('[data-croise-close]')) { e.stopPropagation(); fermerPanneauAncre(); return; }
   // Un clic n'importe où ailleurs referme le panneau — sauf dedans (un chemin qu'on sélectionne).
-  if (panneauOuvert && !(e.target.closest && e.target.closest('.croise-panel'))) fermerCroisements();
+  if (panneauOuvert && !(e.target.closest && e.target.closest('.croise-panel, [data-tests]'))) fermerPanneauAncre();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && panneauOuvert) { fermerCroisements(); e.stopPropagation(); }
+  if (e.key === 'Escape' && panneauOuvert) { fermerPanneauAncre(); e.stopPropagation(); }
 });

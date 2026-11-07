@@ -599,6 +599,9 @@ const REGISTRE = [
       prompt_modify: r.prompt_modify || null,
       prompt_fix: r.prompt_fix || null,
       ai_extra_instructions: r.ai_extra_instructions || null,
+      // Les motifs de test et neutres du groupe (tests touchés) : d'équipe, comme ses gabarits.
+      test_patterns: r.test_patterns || null,
+      neutral_patterns: r.neutral_patterns || null,
       created_at: r.created_at,
       repos: (() => {
         const locaux = ctx.enfants('repo_group_member', 'group_id', r.id)
@@ -614,6 +617,8 @@ const REGISTRE = [
       prompt_modify: doc.prompt_modify || '',
       prompt_fix: doc.prompt_fix || '',
       ai_extra_instructions: doc.ai_extra_instructions || '',
+      test_patterns: doc.test_patterns || '',
+      neutral_patterns: doc.neutral_patterns || '',
       created_at: doc.created_at,
     }),
     listes: [
@@ -1844,7 +1849,9 @@ const REGISTRE = [
       // Jira → Stats : ce qui compte comme « bug » et comme « US » — une convention d'équipe.
       'jira_stats_bug_types', 'jira_stats_us_types',
       // Les croisements de MR : relever les fichiers, le plafond d'appels, croiser entre cibles — l'outil, pas la machine.
-      'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets'],
+      'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
+      // Les tests touchés : l'interrupteur, le seuil, et les motifs de test / neutres — un faux positif corrigé par l'un l'est pour tous.
+      'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que

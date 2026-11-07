@@ -132,6 +132,16 @@ function renderBrief(d) {
       ${briefHideBtn('croisement', p.key)}
     </div>`).join('');
 
+  /* LES MR SANS TEST : celles qui portent le badge accentué, les plus anciennes d'abord. Clic : la
+     merge request dans Reviews. On écarte une merge request sur un SHA : un nouveau relevé la ramène. */
+  const sansTest = (d.no_tests || []).map((m) => `<div class="brief-item brief-clickable" data-brief-notest="${m.mr_id}" data-status="${esc(m.status || '')}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${esc(m.iid)} — ${esc(m.title || '')}</div>
+        <div class="meta">${esc(m.project)} · ${esc(tr('mr.size.files', { n: m.code, count: m.code }))} · <span class="tag tests alert">${esc(tr('mr.tests.none'))}</span>${m.created_at ? ` · ${esc(tr('mr.croise.opened', { age: depuis(m.created_at) }))}` : ''}</div>
+      </div>
+      ${briefHideBtn('sanstest', m.key)}
+    </div>`).join('');
+
   /* LES SESSIONS QUI ATTENDENT UN GESTE. Trois attentes, un seul oubli : le travail est fait,
      il ne manque qu'un clic. Des nombres, pas des listes — le détail vit dans Dev IA, et à trois
      lignes de plus le brief cesserait d'être un brief. Une attente à zéro ne s'affiche pas. */
@@ -247,6 +257,7 @@ function renderBrief(d) {
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
     briefSection(tr('notes.brief.sec.overlaps'), croisements, { icon: 'branch', hint: tr('notes.brief.overlaps.hint') }),
+    briefSection(tr('notes.brief.sec.no-tests'), sansTest, { icon: 'check', hint: tr('notes.brief.no-tests.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
@@ -463,6 +474,9 @@ document.addEventListener('click', async (e) => {
   if (v) { openVerifyReport(Number(v.dataset.briefVerif)); return; }
   const m = e.target.closest && e.target.closest('[data-brief-mr]');
   if (m) { navMrReport(Number(m.dataset.briefMr)); return; }
+  // Une merge request sans test : sa carte si elle est à traiter, son rapport sinon.
+  const nt = e.target.closest && e.target.closest('[data-brief-notest]');
+  if (nt) { allerALaMr(Number(nt.dataset.briefNotest), nt.dataset.status); return; }
   // Une paire qui se croise : Reviews filtré sur le dépôt, les deux merge requests en tête.
   const cr = e.target.closest && e.target.closest('[data-brief-croise]');
   if (cr) {

@@ -112,6 +112,12 @@ async function loadConfig() {
   if (f.mr_files_enabled) f.mr_files_enabled.checked = String(c.mr_files_enabled) !== '0';
   if (f.mr_files_cross_targets) f.mr_files_cross_targets.checked = String(c.mr_files_cross_targets) === '1';
   if (f.mr_files_max) f.mr_files_max.value = c.mr_files_max == null || c.mr_files_max === '' ? 20 : Number(c.mr_files_max);
+  // Les tests touchés : coché d'office, le seuil s'écrit, les motifs vides laissent les défauts livrés (montrés en invite).
+  if (f.tests_touched_enabled) f.tests_touched_enabled.checked = String(c.tests_touched_enabled) !== '0';
+  if (f.tests_touched_min_code) f.tests_touched_min_code.value = c.tests_touched_min_code == null || c.tests_touched_min_code === '' ? 3 : Number(c.tests_touched_min_code);
+  if (f.test_patterns) f.test_patterns.value = c.test_patterns || '';
+  if (f.neutral_patterns) f.neutral_patterns.value = c.neutral_patterns || '';
+  majMotifsTests();
   syncReviewAutoMax();
   syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };

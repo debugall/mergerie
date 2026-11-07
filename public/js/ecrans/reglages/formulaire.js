@@ -20,6 +20,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
   'jira_stats_bug_types', 'jira_stats_us_types',
   'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
+  'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */

@@ -287,8 +287,8 @@ function renderToReview() {
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(','),
     m.verifiable, mrSelection.has(m.id),
-    // Le badge de croisement fait partie de ce que la carte affiche.
-    sigCroise(m)].join('\u0001')).join('\u0002');
+    // Les badges de croisement et de tests touchés font partie de ce que la carte affiche.
+    sigCroise(m), sigTests(m)].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) { majBoutonReview(); return; }
   stagger('#toReviewList .card');
   majBoutonReview();       // la recherche et les filtres viennent peut-être de changer la liste
@@ -431,6 +431,7 @@ function mrCard(m) {
       ${/* Les tags sont des MÉTADONNÉES, pas des actions : les laisser dans la rangée de
             boutons décalait celle-ci d'une carte à l'autre selon le nombre de tags. */''}
       <div class="card-tags">
+        ${badgeTests(m)}
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
         ${badgeDraft(m)}

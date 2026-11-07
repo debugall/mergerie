@@ -20,6 +20,7 @@ const reviewer = require('../../review/reviewer');
 const prompts = require('../../core/prompts');
 const converge = require('../../review/converge');
 const croisements = require('../../review/croisements');
+const testsTouches = require('../../review/tests-touches');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const agentsession = require('../../agent/session');
@@ -125,6 +126,8 @@ app.get('/api/mrs', wrap((req, res) => {
   /* LES CROISEMENTS : les MR ouvertes du même dépôt qui touchent les mêmes fichiers, et sur quel
      SHA la liste a été relevée. Une requête pour toute la liste, zéro réseau, zéro IA. */
   const croises = croisements.pourCartes(cfg);
+  // LES TESTS TOUCHÉS : les mêmes listes, classées par motifs de chemin. Une passe pour toute la liste.
+  const testes = testsTouches.pourCartes(cfg);
   const riskOf = (changed) => {
     if (!changed || !pathRules.length) return [];
     const paths = String(changed).split('\n').filter(Boolean);
@@ -220,6 +223,9 @@ app.get('/api/mrs', wrap((req, res) => {
          connu), et le relevé (`null` = liste jamais relevée : la carte ne dit rien). */
       overlaps: (croises[r.id] || {}).overlaps || [],
       files_fetch: (croises[r.id] || {}).fetch || null,
+      /* TESTS TOUCHÉS : code / tests / neutres, l'alerte « 0 test » au-delà du seuil, les tests
+         eux-mêmes. `null` = pas de liste fraîche : la carte ne dit rien, jamais un faux « 0 test ». */
+      tests: testes[r.id] || null,
     };
   }));
 }));
@@ -277,6 +283,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     ? (mr.ticket_jira_error ? null : mr.ticket_jira_key)
     : jira.ticketKey(mr.title, mr.source_branch);
   const croise = croisements.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || {};
+  const testes = testsTouches.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -363,6 +370,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     // Le badge de croisement, repris dans l'en-tête du rapport (même calcul que la liste).
     overlaps: croise.overlaps || [],
     files_fetch: croise.fetch || null,
+    tests: testes,
   });
 }));
 // Enregistre le contexte du ticket (texte + capture facultative en data URL).

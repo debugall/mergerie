@@ -1,0 +1,15 @@
+/* ============ Reviews : les tests touchés ============
+   « 14 fichiers · 3 tests » discret, dans le gris des métadonnées ; « 14 fichiers · 0 test »
+   accentué, le même rouge que « périmé » — visible quand il manque, informatif sinon. Le panneau
+   reprend celui des croisements (`reviews-croisements.css`). La même pastille sert sur la ligne de
+   projet d'une session (« 0 test modifié »). Variables de thème : clair et sombre suivent. */
+.tag.tests { color: var(--muted); border-color: var(--line); cursor: pointer; }
+.tag.tests.alert { color: var(--red); border-color: var(--red); }
+.tag.tests:hover { background: var(--panel2); }
+.tag.tests:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+span.tag.tests { cursor: default; }
+span.tag.tests:hover { background: none; }
+/* Les zones de motifs des réglages : le champ, puis « Remettre les défauts » et l'aperçu sur une
+   ligne grise. Le champ est en monospace : ce sont des globs. */
+.patterns-zone textarea { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; width: 100%; }
+.patterns-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; }

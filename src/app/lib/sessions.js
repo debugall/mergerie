@@ -19,6 +19,8 @@ const { avecRangement, unitesAvecRetour } = require('./partage');
 const { programmation } = require('../../jobs');
 const { verifsParMrDuTour } = require('./verifications');
 const jira = require('../../integrations/jira');
+const testsTouches = require('../../review/tests-touches');
+const { getConfig } = require('../../data/config');
 
 /* ---------- Tasks (tâches de dev pilotées par l'IA) ---------- */
 function taskById(id) {
@@ -82,6 +84,7 @@ function taskTargets(taskId) {
     for (const c of db.prepare(`SELECT mr_id, COUNT(*) n FROM mr_comment_draft
       WHERE mr_id IN (${trous}) GROUP BY mr_id`).all(...ids)) cmtParMr[c.mr_id] = c.n;
   }
+  const cfgTests = getConfig();
   return rows.map((r) => {
     let questions = null;
     try { questions = r.questions_json ? JSON.parse(r.questions_json) : null; } catch { questions = null; }
@@ -124,6 +127,9 @@ function taskTargets(taskId) {
         : jira.ticketKey('', r.branch),
       ticket_status: r.mr_ticket_status || null,
       ticket_category: r.mr_ticket_category || null,
+      /* LES TESTS TOUCHÉS PAR LA BRANCHE, dès qu'un commit existe : « 0 test modifié » avant que la
+         merge request n'existe — le moment où un suivi « ajoute les tests » coûte le moins. */
+      tests_touched: testsTouches.pourCible(cfgTests, r),
       resume_cmd: cli.avec(profilCli, () => agentsession.resumeCommand(ligne.session_backend, ligne.session_key, ligne.session_cwd, optionsAgent)),
     };
   });

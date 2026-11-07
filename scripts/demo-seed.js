@@ -1786,8 +1786,21 @@ async function semerPlugins() {
    merge requests, relevée sur leur SHA courant depuis leurs chemins semés — ce que la découverte
    ferait avec une forge. */
 {
-  insertMr({ project: 'groupe/tarification', title: 'Remise fidélité portée à 10 %', branch: 'feature/remise-fidelite', status: 'to_review', changed: ['tarification.js', 'plafond.js'], summary: 'porte la remise fidélité à 10 % et ajoute un plafond' }, { iid: 260, date: at(2) });
-  insertMr({ project: 'groupe/tarification', title: 'TVA : taux réduit sur les abonnements annuels', branch: 'feature/tva-reduite', status: 'to_review', changed: ['tarification.js', 'tva.js'], summary: 'applique le taux réduit de TVA aux abonnements annuels' }, { iid: 261, date: at(0.5) });
+  /* …et les TESTS TOUCHÉS : la première modifie quatorze fichiers de code sans un seul test
+     (« 14 fichiers · 0 test », accentué), la seconde six fichiers de code et deux tests. */
+  insertMr({
+    project: 'groupe/tarification', title: 'Remise fidélité portée à 10 %', branch: 'feature/remise-fidelite', status: 'to_review',
+    changed: ['tarification.js', 'plafond.js', 'src/remise/calcul.js', 'src/remise/paliers.js', 'src/remise/regles.js', 'src/remise/index.js',
+      'src/abonnement/annuel.js', 'src/abonnement/mensuel.js', 'src/abonnement/index.js', 'src/facture/lignes.js', 'src/facture/total.js',
+      'src/api/tarifs.js', 'src/api/remises.js', 'src/cli/simuler.js', 'README.md'],
+    summary: 'porte la remise fidélité à 10 % et ajoute un plafond',
+  }, { iid: 260, date: at(2) });
+  insertMr({
+    project: 'groupe/tarification', title: 'TVA : taux réduit sur les abonnements annuels', branch: 'feature/tva-reduite', status: 'to_review',
+    changed: ['tarification.js', 'tva.js', 'src/tva/taux.js', 'src/tva/regimes.js', 'src/facture/total.js', 'src/api/tarifs.js',
+      'test/tva.test.js', 'test/tarification.test.js', 'docs/tva.md'],
+    summary: 'applique le taux réduit de TVA aux abonnements annuels',
+  }, { iid: 261, date: at(0.5) });
   // eslint-disable-next-line global-require
   const croisements = require('../src/review/croisements');
   let n = 0;

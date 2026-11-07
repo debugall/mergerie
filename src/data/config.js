@@ -52,6 +52,7 @@ const ALLOWED = [
   'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
   'jira_stats_bug_types', 'jira_stats_us_types',
   'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
+  'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -133,6 +134,16 @@ function updateConfig(patch) {
   if ('mr_files_max' in patch) {
     const fm = parseInt(patch.mr_files_max, 10);
     next.mr_files_max = Number.isFinite(fm) && fm >= 0 ? Math.min(500, fm) : 20;
+  }
+  /* Les tests touchés : l'interrupteur (coché d'office), le seuil du badge accentué (0 = toujours),
+     et les deux listes de motifs — un glob par ligne, validé ICI avec sa ligne, jamais à l'affichage. */
+  next.tests_touched_enabled = String(next.tests_touched_enabled) === '0' ? '0' : '1';
+  if ('tests_touched_min_code' in patch) {
+    const tm = parseInt(patch.tests_touched_min_code, 10);
+    next.tests_touched_min_code = Number.isFinite(tm) && tm >= 0 ? Math.min(1000, tm) : 3;
+  }
+  for (const champ of ['test_patterns', 'neutral_patterns']) {
+    if (champ in patch) next[champ] = require('../core/glob').normaliserMotifs(patch[champ]);
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
@@ -316,7 +327,11 @@ function updateConfig(patch) {
       jira_stats_us_types = @jira_stats_us_types,
       mr_files_enabled = @mr_files_enabled,
       mr_files_max = @mr_files_max,
-      mr_files_cross_targets = @mr_files_cross_targets
+      mr_files_cross_targets = @mr_files_cross_targets,
+      tests_touched_enabled = @tests_touched_enabled,
+      tests_touched_min_code = @tests_touched_min_code,
+      test_patterns = @test_patterns,
+      neutral_patterns = @neutral_patterns
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */

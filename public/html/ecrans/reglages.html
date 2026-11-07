@@ -203,6 +203,17 @@
                         <textarea name="prompt_fix" rows="3"></textarea></label>
                     <label><span data-i18n="settings.groups.lbl.prompt-modify">Gabarit de modification</span>
                         <textarea name="prompt_modify" rows="3"></textarea></label>
+                    <!-- Les motifs des tests touchés du groupe : vides, ceux des réglages globaux valent. -->
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.test-patterns">Motifs de test (un glob par ligne, vide = les réglages globaux)</span>
+                            <textarea name="test_patterns" rows="3" spellcheck="false"></textarea></label>
+                        <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="test_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
+                    </div>
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.neutral-patterns">Motifs neutres (un glob par ligne, vide = les réglages globaux)</span>
+                            <textarea name="neutral_patterns" rows="3" spellcheck="false"></textarea></label>
+                        <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-patterns-apercu></span></p>
+                    </div>
                 </details>
                 <p class="form-actions">
                     <button type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -615,6 +626,25 @@
             </label>
             <label class="inline-check"><input form="configForm" name="mr_files_cross_targets" type="checkbox" /> <span data-i18n="settings.lbl.mr-files-cross-targets">Croiser aussi les MR de branches cibles différentes</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-cross-targets" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LES TESTS TOUCHÉS : « 14 fichiers · 0 test » sur la carte, calculé sur les listes de
+                 fichiers des croisements par des MOTIFS de chemin — un fichier est un test ou n'en est
+                 pas un, sans IA, sans couverture. Sans relevé des fichiers, pas de badge : la note le dit. -->
+            <label class="inline-check"><input form="configForm" name="tests_touched_enabled" type="checkbox" /> <span data-i18n="settings.lbl.tests-touched-enabled">Afficher les tests touchés</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.tests-touched-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" id="testsTouchedDep" hidden data-i18n="settings.tests-touched.dep">Nécessite « Relever les fichiers des MR ouvertes » ci-dessus : sans relevé, aucun badge.</p>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.tests-touched-min-code">Signaler l’absence de test à partir de N fichiers de code</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.tests-touched-min-code" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="tests_touched_min_code" type="number" min="0" max="1000" step="1" placeholder="3" />
+            </label>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.test-patterns">Motifs de test (un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.test-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="test_patterns" rows="5" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="test_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
+            </div>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.neutral-patterns">Motifs neutres (ni code ni test, un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.neutral-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="neutral_patterns" rows="5" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-patterns-apercu></span></p>
+            </div>
 
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>
             <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="-1" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>

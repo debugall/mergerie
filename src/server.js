@@ -106,6 +106,7 @@ require('./app/routes/agent-passes');
 require('./app/routes/agents');
 require('./app/routes/config');
 require('./app/routes/croisements');
+require('./app/routes/tests-touches');
 require('./app/routes/data-sync');
 require('./app/routes/git');
 require('./app/routes/git-compare');
