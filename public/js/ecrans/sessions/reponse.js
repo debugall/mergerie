@@ -65,18 +65,6 @@ function dureeCourte(ms) {
   return m < 60 ? tr('task.cost.min', { n: m }) : tr('task.cost.hour', { n: (m / 60).toFixed(1) });
 }
 
-/* CE QUE LA MERGE REQUEST EST DEVENUE, SUR LA LIGNE DU PROJET. « MR !216 ↗ » ne disait rien
-   de ce qu'elle vaut : il fallait retourner dans Reviews pour lire la note et le verdict de ce
-   que la session venait de produire. Trois faits, aucun calcul — ils viennent avec la ligne. */
-function etatMrDeLaLigne(tg) {
-  const bouts = [];
-  // `note_value` est une FRACTION [0,1] en base : la note sur 10 vaut dix fois.
-  if (tg.mr_note != null) bouts.push(`<span class="tmr-note">${esc(fmtNote10(tg.mr_note * 10))}</span>`);
-  if (tg.mr_verdict) bouts.push(`<span class="tmr-verdict v-${esc(tg.mr_verdict)}">${esc(tr(`mr.ref.verdict.${tg.mr_verdict}`))}</span>`);
-  if (tg.mr_drafts) bouts.push(esc(tr('task.mr.drafts', { n: tg.mr_drafts, count: tg.mr_drafts })));
-  if (!bouts.length) return '';
-  return ` <span class="tmr-etat muted">${bouts.join(' · ')}</span>`;
-}
 
 function targetLine(t, tg) {
   const st = TASK_STATUS[tg.status] || { label: tg.status, cls: '' };
@@ -120,8 +108,7 @@ function targetLine(t, tg) {
     ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un
           journal qui défile — sinon l'écran affiche un identifiant que personne n'a saisi. */''}
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
-    ${mrIid ? (mrUrl ? ` <a href="${esc(safeUrl(mrUrl))}" target="_blank" rel="noopener noreferrer">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
-    ${etatMrDeLaLigne(tg)}
+    ${puceMr(tg, mrIid, mrUrl)}
     ${/* LE MÊME TAG QUE DANS REVIEWS. Le bouton « Mettre à jour avec {base} » offre le geste,
           mais rien ne disait POURQUOI il est là — sur la file des MR, un conflit se voit avant
           de cliquer quoi que ce soit ; ici il fallait deviner. Seulement sur un vrai conflit

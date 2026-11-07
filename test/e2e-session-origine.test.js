@@ -6,7 +6,8 @@
  * liste porte la session d'origine (dépôt + branche, la plus récente), la carte « à traiter » et
  * le menu ⋯ la proposent, et le clic atterrit sur la carte de la session dans Dev IA — même
  * RANGÉE : la liste la révèle au lieu de ne mener nulle part — et la carte reste MARQUÉE, nommée
- * par un bandeau, jusqu'à ce qu'on clique ailleurs. Une branche sans session ne porte rien. */
+ * par un bandeau, jusqu'à ce qu'on clique ailleurs. Et dans l'autre sens, la puce « MR !N » de la
+ * ligne de projet mène à la merge request dans Reviews. Une branche sans session ne porte rien. */
 
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
@@ -113,6 +114,24 @@ describe('La session d’origine d’une merge request, depuis Reviews', () => {
       await page.waitForFunction((s) => { const c = document.querySelector(s); return c && !c.classList.contains('landed'); }, sel);
       assert.ok(await bandeau.isHidden(), 'le bandeau part avec le contour');
       assert.deepEqual(erreurs, [], 'aucune erreur de page');
+    });
+
+    test('et retour : la puce « MR !1 » de la ligne de projet mène à la carte de la merge request dans Reviews, marquée', async () => {
+      const tg = (await app.api('GET', `/api/tasks/${taskId}`)).body.task.targets.find((x) => x.branch === 'feature/1');
+      assert.equal(tg.mr_row_id, ids[1]); assert.equal(tg.mr_status, 'to_review');
+      const carte = page.locator(`#taskList .task-row[data-task="${taskId}"]`);
+      const toggle = carte.locator('.targets-toggle');
+      if (await toggle.count() && await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+      const puce = carte.locator(`[data-go-mr="${ids[1]}"]`);
+      await puce.waitFor({ state: 'visible' });
+      assert.match(await puce.innerText(), /MR !1/);
+      await puce.click();
+      await page.waitForSelector('#tab-review.active');
+      const sel = `#toReviewList .card[data-id="${ids[1]}"]`;
+      await page.waitForFunction((s) => { const c = document.querySelector(s); return c && c.classList.contains('landed'); }, sel);
+      assert.equal(await page.locator(`#toReviewList .card[data-id="${ids[2]}"].landed`).count(), 0, 'une seule carte marquée');
+      await page.locator('#tab-review h1, #tab-review .toolbar, body').first().click({ position: { x: 2, y: 2 } });
+      await page.waitForFunction((s) => { const c = document.querySelector(s); return c && !c.classList.contains('landed'); }, sel);
     });
 
     test('un clic ailleurs lève le marquage ; « Voir la carte » y ramène', async () => {

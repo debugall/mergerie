@@ -33,6 +33,10 @@
    l'explorateur de branches, la palette) : sans elle, la liste s'ouvre au bon endroit sans que
    rien ne dise laquelle des douze cartes on était venu voir. Un balayage, une fois. */
 .card.just-landed { animation: landed .9s ease-out 1; }
+/* …et quand on vient CHERCHER une carte précise (la session d'une merge request, la merge request
+   d'une session), le contour tient jusqu'au clic ailleurs : un balayage pendant un défilement,
+   personne ne le voit. DEDANS (`outline-offset` négatif) : la liste rogne ce qui dépasse. */
+.card.landed { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 @keyframes card-in { from { opacity: 0; transform: translateY(6px); } }
 /* L'entrée en cascade est portée par la LISTE (`animate-in`, posée par `stagger`), pas par la

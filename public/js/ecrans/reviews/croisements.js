@@ -111,7 +111,34 @@ async function allerALaMr(id, status) {
   carte.scrollIntoView({ block: 'center', behavior: 'smooth' });
   carte.classList.add('just-landed');
   carte.addEventListener('animationend', () => carte.classList.remove('just-landed'), { once: true });
+  marquerCarteMr(id);
 }
+
+/* Le contour tient jusqu'au clic ailleurs (ou Échap) et survit aux redessins de la file — le
+   balayage seul, lancé pendant le défilement, n'est pas vu. Même geste que Dev IA. */
+let mrMarquee = 0;
+function marquerCarteMr(id) {
+  mrMarquee = id;
+  const c = $(`#toReviewList .card[data-id="${id}"]`);
+  if (c) c.classList.add('landed');
+}
+function demarquerCarteMr() {
+  if (!mrMarquee) return;
+  $$('#toReviewList .card.landed').forEach((c) => c.classList.remove('landed'));
+  mrMarquee = 0;
+}
+new MutationObserver(() => {
+  if (!mrMarquee) return;
+  const c = $(`#toReviewList .card[data-id="${mrMarquee}"]`);
+  if (c && !c.classList.contains('landed')) c.classList.add('landed');
+}).observe($('#toReviewList'), { childList: true });
+document.addEventListener('pointerdown', (e) => {
+  if (!mrMarquee || !e.isTrusted) return;
+  const c = $(`#toReviewList .card[data-id="${mrMarquee}"]`);
+  if (c && c.contains(e.target)) return;
+  demarquerCarteMr();
+}, true);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') demarquerCarteMr(); });
 
 document.addEventListener('click', (e) => {
   const badge = e.target.closest && e.target.closest('[data-croise]');

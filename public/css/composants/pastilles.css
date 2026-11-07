@@ -99,6 +99,10 @@
 
 /* L'état de la merge request sur la ligne d'un projet de session : discret, à côté du lien. */
 .tmr-etat { font-size: var(--fs-xs, 11px); }
+/* La puce « MR !5 · 6,0/10 » est un bouton vers Reviews : la même pastille, un curseur. */
+.tag.tmr-go { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font: inherit; font-size: inherit; color: var(--accent); border-color: var(--accent); background: transparent; }
+.tag.tmr-go:hover, .tag.tmr-go:focus-visible { background: var(--panel2); }
+.tag.tmr-go .tmr-etat { color: var(--muted); }
 .tmr-verdict.v-verified_pass { color: var(--green-text, var(--green)); }
 .tmr-verdict.v-verified_fail { color: var(--red-text, var(--red)); }
 .tmr-verdict.v-broken_base, .tmr-verdict.v-verify_error { color: var(--amber-text, var(--amber)); }

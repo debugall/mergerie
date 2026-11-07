@@ -51,7 +51,10 @@ function taskTargets(taskId) {
         LIMIT 1) AS has_review,
       (SELECT m3.id FROM mr m3
         WHERE m3.repo_id = tt.repo_id AND (m3.iid = tt.mr_iid OR m3.source_branch = tt.branch)
-        LIMIT 1) AS mr_row_id
+        LIMIT 1) AS mr_row_id,
+      (SELECT m4.status FROM mr m4
+        WHERE m4.repo_id = tt.repo_id AND (m4.iid = tt.mr_iid OR m4.source_branch = tt.branch)
+        LIMIT 1) AS mr_status
     FROM task_target tt
     JOIN repo ON repo.id = tt.repo_id
     LEFT JOIN mr ON mr.repo_id = tt.repo_id AND mr.source_branch = tt.branch

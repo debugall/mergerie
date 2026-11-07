@@ -242,7 +242,10 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   the card keeps an **outline** until you click elsewhere (or press Escape), even while the list
   re-renders, and a banner at the top says "You are on session #N, from merge request !12 of
   grp/app, branch feature/x", with `Show the card` to scroll back to it. The report header carries
-  the same chip. A branch without a session carries nothing.
+  the same chip. A branch without a session carries nothing. **And the other way round**: on a
+  session's card, the project line's `MR !5 · 6.0/10` chip leads to the merge request in
+  *Reviews* — its card when it is to review (marked the same way), its report otherwise; the `↗`
+  link to the forge stays next to it.
 - **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
   want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
   **new** session for that; from the session that produced the branch, what you want is a
