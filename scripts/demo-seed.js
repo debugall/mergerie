@@ -1858,6 +1858,15 @@ async function semerPlugins() {
     empilees.poserCommits(m.id, { sha: m.current_sha, target: 'main', shas: m.iid === 214 ? socle : [...socle, ...propres], source: 'forge', now: at(0.01) });
   }
   counts.mr_commits = 2;
+  // eslint-disable-next-line global-require
+  const registreDeps = require('../src/review/registre');
+  /* …et LE CONTRÔLE AU REGISTRE, coché dans la démo et SANS RÉSEAU : le cache porte déjà ce que npm
+     dirait de `left-pad` (inconnu — le nom n'existe pas sur ce registre de démo) et de `date-fns`
+     (publié depuis 2014). « +2 dépendances · 1 inconnue » sur la carte de !260, le détail dans le panneau. */
+  db.prepare("UPDATE config SET registry_enabled = '1' WHERE id = 1").run();
+  registreDeps.poser('npm', 'left-pad', { status: 'unknown', reason: '404', now: at(0.01) });
+  registreDeps.poser('npm', 'date-fns', { status: 'known', first_published: '2014-11-18T13:52:20.000Z', latest_published: at(40), now: at(0.01) });
+  counts.registry_lookup = 2;
 }
 
 semerDiffsLocaux().then(semerPlugins).then(() => {

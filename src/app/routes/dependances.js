@@ -5,10 +5,11 @@
 const { app } = require('../app');
 const { getConfig } = require('../../data/config');
 const dependances = require('../../review/dependances');
+const registre = require('../../review/registre');
 const { wrap } = require('../http');
 
 app.get('/api/dependances/defauts', wrap((req, res) => {
-  res.json({ manifest_patterns: dependances.DEFAUT_MANIFESTES.join('\n'), max: dependances.MAX_MOTIFS });
+  res.json({ manifest_patterns: dependances.DEFAUT_MANIFESTES.join('\n'), max: dependances.MAX_MOTIFS, private_patterns: '', registry_urls: registre.URLS_DEFAUT });
 }));
 
 app.post('/api/dependances/apercu', wrap((req, res) => {

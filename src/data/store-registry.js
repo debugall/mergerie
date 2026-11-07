@@ -603,6 +603,7 @@ const REGISTRE = [
       test_patterns: r.test_patterns || null,
       neutral_patterns: r.neutral_patterns || null,
       manifest_patterns: r.manifest_patterns || null,
+      private_patterns: r.private_patterns || null,
       created_at: r.created_at,
       repos: (() => {
         const locaux = ctx.enfants('repo_group_member', 'group_id', r.id)
@@ -621,6 +622,7 @@ const REGISTRE = [
       test_patterns: doc.test_patterns || '',
       neutral_patterns: doc.neutral_patterns || '',
       manifest_patterns: doc.manifest_patterns || '',
+      private_patterns: doc.private_patterns || '',
       created_at: doc.created_at,
     }),
     listes: [
@@ -1818,7 +1820,9 @@ const REGISTRE = [
       'agent_sandbox_verified', 'agent_sandbox_tested_at', 'agent_sandbox_detail',
       'agent_read_unrestricted',
       // L'agent de CE poste : un chemin de binaire n'a de sens que sur la machine qui le porte.
-      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless'],
+      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless',
+      // Les URL des registres publics (contrôle au registre) : un miroir ou un proxy d'entreprise ne se partage pas.
+      'registry_urls'],
     partagees: [
       // Où est la forge, Jira : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'confluence_url',
@@ -1857,7 +1861,9 @@ const REGISTRE = [
       // Les dépendances ajoutées : l'interrupteur et les motifs de manifestes — d'équipe aussi.
       'deps_enabled', 'manifest_patterns',
       // Les MR empilées : relever les commits des MR ouvertes — l'outil, pas la machine.
-      'mr_commits_enabled'],
+      'mr_commits_enabled',
+      // Le contrôle au registre : l'interrupteur, le seuil « récent », le plafond par tour, les motifs de paquets privés — d'équipe ; les URL, elles, sont de poste.
+      'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que
@@ -1932,6 +1938,7 @@ const REGISTRE = [
   { table: 'mr_file_fetch', famille: 'C', note: 'sur quel SHA et quand la liste de fichiers d’une MR a été relevée' },
   { table: 'mr_manifest_diff', famille: 'C', note: 'le diff des seuls manifestes de chaque MR ouverte, gardé au relevé (dépendances)' },
   { table: 'mr_commits', famille: 'C', note: 'les SHA des commits de chaque MR ouverte, relus de la forge ou du clone (MR empilées)' },
+  { table: 'registry_lookup', famille: 'C', note: 'ce que le registre public sait d’un paquet ajouté (contrôle au registre) : relu du réseau, et jamais partagé — un cache partagé ferait voyager la liste des paquets de l’équipe' },
   { table: 'mr_commit_fetch', famille: 'C', note: 'sur quel SHA et quelle cible la liste de commits d’une MR a été relevée' },
   { table: 'mr_contained_history', famille: 'C', note: '« contenait !214 » pendant sept jours après la merge de la contenue' },
   { table: 'job', famille: 'C', note: 'la file de CE poste' },

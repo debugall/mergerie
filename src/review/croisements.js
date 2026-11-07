@@ -26,6 +26,7 @@ const forge = require('../forge');
 const git = require('../git/git');
 const dependances = require('./dependances');
 const empilees = require('./empilees');
+const registre = require('./registre');
 
 const MAX_FICHIERS = 5000;
 const PLAFOND_DEFAUT = 20;
@@ -218,6 +219,10 @@ async function releverTour(cfg, { onLog = (m) => console.log(`[croisements] ${m}
   if (bilan.restants) onLog(`plafond atteint (${max}) : ${bilan.restants} liste(s) de fichiers attendront le tour suivant`);
   // Les MR contenues qui ont fermé depuis : la trace « contenait !214 » pour sept jours, leurs listes purgées.
   if (commitsActifs) bilan.commits.archivees = empilees.archiverFermees();
+  /* LE CONTRÔLE AU REGISTRE, après le relevé des manifestes : les dépendances ajoutées des MR ouvertes
+     dont le cache n'a pas d'entrée fraîche, sous SON plafond (`registry_max`), jamais à l'affichage.
+     Réglage décoché : aucun appel, pas même une lecture — le bilan le dit. */
+  bilan.registry = registre.actif(cfg) ? await registre.controlerTour(cfg, dependances.ajouteesOuvertes(cfg), { onLog }) : null;
   return bilan;
 }
 

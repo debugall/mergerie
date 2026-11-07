@@ -144,7 +144,7 @@ describe('Dépendances ajoutées par une merge request', () => {
       VALUES (?, ?, 'feature/x', 'main', 'committed', 'abc123', ?, ?)`).run(taskId, repoId, diff, now).lastInsertRowid);
     app.db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?, ?, 'feature/y', 'main', 'new', ?)`).run(taskId, repoId, now);
     const t = (await app.api('GET', `/api/tasks/${taskId}`)).body.task;
-    assert.deepEqual(t.targets.find((x) => x.id === tg).deps, { added: 2, removed: 0, changed: 0, major: 0 });
+    assert.deepEqual(t.targets.find((x) => x.id === tg).deps, { added: 2, removed: 0, changed: 0, major: 0, unknown: 0, recent: 0 });
     assert.equal(t.targets.find((x) => x.id !== tg).deps, null, 'avant le commit, rien');
   });
 
@@ -199,7 +199,7 @@ describe('Dépendances ajoutées par une merge request', () => {
       await page.keyboard.press('Escape');
       await panneau.waitFor({ state: 'detached' });
       await carte.locator('.tag.deps').click();
-      await carte.locator('.deps-panel [data-deps-motifs="config"]').click();
+      await carte.locator('.deps-panel [data-deps-motifs="config"][data-deps-champ="manifest_patterns"]').click();
       await page.waitForSelector('#tab-admin.active');
       await page.waitForFunction(() => document.activeElement && document.activeElement.name === 'manifest_patterns');
       await page.waitForFunction(() => (document.querySelector('#sub-mr [name="manifest_patterns"]').placeholder || '').split('\n').length === 10);

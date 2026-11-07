@@ -159,6 +159,31 @@ manifeste de plus de 200 Ko n'est pas gardé et le bouton ⋯ le dit ; sans diff
 cette version, le tour suivant le reprend), rien — jamais un faux « aucune dépendance ». Rien n'est
 jugé ni bloqué : pas de note, pas de licence, pas de CVE.
 
+**Et ce que le registre public en sait : `+2 dépendances · 1 inconnue`.** C'est le seul cas où un ajout de
+dépendance est presque toujours une erreur — un nom inventé par l'agent, un homonyme à une lettre près, un
+paquet publié la semaine dernière — et personne ne le vérifie à la main. Le **contrôle au registre**
+(décoché d'office, voir *Réglages → Merge Request*) demande, pour chaque dépendance **ajoutée** seulement
+(jamais les changées ni les retirées), ce que le registre public de son écosystème en sait : **inconnue**
+(le registre répond 404 : `· 1 inconnue` sur la carte), **récente** (première publication il y a trente
+jours ou moins, seuil réglable : `· 1 récente`), ou **connue** de longue date (rien sur la carte). Dans
+le panneau, chaque ligne d'ajoutée le dit en clair, jamais une icône seule : `left-pad  ^1.3.0  ajoutée ·
+prod · inconnu du registre public npm`, `fastjson2 … première publication il y a 3 j (npm)`, `lodash …
+publié depuis 2012 (npm)`. La règle est non négociable : **le registre a répondu, ou il n'a pas répondu,
+et l'outil dit lequel** — un délai, une erreur, un 503, le plafond du tour atteint, un écosystème sans
+registre renseigné donnent `registre injoignable (pypi.org, délai dépassé)` ou `non contrôlé · plafond du
+tour atteint`, jamais « inconnu ». Un paquet d'entreprise (`@docaposte/*`, un `vendor/*` Composer interne,
+un module Go sur un hôte privé) n'est pas une alerte : les **motifs de paquets privés** (globaux, par
+groupe, par dépôt) et la lecture du clone (`.npmrc` avec `registry=` ou `@scope:registry=`,
+`composer.json` avec `repositories`, `GOPRIVATE` dans `go.env`, `pip.conf` avec `index-url`) le marquent
+`non contrôlé · paquet privé probable (.npmrc)` sans rien demander à personne — et le pied du panneau mène
+aux motifs : un faux « inconnu » se corrige en deux clics. Le pied dit aussi `Registres contactés : npm · il
+y a 4 min`, ou `Contrôle au registre désactivé`. Huit registres, un par écosystème : npm, Packagist, PyPI,
+crates.io, RubyGems, le proxy Go, Maven Central, NuGet ; le contrôle se fait dans le tour de découverte,
+jamais à l'affichage, au plus trente noms par tour (réglable), mis en cache par nom — la même dépendance
+ajoutée par dix merge requests coûte un appel, un « inconnu » est revérifié après 24 h, un « connu » après
+sept jours. Rien n'est jugé : pas de score, pas de blocage, pas de comparaison de noms proches, pas de lien
+vers la page du paquet — le nom se copie.
+
 **Une merge request qui en embarque une autre le dit : `contient !214`.** C'est la merge request
 *empilée* : on repart de la branche d'un collègue ou d'un agent, on ajoute son travail, on ouvre vers
 `main`. La forge l'affiche comme une merge request ordinaire, avec le diff des deux ; rien ne dit que
@@ -934,6 +959,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
 - **Quelles dépendances la branche ajoute.** Sur la même ligne, `2 dépendances ajoutées` (accentué) ou
   `1 dépendance changée` (discret), lues dans les manifestes du diff de la branche — c'est là qu'un suivi
   « enlève left-pad, écris la fonction » coûte le moins. Le détail est sur la carte de la merge request.
+  Contrôle au registre coché, la ligne se complète au rendu suivant — `2 dépendances ajoutées · 1 inconnue` —
+  sous le même cache que les cartes, dix noms au plus par session.
 - **Projets liés en lecture seule (Avancé).** En codage, la modale de session propose d'ajouter
   d'autres dépôts comme **contexte** : l'IA les consulte — leur API, leur schéma, leurs contrats —
   pour respecter ce qu'ils exposent, sans **jamais** les modifier. Un dépôt (recherche incluse,
@@ -2184,7 +2211,16 @@ remplacent le niveau au-dessus ; vides, on remonte ; puis ceux des **dépendance
 dépendances* (coché ; décoché, aucun diff de manifeste n'est gardé et aucun badge ne s'affiche) et les
 **motifs de manifestes**, un glob par ligne, avec `Remettre les défauts` et l'aperçu « sur les MR
 ouvertes, ces motifs désignent 3 manifestes », eux aussi posables sur un dépôt et sur un groupe, au même
-endroit que les motifs de tests —,
+endroit que les motifs de tests —, puis le **contrôle au registre** — *Contrôler les dépendances ajoutées
+auprès des registres publics* (**décoché** d'office : c'est le premier appel réseau de Mergerie qui ne va ni
+à la forge ni à Jira, et le libellé nomme les hôtes contactés : registry.npmjs.org, repo.packagist.org,
+pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — uniquement pour les
+paquets ajoutés par vos merge requests, et seulement leur nom), *Récent : publié depuis moins de N jours*
+(30), *Au plus N appels par tour* (30 ; 0 = sans limite, indépendant du plafond des fichiers), les
+**motifs de paquets privés** (un glob de nom par ligne, vides ; aussi sur un dépôt et sur un groupe, même
+résolution que les motifs de manifestes) et, **de ce poste** et jamais partagées, les **URL par registre**
+(une ligne `écosystème=url` par registre à surcharger — un miroir, un proxy d'entreprise ; vide après le `=`,
+l'écosystème n'est pas contrôlé) —,
 templates de prompt — le gabarit livré demande un **rapport structuré** : constats classés 🔴 bloquant /
 🟠 important / 🟡 mineur, note calibrée sur des repères nommés (une note ≥ 7 exclut tout bloquant restant),
 une section « ce qui est bien » et une checklist de merge ; un prompt personnalisé n'est pas touché, et une
@@ -3127,6 +3163,18 @@ des opérations puissantes (git, Docker, agent IA, lecture/écriture de fichiers
 n'écoute QUE sur `localhost`** (`127.0.0.1`) et ne demande rien : l'utilisateur du poste **est**
 l'utilisateur de l'app. Aucune donnée n'est envoyée ailleurs que vers les services que **tu** configures
 (ton GitLab, ton GitHub, ton Jira, ton CLI d'agent, ton dépôt de données).
+
+**Ce qui sort de la machine, et la seule exception.** Tout appel réseau de Mergerie va à l'une de ces
+cibles que tu as configurées — sauf un, **désactivé par défaut** : le *contrôle au registre* des dépendances
+ajoutées (Réglages → Merge Request → Découverte). Coché, il envoie le **nom** des paquets qu'une merge request
+ajoute — rien d'autre : ni le manifeste, ni le nom du dépôt, ni la merge request, aucun en-tête
+d'identification au-delà du `User-Agent` — aux registres publics nommés dans le réglage (registry.npmjs.org,
+repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org,
+ou les miroirs que tu indiques), au plus N noms par tour, par le proxy de ton environnement (`HTTPS_PROXY`,
+`NO_PROXY`) et avec la CA d'entreprise de la forge (`GITLAB_CA_CERT`). Les paquets couverts par un motif
+privé ou par la configuration du clone (`.npmrc`, `composer.json`, `go.env`, `pip.conf`) ne partent jamais ;
+le cache des réponses reste sur ce poste et ne voyage pas dans le dépôt de données ; le journal de la
+découverte compte les appels par registre. Zéro appel d'IA, zéro jeton.
 
 **Exposer le serveur exige un jeton.** Avec `HOST` autre qu'une adresse de boucle (`0.0.0.0`, l'IP de la
 machine…), Mergerie **refuse de démarrer** sans `MERGERIE_ACCESS_TOKEN`. Le navigateur passe alors par une

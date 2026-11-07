@@ -12,7 +12,7 @@ async function chargerDefautsMotifs() {
   if (!defautsMotifs) {
     try {
       const [t, d] = await Promise.all([api('/tests-touches/defauts'), api('/dependances/defauts')]);
-      defautsMotifs = { ...t, manifest_patterns: d.manifest_patterns };
+      defautsMotifs = { ...t, manifest_patterns: d.manifest_patterns, private_patterns: d.private_patterns || '', registry_urls: d.registry_urls || '' };
     } catch { return null; }
   }
   return defautsMotifs;
@@ -79,12 +79,15 @@ async function majMotifsTests(conteneur = $('#sub-mr')) {
   if (dep && relever) dep.hidden = relever.checked;
   const depCommits = $('#mrCommitsDep');
   if (depCommits && relever) depCommits.hidden = relever.checked;
+  majDepRegistre();
   const d = await chargerDefautsMotifs();
   if (d && conteneur === $('#sub-mr')) {
     const t1 = champMotifs(conteneur, 'test_patterns'); const t2 = champMotifs(conteneur, 'neutral_patterns'); const t3 = champMotifs(conteneur, 'manifest_patterns');
     if (t1) t1.placeholder = d.test_patterns;
     if (t2) t2.placeholder = d.neutral_patterns;
     if (t3) t3.placeholder = d.manifest_patterns;
+    const t4 = champMotifs(conteneur, 'registry_urls');
+    if (t4) t4.placeholder = d.registry_urls;
   }
   majApercuMotifs(conteneur);
   majApercuManifestes(conteneur);
@@ -106,9 +109,17 @@ document.addEventListener('input', (e) => {
   if (!champ.closest || !champ.closest('.patterns-zone')) return;
   majApercuMotifsBientot(conteneurMotifs(champ));
 });
+/* Le contrôle au registre ne contrôle que des dépendances relevées : sa note de dépendance paraît dès
+   que « Afficher les dépendances » ou le relevé des fichiers est décoché. */
+function majDepRegistre() {
+  const dep = $('#registryDep');
+  const relever = $('#sub-mr [name="mr_files_enabled"]'); const deps = $('#sub-mr [name="deps_enabled"]');
+  if (dep && relever && deps) dep.hidden = relever.checked && deps.checked;
+}
 document.addEventListener('change', (e) => {
   if (e.target && e.target.matches && e.target.matches('#sub-mr [name="mr_files_enabled"]')) {
     const dep = $('#testsTouchedDep'); if (dep) dep.hidden = e.target.checked;
     const depCommits = $('#mrCommitsDep'); if (depCommits) depCommits.hidden = e.target.checked;
   }
+  if (e.target && e.target.matches && e.target.matches('#sub-mr [name="mr_files_enabled"], #sub-mr [name="deps_enabled"]')) majDepRegistre();
 });

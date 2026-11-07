@@ -1,12 +1,15 @@
 'use strict';
 // @ts-check
-/* Requête HTTP(S) bas niveau, partagée par les clients de forge (gitlab.js, github.js).
+/* Requête HTTP(S) bas niveau, partagée par les clients de forge (gitlab.js, github.js) et par le
+   contrôle au registre (review/registre.js).
 
    L'agent TLS est fourni par l'appelant : chaque forge a le sien, calculé depuis ses
    propres variables d'environnement. On ne touche JAMAIS au TLS global du process. */
 
 const https = require('https');
 const http = require('http');
+const tls = require('tls');
+const zlib = require('zlib');
 const fs = require('fs');
 const { t } = require('./i18n');
 
@@ -37,37 +40,118 @@ function makeAgentFactory(caEnv, insecureEnv) {
   };
 }
 
+/* LE PROXY DE L'ENVIRONNEMENT, pour une URL : `HTTPS_PROXY` pour une cible https, `HTTP_PROXY`
+   pour une cible http, `ALL_PROXY` à défaut, en majuscules ou en minuscules — la convention de
+   curl, de git et de Node. `NO_PROXY` l'écarte : `*` pour tout, sinon une liste d'hôtes ou de
+   suffixes (`.corp.example`, `localhost`, `127.0.0.1`, `hôte:port`). Rend l'URL du proxy, ou null.
+   @param {string} url
+   @param {NodeJS.ProcessEnv} [env] */
+function proxyDepuisEnv(url, env = process.env) {
+  let u;
+  try { u = new URL(url); } catch { return null; }
+  const lire = (...noms) => { for (const n of noms) { const v = env[n]; if (v && String(v).trim()) return String(v).trim(); } return ''; };
+  const proxy = u.protocol === 'https:' ? lire('HTTPS_PROXY', 'https_proxy', 'ALL_PROXY', 'all_proxy') : lire('HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy');
+  if (!proxy) return null;
+  const sans = lire('NO_PROXY', 'no_proxy');
+  if (sans) {
+    const hote = u.hostname.toLowerCase();
+    const port = u.port || (u.protocol === 'https:' ? '443' : '80');
+    for (const brut of sans.split(',')) {
+      const e = brut.trim().toLowerCase();
+      if (!e) continue;
+      if (e === '*') return null;
+      const [eh, ep] = e.startsWith('[') ? [e, ''] : e.split(':');
+      if (ep && ep !== port) continue;
+      const h = eh.replace(/^\./, '');
+      if (hote === h || hote.endsWith(`.${h}`)) return null;
+    }
+  }
+  return proxy;
+}
+
+/* Le corps d'une réponse, décompressé si le serveur l'a compressé (NuGet sert du gzip d'office). */
+function corpsDe(res, morceaux) {
+  const brut = Buffer.concat(morceaux);
+  const enc = String(res.headers['content-encoding'] || '').toLowerCase();
+  try {
+    if (enc === 'gzip' || enc === 'x-gzip') return zlib.gunzipSync(brut).toString('utf8');
+    if (enc === 'deflate') return zlib.inflateSync(brut).toString('utf8');
+    if (enc === 'br') return zlib.brotliDecompressSync(brut).toString('utf8');
+  } catch { /* corps annoncé compressé mais illisible : rendu tel quel */ }
+  return brut.toString('utf8');
+}
+
+/* Un tunnel CONNECT à travers un proxy, pour une cible https : la socket TLS rendue porte la
+   vérification du certificat de la CIBLE (CA épinglée comprise), pas celle du proxy.
+   @param {URL} proxy @param {URL} cible @param {import('node:tls').ConnectionOptions} tlsOpts @param {number} timeoutMs
+   @returns {Promise<import('node:tls').TLSSocket>} */
+function tunnel(proxy, cible, tlsOpts, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const lib = proxy.protocol === 'https:' ? https : http;
+    const port = cible.port || 443;
+    const headers = /** @type {Record<string, string>} */ ({ Host: `${cible.hostname}:${port}` });
+    if (proxy.username) headers['Proxy-Authorization'] = `Basic ${Buffer.from(`${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password || '')}`).toString('base64')}`;
+    const req = lib.request({
+      method: 'CONNECT', hostname: proxy.hostname, port: proxy.port || (proxy.protocol === 'https:' ? 443 : 80),
+      path: `${cible.hostname}:${port}`, headers,
+    });
+    req.on('connect', (res, socket) => {
+      if (res.statusCode !== 200) { socket.destroy(); reject(Object.assign(new Error(`proxy CONNECT ${res.statusCode}`), { code: 'EPROXY' })); return; }
+      resolve(tls.connect({ ...tlsOpts, socket, servername: cible.hostname }));
+    });
+    req.on('error', reject);
+    req.setTimeout(timeoutMs, () => { req.destroy(Object.assign(new Error(t('err.http.timeout', { s: timeoutMs / 1000 })), { code: 'ETIMEDOUT' })); });
+    req.end();
+  });
+}
+
 /**
  * Renvoie { status, statusText, body, headers }. `agent` s'applique au HTTPS seulement.
+ * `proxy` (URL) fait passer la requête par un proxy HTTP — en clair pour une cible http, par un
+ * tunnel CONNECT pour une cible https, `tls` portant alors la CA de la cible ; `timeoutMs` borne
+ * l'attente (30 s par défaut).
  * @param {string} url
- * @param {{ method?: string, headers?: Record<string, string>, body?: string|Buffer|null, agent?: import('node:https').Agent|undefined }} [options]
+ * @param {{ method?: string, headers?: Record<string, string>, body?: string|Buffer|null, agent?: import('node:https').Agent|undefined, proxy?: string|null, tls?: import('node:tls').ConnectionOptions, timeoutMs?: number }} [options]
  * @returns {Promise<{ status: number, statusText: string, body: string, headers: import('node:http').IncomingHttpHeaders }>}
  */
-function request(url, { method = 'GET', headers = {}, body, agent } = {}) {
+async function request(url, { method = 'GET', headers = {}, body, agent, proxy = null, tls: tlsOpts = {}, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  const u = new URL(url);
+  const secure = u.protocol === 'https:';
+  const p = proxy ? new URL(proxy) : null;
+  /** @type {import('node:http').RequestOptions} */
+  const opts = { method, hostname: u.hostname, port: u.port || (secure ? 443 : 80), path: u.pathname + u.search, headers: { ...headers } };
+  let lib = secure ? https : http;
+  if (p && !secure) {
+    // Proxy en clair : la requête part au proxy, avec l'URL complète en chemin.
+    lib = p.protocol === 'https:' ? https : http;
+    opts.hostname = p.hostname; opts.port = p.port || (p.protocol === 'https:' ? 443 : 80);
+    opts.path = u.href;
+    opts.headers = { ...opts.headers, Host: u.host };
+    if (p.username) opts.headers['Proxy-Authorization'] = `Basic ${Buffer.from(`${decodeURIComponent(p.username)}:${decodeURIComponent(p.password || '')}`).toString('base64')}`;
+  } else if (p && secure) {
+    const socket = await tunnel(p, u, tlsOpts, timeoutMs);
+    opts.agent = false;
+    opts.createConnection = () => socket;
+  } else if (secure && agent) {
+    opts.agent = agent;
+  } else if (secure && (tlsOpts.ca || tlsOpts.rejectUnauthorized === false)) {
+    Object.assign(opts, tlsOpts);
+  }
   return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const lib = u.protocol === 'http:' ? http : https;
-    const opts = {
-      method,
-      hostname: u.hostname,
-      port: u.port || (u.protocol === 'http:' ? 80 : 443),
-      path: u.pathname + u.search,
-      headers,
-    };
-    if (u.protocol === 'https:' && agent) opts.agent = agent;
     const req = lib.request(opts, (res) => {
-      let data = '';
-      res.on('data', (c) => { data += c; });
+      /** @type {Buffer[]} */
+      const morceaux = [];
+      res.on('data', (c) => { morceaux.push(Buffer.isBuffer(c) ? c : Buffer.from(c)); });
       res.on('end', () => resolve({
-        status: res.statusCode,
+        status: res.statusCode || 0,
         statusText: res.statusMessage || '',
-        body: data,
+        body: corpsDe(res, morceaux),
         headers: res.headers || {},
       }));
     });
     req.on('error', reject);
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      const err = /** @type {NodeJS.ErrnoException} */ (new Error(t('err.http.timeout', { s: REQUEST_TIMEOUT_MS / 1000 })));
+    req.setTimeout(timeoutMs, () => {
+      const err = /** @type {NodeJS.ErrnoException} */ (new Error(t('err.http.timeout', { s: timeoutMs / 1000 })));
       err.code = 'ETIMEDOUT';
       req.destroy(err);
     });
@@ -76,4 +160,4 @@ function request(url, { method = 'GET', headers = {}, body, agent } = {}) {
   });
 }
 
-module.exports = { request, makeAgentFactory, REQUEST_TIMEOUT_MS };
+module.exports = { request, makeAgentFactory, proxyDepuisEnv, REQUEST_TIMEOUT_MS };

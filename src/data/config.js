@@ -55,6 +55,7 @@ const ALLOWED = [
   'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
   'deps_enabled', 'manifest_patterns',
   'mr_commits_enabled',
+  'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -146,9 +147,22 @@ function updateConfig(patch) {
   }
   next.deps_enabled = String(next.deps_enabled) === '0' ? '0' : '1';
   next.mr_commits_enabled = String(next.mr_commits_enabled) === '0' ? '0' : '1';
-  for (const champ of ['test_patterns', 'neutral_patterns', 'manifest_patterns']) {
+  for (const champ of ['test_patterns', 'neutral_patterns', 'manifest_patterns', 'private_patterns']) {
     if (champ in patch) next[champ] = require('../core/glob').normaliserMotifs(patch[champ]);
   }
+  /* Le contrôle au registre : DÉCOCHÉ d'office (le premier appel réseau hors forge se choisit), le seuil
+     « récent » et le plafond par tour s'écrivent (0 = sans limite), les URL de registre sont validées
+     ligne à ligne — de ce poste. */
+  next.registry_enabled = String(next.registry_enabled) === '1' ? '1' : '0';
+  if ('registry_recent_days' in patch) {
+    const rd = parseInt(patch.registry_recent_days, 10);
+    next.registry_recent_days = Number.isFinite(rd) && rd >= 0 ? Math.min(3650, rd) : 30;
+  }
+  if ('registry_max' in patch) {
+    const rm = parseInt(patch.registry_max, 10);
+    next.registry_max = Number.isFinite(rm) && rm >= 0 ? Math.min(1000, rm) : 30;
+  }
+  if ('registry_urls' in patch) next.registry_urls = require('../core/registres').normaliserUrls(patch.registry_urls);
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
   /* Le rattrapage d'une période : la bannière au-delà de N jours sans geste (0 = jamais, 3 par
@@ -338,7 +352,11 @@ function updateConfig(patch) {
       neutral_patterns = @neutral_patterns,
       deps_enabled = @deps_enabled,
       mr_commits_enabled = @mr_commits_enabled,
-      manifest_patterns = @manifest_patterns
+      manifest_patterns = @manifest_patterns,
+      registry_enabled = @registry_enabled,
+      registry_recent_days = @registry_recent_days,
+      registry_max = @registry_max,
+      private_patterns = @private_patterns
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
@@ -354,6 +372,7 @@ function updateConfig(patch) {
       data_repo_branch = @data_repo_branch,
       data_sync_seconds = @data_sync_seconds,
       usage_share = @usage_share,
+      registry_urls = @registry_urls,
       /* Des habitudes, pas des politiques : le brief au lancement, les cadences de CE poste,
          la fermeture des todos (devenues personnelles) et les cases d'office d'une session. */
       brief_on_open = @brief_on_open,

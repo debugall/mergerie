@@ -147,7 +147,7 @@ function renderBrief(d) {
   const avecDeps = (d.new_deps || []).map((m) => `<div class="brief-item brief-clickable" data-brief-deps="${m.mr_id}" data-status="${esc(m.status || '')}">
       <div class="brief-item-main">
         <div class="brief-item-title">!${esc(m.iid)} — ${esc(m.title || '')}</div>
-        <div class="meta">${esc(m.project)} · <span class="tag deps alert">${esc(tr('mr.deps.added', { n: m.added, count: m.added }))}${m.major ? ` · ${esc(tr('mr.deps.major', { n: m.major, count: m.major }))}` : ''}</span>${m.created_at ? ` · ${esc(tr('mr.croise.opened', { age: depuis(m.created_at) }))}` : ''}</div>
+        <div class="meta">${esc(m.project)} · <span class="tag deps alert">${esc(tr('mr.deps.added', { n: m.added, count: m.added }))}${m.unknown ? ` · ${esc(tr('mr.deps.unknown', { n: m.unknown, count: m.unknown }))}` : ''}${m.recent ? ` · ${esc(tr('mr.deps.recent', { n: m.recent, count: m.recent }))}` : ''}${m.major ? ` · ${esc(tr('mr.deps.major', { n: m.major, count: m.major }))}` : ''}</span>${m.created_at ? ` · ${esc(tr('mr.croise.opened', { age: depuis(m.created_at) }))}` : ''}</div>
       </div>
       ${briefHideBtn('dependance', m.key)}
     </div>`).join('');

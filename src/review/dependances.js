@@ -19,6 +19,9 @@ const fs = require('fs');
 const db = require('../db');
 const glob = require('../core/glob');
 const groupes = require('../data/groupes');
+/* Le contrôle au registre (`registre.js`) : appelé SEULEMENT si son réglage est coché, à l'affichage
+   et sans réseau — le réseau, c'est le tour de découverte (`croisements.releverTour`). */
+const registre = require('./registre');
 
 const DEFAUT_MANIFESTES = [
   'package.json', 'composer.json', 'requirements*.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml',
@@ -270,10 +273,13 @@ function analyserPom(lgs) {
   let bloc = null;
   for (const l of lgs) {
     const t = l.texte;
-    if (/<dependency>/.test(t)) { bloc = { marqueNom: null, name: null, vMoins: null, vPlus: null, vCtx: null, scope: null, marqueBloc: l.marque }; continue; }
+    if (/<dependency>/.test(t)) { bloc = { marqueNom: null, name: null, group: null, vMoins: null, vPlus: null, vCtx: null, scope: null, marqueBloc: l.marque }; continue; }
     if (!bloc) continue;
     const a = t.match(/<artifactId>\s*([^<\s]+)\s*<\/artifactId>/);
     if (a) { bloc.name = a[1]; bloc.marqueNom = l.marque; continue; }
+    // Le groupe sert au contrôle au registre (Maven Central cherche `g:a`) ; le nom affiché reste l'artefact.
+    const g = t.match(/<groupId>\s*([^<\s]+)\s*<\/groupId>/);
+    if (g) { bloc.group = g[1]; continue; }
     const v = t.match(/<version>\s*([^<]*?)\s*<\/version>/);
     if (v) { if (l.marque === '-') bloc.vMoins = v[1]; else if (l.marque === '+') bloc.vPlus = v[1]; else bloc.vCtx = v[1]; continue; }
     const s = t.match(/<scope>\s*([^<\s]+)\s*<\/scope>/);
@@ -281,11 +287,12 @@ function analyserPom(lgs) {
     if (/<\/dependency>/.test(t)) {
       const section = bloc.scope === 'test' ? 'dev' : 'prod';
       if (bloc.name) {
-        if (bloc.marqueNom === '+' || (bloc.marqueNom === ' ' && bloc.marqueBloc === '+')) plus.push({ name: bloc.name, version: bloc.vPlus ?? bloc.vCtx ?? '', section });
-        else if (bloc.marqueNom === '-' || (bloc.marqueNom === ' ' && bloc.marqueBloc === '-')) moins.push({ name: bloc.name, version: bloc.vMoins ?? bloc.vCtx ?? '', section });
+        const groupe = bloc.group ? { group: bloc.group } : {};
+        if (bloc.marqueNom === '+' || (bloc.marqueNom === ' ' && bloc.marqueBloc === '+')) plus.push({ name: bloc.name, version: bloc.vPlus ?? bloc.vCtx ?? '', section, ...groupe });
+        else if (bloc.marqueNom === '-' || (bloc.marqueNom === ' ' && bloc.marqueBloc === '-')) moins.push({ name: bloc.name, version: bloc.vMoins ?? bloc.vCtx ?? '', section, ...groupe });
         else if (bloc.vMoins != null || bloc.vPlus != null) {
-          moins.push({ name: bloc.name, version: bloc.vMoins ?? bloc.vCtx ?? '', section });
-          plus.push({ name: bloc.name, version: bloc.vPlus ?? bloc.vCtx ?? '', section });
+          moins.push({ name: bloc.name, version: bloc.vMoins ?? bloc.vCtx ?? '', section, ...groupe });
+          plus.push({ name: bloc.name, version: bloc.vPlus ?? bloc.vCtx ?? '', section, ...groupe });
         }
       }
       bloc = null;
@@ -377,7 +384,7 @@ function rapprocher({ moins, plus }, python = false) {
   const added = []; const removed = []; const changed = [];
   for (const e of plus) {
     const k = cle(e, python);
-    if (!parMoins.has(k)) { if (parPlus.get(k) === e) added.push({ name: e.name, version: e.version, section: e.section }); continue; }
+    if (!parMoins.has(k)) { if (parPlus.get(k) === e) added.push({ name: e.name, version: e.version, section: e.section, ...(e.group ? { group: e.group } : {}) }); continue; }
     const avant = parMoins.get(k);
     if (parPlus.get(k) !== e) continue;
     if (String(avant.version).trim() === String(e.version).trim()) continue;
@@ -447,6 +454,20 @@ function manifestesFrais(mrIds = null) {
   return par;
 }
 
+/* LE CONTRÔLE AU REGISTRE sur les ajoutées d'un dépôt : chaque ligne ajoutée gagne `registry`, les
+   comptes gagnent `unknown` / `recent`, et `registry` (sur la carte) dit si le contrôle est actif,
+   quels registres ont été contactés et quand, et d'où viennent les motifs de paquets privés. Réglage
+   décoché : `{ enabled: false }`, rien d'autre — et aucun appel à `registre.js` au-delà du réglage. */
+function controler(cfg, repoId, analyses, { now = Date.now(), prives = null } = {}) {
+  if (!registre.actif(cfg)) return { unknown: 0, recent: 0, registry: { enabled: false } };
+  const ajoutees = analyses.flatMap((a) => (a.parser ? a.added.map((e) => ({ ...e, parser: a.parser })) : []));
+  const enrichies = registre.pourDependances(cfg, repoId, ajoutees, { now, prives });
+  let i = 0;
+  for (const a of analyses) if (a.parser) for (const e of a.added) { e.registry = enrichies[i] || null; i += 1; }
+  const t = registre.totaux(enrichies);
+  return { unknown: t.unknown, recent: t.recent, registry: { enabled: true, contacted: t.contacted, private: registre.motifsPrives(cfg, repoId).source } };
+}
+
 /* CE QUE LA CARTE AFFICHE, par merge request : les comptes, les manifestes avec leurs lignes
    (ajoutées, puis changées, puis retirées, dans l'ordre du fichier), d'où viennent les motifs, le
    relevé, et un refus éventuel. Absent = rien à dire (aucun manifeste touché, ou pas cherché). */
@@ -454,18 +475,36 @@ function pourCartes(cfg, { mrIds = null } = {}) {
   const out = {};
   if (!actif(cfg)) return out;
   const motifsParRepo = new Map();
+  const privesParRepo = new Map();
   for (const [id, m] of manifestesFrais(mrIds)) {
     const refused = m.rows.some((r) => r.refused) ? 'too-large' : null;
     const analyses = m.rows.filter((r) => !r.refused).map((r) => analyser(r.path, r.diff));
     const t = totaux(analyses);
     if (!refused && t.added + t.removed + t.changed + t.unparsed === 0) continue;
     if (!motifsParRepo.has(m.repo_id)) motifsParRepo.set(m.repo_id, motifsPour(cfg, m.repo_id));
+    if (t.added && registre.actif(cfg) && !privesParRepo.has(m.repo_id)) privesParRepo.set(m.repo_id, registre.privesDuClone(cfg, db.prepare('SELECT * FROM repo WHERE id = ?').get(m.repo_id)));
+    const reg = t.added ? controler(cfg, m.repo_id, analyses, { prives: privesParRepo.get(m.repo_id) || null }) : { unknown: 0, recent: 0, registry: { enabled: registre.actif(cfg) } };
     out[id] = {
-      ...t, alert: t.added > 0,
+      ...t, alert: t.added > 0, unknown: reg.unknown, recent: reg.recent,
       manifests: analyses.filter((a) => !a.parser || a.added.length + a.removed.length + a.changed.length),
-      patterns: motifsParRepo.get(m.repo_id).source,
+      patterns: motifsParRepo.get(m.repo_id).source, registry: reg.registry,
       fetch: { sha: m.sha, at: m.at }, refused,
     };
+  }
+  return out;
+}
+
+/* LES DÉPENDANCES AJOUTÉES PAR LES MR OUVERTES, pour le tour de contrôle au registre :
+   `[{ repo_id, parser, name, group }]`, sans dédoublonnage (le tour le fait par écosystème + nom). */
+function ajouteesOuvertes(cfg) {
+  const out = [];
+  if (!actif(cfg)) return out;
+  for (const m of manifestesFrais().values()) {
+    for (const r of m.rows) {
+      if (r.refused) continue;
+      const a = analyser(r.path, r.diff);
+      if (a.parser) for (const e of a.added) out.push({ repo_id: m.repo_id, parser: a.parser, name: e.name, group: e.group || null });
+    }
   }
   return out;
 }
@@ -482,6 +521,7 @@ function ajoutantDesDependances(cfg, limite = 8) {
     .map((m) => ({
       key: `${m.id}:${cartes[m.id].fetch.sha || ''}`, mr_id: m.id, iid: m.iid, title: m.title || '', author: m.author || '', status: m.status,
       project: m.project, repo_id: m.repo_id, added: cartes[m.id].added, major: cartes[m.id].major, created_at: m.gitlab_created_at,
+      unknown: cartes[m.id].unknown || 0, recent: cartes[m.id].recent || 0,
     }));
   return limite > 0 ? out.slice(0, limite) : out;
 }
@@ -495,14 +535,27 @@ function pourCible(cfg, cible) {
   if (!actif(cfg) || !cible || !cible.commit_sha || !cible.diff_path || !cible.repo_id) return null;
   const motifs = motifsPour(cfg, cible.repo_id);
   const k = [cible.id, cible.commit_sha, cible.diff_path, motifs.manifests.join('|')].join('\u0001');
-  if (cacheCibles.has(k)) return cacheCibles.get(k);
-  let diff = null;
-  try { diff = fs.readFileSync(cible.diff_path, 'utf8'); } catch { return null; }
-  const t = totaux(blocsManifestes(diff, predicat(motifs.manifests)).map((b) => analyser(b.path, b.diff)));
-  const r = { added: t.added, removed: t.removed, changed: t.changed, major: t.major };
-  if (cacheCibles.size > 500) cacheCibles.clear();
-  cacheCibles.set(k, r);
-  return r;
+  let lu = cacheCibles.get(k);
+  if (!lu) {
+    let diff = null;
+    try { diff = fs.readFileSync(cible.diff_path, 'utf8'); } catch { return null; }
+    const analyses = blocsManifestes(diff, predicat(motifs.manifests)).map((b) => analyser(b.path, b.diff));
+    const t = totaux(analyses);
+    lu = {
+      r: { added: t.added, removed: t.removed, changed: t.changed, major: t.major, unknown: 0, recent: 0 },
+      ajoutees: analyses.flatMap((a) => (a.parser ? a.added.map((e) => ({ ...e, parser: a.parser, repo_id: cible.repo_id })) : [])),
+    };
+    if (cacheCibles.size > 500) cacheCibles.clear();
+    cacheCibles.set(k, lu);
+  }
+  /* Le contrôle au registre de la branche, HORS du cache : les comptes se relisent à chaque rendu, et ce
+     qui manque part en arrière-plan, dix noms au plus par session — le rendu suivant les montre. */
+  if (lu.ajoutees.length && registre.actif(cfg)) {
+    const reg = registre.totaux(registre.pourDependances(cfg, cible.repo_id, lu.ajoutees));
+    registre.controlerBientot(cfg, `cible:${cible.id}:${cible.commit_sha}`, lu.ajoutees);
+    return { ...lu.r, unknown: reg.unknown, recent: reg.recent };
+  }
+  return { ...lu.r };
 }
 
 /* L'APERÇU D'UN RÉGLAGE : « sur les MR ouvertes de ce dépôt, ces motifs désignent 3 manifestes » —
@@ -540,5 +593,5 @@ module.exports = {
   DEFAUT_MANIFESTES, MAX_DIFF, MAX_MOTIFS,
   actif, normaliserMotifs, motifsPour, predicat,
   blocsDuDiff, blocsManifestes, lignesDuDiff, analyseurPour, analyser, rapprocher, totaux, majeurDe, sautDeMajeur,
-  poserManifestes, pourCartes, ajoutantDesDependances, pourCible, apercu, purger,
+  poserManifestes, pourCartes, ajouteesOuvertes, ajoutantDesDependances, pourCible, apercu, purger,
 };

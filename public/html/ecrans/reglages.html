@@ -219,6 +219,10 @@
                             <textarea name="manifest_patterns" rows="2" spellcheck="false"></textarea></label>
                         <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-manifests-apercu></span></p>
                     </div>
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.private-patterns">Motifs de paquets privés (un glob de nom par ligne, vide = les réglages globaux)</span>
+                            <textarea name="private_patterns" rows="2" spellcheck="false"></textarea></label>
+                    </div>
                 </details>
                 <p class="form-actions">
                     <button type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -665,6 +669,30 @@
                 <label><span data-i18n="settings.lbl.manifest-patterns">Motifs de manifestes (un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.manifest-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <textarea form="configForm" name="manifest_patterns" rows="4" spellcheck="false"></textarea></label>
                 <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-manifests-apercu></span></p>
+            </div>
+            <!-- LE CONTRÔLE AU REGISTRE : pour chaque dépendance AJOUTÉE, ce que le registre public en sait
+                 (inconnue, publiée il y a N jours). Le premier appel réseau qui ne va ni à la forge ni à Jira :
+                 DÉCOCHÉ d'office, les hôtes nommés dans le libellé, les seuls noms des paquets ajoutés partent,
+                 plafonné par tour, mis en cache par nom. D'équipe, sauf les URL de registre (de ce poste). -->
+            <h3 data-i18n="settings.mr.group.registry">Contrôle au registre</h3>
+            <label class="inline-check"><input form="configForm" name="registry_enabled" type="checkbox" /> <span data-i18n="settings.lbl.registry-enabled">Contrôler les dépendances ajoutées auprès des registres publics</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" data-i18n="settings.registry.hosts">Contacte registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — uniquement pour les paquets ajoutés par vos merge requests, et seulement leur nom.</p>
+            <p class="field-note" id="registryDep" hidden data-i18n="settings.registry.dep">Nécessite « Afficher les dépendances » ci-dessus et le relevé des fichiers : sans dépendance relevée, rien n'est contrôlé.</p>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.registry-recent-days">Récent : publié depuis moins de N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-recent-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="registry_recent_days" type="number" min="0" max="3650" step="1" placeholder="30" />
+            </label>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.registry-max">Au plus N appels par tour</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="registry_max" type="number" min="0" max="1000" step="1" placeholder="30" />
+            </label>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.private-patterns">Motifs de paquets privés (un glob de nom par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.private-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="private_patterns" rows="3" spellcheck="false" placeholder="@mon-entreprise/*&#10;mon-entreprise/*&#10;git.mon-entreprise.fr/**"></textarea></label>
+            </div>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.registry-urls">URL par registre (de ce poste, une ligne « écosystème=url »)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-urls" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="registry_urls" rows="3" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="registry_urls" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
             </div>
 
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>

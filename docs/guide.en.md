@@ -143,6 +143,29 @@ manifest diff over 200 KB is not kept and the ⋯ button says so; without a kept
 this version — the next round picks it up), nothing — never a false "no dependency". Nothing is judged
 or blocked: no score, no licence, no CVE.
 
+**And what the public registry knows about it: `+2 dependencies · 1 unknown`.** This is the one case where
+adding a dependency is almost always a mistake — a name the agent made up, a homonym one letter off, a
+package published last week — and nobody checks it by hand. The **registry check** (unchecked by default,
+see *Settings → Merge Request*) asks, for each **added** dependency only (never the changed or removed
+ones), what the public registry of its ecosystem knows: **unknown** (the registry answers 404: `· 1 unknown`
+on the card), **recent** (first published thirty days ago or less, adjustable threshold: `· 1 recent`), or
+long **known** (nothing on the card). In the panel, each added line says it in words, never an icon alone:
+`left-pad  ^1.3.0  added · prod · unknown to the public registry npm`, `fastjson2 … first published 3 days
+ago (npm)`, `lodash … published since 2012 (npm)`. The rule is non-negotiable: **the registry answered, or
+it did not, and the tool says which** — a timeout, an error, a 503, the round cap, an ecosystem with no
+registry set give `registry unreachable (pypi.org, timed out)` or `not checked · round cap reached`, never
+"unknown". A company package (`@docaposte/*`, an internal Composer `vendor/*`, a Go module on a private host)
+is no alert: the **private package patterns** (global, per group, per repository) and the clone's own
+configuration (`.npmrc` with `registry=` or `@scope:registry=`, `composer.json` with `repositories`,
+`GOPRIVATE` in `go.env`, `pip.conf` with `index-url`) mark it `not checked · probably private package
+(.npmrc)` without asking anyone — and the panel's footer leads to the patterns: a false "unknown" is fixed
+in two clicks. The footer also says `Registries contacted: npm · 4 min ago`, or `Registry check disabled`.
+Eight registries, one per ecosystem: npm, Packagist, PyPI, crates.io, RubyGems, the Go proxy, Maven
+Central, NuGet; the check runs in the discovery round, never at display time, at most thirty names per
+round (adjustable), cached by name — the same dependency added by ten merge requests costs one call, an
+"unknown" is re-checked after 24 h, a "known" after seven days. Nothing is judged: no score, no blocking, no
+near-name comparison, no link to the package page — the name copies.
+
 **A merge request that carries another one says so: `contains !214`.** This is the *stacked* merge
 request: you start from a colleague's or an agent's branch, add your work, open towards `main`. The
 forge shows an ordinary merge request with the diff of both; nothing says that 220 of the 300 lines
@@ -897,7 +920,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   the least. Outside a repository: nothing.
 - **Which dependencies the branch adds.** On the same line, `2 dependencies added` (emphasised) or
   `1 dependency changed` (discreet), read from the manifests in the branch diff — where a follow-up
-  "drop left-pad, write the function" costs the least. The detail is on the merge request's card.
+  "drop left-pad, write the function" costs the least. The detail is on the merge request's card. With the
+  registry check on, the line completes on the next render — `2 dependencies added · 1 unknown` — under the
+  same cache as the cards, ten names at most per session.
 - **Read-only linked projects (Advanced).** In coding, the session dialog lets you add other
   repositories as **context**: the AI reads them — their API, their schema, their contracts — to
   respect what they expose, without **ever** modifying them. A repository (with search, as
@@ -2095,7 +2120,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked), then *Fetch the commits of open MRs* (checked; it shares the files cap, an MR fetched for its files is fetched for its commits in the same round; unchecked, no extra call and no `contains !214` badge) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked), then *Fetch the commits of open MRs* (checked; it shares the files cap, an MR fetched for its files is fetched for its commits in the same round; unchecked, no extra call and no `contains !214` badge) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, then the **registry check** — *Check added dependencies against the public registries* (**unchecked** by default: it is Mergerie's first network call that goes neither to the forge nor to Jira, and the label names the hosts: registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — only for the packages your merge requests add, and only their name), *Recent: published less than N days ago* (30), *At most N calls per round* (30; 0 = no limit, independent of the file cap), the **private package patterns** (one name glob per line, empty; also on a repository and on a group, same resolution as the manifest patterns) and, **this workstation's** and never shared, the **URL per registry** (one `ecosystem=url` line per registry to override — a mirror, a company proxy; empty after the `=`, the ecosystem is not checked) —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
@@ -3004,6 +3029,18 @@ To run tests without touching your database: `MERGERIE_DATA_DIR=/tmp/my-test npm
 powerful operations (git, Docker, AI agent, file reads/writes). By default **the server listens ONLY on
 `localhost`** (`127.0.0.1`) and asks for nothing: the machine's user **is** the app's user. No data is
 sent anywhere but to the services **you** configure (your GitLab, GitHub, Jira, agent CLI, data repository).
+
+**What leaves the machine, and the one exception.** Every network call Mergerie makes goes to one of those
+targets you configured — except one, **disabled by default**: the *registry check* of added dependencies
+(Settings → Merge Request → Discovery). Checked, it sends the **name** of the packages a merge request adds —
+nothing else: not the manifest, not the repository name, not the merge request, no identifying header beyond
+the `User-Agent` — to the public registries named in the setting (registry.npmjs.org, repo.packagist.org,
+pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org, or the mirrors you
+set), at most N names per round, through your environment's proxy (`HTTPS_PROXY`, `NO_PROXY`) and with the
+forge's company CA (`GITLAB_CA_CERT`). Packages covered by a private pattern or by the clone's configuration
+(`.npmrc`, `composer.json`, `go.env`, `pip.conf`) never leave; the answer cache stays on this workstation and
+does not travel in the data repository; the discovery log counts the calls per registry. Zero AI calls, zero
+token.
 
 **Exposing the server requires a token.** With a `HOST` other than a loopback address (`0.0.0.0`, the
 machine's IP…), Mergerie **refuses to start** without `MERGERIE_ACCESS_TOKEN`. The browser then goes

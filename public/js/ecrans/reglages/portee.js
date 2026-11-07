@@ -120,6 +120,12 @@ async function loadConfig() {
   if (f.test_patterns) f.test_patterns.value = c.test_patterns || '';
   if (f.neutral_patterns) f.neutral_patterns.value = c.neutral_patterns || '';
   if (f.manifest_patterns) f.manifest_patterns.value = c.manifest_patterns || '';
+  // Le contrôle au registre : DÉCOCHÉ d'office (`=== '1'`), le seuil et le plafond s'écrivent (0 est une valeur), les motifs privés vides, les URL de ce poste.
+  if (f.registry_enabled) f.registry_enabled.checked = String(c.registry_enabled) === '1';
+  if (f.registry_recent_days) f.registry_recent_days.value = c.registry_recent_days == null || c.registry_recent_days === '' ? 30 : Number(c.registry_recent_days);
+  if (f.registry_max) f.registry_max.value = c.registry_max == null || c.registry_max === '' ? 30 : Number(c.registry_max);
+  if (f.private_patterns) f.private_patterns.value = c.private_patterns || '';
+  if (f.registry_urls) f.registry_urls.value = c.registry_urls || '';
   majMotifsTests();
   syncReviewAutoMax();
   syncAutoPostBlocking();

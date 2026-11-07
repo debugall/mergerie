@@ -157,10 +157,10 @@ describe('Dépendances ajoutées par une merge request', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diff-'));
     const avec = path.join(dir, 'avec.patch');
     fs.writeFileSync(avec, `${fixture('monorepo.diff')}`);
-    assert.deepEqual(dp.pourCible(cfg, { id: 1, repo_id: repoId, commit_sha: 'c1', diff_path: avec }), { added: 2, removed: 0, changed: 0, major: 0 });
+    assert.deepEqual(dp.pourCible(cfg, { id: 1, repo_id: repoId, commit_sha: 'c1', diff_path: avec }), { added: 2, removed: 0, changed: 0, major: 0, unknown: 0, recent: 0 });
     const sans = path.join(dir, 'sans.patch');
     fs.writeFileSync(sans, 'diff --git a/src/x.js b/src/x.js\n+++ b/src/x.js\n+x\n');
-    assert.deepEqual(dp.pourCible(cfg, { id: 2, repo_id: repoId, commit_sha: 'c2', diff_path: sans }), { added: 0, removed: 0, changed: 0, major: 0 });
+    assert.deepEqual(dp.pourCible(cfg, { id: 2, repo_id: repoId, commit_sha: 'c2', diff_path: sans }), { added: 0, removed: 0, changed: 0, major: 0, unknown: 0, recent: 0 });
     assert.equal(dp.pourCible(cfg, { id: 3, repo_id: repoId, commit_sha: null, diff_path: sans }), null);
     assert.equal(dp.pourCible({ ...cfg, deps_enabled: '0' }, { id: 1, repo_id: repoId, commit_sha: 'c1', diff_path: avec }), null);
   });

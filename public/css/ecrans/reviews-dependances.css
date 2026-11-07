@@ -16,3 +16,9 @@ span.tag.deps:hover { background: none; }
 .deps-kind.add { color: var(--red); }
 .deps-kind.del { color: var(--muted); }
 .deps-kind.major { color: var(--amber-text, var(--amber)); }
+/* Le contrôle au registre, dans les lignes du panneau : « inconnu » est la seule réponse accentuée
+   (le registre dit que ce nom n'existe pas) ; « récent » dans l'ambre ; le reste — connu, injoignable,
+   non contrôlé — dans le gris des métadonnées. Jamais une icône seule : le texte dit tout. */
+.deps-rows .deps-reg { font-family: inherit; }
+.deps-rows .deps-reg.unknown { color: var(--red); font-weight: 600; }
+.deps-rows .deps-reg.recent { color: var(--amber-text, var(--amber)); }
