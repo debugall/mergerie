@@ -101,7 +101,7 @@ async function openReport(id, opts = {}) {
                 possible sans ouvrir la forge. */''}
           ${m.reviewed_sha ? ` · <span class="muted" title="${esc(tr('report.reviewed-sha.title'))}"><code>${esc(String(m.reviewed_sha).slice(0, 8))}</code></span>` : ''}
           ${d.stale ? `<button type="button" class="tag stale" id="aStaleRe" data-stale-mr="${m.id}" title="${esc(tr('report.tag.stale-go'))}">${tr('report.tag.stale')}</button>` : ''}
-          ${origineHtml(d.origin_task)}
+          ${origineHtml({ ...m, origin_task: d.origin_task })}
           ${/* CE QUE CETTE REVIEW A COÛTÉ. Les statistiques n'en donnaient qu'une moyenne :
                 « celle-ci a-t-elle coûté cher ? » n'avait pas de réponse là où on la lit. */''}
           ${d.tokens_est ? ` · <span class="muted" title="${esc(tr('report.cost.title'))}">${esc(tr('task.cost.tokens', { n: fmtMilliers(d.tokens_est) }))}</span>` : ''}</div>

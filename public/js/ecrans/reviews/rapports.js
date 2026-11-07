@@ -107,7 +107,8 @@ function renderReports() {
     (m.lots || []).map((l) => l.id).join(','),
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(','),
-    sigCroise(m), sigTests(m)].join('\u0001'))].join('\u0002');
+    sigCroise(m), sigTests(m),
+    m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note, m)}
@@ -135,6 +136,7 @@ function renderReports() {
           ${pluginsHtml('mr-badge', m)}
           ${badgeCIForge(m)}
           ${verifyBadge(m.verification)}
+          ${origineHtml(m)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
           ${m.verifiable ? `<button class="btn btn-sm" data-verify-report="${m.id}" title="${tr('verify.btn.verify-title')}">${svgIco('check')}${tr('verify.btn.verify')}</button>` : ''}
           ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
@@ -482,14 +484,23 @@ document.addEventListener('mouseover', async (e) => {
    MR) est partout ; celui-ci manquait, et c'est pourtant celui qu'on suit après « Faire
    corriger » : « est-ce que ça tourne ? ». La puce mène à la carte, où « Envoyer un suivi » et
    « Reprendre le rapport » existent déjà — on ne refait pas leur geste ici. */
-function origineHtml(t) {
+/* La merge request d'où l'on part voyage avec le bouton : le bandeau d'atterrissage dans Dev IA
+   dit « issue de la merge request !12 de grp/app, branche feature/x ». */
+function origineAttrs(m) {
+  const t = m.origin_task;
+  return `data-go-session="${t.id}" data-go-kind="${esc(t.kind || 'code')}" data-go-from="!${m.iid}" data-go-project="${esc(m.project || '')}" data-go-branch="${esc(m.source_branch || '')}"`;
+}
+function origineHtml(m) {
+  const t = m && m.origin_task;
   if (!t || !t.id) return '';
   const enCours = t.status === 'running';
-  return `<button type="button" class="tag${enCours ? ' run' : ''}" data-go-session="${t.id}" data-go-kind="${esc(t.kind || 'code')}"
+  return `<button type="button" class="tag${enCours ? ' run' : ''}" ${origineAttrs(m)}
     title="${esc(tr('report.origin.title', { label: t.label || '' }))}">${svgIco('bot')} ${esc(tr(enCours ? 'report.origin.running' : 'report.origin', { id: t.id }))}</button>`;
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-go-session]');
-  if (b) ouvrirSession(b.dataset.goSession, b.dataset.goKind);
+  if (!b) return;
+  const d = b.dataset;
+  ouvrirSession(d.goSession, d.goKind, { depuis: d.goFrom ? { mr: d.goFrom, project: d.goProject, branch: d.goBranch } : null });
 });
 

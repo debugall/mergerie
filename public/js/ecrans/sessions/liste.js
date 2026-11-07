@@ -1,6 +1,6 @@
 'use strict';
 /* Dev IA : l'état des sessions, les sous-onglets codage / exploration, miennes / équipe / toutes. */
-// @expose allTasks, fmtDateTime, questions, renderTasks, taskKind
+// @expose allTasks, fmtDateTime, questions, renderTasks, revelerSession, taskKind
 /* ---------- Dev IA : sessions de codage et d'exploration ----------
    Une session porte sur UN OU PLUSIEURS projets, chacun avec sa branche.
    - Codage    : l'IA modifie le code de chaque projet → commit / push / MR PAR PROJET.
@@ -220,6 +220,25 @@ function duProprio(t) {
 
 // Une session rangée ne sort que si la case le demande.
 const taskVisible = (t) => (showHiddenTasks || !t.hidden) && duProprio(t) && duSpec(t);
+/* ARRIVER SUR UNE SESSION QUE LA LISTE CACHE. Depuis un rapport ou une carte de merge request, on
+   demande « la session qui a produit cette branche » : rangée, d'un autre auteur, ou d'une spec,
+   elle n'est pas rendue et le clic ne menait nulle part. On lève ce qui la cache — la case des
+   sessions rangées, le filtre d'auteur, celui des specs — puis on redessine. Rend vrai si la
+   session est connue de la liste. */
+function revelerSession(id) {
+  const t = allTasks.find((x) => x.id === Number(id));
+  if (!t) return false;
+  if (taskVisible(t)) return true;
+  if (t.hidden && !showHiddenTasks) {
+    showHiddenTasks = true;
+    const cb = $('#taskShowHidden'); if (cb) cb.checked = true;
+    try { localStorage.setItem('aidevtools_show_hidden', '1'); } catch { /* ignore */ }
+  }
+  if (!duProprio(t)) { filtreProprio = 'toutes'; try { localStorage.setItem('mergerie_task_owner', 'toutes'); } catch { /* ignore */ } }
+  if (!duSpec(t)) filtreSpec = 'avec';
+  renderTasks();
+  return true;
+}
 
 /* Combien de sessions le rangement retire de la vue. Affiché à côté de la case : une
    session qui disparaît sans laisser de trace se croit supprimée, et on la recrée. */

@@ -98,6 +98,15 @@ app.get('/api/mrs', wrap((req, res) => {
   for (const c of db.prepare('SELECT mr_id, COUNT(*) n, MIN(created_at) AS depuis FROM mr_comment_draft GROUP BY mr_id').all()) {
     brouillons[c.mr_id] = { n: c.n, depuis: c.depuis };
   }
+  /* LA SESSION DE CODAGE QUI A PRODUIT LA BRANCHE, sur la carte et pas seulement dans l'en-tête du
+     rapport : depuis la file, on veut rejoindre la session qui a écrit ce code — relancer, suivre,
+     relire son retour — sans passer par le rapport ni retrouver la carte dans Dev IA. Même jointure
+     que `originTask` (dépôt, branche), la plus récente gagne ; une requête pour toute la liste. */
+  const origineParBranche = new Map();
+  for (const r of db.prepare(`SELECT tt.repo_id, tt.branch, t.id, t.label, t.prompt, t.status, t.kind FROM task_target tt
+      JOIN task t ON t.id = tt.task_id ORDER BY tt.id`).all()) {
+    origineParBranche.set(`${r.repo_id}\u0001${r.branch}`, { id: r.id, status: r.status, kind: r.kind || 'code', label: r.label || String(r.prompt || '').slice(0, 60) });
+  }
 
   const severites = {};
   for (const f of db.prepare(`SELECT f.mr_id, f.severity, COUNT(*) n FROM finding f
@@ -226,6 +235,7 @@ app.get('/api/mrs', wrap((req, res) => {
       /* TESTS TOUCHÉS : code / tests / neutres, l'alerte « 0 test » au-delà du seuil, les tests
          eux-mêmes. `null` = pas de liste fraîche : la carte ne dit rien, jamais un faux « 0 test ». */
       tests: testes[r.id] || null,
+      origin_task: origineParBranche.get(`${r.repo_id}\u0001${r.source_branch}`) || null,
     };
   }));
 }));

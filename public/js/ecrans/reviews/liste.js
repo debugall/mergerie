@@ -288,7 +288,8 @@ function renderToReview() {
       m.verification.failed_count, m.verification.detail_source].join(','),
     m.verifiable, mrSelection.has(m.id),
     // Les badges de croisement et de tests touchés font partie de ce que la carte affiche.
-    sigCroise(m), sigTests(m)].join('\u0001')).join('\u0002');
+    sigCroise(m), sigTests(m),
+    m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) { majBoutonReview(); return; }
   stagger('#toReviewList .card');
   majBoutonReview();       // la recherche et les filtres viennent peut-être de changer la liste
@@ -447,6 +448,8 @@ function mrCard(m) {
         ${pluginsHtml('mr-badge', m)}
         ${badgeCIForge(m)}
         ${verifyBadge(m.verification)}
+        ${/* LA SESSION QUI A PRODUIT CETTE BRANCHE, quand elle existe sur ce poste : la puce mène à sa carte dans Dev IA. */''}
+        ${origineHtml(m)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
         ${/* « NOUVEAU POUR TOI » : un rapport d'un collègue, arrivé par la synchro, jamais ouvert ici.
               C'est le correctif du « noyé dans la masse » du retour de congé — et il vaut tous les jours. */''}
@@ -482,6 +485,8 @@ function mrCard(m) {
       <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}${m.files_fetch && m.files_fetch.refused ? ` — ${esc(tr('mr.croise.refused'))}` : ''}" aria-haspopup="true" aria-expanded="false">⋯</button>
       <div class="split-menu" hidden role="menu">
         <button role="menuitem" data-dev="${m.id}" data-branch="${esc(m.source_branch)}">${tr('mr.btn.code')}</button>
+        ${/* …et REJOINDRE la session qui a produit la branche, quand elle existe ici — plutôt que d'en ouvrir une seconde. */''}
+        ${m.origin_task ? `<button role="menuitem" ${origineAttrs(m)}>${tr('mr.btn.open-session', { id: m.origin_task.id })}</button>` : ''}
         <button role="menuitem" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? '' : esc(tr('err.verify.no-verifier'))}">${tr('verify.btn.verify')}</button>
         ${m.verification ? `<button role="menuitem" data-vresults="${m.id}">${tr('verify.btn.results')}</button>` : ''}
         ${/* LE MESSAGE SLACK TOUT FAIT. « Où en est !217 ? » se répond en collant une ligne

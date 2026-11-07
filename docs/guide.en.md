@@ -234,6 +234,15 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   saying that a force push is next. Every remedy button of a failed project (“Catch up with the base and
   retry”, “Resolve the conflict”, “Start from a fresh agent session”, “Re-clone the repository”) **explains
   itself on hover**.
+- **Reach the session that produced the branch, from Reviews.** When a merge request's branch
+  comes from a coding session this workstation knows, its card — to review, reviewed or done —
+  carries the `Session #N` chip (the most recent on that branch; "running" while it runs), and the
+  ⋯ menu offers `Open coding session #N`. Clicking lands on its card in *AI Dev*, even when it is
+  **archived** or hidden by a filter: the list reveals it instead of leading nowhere. On arrival
+  the card keeps an **outline** until you click elsewhere (or press Escape), even while the list
+  re-renders, and a banner at the top says "You are on session #N, from merge request !12 of
+  grp/app, branch feature/x", with `Show the card` to scroll back to it. The report header carries
+  the same chip. A branch without a session carries nothing.
 - **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
   want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
   **new** session for that; from the session that produced the branch, what you want is a

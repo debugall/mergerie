@@ -252,6 +252,15 @@ Mergerie la lit, il ne la remplace pas.
   réponse, et le refus s'affiche sur la ligne du projet. Cochée, c'est `--force-with-lease` —
   jamais `--force` : un commit poussé sur la branche depuis le dernier fetch fait **échouer** le
   push au lieu de disparaître. Le travail d'un collègue n'est jamais effacé en silence.
+- **Rejoindre la session qui a produit la branche, depuis Reviews.** Quand la branche d'une merge
+  request vient d'une session de codage connue de ce poste, sa carte — à traiter, reviewée ou
+  traitée — porte la puce `Session #N` (la plus récente sur cette branche ; « en cours » quand elle
+  tourne), et le menu ⋯ propose `Ouvrir la session de codage #N`. Le clic mène à sa carte dans
+  *Dev IA*, même **rangée** ou cachée par un filtre : la liste la révèle au lieu de ne mener nulle
+  part. À l'arrivée, la carte garde un **contour** tant qu'on n'a pas cliqué ailleurs (ou Échap),
+  même quand la liste se redessine, et un bandeau en tête dit « Vous êtes sur la session #N, issue
+  de la merge request !12 de grp/app, branche feature/x » — avec `Voir la carte` pour y revenir.
+  L'en-tête du rapport porte la même puce. Une branche sans session ne porte rien.
 - **Reprendre le rapport de review dans un suivi.** Une fois la merge request reviewée, on veut
   souvent que l'IA traite les constats. Le bouton `Faire corriger le code par l'IA` du rapport
   ouvre pour cela une **nouvelle** session ; depuis la session qui a produit la branche, c'est un
