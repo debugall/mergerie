@@ -29,6 +29,7 @@ const { servirFichierNonFiable } = require('../fichiers');
 const { gardeConfigAgent, mrById, parseConvergeOpts, readFileSafe, ticketUrl, wrap } = require('../http');
 const { auteurs } = require('../lib/partage');
 const { rafraichirUne } = require('../lib/decouverte');
+const { rafraichirMr } = require('../../notes/discover');
 const identite = require('../../core/identite');
 const { etat: etatLocal } = require('../../data/localstate');
 const { assertValidBranch, insertTargets } = require('../lib/sessions');
@@ -460,10 +461,17 @@ app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(mr, String(req.query.path || ''))); return; }
   res.json(await viewerFileDiff(await mrCloneCtx(mr), String(req.query.path || '')));
 }));
-app.post('/api/mrs/:id/rereview', wrap((req, res) => {
+app.post('/api/mrs/:id/rereview', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (mr.status === 'done') throw new Error(t('err.mr-marquee-done-re-review'));
+  /* LA TÊTE D'ABORD. `current_sha` est le cache de la forge, à jour de la dernière découverte ;
+     `reviewed_sha` peut venir d'un collègue qui a relu un commit plus récent que ce cache. Sans
+     cette relecture, le delta partirait de la review du collègue vers une tête PÉRIMÉE — à
+     l'envers — et la passe reculerait `reviewed_sha`. Une requête à la forge, best-effort :
+     injoignable, la review part avec ce qu'on tient (et la garde d'ancêtre de `prepareContext`
+     refuse le delta inversé). */
+  try { await rafraichirMr(mr.id); } catch { /* forge injoignable : on relit avec le cache */ }
   // incremental : ne reviewer que le delta depuis le dernier SHA reviewé (best-effort :
   // reviewMr retombe sur une review complète s'il n'y a pas de delta exploitable).
   const incremental = !!(req.body && (req.body.incremental === true || req.body.incremental === '1'));

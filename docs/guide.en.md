@@ -353,7 +353,10 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   **incremental re-review** only reads **what changed** since the last reviewed SHA
   (`reviewed_sha..current_sha`) and supplies the **previous report as context** — the AI produces a
   **complete, up-to-date report** (score included) while reading far **less diff** (so fewer tokens). It
-  falls back to a full review automatically when there is no usable delta (a force-push, say). Re-running a
+  falls back to a full review automatically when there is no usable delta (a force-push, say). Re-run
+  **re-reads the MR from the forge first**: a colleague's review, arrived through the shared data
+  repository, may target a head this workstation has not discovered yet, and a reviewed SHA that is not an
+  ancestor of the head gets a full review, never a backwards delta. Re-running a
   review **resumes the same agent session** as the previous one: the AI remembers its analysis and focuses
   on what changed.
 - **⚡ Converge — the autonomous quality loop.** A report's `Converge` button starts an **autonomous loop**:

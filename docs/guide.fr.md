@@ -370,7 +370,10 @@ Mergerie la lit, il ne la remplace pas.
   apparaît : la **re-review incrémentale** ne relit que **ce qui a changé** depuis le dernier SHA reviewé
   (`reviewed_sha..current_sha`) et fournit le **rapport précédent en contexte** — l'IA produit un **rapport
   complet à jour** (note incluse) en lisant beaucoup **moins de diff** (donc moins de tokens). Repli
-  automatique sur une review complète s'il n'y a pas de delta exploitable (ex. force-push). Relancer une
+  automatique sur une review complète s'il n'y a pas de delta exploitable (ex. force-push). La relance
+  **relit d'abord la MR sur la forge** : la review d'un collègue, arrivée par le dépôt de données partagé,
+  peut viser une tête que ce poste n'a pas encore découverte, et un SHA reviewé qui n'est pas un ancêtre
+  de la tête donne une review complète, jamais un delta à l'envers. Relancer une
   review **reprend la même session d'agent** que la review précédente : l'IA se souvient de son analyse et
   se concentre sur ce qui a changé.
 - **⚡ Converger — la boucle de qualité autonome.** Le bouton `Converger` d'un rapport lance une **boucle

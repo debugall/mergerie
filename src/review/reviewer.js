@@ -78,7 +78,15 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
   let diff = null;
   let usedIncremental = false;
   const canIncrement = opts.incremental && mr.reviewed_sha && mr.current_sha && mr.reviewed_sha !== mr.current_sha;
-  if (canIncrement) {
+  /* LE DELTA NE VA QUE VERS L'AVANT. `reviewed_sha` peut venir d'un collègue (dépôt de données
+     partagé) qui a relu une tête que ce poste n'avait pas encore découverte, ou survivre à un
+     force-push vers un commit plus ancien : `reviewed_sha..current_sha` serait alors le diff
+     À L'ENVERS — des ajouts lus comme des suppressions — et la passe reposerait `reviewed_sha`
+     en arrière, chez tout le monde. Un SHA reviewé qui n'est pas un ancêtre de la tête n'a pas
+     de delta : diff complet, et le journal dit pourquoi. */
+  if (canIncrement && !enDemo && !(await git.isAncestor(cwd, mr.reviewed_sha, mr.current_sha))) {
+    onLog(t('log.review.diff-not-ancestor', { reviewed: String(mr.reviewed_sha).slice(0, 8), current: String(mr.current_sha).slice(0, 8) }));
+  } else if (canIncrement) {
     try {
       diff = await git.diffRange(cwd, mr.reviewed_sha, mr.current_sha, onLog);
       usedIncremental = true;
