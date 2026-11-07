@@ -671,6 +671,35 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     { id: 'q2', question: 'Combien de tentatives au maximum avant d’abandonner ?', context: 'Aucune valeur n’est imposée par le code existant.', options: null, answer: null },
   ]), at(0.3));
 
+/* LA SESSION PARTAGÉE « DE CLAIRE », reprenable sur ce poste : une session de codage reçue du dépôt
+   d'équipe (ici : son auteur semé dans l'état local, comme la synchro le ferait), branche poussée,
+   deux passes, et une question en attente — le bouton dit « Répondre et reprendre sur ce poste ». */
+{
+  const tC = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, ask_questions, shared, label, created_at, updated_at) VALUES (?,?,?,?,?,?,1,1,?,?,?)')
+    .run(repoIds['groupe/tarification'], 'Introduis des paliers de remise (5 %, 10 %, 15 %) selon le volume annuel, configurables par pays.',
+      'feature/remise-paliers', 'main', 'needs_input', 'code', 'Paliers de remise par pays', at(2), at(0.5));
+  const tgC = Number(db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, push_command, questions_json, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(tC.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers', 'main', 'needs_input', require('crypto').randomBytes(20).toString('hex'),
+    'git push -u origin feature/remise-paliers', JSON.stringify([
+      { id: 'q1', question: 'Les paliers se cumulent-ils avec la remise fidélité ?', context: 'Le code applique aujourd’hui une seule remise, la plus forte.', options: [
+        { value: 'cumul', label: 'Oui, cumul plafonné à 20 %' }, { value: 'max', label: 'Non, la plus forte seulement' }], answer: null },
+    ]), at(0.5)).lastInsertRowid);
+  const dossierC = ensureDir(path.join(TASKS_DIR, String(tC.lastInsertRowid), String(tgC)));
+  [
+    { kind: 'run', prompt: 'Introduis des paliers de remise (5 %, 10 %, 15 %) selon le volume annuel, configurables par pays.', out: '# Retour de l’IA\n\nJ’ai ajouté `src/remise/paliers.js` (lecture des paliers par pays) et branché le calcul dans `calcul.js`. Les tests existants passent ; j’en ai ajouté trois sur les bornes.', jours: 2 },
+    { kind: 'followup', prompt: 'Les paliers doivent se lire dans la configuration par pays, pas dans une table en dur.', out: '# Retour de l’IA\n\nLes paliers viennent maintenant de `config/remises/<pays>.json`, avec un défaut. Je me suis arrêté sur une question : les paliers se cumulent-ils avec la remise fidélité ?', jours: 0.5 },
+  ].forEach((passe, i) => {
+    const sortie = path.join(dossierC, `output-v${i + 1}.md`);
+    fs.writeFileSync(sortie, passe.out, 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,?,?,?,?,?)`)
+      .run(tC.lastInsertRowid, tgC, i + 1, passe.kind, passe.prompt, sortie, at(passe.jours));
+  });
+  const uidC = db.prepare('SELECT uid FROM task WHERE id = ?').get(tC.lastInsertRowid).uid;
+  // eslint-disable-next-line global-require
+  require('../src/data/localstate').etat.ecrire('author', `sessions/${uidC}/session.json`, 'name', 'Claire');
+  // compté plus bas, avec les autres (`counts` n'existe pas encore ici)
+}
+
 /* Session MULTI-DÉPÔTS partiellement en échec : le cas où « relancer » en bloc coûte cher.
    Deux projets sont passés, deux ont échoué — on voit donc le bouton « Lancer » par projet, le
    raccourci « Relancer les projets en échec », et « Vérifier l'état des branches ». C'est
@@ -1867,6 +1896,7 @@ async function semerPlugins() {
   registreDeps.poser('npm', 'left-pad', { status: 'unknown', reason: '404', now: at(0.01) });
   registreDeps.poser('npm', 'date-fns', { status: 'known', first_published: '2014-11-18T13:52:20.000Z', latest_published: at(40), now: at(0.01) });
   counts.registry_lookup = 2;
+  counts.reprise_claire = db.prepare("SELECT COUNT(*) c FROM task WHERE label = 'Paliers de remise par pays'").get().c;
 }
 
 semerDiffsLocaux().then(semerPlugins).then(() => {

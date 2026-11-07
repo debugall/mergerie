@@ -704,6 +704,13 @@ dépôt** chaque **dossier** a la sienne, et répondre à l'un **ne fait pas ret
 ⚠ Tant qu'une question tient, **rien n'a été fait** : pas de synthèse enregistrée en exploration,
 aucun fichier touché hors dépôt.
 
+**Et si c'est la session d'un collègue ?** Reçue du dépôt de données partagé, elle se lit mais ne se relance
+pas d'ici : la ligne de son projet porte **« Reprendre sur ce poste »** — ou **« Répondre et reprendre sur
+ce poste »** quand sa cible attend une réponse. La modale s'ouvre pré-remplie et verrouillée sur
+l'essentiel (son dépôt, sa branche comme départ, une nouvelle branche proposée, tes réglages), un seul champ
+à remplir — ta consigne —, et un encart repliable montre **en entier** le premier message que ton agent
+recevra : tout l'historique de sa session, puis ta consigne. Voir *Partager avec une équipe*.
+
 **Et si tu as répondu dans ton terminal ?** « Reprendre au terminal » copie la session d'agent : on
 peut donc répondre là-bas, et l'agent y poursuit le travail — dans le clone de Mergerie, qui n'en
 sait rien. Le bouton **`J'ai répondu au terminal`**, à côté de `Répondre et reprendre`, solde cette
@@ -2946,6 +2953,28 @@ Mergerie y range ce travail : **un fichier par objet**, en texte lisible. Chacun
 instance, **ses** jetons et **son** abonnement au CLI d'IA : les requêtes partent de son poste et
 lui sont facturées, et c'est le résultat qui est partagé. Il n'y a rien à installer, rien à
 administrer : l'équipe a déjà une forge, des droits, des sauvegardes et un historique.
+
+**Reprendre la session d'un collègue sur ce poste.** Une session de codage reçue du dépôt se *lit* : le
+handle d'agent, le clone et les suivis sont sur l'autre poste — quand Claire est absente, la session que son
+agent a laissée en attente d'une réponse attend avec elle. Sur la ligne de projet de sa carte, **« Reprendre
+sur ce poste »** (ou **« Répondre et reprendre sur ce poste »** si la cible attend une réponse) crée une
+session **à toi**, sur ton clone et ton abonnement, qui repart de sa branche telle qu'elle est sur la forge
+(nouvelle branche `<branche>-reprise-<toi>`, posée sur la tête de la forge), avec **tes** réglages — jamais
+les siens, qui ne voyagent pas — et dont l'agent reçoit, comme premier message, **tout l'historique de la
+session d'origine, tel quel** : le prompt, chaque passe avec son genre, le prompt réellement envoyé et le
+retour de l'agent, les questions et les réponses, le dernier rapport de review et la dernière vérification
+liés à la branche, puis ta réponse à la question en attente et ta **consigne de reprise**. Assemblé
+mécaniquement, sans aucun appel d'IA, jamais résumé : la modale le montre **en entier** avant de lancer,
+avec les tokens estimés, un curseur « passes incluses » (défaut : toutes) et la case « joindre le diff de la
+branche » ; la première passe le conserve. Rien n'est automatique, rien ne touche la session d'origine, et
+aucun handle d'agent n'est réutilisé — il n'existe que sur l'autre machine. La filiation va dans les deux
+sens : ta carte dit `reprise de la session de Claire (#123)`, la sienne — chez tout le monde après synchro
+— `reprise par Amady (#207) · il y a 10 min` ; plusieurs reprises, plusieurs lignes, aucune n'est « la »
+suite officielle. Le bouton n'apparaît que pour une session de codage **sur dépôt** reçue d'un autre poste,
+dont la branche a été poussée (`branche non poussée par Claire` sinon) et n'est pas mergée (`branche mergée
+(!214)`) ; la forge est relue à l'ouverture (`branche absente de la forge`), et l'en-tête dit quand elle est
+`N commits plus loin que la dernière passe connue`. Hors dépôt, exploration, question libre : rien à
+reprendre en v1.
 
 **Ce qui ne part JAMAIS dans le dépôt.** Les six jetons d'API, le dossier de clonage, la langue,
 les chemins absolus de cette machine, les sessions rangées, les journaux de

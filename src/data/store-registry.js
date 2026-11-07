@@ -1113,6 +1113,11 @@ const REGISTRE = [
       triggered_by: r.triggered_by || 'manual',
       verifier: r.verifier_id ? ctx.uid('verifier', r.verifier_id) : null,
       followup_auto: r.followup_auto ? 1 : 0,
+      /* LA FILIATION D'UNE REPRISE : deux uid, pour que la carte d'origine, chez tout le monde,
+         dise « reprise par … ». Rien d'autre ne part : ni handle, ni message assemblé (il se
+         relit dans la première passe). */
+      resumed_from: r.resumed_from_uid || null,
+      resumed_target: r.resumed_target_uid || null,
       created_at: r.created_at,
       updated_at: r.updated_at,
       finished_at: r.finished_at || null,
@@ -1185,6 +1190,8 @@ const REGISTRE = [
       triggered_by: doc.triggered_by || 'manual',
       verifier_id: doc.verifier ? ctx.id('verifier', doc.verifier) : null,
       followup_auto: doc.followup_auto ? 1 : 0,
+      resumed_from_uid: doc.resumed_from || null,
+      resumed_target_uid: doc.resumed_target || null,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
       finished_at: doc.finished_at || null,

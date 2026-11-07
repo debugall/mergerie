@@ -21,6 +21,7 @@ const agentpass = require('../agent/pass');
 const protocol = require('../agent/protocol');
 const { etat } = require('../data/localstate');
 const { optionsFor } = require('../agent/profile/prompt');
+const reprise = require('./reprise');
 const apres = require('../agent/profile/apres');
 const demoAgents = require('../demo/agents');
 const pieces = require('../agent/pieces');
@@ -375,6 +376,21 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
   let doResume = !!(resume || tg.session_key);
+  /* LA REPRISE DE LA SESSION D'UN COLLÈGUE : la première passe envoie le premier message assemblé
+     (tout l'historique de la session d'origine, puis ma consigne) à la place du prompt — et jamais
+     un handle venu d'ailleurs : un `session_key` qui serait arrivé par le fichier partagé n'est pas
+     repris, il est ignoré et le journal le dit. */
+  if (task.resumed_from_uid && !agentpass.list('task', task.id, tg.id).length) {
+    if (tg.session_key) { onLog(t('log.task.reprise-handle-ignored', { handle: String(tg.session_key).slice(0, 12) })); doResume = false; setTarget(tg.id, { session_key: null, session_backend: null, session_cwd: null }); }
+    const premier = reprise.premierMessage(task.id);
+    if (premier) {
+      task = { ...task, prompt: premier };
+      promptText = buildCodePrompt(task);
+      if (promptRepli != null) promptRepli = promptText;
+      const b = reprise.bilan(task.id) || {};
+      onLog(t('log.task.reprise', { id: task.id, origine: b.origine_id || '?', auteur: b.auteur || '?', branch: b.branch || tg.base_branch || '', sha: String(b.sha || '').slice(0, 7), passes: b.passes || 0, tokens: Math.round((b.tokens || 0) / 1000) }));
+    }
+  }
   const cfg = getConfig();
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   if (!repo) throw new Error(t('err.depot-introuvable'));

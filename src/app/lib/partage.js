@@ -108,6 +108,12 @@ function passesPayload(scope, unitId, taskId, wantedN, title, legacyOutputPath) 
  * `null` quand le partage n'est pas configuré : en mono-poste, « par moi » sur chaque carte
  * n'apprendrait rien à personne. */
 function auteurs(table, rows) {
+  /* EN DÉMO, pas de dépôt de données : la session partagée « de Claire » porte son auteur dans
+     l'état local, semé par `scripts/demo-seed.js` — le même tableau que celui que la synchro remplit. */
+  if (process.env.MERGERIE_DEMO === '1' && rows.length) {
+    const noms = etatLocal.carte('author', 'name');
+    return new Map(rows.map((r) => { const c = store.cheminSur(table, r); return [r.id, (c && noms.get(c)) || null]; }));
+  }
   if (!datasync.estConfigure() || !rows.length) return new Map();
   const chemins = new Map();
   for (const r of rows) {

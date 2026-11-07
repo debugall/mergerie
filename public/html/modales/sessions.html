@@ -9,6 +9,10 @@
             <label><span data-i18n="task.lbl.tache-a-realiser-prompt">Tâche à réaliser (prompt)</span> <button type="button" class="hint" tabindex="-1" aria-label="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-tip="En codage : ce que l'IA doit implémenter, appliqué à chaque projet sélectionné. En exploration : la question posée sur le code, sans aucune modification." data-i18n-tip="task.tip.en-codage-ce-que-l"><svg class="ico"><use href="#i-info"/></svg></button>
                 <textarea id="taskPrompt" name="prompt" rows="5" placeholder="Décris la tâche de dev à faire… (ex. Ajouter un endpoint /health qui renvoie le statut)" data-i18n-placeholder="task.ph.decris-la-tache-de-dev" required></textarea>
             </label>
+            <!-- LA REPRISE DE LA SESSION D'UN COLLÈGUE (sessions/reprise.js) : le bandeau qui dit d'où l'on
+                 repart, la réponse à la question en attente, et l'encart « ce que l'agent va recevoir » —
+                 rempli à l'ouverture, caché sinon. -->
+            <div id="taskReprise" class="reprise-bloc" hidden></div>
             <!-- CE QU'ON DEMANDE. Le ticket Jira REMPLIT le prompt : il se lit donc juste
                  au-dessus de lui, pas trois champs plus haut. -->
             <div id="taskJiraRow" class="task-jira" hidden>

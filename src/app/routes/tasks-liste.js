@@ -10,6 +10,33 @@ const agentpass = require('../../agent/pass');
 const { auteurs, avecRangement, programmations, rangement } = require('../lib/partage');
 const { piecesExposees } = require('../lib/pieces');
 const { chapeauReponse, coutParSession, dureeParSession, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
+const reprise = require('../../session/reprise');
+const identite = require('../../core/identite');
+
+/* LA REPRISE D'UNE SESSION DE COLLÈGUE, sur la liste : d'où vient une reprise (`resumed_from`), qui a
+   repris celle-ci (`resumed_by`, calculé — la session d'origine n'est jamais modifiée), et par cible
+   le bouton ou son motif d'absence (`reprise`), sans réseau : la forge est vérifiée à l'ouverture. */
+function filiation(rows, parQui) {
+  const reprises = reprise.reprisesDe(rows.map((r) => r.uid).filter(Boolean));
+  const moi = identite.nom() || null;
+  const parUid = new Map(rows.map((r) => [r.uid, r]));
+  return (tache, cibles) => {
+    const auteur = parQui.get(tache.id) || null;
+    const parMoi = reprises.get(tache.uid) || [];
+    const origine = reprise.origineDe(tache);
+    if (origine && origine.id == null && parUid.has(tache.resumed_from_uid)) origine.id = parUid.get(tache.resumed_from_uid).id;
+    return {
+      resumed_from: origine ? { ...origine, author: origine.id != null ? (parQui.get(origine.id) || null) : null } : null,
+      // Une reprise faite ICI n'a pas encore d'auteur dans le dépôt : c'est moi.
+      resumed_by: parMoi.map((r) => ({ ...r, author: parQui.get(r.id) || moi })),
+      targets: (cibles || []).map((tg) => ({
+        ...tg,
+        reprise: reprise.eligibilite(tache, tg, { auteur, moi }),
+        resumed_by: parMoi.filter((r) => r.target_uid && r.target_uid === tg.uid).map((r) => ({ id: r.id, author: parQui.get(r.id) || moi, created_at: r.created_at })),
+      })),
+    };
+  };
+}
 
 /* LES SESSIONS D'AGENT REPRENABLES. Le champ « reprendre une session » attendait un UUID
    qu'on allait extraire à la main de la commande de reprise : on ouvrait un terminal pour
@@ -64,6 +91,7 @@ app.get('/api/tasks', wrap((req, res) => {
   /* LA SESSION D'UNE SPEC DE TICKET porte sa clé : la carte l'affiche, et la liste peut masquer
      ces sessions-là d'un geste — leur vrai écran est Jira. */
   const specParTache = new Map(db.prepare('SELECT task_id, ticket_key FROM ticket_spec WHERE task_id IS NOT NULL').all().map((r) => [r.task_id, r.ticket_key]));
+  const lignee = filiation(rows, parQui);
   res.json(rows.map((tache) => ({
     author: parQui.get(tache.id) || null,
     spec_key: specParTache.get(tache.id) || null,
@@ -82,7 +110,7 @@ app.get('/api/tasks', wrap((req, res) => {
     todo_waiting: !!db.prepare(`SELECT 1 FROM todo
       WHERE auto_kind = 'session_question' AND auto_ref = ? AND status = 'open' AND archived_at IS NULL`)
       .get(String(tache.id)),
-    targets: taskTargets(tache.id),
+    ...lignee(tache, taskTargets(tache.id)),
   })));
 }));
 app.get('/api/tasks/:id', wrap((req, res) => {

@@ -137,6 +137,7 @@ require('./app/routes/tasks');
 require('./app/routes/tasks-actions');
 require('./app/routes/tasks-iterations');
 require('./app/routes/tasks-liste');
+require('./app/routes/tasks-reprise');
 require('./app/routes/verifications');
 require('./app/routes/verifiers');
 require('./app/middleware/erreurs');

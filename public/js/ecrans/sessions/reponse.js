@@ -139,6 +139,7 @@ function targetLine(t, tg) {
     ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc(tg.ticket_key)}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
+    ${boutonReprise(t, tg)}
     ${resumeCmdBtn(tg.resume_cmd)}
     ${tg.has_output ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
@@ -154,7 +155,7 @@ function targetLine(t, tg) {
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project || '')}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" data-project="${esc(tg.project || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
-  </div>${followTarget ? `
+  </div>${lignesReprises(t, tg)}${followTarget ? `
   <div class="mr-create followup followup-target" data-followform="tg${tg.id}" hidden>
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
     ${suiviCapturesHtml()}

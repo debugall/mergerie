@@ -102,11 +102,12 @@ function taskHead(t) {
       ${badgeProgrammation(t, '')}
       ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une
             page de notes. Le pictogramme est le même — c'est le même geste. */''}
-      ${shareMark(t)}
+      ${shareMark(t)}${tagReprise(t)}
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
     </div>
     ${libelleBlock(t)}
+    ${ligneOrigine(t)}
     ${promptBlock(t.prompt)}
     ${chapeauCarte(t)}
     ${coutCarte(t)}${badgeTodoAttente(t)}`;

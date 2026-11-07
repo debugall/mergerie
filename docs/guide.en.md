@@ -673,6 +673,13 @@ session** — the agent keeps what it read. Two differences worth knowing: an **
 question stands, **nothing has been done**: no summary saved for an exploration, no file touched
 out of a repository.
 
+**And if it is a colleague's session?** Received from the shared data repository, it can be read but not
+relaunched from here: its project line carries **"Take over on this machine"** — or **"Answer and take over
+on this machine"** when its target is waiting for an answer. The dialog opens prefilled and locked on the
+essentials (their repository, their branch as the base, a proposed new branch, your settings), one field to
+fill — your instruction —, and a foldable box shows **in full** the first message your agent will receive:
+the whole history of their session, then your instruction. See *Sharing with a team*.
+
 **And if you answered in your terminal?** “Resume in terminal” copies the agent session, so you can
 answer there and let the agent carry on — inside Mergerie's clone, which knows nothing about it. The
 **`I answered in the terminal`** button, next to `Answer and resume`, settles that wait: the
@@ -2826,6 +2833,27 @@ Mergerie keeps that work in it: **one file per object**, in readable text. Every
 instance, **their** tokens and **their** AI CLI subscription: requests leave their machine and are
 billed to them, and it is the result that is shared. There is nothing to install and nothing to
 administer: the team already has a forge, permissions, backups and a history.
+
+**Taking over a colleague's session on this machine.** A coding session received from the repository is
+*read*: the agent handle, the clone and the follow-ups live on the other machine — when Claire is away, the
+session her agent left waiting for an answer waits with her. On the project line of her card, **"Take over
+on this machine"** (or **"Answer and take over on this machine"** when the target is waiting for an answer)
+creates a session **of your own**, on your clone and your subscription, starting from her branch as it is
+on the forge (a new branch `<branch>-takeover-<you>`, set on the forge head), with **your** settings — never
+hers, which do not travel — and whose agent receives, as its first message, **the whole history of the
+original session, as is**: the prompt, each pass with its kind, the prompt actually sent and the agent's
+answer, the questions and answers, the last review report and the last verification tied to the branch,
+then your answer to the pending question and your **takeover instruction**. Assembled mechanically, with
+no AI call and never summarised: the dialog shows it **in full** before launching, with the estimated
+tokens, a "passes included" slider (default: all) and a "attach the branch diff" box; the first pass keeps
+it. Nothing is automatic, nothing touches the original session, and no agent handle is reused — it only
+exists on the other machine. The lineage goes both ways: your card says `takeover of Claire's session
+(#123)`, hers — everywhere, after a sync — `taken over by Amady (#207) · 10 min ago`; several takeovers,
+several lines, none is "the" official sequel. The button only shows for a coding session **on a
+repository** received from another machine, whose branch was pushed (`branch not pushed by Claire`
+otherwise) and is not merged (`branch merged (!214)`); the forge is re-read when the dialog opens (`branch
+missing from the forge`), and the header says when it is `N commits past the last known pass`. Out of a
+repository, explorations, free questions: nothing to take over in v1.
 
 **What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
 this machine's absolute paths, tidied-away sessions, job logs. Every column of
