@@ -670,6 +670,12 @@ function exporterUsage() {
  * en cache dans `local_state`, et rafraîchi pour les seuls fichiers qu'un `pull` a touchés.
  */
 const AUTEUR = 'author';
+/* LA FRAÎCHEUR D'UN POSTE : la date du dernier commit de chaque auteur dans le dépôt de données —
+   relevée par le même `git log` que les auteurs des fichiers, mise en cache ici (`author_last`,
+   ref = l'auteur). C'est ce que la page Équipe appelle « dernière synchro il y a … » : l'état
+   d'un travail partagé, jamais une mesure de la personne. */
+const AUTEUR_DERNIER = 'author_last';
+const fraicheurAuteurs = () => etat.carte(AUTEUR_DERNIER, 'at');
 
 /** Le nom de qui a écrit ce fichier en dernier, ou `null`. Lu du cache. */
 const auteurDe = (relatif) => etat.lire(AUTEUR, relatif, 'name');
@@ -693,13 +699,20 @@ function auteursDe(relatifs, { createur = false } = {}) {
  */
 async function majAuteurs(plage) {
   if (!estDepot()) return 0;
-  const brut = await gitOu(['log', '--format=%x00%an', '--name-only', ...(plage ? [plage] : ['-2000'])], '');
+  const brut = await gitOu(['log', '--format=%x00%an%x01%ct', '--name-only', ...(plage ? [plage] : ['-2000'])], '');
   if (!brut) return 0;
   const vus = new Map();
   const plusAnciens = new Map();   // les fichiers de la plage, dont on cherchera le premier auteur
+  const derniers = new Map();      // auteur → date (s) de son commit le plus récent vu
   let courant = null;
   for (const ligne of brut.split('\n')) {
-    if (ligne.startsWith(SEPARATEUR_AUTEUR)) { courant = ligne.slice(1).trim(); continue; }
+    if (ligne.startsWith(SEPARATEUR_AUTEUR)) {
+      const [nom, ts] = ligne.slice(1).split('\u0001');
+      courant = String(nom || '').trim();
+      const t0 = Number(ts);
+      if (courant && Number.isFinite(t0) && (derniers.get(courant) || 0) < t0) derniers.set(courant, t0);
+      continue;
+    }
     const f = ligne.trim();
     if (!f || !courant) continue;
     plusAnciens.set(f, courant);
@@ -720,9 +733,14 @@ async function majAuteurs(plage) {
     const nom = String(ajout || '').split('\n')[0].trim();
     if (nom) premiers.set(f, nom);
   }
+  const dejaLa = etat.carte(AUTEUR_DERNIER, 'at');
   db.transaction(() => {
     for (const [f, nom] of vus) etat.ecrire(AUTEUR, f, 'name', nom);
     for (const [f, nom] of premiers) etat.ecrire(AUTEUR, f, 'first', nom);
+    for (const [nom, ts] of derniers) {
+      const iso = new Date(ts * 1000).toISOString();
+      if (!dejaLa.has(nom) || dejaLa.get(nom) < iso) etat.ecrire(AUTEUR_DERNIER, nom, 'at', iso);
+    }
   })();
   return vus.size;
 }
@@ -886,6 +904,7 @@ function arreter() {
 }
 
 module.exports = {
+  fraicheurAuteurs,
   REGROUPEMENT_MS,
   estConfigure,
   adresseAdmise,

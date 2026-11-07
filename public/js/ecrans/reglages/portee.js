@@ -103,6 +103,9 @@ async function loadConfig() {
   if (f.periode_watch_protected) f.periode_watch_protected.checked = c.periode_watch_protected !== '0';
   // Partager sa dépense : DÉCOCHÉ par défaut, donc `=== '1'`, comme les autres réglages prudents.
   if (f.usage_share) f.usage_share.checked = c.usage_share === '1';
+  // La page Équipe : les deux seuils s'écrivent (0 est une valeur).
+  if (f.team_quiet_days) f.team_quiet_days.value = c.team_quiet_days == null || c.team_quiet_days === '' ? 2 : Number(c.team_quiet_days);
+  if (f.team_takeover_days) f.team_takeover_days.value = c.team_takeover_days == null || c.team_takeover_days === '' ? 7 : Number(c.team_takeover_days);
   /* C15 — LE DÉFAUT EFFECTIF S'ÉCRIT, il ne se devine pas dans un `placeholder`. Un champ vide
      avec « 5 » en gris se lit « rien n'est réglé », alors que 5 EST la valeur appliquée : on
      ne sait pas si l'on regarde un réglage ou une suggestion. `retention_days` et

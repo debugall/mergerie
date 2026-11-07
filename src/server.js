@@ -109,6 +109,7 @@ require('./app/routes/croisements');
 require('./app/routes/tests-touches');
 require('./app/routes/dependances');
 require('./app/routes/empilees');
+require('./app/routes/equipe');
 require('./app/routes/data-sync');
 require('./app/routes/git');
 require('./app/routes/git-compare');

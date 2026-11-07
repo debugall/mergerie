@@ -45,11 +45,11 @@ start with “(mock)”.
 
 ## The tabs in detail
 
-Eleven tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
+Twelve tabs, in a **left sidebar**, grouped by family — the core, what I have to do, the team, my machine and its
 links, the meta:
-**Reviews** · **AI Dev** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Reviews** · **AI Dev** · **Agents** — **Notes** · **Team** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
 **Four of them — Git, Docker, Jenkins and Links — start folded away**: they are conveniences, you go
-there the day you need them, and a bar of seven entries reads better than a bar of eleven. Nothing is
+there the day you need them, and a bar of eight entries reads better than a bar of twelve. Nothing is
 disabled: one tick in *Settings → General → Menus* brings them back, for good.
 The bar **collapses to icons** from a button at the foot of the column (the choice is remembered), and
 collapses on its own below 1100 px wide.
@@ -1528,6 +1528,35 @@ offered on your return is exact; *Cancel* forgets it.
 branch (a team decision: it is the definition of “entered without review”). *Repositories*: a list of
 watched branches specific to a repository, in its edit row.
 
+### Team
+
+**"Our morning"**: a page that answers, on one screen, the daily's question — *where are we, who is waiting
+for what, since when* — computed in SQL on what the team **already shares** through the data repository,
+sharing nothing more and with no AI or forge call. The brief stays "me, this morning"; this page is "us,
+now". It only exists when a data repository is attached (without it, one sentence leads there); with a
+single person in the repository it works and says so.
+
+**Seven lists of facts**, each hidden when empty, capped at twelve lines with `and N more`: the **pending
+decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali · awaiting for 5 d` — open merge
+requests whose latest report reaches the team threshold and that nobody has filed or merged yet, sorted by
+wait), the **unanswered questions** (*shared* sessions whose agent is waiting for an answer, the question
+in one line, `answered in takeover #207` when a takeover took it on), the **running sessions** (shared,
+marked running at the last sync — with the freshness of their author's sync, because a "running" session
+whose machine has not synced for three hours may well be over), the **takeovers** (`#123 Claire → #207 Amady
+· yesterday`), the **failing verifications** (red head, green base), the **overlaps and stacks** already
+computed, shown with both authors, and the **workstations** — one line per author of the data repository:
+their last sync, the decisions awaited from them, `quiet` past N working days (weekends do not count), and
+nothing more: they may be on leave. At the top, three numbers and the sync line; two filters, repository
+group and person — picking a person shows what is *waiting on them*, not what they did.
+
+**Non-negotiable rule**: the page shows only facts already shared, and **nothing about a person that is not
+the state of a piece of work**. How many tokens someone burns, how many merge requests they merged, who is
+"the fastest" — never, even though the database knows. Unshared sessions do not exist there, neither as a
+line nor in a counter. No action from the page: every line leads to the card (Reviews, AI Dev) where the
+gestures already live; a person is never a link. Nothing is stored: closing the tab leaves nothing. Two
+team settings, in *Settings → Shared data*: the working days before "quiet" (2) and the window of finished
+takeovers (7 days); the decision threshold is the brief's.
+
 ### Jira
 Four sub-tabs: **My tickets**, **Watched**, **Analysed** and **Stats**. The menu carries a **badge** = the number of tickets
 **in progress that are assigned to you** (status category *In Progress*, the only definition that survives
@@ -2854,6 +2883,11 @@ repository** received from another machine, whose branch was pushed (`branch not
 otherwise) and is not merged (`branch merged (!214)`); the forge is re-read when the dialog opens (`branch
 missing from the forge`), and the header says when it is `N commits past the last known pass`. Out of a
 repository, explorations, free questions: nothing to take over in v1.
+
+**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say where we
+are, who is waiting for what, since when — pending decisions, unanswered questions, running sessions,
+takeovers, failing verifications, overlaps, workstation freshness — sharing nothing more. See the *Team*
+section.
 
 **What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
 this machine's absolute paths, tidied-away sessions, job logs. Every column of

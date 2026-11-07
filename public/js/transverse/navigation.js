@@ -23,6 +23,7 @@ $$('nav button[data-tab]').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.tab === 'git') loadGit();
   if (b.dataset.tab === 'jira') loadJira();
   if (b.dataset.tab === 'notes') loadNotes();
+  if (b.dataset.tab === 'team') loadEquipe();
   // Un onglet de plugin : son bundle a enregistré ce qu'il charge à l'ouverture.
   pluginsOnglet(b.dataset.tab);
   try { localStorage.setItem('aidevtools_tab', b.dataset.tab); } catch { /* ignore */ }

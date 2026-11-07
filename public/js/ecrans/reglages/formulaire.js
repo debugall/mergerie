@@ -27,7 +27,8 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   /* Données partagées : l'adresse du dépôt d'équipe, sa branche, la cadence. De POSTE — c'est
      par là que cette machine rejoint l'équipe, et la mettre dans les réglages d'équipe serait
      circulaire : il faudrait déjà être rattaché pour savoir où se rattacher. */
-  'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share'];
+  'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
+  'team_quiet_days', 'team_takeover_days'];
 /* CE QUI EST TAPÉ NE DOIT PAS ÊTRE EFFACÉ PAR UN CHARGEMENT EN RETARD.
  *
  * `loadConfig()` part à chaque ouverture d'un sous-onglet de réglages, et sa réponse revient

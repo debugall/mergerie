@@ -434,6 +434,10 @@
                 <button class="btn" type="submit" form="configForm" title="Enregistrer sans rattacher" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
                 <span id="dataSyncInfo" class="muted"></span>
             </div>
+            <!-- LA PAGE ÉQUIPE « NOTRE MATIN » : deux réglages d'équipe — quand un poste est dit silencieux
+                 (jours ouvrés sans commit dans le dépôt de données), combien de temps une reprise reste listée. -->
+            <label><span data-i18n="datasync.lbl.team-quiet-days">Équipe : poste silencieux après N jours ouvrés</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-quiet-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_quiet_days" type="number" min="0" max="365" step="1" placeholder="2" /></label>
+            <label><span data-i18n="datasync.lbl.team-takeover-days">Équipe : une reprise terminée reste listée N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-takeover-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_takeover_days" type="number" min="0" max="365" step="1" placeholder="7" /></label>
             <label class="inline-check"><input form="configForm" name="usage_share" type="checkbox" /> <span data-i18n="datasync.lbl.usage">Partager ma dépense IA (un total par jour)</span> <button type="button" class="hint" tabindex="-1" aria-label="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-tip="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-i18n-tip="datasync.tip.usage"><svg class="ico"><use href="#i-info"/></svg></button></label>
             <div id="dataSyncState" class="muted"></div>
             <div id="dataSyncConflicts"></div>

@@ -151,9 +151,11 @@ describe('Contrôle au registre des dépendances ajoutées', () => {
       await pied.locator('[data-deps-champ="private_patterns"]').click();
       await page.waitForSelector('#tab-admin.active');
       await page.waitForFunction(() => document.activeElement && document.activeElement.name === 'private_patterns');
-      assert.equal(await page.inputValue('#sub-mr [name="private_patterns"]'), '@acme/*');
-      assert.ok(await page.isChecked('#sub-mr [name="registry_enabled"]'));
-      assert.match(await page.locator('#sub-mr [name="registry_urls"]').inputValue(), /^npm=http:\/\/127\.0\.0\.1:\d+/);
+      /* Le formulaire se remplit APRÈS l'ouverture de l'onglet (`loadConfig` est asynchrone) : on attend la
+         valeur, on ne la lit pas au vol — sur un runneur à deux cœurs, le focus arrive avant la réponse. */
+      await page.waitForFunction(() => document.querySelector('#sub-mr [name="private_patterns"]').value === '@acme/*');
+      await page.waitForFunction(() => document.querySelector('#sub-mr [name="registry_enabled"]').checked);
+      await page.waitForFunction(() => /^npm=http:\/\/127\.0\.0\.1:\d+/.test(document.querySelector('#sub-mr [name="registry_urls"]').value));
       assert.deepEqual(erreurs, [], 'aucune erreur de page');
     });
 

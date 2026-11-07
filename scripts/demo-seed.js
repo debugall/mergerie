@@ -696,7 +696,19 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   });
   const uidC = db.prepare('SELECT uid FROM task WHERE id = ?').get(tC.lastInsertRowid).uid;
   // eslint-disable-next-line global-require
-  require('../src/data/localstate').etat.ecrire('author', `sessions/${uidC}/session.json`, 'name', 'Claire');
+  const etatDemo = require('../src/data/localstate').etat;
+  etatDemo.ecrire('author', `sessions/${uidC}/session.json`, 'name', 'Claire');
+  /* LA PAGE ÉQUIPE « NOTRE MATIN » : deux auteurs fictifs dans le dépôt de données de démonstration —
+     Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés ; une décision
+     attend (la review d'Ali sur une MR de Claire, voir plus bas), une question sans réponse (la session
+     de Claire ci-dessus), et une reprise : ma session repart de la sienne. */
+  etatDemo.ecrire('author_last', 'Claire', 'at', new Date(Date.now() - 10 * 60000).toISOString());
+  etatDemo.ecrire('author_last', 'Ali', 'at', at(7));
+  const tR = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, shared, label, resumed_from_uid, resumed_target_uid, created_at, updated_at, finished_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)')
+    .run(repoIds['groupe/tarification'], 'Réponse : cumul plafonné à 20 %. Termine les paliers et ajoute les tests par pays.', 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'done', 'code',
+      'Reprise de la session de Claire', uidC, db.prepare('SELECT uid FROM task_target WHERE id = ?').get(tgC).uid, at(1), at(1), at(1));
+  db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, updated_at) VALUES (?,?,?,?,?,?,?)`)
+    .run(tR.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'committed', require('crypto').randomBytes(20).toString('hex'), at(1));
   // compté plus bas, avec les autres (`counts` n'existe pas encore ici)
 }
 
@@ -1897,6 +1909,17 @@ async function semerPlugins() {
   registreDeps.poser('npm', 'date-fns', { status: 'known', first_published: '2014-11-18T13:52:20.000Z', latest_published: at(40), now: at(0.01) });
   counts.registry_lookup = 2;
   counts.reprise_claire = db.prepare("SELECT COUNT(*) c FROM task WHERE label = 'Paliers de remise par pays'").get().c;
+  /* LA PAGE ÉQUIPE : une DÉCISION EN ATTENTE — une merge request ouverte de Claire, notée au-dessus du seuil par
+     une review d'Ali (l'auteur du fichier de review, comme la synchro le saurait). Posée ici, une fois toutes
+     les merge requests et reviews semées, pour que la ligne tienne à l'affichage. */
+  const dec = db.prepare(`SELECT review.*, mr.id AS mr_row FROM review JOIN mr ON mr.id = review.mr_id
+    WHERE review.note_value >= 0.8 AND COALESCE(mr.closed_seen, 0) = 0 AND mr.merged_at IS NULL AND mr.status IN ('to_review', 'reviewed') ORDER BY review.note_value DESC LIMIT 1`).get();
+  if (dec) {
+    db.prepare("UPDATE mr SET author = 'Claire' WHERE id = ?").run(dec.mr_row);
+    const chemin = require('../src/data/store').cheminSur('review', dec);
+    if (chemin) require('../src/data/localstate').etat.ecrire('author', chemin, 'name', 'Ali');
+  }
+  counts.team_decision = dec ? 1 : 0;
 }
 
 semerDiffsLocaux().then(semerPlugins).then(() => {
