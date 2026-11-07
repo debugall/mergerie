@@ -14,6 +14,7 @@ const agentsession = require('../agent/session');
 const { extractNote } = require('./note');
 const resolution = require('../git/resolution');
 const glob = require('../core/glob');
+const empilees = require('./empilees');   // les MR empilées : une phrase de fait dans le contexte
 const diffnum = require('../git/diffnum');
 const demoReview = require('../demo/review');
 const agentpass = require('../agent/pass');
@@ -261,6 +262,16 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     if (carteBlock) onLog(t('log.review.cards', { n: cartes.length, count: cartes.length }));
   } catch { /* best-effort : une carte illisible ne fait pas échouer une review */ }
 
+  /* LES MR EMPILÉES : « Cette merge request contient !214 (ouverte, à traiter) : 12 commits et 9
+     fichiers sont déjà soumis là-bas. » Le seul endroit où l'inclusion entre dans un prompt — une
+     phrase de FAIT, pas une consigne : la review porte alors d'elle-même sur le diff propre et renvoie
+     à !214 pour le reste. Zéro IA pour l'établir, zéro réseau : la base a déjà tout. */
+  let empileBlock = '';
+  try {
+    const faits = empilees.phrasesDeFait(cfg, mr.id);
+    if (faits.length) { empileBlock = `\n\n${faits.join('\n')}`; onLog(t('log.review.stack', { n: faits.length, count: faits.length })); }
+  } catch { /* best-effort */ }
+
   /* Projets liés : l'IA analyse l'impact des changements de la MR sur d'autres dépôts.
      Choix d'archi retenu : la review tourne dans le clone principal (cwd inchangé,
      le skill n'est pas perturbé) ; les projets liés sont MONTÉS EN LECTURE via un
@@ -348,11 +359,12 @@ async function prepareContext(cfg, repo, mr, onLog, opts = {}) {
     const ni = (kind === 'review') ? `\n\n${t('review.note-instruction')}` : '';
     const lb = (kind === 'review') ? linkedBlock : ''; // analyse d'impact = review uniquement
     const cb = (kind === 'review') ? carteBlock : ''; // contexte de domaine = review uniquement
+    const sb = (kind === 'review') ? empileBlock : ''; // MR empilées = review uniquement
     /* `intentionBlock` n'accompagne que la REVIEW et la modification : une explication
        pédagogique reçoit déjà le diff et n'a pas à juger l'intention, une question porte sur le
        rapport. */
     const ib = (kind === 'review' || kind === 'modify') ? intentionBlock : '';
-    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ib + ticketBlock + rb + cb + lb + extra + li + ni + fi + instruction;
+    const prompt = fillTemplate(promptTemplate, { ...baseVars, out_file: outRel }) + ib + ticketBlock + rb + cb + sb + lb + extra + li + ni + fi + instruction;
     // extraInput : le diff n'est PAS dans le prompt (on ne passe que son chemin),
     // mais l'agent le lit — il doit donc compter dans la consommation.
     // Continuité : la review/modif tourne dans une session reprenable par MR (« Relancer la

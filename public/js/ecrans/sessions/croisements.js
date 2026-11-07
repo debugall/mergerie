@@ -33,6 +33,8 @@ async function majCroisementsSession() {
         iid: c.mr.iid, n: c.overlaps.length, count: c.overlaps.length, mrs: c.overlaps.map((o) => `!${o.iid}`).join(', '),
       })));
     }
+    // La session repart de la branche d'une MR ouverte : la branche créée la contiendra — on le sait avant de commencer.
+    if (c.stack) lignes.push(prefixe + esc(tr('task.stack.branch', { iid: c.stack.iid, status: tr(`mr.status.${String(c.stack.status || 'to_review').replace('_', '-')}`) })));
   }
   el.innerHTML = lignes.join('<br>');
   el.hidden = !lignes.length;

@@ -22,6 +22,7 @@ const converge = require('../../review/converge');
 const croisements = require('../../review/croisements');
 const testsTouches = require('../../review/tests-touches');
 const dependances = require('../../review/dependances');
+const empilees = require('../../review/empilees');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const agentsession = require('../../agent/session');
@@ -139,6 +140,8 @@ app.get('/api/mrs', wrap((req, res) => {
   // LES TESTS TOUCHÉS : les mêmes listes, classées par motifs de chemin. Une passe pour toute la liste.
   const testes = testsTouches.pourCartes(cfg);
   const deps = dependances.pourCartes(cfg);
+  // LES MR EMPILÉES : « contient !214 » — l'inclusion des listes de commits, une requête, zéro réseau.
+  const empiles = empilees.pourCartes(cfg);
   const riskOf = (changed) => {
     if (!changed || !pathRules.length) return [];
     const paths = String(changed).split('\n').filter(Boolean);
@@ -238,6 +241,7 @@ app.get('/api/mrs', wrap((req, res) => {
          eux-mêmes. `null` = pas de liste fraîche : la carte ne dit rien, jamais un faux « 0 test ». */
       tests: testes[r.id] || null,
       deps: deps[r.id] || null,
+      stack: empiles[r.id] || null,
       origin_task: origineParBranche.get(`${r.repo_id}\u0001${r.source_branch}`) || null,
     };
   }));
@@ -298,6 +302,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
   const croise = croisements.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || {};
   const testes = testsTouches.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   const deps = dependances.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
+  const stack = empilees.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -386,6 +391,9 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     files_fetch: croise.fetch || null,
     tests: testes,
     deps,
+    stack,
+    // La phrase de fait que la review reçoit (« contient !214 : 12 commits et 9 fichiers déjà soumis là-bas »), telle quelle.
+    stack_facts: empilees.phrasesDeFait(getConfig(), mr.id),
   });
 }));
 // Enregistre le contexte du ticket (texte + capture facultative en data URL).

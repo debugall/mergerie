@@ -54,6 +54,7 @@ const ALLOWED = [
   'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
   'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
   'deps_enabled', 'manifest_patterns',
+  'mr_commits_enabled',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -144,6 +145,7 @@ function updateConfig(patch) {
     next.tests_touched_min_code = Number.isFinite(tm) && tm >= 0 ? Math.min(1000, tm) : 3;
   }
   next.deps_enabled = String(next.deps_enabled) === '0' ? '0' : '1';
+  next.mr_commits_enabled = String(next.mr_commits_enabled) === '0' ? '0' : '1';
   for (const champ of ['test_patterns', 'neutral_patterns', 'manifest_patterns']) {
     if (champ in patch) next[champ] = require('../core/glob').normaliserMotifs(patch[champ]);
   }
@@ -335,6 +337,7 @@ function updateConfig(patch) {
       test_patterns = @test_patterns,
       neutral_patterns = @neutral_patterns,
       deps_enabled = @deps_enabled,
+      mr_commits_enabled = @mr_commits_enabled,
       manifest_patterns = @manifest_patterns
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les

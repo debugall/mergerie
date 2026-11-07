@@ -143,6 +143,41 @@ manifest diff over 200 KB is not kept and the ⋯ button says so; without a kept
 this version — the next round picks it up), nothing — never a false "no dependency". Nothing is judged
 or blocked: no score, no licence, no CVE.
 
+**A merge request that carries another one says so: `contains !214`.** This is the *stacked* merge
+request: you start from a colleague's or an agent's branch, add your work, open towards `main`. The
+forge shows an ordinary merge request with the diff of both; nothing says that 220 of the 300 lines
+are already under review elsewhere, nor that the second one will change size the day the first one
+merges. A merge request **contains** another when the set of commits of the second (`target..source`)
+is included in the set of the first — a git fact, compared in SQL, **with no AI call at all**. The
+containing one carries `contains !214` (several: `contains 2 MRs`), the contained one `contained in
+!219`, always together; a merge request that targets another one's *branch* carries `based on !214`
+(the forge already shows it in the target, it is repeated in the same place); two merge requests with
+identical commits are `twin of !220`. All of it discreet, right before "overlaps" (a contained merge
+request necessarily overlaps the containing one; stacking is more precise and comes first): stacking
+is not a problem, it is an organisation — the merge order is already chosen, the tool shows it, the
+human merges in that order or not. Clicking opens an anchored panel: the linked merge request
+(number, title, author, age, score when a report exists — the row leads to it), `12 shared commits ·
+4 own commits`, and the **own diff** — `Own diff: 4 files`, the paths the containing one touches and
+the contained one does not, what the reviewer has to read here and not there, computed from the file
+lists when the panel opens (`own diff not computed` when one of the two lists is stale); a chain (C
+contains B contains A) reads link by link, deepest first. When the contained one merges or closes,
+the badge leaves the containing one at once; if it was merged by squash or rebase, its original
+commits are still in the branch: "N commits behind" and `Update with the AI` take over, and the panel
+keeps `contained !214 · merged 2 h ago` for seven days — the explanation of the lag that just
+appeared. The commit list of every open merge request is fetched **at discovery**, in the same round
+and under the same cap as its files (no second counter) — the local clone when it holds both
+branches, no network; otherwise one forge call per merge request, pages included — and invalidated
+as soon as the head SHA or the target branch changes. Without a fresh list, with a refused list (more
+than 500 commits: such a branch necessarily contains others) or a truncated one (GitHub cuts at 250),
+**nothing** — never a false "independent", never an inclusion computed on a partial list. Two
+branches with different commits but the same diff (after a rebase) do not contain each other: that is
+true, and that is what is said. The report of a containing merge request receives, at the head of its
+context, a **fact sentence** — `This merge request contains !214 (open, to review): 12 commits and 9
+files are already submitted there.` — so the review bears on the own diff and refers to !214 for the
+rest; it reads in clear in the report's *Context* dialog, exactly as the AI received it. Nothing in
+the brief; the badge changes neither the score, nor the verdict, nor the ranking, and never blocks
+`Merge`. One setting, under *Settings → Merge Request → Discovery*.
+
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
 
@@ -853,7 +888,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   modal, a grey line under the selector says `N open MRs on this repository`; when the session restarts
   from the branch of an existing merge request, its overlaps; and when the prompt names a path that exists
   in the clone (`src/payment/`, `tva.js`), the line becomes `2 open MRs touch src/payment/ (!214, !219)`.
-  Information only: nothing is blocked, the session starts anyway.
+  Information only: nothing is blocked, the session starts anyway. When the session restarts from the
+  branch of an open merge request, the line also says `The created branch will contain !214 (open, to
+  review)` — known before starting, so the target is chosen knowingly.
 - **How many tests the branch changes.** As soon as a session project is *committed*, its line carries
   `0 tests modified` (emphasised) or `3 tests modified` (discreet), from the branch diff and the
   repository's test patterns — before the merge request exists, when a follow-up "add the tests" costs
@@ -2058,7 +2095,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked), then *Fetch the commits of open MRs* (checked; it shares the files cap, an MR fetched for its files is fetched for its commits in the same round; unchecked, no extra call and no `contains !214` badge) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more

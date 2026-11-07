@@ -631,6 +631,12 @@
             </label>
             <label class="inline-check"><input form="configForm" name="mr_files_cross_targets" type="checkbox" /> <span data-i18n="settings.lbl.mr-files-cross-targets">Croiser aussi les MR de branches cibles différentes</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-cross-targets" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LES MR EMPILÉES : relever les commits de chaque MR ouverte dans le même tour que ses fichiers
+                 (même plafond, pas de second compteur), pour dire « contient !214 » — l'ordre de merge
+                 imposé, lu sur la carte. D'équipe. -->
+            <label class="inline-check"><input form="configForm" name="mr_commits_enabled" type="checkbox" /> <span data-i18n="settings.lbl.mr-commits-enabled">Relever les commits des MR ouvertes</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-commits-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" id="mrCommitsDep" hidden data-i18n="settings.mr-commits.dep">Nécessite « Relever les fichiers des MR ouvertes » ci-dessus, dont il partage le plafond : sans relevé, aucun badge.</p>
             <!-- LES TESTS TOUCHÉS : « 14 fichiers · 0 test » sur la carte, calculé sur les listes de
                  fichiers des croisements par des MOTIFS de chemin — un fichier est un test ou n'en est
                  pas un, sans IA, sans couverture. Sans relevé des fichiers, pas de badge : la note le dit. -->

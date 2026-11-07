@@ -339,6 +339,16 @@ async function listMrChangedPaths(cfg, project, iid) {
   return (await listMrChanges(cfg, project, iid)).paths;
 }
 
+/* LES COMMITS D'UNE PULL REQUEST, du plus ancien au plus récent (l'ordre de GitHub). L'API en rend
+   250 AU PLUS : au-delà, la liste est tronquée et on le dit — une inclusion ne se calcule jamais sur
+   une liste partielle. Trois pages de 100 suffisent à atteindre la coupe. */
+const GITHUB_MAX_PR_COMMITS = 250;
+async function listMrCommits(cfg, project, iid) {
+  const items = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/pulls/${iid}/commits`, { max: 3 });
+  const shas = items.map((c) => c.sha).filter(Boolean);
+  return { shas, truncated: shas.length >= GITHUB_MAX_PR_COMMITS };
+}
+
 /* ---------- Commentaires ----------
    GitLab a UN concept (discussion = fil de notes, inline si `position`).
    GitHub en a DEUX : les issue comments (généraux) et les review comments (inline,
@@ -849,7 +859,7 @@ module.exports = {
   latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus,
-  listProtectedTags, listMrChangedPaths, listMrChanges, createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents,
+  listProtectedTags, listMrChangedPaths, listMrChanges, listMrCommits, createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents,
   // propres à GitHub
   isConfigured, testConnection, apiBase, webBase, refWebUrl,
 };

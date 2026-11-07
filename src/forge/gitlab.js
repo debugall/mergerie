@@ -603,6 +603,21 @@ async function listMrChangedPaths(cfg, project, iid) {
   return (await listMrChanges(cfg, project, iid)).paths;
 }
 
+/* LES COMMITS D'UNE MERGE REQUEST (`cible..source`), du plus ancien au plus récent — GitLab les rend
+   du plus récent au plus ancien, 100 par page. Pour les MR empilées : on s'arrête dès que la liste
+   dépasse ce que l'appelant stockera (501 suffit à dire « trop »), jamais plus de six pages. */
+async function listMrCommits(cfg, project, iid, { max = 500 } = {}) {
+  const enc = encodeProject(project);
+  const out = [];
+  for (let page = 1; page <= 6; page += 1) {
+    const items = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/commits?per_page=100&page=${page}`);
+    if (!Array.isArray(items) || !items.length) break;
+    out.push(...items.map((c) => c.id).filter(Boolean));
+    if (items.length < 100 || out.length > max) break;
+  }
+  return { shas: out.reverse(), truncated: false };
+}
+
 /* TOUTES LES MERGE REQUESTS — ou celles touchées depuis une date (`updatedAfter`, pour le
    rattrapage d'une période). La liste est triée par `updated_at` décroissant : avec une
    borne, la pagination S'ARRÊTE à la première page dont le dernier élément est plus ancien,
@@ -637,5 +652,5 @@ async function listAllMRs(cfg, project, { updatedAfter = null } = {}) {
 }
 
 module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
-  listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges,
+  listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges, listMrCommits,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents };

@@ -30,6 +30,7 @@ function freshState() {
     approvals: {},           // `${project}!${iid}` -> [username] (qui a approuvé)
     pipelines: {},           // `${project}!${iid}` -> [{ id, status, web_url }] (le plus récent d'abord)
     changes: {},             // `${project}!${iid}` -> [{ new_path }]
+    mrCommits: {},           // `${project}!${iid}` -> [{ id }] rendus par /merge_requests/:iid/commits (le plus récent d'abord)
     jiraIssues: {},          // KEY -> { key, fields }
     jiraFail: null,          // { status, body } pour forcer un refus Jira
     jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
@@ -135,6 +136,7 @@ function handleGitlab(req, res, pathname, query, body) {
     if (sub === '/changes' && req.method === 'GET') {
       return json(res, 200, { ...mr, changes: state.changes[key] || [] });
     }
+    if (sub.startsWith('/commits') && req.method === 'GET') return json(res, 200, paged(state.mrCommits[key] || []));
     if (sub === '/notes' && req.method === 'POST') {
       /* `failNextNote` : un refus de la forge, à la demande. Il sert à prouver qu'un échec de
          publication ne laisse PAS de trace « publié » — sans lui, ce chemin ne se teste pas. */

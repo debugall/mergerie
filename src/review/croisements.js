@@ -25,6 +25,7 @@ const db = require('../db');
 const forge = require('../forge');
 const git = require('../git/git');
 const dependances = require('./dependances');
+const empilees = require('./empilees');
 
 const MAX_FICHIERS = 5000;
 const PLAFOND_DEFAUT = 20;
@@ -152,20 +153,28 @@ async function releverEtPoser(cfg, repo, mr, { now = new Date().toISOString() } 
    pourquoi. */
 async function releverTour(cfg, { onLog = (m) => console.log(`[croisements] ${m}`) } = {}) {
   const enService = actif(cfg);
-  const bilan = { releves: 0, restants: 0, refuses: 0, erreurs: 0, sources: {}, dependances: 0 };
+  const bilan = { releves: 0, restants: 0, refuses: 0, erreurs: 0, sources: {}, dependances: 0, commits: { releves: 0, refuses: 0, erreurs: 0 } };
   /* Un relevé frais qui n'a pas cherché les manifestes (antérieur aux dépendances, ou fait réglage
      décoché) est repris comme un SHA qui a bougé, sous le même plafond — et le journal le dit une fois.
      Une liste REFUSÉE ne l'est pas : on ne retente pas un relevé refusé sur le même SHA. */
   const pourDeps = enService && dependances.actif(cfg) ? 'OR (f.head_sha IS mr.current_sha AND f.refused IS NULL AND f.manifests IS NULL)' : '';
+  /* LES COMMITS (MR empilées) : la même file, le même plafond — une MR relevée pour ses fichiers l'est
+     pour ses commits dans le même tour ; une MR dont seule la liste de commits manque prend une place
+     du plafond sans relire ses fichiers. */
+  const commitsActifs = enService && empilees.actif(cfg);
+  const pourCommits = commitsActifs ? `OR ${empilees.A_RELEVER('cf', 'mr')}` : '';
   const candidats = enService
     ? db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge, repo.url AS url,
-          (f.mr_id IS NOT NULL AND f.head_sha IS mr.current_sha AND f.refused IS NULL AND f.manifests IS NULL) AS pour_deps
+          (f.mr_id IS NOT NULL AND f.head_sha IS mr.current_sha AND f.refused IS NULL AND f.manifests IS NULL) AS pour_deps,
+          (f.mr_id IS NULL OR f.head_sha IS NOT mr.current_sha ${pourDeps}) AS pour_fichiers,
+          ${commitsActifs ? empilees.A_RELEVER('cf', 'mr') : '0'} AS pour_commits
         FROM mr JOIN repo ON repo.id = mr.repo_id
         LEFT JOIN mr_file_fetch f ON f.mr_id = mr.id
+        LEFT JOIN mr_commit_fetch cf ON cf.mr_id = mr.id
         WHERE COALESCE(mr.closed_seen, 0) = 0 AND repo.enabled = 1 AND COALESCE(repo.fetch_mrs, 1) = 1
-          AND (f.mr_id IS NULL OR f.head_sha IS NOT mr.current_sha ${pourDeps})
+          AND (f.mr_id IS NULL OR f.head_sha IS NOT mr.current_sha ${pourDeps} ${pourCommits})
         ORDER BY mr.updated_at DESC, mr.id DESC`).all()
-    : db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge, repo.url AS url
+    : db.prepare(`SELECT mr.*, repo.project AS project, repo.forge AS forge, repo.url AS url, 1 AS pour_fichiers, 0 AS pour_commits
         FROM mr JOIN repo ON repo.id = mr.repo_id
         WHERE mr.changed_paths IS NULL AND COALESCE(mr.closed_seen, 0) = 0
           AND repo.enabled = 1 AND COALESCE(repo.fetch_mrs, 1) = 1
@@ -177,19 +186,38 @@ async function releverTour(cfg, { onLog = (m) => console.log(`[croisements] ${m}
   if (bilan.dependances) onLog(`${bilan.dependances} MR à relever pour les dépendances`);
   for (const mr of pris) {
     const repo = { id: mr.repo_id, project: mr.project, forge: mr.forge, url: mr.url };
-    try {
-      const r = await releverEtPoser(cfg, repo, mr);
-      bilan.sources[r.source] = (bilan.sources[r.source] || 0) + 1;
-      if (r.refused) {
-        bilan.refuses += 1;
-        onLog(`!${mr.iid} (${mr.project}) : ${r.files} fichiers, liste non relevée — au-delà de ${MAX_FICHIERS}, un croisement ne dirait plus rien`);
-      } else bilan.releves += 1;
-    } catch (e) {
-      bilan.erreurs += 1;
-      onLog(`!${mr.iid} (${mr.project}) : fichiers non relevés${mr.is_fork ? ' (merge request venue d’un fork)' : ''} — ${e.message}`);
+    if (mr.pour_fichiers) {
+      try {
+        const r = await releverEtPoser(cfg, repo, mr);
+        bilan.sources[r.source] = (bilan.sources[r.source] || 0) + 1;
+        if (r.refused) {
+          bilan.refuses += 1;
+          onLog(`!${mr.iid} (${mr.project}) : ${r.files} fichiers, liste non relevée — au-delà de ${MAX_FICHIERS}, un croisement ne dirait plus rien`);
+        } else bilan.releves += 1;
+      } catch (e) {
+        bilan.erreurs += 1;
+        onLog(`!${mr.iid} (${mr.project}) : fichiers non relevés${mr.is_fork ? ' (merge request venue d’un fork)' : ''} — ${e.message}`);
+      }
+    }
+    if (mr.pour_commits) {
+      try {
+        const r = await empilees.releverEtPoser(cfg, repo, mr);
+        if (r.refused) {
+          bilan.commits.refuses += 1;
+          onLog(`!${mr.iid} (${mr.project}) : ${r.count} commits, liste non relevée — ${r.refused === 'truncated' ? 'tronquée par la forge' : `au-delà de ${empilees.MAX_COMMITS}`}, une inclusion ne se calcule pas sur une liste partielle`);
+        } else bilan.commits.releves += 1;
+      } catch (e) {
+        /* Une forge muette sur les commits ne prend pas une place du plafond à chaque tour : le refus
+           est posé sur ce SHA, et le tour reprendra la liste quand la tête bougera. */
+        bilan.commits.erreurs += 1;
+        empilees.poserCommits(mr.id, { sha: mr.current_sha, target: mr.target_branch, refused: 'error' });
+        onLog(`!${mr.iid} (${mr.project}) : commits non relevés — ${e.message}`);
+      }
     }
   }
   if (bilan.restants) onLog(`plafond atteint (${max}) : ${bilan.restants} liste(s) de fichiers attendront le tour suivant`);
+  // Les MR contenues qui ont fermé depuis : la trace « contenait !214 » pour sept jours, leurs listes purgées.
+  if (commitsActifs) bilan.commits.archivees = empilees.archiverFermees();
   return bilan;
 }
 
@@ -355,6 +383,7 @@ function purger(mrIds) {
   const q = ids.map(() => '?').join(',');
   db.prepare(`DELETE FROM mr_files WHERE mr_id IN (${q})`).run(...ids);
   dependances.purger(ids);
+  empilees.purger(ids);
   return db.prepare(`DELETE FROM mr_file_fetch WHERE mr_id IN (${q})`).run(...ids).changes;
 }
 

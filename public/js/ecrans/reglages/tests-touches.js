@@ -77,6 +77,8 @@ async function majMotifsTests(conteneur = $('#sub-mr')) {
   const dep = $('#testsTouchedDep');
   const relever = $('#sub-mr [name="mr_files_enabled"]');
   if (dep && relever) dep.hidden = relever.checked;
+  const depCommits = $('#mrCommitsDep');
+  if (depCommits && relever) depCommits.hidden = relever.checked;
   const d = await chargerDefautsMotifs();
   if (d && conteneur === $('#sub-mr')) {
     const t1 = champMotifs(conteneur, 'test_patterns'); const t2 = champMotifs(conteneur, 'neutral_patterns'); const t3 = champMotifs(conteneur, 'manifest_patterns');
@@ -107,5 +109,6 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   if (e.target && e.target.matches && e.target.matches('#sub-mr [name="mr_files_enabled"]')) {
     const dep = $('#testsTouchedDep'); if (dep) dep.hidden = e.target.checked;
+    const depCommits = $('#mrCommitsDep'); if (depCommits) depCommits.hidden = e.target.checked;
   }
 });

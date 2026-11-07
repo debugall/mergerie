@@ -27,6 +27,9 @@ async function openTicket(id, title) {
     $('#ticketText').value = (d.ticket && d.ticket.text) || '';
     ticketSetPreview(d.ticket && d.ticket.has_image ? `/api/mrs/${id}/ticket-image?t=${Date.now()}` : null);
     renderTicketJira(d.ticket || {});
+    const faits = Array.isArray(d.stack_facts) ? d.stack_facts : [];
+    $('#ticketStackBody').innerHTML = faits.map((f) => `<p>${esc(f)}</p>`).join('');
+    $('#ticketStack').hidden = !faits.length;
     ticketState.repoId = d.mr ? d.mr.repo_id : (d.repo_id || null);
     // Liens de la MR si elle en a ; sinon on pré-remplit avec les défauts du dépôt.
     const links = (d.links && d.links.length) ? d.links : (d.repo_links || []);

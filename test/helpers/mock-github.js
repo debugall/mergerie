@@ -13,6 +13,7 @@ function freshState() {
     token: 'gh-test-token',
     repos: [],               // [{ id, full_name, clone_url, ssh_url, default_branch }]
     pulls: {},               // project -> [pr]
+    prCommits: {},           // `${project}#${number}` -> [{ sha }] rendus par /pulls/:n/commits (le plus ancien d'abord)
     branches: {},            // project -> [{ name, protected, commit:{ sha, commit:{...} } }]
     tags: {},                // project -> [{ name, commit:{ sha } }]
     commits: {},             // project -> [commit] (le plus récent d'abord)
@@ -163,6 +164,7 @@ function handle(req, res, pathname, query, body) {
       return json(res, 200, { merged: !state.mergeRefuses, message: 'ok' });
     }
     if (sub === '/files' && req.method === 'GET') return paged(res, req, query, state.files[key] || []);
+    if (sub === '/commits' && req.method === 'GET') return paged(res, req, query, state.prCommits[key] || []);
     if (sub === '/reviews' && req.method === 'GET') return paged(res, req, query, state.reviews[key] || []);
     if (sub === '/reviews' && req.method === 'POST') {
       const r = { id: state.nextId++, user: { login: 'testeur' }, state: body.event === 'APPROVE' ? 'APPROVED' : body.event === 'REQUEST_CHANGES' ? 'CHANGES_REQUESTED' : 'COMMENTED', body: body.body || '' };

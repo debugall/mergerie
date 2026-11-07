@@ -1788,6 +1788,16 @@ async function semerPlugins() {
 {
   /* …et les TESTS TOUCHÉS : la première modifie quatorze fichiers de code sans un seul test
      (« 14 fichiers · 0 test », accentué), la seconde six fichiers de code et deux tests. */
+  /* …et les MR EMPILÉES : !260 repart de la branche de !214 (le socle des remises, douze commits, douze
+     fichiers) et y ajoute quatre commits et quatre fichiers — `contient !214` sur l'une, `contenue dans
+     !260` sur l'autre, `12 commits communs · 4 commits propres`, `Diff propre : 4 fichiers`. */
+  insertMr({
+    project: 'groupe/tarification', title: 'Socle des remises : paliers et règles', branch: 'feature/remise-socle', status: 'to_review',
+    changed: ['tarification.js', 'src/remise/calcul.js', 'src/remise/regles.js', 'src/remise/index.js',
+      'src/abonnement/annuel.js', 'src/abonnement/mensuel.js', 'src/abonnement/index.js', 'src/facture/lignes.js', 'src/facture/total.js',
+      'src/api/tarifs.js', 'src/api/remises.js', 'src/cli/simuler.js'],
+    summary: 'pose les paliers et les règles de remise',
+  }, { iid: 214, date: at(4) });
   insertMr({
     project: 'groupe/tarification', title: 'Remise fidélité portée à 10 %', branch: 'feature/remise-fidelite', status: 'to_review',
     changed: ['tarification.js', 'plafond.js', 'src/remise/calcul.js', 'src/remise/paliers.js', 'src/remise/regles.js', 'src/remise/index.js',
@@ -1836,6 +1846,18 @@ async function semerPlugins() {
     n += 1;
   }
   counts.mr_files = n;
+  // eslint-disable-next-line global-require
+  const empilees = require('../src/review/empilees');
+  /* Les listes de commits de !214 et !260 : les douze du socle, puis quatre de plus dans !260 — ce que la
+     découverte relèverait du clone ou de la forge. Les autres MR n'en ont pas : aucun badge, jamais
+     un faux « indépendante ». */
+  const sha = (texte) => require('crypto').createHash('sha1').update(texte).digest('hex');
+  const socle = Array.from({ length: 12 }, (x, i) => sha(`socle-${i}`));
+  const propres = Array.from({ length: 4 }, (x, i) => sha(`fidelite-${i}`));
+  for (const m of db.prepare('SELECT id, iid, current_sha FROM mr WHERE iid IN (214, 260)').all()) {
+    empilees.poserCommits(m.id, { sha: m.current_sha, target: 'main', shas: m.iid === 214 ? socle : [...socle, ...propres], source: 'forge', now: at(0.01) });
+  }
+  counts.mr_commits = 2;
 }
 
 semerDiffsLocaux().then(semerPlugins).then(() => {

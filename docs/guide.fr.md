@@ -159,6 +159,42 @@ manifeste de plus de 200 Ko n'est pas gardé et le bouton ⋯ le dit ; sans diff
 cette version, le tour suivant le reprend), rien — jamais un faux « aucune dépendance ». Rien n'est
 jugé ni bloqué : pas de note, pas de licence, pas de CVE.
 
+**Une merge request qui en embarque une autre le dit : `contient !214`.** C'est la merge request
+*empilée* : on repart de la branche d'un collègue ou d'un agent, on ajoute son travail, on ouvre vers
+`main`. La forge l'affiche comme une merge request ordinaire, avec le diff des deux ; rien ne dit que
+220 des 300 lignes sont déjà en revue ailleurs, ni que la seconde changera de taille le jour où la
+première merge. Une merge request en **contient** une autre quand l'ensemble des commits de la seconde
+(`cible..source`) est inclus dans celui de la première — un fait de git, comparé en SQL, **sans aucun
+appel d'IA**. La contenante porte `contient !214` (plusieurs : `contient 2 MR`), la contenue
+`contenue dans !219`, toujours ensemble ; une merge request qui vise la *branche* d'une autre porte
+`basée sur !214` (la forge le montre déjà dans la cible, on le reprend au même endroit) ; deux
+merge requests aux commits identiques sont `jumelle de !220`. Tout est discret, juste avant « croise »
+(une contenue croise forcément la contenante ; l'empilement est plus précis et passe devant) :
+l'empilement n'est pas un problème, c'est une organisation — l'ordre de merge est déjà choisi, l'outil
+le montre, l'humain merge dans cet ordre ou non. Cliquer ouvre un panneau ancré : la merge request
+liée (numéro, titre, auteur, âge, note si un rapport existe — la ligne mène à elle), `12 commits
+communs · 4 commits propres`, et le **diff propre** — `Diff propre : 4 fichiers`, les chemins que la
+contenante touche et que la contenue ne touche pas, ce que le reviewer doit lire ici et pas là-bas,
+calculé sur les listes de fichiers à l'ouverture (`diff propre non calculé` si l'une des deux n'est pas
+à jour) ; une chaîne (C contient B contient A) se lit par maillon, la plus profonde d'abord. Quand la
+contenue merge ou ferme, le badge disparaît de la contenante au même instant ; si elle a été mergée
+par squash ou rebase, ses commits d'origine sont encore dans la branche : c'est « N commits de retard »
+et `Mettre à jour avec l'IA` qui prennent le relais, et le panneau garde `contenait !214 · mergée il y a
+2 h` pendant sept jours — l'explication du retard qui vient d'apparaître. La liste des commits de
+chaque merge request ouverte est relevée **à la découverte**, dans le même tour et sous le même
+plafond que ses fichiers (pas de second compteur) — le clone local s'il porte les deux branches,
+aucun réseau ; sinon un appel forge par merge request, pages comprises — et invalidée dès que le SHA
+de tête ou la branche cible change. Sans liste fraîche, liste refusée (plus de 500 commits : une telle
+branche en contient forcément d'autres) ou tronquée (GitHub coupe à 250), **rien** — jamais un faux
+« indépendante », jamais une inclusion calculée sur une liste partielle. Deux branches aux commits
+différents mais au même diff (après un rebase) ne se contiennent pas : c'est vrai, et c'est dit. Le
+rapport d'une merge request contenante reçoit, en tête de son contexte, une **phrase de fait** —
+`Cette merge request contient !214 (ouverte, à traiter) : 12 commits et 9 fichiers sont déjà soumis
+là-bas.` — pour que la review porte sur le diff propre et renvoie à !214 pour le reste ; elle se lit
+en clair dans la modale *Contexte* du rapport, telle que l'IA l'a reçue. Rien dans le brief ; le badge
+ne change ni la note, ni le verdict, ni le classement, et ne bloque jamais `Merger`. Un réglage, dans
+*Réglages → Merge Request → Découverte*.
+
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
 
@@ -888,7 +924,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   ligne grise sous le sélecteur dit `N MR ouvertes sur ce dépôt` ; si la session repart de la branche
   d'une merge request existante, ses croisements ; et quand le prompt cite un chemin qui existe dans le
   clone (`src/payment/`, `tva.js`), la ligne devient `2 MR ouvertes touchent src/payment/ (!214, !219)`.
-  Information seulement : rien n'est bloqué, la session se lance quand même.
+  Information seulement : rien n'est bloqué, la session se lance quand même. Quand la session repart
+  de la branche d'une merge request ouverte, la ligne dit aussi `La branche créée contiendra !214
+  (ouverte, à traiter)` — on le sait avant de commencer, et on choisit la cible en connaissance de cause.
 - **Combien de tests la branche modifie.** Dès qu'un projet de session est *commité*, sa ligne porte
   `0 test modifié` (accentué) ou `3 tests modifiés` (discret), d'après le diff de la branche et les motifs
   de test du dépôt — avant que la merge request n'existe, quand un suivi « ajoute les tests » coûte le
@@ -2135,7 +2173,7 @@ panneau n'est pas déplié) ·
 **Merge Request** (rafraîchissement auto, convergence, le seuil **« dormante » après N jours** (venu
 de Général), et sous **Découverte** les trois réglages des **croisements** — *Relever les fichiers des MR
 ouvertes* (coché ; décoché, aucun appel forge supplémentaire et aucun badge), *Au plus N listes relevées par
-découverte* (20 ; 0 = sans limite) et *Croiser aussi les MR de branches cibles différentes* (décoché) —,
+découverte* (20 ; 0 = sans limite) et *Croiser aussi les MR de branches cibles différentes* (décoché), puis *Relever les commits des MR ouvertes* (coché ; il partage le plafond des fichiers, une MR relevée pour ses fichiers l'est pour ses commits dans le même tour ; décoché, aucun appel de plus et aucun badge « contient !214 ») —,
 puis ceux des **tests touchés** — *Afficher les tests touchés* (coché ; il dépend du relevé des fichiers,
 et le dit), *Signaler l'absence de test à partir de N fichiers de code* (3 ; 0 = toujours), et les deux
 listes de **motifs**, de test et neutres, un glob par ligne, avec `Remettre les défauts` et un aperçu « sur
