@@ -20,10 +20,19 @@ const forge = require('../forge');
 const agentpass = require('../agent/pass');
 const tasks = require('../agent/tasks');
 const { TASKS_DIR, ensureDir } = require('../core/paths');
+const { getLang } = require('../core/i18n');
 
 const MAX_LIGNES_DIFF = 20000;
 const SEUIL_TOKENS = 150000;
 const estimerTokens = (texte) => Math.ceil(String(texte || '').length / 4);
+/* « 800 », « 1,2 k », « 15 k » : un nombre de tokens qui se lit d'un coup d'œil — jamais « 0 k » pour
+   un historique court. La décimale suit la langue courante. */
+function tokensCourt(n) {
+  const v = Math.max(0, Math.round(Number(n) || 0));
+  if (v < 1000) return String(v);
+  const k = v < 10000 ? (v / 1000).toFixed(1).replace(/\.0$/, '') : String(Math.round(v / 1000));
+  return `${getLang() === 'fr' ? k.replace('.', ',') : k} k`;
+}
 
 const GENRES = {
   run: 'exécution', followup: 'suivi', answer: 'réponse', 'converge-fix': 'correction de convergence',
@@ -194,7 +203,7 @@ async function apercu(cfg, task, tg, repo, { auteur, derniereSynchro = null } = 
   const diff = options.diff ? await diffDe(cfg, repo, tg, onLog) : null;
   const texte = assembler({ ...base, diff, reponse: options.reponse || null, consigne: options.consigne || '', passesIncluses: options.passesIncluses ?? null });
   return {
-    texte, tokens: estimerTokens(texte), seuil: SEUIL_TOKENS, passes: base.passes.length, questions: base.questions.length,
+    texte, tokens: estimerTokens(texte), tokens_court: tokensCourt(estimerTokens(texte)), seuil: SEUIL_TOKENS, passes: base.passes.length, questions: base.questions.length,
     review: !!base.review, verification: !!base.verification,
     forge: forgeEtat, diff_lignes: diff != null ? borneDiff(diff).lignes : null,
   };
@@ -261,6 +270,6 @@ function origineDe(task) {
 
 module.exports = {
   MAX_LIGNES_DIFF, SEUIL_TOKENS, GENRES,
-  assembler, borneDiff, estimerTokens, eligibilite, etatForge, diffDe, donnees, apercu, creer, premierMessage, bilan, reprisesDe, origineDe,
+  assembler, borneDiff, estimerTokens, tokensCourt, eligibilite, etatForge, diffDe, donnees, apercu, creer, premierMessage, bilan, reprisesDe, origineDe,
   passesDe, questionsDe,
 };

@@ -103,7 +103,25 @@ describe('Page d’équipe « Notre matin »', () => {
     const tgUid = db.prepare('SELECT uid FROM task_target WHERE id = ?').get(ids.tgClaire).uid;
     ids.reprise = session({ auteurNom: 'Amady', status: 'running', resumed: ids.sClaire.uid });
     db.prepare('UPDATE task SET resumed_target_uid = ? WHERE id = ?').run(tgUid, ids.reprise.id);
-    assert.equal(eq.construire(cfg, { maintenant: NOW }).questions.items[0].answered_in, ids.reprise.id);
+    const d3 = eq.construire(cfg, { maintenant: NOW });
+    assert.equal(d3.questions.items[0].answered_in, ids.reprise.id);
+    assert.equal(d3.counts.questions, 0, 'prise en charge par une reprise, la question reste listée mais n’attend plus personne : le compteur ne la compte pas');
+  });
+
+  test('une personne, deux noms : l’identifiant de forge (`claire`) et le nom git (`Claire`) sont la même personne pour le filtre, l’affichage et la liste', () => {
+    // Une merge request de « claire » (forge) notée par Ali ; une de « noah », inconnu du dépôt de données.
+    const m230 = mr(230, { author: 'claire' }); review(m230, 0.9, { at: il_y_a(2) });
+    const m231 = mr(231, { author: 'noah' }); review(m231, 0.85, { at: il_y_a(1) });
+    const d = eq.construire(cfg, { maintenant: NOW });
+    assert.equal(d.decisions.items.find((x) => x.iid === 230).author, 'Claire', 'affichée sous son nom git');
+    assert.equal(d.decisions.items.find((x) => x.iid === 231).author, 'noah', 'sans nom git connu, l’identifiant de forge tel quel');
+    assert.equal(d.workstations.items.find((w) => w.name === 'Claire').decisions_awaited, 2, 'ses deux merge requests (214 et 230) l’attendent');
+    assert.deepEqual(d.people.filter((p) => /claire|noah/i.test(p)), ['Claire', 'noah'], 'chaque nom une fois, le nom git d’abord');
+    assert.deepEqual(eq.construire(cfg, { maintenant: NOW, personne: 'Claire' }).decisions.items.map((x) => x.iid).sort(), [214, 230]);
+    assert.deepEqual(eq.construire(cfg, { maintenant: NOW, personne: 'noah' }).decisions.items.map((x) => x.iid), [231]);
+    assert.ok(eq.memePersonne('Inès', 'ines') && !eq.memePersonne('noah', 'Noé'));
+    db.prepare('DELETE FROM review WHERE mr_id IN (?, ?)').run(m230, m231);
+    db.prepare('DELETE FROM mr WHERE id IN (?, ?)').run(m230, m231);
   });
 
   test('sessions en cours : partagée `running` → listée avec la synchro de son auteur ; reprises : deux auteurs, fenêtre de 7 jours', () => {

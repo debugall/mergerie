@@ -175,6 +175,13 @@ describe('Merge requests empilées', () => {
       assert.ok(ordre.findIndex((c) => /\bstack\b/.test(c)) < ordre.findIndex((c) => /\bcroise\b/.test(c)), ordre.join(' | '));
     });
 
+    test('la recherche retrouve une merge request par son numéro — « !3 », tel que le badge et la page Équipe la nomment', async () => {
+      await page.fill('#searchReview', '!3');
+      await page.waitForFunction((id) => { const c = document.querySelectorAll('#toReviewList .card[data-id]'); return c.length === 1 && Number(c[0].dataset.id) === id; }, ids[3]);
+      await page.fill('#searchReview', '');
+      await page.locator(`#toReviewList .card[data-id="${ids[1]}"]`).waitFor({ state: 'visible' });
+    });
+
     test('le panneau : les MR liées, la plus profonde d’abord, les commits, le diff propre calculé à l’ouverture ; Échap ferme', async () => {
       const carte = page.locator(`#toReviewList .card[data-id="${ids[3]}"]`);
       await carte.locator('.tag.stack').click();

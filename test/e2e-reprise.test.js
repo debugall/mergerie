@@ -146,7 +146,9 @@ describe('Reprendre la session d’un collègue sur ce poste', () => {
     }
     assert.ok(prompt.indexOf('Réponse à la question en attente') < prompt.indexOf('Consigne de reprise'));
     const journal = app.db.prepare('SELECT text FROM job_log WHERE text LIKE ? ORDER BY ts').all('%Reprise #%').map((l) => l.text).join('\n');
-    assert.match(journal, new RegExp(`Reprise #${repriseId} de la session #${t.id} de Claire · feature/tva@[0-9a-f]{7} · 2 passe\\(s\\)`));
+    assert.match(journal, new RegExp(`Reprise #${repriseId} de la session #${t.id} de Claire · feature/tva@[0-9a-f]{7} · 2 passes incluses · ~[\\d,]+( k)? tokens`));
+    // Une seconde reprise ne propose pas un nom de branche que ma première occupe déjà.
+    assert.equal((await app.api('POST', `/api/tasks/${t.id}/reprise/${tgClaire.id}/apercu`, {})).body.branch_proposee, 'feature/tva-reprise-test-2');
     assert.equal(JSON.stringify({ t: app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id), tg: app.db.prepare('SELECT * FROM task_target WHERE id = ?').get(tgClaire.id) }), avant, 'la session de Claire est identique avant et après');
     assert.equal(app.db.prepare('SELECT session_key FROM task_target WHERE id = ?').get(mine.targets[0].id).session_key, null, 'dry-run : aucun handle — et jamais celui de Claire');
     // La filiation, des deux côtés, sur la liste.
@@ -197,6 +199,10 @@ describe('Reprendre la session d’un collègue sur ce poste', () => {
       assert.match(await btn.innerText(), /Répondre et reprendre sur ce poste|Answer and take over on this machine/);
       assert.match(await carte.locator('.reprise-par').innerText(), /(reprise par|taken over by) Test \(#\d+\)/);
       assert.match(await carte.locator('.reprise-par').innerText(), /question répondue dans la reprise|question answered in takeover/);
+      // La question de Claire se lit, elle ne se répond pas d'ici : son agent attend sur son poste.
+      assert.equal(await carte.locator('.questions-lecture').count(), 1, 'la question en lecture');
+      assert.equal(await carte.locator('[data-qsubmit], .questions-box input, .questions-box textarea').count(), 0, 'ni bouton « Répondre et reprendre », ni champ');
+      assert.match(await carte.locator('.questions-lecture').innerText(), /en attente chez Claire|waiting at Claire's/);
       await btn.click();
       await page.locator('#taskModal:not([hidden])').waitFor();
       await page.locator('#taskReprise:not([hidden])').waitFor();
@@ -204,10 +210,10 @@ describe('Reprendre la session d’un collègue sur ce poste', () => {
       assert.ok(await page.locator('#taskReposWrap input.t-base').isDisabled(), 'la branche de départ est verrouillée');
       assert.ok(await page.locator('#taskReposWrap input.t-repo-search').isDisabled(), 'le dépôt aussi');
       assert.equal(await page.inputValue('#taskReposWrap input.t-base'), 'feature/tva');
-      assert.equal(await page.inputValue('#taskReposWrap input.t-branch'), 'feature/tva-reprise-test');
+      assert.equal(await page.inputValue('#taskReposWrap input.t-branch'), 'feature/tva-reprise-test-3', 'deux reprises occupent déjà le nom et son -2');
       await page.locator('#taskReprise details summary').click();
       assert.match(await page.locator('#taskRepriseApercu').textContent(), /=== Prompt d'origine ===/);
-      assert.match(await page.locator('#taskRepriseTokens').textContent(), /~\d+ ?k tokens/);
+      assert.match(await page.locator('#taskRepriseTokens').textContent(), /~[\d,.]+( k)? tokens · \d+\/\d+ (passes incluses|passes included)/);
       assert.equal(await page.locator('#taskRepriseReponse').count(), 1, 'le champ de réponse, puisque la cible attend');
       assert.ok(await page.locator('#taskSubmitOnly').isHidden());
       assert.match(await page.locator('#taskSubmit').innerText(), /Lancer la reprise|Launch the takeover/);

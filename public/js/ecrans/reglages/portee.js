@@ -123,6 +123,9 @@ async function loadConfig() {
   if (f.test_patterns) f.test_patterns.value = c.test_patterns || '';
   if (f.neutral_patterns) f.neutral_patterns.value = c.neutral_patterns || '';
   if (f.manifest_patterns) f.manifest_patterns.value = c.manifest_patterns || '';
+  /* Les dépendances : coché d'office, comme côté serveur. Sans cette ligne, la case se relisait décochée
+     quelle que soit la valeur — et « Enregistrer » depuis n'importe quel sous-onglet écrivait '0'. */
+  if (f.deps_enabled) f.deps_enabled.checked = String(c.deps_enabled) !== '0';
   // Le contrôle au registre : DÉCOCHÉ d'office (`=== '1'`), le seuil et le plafond s'écrivent (0 est une valeur), les motifs privés vides, les URL de ce poste.
   if (f.registry_enabled) f.registry_enabled.checked = String(c.registry_enabled) === '1';
   if (f.registry_recent_days) f.registry_recent_days.value = c.registry_recent_days == null || c.registry_recent_days === '' ? 30 : Number(c.registry_recent_days);

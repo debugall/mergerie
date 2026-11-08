@@ -436,11 +436,15 @@
             </div>
             <!-- LA PAGE ÉQUIPE « NOTRE MATIN » : deux réglages d'équipe — quand un poste est dit silencieux
                  (jours ouvrés sans commit dans le dépôt de données), combien de temps une reprise reste listée. -->
-            <label><span data-i18n="datasync.lbl.team-quiet-days">Équipe : poste silencieux après N jours ouvrés</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-quiet-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_quiet_days" type="number" min="0" max="365" step="1" placeholder="2" /></label>
-            <label><span data-i18n="datasync.lbl.team-takeover-days">Équipe : une reprise terminée reste listée N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-takeover-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_takeover_days" type="number" min="0" max="365" step="1" placeholder="7" /></label>
             <label class="inline-check"><input form="configForm" name="usage_share" type="checkbox" /> <span data-i18n="datasync.lbl.usage">Partager ma dépense IA (un total par jour)</span> <button type="button" class="hint" tabindex="-1" aria-label="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-tip="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-i18n-tip="datasync.tip.usage"><svg class="ico"><use href="#i-info"/></svg></button></label>
             <div id="dataSyncState" class="muted"></div>
             <div id="dataSyncConflicts"></div>
+            <!-- LA PAGE ÉQUIPE « NOTRE MATIN » : deux réglages d'équipe sous leur propre titre — quand un poste est
+                 dit silencieux (jours ouvrés sans commit dans le dépôt de données), combien de temps une reprise
+                 terminée reste listée. -->
+            <h3 data-i18n="datasync.group.team">Page Équipe</h3>
+            <label><span data-i18n="datasync.lbl.team-quiet-days">Poste silencieux après N jours ouvrés</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-quiet-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_quiet_days" type="number" min="0" max="365" step="1" placeholder="2" /></label>
+            <label><span data-i18n="datasync.lbl.team-takeover-days">Une reprise terminée reste listée N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-takeover-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_takeover_days" type="number" min="0" max="365" step="1" placeholder="7" /></label>
         </div>
         </div><!-- /sub-datasync -->
 
@@ -678,15 +682,18 @@
                  (inconnue, publiée il y a N jours). Le premier appel réseau qui ne va ni à la forge ni à Jira :
                  DÉCOCHÉ d'office, les hôtes nommés dans le libellé, les seuls noms des paquets ajoutés partent,
                  plafonné par tour, mis en cache par nom. D'équipe, sauf les URL de registre (de ce poste). -->
+            <!-- Le bloc entier s'indente sous « Afficher les dépendances », dont il dépend, et se grise avec elle
+                 (reglages/tests-touches.js) : un réglage qu'on ne peut pas activer seul se lit comme tel. -->
+            <div id="registryZone" class="sous-reglage reglages-registre">
             <h3 data-i18n="settings.mr.group.registry">Contrôle au registre</h3>
             <label class="inline-check"><input form="configForm" name="registry_enabled" type="checkbox" /> <span data-i18n="settings.lbl.registry-enabled">Contrôler les dépendances ajoutées auprès des registres publics</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <p class="field-note" data-i18n="settings.registry.hosts">Contacte registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — uniquement pour les paquets ajoutés par vos merge requests, et seulement leur nom.</p>
             <p class="field-note" id="registryDep" hidden data-i18n="settings.registry.dep">Nécessite « Afficher les dépendances » ci-dessus et le relevé des fichiers : sans dépendance relevée, rien n'est contrôlé.</p>
-            <label class="sous-reglage"><span data-i18n="settings.lbl.registry-recent-days">Récent : publié depuis moins de N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-recent-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+            <label><span data-i18n="settings.lbl.registry-recent-days">Récent : publié depuis moins de N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-recent-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="registry_recent_days" type="number" min="0" max="3650" step="1" placeholder="30" />
             </label>
-            <label class="sous-reglage"><span data-i18n="settings.lbl.registry-max">Au plus N appels par tour</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+            <label><span data-i18n="settings.lbl.registry-max">Au plus N appels par tour</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input form="configForm" name="registry_max" type="number" min="0" max="1000" step="1" placeholder="30" />
             </label>
             <div class="patterns-zone">
@@ -697,6 +704,7 @@
                 <label><span data-i18n="settings.lbl.registry-urls">URL par registre (de ce poste, une ligne « écosystème=url »)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-urls" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <textarea form="configForm" name="registry_urls" rows="3" spellcheck="false"></textarea></label>
                 <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="registry_urls" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
+            </div>
             </div>
 
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>

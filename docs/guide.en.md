@@ -65,7 +65,7 @@ whose due date has passed asks just as much, and lateness is exactly what gets f
 
 ### Reviews
 The three stages of one merge request, behind a segmented filter — **To review · Reviewed · Done** — with a
-shared search (title, author, project, ticket).
+shared search (title, author, project, ticket, number: "!260").
 **Where to start.** A dropdown arranges the queue — **usual order** (a ticket in review comes first),
 **smallest first**, **oldest first**, **lowest score**. The size and the age are written on every card;
 what was missing was being able to use them. The choice is remembered, and it sits on the same row as the
@@ -1553,9 +1553,13 @@ group and person — picking a person shows what is *waiting on them*, not what 
 the state of a piece of work**. How many tokens someone burns, how many merge requests they merged, who is
 "the fastest" — never, even though the database knows. Unshared sessions do not exist there, neither as a
 line nor in a counter. No action from the page: every line leads to the card (Reviews, AI Dev) where the
-gestures already live; a person is never a link. Nothing is stored: closing the tab leaves nothing. Two
-team settings, in *Settings → Shared data*: the working days before "quiet" (2) and the window of finished
-takeovers (7 days); the decision threshold is the brief's.
+gestures already live; a person is never a link. Nothing is stored: closing the tab leaves nothing. Every line
+says where it leads (*Reviews ›*, *AI Dev ›*, *Report ›*). A person has one name: the forge handle of a merge
+request author (`amady`) and the git name of the data repository (`Amady`) are matched without case or accents —
+the *Person* filter finds their merge requests, the page shows the git name. A question a takeover has already
+picked up stays listed, dimmed, but leaves the counter. Two team settings, in *Settings → Shared data → Team
+page*: the working days before "quiet" (2) and the window of finished takeovers (7 days); the decision
+threshold is the brief's.
 
 ### Jira
 Four sub-tabs: **My tickets**, **Watched**, **Analysed** and **Stats**. The menu carries a **badge** = the number of tickets
@@ -2865,10 +2869,11 @@ administer: the team already has a forge, permissions, backups and a history.
 
 **Taking over a colleague's session on this machine.** A coding session received from the repository is
 *read*: the agent handle, the clone and the follow-ups live on the other machine — when Claire is away, the
-session her agent left waiting for an answer waits with her. On the project line of her card, **"Take over
+session her agent left waiting for an answer waits with her — her question is read on her card (its options,
+"waiting at Claire's"), it is not answered from here. On the project line of her card, **"Take over
 on this machine"** (or **"Answer and take over on this machine"** when the target is waiting for an answer)
 creates a session **of your own**, on your clone and your subscription, starting from her branch as it is
-on the forge (a new branch `<branch>-takeover-<you>`, set on the forge head), with **your** settings — never
+on the forge (a new branch `<branch>-takeover-<you>`, `-2`, `-3` when the name is taken, set on the forge head), with **your** settings — never
 hers, which do not travel — and whose agent receives, as its first message, **the whole history of the
 original session, as is**: the prompt, each pass with its kind, the prompt actually sent and the agent's
 answer, the questions and answers, the last review report and the last verification tied to the branch,

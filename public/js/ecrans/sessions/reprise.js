@@ -16,7 +16,7 @@ function boutonReprise(t, tg) {
   if (!e || (!e.ok && e.reason === 'mine')) return '';
   if (e.ok) {
     const cle = e.needs_input ? 'task.reprise.btn.answer' : 'task.reprise.btn';
-    return `<button class="btn btn-sm" data-reprise="${tg.id}" data-task="${t.id}" title="${esc(tr('task.reprise.title', { who: t.author || '' }))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr(cle))}</button>`;
+    return `<button class="btn btn-sm" data-reprise="${tg.id}" data-task="${t.id}" title="${esc(tr('task.reprise.title', { de_who: I18Nrt.deNom(t.author || tr('task.reprise.someone')) }))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${esc(tr(cle))}</button>`;
   }
   if (e.reason === 'unpushed') return `<span class="t-note reprise-note muted" title="${esc(tr('task.reprise.unpushed.title'))}">${esc(tr('task.reprise.unpushed', { who: t.author || '' }))}</span>`;
   if (e.reason === 'merged') return `<span class="t-note reprise-note muted">${esc(tr('task.reprise.merged', { iid: e.iid || '?' }))}</span>`;
@@ -36,8 +36,7 @@ function lignesReprises(t, tg) {
 function ligneOrigine(t) {
   const o = t && t.resumed_from;
   if (!o) return '';
-  const who = o.author || tr('task.reprise.someone');
-  const texte = tr('task.reprise.from', { who, id: o.id != null ? o.id : '?' });
+  const texte = tr('task.reprise.from', { de_who: I18Nrt.deNom(o.author || tr('task.reprise.someone')), id: o.id != null ? o.id : '?' });
   return `<div class="reprise-origine muted">${o.id != null ? `<button type="button" class="croise-go" data-reprise-go="${o.id}">${esc(texte)}</button>` : esc(texte)}</div>`;
 }
 const tagReprise = (t) => (t && t.resumed_from ? ` <span class="tag reprise" title="${esc(tr('task.reprise.tag-title'))}">${esc(tr('task.reprise.tag'))}</span>` : '');
@@ -67,12 +66,17 @@ async function majApercuReprise() {
     const d = await api(`/tasks/${r.taskId}/reprise/${r.tgId}/apercu`, { method: 'POST', body: corps });
     if (mon !== seqApercuReprise.n) return;
     $('#taskRepriseApercu').textContent = d.texte;
-    const k = Math.round(d.tokens / 1000);
-    $('#taskRepriseTokens').textContent = tr('task.reprise.tokens', { k, passes: corps.passes_incluses, total: d.passes }) + (d.tokens > d.seuil ? ` · ${tr('task.reprise.tokens-high')}` : '');
+    $('#taskRepriseTokens').textContent = texteTokensReprise(d, corps.passes_incluses) + (d.tokens > d.seuil ? ` · ${tr('task.reprise.tokens-high')}` : '');
     $('#taskRepriseTokens').classList.toggle('form-info-dirty', d.tokens > d.seuil);
   } catch (e) { if (mon === seqApercuReprise.n) $('#taskRepriseTokens').textContent = explainError(e.message); }
 }
 const majApercuRepriseBientot = debounce(majApercuReprise, 400);
+/* « ~800 tokens · 2/2 passes incluses » : le serveur a déjà écrit le nombre en clair (`tokens_court`),
+   jamais « 0 k » pour un historique court. */
+const texteTokensReprise = (d, incluses) => tr('task.reprise.tokens', {
+  tokens: d.tokens_court != null ? d.tokens_court : String(d.tokens || 0),
+  passes: tr('task.reprise.passes-n', { n: incluses, total: d.passes, count: incluses }),
+});
 
 async function ouvrirReprise(taskId, tgId) {
   let d;
@@ -95,7 +99,8 @@ async function ouvrirReprise(taskId, tgId) {
   repriseEnCours = { taskId, tgId, passes: d.passes };
   const b = repriseBloc();
   const qs = (d.target.questions || []).filter((q) => q.answer == null || !String(q.answer).trim());
-  b.innerHTML = `<div class="reprise-bandeau">${svgIco('users')} ${esc(tr('task.reprise.banner', { who: d.task.author || tr('task.reprise.someone'), id: d.task.id, project: d.target.project, branch: d.target.branch }))}${d.target.commit_sha ? ` · ${esc(tr('task.reprise.last-commit', { sha: String(d.target.commit_sha).slice(0, 7) }))}` : ''}${d.forge && d.forge.ecart ? ` · ${esc(tr('task.reprise.ahead', { n: d.forge.ecart, count: d.forge.ecart }))}` : ''}${d.task.status === 'running' ? ` · ${esc(tr('task.reprise.running', { who: d.task.author || '' }))}` : ''}</div>
+  const deWho = I18Nrt.deNom(d.task.author || tr('task.reprise.someone'));
+  b.innerHTML = `<div class="reprise-bandeau">${svgIco('users')} ${esc(tr('task.reprise.banner', { de_who: deWho, id: d.task.id, project: d.target.project, branch: d.target.branch }))}${d.target.commit_sha ? ` · ${esc(tr('task.reprise.last-commit', { sha: String(d.target.commit_sha).slice(0, 7) }))}` : ''}${d.forge && d.forge.ecart ? ` · ${esc(tr('task.reprise.ahead', { n: d.forge.ecart, count: d.forge.ecart }))}` : ''}${d.task.status === 'running' ? ` · ${esc(tr('task.reprise.running', { who: d.task.author || '' }))}` : ''}</div>
     ${qs.length ? `<label><span>${esc(tr('task.reprise.answer-lbl'))}</span><div class="reprise-questions muted">${qs.map((q) => `<div>${esc(q.question || '')}</div>`).join('')}</div><textarea id="taskRepriseReponse" rows="3" placeholder="${esc(tr('task.reprise.answer-ph'))}"></textarea></label>` : ''}
     <details class="reprise-encart"><summary>${esc(tr('task.reprise.preview'))} <span id="taskRepriseTokens" class="muted"></span></summary>
       <div class="reprise-options">
@@ -106,12 +111,12 @@ async function ouvrirReprise(taskId, tgId) {
     </details>`;
   b.hidden = false;
   $('#taskRepriseApercu').textContent = d.texte;
-  $('#taskRepriseTokens').textContent = tr('task.reprise.tokens', { k: Math.round(d.tokens / 1000), passes: d.passes, total: d.passes });
+  $('#taskRepriseTokens').textContent = texteTokensReprise(d, d.passes);
   $('#taskReprisePasses').addEventListener('input', (e) => { $('#taskReprisePassesOut').textContent = e.target.value; majApercuRepriseBientot(); });
   $('#taskRepriseDiff').addEventListener('change', majApercuReprise);
   const rep = $('#taskRepriseReponse'); if (rep) rep.addEventListener('input', majApercuRepriseBientot);
   f.prompt.placeholder = tr('task.reprise.consigne-ph');
-  if (f.label) f.label.value = tr('task.reprise.label', { who: d.task.author || tr('task.reprise.someone'), id: d.task.id });
+  if (f.label) f.label.value = tr('task.reprise.label', { de_who: deWho, id: d.task.id });
   $('#taskModalTitle').textContent = tr('task.reprise.modal-title');
   $('#taskExistingImgs').textContent = '';
   boutonsCreation();

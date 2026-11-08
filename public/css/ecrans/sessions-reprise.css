@@ -13,3 +13,6 @@
 .reprise-par { padding-left: 8px; }
 .tag.reprise { color: var(--accent); border-color: var(--accent); }
 .reprise-note { font-size: 12px; }
+/* La question d'un collègue, en lecture : les options en ligne, grises, sans case à cocher. */
+.questions-lecture .q-opts-lecture { flex-direction: row; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.questions-lecture .q-lecture-note { margin: 8px 0 0; font-size: 12px; }

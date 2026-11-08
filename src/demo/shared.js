@@ -65,12 +65,8 @@ function preparer(onLog = () => {}) {
   const tous = store.listerFichiers();
   const restants = new Set(tous);
   let n = 0;
-  EQUIPE.forEach((personne, i) => {
-    const siens = [...restants].filter(personne.prend);
-    if (!siens.length) return;
-    for (const f of siens) restants.delete(f);
+  const commiter = (personne, siens, quand) => {
     git(['add', '--', ...siens]);
-    const quand = new Date(Date.now() - (EQUIPE.length - i) * 86400000).toISOString();
     git(['commit', '-m', messagePour(personne, siens)], SHARED_DIR, {
       GIT_AUTHOR_NAME: personne.name,
       GIT_AUTHOR_EMAIL: personne.email,
@@ -81,6 +77,31 @@ function preparer(onLog = () => {}) {
     });
     n += 1;
     onLog(`[demo] dépôt de données : ${siens.length} fichier(s) au nom de ${personne.name}`);
+  };
+  /* LES AUTEURS QUE LA GRAINE A NOMMÉS passent d'abord : la session « de Claire », la review d'Ali, ma
+     reprise. Sans cela, le partage des fichiers par préfixe les attribuait à Inès, et la carte disait
+     « partagé par Inès » sous un libellé « Reprise de la session de Claire ». La date du commit est celle
+     que la graine a posée pour la personne (`author_last`), sinon hier — Ali reste silencieux. */
+  // eslint-disable-next-line global-require
+  const { etat } = require('../data/localstate');
+  // eslint-disable-next-line global-require
+  const identite = require('../core/identite');
+  const nommes = etat.carte('author', 'name');
+  const dernieres = etat.carte('author_last', 'at');
+  const moi = identite.identite();
+  for (const nom of [...new Set(nommes.values())].filter(Boolean)) {
+    const siens = [...restants].filter((f) => nommes.get(f) === nom);
+    if (!siens.length) continue;
+    for (const f of siens) restants.delete(f);
+    const connue = EQUIPE.find((p) => p.name === nom);
+    const email = connue ? connue.email : (nom === moi.name && moi.email ? moi.email : `${nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '.')}@exemple.test`);
+    commiter({ name: nom, email }, siens, dernieres.get(nom) || new Date(Date.now() - 86400000).toISOString());
+  }
+  EQUIPE.forEach((personne, i) => {
+    const siens = [...restants].filter(personne.prend);
+    if (!siens.length) return;
+    for (const f of siens) restants.delete(f);
+    commiter(personne, siens, new Date(Date.now() - (EQUIPE.length - i) * 86400000).toISOString());
   });
   if (!n) return null;
 
@@ -95,7 +116,8 @@ function preparer(onLog = () => {}) {
    relit pas, et la démo doit montrer un historique qu'on a envie d'ouvrir. */
 function messagePour(personne, fichiers) {
   const premier = fichiers.find((f) => f.startsWith('reviews/')) ? 'reviews'
-    : (fichiers.find((f) => f.startsWith('notes/')) ? 'notes and todos' : 'agents and settings');
+    : (fichiers.find((f) => f.startsWith('sessions/')) ? 'sessions'
+      : (fichiers.find((f) => f.startsWith('notes/')) ? 'notes and todos' : 'agents and settings'));
   return `${premier} from ${personne.name}`;
 }
 

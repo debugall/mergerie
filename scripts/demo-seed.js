@@ -697,7 +697,13 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   const uidC = db.prepare('SELECT uid FROM task WHERE id = ?').get(tC.lastInsertRowid).uid;
   // eslint-disable-next-line global-require
   const etatDemo = require('../src/data/localstate').etat;
-  etatDemo.ecrire('author', `sessions/${uidC}/session.json`, 'name', 'Claire');
+  // eslint-disable-next-line global-require
+  const storeDemo = require('../src/data/store');
+  /* Le chemin est celui que le dépôt de données donnerait à cette session (`cheminSur`), jamais écrit à la
+     main : c'est sous ce chemin que la carte et la page Équipe relisent l'auteur, et c'est à ce nom que le
+     dépôt de démonstration (src/demo/shared.js) commite le fichier. */
+  const cheminTache = (id) => storeDemo.cheminSur('task', db.prepare('SELECT * FROM task WHERE id = ?').get(id));
+  etatDemo.ecrire('author', cheminTache(tC.lastInsertRowid), 'name', 'Claire');
   /* LA PAGE ÉQUIPE « NOTRE MATIN » : deux auteurs fictifs dans le dépôt de données de démonstration —
      Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés ; une décision
      attend (la review d'Ali sur une MR de Claire, voir plus bas), une question sans réponse (la session
@@ -709,6 +715,11 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
       'Reprise de la session de Claire', uidC, db.prepare('SELECT uid FROM task_target WHERE id = ?').get(tgC).uid, at(1), at(1), at(1));
   db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, updated_at) VALUES (?,?,?,?,?,?,?)`)
     .run(tR.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'committed', require('crypto').randomBytes(20).toString('hex'), at(1));
+  /* La reprise est À MOI : son fichier porte mon nom git, comme si je l'avais poussé — la carte dit
+     « partagé par moi », et la page Équipe « #6 Claire → #7 moi ». */
+  // eslint-disable-next-line global-require
+  const moiDemo = require('../src/core/identite').nom();
+  if (moiDemo) etatDemo.ecrire('author', cheminTache(tR.lastInsertRowid), 'name', moiDemo);
   // compté plus bas, avec les autres (`counts` n'existe pas encore ici)
 }
 

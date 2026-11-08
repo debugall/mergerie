@@ -3,7 +3,7 @@
    lancement. HTTP seulement — l'assemblage et la création sont dans `session/reprise.js`. */
 const { app } = require('../app');
 const db = require('../../db');
-const { t } = require('../../core/i18n');
+const { t, deNom } = require('../../core/i18n');
 const identite = require('../../core/identite');
 const { getConfig } = require('../../data/config');
 const jobs = require('../../jobs');
@@ -26,8 +26,15 @@ function cadre(req) {
   if (!repo) throw new Error(t('err.depot-introuvable'));
   return { tache, tg, repo, auteur, eligibilite: e };
 }
-/* La nouvelle branche proposée : `<branche>-reprise-<moi>`, modifiable dans la modale. */
-const brancheProposee = (tg) => `${tg.branch}-reprise-${((identite.nom() || 'moi').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'moi')}`;
+/* La nouvelle branche proposée : `<branche>-reprise-<moi>`, modifiable dans la modale. Une seconde
+   reprise de la même branche ne propose pas un nom qu'une session de ce poste occupe déjà : `-2`, `-3`… */
+function brancheProposee(tg) {
+  const base = `${tg.branch}-reprise-${((identite.nom() || 'moi').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'moi')}`;
+  const prise = db.prepare('SELECT 1 FROM task_target WHERE repo_id = ? AND branch = ? LIMIT 1');
+  let nom = base;
+  for (let i = 2; prise.get(tg.repo_id, nom) && i < 100; i += 1) nom = `${base}-${i}`;
+  return nom;
+}
 const options = (b) => ({
   consigne: String((b && b.consigne) || ''), reponse: b && b.reponse ? String(b.reponse) : null,
   passesIncluses: b && b.passes_incluses != null && b.passes_incluses !== '' ? Math.max(0, parseInt(b.passes_incluses, 10) || 0) : null,
@@ -64,7 +71,7 @@ app.post('/api/tasks/:id/reprise/:tid', wrap(async (req, res) => {
   await gardeConfigAgent(repo, tg.branch, tg.base_branch, b);
   const id = await reprise.creer(cfg, tache, tg, repo, {
     auteur, consigne: o.consigne, reponse: o.reponse, passesIncluses: o.passesIncluses, diff: o.diff, branch,
-    label: lireLibelle(b.label) || t('task.reprise.label', { who: auteur, id: tache.id }), cli: lireCliSession(b), defauts: defauts(cfg),
+    label: lireLibelle(b.label) || t('task.reprise.label', { de_who: deNom(auteur), id: tache.id }), cli: lireCliSession(b), defauts: defauts(cfg),
   });
   const job = jobs.startTaskJob(id, 'run');
   res.json({ ...taskById(id), targets: taskTargets(id), context_repos: taskContextRepos(id), job });

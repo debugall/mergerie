@@ -25,7 +25,7 @@ const reprise = require('./reprise');
 const apres = require('../agent/profile/apres');
 const demoAgents = require('../demo/agents');
 const pieces = require('../agent/pieces');
-const { t } = require('../core/i18n');
+const { t, deNom } = require('../core/i18n');
 
 const WORK_REL = 'ai-dev-tools-internal';
 
@@ -388,7 +388,10 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
       promptText = buildCodePrompt(task);
       if (promptRepli != null) promptRepli = promptText;
       const b = reprise.bilan(task.id) || {};
-      onLog(t('log.task.reprise', { id: task.id, origine: b.origine_id || '?', auteur: b.auteur || '?', branch: b.branch || tg.base_branch || '', sha: String(b.sha || '').slice(0, 7), passes: b.passes || 0, tokens: Math.round((b.tokens || 0) / 1000) }));
+      onLog(t('log.task.reprise', {
+        id: task.id, origine: b.origine_id || '?', de_auteur: deNom(b.auteur || '?'), branch: b.branch || tg.base_branch || '', sha: String(b.sha || '').slice(0, 7),
+        passes: t('log.task.reprise.passes', { n: b.passes || 0, count: b.passes || 0 }), tokens: reprise.tokensCourt(b.tokens || 0),
+      }));
     }
   }
   const cfg = getConfig();

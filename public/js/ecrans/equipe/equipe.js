@@ -28,8 +28,11 @@ function equipeSection(cle, s, lignes, { icon = 'inbox', hint = '', plusDestinat
     ${s.more ? `<div class="equipe-plus"><button type="button" class="croise-go" data-equipe-plus="${esc(plusDestination || cle)}">${esc(tr('team.more', { n: s.more, count: s.more }))}</button></div>` : ''}
   </section>`;
 }
-const equipeLigne = (attrs, titre, meta, { inerte = false } = {}) => `<div class="equipe-item${inerte ? ' inerte' : ''}" ${attrs}>
+/* Une ligne mène quelque part (Reviews, Dev IA, un rapport) : elle le dit à droite, en gris, pour que le
+   clic ne soit pas une surprise. Une ligne inerte (une personne) n'a pas de destination. */
+const equipeLigne = (attrs, titre, meta, { inerte = false, vers = null, classe = '' } = {}) => `<div class="equipe-item${inerte ? ' inerte' : ''}${classe ? ` ${classe}` : ''}" ${attrs}${vers ? ` title="${esc(tr('team.go.title', { where: tr(`team.go.${vers}`) }))}"` : ''}>
     <div class="equipe-item-main"><div class="equipe-item-title">${titre}</div><div class="meta">${meta}</div></div>
+    ${vers ? `<span class="equipe-go muted">${esc(tr(`team.go.${vers}`))} ›</span>` : ''}
   </div>`;
 
 function renderEquipe(d) {
@@ -39,7 +42,8 @@ function renderEquipe(d) {
     return;
   }
   const c = d.counts || {};
-  const chiffre = (cle, n) => `<span class="equipe-chiffre"><b>${n}</b> ${esc(tr(cle, { n, count: n }).replace(/^\d+\s*/, ''))}</span>`;
+  // Un compteur à zéro n'est pas une nouvelle : il reste, en retrait, pour que la ligne garde sa forme.
+  const chiffre = (cle, n) => `<span class="equipe-chiffre${n ? '' : ' zero'}"><b>${n}</b> ${esc(tr(cle, { n, count: n }).replace(/^\d+\s*/, ''))}</span>`;
   const tete = `<div class="equipe-tete">
       ${chiffre('team.count.decisions', c.decisions || 0)}
       ${chiffre('team.count.questions', c.questions || 0)}
@@ -55,30 +59,37 @@ function renderEquipe(d) {
     `data-equipe-mr="${x.mr_id}" data-status="${esc(x.status || '')}"`,
     `!${esc(x.iid)} · ${esc(x.project)}${x.title ? ` — ${esc(x.title)}` : ''}`,
     esc(tr(x.reviewer ? 'team.decision.line' : 'team.decision.line-noreviewer', { score: String(x.score).replace('.', ','), author: x.author || tr('team.unknown'), reviewer: x.reviewer || '', wait: attenteCourte(x.waiting_days) })),
+    { vers: 'reviews' },
   )).join(''), { icon: 'check', hint: tr('team.sec.decisions.hint', { threshold: d.threshold }) });
 
+  /* Une question qu'une reprise a prise en charge reste listée, annotée et en retrait : elle n'attend plus
+     personne (le compteur ne la compte pas), mais rien ne dit encore que son auteur l'a vue. */
   const questions = equipeSection('questions', d.questions, (d.questions.items || []).map((x) => equipeLigne(
     `data-equipe-session="${x.task_id}"`,
     esc(tr('team.question.line', { id: x.task_id, author: x.author || tr('team.unknown'), project: x.project, age: depuisOuInconnu(x.since) })),
-    `${x.question ? `<span class="equipe-question">« ${esc(x.question)} »</span>` : ''}${x.answered_in ? ` · <span>${esc(tr('team.question.answered', { id: x.answered_in }))}</span>` : ''}`,
+    `${x.question ? `<span class="equipe-question">« ${esc(x.question)} »</span>` : ''}${x.answered_in ? `<span>· ${esc(tr('team.question.answered', { id: x.answered_in }))}</span>` : ''}`,
+    { vers: 'sessions', classe: x.answered_in ? 'repondue' : '' },
   )).join(''), { icon: 'alert' });
 
   const running = equipeSection('running', d.running, (d.running.items || []).map((x) => equipeLigne(
     `data-equipe-session="${x.task_id}"`,
     esc(tr(x.synced_at ? 'team.running.line' : 'team.running.line-nosync', { author: x.author || tr('team.unknown'), project: x.project, since: attenteCourte(x.running_minutes != null ? x.running_minutes / 1440 : null), synced: x.synced_at ? depuis(x.synced_at) : '' })),
     x.label ? esc(x.label) : '',
+    { vers: 'sessions' },
   )).join(''), { icon: 'bot' });
 
   const takeovers = equipeSection('takeovers', d.takeovers, (d.takeovers.items || []).map((x) => equipeLigne(
     `data-equipe-session="${x.task_id}"`,
     esc(tr('team.takeover.line', { from: x.from_task_id, from_author: x.from_author || tr('team.unknown'), to: x.task_id, author: x.author || tr('team.unknown'), when: depuisOuInconnu(x.at) })),
     esc(x.project),
+    { vers: 'sessions' },
   )).join(''), { icon: 'play' });
 
   const failing = equipeSection('failing', d.failing, (d.failing.items || []).map((x) => equipeLigne(
     `data-equipe-verif="${x.verification_id}"`,
     `!${esc(x.iid)} · ${esc(x.project)}`,
     esc(tr('team.failing.line', { failed_label: tr('team.failing.tests', { n: x.failed, count: x.failed }), author: x.author || tr('team.unknown'), age: depuisOuInconnu(x.at) })),
+    { vers: 'report' },
   )).join(''), { icon: 'alert' });
 
   const pairs = equipeSection('pairs', d.pairs, (d.pairs.items || []).map((x) => equipeLigne(
@@ -87,6 +98,7 @@ function renderEquipe(d) {
       ? tr('team.pair.stack', { a: x.a_iid, a_author: x.a_author || tr('team.unknown'), b: x.b_iid, b_author: x.b_author || tr('team.unknown') })
       : tr('team.pair.overlap', { a: x.a_iid, a_author: x.a_author || tr('team.unknown'), b: x.b_iid, b_author: x.b_author || tr('team.unknown'), files: tr('team.pair.files', { n: x.shared, count: x.shared }) })),
     esc(x.project || ''),
+    { vers: 'reviews' },
   )).join(''), { icon: 'branch' });
 
   const workstations = equipeSection('workstations', d.workstations, (d.workstations.items || []).map((x) => equipeLigne(

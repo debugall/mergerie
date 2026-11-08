@@ -77,7 +77,7 @@ une todo normale dont l'échéance est dépassée réclame autant, et c'est just
 
 ### Reviews
 Les trois stades d'une même merge request, réunis derrière un filtre segmenté —
-**À traiter · Reviewées · Traitées** — avec une recherche commune (titre, auteur, projet, ticket).
+**À traiter · Reviewées · Traitées** — avec une recherche commune (titre, auteur, projet, ticket, numéro : « !260 »).
 **Par quoi commencer.** Une liste déroulante range la file — **ordre habituel** (le ticket en revue
 passe devant), **petites d'abord**, **plus anciennes**, **note la plus basse**. La taille et l'âge sont
 écrits sur chaque carte ; il manquait de pouvoir s'en servir. Le choix est mémorisé, et il se lit sur la
@@ -1620,9 +1620,12 @@ soit l'état d'un travail**. Combien de tokens quelqu'un consomme, combien de me
 est « le plus rapide » — jamais, même si la base le sait. Les sessions non partagées n'y existent pas, ni
 dans une ligne ni dans un compteur. Aucune action depuis la page : chaque ligne mène à la carte (Reviews,
 Dev IA) où les gestes existent déjà ; une personne n'est jamais un lien. Rien n'est stocké : fermer l'onglet
-ne laisse rien. Deux réglages d'équipe, dans *Réglages → Données partagées* : le nombre de jours ouvrés
-avant « silencieux » (2) et la fenêtre des reprises terminées (7 jours) ; le seuil de décision est celui du
-brief.
+ne laisse rien. Chaque ligne dit où elle mène (*Reviews ›*, *Dev IA ›*, *Rapport ›*). Une personne porte un seul
+nom : l'identifiant de forge d'une merge request (`amady`) et le nom git du dépôt de données (`Amady`) sont
+rapprochés sans casse ni accents — le filtre *Personne* retrouve ses merge requests, la page affiche le nom git.
+Une question qu'une reprise a prise en charge reste listée, en retrait, mais sort du compteur. Deux réglages
+d'équipe, dans *Réglages → Données partagées → Page Équipe* : le nombre de jours ouvrés avant « silencieux »
+(2) et la fenêtre des reprises terminées (7 jours) ; le seuil de décision est celui du brief.
 
 ### Jira
 Quatre sous-onglets : **Mes tickets**, **Surveillés**, **Analysés** et **Stats**. Le menu porte une **pastille** = le nombre de
@@ -2988,10 +2991,11 @@ administrer : l'équipe a déjà une forge, des droits, des sauvegardes et un hi
 
 **Reprendre la session d'un collègue sur ce poste.** Une session de codage reçue du dépôt se *lit* : le
 handle d'agent, le clone et les suivis sont sur l'autre poste — quand Claire est absente, la session que son
-agent a laissée en attente d'une réponse attend avec elle. Sur la ligne de projet de sa carte, **« Reprendre
+agent a laissée en attente d'une réponse attend avec elle — sa question se lit sur sa carte (ses options, « en
+attente chez Claire »), elle ne se répond pas d'ici. Sur la ligne de projet de sa carte, **« Reprendre
 sur ce poste »** (ou **« Répondre et reprendre sur ce poste »** si la cible attend une réponse) crée une
 session **à toi**, sur ton clone et ton abonnement, qui repart de sa branche telle qu'elle est sur la forge
-(nouvelle branche `<branche>-reprise-<toi>`, posée sur la tête de la forge), avec **tes** réglages — jamais
+(nouvelle branche `<branche>-reprise-<toi>`, `-2`, `-3` si le nom est déjà pris, posée sur la tête de la forge), avec **tes** réglages — jamais
 les siens, qui ne voyagent pas — et dont l'agent reçoit, comme premier message, **tout l'historique de la
 session d'origine, tel quel** : le prompt, chaque passe avec son genre, le prompt réellement envoyé et le
 retour de l'agent, les questions et les réponses, le dernier rapport de review et la dernière vérification

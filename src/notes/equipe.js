@@ -110,7 +110,7 @@ function questionsSansReponse(maintenant, sessions, reposFiltre) {
       waiting_days: jours(r.updated_at, maintenant), question: premiereQuestion(r.questions_json),
       answered_in: rep.length ? rep[0].id : null,
     };
-  }).sort((a, b) => (b.waiting_days || 0) - (a.waiting_days || 0));
+  }).sort((a, b) => (!!a.answered_in - !!b.answered_in) || (b.waiting_days || 0) - (a.waiting_days || 0));   // celles qui attendent encore d'abord
 }
 
 /* 3. SESSIONS EN COURS : partagées et marquées `running` à la dernière synchronisation — la fraîcheur
@@ -194,9 +194,38 @@ function fraicheurDesPostes(maintenant, fraicheur, decisions, silencieuxJours, a
     const ouvres = last ? joursOuvres(last, maintenant) : null;
     return {
       name: nom, synced_at: last, quiet: ouvres == null ? false : ouvres > silencieuxJours,
-      decisions_awaited: decisions.filter((d) => d.author === nom).length,
+      decisions_awaited: decisions.filter((d) => memePersonne(d.author, nom)).length,
     };
   }).sort((a, b) => String(b.synced_at || '').localeCompare(String(a.synced_at || '')) || a.name.localeCompare(b.name));
+}
+
+/* ---------- Une personne, deux noms ----------
+   L'auteur d'une merge request est son identifiant de forge (`amady`, `noah`) ; l'auteur d'un fichier du
+   dépôt de données est son nom git (`Amady`, `Claire`). La même personne porte donc deux noms, et le
+   filtre « Personne » ne retrouvait pas ses merge requests. On rapproche par une clé sans casse ni
+   accents ni ponctuation : `amady` = `Amady`, `ines` = `Inès`. Rien n'est stocké, rien n'est deviné de
+   plus — deux noms vraiment différents (`noah` sur la forge, `Noé` dans git) restent deux personnes. */
+const cleNom = (nom) => String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const memePersonne = (a, b) => !!a && !!b && cleNom(a) === cleNom(b);
+/* Les auteurs de merge requests dont le nom git est connu s'affichent sous ce nom : une seule graphie par
+   personne sur la page. */
+function harmoniserNoms(d) {
+  const parCle = new Map(d.workstations.map((w) => [cleNom(w.name), w.name]));
+  const nom = (x) => (x && parCle.get(cleNom(x))) || x || null;
+  return {
+    ...d,
+    decisions: d.decisions.map((x) => ({ ...x, author: nom(x.author) })),
+    failing: d.failing.map((x) => ({ ...x, author: nom(x.author) })),
+    pairs: d.pairs.map((x) => ({ ...x, a_author: nom(x.a_author), b_author: nom(x.b_author) })),
+  };
+}
+/* Le filtre « Personne » propose chaque nom une fois : les postes du dépôt de données d'abord, puis les
+   auteurs de merge requests qui n'y figurent sous aucune graphie. */
+function personnes(d) {
+  const vues = new Map(d.workstations.map((w) => [cleNom(w.name), w.name]));
+  for (const x of [...d.decisions, ...d.failing]) if (x.author && !vues.has(cleNom(x.author))) vues.set(cleNom(x.author), x.author);
+  for (const x of d.pairs) for (const a of [x.a_author, x.b_author]) if (a && !vues.has(cleNom(a))) vues.set(cleNom(a), a);
+  return [...vues.values()];
 }
 
 /* ---------- La page ---------- */
@@ -205,7 +234,7 @@ function fraicheurDesPostes(maintenant, fraicheur, decisions, silencieuxJours, a
    vérifications de ses merge requests, les paires où elle figure, sa ligne de fraîcheur. */
 function filtrerPersonne(d, p) {
   if (!p) return d;
-  const est = (x) => x && x === p;
+  const est = (x) => memePersonne(x, p);
   return {
     ...d,
     decisions: d.decisions.filter((x) => est(x.author)),
@@ -234,13 +263,15 @@ function construire(cfg = {}, { maintenant = new Date(), seuilPret = 8, silencie
     pairs: croisementsEtEmpilements(cfg, reposFiltre),
     workstations: fraicheurDesPostes(maintenant, fraicheur, decisions, Number(silencieuxJours) >= 0 ? Number(silencieuxJours) : 2, sessions.map((s) => s.auteur)),
   };
-  const d = filtrerPersonne(brut, personne);
+  const d = filtrerPersonne(harmoniserNoms(brut), personne);
   const sections = {};
   for (const k of ['decisions', 'questions', 'running', 'takeovers', 'failing', 'pairs', 'workstations']) sections[k] = borner(d[k]);
   return {
     attached: true,
-    counts: { decisions: d.decisions.length, questions: d.questions.length, running: d.running.length },
-    people: brut.workstations.map((w) => w.name),
+    /* Une question qu'une reprise a prise en charge reste listée, annotée — mais elle n'attend plus
+       personne : le compteur ne la compte pas. */
+    counts: { decisions: d.decisions.length, questions: d.questions.filter((q) => !q.answered_in).length, running: d.running.length },
+    people: personnes(harmoniserNoms(brut)),
     single_person: brut.workstations.length <= 1,
     threshold: Number(seuilPret) > 0 ? Number(seuilPret) : 8,
     empty: Object.values(sections).every((s) => !s.items.length || s === sections.workstations) && !d.decisions.length && !d.questions.length && !d.running.length && !d.takeovers.length && !d.failing.length && !d.pairs.length,
@@ -248,4 +279,4 @@ function construire(cfg = {}, { maintenant = new Date(), seuilPret = 8, silencie
   };
 }
 
-module.exports = { construire, joursOuvres, MAX_PAR_SECTION, decisionsEnAttente, questionsSansReponse, sessionsEnCours, reprises, verificationsEnEchec, croisementsEtEmpilements, fraicheurDesPostes };
+module.exports = { construire, joursOuvres, cleNom, memePersonne, MAX_PAR_SECTION, decisionsEnAttente, questionsSansReponse, sessionsEnCours, reprises, verificationsEnEchec, croisementsEtEmpilements, fraicheurDesPostes };

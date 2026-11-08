@@ -67,5 +67,13 @@
     scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
   }
 
-  return { t, setLang, getLang, langs, currentLocale, applyStaticI18n, dict: I18N };
+  /* « de Claire », « d’Inès » : l'élision française devant une voyelle (le h, muet ou aspiré, ne
+     s'élide pas faute de le savoir) ; en anglais, le nom seul — la clé place le génitif elle-même. */
+  function deNom(nom) {
+    const n = String(nom || '');
+    if (lang !== 'fr') return n;
+    return /^[aeiouyàâäéèêëîïôöùûüœ]/i.test(n) ? `d’${n}` : `de ${n}`;
+  }
+
+  return { t, setLang, getLang, langs, currentLocale, applyStaticI18n, deNom, dict: I18N };
 }));

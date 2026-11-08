@@ -155,6 +155,11 @@ describe('Contrôle au registre des dépendances ajoutées', () => {
          valeur, on ne la lit pas au vol — sur un runneur à deux cœurs, le focus arrive avant la réponse. */
       await page.waitForFunction(() => document.querySelector('#sub-mr [name="private_patterns"]').value === '@acme/*');
       await page.waitForFunction(() => document.querySelector('#sub-mr [name="registry_enabled"]').checked);
+      // La case parente se relit cochée (elle ne l'était jamais : « Enregistrer » coupait les dépendances), et le bloc n'est pas grisé.
+      await page.waitForFunction(() => document.querySelector('#sub-mr [name="deps_enabled"]').checked && !document.querySelector('#registryZone').classList.contains('is-off'));
+      await page.locator('#sub-mr [name="deps_enabled"]').uncheck();
+      await page.waitForFunction(() => document.querySelector('#registryZone').classList.contains('is-off'));
+      await page.locator('#sub-mr [name="deps_enabled"]').check();
       await page.waitForFunction(() => /^npm=http:\/\/127\.0\.0\.1:\d+/.test(document.querySelector('#sub-mr [name="registry_urls"]').value));
       assert.deepEqual(erreurs, [], 'aucune erreur de page');
     });

@@ -109,12 +109,16 @@ document.addEventListener('input', (e) => {
   if (!champ.closest || !champ.closest('.patterns-zone')) return;
   majApercuMotifsBientot(conteneurMotifs(champ));
 });
-/* Le contrôle au registre ne contrôle que des dépendances relevées : sa note de dépendance paraît dès
-   que « Afficher les dépendances » ou le relevé des fichiers est décoché. */
+/* Le contrôle au registre ne contrôle que des dépendances relevées : son bloc s'indente sous « Afficher
+   les dépendances » et se grise avec elle — grisé, pas désactivé : on peut le préparer avant de cocher la
+   case parente, et le lien « motifs privés » d'un panneau y pose le focus avant même que le formulaire
+   soit rempli. Sa note de dépendance paraît dès que cette case ou le relevé des fichiers est décoché. */
 function majDepRegistre() {
   const dep = $('#registryDep');
   const relever = $('#sub-mr [name="mr_files_enabled"]'); const deps = $('#sub-mr [name="deps_enabled"]');
   if (dep && relever && deps) dep.hidden = relever.checked && deps.checked;
+  const zone = $('#registryZone');
+  if (zone && relever && deps) zone.classList.toggle('is-off', !(relever.checked && deps.checked));
 }
 document.addEventListener('change', (e) => {
   if (e.target && e.target.matches && e.target.matches('#sub-mr [name="mr_files_enabled"]')) {

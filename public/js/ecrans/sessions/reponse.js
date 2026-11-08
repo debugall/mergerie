@@ -164,7 +164,27 @@ function targetLine(t, tg) {
     ${pluginsHtml('session-target', { task: t, target: tg })}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
-  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;
+  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length
+    ? (sessionEtrangere(t, tg) ? questionsLecture(t, tg) : questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`)) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;
+}
+
+/* LA QUESTION D'UN COLLÈGUE SE LIT, ELLE NE SE RÉPOND PAS D'ICI : son agent attend sur son poste, et un
+   « Répondre et reprendre » actif sous « Répondre et reprendre sur ce poste » proposait deux gestes du
+   même nom pour deux choses différentes. La question et ses options restent visibles ; le seul geste
+   d'ici est la reprise, sur la ligne du projet. */
+function questionsLecture(t, tg) {
+  const qs = tg.questions || [];
+  const who = t.author || tr('task.reprise.someone');
+  const rows = qs.map((q) => `<div class="q-item">
+        <div class="q-question">${esc(q.question)}</div>
+        ${q.context ? `<div class="q-context muted">${esc(q.context)}</div>` : ''}
+        ${q.options && q.options.length ? `<div class="q-opts q-opts-lecture muted">${q.options.map((o) => `<span>${esc(o.label)}</span>`).join('')}</div>` : ''}
+      </div>`).join('');
+  return `<div class="questions-box questions-lecture" data-qlecture="${tg.id}">
+      <div class="q-head"><svg class="ico ico-sm"><use href="#i-info"/></svg> <strong>${esc(tr('task.questions.title', { n: qs.length, count: qs.length }))}</strong> <span class="muted">· ${esc(tr('task.questions.foreign-head', { who }))}</span></div>
+      ${rows}
+      <p class="q-lecture-note muted">${esc(tr(tg.reprise && tg.reprise.ok ? 'task.questions.foreign-take' : 'task.questions.foreign'))}</p>
+    </div>`;
 }
 
 /* LE PLAN À APPROUVER. La passe de lecture a rendu un plan (« Retour de l'IA » l'ouvre) ; ici on

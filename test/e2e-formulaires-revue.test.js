@@ -220,11 +220,17 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       'tests_touched_enabled', 'P', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
       // Les dépendances ajoutées : l'interrupteur, puis la zone des motifs de manifestes.
       'deps_enabled', 'manifest_patterns',
-      /* Le contrôle au registre : l'interrupteur, la liste des hôtes (P), la note de dépendance (P), le seuil,
-         le plafond, les motifs privés, les URL de ce poste. */
-      '# Contrôle au registre', 'registry_enabled', 'P', 'P', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls',
+      /* Le contrôle au registre : UN bloc indenté sous « Afficher les dépendances », dont il dépend (il se
+         grise avec elle) ; son premier champ est l'interrupteur. */
+      'registry_enabled',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
+    /* Dans le bloc : le titre, l'interrupteur, la liste des hôtes (P), la note de dépendance (P), le seuil,
+       le plafond, les motifs privés, les URL de ce poste. */
+    const registre = await page.$$eval('#registryZone > *',
+      (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select, textarea') || {}).name || e.tagName))));
+    assert.deepEqual(registre, ['# Contrôle au registre', 'registry_enabled', 'P', 'P', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls']);
+    assert.ok(await page.$eval('#registryZone', (e) => e.classList.contains('sous-reglage')), 'indenté sous sa case parente');
   });
 
   /* LE CHOIX DE LA FORME : le rapport, ou son lien. La ligne ne s'affiche qu'avec un dépôt de
