@@ -423,6 +423,24 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git', { sk
     await attendreServeur(async () => !(await cmds()).some((x) => x.id === c.id), 'la commande supprimée');
   });
 
+  test('« Exporter le reviewer en skill » : la route rend une archive zip nommée ; le bouton la télécharge et dit ce qu’elle contient', async () => {
+    const res = await fetch(`${app.base}/api/reviewer/skill`, { method: 'POST', headers: { Authorization: `Bearer ${app.localToken}` } });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'application/zip');
+    assert.match(res.headers.get('content-disposition') || '', /attachment; filename="branch-review\.zip"/);
+    assert.equal(res.headers.get('x-mergerie-skill'), 'branch-review/SKILL.md');
+    const octets = Buffer.from(await res.arrayBuffer());
+    assert.equal(octets.readUInt32LE(0), 0x04034b50, 'une archive zip');
+    assert.ok(octets.includes(Buffer.from('branch-review/SKILL.md')));
+    // Depuis l'écran : le téléchargement part, et la ligne dit les fichiers.
+    await ouvrir('mr');
+    const telechargement = page.waitForEvent('download');
+    await page.locator('#btnSkillExport').click();
+    assert.equal((await telechargement).suggestedFilename(), 'branch-review.zip');
+    await page.waitForFunction(() => /SKILL\.md/.test(document.querySelector('#skillExportInfo')?.textContent || ''));
+    assert.match(await page.locator('.skill-export-row .hint').getAttribute('data-tip'), /skill|Skill/);
+  });
+
   test('aucune erreur JavaScript pendant tout le parcours', () => {
     assert.deepEqual(erreurs, []);
   });

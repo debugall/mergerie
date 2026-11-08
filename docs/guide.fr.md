@@ -253,6 +253,17 @@ Mergerie la lit, il ne la remplace pas.
   permet de **surcharger ponctuellement** une MR (`Review + explication` / `Review sans explication`).
   Si l'explication manque, un bouton **`Générer l'explication`** sur le rapport la produit à la demande
   (un seul appel IA, sans relancer la review ni créer de nouvelle version).
+- **Emporter le reviewer.** **Réglages → Merge Request → « Exporter le reviewer en skill »** télécharge un
+  skill Claude Code **autonome** — un seul fichier `branch-review/SKILL.md`, sans script et sans référence à
+  Mergerie — qui refait **la même review** sur la branche courante d'un dépôt cloné : le gabarit de review de
+  l'équipe mot pour mot, les règles de review actives avec leur condition et leur portée, la note sur 10.
+  `/branch-review [cible]` : la cible est la branche où le travail doit arriver (par défaut la branche par
+  défaut du dépôt, lue sur `origin/HEAD` ; le skill demande quand plusieurs sont plausibles) ; la source est
+  toujours la branche courante. L'agent lance lui-même `git fetch` et `git diff origin/<cible>...HEAD` (le
+  diff depuis l'ancêtre commun, celui qu'une merge request montrerait) et lit les messages de commit en guise
+  d'intention. Le rapport est rangé dans `.branch-review/<branche>/<branche>-<AAAA-MM-JJ-HH-mm-ss>.md`
+  (un sous-dossier par branche, un fichier par review, le diff effacé une fois le rapport écrit). À
+  poser dans `.claude/skills/` du dépôt ou de la machine.
 - **Reviewer sans y penser.** **Réglages → Merge Request → « Lancer automatiquement la review à
   l'arrivée d'une MR »** met en review toute merge request nouvellement découverte, sans qu'on la
   demande. **Décoché par défaut**, et **plafonné** même une fois coché (**« Au plus N reviews automatiques par

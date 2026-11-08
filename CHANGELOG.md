@@ -11,6 +11,10 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+### Added
+
+- **Take the reviewer with you — *Settings → Merge Request → “Export the reviewer as a skill”*.** One button downloads a self-contained Claude Code skill — a single `branch-review/SKILL.md`, no script, no dependency and no reference to Mergerie — that does the same review on the current branch of any cloned repository, without the application, a forge or a database: the team's review template word for word, the active review rules with their condition (branch fragment, path pattern) and scope (every repository, one repository, one group), the overall score out of 10 and the same output discipline (line numbers checked in the file, report filed under `.branch-review/<branch>/<branch>-<YYYY-MM-DD-HH-mm-ss>.md`, one folder per branch and one file per review, the diff deleted once the report is written). `/branch-review [target]`: the target branch is where the work is meant to land — the repository's default branch, read from `origin/HEAD`, when not given, and the skill asks before guessing when several integration branches are plausible; the source is always the current branch. The agent runs `git fetch` and `git diff origin/<target>...HEAD` itself, the diff from the common ancestor a merge request would show, and reads the branch's commit messages in place of a merge request's title and description. The teaching explanation comes as an optional third step when the setting is on. Its text follows the language of the interface at export time; the prompt itself is the team's.
+
 ## [3.1.0] - 2026-11-08
 
 ### Fixed
