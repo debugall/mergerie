@@ -47,7 +47,10 @@ describe('Exporter le reviewer en skill', () => {
   test('SKILL.md : front matter, gabarit de la configuration mot pour mot, chemin du diff rempli, variables de branche à remplir, commandes git, consignes — et jamais le nom de l’application', () => {
     db.prepare("UPDATE config SET prompt_review = ?, review_explain = '1' WHERE id = 1").run('# Mon gabarit\nRelis {source} vers {target} dans {project}.\nDiff : {diff_file} ; titre : {title}\nÉcris dans {out_file}.');
     const md = skill.skillMd(cfg(), { lang: 'fr', maintenant: new Date('2026-11-08T10:00:00Z') });
-    assert.match(md, /^---\nname: branch-review\ndescription: .+\n---\n/);
+    assert.match(md, /^---\nname: branch-review\ndescription: "[^\n]+"\n---\n/, 'la description entre guillemets : elle contient des « : » qui, nus, cassent le YAML');
+    const fm = md.split('\n---\n')[0];
+    assert.ok(/description: "/.test(fm) && !/\n[^"\n]*: [^\n]*: /.test(fm.replace(/"[^"]*"/g, '""')), 'aucun « : » hors guillemets dans le front matter');
+    assert.ok(!/(^|[^\\])"[^"]*"[^"\n]*"/.test(fm.split('\n')[2].slice('description: '.length)), 'les guillemets internes sont échappés');
     assert.ok(md.includes('# Mon gabarit\nRelis {source} vers {target} dans {project}.'), 'le gabarit personnalisé, mot pour mot, branches et projet à remplir');
     assert.ok(md.includes('Diff : .branch-review/diff.patch ; titre : (voir « L’intention »'), 'le chemin du diff rempli, le titre de MR renvoyé à l’intention');
     assert.ok(md.includes('Écris dans .branch-review/<branche>/<branche>-<date>.md'), 'le rapport rangé par branche, daté');

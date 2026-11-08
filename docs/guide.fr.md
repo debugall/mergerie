@@ -253,7 +253,7 @@ Mergerie la lit, il ne la remplace pas.
   permet de **surcharger ponctuellement** une MR (`Review + explication` / `Review sans explication`).
   Si l'explication manque, un bouton **`Générer l'explication`** sur le rapport la produit à la demande
   (un seul appel IA, sans relancer la review ni créer de nouvelle version).
-- **Emporter le reviewer.** **Réglages → Merge Request → « Exporter le reviewer en skill »** télécharge un
+- **Emporter le reviewer.** **Réglages → Merge Request**, section **« Emporter le reviewer »** sous le formulaire : **« Exporter le reviewer en skill »** télécharge un
   skill Claude Code **autonome** — un seul fichier `branch-review/SKILL.md`, sans script et sans référence à
   Mergerie — qui refait **la même review** sur la branche courante d'un dépôt cloné : le gabarit de review de
   l'équipe mot pour mot, les règles de review actives avec leur condition et leur portée, la note sur 10.

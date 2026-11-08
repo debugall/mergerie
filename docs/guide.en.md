@@ -231,7 +231,7 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   (`Review + explanation` / `Review without explanation`). If the explanation is missing, a
   **`Generate the explanation`** button on the report produces it on demand (a single AI call, without
   re-running the review or creating a new version).
-- **Take the reviewer with you.** **Settings → Merge Request → “Export the reviewer as a skill”** downloads a
+- **Take the reviewer with you.** **Settings → Merge Request**, **“Take the reviewer with you”** section under the form: **“Export the reviewer as a skill”** downloads a
   **self-contained** Claude Code skill — a single `branch-review/SKILL.md`, no script and no reference to
   Mergerie — that does **the same review** on the current branch of a cloned repository: the team's review
   template word for word, the active review rules with their condition and scope, the score out of 10.

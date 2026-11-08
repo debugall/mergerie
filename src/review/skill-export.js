@@ -30,6 +30,10 @@ const FICHIERS = {
   explication: `${DOSSIER}/<branche>/<branche>-<date>-explication.md`,
 };
 
+/* Une valeur du front matter, toujours entre guillemets doubles : un « : » ou un « # » nu dans la phrase
+   est une erreur YAML, et le skill ne se charge pas. */
+const yaml = (texte) => `"${String(texte || '').replace(/\s*\n\s*/g, ' ').replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
 const remplir = (tpl, vars) => String(tpl || '').replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m));
 
 /* Le gabarit effectif : celui de la configuration, sinon le défaut livré dans la langue configurée. */
@@ -73,7 +77,7 @@ function skillMd(cfg, { lang = 'fr', maintenant = new Date() } = {}) {
   const sections = [
     '---',
     `name: ${NOM}`,
-    `description: ${t('settings.skill.desc').replace(/\n/g, ' ')}`,
+    `description: ${yaml(t('settings.skill.desc'))}`,
     '---',
     '',
     `# ${t('settings.skill.title')}`,

@@ -49,3 +49,8 @@
   margin-top: 18px; padding: 10px 0;
   background: var(--bg); border-top: 1px solid var(--border);
 }
+
+/* ---------- Merge Request : « Emporter le reviewer », une section à part sous le formulaire ---------- */
+.skill-export { margin-top: var(--s-6); padding-top: var(--s-4); border-top: 1px solid var(--line); max-width: 520px; }
+.skill-export h3 { margin: 0 0 var(--s-2); }
+.skill-export p.muted { margin: 0 0 var(--s-3); }

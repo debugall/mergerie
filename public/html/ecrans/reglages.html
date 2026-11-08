@@ -576,14 +576,6 @@
             <h3 data-i18n="settings.mr.group.review">Review</h3>
             <label class="inline-check"><input form="configForm" name="review_explain" type="checkbox" /> <span data-i18n="settings.lbl.review-explain">Générer l'explication pédagogique lors d'une review</span>
                 <button type="button" class="hint" tabindex="-1" aria-label="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-tip="Un 2e appel IA après la review, qui alimente l'onglet Explication du rapport. Décoché : review seule (plus rapide, moins de tokens) — l'explication reste générable à la demande depuis le rapport." data-i18n-tip="settings.tip.review-explain"><svg class="ico"><use href="#i-info"/></svg></button></label>
-            <!-- LE REVIEWER, EMPORTÉ : un skill Claude Code qui refait la même review (même gabarit, mêmes
-                 règles, même note, mêmes constats) sur la branche courante d'un dépôt, sans Mergerie.
-                 Un POST et une archive, comme la sauvegarde (reglages/skill-export.js). -->
-            <p class="form-actions skill-export-row">
-                <button type="button" id="btnSkillExport" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.skill.btn">Exporter le reviewer en skill</span></button>
-                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.skill.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
-                <span id="skillExportInfo" class="muted"></span>
-            </p>
             <!-- ÉCRIRE CHEZ LES AUTRES SE DÉCIDE : décoché par défaut, contrairement à
                  l'explication ci-dessus. Le rapport reste publiable au coup par coup depuis
                  le bouton du rapport, ce que dit l'info-bulle. -->
@@ -739,6 +731,19 @@
             <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
             <span id="configInfoMr" class="muted"></span>
         </div>
+        <!-- LE REVIEWER, EMPORTÉ — une section à part, SOUS le formulaire : ce n'est pas un réglage qui
+             s'enregistre, c'est un export de ce que le formulaire règle. Un skill Claude Code autonome qui
+             refait la même review sur la branche courante d'un dépôt. Un POST et une archive, comme la
+             sauvegarde (reglages/skill-export.js). -->
+        <section class="skill-export" aria-labelledby="skillExportTitle">
+            <h3 id="skillExportTitle" data-i18n="settings.skill.section">Emporter le reviewer</h3>
+            <p class="muted" data-i18n="settings.skill.section.text">Un skill Claude Code autonome, un seul fichier, qui refait la même review — ce gabarit, ces règles, cette note — sur la branche courante de n’importe quel dépôt cloné, sans Mergerie.</p>
+            <p class="form-actions skill-export-row">
+                <button type="button" id="btnSkillExport" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.skill.btn">Exporter le reviewer en skill</span></button>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.skill.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <span id="skillExportInfo" class="muted"></span>
+            </p>
+        </section>
         </div><!-- /sub-mr -->
 
         <div id="sub-aisession" class="subtab">

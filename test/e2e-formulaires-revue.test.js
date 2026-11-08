@@ -207,8 +207,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
     const ordre = await page.$$eval('#sub-mr > .form > *',
       (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select, textarea') || {}).name || e.tagName))));
     assert.deepEqual(ordre, [
-      // Sous l'explication, le bouton « Exporter le reviewer en skill » (un P sans champ) : il emporte ce que le groupe règle.
-      '# Review', 'review_explain', 'P', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
+      '# Review', 'review_explain', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
       'review_link_template',
       /* L'EXÉCUTANT FERME LE GROUPE : il dit QUI fait tourner les deux automatismes juste
          au-dessus, et le `P` qui suit est l'avertissement affiché quand ils sont cochés sans
