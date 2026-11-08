@@ -11,6 +11,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-08
+
 ### Fixed
 
 - **Saving the settings no longer switches off *Show the dependencies*.** The box was never read back from the saved value: it showed unticked whatever the setting said, and *Save* from any sub-tab then wrote that unticked state — the `+2 dependencies` badge and the registry check disappeared from every card until someone noticed. The box now reads its value like its neighbours.
@@ -4194,7 +4196,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/debugall/mergerie/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/debugall/mergerie/compare/v2.0.1...v3.0.0
 [2.0.1]: https://github.com/debugall/mergerie/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/debugall/mergerie/compare/v1.7.0...v2.0.0
