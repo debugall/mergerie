@@ -61,6 +61,10 @@ document.addEventListener('click', async (e) => {
   if (g) { const f = $('#groupForm'); if (f) f.scrollIntoView({ behavior: 'smooth', block: 'start' }); const b = $(`#groupList [data-gedit="${g.dataset.sheetGroup}"]`); if (b) b.click(); }
 });
 
+/* La bulle ⓘ et le champ libellé du formulaire d'un dépôt — même forme que dans `#configForm`. */
+const bulleDepot = (texte) => ` <button type="button" class="hint" tabindex="-1" aria-label="${esc(texte)}" data-tip="${esc(texte)}"><svg class="ico"><use href="#i-info"/></svg></button>`;
+const champDepot = (lbl, tip, controle) => `<label class="repo-edit-field"><span>${esc(tr(lbl))}${bulleDepot(tr(tip))}</span>${controle}</label>`;
+
 async function loadRepos() {
   const rows = await api('/repos');
   /* Le seul endroit qui sait vraiment s'il y a des dépôts. On en profite pour tenir
@@ -90,31 +94,33 @@ async function loadRepos() {
         ${/* B17 — LA FICHE. La ligne dit ce qui concerne le dépôt ; la fiche dit ce qui est
               ACCROCHÉ à lui — vérificateurs, règles limitées, services de la
               grille, projets liés par défaut, agents. Six portes, chargées à la demande. */''}
-        <button class="btn btn-sm" data-sheet="${r.id}" title="${esc(tr('settings.repo.sheet-title'))}"><svg class="ico"><use href="#i-link"/></svg>${esc(tr('settings.repo.sheet'))}</button>
+        <button class="btn btn-sm" data-sheet="${r.id}" title="${esc(tr('settings.repo.sheet-title'))}"><svg class="ico"><use href="#i-link"/></svg>${esc(tr('settings.repo.sheet'))}</button>${bulleDepot(tr('settings.repo.sheet-tip'))}
         <button class="btn btn-sm" data-edit="${r.id}" title="${tr('settings.repo.edit-title')}"><svg class="ico"><use href="#i-edit"/></svg>${tr('settings.repo.edit')}</button>
         <button class="btn btn-icon btn-sm btn-danger" data-del="${r.id}" title="${tr('settings.repo.del-title')}"><svg class=\"ico\"><use href=\"#i-close\"/></svg></button>
       </div>
       <div class="repo-sheet" hidden></div>
+      ${/* LE FORMULAIRE DE MODIFICATION : chaque champ porte son libellé et sa bulle ⓘ — un champ nu avec
+            une invite grise dit ce qu'on y met, pas ce que ça change ni ce qui s'applique quand il est vide. */''}
       <div class="repo-edit" hidden>
-        <input data-f="url" value="${esc(r.url)}" placeholder="${tr('settings.repo.ph.url')}" />
-        <input data-f="project" value="${esc(r.project)}" placeholder="${tr('settings.repo.ph.project')}" />
-        <input data-f="branch_pattern" value="${esc(r.branch_pattern || '')}" placeholder="${tr('settings.repo.ph.pattern')}" />
-        <input data-f="periode_branches" value="${esc(r.periode_branches || '')}" placeholder="${tr('settings.repo.ph.periode-branches')}" title="${esc(tr('settings.repo.periode-branches-title'))}" />
+        ${champDepot('settings.repo.lbl.url', 'settings.repo.tip.url-de-clone-complete-du', `<input data-f="url" value="${esc(r.url)}" placeholder="${tr('settings.repo.ph.url')}" />`)}
+        ${champDepot('settings.repo.lbl.project', 'settings.repo.tip.chemin-gitlab-du-projet-ex', `<input data-f="project" value="${esc(r.project)}" placeholder="${tr('settings.repo.ph.project')}" />`)}
+        ${champDepot('settings.repo.lbl.branch-pattern', 'settings.repo.tip.fragment-que-le-nom-de', `<input data-f="branch_pattern" value="${esc(r.branch_pattern || '')}" placeholder="${tr('settings.repo.ph.pattern')}" />`)}
+        ${champDepot('settings.repo.lbl.periode-branches', 'settings.repo.periode-branches-title', `<input data-f="periode_branches" value="${esc(r.periode_branches || '')}" placeholder="${tr('settings.repo.ph.periode-branches')}" />`)}
         ${/* Les motifs des tests touchés de CE dépôt : vides, ceux de ses groupes, sinon les globaux. */''}
         <div class="patterns-zone">
-          <textarea data-f="test_patterns" rows="3" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.test-patterns'))}" title="${esc(tr('settings.repo.test-patterns-title'))}">${esc(r.test_patterns || '')}</textarea>
+          ${champDepot('settings.repo.lbl.test-patterns', 'settings.repo.test-patterns-title', `<textarea data-f="test_patterns" rows="3" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.test-patterns'))}">${esc(r.test_patterns || '')}</textarea>`)}
           <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="test_patterns">${esc(tr('settings.patterns.reset'))}</button></p>
         </div>
         <div class="patterns-zone">
-          <textarea data-f="neutral_patterns" rows="3" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.neutral-patterns'))}" title="${esc(tr('settings.repo.neutral-patterns-title'))}">${esc(r.neutral_patterns || '')}</textarea>
+          ${champDepot('settings.repo.lbl.neutral-patterns', 'settings.repo.neutral-patterns-title', `<textarea data-f="neutral_patterns" rows="3" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.neutral-patterns'))}">${esc(r.neutral_patterns || '')}</textarea>`)}
           <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns">${esc(tr('settings.patterns.reset'))}</button> <span data-patterns-apercu></span></p>
         </div>
         <div class="patterns-zone">
-          <textarea data-f="manifest_patterns" rows="2" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.manifest-patterns'))}" title="${esc(tr('settings.repo.manifest-patterns-title'))}">${esc(r.manifest_patterns || '')}</textarea>
+          ${champDepot('settings.repo.lbl.manifest-patterns', 'settings.repo.manifest-patterns-title', `<textarea data-f="manifest_patterns" rows="2" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.manifest-patterns'))}">${esc(r.manifest_patterns || '')}</textarea>`)}
           <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns">${esc(tr('settings.patterns.reset'))}</button> <span data-manifests-apercu></span></p>
         </div>
         <div class="patterns-zone">
-          <textarea data-f="private_patterns" rows="2" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.private-patterns'))}" title="${esc(tr('settings.repo.private-patterns-title'))}">${esc(r.private_patterns || '')}</textarea>
+          ${champDepot('settings.repo.lbl.private-patterns', 'settings.repo.private-patterns-title', `<textarea data-f="private_patterns" rows="2" spellcheck="false" placeholder="${esc(tr('settings.repo.ph.private-patterns'))}">${esc(r.private_patterns || '')}</textarea>`)}
         </div>
         <div class="repo-edit-actions">
           <button class="btn" data-cancel="${r.id}" title="${tr('settings.repo.cancel-title')}">${tr('ui.cancel')}</button>

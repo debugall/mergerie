@@ -122,6 +122,11 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git', { sk
     assert.equal((await depot('grp/sous/projet-url')).branch_pattern, 'PROJ-', 'annuler n’envoie rien');
 
     await ligne(d.id).locator('[data-edit]').click();
+    // Chaque champ du formulaire porte son libellé et sa bulle ⓘ ; le bouton « Fiche » a la sienne.
+    const champs = await ligne(d.id).locator('.repo-edit [data-f]').count();
+    assert.equal(await ligne(d.id).locator('.repo-edit .repo-edit-field > span .hint[data-tip]').count(), champs, 'une bulle par champ');
+    assert.ok(champs >= 8);
+    assert.match(await ligne(d.id).locator('.repo-view [data-sheet] + .hint').getAttribute('data-tip'), /rattaché|attached/);
     await ligne(d.id).locator('.repo-edit [data-f="url"]').fill('https://gitlab.test/grp/renomme.git');
     await ligne(d.id).locator('.repo-edit [data-f="project"]').fill('grp/renomme');
     await ligne(d.id).locator('.repo-edit [data-f="branch_pattern"]').fill('feature/');

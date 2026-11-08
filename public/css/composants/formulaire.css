@@ -59,6 +59,10 @@ details summary { cursor: pointer; color: var(--muted); padding: 6px 0; }
 .repo-sheet-sec li { margin: 2px 0; }
 .repo-edit { display: flex; flex-direction: column; gap: 8px; }
 .repo-edit input { background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: var(--radius); padding: 8px 10px; font: inherit; }
+/* Chaque champ du formulaire d'un dépôt : son libellé et sa bulle au-dessus, le contrôle en pleine largeur. */
+.repo-edit-field { display: flex; flex-direction: column; gap: 4px; }
+.repo-edit-field > span { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.repo-edit-field input, .repo-edit-field textarea { width: 100%; box-sizing: border-box; }
 .repo-edit-actions { display: flex; gap: 8px; }
 
 .rule-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
