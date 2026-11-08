@@ -225,6 +225,9 @@ const REGISTRE = [
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'status_at', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
       'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
+      /* LES SHA DE MERGE, du même bois que `merged_at` : immuables une fois la MR mergée, et
+         c'est avec eux qu'un poste relit une merge request dont la branche a disparu. */
+      'head_sha', 'base_sha', 'merge_commit_sha', 'squash_commit_sha',
       /* CES QUATRE-LÀ SONT UN REPLI, PAS UNE VÉRITÉ — voir `toFile` : la découverte locale les
          réécrit depuis la forge, et le fichier ne sert qu'au poste qui n'a pas encore vu la MR
          (ou pas de jeton pour la voir). */
@@ -250,6 +253,10 @@ const REGISTRE = [
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
+        head_sha: r.head_sha || null,
+        base_sha: r.base_sha || null,
+        merge_commit_sha: r.merge_commit_sha || null,
+        squash_commit_sha: r.squash_commit_sha || null,
         /* TITRE, BRANCHES ET AUTEUR VOYAGENT, OUVERTE OU FERMÉE — et c'est un revirement.
            Ils ne partaient d'abord que pour une MR fermée, au motif qu'un titre se réécrit et
            qu'une branche se renomme : partager du mutable, c'est faire voyager du périmé, et
@@ -310,6 +317,10 @@ const REGISTRE = [
       merged_at: doc.merged_at || null,
       /* On ne pose ces colonnes QUE si le fichier les porte : les absentes ne doivent pas
          devenir des `null` qui effaceraient ce que la découverte sait déjà. */
+      ...(doc.head_sha ? { head_sha: doc.head_sha } : {}),
+      ...(doc.base_sha ? { base_sha: doc.base_sha } : {}),
+      ...(doc.merge_commit_sha ? { merge_commit_sha: doc.merge_commit_sha } : {}),
+      ...(doc.squash_commit_sha ? { squash_commit_sha: doc.squash_commit_sha } : {}),
       ...(doc.title ? { title: doc.title } : {}),
       ...(doc.source_branch ? { source_branch: doc.source_branch } : {}),
       ...(doc.target_branch ? { target_branch: doc.target_branch } : {}),
@@ -588,6 +599,11 @@ const REGISTRE = [
       prompt_modify: r.prompt_modify || null,
       prompt_fix: r.prompt_fix || null,
       ai_extra_instructions: r.ai_extra_instructions || null,
+      // Les motifs de test et neutres du groupe (tests touchés) : d'équipe, comme ses gabarits.
+      test_patterns: r.test_patterns || null,
+      neutral_patterns: r.neutral_patterns || null,
+      manifest_patterns: r.manifest_patterns || null,
+      private_patterns: r.private_patterns || null,
       created_at: r.created_at,
       repos: (() => {
         const locaux = ctx.enfants('repo_group_member', 'group_id', r.id)
@@ -603,6 +619,10 @@ const REGISTRE = [
       prompt_modify: doc.prompt_modify || '',
       prompt_fix: doc.prompt_fix || '',
       ai_extra_instructions: doc.ai_extra_instructions || '',
+      test_patterns: doc.test_patterns || '',
+      neutral_patterns: doc.neutral_patterns || '',
+      manifest_patterns: doc.manifest_patterns || '',
+      private_patterns: doc.private_patterns || '',
       created_at: doc.created_at,
     }),
     listes: [
@@ -1093,6 +1113,11 @@ const REGISTRE = [
       triggered_by: r.triggered_by || 'manual',
       verifier: r.verifier_id ? ctx.uid('verifier', r.verifier_id) : null,
       followup_auto: r.followup_auto ? 1 : 0,
+      /* LA FILIATION D'UNE REPRISE : deux uid, pour que la carte d'origine, chez tout le monde,
+         dise « reprise par … ». Rien d'autre ne part : ni handle, ni message assemblé (il se
+         relit dans la première passe). */
+      resumed_from: r.resumed_from_uid || null,
+      resumed_target: r.resumed_target_uid || null,
       created_at: r.created_at,
       updated_at: r.updated_at,
       finished_at: r.finished_at || null,
@@ -1165,6 +1190,8 @@ const REGISTRE = [
       triggered_by: doc.triggered_by || 'manual',
       verifier_id: doc.verifier ? ctx.id('verifier', doc.verifier) : null,
       followup_auto: doc.followup_auto ? 1 : 0,
+      resumed_from_uid: doc.resumed_from || null,
+      resumed_target_uid: doc.resumed_target || null,
       created_at: doc.created_at,
       updated_at: doc.updated_at,
       finished_at: doc.finished_at || null,
@@ -1268,6 +1295,11 @@ const REGISTRE = [
       label: r.label || null,
       status: r.status,
       ask_questions: r.ask_questions ? 1 : 0,
+      branch: r.branch || null,
+      commit_message: r.commit_message || null,
+      auto_push: r.auto_push ? 1 : 0,
+      create_mr: r.create_mr ? 1 : 0,
+      converge_after: r.converge_after ? 1 : 0,
       cli_name: r.cli_name || null,
       last_error: ctx.masquer(r.last_error) || null,
       followup_auto: r.followup_auto ? 1 : 0,
@@ -1290,6 +1322,11 @@ const REGISTRE = [
       label: doc.label || null,
       status: doc.status || 'new',
       ask_questions: doc.ask_questions ? 1 : 0,
+      branch: doc.branch || null,
+      commit_message: doc.commit_message || null,
+      auto_push: doc.auto_push ? 1 : 0,
+      create_mr: doc.create_mr ? 1 : 0,
+      converge_after: doc.converge_after ? 1 : 0,
       cli_name: doc.cli_name || null,
       last_error: doc.last_error || null,
       followup_auto: doc.followup_auto ? 1 : 0,
@@ -1311,7 +1348,8 @@ const REGISTRE = [
   },
   {
     table: 'local_task_dir', famille: 'P', uidPropre: true, parent: 'local_task', liste: 'dirs', fusion: 'parent',
-    locales: ['path', 'session_key', 'session_backend', 'session_cwd', 'output_path'],
+    locales: ['path', 'session_key', 'session_backend', 'session_cwd', 'output_path',
+      'branch', 'base_branch', 'commit_sha', 'repo_id', 'mr_iid', 'mr_url', 'git_note', 'git_status'],
     note: '`path` est vidé et gelé : le chemin vit dans `local_dir_map`, sur le poste qui le '
       + 'connaît. La ligne porte `dir_hash`, `dir_label` et `owner`, qui eux voyagent — chez le '
       + 'voisin la session se relit avec son libellé, et « Relancer » est refusé plutôt que de '
@@ -1588,6 +1626,7 @@ const REGISTRE = [
      d'un collègue remplissait la liste de tout le monde. Comme Docker, Git et Liens :
      ça décrit une façon de travailler, pas un produit. */
   { table: 'jira_watch', famille: 'L', note: 'les tickets que CE poste surveille' },
+  { table: 'jira_merge_comment', famille: 'L', note: 'l’id du commentaire « mergée » posé sur un ticket par CE poste, réécrit à chaque fusion suivante' },
 
   /* ── Précision technique d'un ticket Jira (spec) ───────────────────────────────────────── */
   {
@@ -1596,7 +1635,7 @@ const REGISTRE = [
        Jira posté par l'un est celui que l'autre mettra à jour. */
     table: 'ticket_spec', famille: 'P', uidPropre: true, cle: 'uid', cleNaturelle: ['ticket_key'],
     chemin: 'specs/{ticket_key}.json', fusion: 'last-writer',
-    locales: ['batch_id', 'last_error', 'pending_instruction'],
+    locales: ['batch_id', 'last_error', 'pending_instruction', 'hidden_at'],
     ligneDuChemin: (db, v) => db.prepare('SELECT ticket_spec.rowid AS r, ticket_spec.* FROM ticket_spec WHERE ticket_key = ?').get(v.ticket_key),
     note: 'la précision technique d’un ticket : ce qu’une équipe se dit sur le ticket, d’où le partage ; '
       + 'le lot d’epic et la dernière erreur sont des commodités de poste',
@@ -1747,6 +1786,12 @@ const REGISTRE = [
   { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },
+  /* LE RATTRAPAGE D'UNE PÉRIODE RESTE À SOI. Une période est MON retour de congé, bornée par
+     MES dates ; ses faits se recalculent depuis la forge et le clone ; et « vu » est personnel.
+     Partagée, la période du voisin remplirait l'écran de tout le monde avec des lignes que lui
+     seul a à vider. */
+  { table: 'periode', famille: 'L', note: 'une fenêtre de dates rattrapée depuis CE poste' },
+  { table: 'periode_item', famille: 'L', note: 'les lignes d’une période, et ce que CE poste a marqué vu' },
 
   /* ── Réglages ────────────────────────────────────────────────────────────────────────── */
   /* `config` est la seule table dont CHAQUE colonne est classée nommément, et dont les deux
@@ -1773,6 +1818,8 @@ const REGISTRE = [
       'brief_on_open', 'auto_refresh_minutes', 'jira_watch_minutes', 'todo_close_on_merge',
       'task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira',
       'task_default_converge',
+      // Le rattrapage d'une période : une bannière et un filtre d'affichage, à soi.
+      'periode_banner_days', 'periode_hide_bots',
       // Les bornes d'un agent : le budget se dépense sur CE poste, et une borne d'équipe se
       // relâcherait chez tout le monde d'un seul push.
       'agent_max_turns', 'agent_daily_budget_usd',
@@ -1780,7 +1827,9 @@ const REGISTRE = [
       'agent_sandbox_verified', 'agent_sandbox_tested_at', 'agent_sandbox_detail',
       'agent_read_unrestricted',
       // L'agent de CE poste : un chemin de binaire n'a de sens que sur la machine qui le porte.
-      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless'],
+      'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless',
+      // Les URL des registres publics (contrôle au registre) : un miroir ou un proxy d'entreprise ne se partage pas.
+      'registry_urls'],
     partagees: [
       // Où est la forge, Jira : une équipe en a UNE. Le jeton, lui, reste de poste.
       'gitlab_url', 'github_url', 'jira_url', 'confluence_url',
@@ -1797,6 +1846,8 @@ const REGISTRE = [
       'review_link_template',
       // Le gabarit du commentaire posté sur le ticket Jira : une convention d'équipe, comme celui du lien de review.
       'jira_notify_template',
+      // Prévenir Jira à la fusion : écrire sur le ticket est une politique d'équipe, et son gabarit une convention.
+      'jira_notify_merge', 'jira_merge_template',
       /* L'EXÉCUTANT EST D'ÉQUIPE : c'est une décision collective (« c'est Claire qui fait
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',
@@ -1805,7 +1856,23 @@ const REGISTRE = [
          elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
          réglé à sept jours efface l'historique des autres. */
       'retention_days', 'mr_retention_days', 'review_explain', 'verify_jira_comment',
-      'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key'],
+      'converge_threshold', 'converge_max_passes', 'stale_mr_days', 'jira_test_key',
+      // Ce qu'on appelle « entré sans relecture » : la branche par défaut, et les protégées ou non.
+      'periode_watch_protected',
+      // Jira → Stats : ce qui compte comme « bug » et comme « US » — une convention d'équipe.
+      'jira_stats_bug_types', 'jira_stats_us_types',
+      // Les croisements de MR : relever les fichiers, le plafond d'appels, croiser entre cibles — l'outil, pas la machine.
+      'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
+      // Les tests touchés : l'interrupteur, le seuil, et les motifs de test / neutres — un faux positif corrigé par l'un l'est pour tous.
+      'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
+      // Les dépendances ajoutées : l'interrupteur et les motifs de manifestes — d'équipe aussi.
+      'deps_enabled', 'manifest_patterns',
+      // Les MR empilées : relever les commits des MR ouvertes — l'outil, pas la machine.
+      'mr_commits_enabled',
+      // Le contrôle au registre : l'interrupteur, le seuil « récent », le plafond par tour, les motifs de paquets privés — d'équipe ; les URL, elles, sont de poste.
+      'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns',
+      // La page Équipe : quand un poste est dit silencieux, combien de temps une reprise reste listée — une lecture commune.
+      'team_quiet_days', 'team_takeover_days'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que
@@ -1876,6 +1943,13 @@ const REGISTRE = [
   /* ── Famille C : se recrée tout seul ─────────────────────────────────────────────────── */
   { table: 'commit_activity', famille: 'C', note: 'relu de la forge' },
   { table: 'feed', famille: 'C', note: 'relu de la forge' },
+  { table: 'mr_files', famille: 'C', note: 'les fichiers modifiés par chaque MR ouverte, relus de la forge (croisements)' },
+  { table: 'mr_file_fetch', famille: 'C', note: 'sur quel SHA et quand la liste de fichiers d’une MR a été relevée' },
+  { table: 'mr_manifest_diff', famille: 'C', note: 'le diff des seuls manifestes de chaque MR ouverte, gardé au relevé (dépendances)' },
+  { table: 'mr_commits', famille: 'C', note: 'les SHA des commits de chaque MR ouverte, relus de la forge ou du clone (MR empilées)' },
+  { table: 'registry_lookup', famille: 'C', note: 'ce que le registre public sait d’un paquet ajouté (contrôle au registre) : relu du réseau, et jamais partagé — un cache partagé ferait voyager la liste des paquets de l’équipe' },
+  { table: 'mr_commit_fetch', famille: 'C', note: 'sur quel SHA et quelle cible la liste de commits d’une MR a été relevée' },
+  { table: 'mr_contained_history', famille: 'C', note: '« contenait !214 » pendant sept jours après la merge de la contenue' },
   { table: 'job', famille: 'C', note: 'la file de CE poste' },
   { table: 'job_log', famille: 'C', note: 'la console des jobs de ce poste — 58 % du poids de la base' },
   { table: 'conn_test', famille: 'C', note: 'le dernier test de connexion de ce poste' },

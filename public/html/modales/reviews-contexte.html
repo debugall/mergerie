@@ -3,6 +3,13 @@
     <div class="modal-box">
         <h3><span data-i18n="context.head.title">Contexte</span> <span id="ticketMrTitle" class="muted"></span></h3>
         <p class="muted" data-i18n="context.p.facultatif-sera-pris-en-compte">Facultatif — sera pris en compte lors de la review.</p>
+        <!-- MR empilées : la phrase de fait que la review reçoit (« contient !214 : 12 commits et 9 fichiers
+             déjà soumis là-bas »), en clair — pour que l'humain voie ce que l'IA a reçu. Lecture seule. -->
+        <div id="ticketStack" class="ticket-jira" hidden>
+            <div class="ticket-jira-head"><strong data-i18n="context.stack.title">Merge requests empilées</strong></div>
+            <div id="ticketStackBody" class="ticket-jira-body"></div>
+            <p class="muted" data-i18n="context.stack.note">Phrase de fait ajoutée au contexte de la review, telle que l’IA la reçoit.</p>
+        </div>
         <!-- Contexte récupéré depuis Jira (lecture) : distinct du complément manuel
              ci-dessous, les deux sont concaténés à la review. -->
         <div id="ticketJira" class="ticket-jira" hidden>

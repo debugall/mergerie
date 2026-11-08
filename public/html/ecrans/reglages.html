@@ -203,6 +203,26 @@
                         <textarea name="prompt_fix" rows="3"></textarea></label>
                     <label><span data-i18n="settings.groups.lbl.prompt-modify">Gabarit de modification</span>
                         <textarea name="prompt_modify" rows="3"></textarea></label>
+                    <!-- Les motifs des tests touchés du groupe : vides, ceux des réglages globaux valent. -->
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.test-patterns">Motifs de test (un glob par ligne, vide = les réglages globaux)</span>
+                            <textarea name="test_patterns" rows="3" spellcheck="false"></textarea></label>
+                        <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="test_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
+                    </div>
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.neutral-patterns">Motifs neutres (un glob par ligne, vide = les réglages globaux)</span>
+                            <textarea name="neutral_patterns" rows="3" spellcheck="false"></textarea></label>
+                        <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-patterns-apercu></span></p>
+                    </div>
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.manifest-patterns">Motifs de manifestes (un glob par ligne, vide = les réglages globaux)</span>
+                            <textarea name="manifest_patterns" rows="2" spellcheck="false"></textarea></label>
+                        <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-manifests-apercu></span></p>
+                    </div>
+                    <div class="patterns-zone">
+                        <label><span data-i18n="settings.groups.lbl.private-patterns">Motifs de paquets privés (un glob de nom par ligne, vide = les réglages globaux)</span>
+                            <textarea name="private_patterns" rows="2" spellcheck="false"></textarea></label>
+                    </div>
                 </details>
                 <p class="form-actions">
                     <button type="submit" class="btn btn-primary"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
@@ -336,6 +356,16 @@
                  Cochée, jamais supprimée — et débrayable pour qui préfère cocher lui-même. -->
             <label class="inline-check"><input form="configForm" name="todo_close_on_merge" type="checkbox" /> <span data-i18n="settings.lbl.todo-close-on-merge">Cocher les todos liées quand leur merge request est mergée</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.todo-close-on-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- Le rattrapage d'une période (Notes → Période) : le seuil de la bannière et le masquage
+                 des bots sont des habitudes de ce poste ; surveiller les branches protégées est une
+                 décision d'équipe — c'est la définition de « entré sans relecture ». -->
+            <label><span data-i18n="settings.lbl.periode-banner-days">Bannière « que s’est-il passé » au-delà de (jours, 0 = jamais)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.periode-banner-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="periode_banner_days" type="number" min="0" max="365" step="1" placeholder="3" />
+            </label>
+            <label class="inline-check"><input form="configForm" name="periode_hide_bots" type="checkbox" /> <span data-i18n="settings.lbl.periode-hide-bots">Masquer les bots dans une période</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.periode-hide-bots" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="inline-check"><input form="configForm" name="periode_watch_protected" type="checkbox" /> <span data-i18n="settings.lbl.periode-watch-protected">Surveiller aussi les branches protégées</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.periode-watch-protected" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <!-- Sauvegarde : la seule chose que Mergerie ne sait pas reconstruire. -->
             <div class="backup-row">
                 <button type="button" id="btnBackup" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.backup.btn">Sauvegarder les données</span></button>
@@ -404,9 +434,17 @@
                 <button class="btn" type="submit" form="configForm" title="Enregistrer sans rattacher" data-i18n-title="settings.title.save-only"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.save-only">Enregistrer seulement</span></button>
                 <span id="dataSyncInfo" class="muted"></span>
             </div>
+            <!-- LA PAGE ÉQUIPE « NOTRE MATIN » : deux réglages d'équipe — quand un poste est dit silencieux
+                 (jours ouvrés sans commit dans le dépôt de données), combien de temps une reprise reste listée. -->
             <label class="inline-check"><input form="configForm" name="usage_share" type="checkbox" /> <span data-i18n="datasync.lbl.usage">Partager ma dépense IA (un total par jour)</span> <button type="button" class="hint" tabindex="-1" aria-label="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-tip="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-i18n-tip="datasync.tip.usage"><svg class="ico"><use href="#i-info"/></svg></button></label>
             <div id="dataSyncState" class="muted"></div>
             <div id="dataSyncConflicts"></div>
+            <!-- LA PAGE ÉQUIPE « NOTRE MATIN » : deux réglages d'équipe sous leur propre titre — quand un poste est
+                 dit silencieux (jours ouvrés sans commit dans le dépôt de données), combien de temps une reprise
+                 terminée reste listée. -->
+            <h3 data-i18n="datasync.group.team">Page Équipe</h3>
+            <label><span data-i18n="datasync.lbl.team-quiet-days">Poste silencieux après N jours ouvrés</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-quiet-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_quiet_days" type="number" min="0" max="365" step="1" placeholder="2" /></label>
+            <label><span data-i18n="datasync.lbl.team-takeover-days">Une reprise terminée reste listée N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-takeover-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_takeover_days" type="number" min="0" max="365" step="1" placeholder="7" /></label>
         </div>
         </div><!-- /sub-datasync -->
 
@@ -464,6 +502,10 @@
             <label><span class="req" data-i18n="settings.lbl.jira-email">Email Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)." data-tip="Email du compte Atlassian, utilisé avec le jeton d'API pour l'authentification Basic (Jira Cloud)."><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_email" placeholder="prenom.nom@entreprise.fr" data-i18n-placeholder="settings.ph.jira-email" /></label>
             <label><span class="req" data-i18n="settings.lbl.jira-token">Jeton d'API Jira</span> <button type="button" class="hint" tabindex="-1" aria-label="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué." data-tip="Jeton d'API créé sur id.atlassian.com (Manage account → Security → API tokens). Stocké en local, masqué."><svg class="ico"><use href="#i-info"/></svg></button> <span class="secret-row"><input form="configForm" name="jira_token" type="password" autocomplete="off" placeholder="ATATT…" data-i18n-placeholder="settings.ph.jira-token" /><button type="button" class="btn btn-icon btn-sm secret-copy" data-secret-url="/config/secret" data-secret-key="jira_token" data-i18n-title="settings.copy-token" title="Copier" aria-label="Copier"><svg class="ico"><use href="#i-copy"/></svg></button></span></label>
             <label><span data-i18n="settings.lbl.jira-watch-minutes">Vérifier les tickets surveillés toutes les</span> <button type="button" class="hint" tabindex="-1" aria-label="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-tip="Cadence de vérification des tickets surveillés, en minutes. 0 = surveillance désactivée. Alimente aussi le compteur du menu Jira." data-i18n-tip="settings.tip.jira-watch-minutes"><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_watch_minutes" type="number" min="0" step="1" placeholder="5" /></label>
+            <!-- JIRA → STATS : ce qui compte comme « bug » et comme « US ». Le nom d'un type est libre
+                 d'une instance à l'autre ; une décision d'équipe, partagée comme le reste. -->
+            <label><span data-i18n="settings.lbl.jira-stats-bug-types">Types comptés comme « bug » (Jira → Stats)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-stats-bug-types" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_stats_bug_types" placeholder="Bug" /></label>
+            <label><span data-i18n="settings.lbl.jira-stats-us-types">Types comptés comme « US » (Jira → Stats)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-stats-us-types" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="jira_stats_us_types" placeholder="Story, User Story" /></label>
             <!-- B10 : le verdict d'une vérification remonte vers le ticket. Décoché par
                  défaut, comme « Prévenir Jira » : le ticket est lu par la QA et le support,
                  écrire chez eux ne se décide pas à la place de l'utilisateur. -->
@@ -480,6 +522,18 @@
                 <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{target}</code> la branche de destination · <code>{key}</code> la clé du ticket.</span>
             </label>
             <p class="field-note"><span data-i18n="settings.jira-notify-preview">Aperçu :</span> <span id="jiraNotifyPreview" class="template-preview"></span></p>
+            <!-- PRÉVENIR JIRA À LA FUSION : le ticket apprend que la merge request est mergée, quel que soit
+                 celui qui a vu le merge (découverte, « Mettre à jour depuis la forge »). Décoché par défaut :
+                 écrire chez la QA et le support se décide. Même mécanique de gabarit que ci-dessus. -->
+            <h3 data-i18n="settings.jira.merge.title">Prévenir Jira à la fusion de la merge request</h3>
+            <label class="inline-check"><input form="configForm" name="jira_notify_merge" type="checkbox" /> <span data-i18n="settings.lbl.jira-notify-merge">Prévenir Jira quand une merge request est mergée</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-notify-merge" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label><span data-i18n="settings.lbl.jira-merge-template">Gabarit du commentaire posté dans Jira à la fusion</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.jira-merge-template" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <textarea form="configForm" name="jira_merge_template" rows="4"></textarea>
+                <span class="muted template-vars" data-i18n-html="settings.jira-notify-vars">Variables : <code>{url}</code> le lien de la merge request (obligatoire) · <code>{iid}</code> son numéro · <code>{project}</code> le dépôt · <code>{title}</code> son titre · <code>{branch}</code> la branche · <code>{target}</code> la branche de destination · <code>{key}</code> la clé du ticket.</span>
+            </label>
+            <p class="field-note"><span data-i18n="settings.jira-notify-preview">Aperçu :</span> <span id="jiraMergePreview" class="template-preview"></span></p>
             <p class="field-note" data-i18n="settings.conn.required-note">Toute cette connexion est facultative — mais renseignée, elle a besoin de tous ses champs marqués *.</p>
             <!-- PRÉCISION TECHNIQUE D'UN TICKET. Confluence Cloud se lit avec le compte Jira
                  ci-dessus : ces deux champs ne servent qu'à un Confluence Server / Data Center.
@@ -576,6 +630,82 @@
                 <select form="configForm" name="auto_runner" id="autoRunnerSelect"></select>
             </label>
             <p id="autoRunnerNone" class="field-note" hidden data-i18n="settings.auto-runner.none">Aucun exécutant : les automatismes cochés ne tourneront sur aucun poste.</p>
+
+            <!-- LES CROISEMENTS DE MR : relever les fichiers de chaque MR ouverte à la découverte (un
+                 appel forge par MR dont la liste manque, plafonné par tour), pour dire qu'elles
+                 touchent les mêmes fichiers AVANT que la forge ne parle de conflit. D'équipe : ils
+                 décrivent l'outil, pas la machine. -->
+            <h3 data-i18n="settings.mr.group.discover">Découverte</h3>
+            <label class="inline-check"><input form="configForm" name="mr_files_enabled" type="checkbox" /> <span data-i18n="settings.lbl.mr-files-enabled">Relever les fichiers des MR ouvertes</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.mr-files-max">Au plus N listes relevées par découverte</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="mr_files_max" type="number" min="0" max="500" step="1" placeholder="20" />
+            </label>
+            <label class="inline-check"><input form="configForm" name="mr_files_cross_targets" type="checkbox" /> <span data-i18n="settings.lbl.mr-files-cross-targets">Croiser aussi les MR de branches cibles différentes</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-files-cross-targets" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <!-- LES MR EMPILÉES : relever les commits de chaque MR ouverte dans le même tour que ses fichiers
+                 (même plafond, pas de second compteur), pour dire « contient !214 » — l'ordre de merge
+                 imposé, lu sur la carte. D'équipe. -->
+            <label class="inline-check"><input form="configForm" name="mr_commits_enabled" type="checkbox" /> <span data-i18n="settings.lbl.mr-commits-enabled">Relever les commits des MR ouvertes</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-commits-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" id="mrCommitsDep" hidden data-i18n="settings.mr-commits.dep">Nécessite « Relever les fichiers des MR ouvertes » ci-dessus, dont il partage le plafond : sans relevé, aucun badge.</p>
+            <!-- LES TESTS TOUCHÉS : « 14 fichiers · 0 test » sur la carte, calculé sur les listes de
+                 fichiers des croisements par des MOTIFS de chemin — un fichier est un test ou n'en est
+                 pas un, sans IA, sans couverture. Sans relevé des fichiers, pas de badge : la note le dit. -->
+            <label class="inline-check"><input form="configForm" name="tests_touched_enabled" type="checkbox" /> <span data-i18n="settings.lbl.tests-touched-enabled">Afficher les tests touchés</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.tests-touched-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" id="testsTouchedDep" hidden data-i18n="settings.tests-touched.dep">Nécessite « Relever les fichiers des MR ouvertes » ci-dessus : sans relevé, aucun badge.</p>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.tests-touched-min-code">Signaler l’absence de test à partir de N fichiers de code</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.tests-touched-min-code" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="tests_touched_min_code" type="number" min="0" max="1000" step="1" placeholder="3" />
+            </label>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.test-patterns">Motifs de test (un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.test-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="test_patterns" rows="5" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="test_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
+            </div>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.neutral-patterns">Motifs neutres (ni code ni test, un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.neutral-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="neutral_patterns" rows="5" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="neutral_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-patterns-apercu></span></p>
+            </div>
+            <!-- LES DÉPENDANCES AJOUTÉES : « +2 dépendances » sur la carte, lu dans le diff des seuls
+                 manifestes gardé au relevé des fichiers — sans un appel de plus, sans IA, sans registre.
+                 Les manifestes sont des MOTIFS de chemin, réglables comme ceux des tests. -->
+            <label class="inline-check"><input form="configForm" name="deps_enabled" type="checkbox" /> <span data-i18n="settings.lbl.deps-enabled">Afficher les dépendances</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.deps-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.manifest-patterns">Motifs de manifestes (un glob par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.manifest-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="manifest_patterns" rows="4" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="manifest_patterns" data-i18n="settings.patterns.reset">Remettre les défauts</button> <span data-manifests-apercu></span></p>
+            </div>
+            <!-- LE CONTRÔLE AU REGISTRE : pour chaque dépendance AJOUTÉE, ce que le registre public en sait
+                 (inconnue, publiée il y a N jours). Le premier appel réseau qui ne va ni à la forge ni à Jira :
+                 DÉCOCHÉ d'office, les hôtes nommés dans le libellé, les seuls noms des paquets ajoutés partent,
+                 plafonné par tour, mis en cache par nom. D'équipe, sauf les URL de registre (de ce poste). -->
+            <!-- Le bloc entier s'indente sous « Afficher les dépendances », dont il dépend, et se grise avec elle
+                 (reglages/tests-touches.js) : un réglage qu'on ne peut pas activer seul se lit comme tel. -->
+            <div id="registryZone" class="sous-reglage reglages-registre">
+            <h3 data-i18n="settings.mr.group.registry">Contrôle au registre</h3>
+            <label class="inline-check"><input form="configForm" name="registry_enabled" type="checkbox" /> <span data-i18n="settings.lbl.registry-enabled">Contrôler les dépendances ajoutées auprès des registres publics</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <p class="field-note" data-i18n="settings.registry.hosts">Contacte registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — uniquement pour les paquets ajoutés par vos merge requests, et seulement leur nom.</p>
+            <p class="field-note" id="registryDep" hidden data-i18n="settings.registry.dep">Nécessite « Afficher les dépendances » ci-dessus et le relevé des fichiers : sans dépendance relevée, rien n'est contrôlé.</p>
+            <label><span data-i18n="settings.lbl.registry-recent-days">Récent : publié depuis moins de N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-recent-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="registry_recent_days" type="number" min="0" max="3650" step="1" placeholder="30" />
+            </label>
+            <label><span data-i18n="settings.lbl.registry-max">Au plus N appels par tour</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="registry_max" type="number" min="0" max="1000" step="1" placeholder="30" />
+            </label>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.private-patterns">Motifs de paquets privés (un glob de nom par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.private-patterns" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="private_patterns" rows="3" spellcheck="false" placeholder="@mon-entreprise/*&#10;mon-entreprise/*&#10;git.mon-entreprise.fr/**"></textarea></label>
+            </div>
+            <div class="patterns-zone">
+                <label><span data-i18n="settings.lbl.registry-urls">URL par registre (de ce poste, une ligne « écosystème=url »)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.registry-urls" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <textarea form="configForm" name="registry_urls" rows="3" spellcheck="false"></textarea></label>
+                <p class="field-note patterns-actions"><button type="button" class="btn btn-sm" data-patterns-reset="registry_urls" data-i18n="settings.patterns.reset">Remettre les défauts</button></p>
+            </div>
+            </div>
 
             <h3 data-i18n="settings.mr.group.converge">Convergence</h3>
             <label><span data-i18n="settings.lbl.converge-threshold">Convergence — seuil cible (/10)</span> <button type="button" class="hint" tabindex="-1" aria-label="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-tip="Note cible par défaut de la boucle « Converger ». La boucle s'arrête dès que la note atteint ce seuil. Surchargeable au lancement." data-i18n-tip="settings.tip.converge-threshold"><svg class="ico"><use href="#i-info"/></svg></button>

@@ -1,0 +1,18 @@
+/* ============ Dev IA : reprendre la session d'un collègue ============
+   Le bandeau de la modale dit d'où l'on repart ; l'encart « ce que l'agent va recevoir » montre le
+   premier message en entier, en monospace, repliable — long si c'est long. Sur les cartes, la
+   filiation est discrète : une ligne grise « reprise de … » / « reprise par … », un tag « reprise ». */
+.reprise-bloc { display: flex; flex-direction: column; gap: 8px; }
+.reprise-bandeau { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--panel2); font-size: 13px; }
+.reprise-questions { font-size: 12px; margin: 4px 0; }
+.reprise-encart summary { cursor: pointer; font-size: 13px; }
+.reprise-options { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 6px 0; font-size: 12px; }
+.reprise-options input[type="range"] { width: 140px; vertical-align: middle; }
+.reprise-apercu { max-height: 320px; overflow: auto; white-space: pre-wrap; font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; background: var(--panel2); padding: 8px 10px; border-radius: 6px; }
+.reprise-origine, .reprise-par { font-size: 12px; margin: 2px 0 4px; }
+.reprise-par { padding-left: 8px; }
+.tag.reprise { color: var(--accent); border-color: var(--accent); }
+.reprise-note { font-size: 12px; }
+/* La question d'un collègue, en lecture : les options en ligne, grises, sans case à cocher. */
+.questions-lecture .q-opts-lecture { flex-direction: row; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; }
+.questions-lecture .q-lecture-note { margin: 8px 0 0; font-size: 12px; }

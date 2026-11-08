@@ -99,6 +99,10 @@
 
 /* L'état de la merge request sur la ligne d'un projet de session : discret, à côté du lien. */
 .tmr-etat { font-size: var(--fs-xs, 11px); }
+/* La puce « MR !5 · 6,0/10 » est un bouton vers Reviews : la même pastille, un curseur. */
+.tag.tmr-go { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font: inherit; font-size: inherit; color: var(--accent); border-color: var(--accent); background: transparent; }
+.tag.tmr-go:hover, .tag.tmr-go:focus-visible { background: var(--panel2); }
+.tag.tmr-go .tmr-etat { color: var(--muted); }
 .tmr-verdict.v-verified_pass { color: var(--green-text, var(--green)); }
 .tmr-verdict.v-verified_fail { color: var(--red-text, var(--red)); }
 .tmr-verdict.v-broken_base, .tmr-verdict.v-verify_error { color: var(--amber-text, var(--amber)); }
@@ -191,6 +195,11 @@ body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
    résout le conflit est déjà juste à côté (« Mettre à jour avec {base} »). */
 .tag.conflict-info { color: var(--red); border-color: var(--red); }
 .tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
+.tag.new-for-me { color: var(--accent); border-color: var(--accent); } /* rapport d'un collègue, jamais ouvert ici */
+/* Qui porte la merge request d'après la forge (reviewers, assignés) et ses 👍 : des informations,
+   dans la couleur neutre des pastilles — le vert est réservé à ce qui est vérifié. */
+.tag.people { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.tag.upvotes { color: var(--accent); border-color: var(--accent); }
 .muted { color: var(--muted); font-size: 13px; }
 
 .split { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding-top: 12px; }

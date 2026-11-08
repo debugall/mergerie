@@ -68,8 +68,11 @@ describe('Menu Jira — précision technique d’un ticket', { skip: dispo ? fal
     await ouvrirJira();
     await ouvrirTicket('PROJ-20', 'Paiement en trois fois');
     const b = boite();
-    await b.waitFor({ state: 'visible' });
+    // Rien d'enregistré : la section reste fermée tant qu'on n'a pas cliqué « Préciser techniquement ».
+    await page.waitForSelector('#jiraDetail [data-spec-goto="PROJ-20"]');
+    await page.waitForFunction(() => document.querySelector('#jiraDetail [data-spec-box="PROJ-20"]').hidden === true);
     await page.locator('#jiraDetail [data-spec-goto="PROJ-20"]').click();
+    await b.waitFor({ state: 'visible' });
     const form = b.locator('[data-spec-form="PROJ-20"]');
     await form.waitFor({ state: 'visible' });
     // Le filtre des dépôts masque sans décocher.
@@ -137,6 +140,21 @@ describe('Menu Jira — précision technique d’un ticket', { skip: dispo ? fal
     await attendreServeur(() => appels(/\/issue\/PROJ-20\/comment\/\d+$/, 'PUT').length === 1, 'le PUT du commentaire');
     assert.equal(appels(/\/issue\/PROJ-20\/comment/, 'POST').length, 1, 'aucun second commentaire');
     assert.equal(app.state.jiraIssues['PROJ-20'].comments.length, 1);
+  });
+
+  test('« Coder hors dépôt » reprend aussi la précision technique du ticket', async () => {
+    const b = boite();
+    await b.waitFor({ state: 'visible' });
+    await page.locator('#jiraDetail [data-jiralocal="PROJ-20"]').click();
+    await page.locator('#taskModal').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => /Précision technique du ticket PROJ-20/.test(document.querySelector('#taskPrompt').value));
+    try {
+      assert.equal(await page.locator('#taskLocalWrap').isVisible(), true);
+      assert.match(await page.locator('#taskPrompt').inputValue(), /Contexte du ticket Jira PROJ-20/);
+    } finally {
+      await page.locator('#taskCancel').click();
+      await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    }
   });
 
   test('Dev IA : la session porte la clé du ticket, et une pastille la masque — mémorisée', async () => {

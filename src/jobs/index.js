@@ -8,7 +8,7 @@
    — `runners/<sorte>.js` : l'exécutant d'une sorte de job, inscrit dans le registre au chargement.
    Charger les exécutants ICI est ce qui les inscrit : un exécutant absent de cette liste ne
    tournerait jamais, et `startJob` échouerait sur « RUNNERS[kind] is not a function ». */
-const { startVerifyJob, startJob, startTaskJob, startGitJob, startConvergeJob, startConvergeSessionJob, startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startNow, stopJob, isRunning, retryJob, attendreFin, jobEnCoursPour } = require('./ordonnanceur');
+const { startVerifyJob, startJob, startTaskJob, startGitJob, startConvergeJob, startConvergeSessionJob, startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startPeriodeJob, startPeriodeResumeJob, startNow, stopJob, isRunning, retryJob, attendreFin, jobEnCoursPour } = require('./ordonnanceur');
 const { verifyBloquePar, currentJob, activeJob, runningJobs, queuedJobs, queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, canRetry, jobTargets, runningTargets } = require('./file');
 const { preparerVerificationApres } = require('./apres-session');
 /* Lancer plus tard : la date d'une session ou d'un suivi, et le tick qui l'honore. */
@@ -24,11 +24,12 @@ require('./runners/plugin');
 require('./runners/reconcile');
 require('./runners/verify');
 require('./runners/merge-ai');
+require('./runners/periode');
 
 module.exports = {
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
   startJob, startTaskJob, startGitJob, startConvergeJob, startConvergeSessionJob,
-  startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
+  startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startPeriodeJob, startPeriodeResumeJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
   jobTargets, runningTargets, programmation, attendreFin, jobEnCoursPour,
 };

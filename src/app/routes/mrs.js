@@ -19,6 +19,10 @@ const jobs = require('../../jobs');
 const reviewer = require('../../review/reviewer');
 const prompts = require('../../core/prompts');
 const converge = require('../../review/converge');
+const croisements = require('../../review/croisements');
+const testsTouches = require('../../review/tests-touches');
+const dependances = require('../../review/dependances');
+const empilees = require('../../review/empilees');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const agentsession = require('../../agent/session');
@@ -28,6 +32,10 @@ const fs = require('fs');
 const { servirFichierNonFiable } = require('../fichiers');
 const { gardeConfigAgent, mrById, parseConvergeOpts, readFileSafe, ticketUrl, wrap } = require('../http');
 const { auteurs } = require('../lib/partage');
+const { rafraichirUne } = require('../lib/decouverte');
+const { rafraichirMr } = require('../../notes/discover');
+const identite = require('../../core/identite');
+const { etat: etatLocal } = require('../../data/localstate');
 const { assertValidBranch, insertTargets } = require('../lib/sessions');
 const { dernieresVerificationsParMr, detailVerification, resumeVerification } = require('../lib/verifications');
 const { changedFilesFromDiff, diffDeLaMr, mrCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
@@ -61,11 +69,21 @@ app.get('/api/mrs', wrap((req, res) => {
      qu'on veut, pas celui de la merge request — la question est « qui l'a reviewée ? ». Lu du
      cache alimenté par git, sans aucune colonne à tenir. */
   const parQui = auteurs('review_version', versions);
+  /* « NOUVEAU POUR TOI » : un rapport arrivé par la synchro du dépôt d'équipe, écrit par un
+     collègue, et jamais ouvert sur CE poste. Une MR reviewée par Claire pendant mon absence
+     ressemble sinon, dans « reviewées », à une MR que j'ai reviewée moi-même en septembre —
+     noyée dans la masse. L'ouverture du rapport la marque vue (`POST /api/mrs/:id/seen`) ;
+     l'uid de la version et non son id, qui ne survit pas au partage. */
+  const moi = identite.nom() || '';
+  const vuesIci = etatLocal.carte('review', 'seen');
+  const nouveauPourMoi = {};
   for (const v of versions) {
+    const auteur = parQui.get(v.id) || null;
     derniereVersion[v.mr_id] = {
-      version: v.version, at: v.created_at, author: parQui.get(v.id) || null,
+      version: v.version, at: v.created_at, author: auteur,
       n_new: v.n_new, n_persistent: v.n_persistent, n_resolved: v.n_resolved, n_disappeared: v.n_disappeared,
     };
+    if (auteur && auteur !== moi && v.uid && !vuesIci.has(String(v.uid))) nouveauPourMoi[v.mr_id] = true;
   }
   /* COMBIEN DE BLOQUANTS, ET DE MAJEURS. Le détail disait « 1 résolu · 1 persistant » — le
      nombre, jamais la GRAVITÉ, alors que la sévérité est stockée par constat et déjà comptée
@@ -81,6 +99,15 @@ app.get('/api/mrs', wrap((req, res) => {
   const brouillons = {};
   for (const c of db.prepare('SELECT mr_id, COUNT(*) n, MIN(created_at) AS depuis FROM mr_comment_draft GROUP BY mr_id').all()) {
     brouillons[c.mr_id] = { n: c.n, depuis: c.depuis };
+  }
+  /* LA SESSION DE CODAGE QUI A PRODUIT LA BRANCHE, sur la carte et pas seulement dans l'en-tête du
+     rapport : depuis la file, on veut rejoindre la session qui a écrit ce code — relancer, suivre,
+     relire son retour — sans passer par le rapport ni retrouver la carte dans Dev IA. Même jointure
+     que `originTask` (dépôt, branche), la plus récente gagne ; une requête pour toute la liste. */
+  const origineParBranche = new Map();
+  for (const r of db.prepare(`SELECT tt.repo_id, tt.branch, t.id, t.label, t.prompt, t.status, t.kind FROM task_target tt
+      JOIN task t ON t.id = tt.task_id ORDER BY tt.id`).all()) {
+    origineParBranche.set(`${r.repo_id}\u0001${r.branch}`, { id: r.id, status: r.status, kind: r.kind || 'code', label: r.label || String(r.prompt || '').slice(0, 60) });
   }
 
   const severites = {};
@@ -107,6 +134,14 @@ app.get('/api/mrs', wrap((req, res) => {
      des chemins du diff par ceux que les cartes citent, calculé sans IA et sans réseau. L'index
      est construit UNE fois pour toute la liste. */
   const indexCartes = agentknowledge.indexCartes();
+  /* LES CROISEMENTS : les MR ouvertes du même dépôt qui touchent les mêmes fichiers, et sur quel
+     SHA la liste a été relevée. Une requête pour toute la liste, zéro réseau, zéro IA. */
+  const croises = croisements.pourCartes(cfg);
+  // LES TESTS TOUCHÉS : les mêmes listes, classées par motifs de chemin. Une passe pour toute la liste.
+  const testes = testsTouches.pourCartes(cfg);
+  const deps = dependances.pourCartes(cfg);
+  // LES MR EMPILÉES : « contient !214 » — l'inclusion des listes de commits, une requête, zéro réseau.
+  const empiles = empilees.pourCartes(cfg);
   const riskOf = (changed) => {
     if (!changed || !pathRules.length) return [];
     const paths = String(changed).split('\n').filter(Boolean);
@@ -197,8 +232,36 @@ app.get('/api/mrs', wrap((req, res) => {
       risk: riskOf(r.changed_paths),
       cards: agentknowledge.cartesTouchees(indexCartes, r.repo_id, r.changed_paths),
       stale: r.reviewed_sha && r.reviewed_sha !== r.current_sha,
+      new_for_me: !!nouveauPourMoi[r.id],
+      /* CROISE : les autres MR ouvertes qui modifient les mêmes fichiers (vide = aucun croisement
+         connu), et le relevé (`null` = liste jamais relevée : la carte ne dit rien). */
+      overlaps: (croises[r.id] || {}).overlaps || [],
+      files_fetch: (croises[r.id] || {}).fetch || null,
+      /* TESTS TOUCHÉS : code / tests / neutres, l'alerte « 0 test » au-delà du seuil, les tests
+         eux-mêmes. `null` = pas de liste fraîche : la carte ne dit rien, jamais un faux « 0 test ». */
+      tests: testes[r.id] || null,
+      deps: deps[r.id] || null,
+      stack: empiles[r.id] || null,
+      origin_task: origineParBranche.get(`${r.repo_id}\u0001${r.source_branch}`) || null,
     };
   }));
+}));
+/* « METTRE À JOUR DEPUIS LA FORGE » : cette merge request seule, sans balayer tous les dépôts. */
+app.post('/api/mrs/:id/refresh', wrap(async (req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const r = await rafraichirUne(mr.id);
+  if (!r) throw new Error(t('err.mr-introuvable'));
+  res.json(r);
+}));
+/* Le rapport d'un collègue vient d'être ouvert ici : la pastille « nouveau pour toi » tombe.
+   État de CE poste (`local_state`), par l'uid de la dernière version. */
+app.post('/api/mrs/:id/seen', wrap((req, res) => {
+  const mr = mrById(Number(req.params.id));
+  if (!mr) throw new Error(t('err.mr-introuvable'));
+  const v = db.prepare('SELECT uid FROM review_version WHERE mr_id = ? ORDER BY version DESC LIMIT 1').get(mr.id);
+  if (v && v.uid) etatLocal.ecrire('review', String(v.uid), 'seen', new Date().toISOString());
+  res.json({ ok: true });
 }));
 /* Retrouve la session de codage qui a produit une branche. Le lien n'est pas stocké en dur :
    il se reconstitue par (dépôt, branche). En cas d'ambiguïté — plusieurs sessions sur la même
@@ -236,6 +299,10 @@ app.get('/api/mrs/:id', wrap((req, res) => {
   const tkey = mr.ticket_jira_key
     ? (mr.ticket_jira_error ? null : mr.ticket_jira_key)
     : jira.ticketKey(mr.title, mr.source_branch);
+  const croise = croisements.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || {};
+  const testes = testsTouches.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
+  const deps = dependances.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
+  const stack = empilees.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -319,6 +386,14 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     links: db.prepare(`SELECT ml.repo_id, ml.branch, repo.project, repo.forge FROM mr_link ml JOIN repo ON repo.id = ml.repo_id WHERE ml.mr_id = ?`).all(mr.id),
     repo_links: db.prepare(`SELECT rl.linked_repo_id AS repo_id, rl.branch, repo.project FROM repo_link rl JOIN repo ON repo.id = rl.linked_repo_id WHERE rl.repo_id = ?`).all(mr.repo_id),
     stale: mr.reviewed_sha && mr.reviewed_sha !== mr.current_sha,
+    // Le badge de croisement, repris dans l'en-tête du rapport (même calcul que la liste).
+    overlaps: croise.overlaps || [],
+    files_fetch: croise.fetch || null,
+    tests: testes,
+    deps,
+    stack,
+    // La phrase de fait que la review reçoit (« contient !214 : 12 commits et 9 fichiers déjà soumis là-bas »), telle quelle.
+    stack_facts: empilees.phrasesDeFait(getConfig(), mr.id),
   });
 }));
 // Enregistre le contexte du ticket (texte + capture facultative en data URL).
@@ -408,7 +483,7 @@ app.get('/api/mrs/:id/tree', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (demoDiff.isDemo()) { res.json(demoDiff.treeFor(mr)); return; }
-  const { cwd, ref } = mrCloneCtx(mr);
+  const { cwd, ref } = await mrCloneCtx(mr);
   let files;
   try { files = await git.lsTree(cwd, ref); }
   catch { files = await git.lsTree(cwd, `origin/${mr.source_branch}`); }
@@ -420,19 +495,26 @@ app.get('/api/mrs/:id/file', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (demoDiff.isDemo()) { res.json(demoDiff.fileFor(mr, String(req.query.path || ''))); return; }
-  res.json(await viewerFile(mrCloneCtx(mr), String(req.query.path || '')));
+  res.json(await viewerFile(await mrCloneCtx(mr), String(req.query.path || '')));
 }));
 // Diff d'un fichier à contexte complet (fichier entier + changements surlignés).
 app.get('/api/mrs/:id/filediff', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (demoDiff.isDemo()) { res.json(demoDiff.fileDiffFor(mr, String(req.query.path || ''))); return; }
-  res.json(await viewerFileDiff(mrCloneCtx(mr), String(req.query.path || '')));
+  res.json(await viewerFileDiff(await mrCloneCtx(mr), String(req.query.path || '')));
 }));
-app.post('/api/mrs/:id/rereview', wrap((req, res) => {
+app.post('/api/mrs/:id/rereview', wrap(async (req, res) => {
   const mr = mrById(Number(req.params.id));
   if (!mr) throw new Error(t('err.mr-introuvable'));
   if (mr.status === 'done') throw new Error(t('err.mr-marquee-done-re-review'));
+  /* LA TÊTE D'ABORD. `current_sha` est le cache de la forge, à jour de la dernière découverte ;
+     `reviewed_sha` peut venir d'un collègue qui a relu un commit plus récent que ce cache. Sans
+     cette relecture, le delta partirait de la review du collègue vers une tête PÉRIMÉE — à
+     l'envers — et la passe reculerait `reviewed_sha`. Une requête à la forge, best-effort :
+     injoignable, la review part avec ce qu'on tient (et la garde d'ancêtre de `prepareContext`
+     refuse le delta inversé). */
+  try { await rafraichirMr(mr.id); } catch { /* forge injoignable : on relit avec le cache */ }
   // incremental : ne reviewer que le delta depuis le dernier SHA reviewé (best-effort :
   // reviewMr retombe sur une review complète s'il n'y a pas de delta exploitable).
   const incremental = !!(req.body && (req.body.incremental === true || req.body.incremental === '1'));

@@ -16,13 +16,17 @@
 
 const db = require('../db');
 const verifyLib = require('../verify/verify');
+const croisements = require('../review/croisements');
+const testsTouches = require('../review/tests-touches');
+const dependances = require('../review/dependances');
+const { getConfig } = require('../data/config');
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
 /* Les sections dont une ligne peut être ÉCARTÉE, et sous quelle clé. Une todo n'y est pas :
    elle a déjà ses gestes propres (cocher, reporter), et un troisième verbe pour la faire
    disparaître d'un seul écran sèmerait la confusion sur ce qu'on vient de faire d'elle. */
-const ECARTABLES = ['verification', 'session', 'mr', 'sess'];
+const ECARTABLES = ['verification', 'session', 'mr', 'sess', 'croisement', 'sanstest', 'dependance'];
 
 function ecartes() {
   const par = {};
@@ -399,6 +403,14 @@ function construire({ maintenant = new Date(), staleDays = 5, seuilPret = 8 } = 
     followups: suivisEnAttente(),
     /* B14 — les merges à finir et les opérations git en échec. */
     git: gitEnSuspens(maintenant),
+    /* LES MR QUI SE CROISENT : une ligne par paire, les plus anciennes d'abord — c'est l'âge qui
+       dit laquelle attend l'autre. On écarte une paire, pas un dépôt : une paire nouvelle reparaît.
+       Lu de la base (`review/croisements.js`), zéro réseau, zéro IA. */
+    overlaps: garder(croisements.paires(getConfig(), budget('croisement')), 'croisement', (p) => p.key),
+    /* LES MR SANS TEST : celles qui portent le badge accentué, les plus anciennes d'abord. On écarte
+       une merge request SUR UN SHA : un relevé sur un nouveau SHA la fait reparaître. */
+    no_tests: garder(testsTouches.sansTest(getConfig(), budget('sanstest')), 'sanstest', (m) => m.key),
+    new_deps: garder(dependances.ajoutantDesDependances(getConfig(), budget('dependance')), 'dependance', (m) => m.key),
   };
 }
 

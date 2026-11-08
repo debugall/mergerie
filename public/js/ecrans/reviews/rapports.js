@@ -99,13 +99,16 @@ function renderReports() {
     return;
   }
   const sig = [selectedMr, ...rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author,
+    m.reviewers, m.assignees, m.upvotes, m.is_draft,
     m.gitlab_created_at, m.ticket_key, m.ticket_url, m.forge, m.note && m.note.raw, m.closed_seen,
     m.note_detail && [m.note_detail.version, m.note_detail.n_resolved, m.note_detail.n_persistent, m.note_detail.n_new].join(','),
     m.size && [m.size.files, m.size.additions, m.size.deletions].join(','), m.updated_at,
     m.stale, m.verifiable, (m.cards || []).map((c) => c.agent_id).join(','),
     (m.lots || []).map((l) => l.id).join(','),
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
-      m.verification.failed_count, m.verification.detail_source].join(',')].join('\u0001'))].join('\u0002');
+      m.verification.failed_count, m.verification.detail_source].join(','),
+    sigCroise(m), sigTests(m), sigDeps(m), sigStack(m),
+    m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001'))].join('\u0002');
   const html = rows.map((m) => `
     <div class="card selectable report-card ${selectedMr === m.id ? 'active' : ''}" data-id="${m.id}">
       ${noteBadge(m.note, m)}
@@ -118,17 +121,24 @@ function renderReports() {
               lui, dit que cette merge request ne se merge pas seule. */''}
         ${tailleMr(m)}
         <div class="report-tags">
+          ${badgeTests(m)}
+          ${badgeDeps(m)}
           ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
           <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
           ${badgeDraft(m)}
+          ${badgeGens(m)}
+          ${badgeUpvotes(m)}
           ${fenteBrouillons(m)}
           ${badgeSeverites(m)}
           ${badgeCartes(m)}
           ${badgeTicket(m)}
+          ${badgeStack(m)}
+          ${badgeCroise(m)}
           ${badgeConflit(m)}
           ${pluginsHtml('mr-badge', m)}
           ${badgeCIForge(m)}
           ${verifyBadge(m.verification)}
+          ${origineHtml(m)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
           ${m.verifiable ? `<button class="btn btn-sm" data-verify-report="${m.id}" title="${tr('verify.btn.verify-title')}">${svgIco('check')}${tr('verify.btn.verify')}</button>` : ''}
           ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
@@ -326,9 +336,10 @@ function badgeConflit(m) {
       + ` title="${esc(tr('mr.tag.behind-title', { n, target: m.target_branch || '' }))}">`
       + `${svgIco('clock')} ${esc(tr('mr.tag.behind', { n }))}</button>`)
     /* …ET LA VOIE PAR L'IA, à côté. Résoudre soi-même dans Git → Merge est une voie ; l'autre est
-       de confier à l'agent la mise à jour de la branche — rejouer ses changements par-dessus la
-       cible, en comprenant ce qu'ils voulaient — et de relire avant de pousser. Le bouton ouvre la
-       modale de session pré-remplie : rien n'est lancé ni poussé sans le clic suivant. */
+       de confier à l'agent la mise à jour de la branche — fusionner la cible dans la branche, en
+       comprenant ce que la branche voulait — et de relire avant de pousser. Par des commits AJOUTÉS,
+       jamais un rebase : l'historique poussé reste intact et « Pousser » ne force pas. Le bouton
+       ouvre la modale de session pré-remplie : rien n'est lancé ni poussé sans le clic suivant. */
     + ` <button type="button" class="btn btn-sm mr-rebase-ia" data-mr-rebase="${m.id}"`
     + ` title="${esc(tr('mr.rebase.button-title', { target: m.target_branch || '' }))}">`
     + `${svgIco('bot')} ${esc(tr('mr.rebase.button'))}</button>`;
@@ -344,8 +355,9 @@ document.addEventListener('click', (e) => {
     prompt: tr(m.has_conflicts ? 'mr.rebase.prompt' : 'mr.rebase.prompt-behind', vars),
     title: tr('mr.rebase.title', vars),
     commitMessage: tr('mr.rebase.commit', vars),
+    label: tr('mr.rebase.label', vars),
     autoPush: false,
-    forcePush: true,
+    forcePush: false,
     fromMrText: tr('task.from-mr-rebase', vars),
   }).catch((err) => toast(tr('toast.ouverture-impossible', { message: err.message }), true));
 });
@@ -408,6 +420,28 @@ function badgeDraft(m) {
   return `<span class="tag draft" title="${esc(tr('mr.tag.draft-title'))}">${svgIco('edit')} ${esc(tr('mr.tag.draft'))}</span>`;
 }
 
+/* QUI PORTE la merge request, d'après la forge : les reviewers demandés et les assignés, relevés à
+   la découverte. Deux pastilles distinctes — on ne demande pas la même chose à l'un et à l'autre —,
+   trois noms au plus, le reste en infobulle. Rien quand la forge n'a désigné personne. */
+const nomsForge = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+function pastilleGens(noms, cle, ico) {
+  if (!noms.length) return '';
+  const visibles = noms.slice(0, 3).join(', ') + (noms.length > 3 ? ` +${noms.length - 3}` : '');
+  return `<span class="tag people" title="${esc(tr(cle, { who: noms.join(', ') }))}">${svgIco(ico)} ${esc(visibles)}</span>`;
+}
+function badgeGens(m) {
+  if (!m) return '';
+  return pastilleGens(nomsForge(m.reviewers), 'mr.tag.reviewers-title', 'eye')
+    + pastilleGens(nomsForge(m.assignees), 'mr.tag.assignees-title', 'users');
+}
+/* LES 👍 de la forge (upvotes GitLab, réaction +1 GitHub) : combien de collègues ont déjà dit
+   « pour moi c'est bon » sans passer par une approbation formelle. Rien à zéro. */
+function badgeUpvotes(m) {
+  const n = Number(m && m.upvotes) || 0;
+  if (n <= 0) return '';
+  return `<span class="tag upvotes" title="${esc(tr('mr.tag.upvotes-title', { n, count: n }))}">${svgIco('thumbs-up')} ${n}</span>`;
+}
+
 function badgeTicket(m) {
   if (!m || !m.ticket_category) return '';
   if (m.ticket_category === 'indeterminate' && m.status === 'to_review') {
@@ -452,14 +486,23 @@ document.addEventListener('mouseover', async (e) => {
    MR) est partout ; celui-ci manquait, et c'est pourtant celui qu'on suit après « Faire
    corriger » : « est-ce que ça tourne ? ». La puce mène à la carte, où « Envoyer un suivi » et
    « Reprendre le rapport » existent déjà — on ne refait pas leur geste ici. */
-function origineHtml(t) {
+/* La merge request d'où l'on part voyage avec le bouton : le bandeau d'atterrissage dans Dev IA
+   dit « issue de la merge request !12 de grp/app, branche feature/x ». */
+function origineAttrs(m) {
+  const t = m.origin_task;
+  return `data-go-session="${t.id}" data-go-kind="${esc(t.kind || 'code')}" data-go-from="!${m.iid}" data-go-project="${esc(m.project || '')}" data-go-branch="${esc(m.source_branch || '')}"`;
+}
+function origineHtml(m) {
+  const t = m && m.origin_task;
   if (!t || !t.id) return '';
   const enCours = t.status === 'running';
-  return `<button type="button" class="tag${enCours ? ' run' : ''}" data-go-session="${t.id}" data-go-kind="${esc(t.kind || 'code')}"
+  return `<button type="button" class="tag${enCours ? ' run' : ''}" ${origineAttrs(m)}
     title="${esc(tr('report.origin.title', { label: t.label || '' }))}">${svgIco('bot')} ${esc(tr(enCours ? 'report.origin.running' : 'report.origin', { id: t.id }))}</button>`;
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-go-session]');
-  if (b) ouvrirSession(b.dataset.goSession, b.dataset.goKind);
+  if (!b) return;
+  const d = b.dataset;
+  ouvrirSession(d.goSession, d.goKind, { depuis: d.goFrom ? { mr: d.goFrom, project: d.goProject, branch: d.goBranch } : null });
 });
 

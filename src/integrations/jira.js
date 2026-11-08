@@ -12,7 +12,33 @@ const http = require('http');
 const { t } = require('../core/i18n');
 
 // Client HTTP autonome (Jira Cloud est en TLS public : pas d'agent CA self-signed).
-function request(url, { method = 'GET', headers = {}, body = null } = {}) {
+/* LE QUOTA D'APPELS DE JIRA, RESPECTÉ PLUTÔT QUE DEVINÉ. Jira Cloud ne publie pas de budget : il
+   répond 429 (ou 503) avec `Retry-After` quand on dépasse. On fait donc deux choses : au plus
+   `PARALLELE_JIRA` requêtes en vol (deux écrans qui paginent en même temps ne font pas une rafale),
+   et sur 429/503 on attend le délai demandé (borné) avant de rejouer, quelques fois ; au-delà, une
+   erreur qui dit « Jira limite les appels », pas un « Jira 429 » muet. */
+const PARALLELE_JIRA = 4;
+const REJOUES_MAX = 3;
+const ATTENTE_MAX_MS = 30000;
+let enVol = 0; const fileAttente = [];
+function prendreTour() {
+  if (enVol < PARALLELE_JIRA) { enVol += 1; return Promise.resolve(); }
+  return new Promise((ok) => fileAttente.push(ok));
+}
+function rendreTour() {
+  const suivant = fileAttente.shift();
+  if (suivant) suivant(); else enVol -= 1;
+}
+const attendre = (ms) => new Promise((ok) => setTimeout(ok, ms));
+function delaiDemande(res, tentative) {
+  const brut = String(res.headers && res.headers['retry-after'] || '').trim();
+  const secondes = Number(brut);
+  if (Number.isFinite(secondes) && secondes >= 0 && brut !== '') return Math.min(ATTENTE_MAX_MS, secondes * 1000);
+  const date = Date.parse(brut);
+  if (Number.isFinite(date)) return Math.min(ATTENTE_MAX_MS, Math.max(0, date - Date.now()));
+  return Math.min(ATTENTE_MAX_MS, 1000 * 2 ** tentative);   // sans indication : 1 s, 2 s, 4 s
+}
+function requeteBrute(url, { method = 'GET', headers = {}, body = null } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const lib = u.protocol === 'http:' ? http : https;
@@ -22,7 +48,7 @@ function request(url, { method = 'GET', headers = {}, body = null } = {}) {
     }, (res) => {
       let data = '';
       res.on('data', (c) => { data += c; });
-      res.on('end', () => resolve({ status: res.statusCode, statusText: res.statusMessage || '', body: data }));
+      res.on('end', () => resolve({ status: res.statusCode, statusText: res.statusMessage || '', body: data, headers: res.headers || {} }));
     });
     req.on('error', reject);
     req.setTimeout(15000, () => { req.destroy(new Error('timeout Jira (15 s)')); });
@@ -30,10 +56,20 @@ function request(url, { method = 'GET', headers = {}, body = null } = {}) {
     req.end();
   });
 }
+async function request(url, opts = {}) {
+  await prendreTour();
+  try {
+    for (let tentative = 0; ; tentative += 1) {
+      const res = await requeteBrute(url, opts);
+      const limite = res.status === 429 || (res.status === 503 && res.headers['retry-after'] != null);
+      if (!limite) return res;
+      const delai = delaiDemande(res, tentative);
+      if (tentative >= REJOUES_MAX) { const e = new Error(t('err.jira.rate-limited', { seconds: Math.ceil(delai / 1000) })); e.code = 'JIRA_RATE_LIMITED'; e.status = res.status; throw e; }
+      await attendre(delai);
+    }
+  } finally { rendreTour(); }
+}
 
-/* ---------- Convertisseur ADF → Markdown ---------- */
-
-// Applique les marks d'un nœud texte (gras, italique, code, lien) autour du texte.
 function applyMarks(text, marks) {
   let s = text;
   for (const m of marks || []) {
@@ -287,6 +323,19 @@ async function jiraGet(cfg, pathAndQuery) {
   try { return JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
 }
 
+// Le même appel en POST, corps JSON — pour les points d'entrée que Jira n'offre qu'ainsi.
+async function jiraPost(cfg, pathAndQuery, body) {
+  const res = await request(jiraBase(cfg) + pathAndQuery, {
+    method: 'POST',
+    headers: { Authorization: authHeader(cfg), Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  if (res.status === 401 || res.status === 403) throw new Error(t('err.jira.denied', { status: res.status }));
+  if (res.status === 404) throw new Error('Jira 404 : ressource introuvable');
+  if (res.status < 200 || res.status >= 300) throw new Error(`Jira ${res.status} ${res.statusText}${detailErreur(res.body)}`);
+  try { return JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
+}
+
 const personOf = (p) => (p ? {
   accountId: p.accountId || p.name || p.key || '', name: p.displayName || p.name || '',
   email: p.emailAddress || '', avatar: (p.avatarUrls && (p.avatarUrls['24x24'] || p.avatarUrls['32x32'])) || '',
@@ -301,8 +350,47 @@ async function runSearch(cfg, jql, fields, max = 50) {
   catch (e) { if (/Jira 404/.test(e.message)) return jiraGet(cfg, `/rest/api/3/search?${qs}`); throw e; }
 }
 
+const PLAFOND_PAGES = 1000;           // tickets lus au plus par une recherche paginée : dix pages, quelques secondes
+const PAGE = 100;                     // la page maximale de Jira
+/* Toutes les pages d'une recherche, jusqu'au plafond. Jira Cloud pagine `/search/jql` par
+   jeton (`nextPageToken`, pas de total) ; Server/DC pagine `/search` par `startAt` et donne
+   `total`. Même boucle, deux curseurs.
+
+   Sur Cloud, la DERNIÈRE page est celle que `isLast` désigne — et non « celle sans jeton » : Jira
+   a été vu rendre un jeton avec `isLast: true`, et la boucle relisait alors une page vide jusqu'au
+   plafond, d'où un « plafond atteint sur 1 000 » sur un Jira qui n'en compte pas tant. Quand le
+   plafond est vraiment atteint, Cloud ne donnant pas de total, on le demande à part
+   (`approximate-count`) — et s'il refuse, on dit « plafond atteint » sans chiffrer l'ensemble. */
+async function searchAll(cfg, jql, fields, plafond = PLAFOND_PAGES) {
+  const issues = []; let total = null; let token = null; let startAt = 0; let enhanced = true; let encore = true;
+  while (encore && issues.length < plafond) {
+    const n = Math.min(PAGE, plafond - issues.length);
+    const base = `jql=${encodeURIComponent(jql)}&maxResults=${n}&fields=${encodeURIComponent(fields)}`;
+    let data;
+    if (enhanced) {
+      try { data = await jiraGet(cfg, `/rest/api/3/search/jql?${base}${token ? `&nextPageToken=${encodeURIComponent(token)}` : ''}`); }
+      catch (e) { if (!/Jira 404/.test(e.message) || token) throw e; enhanced = false; }
+    }
+    if (!enhanced) data = await jiraGet(cfg, `/rest/api/3/search?${base}&startAt=${startAt}`);
+    const page = data.issues || [];
+    issues.push(...page);
+    if (data.total != null) total = data.total;
+    if (enhanced) {
+      const suivant = data.isLast === true ? null : (data.nextPageToken || null);
+      encore = !!suivant && suivant !== token && page.length > 0;
+      token = suivant;
+    } else { startAt += page.length; encore = page.length > 0 && (total == null || startAt < total); }
+  }
+  const tronque = encore && issues.length >= plafond;
+  if (tronque && total == null) {
+    try { const c = await jiraPost(cfg, '/rest/api/3/search/approximate-count', { jql }); if (Number.isFinite(Number(c && c.count))) total = Number(c.count); }
+    catch { /* pas de total : on dira « plafond atteint » sans chiffrer */ }
+  }
+  return { issues, total: tronque ? total : (total != null ? total : issues.length), tronque };
+}
+
 // Métadonnées d'un ticket depuis l'objet issue (partagé liste + détail).
-function issueMeta(data, champSprint = '') {
+function issueMeta(data, champSprint = '', champTeam = '') {
   const f = data.fields || {};
   const person = personOf;
   return {
@@ -320,6 +408,7 @@ function issueMeta(data, champSprint = '') {
     projectKey: f.project ? f.project.key : '',
     // Vide si le champ sprint n'est pas connu de l'instance ou pas demandé.
     sprints: champSprint ? sprintsDe(f[champSprint]) : [],
+    team: champTeam ? teamDe(f[champTeam]) : null,   // idem : null si le champ n'existe pas ou n'est pas demandé
     created: f.created || '',
     updated: f.updated || '',
     duedate: f.duedate || '',
@@ -383,6 +472,28 @@ function detectSprintField(fields) {
   // Repli sur le nom, pour une instance qui n'exposerait pas le schéma.
   const parNom = par.find((f) => String(f.name).trim().toLowerCase() === 'sprint');
   return parNom ? { id: parNom.id, name: parNom.name } : null;
+}
+
+/* LE CHAMP « ÉQUIPE » (Team) : un champ personnalisé lui aussi, posé par Atlassian (type
+   `atlassian-team`, ou l'ancien `rm-teams-custom-field-team`), repéré par son schéma — et, à
+   défaut, par son nom, « Team » ou « Équipe » selon la langue de l'instance. */
+const MARQUEURS_TEAM = ['atlassian-team', 'teams-custom-field-team'];
+const NOMS_TEAM = ['team', 'équipe', 'equipe'];
+function detectTeamField(fields) {
+  const par = (fields || []).filter((f) => CHAMP_SPRINT.test(f.id));
+  const parMarqueur = par.find((f) => MARQUEURS_TEAM.some((m) => String(f.marqueur).includes(m)));
+  if (parMarqueur) return { id: parMarqueur.id, name: parMarqueur.name };
+  const parNom = par.find((f) => NOMS_TEAM.includes(String(f.name).trim().toLowerCase()));
+  return parNom ? { id: parNom.id, name: parNom.name } : null;
+}
+/* La valeur du champ équipe d'un ticket, ramenée à { v: id, l: nom } : le type récent donne
+   `{ id, name }`, l'ancien `{ id, title }`, et une instance peut n'y mettre qu'une chaîne. */
+function teamDe(brut) {
+  if (!brut) return null;
+  if (typeof brut === 'string') return { v: brut, l: brut };
+  const id = brut.id != null ? String(brut.id) : '';
+  const nom = String(brut.name || brut.title || brut.value || id || '').trim();
+  return (id || nom) ? { v: id || nom, l: nom || id } : null;
 }
 
 /* Valeurs de sprint d'un ticket, ramenées à { v: id, l: nom }. Jira renvoie soit des objets
@@ -454,14 +565,27 @@ async function myself(cfg) {
 
 // Découvre les personnes ASSIGNÉES récemment (pour proposer les cases du filtre par assigné) :
 // pool des tickets assignés les plus récemment mis à jour → assignés distincts, « moi » en tête.
-async function listAssignees(cfg) {
+/* LES PERSONNES DU FILTRE « ASSIGNÉS » : qui a eu un ticket assigné qui a BOUGÉ ces six derniers
+   mois — un compte actif sur la période, pas un annuaire. Avant, la liste ne venait que des cent
+   derniers tickets touchés : quelqu'un d'actif ailleurs manquait, et un compte parti y restait tant
+   qu'un de ses vieux tickets bougeait. On balaie donc les tickets mis à jour sur la fenêtre (jusqu'à
+   `MAX_TICKETS_ACTIVITE`, les plus récents d'abord), restreints aux projets du filtre s'il y en a ;
+   un compte désactivé (`active: false`) ou une application (`accountType: app`) est écarté. */
+const JOURS_ACTIVITE = 180;
+const MAX_TICKETS_ACTIVITE = 1000;   // dix pages Jira au plus — et le résultat est mémorisé côté app
+const compteActif = (u) => !!u && u.active !== false && (!u.accountType || u.accountType === 'atlassian');
+async function listAssignees(cfg, { projects = [] } = {}) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const me = await myself(cfg).catch(() => ({ accountId: '', name: 'Moi', email: '', avatar: '' }));
   const byId = new Map();
+  const cles = [...new Set((projects || []).map(String).filter((k) => CLE_PROJET.test(k)))];
+  const clauses = [`assignee IS NOT EMPTY`, `updated >= -${JOURS_ACTIVITE}d`];
+  if (cles.length) clauses.push(`project IN (${cles.map((k) => `"${k}"`).join(', ')})`);
   try {
-    const data = await runSearch(cfg, 'assignee IS NOT EMPTY ORDER BY updated DESC', 'assignee', 100);
-    for (const i of (data.issues || [])) {
-      const p = personOf(i.fields && i.fields.assignee);
+    const lu = await searchAll(cfg, `${clauses.join(' AND ')} ORDER BY updated DESC`, 'assignee', MAX_TICKETS_ACTIVITE);
+    for (const i of lu.issues) {
+      const f = i.fields || {};
+      const p = compteActif(f.assignee) ? personOf(f.assignee) : null;
       if (p && p.accountId && !byId.has(p.accountId)) byId.set(p.accountId, p);
     }
   } catch { /* pas de découverte → au moins « moi » */ }
@@ -470,10 +594,10 @@ async function listAssignees(cfg) {
   return { me, people };
 }
 
-// Tickets assignés aux personnes demandées (accountIds). Vide → `assignee = currentUser()` (moi).
-// Écarte les terminés sauf `includeDone`. Triés du plus récemment mis à jour au plus ancien.
-async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = 100, projects = [], sprintField = '', sprints = [], hideStatuses = [] } = {}) {
-  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+/* LES CONTRAINTES D'UNE LISTE DE TICKETS, EN JQL. Partagées entre « Mes tickets » et les
+   statistiques : ce que l'une filtre, l'autre compte, sinon les chiffres parleraient d'un autre
+   ensemble que la liste. */
+function jqlDe({ accountIds = [], includeDone = false, projects = [], sprints = [], hideStatuses = [] } = {}) {
   // accountId Jira : alphanumérique + `:._@|-`. On rejette le reste (anti-injection JQL) et on quote.
   const ids = (accountIds || []).map(String).filter((s) => /^[A-Za-z0-9:._@|-]{1,128}$/.test(s));
   /* Sélection VIDE = aucune contrainte d'assigné : on prend tout ce que le compte voit, même
@@ -491,10 +615,19 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (sprintIds.length) clauses.push(`sprint IN (${sprintIds.join(', ')})`);
   /* Statuts masqués : exclus PAR Jira. Un nom de statut est libre (workflow personnalisé),
      donc on n'accepte ni guillemet ni saut de ligne — le reste est quoté tel quel. */
-  const exclus = [...new Set((hideStatuses || []).map(String)
-    .filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
+  const exclus = valeursJql(hideStatuses);
   if (exclus.length) clauses.push(`status NOT IN (${exclus.map((x) => `"${x}"`).join(', ')})`);
   if (!includeDone) clauses.push('statusCategory != Done');
+  return clauses;
+}
+/* Une valeur libre (statut, étiquette, composant…) admise dans une chaîne JQL : ni guillemet
+   ni saut de ligne, longueur bornée, dédoublonnée. Ce qui ne passe pas est simplement ignoré. */
+function valeursJql(liste) {
+  return [...new Set((liste || []).map(String).filter((x) => x && x.length < 120 && !/["\r\n]/.test(x)))];
+}
+async function searchByAssignees(cfg, { accountIds = [], includeDone = false, max = PLAFOND_PAGES, projects = [], sprintField = '', teamField = '', sprints = [], hideStatuses = [] } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const clauses = jqlDe({ accountIds, includeDone, projects, sprints, hideStatuses });
   /* Jira Cloud REFUSE une recherche sans aucune contrainte (« unbounded ») : personne de coché
      ET les terminés inclus donnerait un simple ORDER BY, rejeté en 400. On borne alors sur
      l'activité récente — sans effet visible, la liste étant de toute façon triée par date de
@@ -502,9 +635,13 @@ async function searchByAssignees(cfg, { accountIds = [], includeDone = false, ma
   if (!clauses.length) clauses.push('updated >= -365d');
   const jql = `${clauses.join(' AND ')} ORDER BY updated DESC`;
   const champ = CHAMP_SPRINT.test(sprintField) ? sprintField : '';
-  const data = await runSearch(cfg, jql, champ ? `${TICKET_FIELDS},${champ}` : TICKET_FIELDS, max);
-  const issues = (data.issues || []).map((i) => withUrls(cfg, issueMeta(i, champ)));
-  return { issues, total: data.total != null ? data.total : issues.length };
+  const equipe = CHAMP_SPRINT.test(teamField) ? teamField : '';
+  /* TOUTES LES PAGES, pas la première : la liste s'arrêtait à cent tickets (une page Jira), et les
+     filtres du navigateur — recherche, champs — ne triaient qu'un extrait. On pagine jusqu'au même
+     plafond que les stats ; au-delà, `tronque` le dit et le compteur l'affiche. */
+  const lu = await searchAll(cfg, jql, [TICKET_FIELDS, champ, equipe].filter(Boolean).join(','), max);
+  const issues = lu.issues.map((i) => withUrls(cfg, issueMeta(i, champ, equipe)));
+  return { issues, total: lu.total != null ? lu.total : issues.length, tronque: lu.tronque };
 }
 
 /* Clé de ticket Jira : PROJET-123. Tout ce qui n'a pas cette forme est refusé avant de
@@ -532,6 +669,39 @@ async function statusOfKeys(cfg, keys) {
 /* Combien de tickets me sont affectés ET en cours. « En cours » = catégorie de statut
    `indeterminate` côté Jira : c'est la seule définition qui traverse les workflows, les
    noms d'états étant libres d'un projet à l'autre. */
+/* Une date ISO au format JQL `yyyy-MM-dd HH:mm`, dans un fuseau IANA donné (celui du compte
+   Jira) ; sans fuseau, ou s'il est inconnu d'ici, dans celui du serveur. Pure. */
+function dateJql(iso, tz = null) {
+  const d = new Date(iso);
+  if (tz) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-CA', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(d);
+      const v = (type) => (parts.find((x) => x.type === type) || {}).value;
+      return `${v('year')}-${v('month')}-${v('day')} ${v('hour')}:${v('minute')}`;
+    } catch { /* fuseau inconnu : celui du serveur */ }
+  }
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/* LES TICKETS QUI ONT BOUGÉ SUR UNE FENÊTRE (Notes → Période) : ceux qui ont changé d'état, et
+   ceux qui m'ont été affectés pendant. Bornés à ce qui me concerne — mes tickets, les
+   surveillés, ceux des merge requests de la fenêtre — : « tout ce qui a changé d'état dans
+   l'instance » serait des milliers de lignes. Les dates vont à Jira au format `yyyy-MM-dd HH:mm`,
+   que Jira lit DANS LE FUSEAU DU COMPTE (`/myself` → `timeZone`) : on formate dans celui-là,
+   et dans celui du serveur seulement si le compte n'en dit rien. */
+async function changedDuring(cfg, { depuis, jusqua, keys = [], max = 100 } = {}) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const tz = await jiraGet(cfg, '/rest/api/3/myself').then((me) => (me && me.timeZone) || null).catch(() => null);
+  const d1 = dateJql(depuis, tz); const d2 = dateJql(jusqua, tz);
+  const propres = [...new Set((keys || []).map((k) => String(k).trim().toUpperCase()).filter(cleValide))].slice(0, 50);
+  const miens = propres.length ? `(assignee = currentUser() OR key IN (${propres.join(', ')}))` : 'assignee = currentUser()';
+  const changes = await runSearch(cfg, `${miens} AND status CHANGED DURING ("${d1}", "${d2}") ORDER BY updated DESC`, TICKET_FIELDS, max);
+  const affectes = await runSearch(cfg, `assignee CHANGED TO currentUser() DURING ("${d1}", "${d2}") ORDER BY updated DESC`, TICKET_FIELDS, max);
+  const vers = (data) => (data.issues || []).map((i) => withUrls(cfg, issueMeta(i)));
+  return { changed: vers(changes), assigned: vers(affectes) };
+}
+
 async function countMineInProgress(cfg) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const data = await runSearch(cfg, 'assignee = currentUser() AND statusCategory = "In Progress"', 'summary', 1);
@@ -832,4 +1002,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, request, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

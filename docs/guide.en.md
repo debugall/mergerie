@@ -45,11 +45,11 @@ start with “(mock)”.
 
 ## The tabs in detail
 
-Eleven tabs, in a **left sidebar**, grouped by family — the core, what I have to do, my machine and its
+Twelve tabs, in a **left sidebar**, grouped by family — the core, what I have to do, the team, my machine and its
 links, the meta:
-**Reviews** · **AI Dev** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Reviews** · **AI Dev** · **Agents** — **Notes** · **Team** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
 **Four of them — Git, Docker, Jenkins and Links — start folded away**: they are conveniences, you go
-there the day you need them, and a bar of seven entries reads better than a bar of eleven. Nothing is
+there the day you need them, and a bar of eight entries reads better than a bar of twelve. Nothing is
 disabled: one tick in *Settings → General → Menus* brings them back, for good.
 The bar **collapses to icons** from a button at the foot of the column (the choice is remembered), and
 collapses on its own below 1100 px wide.
@@ -65,7 +65,7 @@ whose due date has passed asks just as much, and lateness is exactly what gets f
 
 ### Reviews
 The three stages of one merge request, behind a segmented filter — **To review · Reviewed · Done** — with a
-shared search (title, author, project, ticket).
+shared search (title, author, project, ticket, number: "!260").
 **Where to start.** A dropdown arranges the queue — **usual order** (a ticket in review comes first),
 **smallest first**, **oldest first**, **lowest score**. The size and the age are written on every card;
 what was missing was being able to use them. The choice is remembered, and it sits on the same row as the
@@ -79,21 +79,127 @@ decision.
 **A merge request in conflict says so on its card**, and the badge opens `Git → Merge` prefilled in the
 direction that unblocks it (the target branch into the MR's branch). Next to it, **`Update with the AI`**
 opens the coding session modal already filled in: the MR's branch, its target branch as the base,
-automatic push unticked, and the instruction — first understand what the branch changes and why, replay
-those changes on top of the target's current state (`git rebase`), resolve each conflict keeping what
-the target brings and the branch's intent, check, commit, **do not push**. You re-read the instruction,
-launch, re-read the diff, then `Push` — which forces by itself (`--force-with-lease`), the history
-having been rewritten. It works on a colleague's merge request as well as yours; *Update with main* on
+automatic push unticked, the label (“MR !N: update … with …”), and the instruction — first understand what the branch changes and why, merge
+the target's current state into the branch (`git merge`), resolve each conflict keeping what the target
+brings and the branch's intent, check, commit, **do not push**. The instruction says in so many words to
+add commits to fix the conflicts, with no rebase or amend: the history already pushed stays intact, and
+nobody has a force push to do. You re-read the instruction, launch, re-read the diff, then `Push` —
+normally, without forcing. It works on a colleague's merge request as well as yours; *Update with main* on
 a project line stays the shortcut with no instruction to re-read, for merge requests born from a session.
 
 **A merge request behind its target says so too**, without waiting for a conflict: the card carries
 "N commit(s) behind" — what the target branch received and this branch never saw. It still merges, but
 its code never ran with those commits; the badge opens `Git → Merge` as a conflict does, and
 **`Update with the AI`** is there as well, with an instruction that states the delay rather than a
-conflict that does not exist — and rebases the same way. The count comes from the forge (GitLab's
+conflict that does not exist — and merges the same way. The count comes from the forge (GitLab's
 diverged commits count, GitHub's `base...head` comparison), read at discovery — one call per open merge
 request, capped per round — and when the merge modal opens. "Not known yet" shows nothing: a branch
 from a fork, or a silent forge, never becomes "up to date" by default.
+
+**Two merge requests that overlap say so before the conflict.** An *overlap* is a fact: two open merge
+requests of the same repository, towards the same target branch, that change **at least one file in
+common**. The card then carries `overlaps !214 · 3 files · 2 d` (several: `overlaps 3 MRs`), before "in
+conflict"; the report header repeats the badge. Clicking opens a panel anchored on the card: one line per
+overlapping merge request (number, title, author, age, score when a report exists), which leads to it in
+*Reviews*, the shared paths below it, monospace, folded past ten, and at the foot `Fetched on <sha> · 4 min
+ago` — on which commit and when the list was read. Nothing is judged, nothing recommended: only git knows
+whether there will be a conflict, the tool shows that two branches are going to meet and the human decides
+the merge order. The file list of every open merge request is fetched **at discovery**, never at display
+time — the diff a review already stored when it is about the current head, otherwise the local clone,
+otherwise one forge call per merge request, capped per round (most recently active first, the rest at the
+next round, the log says so) — and invalidated as soon as the head SHA moves, like the "stale" badge. Until
+a merge request has its list it shows **nothing**, never "no overlap"; a list of more than 5,000 files (a
+massive migration, vendoring) is not stored, and hovering the ⋯ button says `not fetched · too many files`.
+No AI call, no token: the three settings live in *Settings → Merge Request → Discovery*.
+
+**And how many test files it changes.** Next to the size, the card says `14 files · 3 tests` — discreet —
+or `14 files · 0 tests`, emphasised like "stale", when the merge request changes at least N code files
+(3 by default, adjustable) without touching a single test file. Below N, or when everything is neutral
+(documentation, images, lockfiles, tooling), nothing: a two-line fix carries no badge. A file *is* a test
+or is not, by **path patterns** (`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), resolved repository →
+group(s) → global settings → shipped defaults, a filled level replacing the one above; it is computed on
+the overlaps' file lists, at display time, without AI — files counted, never a coverage nor a "tested".
+The panel lists the tests touched, names the patterns that applied (a link leads to the setting: a false
+`0 tests` on a Go repository is fixed in two clicks) and says on which commit the list was read. Without
+a fresh list, nothing — never a false `0 tests`. The badge never blocks `Merge`, never changes the score,
+never triggers anything.
+
+**And which dependencies it adds.** After the tests, the card says `+2 dependencies` — emphasised as
+soon as a direct dependency *enters* the project, `· 1 major` when a major bump can be read (`^3.x` →
+`^4.x`) — or `3 dependencies changed`, discreet, when versions move or packages leave without any
+entering. It is the second question in front of a merge request produced by an agent: a package added
+for thirty lines, the first library that came up, a name that does not exist. An added dependency is a
+**manifest line that did not exist before**, read by comparing the `−` / `+` lines of the manifest's
+diff — a diff the forge already sends when the files are fetched, of which the manifests' alone is now
+kept, **with no extra call, no AI, no registry**. Recognised manifests: `package.json`, `composer.json`,
+`requirements*.txt`, `pyproject.toml`, `go.mod`, `Cargo.toml`, `Gemfile`, `pom.xml`, `build.gradle*`,
+`*.csproj`, at any depth (a monorepo gives one section per manifest); lockfiles do not count. The panel
+lists one line per dependency, in monospace — `left-pad  ^1.3.0  added · prod`, `axios  ^0.27.2 →
+^1.7.0  major · prod`, `moment  removed · dev` —, added first, names the manifest patterns that applied
+(a link leads to the setting) and says on which commit the diff was read. No link to npm or PyPI: the
+tool recommends nothing, the name copies. A `package.json` whose scripts alone change carries nothing;
+a manifest of an ecosystem that is not analysed is said "changed (not analysed)", never counted; a
+manifest diff over 200 KB is not kept and the ⋯ button says so; without a kept diff (a fetch older than
+this version — the next round picks it up), nothing — never a false "no dependency". Nothing is judged
+or blocked: no score, no licence, no CVE.
+
+**And what the public registry knows about it: `+2 dependencies · 1 unknown`.** This is the one case where
+adding a dependency is almost always a mistake — a name the agent made up, a homonym one letter off, a
+package published last week — and nobody checks it by hand. The **registry check** (unchecked by default,
+see *Settings → Merge Request*) asks, for each **added** dependency only (never the changed or removed
+ones), what the public registry of its ecosystem knows: **unknown** (the registry answers 404: `· 1 unknown`
+on the card), **recent** (first published thirty days ago or less, adjustable threshold: `· 1 recent`), or
+long **known** (nothing on the card). In the panel, each added line says it in words, never an icon alone:
+`left-pad  ^1.3.0  added · prod · unknown to the public registry npm`, `fastjson2 … first published 3 days
+ago (npm)`, `lodash … published since 2012 (npm)`. The rule is non-negotiable: **the registry answered, or
+it did not, and the tool says which** — a timeout, an error, a 503, the round cap, an ecosystem with no
+registry set give `registry unreachable (pypi.org, timed out)` or `not checked · round cap reached`, never
+"unknown". A company package (`@docaposte/*`, an internal Composer `vendor/*`, a Go module on a private host)
+is no alert: the **private package patterns** (global, per group, per repository) and the clone's own
+configuration (`.npmrc` with `registry=` or `@scope:registry=`, `composer.json` with `repositories`,
+`GOPRIVATE` in `go.env`, `pip.conf` with `index-url`) mark it `not checked · probably private package
+(.npmrc)` without asking anyone — and the panel's footer leads to the patterns: a false "unknown" is fixed
+in two clicks. The footer also says `Registries contacted: npm · 4 min ago`, or `Registry check disabled`.
+Eight registries, one per ecosystem: npm, Packagist, PyPI, crates.io, RubyGems, the Go proxy, Maven
+Central, NuGet; the check runs in the discovery round, never at display time, at most thirty names per
+round (adjustable), cached by name — the same dependency added by ten merge requests costs one call, an
+"unknown" is re-checked after 24 h, a "known" after seven days. Nothing is judged: no score, no blocking, no
+near-name comparison, no link to the package page — the name copies.
+
+**A merge request that carries another one says so: `contains !214`.** This is the *stacked* merge
+request: you start from a colleague's or an agent's branch, add your work, open towards `main`. The
+forge shows an ordinary merge request with the diff of both; nothing says that 220 of the 300 lines
+are already under review elsewhere, nor that the second one will change size the day the first one
+merges. A merge request **contains** another when the set of commits of the second (`target..source`)
+is included in the set of the first — a git fact, compared in SQL, **with no AI call at all**. The
+containing one carries `contains !214` (several: `contains 2 MRs`), the contained one `contained in
+!219`, always together; a merge request that targets another one's *branch* carries `based on !214`
+(the forge already shows it in the target, it is repeated in the same place); two merge requests with
+identical commits are `twin of !220`. All of it discreet, right before "overlaps" (a contained merge
+request necessarily overlaps the containing one; stacking is more precise and comes first): stacking
+is not a problem, it is an organisation — the merge order is already chosen, the tool shows it, the
+human merges in that order or not. Clicking opens an anchored panel: the linked merge request
+(number, title, author, age, score when a report exists — the row leads to it), `12 shared commits ·
+4 own commits`, and the **own diff** — `Own diff: 4 files`, the paths the containing one touches and
+the contained one does not, what the reviewer has to read here and not there, computed from the file
+lists when the panel opens (`own diff not computed` when one of the two lists is stale); a chain (C
+contains B contains A) reads link by link, deepest first. When the contained one merges or closes,
+the badge leaves the containing one at once; if it was merged by squash or rebase, its original
+commits are still in the branch: "N commits behind" and `Update with the AI` take over, and the panel
+keeps `contained !214 · merged 2 h ago` for seven days — the explanation of the lag that just
+appeared. The commit list of every open merge request is fetched **at discovery**, in the same round
+and under the same cap as its files (no second counter) — the local clone when it holds both
+branches, no network; otherwise one forge call per merge request, pages included — and invalidated
+as soon as the head SHA or the target branch changes. Without a fresh list, with a refused list (more
+than 500 commits: such a branch necessarily contains others) or a truncated one (GitHub cuts at 250),
+**nothing** — never a false "independent", never an inclusion computed on a partial list. Two
+branches with different commits but the same diff (after a rebase) do not contain each other: that is
+true, and that is what is said. The report of a containing merge request receives, at the head of its
+context, a **fact sentence** — `This merge request contains !214 (open, to review): 12 commits and 9
+files are already submitted there.` — so the review bears on the own diff and refers to !214 for the
+rest; it reads in clear in the report's *Context* dialog, exactly as the AI received it. Nothing in
+the brief; the badge changes neither the score, nor the verdict, nor the ranking, and never blocks
+`Merge`. One setting, under *Settings → Merge Request → Discovery*.
 
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
@@ -102,6 +208,14 @@ Three chips above the queue sort by **author**: **All · Mine · Other people's*
 what the team is waiting on, a developer at what they pushed. The token's account is read **once per
 forge**; without it — a token that cannot read its own account — the chips do not appear at all, rather
 than sorting on a guessed identity.
+
+**The card says who carries the merge request, as the forge sees it.** The **requested reviewers** (eye)
+and the **assignees** (silhouettes) read at discovery each get their own chip — three names at most, the
+rest in the tooltip — and the number of **👍** (GitLab upvotes, GitHub +1 reaction) a third one: how many
+colleagues already said "fine by me" without a formal approval. Nothing shows when nobody is named and the
+count is zero. On GitHub the 👍 are not in the pull request list: discovery reads the repository's issue
+list, one more call per repository, and a failure of that call leaves the count at zero without blocking
+discovery. The assignment itself happens on the forge: Mergerie reads it, it does not replace it.
 
 - `Fetch new MRs` queries the forge and fills the list (filtered by pattern). The **automatic
   refresh** does it for you (every 5 minutes on a new database — see Settings), and **opening the Reviews tab**
@@ -197,6 +311,18 @@ than sorting on a guessed identity.
   saying that a force push is next. Every remedy button of a failed project (“Catch up with the base and
   retry”, “Resolve the conflict”, “Start from a fresh agent session”, “Re-clone the repository”) **explains
   itself on hover**.
+- **Reach the session that produced the branch, from Reviews.** When a merge request's branch
+  comes from a coding session this workstation knows, its card — to review, reviewed or done —
+  carries the `Session #N` chip (the most recent on that branch; "running" while it runs), and the
+  ⋯ menu offers `Open coding session #N`. Clicking lands on its card in *AI Dev*, even when it is
+  **archived** or hidden by a filter: the list reveals it instead of leading nowhere. On arrival
+  the card keeps an **outline** until you click elsewhere (or press Escape), even while the list
+  re-renders, and a banner at the top says "You are on session #N, from merge request !12 of
+  grp/app, branch feature/x", with `Show the card` to scroll back to it. The report header carries
+  the same chip. A branch without a session carries nothing. **And the other way round**: on a
+  session's card, the project line's `MR !5 · 6.0/10` chip leads to the merge request in
+  *Reviews* — its card when it is to review (marked the same way), its report otherwise; the `↗`
+  link to the forge stays next to it.
 - **Pull the review report into a follow-up.** Once the merge request has been reviewed you often
   want the AI to work through the findings. The report's `Let the AI fix the code` button opens a
   **new** session for that; from the session that produced the branch, what you want is a
@@ -269,7 +395,7 @@ than sorting on a guessed identity.
   button ignores this filter — an explicit gesture always goes out.
 - **The card holds a single row of actions**: `View diff` · `Context` | `Review ▾` | `⋯`.
   The **`⋯`** menu gathers everything else — *Let the AI code it*, *Verify*, *See results*,
-  *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
+  *Copy the reference*, *Refresh from the forge*, *Dismiss without review*, *Merge*. Seven buttons of equal weight per card said nothing about
   which one was the normal path, and their number changed from one card to the next: the action
   column was never twice in the same place. The gestures are unchanged, one extra click for the
   less frequent ones.
@@ -304,6 +430,27 @@ than sorting on a guessed identity.
   really happens the MR leaves the queue (marked done). Also available in the decision panel of
   `View diff`, which is precisely where triviality is judged.
 - `Dismiss without review` takes an MR out of the queue, with a few seconds to **undo**.
+- **`Refresh from the forge`** (⋯ menu of the card and of the report) re-reads **this merge request
+  alone** on GitLab or GitHub, without waiting for the automatic refresh or running a discovery over
+  every repository: title, branches, latest commit, conflicts, how far behind the target it is, draft,
+  reviewers, assignees, 👍 (GitLab), and its state. A commit that landed since makes the report **stale** and triggers what
+  discovery would have (the automatic re-review and the “on stale” verifications, when enabled); a
+  merge request merged or closed in the meantime gets its **merged** badge. The message says what the
+  forge answered: refreshed, nothing new, new commits, merged, closed. On a **merged** merge request
+  it also records the SHAs that let it be re-read (the merge-base of the time and the head, which the
+  forge keeps even after the branch is deleted) and, when the repository is already cloned, fetches
+  that head: `Open the code` then shows the diff instead of an empty screen. Call budget: the MR's detail
+  (one call), plus the changed files when the commit moved, and on GitHub the comparison with the
+  target — never more than three.
+- **A merge request with no common ancestor is still re-read.** When the target and the source share no
+  ancestor in the clone (target changed on the forge, target history rewritten, orphan branch),
+  `git diff target...source` answers “no merge base”. The review and `View diff` then re-read the merge
+  request **as the forge shows it**, by the SHAs of its `diff_refs` (one call), and keep them on the row.
+  When the forge has no base either (GitLab returns `diff_refs` without `base_sha`), the **two trees**,
+  target and source, are compared as they are: for a target re-imported identically, that is exactly
+  what the branch changes; for two truly unrelated histories, the diff is large but true, and the log
+  says so. When nothing allows a re-read, the error names the situation and the reason, instead of
+  git's `fatal`.
 - Jobs on the **same repository run one after the other**, in the order they were asked; a **live log panel**
   shows the commands, the output and the progress, with a **Stop** button (which also empties the queue — the
   confirmation says so), a **stopwatch** since the start and, once a rhythm is established, an **estimate of
@@ -323,7 +470,10 @@ than sorting on a guessed identity.
   **incremental re-review** only reads **what changed** since the last reviewed SHA
   (`reviewed_sha..current_sha`) and supplies the **previous report as context** — the AI produces a
   **complete, up-to-date report** (score included) while reading far **less diff** (so fewer tokens). It
-  falls back to a full review automatically when there is no usable delta (a force-push, say). Re-running a
+  falls back to a full review automatically when there is no usable delta (a force-push, say). Re-run
+  **re-reads the MR from the forge first**: a colleague's review, arrived through the shared data
+  repository, may target a head this workstation has not discovered yet, and a reviewed SHA that is not an
+  ancestor of the head gets a full review, never a backwards delta. Re-running a
   review **resumes the same agent session** as the previous one: the AI remembers its analysis and focuses
   on what changed.
 - **⚡ Converge — the autonomous quality loop.** A report's `Converge` button starts an **autonomous loop**:
@@ -522,6 +672,13 @@ session** — the agent keeps what it read. Two differences worth knowing: an **
 **folder** has its own, and answering one **does not make the others work again**. ⚠ While a
 question stands, **nothing has been done**: no summary saved for an exploration, no file touched
 out of a repository.
+
+**And if it is a colleague's session?** Received from the shared data repository, it can be read but not
+relaunched from here: its project line carries **"Take over on this machine"** — or **"Answer and take over
+on this machine"** when its target is waiting for an answer. The dialog opens prefilled and locked on the
+essentials (their repository, their branch as the base, a proposed new branch, your settings), one field to
+fill — your instruction —, and a foldable box shows **in full** the first message your agent will receive:
+the whole history of their session, then your instruction. See *Sharing with a team*.
 
 **And if you answered in your terminal?** “Resume in terminal” copies the agent session, so you can
 answer there and let the agent carry on — inside Mergerie's clone, which knows nothing about it. The
@@ -757,6 +914,22 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   the case of a re-run after a failure that happened *after* the commit, a rejected push say — the absence
   of new changes is **not** an error: the session goes back to its “commit ready” state, with the diff and
   the MR creation button.
+- **What the chosen repository already carries.** As soon as a repository is chosen in the session
+  modal, a grey line under the selector says `N open MRs on this repository`; when the session restarts
+  from the branch of an existing merge request, its overlaps; and when the prompt names a path that exists
+  in the clone (`src/payment/`, `tva.js`), the line becomes `2 open MRs touch src/payment/ (!214, !219)`.
+  Information only: nothing is blocked, the session starts anyway. When the session restarts from the
+  branch of an open merge request, the line also says `The created branch will contain !214 (open, to
+  review)` — known before starting, so the target is chosen knowingly.
+- **How many tests the branch changes.** As soon as a session project is *committed*, its line carries
+  `0 tests modified` (emphasised) or `3 tests modified` (discreet), from the branch diff and the
+  repository's test patterns — before the merge request exists, when a follow-up "add the tests" costs
+  the least. Outside a repository: nothing.
+- **Which dependencies the branch adds.** On the same line, `2 dependencies added` (emphasised) or
+  `1 dependency changed` (discreet), read from the manifests in the branch diff — where a follow-up
+  "drop left-pad, write the function" costs the least. The detail is on the merge request's card. With the
+  registry check on, the line completes on the next render — `2 dependencies added · 1 unknown` — under the
+  same cache as the cards, ten names at most per session.
 - **Read-only linked projects (Advanced).** In coding, the session dialog lets you add other
   repositories as **context**: the AI reads them — their API, their schema, their contracts — to
   respect what they expose, without **ever** modifying them. A repository (with search, as
@@ -888,6 +1061,15 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   (projects + prompt) lives in **the same dialog as coding** — so you can also **attach files** (screenshots, PDFs, spreadsheets, text)
   (button or Ctrl+V) to enrich the prompt. The same prompt is applied to **each folder**, one after another
   — a failing folder does not stop the others, and the status is shown per folder. As with repository
+  **Git, optionally.** A **`Branch to create`** field (optional) gives the folder the path of a coding
+  session: the branch is created **in the folder**, the AI works on it, its work is **committed** (your commit
+  message, otherwise the first line of the prompt), then, depending on the boxes, **pushed**, the **merge request**
+  opened and the **convergence** started on it — converging implies the MR, the MR implies the push. The folder must be a
+  **git repository**. Uncommitted or untracked files already there do not block the session: they stay where
+  they are and are left out of its commit, unless the AI itself changed them. The forge is found through the folder's **`origin` remote**, which must be a repository registered
+  in Mergerie; otherwise the branch is pushed and the card says why there is no MR. Without a branch name nothing
+  changes: the AI writes in place and nothing is committed. Each folder shows its branch, the state of its commit and
+  its MR link. Convergence works on Mergerie's clone: a `git pull` in your folder brings its fixes back.
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI
@@ -1047,9 +1229,10 @@ them, and the list filters by agent. The **statistics** add a cost per agent as 
 
 ### Notes
 The sticky notes and the notepad tab of everyday work, **inside the tool** — so **anchored** to what it
-tracks (merge requests, tickets) and **inside the backup**. Three sub-tabs: **Today** (the brief),
-**Todos**, **Pages**. Nothing goes to the AI or to a forge: everything lives in the local database, and
-this tab **spends no tokens at all**.
+tracks (merge requests, tickets) and **inside the backup**. Four sub-tabs: **Today** (the brief),
+**Todos**, **Pages**, **Period** (catching up on a window of dates). Nothing goes to the AI or to a forge
+without an explicit gesture: the brief, todos and pages live in the local database and **spend no tokens at
+all**; Period queries the forge and the clones, and spends AI only if you start a review.
 
 #### Today — the morning brief
 Sections **ordered action-first**: what calls for a gesture before what merely informs. Each is
@@ -1093,6 +1276,17 @@ nothing happened, which was not the question. Every line reaches its object in o
    tab and its own badge).
 6. **Dormant MRs** — reviewed more than **N days** ago (adjustable, 5 by default) and still open: the work
    is done, the decision is missing.
+6 bis. **Overlapping MRs** — one line per pair of open merge requests of the same repository that change
+   the same files: `!214 ↔ !219 · groupe/tarification · 3 files · for 2 days`, oldest pairs first. Click:
+   *Reviews* filtered on the repository, both merge requests on top. The cross dismisses **one pair**, not a
+   repository: a new pair reappears.
+6 ter. **MRs without tests** — one line per open merge request carrying the emphasised badge:
+   `!214 — VAT refactor · groupe/tarification · 14 files · 0 tests · opened 2 days ago`, oldest first.
+   Click: the merge request in *Reviews*. The cross dismisses **this merge request on this commit**: a
+   fetch on a new commit brings it back.
+6 quater. **MRs adding dependencies** — one line per open merge request whose manifest gains a direct
+   dependency: `!214 — VAT refactor · groupe/tarification · +2 dependencies · 1 major · opened 2 days
+   ago`, oldest first, eight at most. Click and cross: as for the MRs without tests.
 7. **Activity since yesterday** — one line, three numbers. Deliberately poor: it is context, not a task;
    the detail lives in *Stats*.
 
@@ -1257,8 +1451,118 @@ default, *Settings → Notifications*).
 The notes, the todos and their history live in the **database of the data folder**: they are therefore
 covered by the **backup** (*Settings → General*), just like the review reports.
 
+#### Period — catching up on what happened
+
+“I am away for ten days. When I am back, what moved on the repositories?” While you are away the
+workstation is off: discovery did not run, and what was opened **and** merged in between shows up nowhere.
+*Period* therefore rebuilds a window of dates **from the forge and the clone of each repository**, not from
+what Mergerie saw. Two dates, *Build*, and a job queries everything; the screen fills in when it ends. The
+window also serves to re-read a sprint, prepare a retro or pick up a repository you did not follow — it is
+a period, not a leave.
+
+The sections, in the order of the gestures to make:
+
+1. **Direct pushes on watched branches** — in red, at the top: commits that entered `main` (or a protected
+   branch) **without a merge request**. Nobody reviewed them; it is the most valuable information on the
+   screen. Grouped by push (consecutive commits by the same author), labelled *revert*, *manual merge* or
+   *bot* (bots are hidden by default). A commit that went through a merge request is **never** there,
+   whatever the merge strategy — merge commit, squash, fast-forward, or GitHub's rebase-merge that rewrites
+   SHAs (recognised by the patch content). What the forge could not confirm is marked **unverified**, in
+   orange: a visible doubt beats a colleague wrongly accused. Gestures: *See the diff* (the
+   full-screen explorer of *⛶ Open the code*, the same as for a merge request or a session: the whole
+   tree of the commit, the touched files marked, each file in full with its changes in place, and on the
+   left the author and the push's list of commits), *Review this push* (a pre-filled
+   exploration session: the AI reads the commits like a review), *Verify this branch*, *Add to todos*,
+   *Fix session*.
+2. **Merged merge requests** — each one says whether it was reviewed before the merge (by you, or by a
+   colleague on the shared database) or never. *Review after the fact* reads the merge request **as it was
+   merged**, by its SHAs: the base at the time of the MR and its head, fetched from the ref the forge keeps
+   even once the branch is deleted — a three-dot diff would be empty once the head is in the target. The
+   prompt tells the AI the MR is already merged and asks it to sort findings into *fix now / watch / nothing
+   to report*; nothing is posted to the forge on its own. *Review the N unreviewed* starts the batch and
+   announces the cost.
+3. **Arrived, still open** — they are in the *Reviews* queue; here they are only flagged.
+4. **Closed without merge**, **known before and active during** (collapsed: a label change is enough to
+   touch an MR), **tags, deleted branches and pipelines** — a **red pipeline** on a watched branch at the
+   date of your return opens the section by itself.
+5. **Done by the team in Mergerie** — with a shared data repository: the reviews, sessions, todos and pages
+   written by someone else during the window, **and what the sync brought in** since the start of the
+   window, whatever date the colleague wrote (marked *arrived through the sync*: that signal depends on no
+   clock but yours). An MR merged *and* reviewed by a colleague appears once, under “merged”, with the
+   mention. In *Reviews*, a **new for you** badge marks the cards whose report arrived through the sync and
+   was never opened here — useful every day, not only when you are back.
+6. **Jira** (when configured) — the tickets that **changed status** or were **assigned to you** during the
+   window: yours, the watched ones, those of the period's merge requests. A Jira that fails makes the
+   section partial, never the period.
+7. **Meanwhile, Mergerie did…** — if the workstation stayed on: the **scheduled agents'** passes (one line
+   per agent, with its failures) and the **verifications** started in the window, the report one click away.
+
+On GitLab, direct pushes are grouped **exactly** as the forge saw them (its push events); GitHub does not
+expose them, so the heuristic (same author, less than thirty minutes) stays there. *Review the N unreviewed*
+orders the batch by **decreasing risk** (sensitive files, then size), bots excluded.
+
+**Summarise the period (≈ 1 AI call)** — the option, never the default: ten lines per repository on what
+changes for someone coming back, citing the `!iid`, rendered at the top like an agent report and labelled
+*written by an AI, not to be trusted blindly*. Useful beyond thirty merge requests; below that, the list
+reads faster.
+
+Each line carries **seen**: the screen is a list to empty. The state survives a reload and *Rebuild*; the
+sub-tab counter is the number of unseen lines. A repository whose forge was down, or where a cap was hit,
+is **partial** and says so on its section — never exhaustive in appearance only.
+
+**Along the way the database is repaired**: merge requests merged during the absence are written with their
+dates and SHAs, the session that had opened the branch is linked (“Create the MR” does not reappear on a
+branch already merged), linked todos are ticked, and the brief's journal is dated **at the merge**, not at
+your return.
+
+**The brief's banner.** When this workstation has not seen a gesture (keyboard, mouse) for more than N days
+(*Settings → General*, 3 by default — a weekend is not an absence), *Today* opens on “You have not opened
+Mergerie for 12 days — see what happened”: one click builds the period of the absence. Presence is measured
+on a real gesture, not on a tab left open: an office desktop left on for the whole leave is not “present”.
+And the first gesture of your return does not drop the banner: the absence is frozen at the moment it ends,
+until the period is opened or the banner is dismissed with its cross. **I am leaving**, in the Period bar,
+sets the start of the absence to the minute: a quick stop at the office no longer moves it, and the window
+offered on your return is exact; *Cancel* forgets it.
+
+**Settings.** *General*: the banner threshold, hide bots, watch protected branches on top of the default
+branch (a team decision: it is the definition of “entered without review”). *Repositories*: a list of
+watched branches specific to a repository, in its edit row.
+
+### Team
+
+**"Our morning"**: a page that answers, on one screen, the daily's question — *where are we, who is waiting
+for what, since when* — computed in SQL on what the team **already shares** through the data repository,
+sharing nothing more and with no AI or forge call. The brief stays "me, this morning"; this page is "us,
+now". It only exists when a data repository is attached (without it, one sentence leads there); with a
+single person in the repository it works and says so.
+
+**Seven lists of facts**, each hidden when empty, capped at twelve lines with `and N more`: the **pending
+decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali · awaiting for 5 d` — open merge
+requests whose latest report reaches the team threshold and that nobody has filed or merged yet, sorted by
+wait), the **unanswered questions** (*shared* sessions whose agent is waiting for an answer, the question
+in one line, `answered in takeover #207` when a takeover took it on), the **running sessions** (shared,
+marked running at the last sync — with the freshness of their author's sync, because a "running" session
+whose machine has not synced for three hours may well be over), the **takeovers** (`#123 Claire → #207 Amady
+· yesterday`), the **failing verifications** (red head, green base), the **overlaps and stacks** already
+computed, shown with both authors, and the **workstations** — one line per author of the data repository:
+their last sync, the decisions awaited from them, `quiet` past N working days (weekends do not count), and
+nothing more: they may be on leave. At the top, three numbers and the sync line; two filters, repository
+group and person — picking a person shows what is *waiting on them*, not what they did.
+
+**Non-negotiable rule**: the page shows only facts already shared, and **nothing about a person that is not
+the state of a piece of work**. How many tokens someone burns, how many merge requests they merged, who is
+"the fastest" — never, even though the database knows. Unshared sessions do not exist there, neither as a
+line nor in a counter. No action from the page: every line leads to the card (Reviews, AI Dev) where the
+gestures already live; a person is never a link. Nothing is stored: closing the tab leaves nothing. Every line
+says where it leads (*Reviews ›*, *AI Dev ›*, *Report ›*). A person has one name: the forge handle of a merge
+request author (`amady`) and the git name of the data repository (`Amady`) are matched without case or accents —
+the *Person* filter finds their merge requests, the page shows the git name. A question a takeover has already
+picked up stays listed, dimmed, but leaves the counter. Two team settings, in *Settings → Shared data → Team
+page*: the working days before "quiet" (2) and the window of finished takeovers (7 days); the decision
+threshold is the brief's.
+
 ### Jira
-Two sub-tabs: **My tickets** and **Watched**. The menu carries a **badge** = the number of tickets
+Four sub-tabs: **My tickets**, **Watched**, **Analysed** and **Stats**. The menu carries a **badge** = the number of tickets
 **in progress that are assigned to you** (status category *In Progress*, the only definition that survives
 across workflows, since state names are free from one project to the next). It is fed by a counter
 **cached server-side** and refreshed by the watcher: showing it does not cost a Jira call every time you
@@ -1266,8 +1570,11 @@ walk past.
 
 #### My tickets
 **The Jira tickets**, fetched automatically when you open the menu. By **default only yours** are shown, but
-a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the
-recent assignees; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
+a **filter by person** lets you **tick other assignees** to see their tickets too (the list of people = the accounts
+**active over the last six months** — assignees of a ticket that moved in that window, within the filter's
+projects if any, deactivated accounts and applications excluded; **you ticked by default**, a **persisted** choice). A **list → detail** layout:
+- The **number of tickets** in the list is shown in the toolbar and **on the tab** itself, and follows every
+  filter (search, statuses, assignees, fields), not only the load.
 - The **list** (on the left, with search) shows each ticket as a compact card: key, the **epic** it belongs
   to when there is one, summary, **status** (a dot coloured by category: to do / in progress / done), type,
   priority, update date. **The search covers the epic too** — “show me the tickets of that epic” is a common
@@ -1300,11 +1607,12 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
 - **Filters by field, generic.** The three filters — Assignees, Statuses and **Filters** — are chips lined up
   **above the detail panel**; the one you open floats over the page, so neither the row nor the list moves,
   and a click outside closes it. The **Filters** panel lets you choose the **field** first (epic, type,
-  priority, project, assignee, reporter, labels, components, fix versions) then **one or more values**. The
-  **Project** criterion is an exception: it is applied **by Jira**, not afterwards. Jira caps a search at a
-  hundred tickets sorted by update date; filtering browser-side would therefore filter only an excerpt, and
-  the tickets of the wanted project could sit outside that excerpt — they disappeared instead of appearing.
-  When the list is capped, the counter says so (“100 of 340 shown”). The values on offer are the ones
+  priority, project, **team** — Atlassian's *Team* field, found by its schema or its name “Team” / “Équipe” —,
+  assignee, reporter, labels, components, fix versions) then **one or more values**. The
+  **Project** criterion is an exception: it is applied **by Jira**, not afterwards. The list **pages** the
+  Jira search up to **1,000 tickets** sorted by update date (a Jira page holds a hundred); a filter applied by
+  Jira guarantees the tickets of the wanted project are within what is read, not beyond it. When the cap is
+  reached, the counter says so (“1000 of 2340 shown — cap reached”). The values on offer are the ones
   **actually present** in the loaded tickets, with the number of tickets for each — offering a value that
   brings back nothing helps nobody. The field picker and each value list have their own **search**; the
   values' one **hides rows without unticking anything**, so a selection is never lost by hiding. Several
@@ -1354,6 +1662,7 @@ recent assignees; **you ticked by default**, a **persisted** choice). A **list �
   The **repository proposed** is the last one used for that Jira project, and the ticket's **screenshots**
   are offered as checkboxes (the first three ticked): the images you keep are attached to the session,
   without a round trip through the Downloads folder.
+- **`Code outside a repo` from the ticket.** Next to it, opens an **out-of-repo coding session** (local folders, no repository or branch) pre-filled with the ticket and — if you wrote one — its **technical brief**. With or without a brief; nothing is launched until you do.
 - **Change the ticket's state**: a selector in the header lists the **allowed transitions** (what Jira lets
   *you* do on this ticket); picking one **applies the transition** and refreshes the status (detail + list).
   Nothing is offered if you do not have the rights.
@@ -1396,11 +1705,58 @@ yours, and you want to know **when it moves**, not to think about it three times
   interrupting the check of the others, and **without erasing** the last known state.
 
 #### Finding the analysed tickets
-The **Analysed** tab of the Jira menu lists every ticket whose technical brief was started or proposed — with
+The **Analysed** tab of the Jira menu lists every ticket whose technical brief was saved, started or proposed — with
 the repositories and branches read, its state (proposed, posted, to review…) and its version; a click opens
-the ticket and its brief next to the list, and the badge counts those with a proposal. In **My tickets**,
+the ticket and its brief next to the list, and the badge counts those with a proposal. An **implemented**
+ticket can be **hidden** from its row (the crossed eye) so the list does not grow forever: nothing is deleted,
+the badge and the count forget it, and the **Show hidden tickets** box (remembered) brings it back, dimmed and
+marked *hidden*, from where one click **shows it again**. Hiding is per workstation: what you tidy away does
+not vanish for your colleagues. In **My tickets**,
 the **Analysis** filter shows everything, only the tickets *already analysed*, or only those *not analysed yet*
 (the choice is remembered, and the list updates as soon as a brief arrives).
+
+#### Stats — counting a set of tickets
+**How many bugs, how many user stories, how many user stories linked to a bug, and where does each status
+stand?** The **Stats** tab answers over the set its filters describe — the **same filters as My tickets**
+(assignees, statuses, sprints, field filters, “Include done”), but **independent**: what you tick here does
+not touch the list, and the other way round. On the first visit Stats inherits the choices of My tickets,
+then each lives its own life.
+
+- **The whole set, server-side.** The counts are computed by the server, paging the Jira search up to
+  **1,000 tickets** (like the list) — beyond that the screen says so (“cap reached”) and invites you to
+  narrow; the list's text search, on the other hand, does not enter the counts. Field filters go **into the JQL** (type,
+  priority, labels, components, versions, epic); a reporter or an assignee ticked by name is turned into an
+  account id — a name Jira cannot translate is **ignored and said**, rather than counted silently over a
+  wider scope.
+- **Four tiles**: tickets, bugs, user stories, **user stories linked to a bug** (each share as a percentage,
+  the last one as a share of the user stories) — and “other types” when there are any, hovering that tile
+  naming those types. A user story is
+  “linked to a bug” through **any** Jira link, in either direction, through a bug **sub-task** or a bug
+  **parent**.
+- **By type**: each ticket type (Bug, Story, Task, Epic…) with its number, its percentage and a bar, the most
+  numerous first — the whole breakdown, bugs and user stories included.
+- **By status**: the states **in the workflow order** of the projects involved (Backlog, then In progress, then
+  Done…), each with its number of tickets, its percentage and a bar; a state without a ticket has no row, and a
+  status carried by a ticket but foreign to the workflow follows.
+  **By assignee**: the same per person, the most loaded first, “unassigned” apart.
+- **An optional date range** (“Moved from … to …”): count only the tickets that **moved within the range**,
+  whatever the movement — created, updated (comment, edit, attachment…), or whose status, assignee, priority
+  or resolution changed (what JQL keeps a history of). Whole days, in the Jira account's timezone; one bound is
+  enough; the cross removes the range, and the choice is remembered.
+- **Every number can be clicked** — a tile, or the count of a row in the tables — and opens **the list of the
+  tickets it counts**: key (link to Jira), summary, status, type, assignee. Nothing is asked of Jira again:
+  everything was already read to count.
+- **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
+  most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
+  (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are
+  cached until the settings are next saved. And Jira's **quota** is honoured as Jira states it: at most four
+  requests in flight, and on a 429 (or a 503 with a delay) Mergerie waits the requested delay (`Retry-After`,
+  30 s at most) and retries, three times; beyond that the screen says “Jira is rate-limiting calls” rather
+  than a mute code.
+- **What counts as a bug and as a user story** is set in **Settings → Jira** (type names separated by
+  commas, case-insensitive; by default *Bug* and *Story, User Story*): a type's name is free from one
+  instance to the next (Defect, Récit…). It is a team decision, shared like the rest of the settings, and
+  the screen reminds you at the bottom what it counted.
 
 #### Technical brief of a ticket
 A ticket written by a Product Owner says the functional *what*, never the *where* (which repositories,
@@ -1416,7 +1772,7 @@ comment.
   token in Settings → Jira; a page that is not on that Jira or that Confluence is refused: credentials go
   nowhere else), a free **complement** ("it is the billing service, not crm; the legacy stays
   untouched"), the level of detail (**summary**, thirty lines at most, or **detailed**) and the box
-  **"The AI may ask me questions"**.
+  **"The AI may ask me questions"**. **Save without analysing** keeps all of it (a repository is not required yet) and starts nothing: the ticket is marked *to run*, and the form comes back filled for you to launch the analysis later.
 - **What it does.** An ordinary **exploration session**, read-only, on the chosen repositories: it reads the
   ticket, its comments and linked tickets, the epic, the pages, then the code. Everything coming from Jira
   or Confluence enters the prompt as fenced **data**, never as an instruction; only your complement is read
@@ -1606,475 +1962,20 @@ Operations across **several repositories at once**, and branch exploration.
 > never as a fact.
 
 ### Docker
-> **Docker is a plugin**: the tab lives in its own repository ([docker-mergerie](https://gitlab.com/amady/docker-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the “Containers down” brief section, the state of the services before an “in place” verification) exists. Everything below describes its screen.
 
-Two sub-views, like Coding/Exploration in AI Dev.
-
-**What the compose already knows.** A service publishing a port **opens it in one click** (`:3000`), and
-offers to **fill the empty “local” cell of the Links grid** with that address. A container's name
-**copies on its own**, not only wrapped in a `docker logs -f`. *Actions* remembers its action and its
-filter — it was the only Docker screen without a memory. A non-compose container deleted by mistake can
-be **restored**: the tool saved its full `inspect` before every deletion, and no screen ever read it.
-
-- **Compose** — the **local directories** (Settings → Repositories) are scanned for `compose.yaml` /
-  `docker-compose.yml` files; each file becomes a **compose project** with its services. The list is
-  **sorted by recent activity** (the project whose container was recreated most recently comes first) and a
-  **filter at the top** lets you **tick/untick the projects to show** — a **persisted** choice.
-- **Finding a container: search + state filter.** Above the list, a **search** field (service name,
-  container name or project name) and a **“Show only”** selector — *Running · Not running (all) ·
-  **Stopped (exited)** · **Created, never started** · **Not started (no container)** · **Exited with an
-  error** · Unhealthy · Restarting · Drifted* — narrow the display **service by service**. “Not running”
-  covered three situations that Docker distinguishes and that call for different gestures: a container that
-  **ran then stopped** wants a restart, a container **created but never started** often signals a launch
-  failure, and **no container at all** calls for an `up`. The umbrella *Not running (all)* stays, so as not
-  to break filters that were already saved. A project none of whose services match **disappears entirely**
-  (an empty card would suggest a project with no service); on a partially filtered project, a note reminds
-  you how many services are hidden. Both settings are **persisted** and apply **live**, without calling
-  Docker again — they are the same state labels as the *Actions* sub-tab. **Progressive display**, to stay
-  fast even with many containers: the **project list appears immediately** (scan + a single `docker ps -a`),
-  then each project's detail (drift, states) **fills in card by card** as it arrives; server-side, the
-  `docker inspect` / `compose config` calls run **in parallel** instead of one by one.
-- **Every container's state stands out clearly**: a coloured dot (**● Running** green, **exited/dead** red,
-  **paused/restarting** amber, **not started** dotted), at the head of each service.
-- **`.env` drift, compared on the actual vs the expected — never on hashes.** The expected comes from
-  `docker compose config` (Compose resolves `${VAR}`, the `env_file`s and the overrides itself — we
-  **never** parse `.env` files by hand), the actual from the container's `docker inspect`. The diff gives a
-  **badge per service**: *in sync* · *config drift* · *image drift* · *compose changed* · *not created*. The
-  badge **names names**: “`DB_POOL_SIZE` changed (10 → 25), `FEATURE_X` added” tells you whether the restart
-  is urgent or cosmetic. The **values of variables with a sensitive name** (`*TOKEN*`, `*SECRET*`,
-  `*PASSWORD*`…) are **masked** — “changed” without showing the old one or the new one.
-- **Actions** — **Stop** / Restart / Pull / **Build** (`up -d --build`: rebuilds the image then recreates the
-  container — to apply a Dockerfile change) / **Recreate** (the `--force-recreate` targeted at the drifted
-  services — the action that follows from the badge), per service and per project, with a **streamed log**
-  in the bottom panel and the **state refreshed automatically** at the end. A `down` **first lists what will
-  be stopped** and **never touches the volumes** (no `-v`). These actions are also available **in batches**
-  through the *Actions* sub-tab (choose the action → tick the containers concerned → confirm).
-- **Makefile** — if a `Makefile` sits next to the compose file, its **commands** (targets) are listed with
-  their description (`target: ## desc`). An **instant search** filters the list; a **Run** button launches
-  `make <target>` in the folder (streamed log). Only a target **actually present** in the file is run.
-- **Non-compose** — the containers with no compose project. **Stop** for those running; before any `rm`,
-  their **full `docker inspect` is saved** (a restore safety net) and a **`Rebuild the command`** button
-  turns the inspect into a readable `docker run` — the same spirit as restorable branch deletions.
-- **Logs** — a **live tail of several containers at once** (picked with checkboxes, with search), over the
-  **last X lines**. Each container has its **colour**; the stream **scrolls automatically**, with a
-  **Pause / Resume scroll** button (scrolling back up pauses, coming back to the bottom re-enables it — like
-  a terminal).
-  - **Filters, persisted**: you can **exclude** words that pollute the view (each word is a “chip” you can
-    **disable without removing** or **bring back** in one click), and **only show** the lines containing
-    certain words. The filters are **remembered** (no need to retype them every time) and apply **live**,
-    without restarting the stream.
-  - **Readable text, colours on demand.** An application in a container colours its output, `docker logs`
-    relays those escape bytes as they are, and a browser is not a terminal: every line arrived buried under
-    `[34mdebug[39m`. Lines are shown **as plain text by default** — which is also the lightest rendering
-    when the stream bursts — and a **“Show colours”** checkbox, next to *Wrap lines*, restores what the
-    application meant to say. The choice is remembered, ticking it **replays what is already on screen**
-    without restarting the stream, and the filters keep working on the bare text either way. **Background**
-    colours are deliberately ignored: they assume a terminal whose contrast you control, not a light theme
-    and a dark one. An accented character landing on a network packet boundary is no longer cut in two.
-  - **Browser-friendly**: an **SSE** stream (one `docker logs -f` per container, killed on close), a
-    **bounded buffer** in memory, DOM insertions **grouped by frame** (no reflow line by line) and a
-    **capped number of displayed lines** — it stays smooth even on bursting logs. A **Clear** button and
-    optional **line wrapping**.
-- **Actions** — an **action-first** flow: you choose **one action** (Recreate / Restart / Start / Stop /
-  Pull), the list of **containers concerned** appears (filtered by the action: *up* → stopped,
-  *restart/stop* → running, *recreate/pull* → all), you **tick** the ones you want and **confirm**. A
-  **state filter** narrows the list further — *Drifted*, *Unhealthy*, *Restarting*, *Running*, *Not running
-  (all)* — along with a **search** by name. Confirming groups the services **by project** and runs one
-  `docker compose` per project (one failure does not stop the others).
-- **Health badges on the Docker tab**: the **number of containers in error** — *restarting*, *dead*, and
-  those that **exited with an error** — in **red**. A container **you stopped** does not count: neither a
-  clean exit (code 0: you stopped it yourself, or a job finished its work) nor one that `docker stop` /
-  `docker compose stop` had to kill by signal — an untrapped SIGTERM (**143**), then SIGKILL once the grace
-  period runs out (**137**), which is the fate of many perfectly healthy images. Counting those in red set
-  the alarm off on every deliberate stop, and an alarm that always rings stops being read; they are still
-  named in the tooltip and in the *Exited* filter. Two exceptions, kept: a 137 caused by **running out of
-  memory** (OOM, read from `docker inspect`) stays red — same code, opposite meaning — and so do the signals
-  that really do mean a crash (**139** SIGSEGV, **134** SIGABRT). An unreadable exit code stays out of the
-  alarm — we do not cry wolf on a guess. Plus the **number of
-  unhealthy containers** in **orange**, right in the menu — visible at startup and refreshed
-  **automatically every 30 s** (and every time the tab is opened) — so a container flipping to *restarting*
-  shows up in the menu title **even when you are not on the Docker tab**. The poll is light (a single
-  `docker ps -a`) and pauses when the browser tab is hidden.
-- If the **Docker daemon is unreachable** (Docker Desktop off, socket missing) or if the **CLI is not in the
-  server's PATH**, an **actionable** message explains it (pointing at `DOCKER_BIN` in the `.env` if needed)
-  — like the certificate / token errors.
+Third-party plugin — the screen (compose projects, `.env` configuration drift, batch actions, Makefile, live logs) is documented in its own repository: [docker-mergerie](https://gitlab.com/amady/docker-mergerie).
 
 ### Jenkins
-> **Jenkins is a plugin**: the tab lives in its own repository ([jenkins-mergerie](https://gitlab.com/amady/jenkins-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the linked-job button on a merge request, a branch or a session, the "CI red" brief section) exists; your settings and linked jobs are kept and come back on install. Everything below describes its screen.
 
-See **where your jobs stand** and **run them**, without leaving the tool or opening another
-page. This is not an administration console: no job configuration, no agent management — what
-Jenkins already does well, and which there is no point redoing.
-
-- **What is shown.** Every job your account can see, flattened, **from the latest run to the
-  oldest**: in a list of three hundred jobs, what just ran is what you came for — not what
-  starts with "a". The **never run** ones close the list.
-- **Every line answers four questions**: *what* (the **path** `shop/api-deploy-prod`, since
-  several projects have a "build" job, and the **number** of the last build), *in what state*
-  (a **coloured dot** *and* the matching word — *Success*, *Failed*, *Unstable*, *Never run*,
-  *Disabled* —, as a colour on its own does not read the same way for everyone; a **running**
-  job has a pulsing dot), *when* (the **date** of the last run, with the relative age in the
-  tooltip), *by whom and on what* (the **author** of the run — or its nature: *by the
-  scheduler*, *on a push*, *by an upstream job* —, the **branch or tag** that was built, and **every parameter of the last
-  run** with its value, as **name/value chips on their own line**: mixed in with the status, the
-  date and the author — all grey, all separated by middle dots — you read a sentence instead of
-  pairs. The question you ask while reading the list is precisely "what did it go out with?",
-  and answering half of it would send you to the job's page. All of it arrives in **the same request** as the list: showing it does not cost one more
-  call.
-
-- **Parameters that recur across jobs carry a COLOUR.** From **three jobs** on, a parameter
-  counts as frequent and gets a tint: you find `ENV` from one line to the next out of the corner
-  of your eye, without the list stiffening into columns full of gaps. The tint comes from the
-  **name**, not from its rank, so it does not move when a job appears or disappears. It **helps,
-  it replaces nothing** — the name stays written in the chip. Three rather than two: at two, a
-  coincidence between two jobs would colour it for everyone; what belongs to a single job stays
-  neutral.
-- **And you can filter on their values.** One dropdown per frequent parameter, above the jobs:
-  "what went to prod?", "what is running on 2.4?". A job that does **not** carry the parameter is
-  dropped as soon as you filter on it — it does not answer the question asked. Filters are
-  computed on **all** jobs, not on those left after filtering: otherwise a filter would vanish
-  the moment you used it.
-- **A filter that is of no use can be put away.** A cross on hover takes it out of the bar — not
-  every frequent parameter is worth searching on — and its **value is cleared at the same time**:
-  an invisible filter that keeps filtering is the surest way to spend ten minutes wondering why
-  the list is empty. Those put away are counted next to the bar and found again in the **same
-  window as hidden folders**, one click away from coming back.
-
-  ⚠ A **password** parameter is never displayed — Jenkins returns an encrypted form of it,
-  unreadable, and a secret has no business in a list — nor is an empty value, which teaches
-  nothing and pushes the others off the screen.
-- **Folders sit on top, as a filter.** One checkbox per folder with its job count,
-  **`Tick all` / `Untick all`**, and a **search** to find one folder among fifty (it hides
-  checkboxes without ever unticking any: filtering what you look at must not change what you
-  chose to see — and the two buttons then only affect what is visible). The choice is
-  **remembered**. ⚠ It is the **unticked** folders that are stored: a folder your team creates
-  tomorrow therefore shows up on its own. The opposite would have kept it invisible until
-  someone thought of going to tick it.
-- **Putting away a folder that is not your concern.** Unticking says "not now"; the **cross**
-  on a checkbox's hover says "this folder is not my subject" and **takes it out of the filter
-  list**, which becomes readable again — on an installation with forty folders, a row of boxes
-  you never tick is noise you re-read every morning. Its jobs leave with it (hiding it while
-  keeping them would give you jobs you can no longer filter). Hidden ones stay **listed in
-  small type under the boxes**, and one click on `+ name` brings back the one you want: a
-  filter whose removals you cannot see becomes a mystery three weeks later. The folder's ticked
-  state is **kept** while it is hidden.
-- **Finding a job.** A **search** — mandatory here: a company installation lines up hundreds of
-  jobs. It matches the **whole path**, so "shop" brings back a whole project. A checkbox,
-  **`Only what is not fine`**, keeps failures, unstable results and what is running.
-- **A row says which repository it is linked to** (Settings → Jenkins) and **which open merge request
-  carries the branch of its last build** — clickable through to its report. `repo_jenkins` was only ever
-  read the other way round.
-- **A “My branches” filter** next to “My runs”: what runs on MY work, including triggered by a push or
-  the scheduler — that is where the CI that breaks unwatched lives. The volatile filters (search,
-  checkboxes, parameter values) are now **remembered** like the tab's four other states.
-- **The console copies**, and the build opens in Jenkins from the detail panel.
-- **Keep only what you triggered yourself.** A **`My runs`** box keeps only the jobs launched **from
-  Mergerie** — the list already existed for the end-of-run notification, and becomes a filter. It answers
-  “what did I send, and where is it?”.
-- **Pin the three jobs of your day.** `Pin this job` moves it to the top of the list, next to the tidied
-  folders; `Unpin this job` puts it back in the ranks. Among two hundred jobs, the three you open every
-  day stop having to be searched for.
-- **The end of the console, without opening Jenkins.** A build's detail panel shows its **last 30 console
-  lines** in plain text: on a red build, the error reads where you found it. The console is fetched **only
-  when the detail shows a place for it**, never for a whole list.
-- **Refreshed at the pace you choose, and only while you are looking.** *Settings → Jenkins*
-  holds the setting — **every N minutes, 0 = never**, one minute by default, capped at an hour.
-  It lives in the **database**, like the merge request and Jira ones: it is a setting of the
-  tool, not of the browser, and it holds wherever you look from. Polling only runs while the
-  Jenkins tab is **open** *and* the window **visible**: behind a hidden tab it would cost a
-  shared server without teaching anyone anything. The **`Do not refresh on its own`** checkbox is
-  a **local, immediate pause** — it wins without touching the underlying setting — and
-  **`Refresh`** asks again by hand. A background refresh does not make the list
-  blink, and a hiccuping network does not wipe the screen: the previous one stays. The menu
-  **carries no badge** — that would mean querying Jenkins on every application start, even when
-  you are not on the tab.
-- **The menu carries a badge: how many jobs ran today.** The question you ask walking past the
-  tab is "did anything move this morning?". It is filled once at startup, then kept current by
-  the tab's own refresh — Jenkins is not queried from the other tabs. Nothing today means no
-  badge at all: a zero in a menu teaches nothing. A job that ran five times counts once — the
-  list only carries each job's last build, so the tooltip says "jobs", not "runs".
-  **And a RED badge beside it: the jobs that failed today.** The blue count also goes up when all
-  is well; the red one answers the other question — "did something fall over this morning?" —
-  from any tab. Three deliberate limits: **failure only** (unstable has its own colour and its own
-  filter in the tab; painting it red would set the alarm off for a flaky test), **today only** (a
-  failure from yesterday does not count — it sits at the top of the tab, where you go looking for
-  it), and **not while it is re-running** (a restarted job is not announced as broken while it
-  builds). Nothing broken: the badge disappears.
-- **Told when what YOU started is done.** A desktop notification when a job you started from
-  Mergerie finishes, with its verdict; one click opens its page. Yours only: being told about
-  the team's nightly build would be noise, and you would turn the whole thing off within two
-  days. Can be switched off in *Settings → Notifications*. The wait survives closing the tab —
-  that is precisely the point.
-- **A job's page** (`Open`, or a click on the **job's name** — the whole row does not open it:
-  the buttons on the right run, re-run or leave for Jenkins, and clicking them must not drop a
-  window on top), as **three separated blocks** — the launch form, the history, the
-  details of the selected run. Each is a card on a recessed background: the boundary is **seen**
-  rather than inferred. The history is a real list (rules between rows, the date on its own line
-  so verdicts line up), the selected run carries an **accent bar** and a bold number — not just a
-  slightly different grey —, and the filters stay **in a header** while you scroll. Only the body
-  scrolls: **`Run`** no longer sinks under ten runs, and the details on the right **follow you
-  down** — comparing "what I am about to launch" with "what went out last time" is what this
-  window is for. In two columns: on the **left** the history of the last ten runs
-  (verdict, date, duration) — each with its **`Console`** button, the most frequent gesture, and
-  **the parameters it went out with** as pills under the line. Two green lines from the same
-  afternoon are told apart by nothing else. The **tint comes from the parameter's name**, the
-  same as in the job list: `ENV` keeps its colour from one screen to the next, and the eye
-  follows a column down without reading. In a history every parameter comes back on every line,
-  so they are all tinted —, on the **right** the details of the one you select: when, how long, **by whom**, on **which
-  branch**, and above all **with which parameters and which values** it went out. The most
-  recent one is selected by default. The **console** opens with one button — bounded to the last
-  characters, **scrolled to the bottom** where the error is, and **wrapped**: having to scroll
-  sideways to read an error you were looking for would amount to not showing it.
-- **Find the run you have in mind, then start from its values.** "When did this last go to
-  production, and with which version?" — above the history, one filter per parameter the runs
-  carry, and on every matching run a **`Reuse`** button that **fills the launch form** with its
-  values, **without sending anything**: starting from an old run is almost always about changing
-  one thing in it.
-  - The filters **suggest** the values they have seen, they do not **confine** you to them: what
-    is on screen is only what has been loaded, and a value missing from the list is still
-    perfectly valid — it can be **typed in**. Same for the filters above the job list.
-  - And filtering **does not stop at the last ten**: the first time a filter is set, the job's
-    history is **fetched deeper, once**, so a run from six weeks ago is found rather than
-    answering "no matching run" about something that did happen. The count shown (`— 2 of 200`)
-    says what the search covered.
-  - A value that **no longer exists** among the job's choices is **added back and flagged**
-    rather than dropped: a field silently left on something else would launch with a value
-    nobody chose.
-- **A link to Jenkins** on every line (and on every run in the page) opens the job in a **new
-  tab**: what Mergerie does not show — the configuration, the artifacts, the tests — stays one
-  click away.
-- **Running.** ⚠ Always **with a confirmation**, and the question **names the job**: that is
-  what lets you notice you picked the wrong line. A Jenkins job is not a page you open — it
-  deploys, it publishes, it runs on a shared machine, and it cannot be cancelled from here.
-- **The lists Jenkins COMPUTES are fetched where they exist.** *Git Parameter* (the repo's
-  branches and tags), *Extended Choice*, *Active Choices*: these plugins do not declare their
-  values, they compute them while rendering their page — so the API carries no trace of them.
-  Mergerie then reads Jenkins' **build form**, the page you get by clicking *Build with
-  Parameters*, and **only for the parameters the API said nothing about** (what it declares
-  wins). A **multiple choice** stays multiple, and the values go out comma-separated — the shape
-  those plugins expect.
-- ⚠ **If the page does not answer either**, the field is left **empty** and says so, with the
-  link to go and run it from Jenkins. That happens when the plugin fails inside its own page too
-  and returns its error message ("Could not get Environment from ENV Param"): prefilling the
-  field with that sentence would have sent it as the value.
-
-- **A parameterised job never starts from the list.** Its button reads **`Run…`** — the
-  ellipsis announces a form, and the tooltip says how many parameters it expects. It opens the
-  job's **page**: the **`Parameters`** section is filled in there (a boolean is ticked, a choice
-  is chosen, the rest is typed), then the **`Run`** at the bottom of the page sends it, with the
-  usual confirmation. **The values shown are the job's own**: those are what will be sent if you
-  leave them alone. Going with default values you have not seen is how the wrong version reaches
-  the wrong environment.
-- **`Run again`: the same job, the same values.** The most frequent gesture after a failure.
-  In the **list** it goes out with the parameters of the **last run**; in the job's **page**,
-  every run in the history has its own button and goes out with **its** values — which is what
-  you want after reading the console of a failed build. The confirmation **shows the values**
-  that are about to be sent: "run again" says nothing if you cannot see with what. A job with no
-  parameter has no such button: that would be `Run`.
-- ⚠ **A secret parameter cannot be sent back.** Jenkins never returns its value (and Mergerie
-  never displays it): on a re-run, Jenkins will use its default. The confirmation says so and
-  counts them, rather than letting a job go out without its password and nobody noticing.
-- **A disabled job has no `Run` button**: offering what Jenkins will refuse is a promise you
-  cannot keep.
-
-**Connection** — *Settings → Jenkins*: the root URL, your **user** and an **API token** (your
-Jenkins profile → *Configure* → *API Token*). Jenkins authenticates the **pair**: the token
-alone is not enough. **`Test Jenkins`** returns the **account name** the server sees — a URL
-that answers does not prove the token is right. The token is stored locally and **masked**;
-saving the settings again without touching it does not erase it.
-
-- **Announce ALL jobs, not only yours** — on by default; untick it in *Settings → Jenkins* to go
-  back to following only the builds you started from Mergerie. On, the plugin asks Jenkins once a
-  minute for the whole job tree (a single call) and emits its `started`/`finished` events for
-  **every** build, whoever launched it; each event carries `source` (`"mergerie"` or `"jenkins"`)
-  so a listener can tell a build you triggered from one someone else or the scheduler started.
-  This is what lets another plugin, such as **Jenkins Teams Notify**, post about a chosen list of
-  jobs no matter who launched them — and the finished event now also carries the build's
-  **parameters** (secret-looking ones left out), so a notification template can say which
-  environment it deployed to.
+Third-party plugin — the screen (job list, filters, a job's page, running with parameters, connection) is documented in its own repository: [jenkins-mergerie](https://gitlab.com/amady/jenkins-mergerie).
 
 ### Links
-> **Links is a plugin**: the tab lives in its own repository ([link-mergerie](https://gitlab.com/amady/link-mergerie)), to be installed from Settings → Plugins (from git) and then enabled. Until it is, neither the tab nor what hangs off it (the environment buttons on merge requests, sessions and tickets, the "local" box suggested from Docker, the links in the palette) exists. **Your links are not lost**: the grid, the addresses, the templates, the free links and their order stay in your database and come back once it is installed. Everything below describes its screen; the `Ctrl`/`Cmd`+`K` palette itself stays in the core.
 
-Work links have a **structure** a browser's bookmarks cannot express: the same service exists in
-local, dev, staging and production. A folder tree scatters it across four places; a **grid** shows
-it at once — services as rows, environments as columns.
+Third-party plugin — the screen (services × environments grid, free links, pasting addresses, contextual links on merge requests, bookmark import) is documented in its own repository: [link-mergerie](https://gitlab.com/amady/link-mergerie).
 
-Two shapes, because there are two realities. Whatever has no environment dimension (Confluence, a
-doc, a tool) stays a **free link**, flat, found by its tags.
+### Command palette — `Ctrl`/`Cmd` + `K`, or the `o` key
+> The palette itself is a **core** feature: it works with no plugin at all. Installed plugins (Links, Jenkins, Docker…) each add their own sources to it — the grid and free links, a job's page, a compose project.
 
-#### The top bar
-**One search field**, and it covers **both halves of the screen** — the grid and the free links. It
-matches the service name, its tags, its repository, **each address's name** and the URLs themselves:
-searching `payment errors` finds the cell holding it. Under a search, a cell **shows only what
-matches** — displaying its eight addresses for a single hit would force you to re-read the cell
-instead of reading the answer. A query can mix both levels: `logs apache` takes `logs` from the row
-and `apache` from the address, and only the apache addresses show; `logs` alone, conversely, lets
-the whole row through — the row is what you asked for. Searching `kibana` or a fragment of a URL is
-enough; you don't have to decide which half to look in before knowing where the answer is. `Enter`
-**opens the first result**, `↓` moves into the grid from the keyboard. When the grid returns nothing
-but the free links do, the message says so and points further down, instead of announcing "nothing
-matches" above results that are right there.
-
-Below the bar, **a single line**: the columns. There used to be three — environments, services, tags
-—, all lit, and the content started a third of the way down the screen. The service pills repeated
-the grid rows visible five centimetres below; "all lit" meant "no filter" but was painted like a
-selection.
-
-- **Columns**: one switch per environment, with a readable state. It hides a **column**, never a
-  row — spotting the holes in prod becomes possible again, and a service created under a filter
-  shows up. A `Hide services with no visible address` checkbox, **unticked by default**, gives the
-  old behaviour back to whoever wants it: the surprise is now asked for, not imposed.
-- **`Tag ▾`**: a menu, with each tag's **detailed count** ("3 services · 2 links") — "product 3"
-  didn't say three of what. The filter, once set, shows as a pill next to the field, and covers both
-  halves of the screen.
-- **`Show everything`** only appears once something is set, and clears **everything**, the search
-  included.
-
-The filters **survive a reload**.
-
-Next to them: **`+ Paste an address`**, the single front door, and a **`⋯`** menu for what you do
-once in the tool's lifetime — create a service or an environment, import bookmarks, select free
-links, wipe everything.
-
-#### Paste an address
-What you have in hand, nine times out of ten, is **a URL in the clipboard**. The old `Add` menu
-asked you to **file before pasting** — a plain link, a service, an environment — and on a fresh
-database it took three screens to get to the first address.
-
-`+ Paste an address` opens a text area, **one URL per line**. For each one, the tool **suggests**:
-
-- **the name**, from the last path segment (`/app/logs?q=checkout` → "logs");
-- **the service**, if the host names an existing service or its repository;
-- **the environment**, if the host names an existing environment (`-dev`, `preprod`, `localhost` →
-  *local*).
-
-**Nothing is guessed silently**: every suggestion is a visible, editable selector, in the same
-spirit as the import preview. An address whose host names **no known environment** falls into a
-**free link**, with a suggested tag — never into a "likely" column: a URL is not deduced, that is
-the tab's first rule. The selectors carry `＋ new service` and `＋ new environment`: creating the
-columns is no longer a prerequisite.
-
-`Ctrl`/`Cmd` + `V` **on the tab**, outside a field, opens the same dialog pre-filled.
-
-#### The grid
-- **Rows = services**, pinned ones first — a **rule** separates them from the rest — then in the
-  order you give them. Each row fits on **one line**: a letter tinted from the name, the name, the
-  associated **Mergerie repository** in grey, the **tags**. The **pin** lives in the row, on hover,
-  and it is a pin: it used to be set in the service sheet and displayed with a *tag* icon, two
-  reasons not to find it. A **handle** reorders rows by dragging; the order you set replaces the
-  alphabetical one, and you don't cross the pinned boundary.
-- **Columns = environments**, each **tinted** with its colour: *preprod* is recognisable without
-  reading its header. **The column name opens its settings** — rename, change the colour, delete;
-  two arrows **move** it one step from the keyboard, and the header **drags** with the mouse (one
-  single save on drop, where five clicks and five reloads were needed to go from sixth place to
-  first). Deleting announces **how many addresses go with it**.
-- **A cell = one or more addresses, written down.** The preprod address could have been guessed from
-  the dev one by swapping part of the domain; that is exactly the magic that one day sends you to
-  the wrong environment without warning. **A cell with a single address is clickable as a whole** —
-  aiming at a 120 px chip in the middle of 190 px was aiming for nothing. An empty cell shows
-  **nothing at rest**: the `+` comes back when the row is hovered, otherwise it visually dominated
-  the addresses on a grid where half the cells are legitimately empty (there is no Kibana locally).
-- **An address with no name is shown by what tells it apart**, not by its shortened URL:
-  `api-preprod.demo.invalid/health` repeated the column (*preprod*) and the row (*api-core*) and
-  drowned the only useful word. The rule, in order: the last path segment (`/health` → "health",
-  `/d/home` → "home"); otherwise the host stripped of what the row and the column already say
-  (`api-preprod.demo.invalid` → "demo.invalid"); otherwise the host. The full URL stays in the
-  tooltip, in the copy, and in the palette.
-- **Three addresses at most, always.** A production Kibana means as many addresses as there are
-  saved filters: expanded in place, fifty of them made a seven-hundred-pixel row, with the service
-  name floating in a void and the free links pushed off the screen. The cell shows the **three most
-  opened** (frecency is counted per address) then `▸ 50 addresses`. **A row's height no longer
-  depends on its content.**
-- **A cell's panel.** `▸ 50 addresses` opens the list **anchored on the cell**, read-only: one line
-  per address — name, shortened URL, last opening, copy, open —, a **filter** that narrows it down,
-  `↑` `↓` to move, `Enter` to open, `Esc` or a click outside to close. A dot marks the three the
-  cell shows. The order stays **the one you set**: no hidden sort. The list **scrolls inside the
-  panel** — the grid itself does not move.
-- **`✎ Edit`** switches the same list to editing: a name (optional), the URL, arrows to **reorder**,
-  a bin, and **`Paste several addresses`** — one per line, the name suggested from the path. `Enter`
-  saves, `Esc` cancels, **emptying everything clears the cell**. The focus lands **on an empty row**,
-  never on an existing selected address: you came to add an address, you typed, and you overwrote
-  the first one without seeing it go.
-- Only **`http` or `https`** addresses are accepted, here as everywhere in this tab: these links
-  open with one click from the application.
-- **From the keyboard**: `/` puts the cursor in the search, `↓` moves into the grid, `j` / `k` walk
-  the rows, `←` / `→` the cells, `Enter` opens (the address, or the panel if the cell holds
-  several), `e` edits, `c` copies.
-- A row's **⚡** icon shows its **context links resolved on an example**, and clicking opens the
-  service sheet at the right section. The "1 context link" chip looked like a tag and led nowhere.
-
-**Creating a service also means setting its addresses.** The sheet lists **all** the addresses of
-each environment, one per line, plus an empty one to add — it used to show only the first and
-announce the rest with a count you could not open. **Context links** are set there **from creation
-on**, and the **repository is suggested from the name you type** when exactly one matches. Two
-services on the same repository are still possible, but the screen **says so beforehand**: only the
-first feeds the merge request buttons. Saving **scrolls down to the row** and underlines it for a
-second.
-
-#### Free links
-A **list**, under the grid: a tinted letter, the name, the shortened host, the tags — twenty-eight
-pixels per row. They were forty-five-pixel cards with the full URL spelled out, so sixty links took
-two and a half screens for sixty lines of text. Sorting follows **frecency**, like the palette: what
-you open often *and* recently comes up, alphabetical order breaks ties.
-
-On hover: **copy**, **file into the grid** (the icon was an *archive*, which archived nothing),
-**edit**, and **delete with an undo** — it used to take the pencil, then `Delete`, then a
-confirmation, three screens to remove a bookmark imported by mistake. A **checkbox** also appears on
-hover to handle several at once; `Select`, in the `⋯` menu, pins them on screen.
-
-The edit form opens on the **address** — that is what you paste — and the **label is derived from
-the host** as you go (`grafana.internal.example` → "grafana") as long as you have not written one
-yourself; **Enter saves**.
-
-The **Folder** field suggests existing folders **and accepts new ones** — picking from a list would
-forbid creating one, a bare field would force you to retype a path you already have. A slash creates
-the subfolder along the way (`doc/oncall/2026`), and intermediate levels are suggested even if no
-link sits directly in them. Leaving it empty files the link at the root.
-
-**As soon as a folder exists**, the list is **grouped**, reusing **the tree as it was in the
-browser** — full path, depth included — with each one's count. The threshold of twelve left the
-first imported folders flat, that is, at the very moment you were trying to recognise your own
-filing. Grouping on the last segment alone merged `seres/prod` and `logs/prod` into a single "prod":
-the tool destroyed a structure the browser does preserve. **The first level is open, the rest are
-not**: expanding everything five levels deep gives back the flat list you were trying to leave,
-collapsing everything forces you to open ten folders to find one link. `Expand all` and `Collapse
-all` say one or the other explicitly; clicking the active one again returns to the first level, and
-the choice is remembered. Every folder that contains others carries **its own** folding button, to
-open or close its branch without touching the rest — a glance, not a preference: that one is not
-remembered. Under a search or a tag, we go back to flat: the filter IS the filing, and two levels of
-sorting at once hide what you have just asked for.
-
-**Wipe everything.** The `⋯` menu carries `Delete all free links` — the emergency exit of a botched
-import: you dump two hundred of them, you realise it was not what you wanted, and taking them back
-one by one would be two hundred confirmations. The confirmation **announces the number** ("delete
-all links?" doesn't say whether there are three or two hundred) and recalls that **the grid is not
-touched**. The button does not appear when there is nothing to delete.
-
-**Filing them into a service.** This is the gesture after an import: two hundred addresses land
-flat, and they need filing. Each row carries its `File` button; to handle several at once, you tick
-them. `Select all` then ticks **what the filter left**: you narrow down ("confluence"), tick
-everything, file, and start again. The button's counter **follows the ticks**. A link ticked then
-filtered out of view **leaves the selection** — otherwise it would go with the others without
-anything having announced it.
-
-In both cases, the same window:
-
-- **An existing service or a new one**, your choice, in a searchable selector. Only being able to
-  create forced filing everything in one go; today you file three links, tomorrow two more, into the
-  same service.
-- **An environment**, with a `File everything into` that sets the same one for every row — redoing
-  it row by row over twelve links is exactly what makes people give up. The mapping stays
-  **explicit**: guessing "dev" from a URL containing `-dev` would work nine times out of ten, and
-  the tenth would put a production address in the development column.
-- **The link's label becomes the address's name.** "payment errors" filed into Kibana × prod keeps
-  its name — that is exactly what tells one address from another in the same place, and it was
-  already written.
-
-The addresses are **added** to the cell, they do not replace it; two links filed in the same place
-both fit. The free link then disappears: keeping it would make two entries for the same address.
-
-#### The palette — `Ctrl`/`Cmd` + `K`, or the `o` key
 The search field in the header opens the **global palette**, which searches **everything at once**:
 the grid's cells (“kibana staging”), free links, merge requests (by number or by words of the
 title), **dev sessions** (label, prompt or branch), watched tickets, note pages, open todos, and
@@ -2108,81 +2009,6 @@ link in a new tab, an internal object in its own place.
   has not loaded — searching for a merge request from Docker works. Filtering happens **in the database**, not
   over a slice of it: a merge request three hundred older ones down is as findable as a fresh one.
   Only the *answer* is capped — at twelve rows, which is what a dropdown can show.
-
-#### Contextual links on merge requests
-When a service is linked to a repository, the **detail of that repository's merge requests** carries
-a row of buttons: the service's grid URLs (“Open · dev”), then its **contextual links**.
-
-A contextual link is a **template** with variables, resolved when you click:
-
-| variable | resolves to |
-|---|---|
-| `{env}` | the environment (one button per environment that has a URL) |
-| `{branch}` | the merge request's source branch |
-| `{mr_iid}` | the merge request number |
-| `{service}` | the service's name |
-
-Example: `https://kibana-{env}.corp/app/logs?q={service}%20{branch}` opens the logs of *that*
-branch, on the environment you want, without retyping anything.
-
-- **An unknown variable is refused as you type it**, and the message says which ones exist: a typo
-  should show up while you write it, not produce a broken URL three weeks later.
-- **Every substituted value is URL-encoded**: a branch named `feat/x?y=1` does not build a surprise
-  URL with an extra parameter.
-- A variable **with no value in this context** leaves the button visible but **greyed out**, with
-  its reason on hover. Hiding it would suggest it does not exist; a URL with holes would land on an
-  error page.
-- A template **without `{env}`** gives a **single** button: it does not depend on the environment,
-  and offering one per column would hand you the same address N times.
-
-#### Importing Chrome bookmarks
-*Chrome → Bookmarks → Bookmark manager → ⋮ → Export bookmarks*, then `Import from Chrome`.
-
-**The import reads your tree.** A folder whose children carry environment names (`dev`, `staging`,
-`preprod`, `prod`…) is not describing filing: it is describing a **grid**. The preview builds it and
-shows it to you **before creating anything** — a table with the number of addresses per cell. You
-refuse it by unticking a box, and everything comes back as free links.
-
-Two gestures are available there, because the detection reads folder names and cannot know
-everything: **renaming a row** in place (a folder's name is not always the one you would give the
-service), and **merging several rows into one service** — tick them, click `Merge into one service`,
-and their cells join environment by environment, each address keeping its name.
-
-Two shapes, told apart by one measurement: *do the labels repeat from one environment to the next?*
-
-- **They repeat** — `bo`, `bp`, `po`, `api` in each of your five environments: that is the same
-  thing seen in five places, so **one row per label**.
-- **They do not repeat** — a Kibana and its saved queries, specific to each environment: **one row
-  for the folder**, and the labels become the addresses' names.
-
-Three details that avoid absurd grids: two spellings of one environment (`pprod` and `preprod`) give
-**a single column**; a numbered environment (`recette2`) stays distinct; and a sub-folder **below**
-the environment becomes its own row (`logs/prod/keycloak` → a `logs · keycloak` service), without
-which one cell would hold twenty-four addresses. Columns are ordered along the deployment chain, not
-along the file.
-
-Nothing is guessed about your domain: the only clue looked for is an **environment name**, from a
-deliberately wide list in French and English. A neighbouring folder that is not one
-(`seres/keycloak`) is left alone and its links stay free.
-
-**The rest of the preview is folded by folder, and nothing is ticked.** One folder per row, with its count and
-its checkbox; you unfold the one you want, tick it, and import twelve links instead of two hundred.
-Choosing what comes in costs ten seconds; sorting out what came in costs half an hour. The **browsers' root folders**
-(“Bookmarks bar”, “Other bookmarks”, “Barre de favoris”…) **do not become tags**: present on every
-single link, they filtered nothing while taking the first spot ahead of the ones that say something.
-It is a list of known names, not “whatever folder comes first” — an export may well start with a
-real folder, and dropping it would erase the only filing information there was.
-
-- **Preview first**: the folder tree as it was in the browser, each link tickable. Nothing is
-  created until you confirm — the same spirit as the mandatory preview of git operations.
-- Everything ticked arrives as **free links**, **tagged by its folder path**
-  (`Work/Kibana` → `work`, `kibana`).
-- **Replayable**: re-importing the same file after adding three bookmarks does not duplicate the
-  other hundred — a URL already known is skipped, and the number skipped is announced (silence
-  would read as a failure).
-- The file is **never executed or rendered**: it is parsed, and only `http(s)` addresses come out —
-  a `javascript:` bookmark is ignored. Size capped at 5 MB.
-- Turning them into services comes **afterwards**, by hand (see above).
 
 ### Stats
 An MR funnel, a distribution of the scores, the **weekly evolution of the average score** (“is quality
@@ -2334,7 +2160,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked), then *Fetch the commits of open MRs* (checked; it shares the files cap, an MR fetched for its files is fetched for its commits in the same round; unchecked, no extra call and no `contains !214` badge) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, then the **registry check** — *Check added dependencies against the public registries* (**unchecked** by default: it is Mergerie's first network call that goes neither to the forge nor to Jira, and the label names the hosts: registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — only for the packages your merge requests add, and only their name), *Recent: published less than N days ago* (30), *At most N calls per round* (30; 0 = no limit, independent of the file cap), the **private package patterns** (one name glob per line, empty; also on a repository and on a group, same resolution as the manifest patterns) and, **this workstation's** and never shared, the **URL per registry** (one `ecosystem=url` line per registry to override — a mirror, a company proxy; empty after the `=`, the ecosystem is not checked) —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more
@@ -2363,8 +2189,11 @@ rules — see *Sharing with a team* below) ·
 URL + email + API token, with a *Test Jira* button —, and **“Tell Jira when the merge request is
 created”** — ticked by default in a new session's window — with an editable **comment
 template** (`{url}`, `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, a live
-preview; empty keeps the shipped message, shared with the team like the review-link template) —;
-feeds the *Jira* tab and the enrichment of a session from a ticket) ·
+preview; empty keeps the shipped message, shared with the team like the review-link template) —, and
+**“Tell Jira when a merge request is merged”**, unticked by default, with its own template — same
+variables, same preview: when Mergerie sees the merge request merged (discovery, *Refresh from the
+forge*), the ticket gets **one** comment — a single one per ticket, rewritten with the full list at
+each following merge request —, nothing for a close without merge nor from a period catch-up —; feeds the *Jira* tab and the enrichment of a session from a ticket) ·
 **Plugins** (every installed plugin, its version, state and permissions; enable or disable it
 **without restarting**; install a third-party plugin from a local folder or a git address — this
 is where Jenkins, Docker and Links are installed and updated. An **enabled** plugin that declares
@@ -2742,6 +2571,19 @@ only “the base passed, the branch breaks”, **never** on a green run nor on a
 per ticket** even when the batch holds five merge requests of the same one. Jira being unreachable does
 not call an acquired verdict into question: the failure is noted in the job log.
 
+**And when the merge request is merged.** A second checkbox in *Settings → Jira*, **unticked by
+default** as well, comments the ticket as soon as Mergerie sees the merge request merged — through
+discovery or *Refresh from the forge*. The text is the team's **template** (`{url}` required, plus
+`{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`) or, when empty, the shipped message in
+the interface language. **One comment per ticket**: the first merged merge request posts it, each
+following one of the same ticket **rewrites** it with the full list (one template entry per merge
+request, in merge order) — five merge requests of one ticket do not make five comments. If Jira no
+longer lets that comment be edited (deleted, or no longer yours), a new one takes over the list and is
+the one followed from then on. A merge request is announced once, however many paths see the same merge;
+nothing for a merge request closed without merging, nothing without a ticket key in the branch or the
+title, and nothing from a *Period* catch-up — ten days of tickets need not learn at once what the team
+already knows. When Jira refuses, the marker is released and the next discovery round retries.
+
 **A red verdict leaves a todo behind.** The notification goes by and is forgotten; the badge assumes you
 reopen *Reviews*. Between the two, nothing carried “there is a broken test on !218” through to the next
 morning. A todo is therefore created **per merge request** (running the same verification three times
@@ -3025,6 +2867,33 @@ instance, **their** tokens and **their** AI CLI subscription: requests leave the
 billed to them, and it is the result that is shared. There is nothing to install and nothing to
 administer: the team already has a forge, permissions, backups and a history.
 
+**Taking over a colleague's session on this machine.** A coding session received from the repository is
+*read*: the agent handle, the clone and the follow-ups live on the other machine — when Claire is away, the
+session her agent left waiting for an answer waits with her — her question is read on her card (its options,
+"waiting at Claire's"), it is not answered from here. On the project line of her card, **"Take over
+on this machine"** (or **"Answer and take over on this machine"** when the target is waiting for an answer)
+creates a session **of your own**, on your clone and your subscription, starting from her branch as it is
+on the forge (a new branch `<branch>-takeover-<you>`, `-2`, `-3` when the name is taken, set on the forge head), with **your** settings — never
+hers, which do not travel — and whose agent receives, as its first message, **the whole history of the
+original session, as is**: the prompt, each pass with its kind, the prompt actually sent and the agent's
+answer, the questions and answers, the last review report and the last verification tied to the branch,
+then your answer to the pending question and your **takeover instruction**. Assembled mechanically, with
+no AI call and never summarised: the dialog shows it **in full** before launching, with the estimated
+tokens, a "passes included" slider (default: all) and a "attach the branch diff" box; the first pass keeps
+it. Nothing is automatic, nothing touches the original session, and no agent handle is reused — it only
+exists on the other machine. The lineage goes both ways: your card says `takeover of Claire's session
+(#123)`, hers — everywhere, after a sync — `taken over by Amady (#207) · 10 min ago`; several takeovers,
+several lines, none is "the" official sequel. The button only shows for a coding session **on a
+repository** received from another machine, whose branch was pushed (`branch not pushed by Claire`
+otherwise) and is not merged (`branch merged (!214)`); the forge is re-read when the dialog opens (`branch
+missing from the forge`), and the header says when it is `N commits past the last known pass`. Out of a
+repository, explorations, free questions: nothing to take over in v1.
+
+**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say where we
+are, who is waiting for what, since when — pending decisions, unanswered questions, running sessions,
+takeovers, failing verifications, overlaps, workstation freshness — sharing nothing more. See the *Team*
+section.
+
 **What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
 this machine's absolute paths, tidied-away sessions, job logs. Every column of
 the database is classified by name, and an automatic check refuses a secret-looking column that is
@@ -3227,6 +3096,18 @@ To run tests without touching your database: `MERGERIE_DATA_DIR=/tmp/my-test npm
 powerful operations (git, Docker, AI agent, file reads/writes). By default **the server listens ONLY on
 `localhost`** (`127.0.0.1`) and asks for nothing: the machine's user **is** the app's user. No data is
 sent anywhere but to the services **you** configure (your GitLab, GitHub, Jira, agent CLI, data repository).
+
+**What leaves the machine, and the one exception.** Every network call Mergerie makes goes to one of those
+targets you configured — except one, **disabled by default**: the *registry check* of added dependencies
+(Settings → Merge Request → Discovery). Checked, it sends the **name** of the packages a merge request adds —
+nothing else: not the manifest, not the repository name, not the merge request, no identifying header beyond
+the `User-Agent` — to the public registries named in the setting (registry.npmjs.org, repo.packagist.org,
+pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org, or the mirrors you
+set), at most N names per round, through your environment's proxy (`HTTPS_PROXY`, `NO_PROXY`) and with the
+forge's company CA (`GITLAB_CA_CERT`). Packages covered by a private pattern or by the clone's configuration
+(`.npmrc`, `composer.json`, `go.env`, `pip.conf`) never leave; the answer cache stays on this workstation and
+does not travel in the data repository; the discovery log counts the calls per registry. Zero AI calls, zero
+token.
 
 **Exposing the server requires a token.** With a `HOST` other than a loopback address (`0.0.0.0`, the
 machine's IP…), Mergerie **refuses to start** without `MERGERIE_ACCESS_TOKEN`. The browser then goes

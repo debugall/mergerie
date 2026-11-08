@@ -36,7 +36,7 @@ const ALLOWED = [
   'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'language', 'ai_extra_instructions',
   'jira_email', 'jira_token', 'review_explain', 'converge_threshold', 'converge_max_passes',
   'brief_on_open', 'auto_post_review', 'auto_post_blocking_only', 'auto_post_review_link',
-  'review_link_template', 'jira_notify_template',
+  'review_link_template', 'jira_notify_template', 'jira_notify_merge', 'jira_merge_template',
   'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'auto_runner',
   'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
@@ -49,6 +49,14 @@ const ALLOWED = [
   'verify_jira_comment',
   'confluence_url', 'confluence_token', 'spec_marker', 'spec_team_instructions',
   'data_repo_url', 'data_repo_branch', 'data_sync_seconds', 'usage_share',
+  'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
+  'jira_stats_bug_types', 'jira_stats_us_types',
+  'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
+  'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
+  'deps_enabled', 'manifest_patterns',
+  'mr_commits_enabled',
+  'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls',
+  'team_quiet_days', 'team_takeover_days',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -123,8 +131,62 @@ function updateConfig(patch) {
     const s = parseInt(patch.stale_mr_days, 10);
     next.stale_mr_days = (!Number.isFinite(s) || s <= 0) ? 5 : Math.min(90, s);
   }
+  /* Les croisements de MR : relever les fichiers des MR ouvertes (coché d'office), au plus N listes
+     par découverte (0 = sans limite), croiser aussi entre branches cibles différentes (décoché). */
+  next.mr_files_enabled = String(next.mr_files_enabled) === '0' ? '0' : '1';
+  next.mr_files_cross_targets = String(next.mr_files_cross_targets) === '1' ? '1' : '0';
+  if ('mr_files_max' in patch) {
+    const fm = parseInt(patch.mr_files_max, 10);
+    next.mr_files_max = Number.isFinite(fm) && fm >= 0 ? Math.min(500, fm) : 20;
+  }
+  /* Les tests touchés : l'interrupteur (coché d'office), le seuil du badge accentué (0 = toujours),
+     et les deux listes de motifs — un glob par ligne, validé ICI avec sa ligne, jamais à l'affichage. */
+  next.tests_touched_enabled = String(next.tests_touched_enabled) === '0' ? '0' : '1';
+  if ('tests_touched_min_code' in patch) {
+    const tm = parseInt(patch.tests_touched_min_code, 10);
+    next.tests_touched_min_code = Number.isFinite(tm) && tm >= 0 ? Math.min(1000, tm) : 3;
+  }
+  next.deps_enabled = String(next.deps_enabled) === '0' ? '0' : '1';
+  next.mr_commits_enabled = String(next.mr_commits_enabled) === '0' ? '0' : '1';
+  for (const champ of ['test_patterns', 'neutral_patterns', 'manifest_patterns', 'private_patterns']) {
+    if (champ in patch) next[champ] = require('../core/glob').normaliserMotifs(patch[champ]);
+  }
+  /* Le contrôle au registre : DÉCOCHÉ d'office (le premier appel réseau hors forge se choisit), le seuil
+     « récent » et le plafond par tour s'écrivent (0 = sans limite), les URL de registre sont validées
+     ligne à ligne — de ce poste. */
+  next.registry_enabled = String(next.registry_enabled) === '1' ? '1' : '0';
+  if ('registry_recent_days' in patch) {
+    const rd = parseInt(patch.registry_recent_days, 10);
+    next.registry_recent_days = Number.isFinite(rd) && rd >= 0 ? Math.min(3650, rd) : 30;
+  }
+  if ('registry_max' in patch) {
+    const rm = parseInt(patch.registry_max, 10);
+    next.registry_max = Number.isFinite(rm) && rm >= 0 ? Math.min(1000, rm) : 30;
+  }
+  if ('registry_urls' in patch) next.registry_urls = require('../core/registres').normaliserUrls(patch.registry_urls);
+  // La page Équipe : un poste silencieux après N jours ouvrés (2), une reprise listée N jours (7).
+  if ('team_quiet_days' in patch) {
+    const tq = parseInt(patch.team_quiet_days, 10);
+    next.team_quiet_days = Number.isFinite(tq) && tq >= 0 ? Math.min(365, tq) : 2;
+  }
+  if ('team_takeover_days' in patch) {
+    const tt = parseInt(patch.team_takeover_days, 10);
+    next.team_takeover_days = Number.isFinite(tt) && tt >= 0 ? Math.min(365, tt) : 7;
+  }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
+  /* Le rattrapage d'une période : la bannière au-delà de N jours sans geste (0 = jamais, 3 par
+     défaut — un week-end n'est pas une absence), les bots masqués d'office, les branches
+     protégées surveillées avec la branche par défaut. */
+  if ('periode_banner_days' in patch) {
+    const pb = parseInt(patch.periode_banner_days, 10);
+    next.periode_banner_days = Number.isFinite(pb) && pb >= 0 ? Math.min(365, pb) : 3;
+  }
+  next.periode_hide_bots = next.periode_hide_bots === '0' ? '0' : '1';
+  next.periode_watch_protected = next.periode_watch_protected === '0' ? '0' : '1';
+  // Jira → Stats : un champ vidé retombe sur le défaut, l'écran montre toujours ce qui est compté.
+  next.jira_stats_bug_types = String(next.jira_stats_bug_types || '').trim() || 'Bug';
+  next.jira_stats_us_types = String(next.jira_stats_us_types || '').trim() || 'Story, User Story';
   /* Coché par défaut : une todo « suivre !201 » n'a plus de raison d'être une fois !201
      mergée, et la cocher soi-même après coup est le geste qu'on oublie. */
   next.todo_close_on_merge = next.todo_close_on_merge === '0' ? '0' : '1';
@@ -244,6 +306,9 @@ function updateConfig(patch) {
   if (String(next.jira_notify_template || '').trim() && !String(next.jira_notify_template).includes('{url}')) {
     throw new Error(t('err.config.jira-template-no-url'));
   }
+  if (String(next.jira_merge_template || '').trim() && !String(next.jira_merge_template).includes('{url}')) {
+    throw new Error(t('err.config.jira-merge-template-no-url'));
+  }
   // Les rapports produits par l'IA suivent la langue de l'interface (i18n.md lot 5,
   // option 1). On n'aligne QUE les gabarits restés au défaut : un prompt que
   // l'utilisateur a personnalisé n'est jamais écrasé (piège n°4 du plan).
@@ -271,6 +336,8 @@ function updateConfig(patch) {
       auto_post_review_link = @auto_post_review_link,
       review_link_template = @review_link_template,
       jira_notify_template = @jira_notify_template,
+      jira_notify_merge = @jira_notify_merge,
+      jira_merge_template = @jira_merge_template,
       auto_review_new = @auto_review_new,
       auto_rereview_stale = @auto_rereview_stale,
       auto_runner = @auto_runner,
@@ -282,7 +349,26 @@ function updateConfig(patch) {
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
-      agent_auto_max = @agent_auto_max
+      agent_auto_max = @agent_auto_max,
+      periode_watch_protected = @periode_watch_protected,
+      jira_stats_bug_types = @jira_stats_bug_types,
+      jira_stats_us_types = @jira_stats_us_types,
+      mr_files_enabled = @mr_files_enabled,
+      mr_files_max = @mr_files_max,
+      mr_files_cross_targets = @mr_files_cross_targets,
+      tests_touched_enabled = @tests_touched_enabled,
+      tests_touched_min_code = @tests_touched_min_code,
+      test_patterns = @test_patterns,
+      neutral_patterns = @neutral_patterns,
+      deps_enabled = @deps_enabled,
+      mr_commits_enabled = @mr_commits_enabled,
+      manifest_patterns = @manifest_patterns,
+      registry_enabled = @registry_enabled,
+      registry_recent_days = @registry_recent_days,
+      registry_max = @registry_max,
+      private_patterns = @private_patterns,
+      team_quiet_days = @team_quiet_days,
+      team_takeover_days = @team_takeover_days
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
@@ -298,12 +384,15 @@ function updateConfig(patch) {
       data_repo_branch = @data_repo_branch,
       data_sync_seconds = @data_sync_seconds,
       usage_share = @usage_share,
+      registry_urls = @registry_urls,
       /* Des habitudes, pas des politiques : le brief au lancement, les cadences de CE poste,
          la fermeture des todos (devenues personnelles) et les cases d'office d'une session. */
       brief_on_open = @brief_on_open,
       auto_refresh_minutes = @auto_refresh_minutes,
       jira_watch_minutes = @jira_watch_minutes,
       todo_close_on_merge = @todo_close_on_merge,
+      periode_banner_days = @periode_banner_days,
+      periode_hide_bots = @periode_hide_bots,
       task_default_auto_push = @task_default_auto_push,
       task_default_ask_questions = @task_default_ask_questions,
       task_default_notify_jira = @task_default_notify_jira,

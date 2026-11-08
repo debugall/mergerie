@@ -202,7 +202,7 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       sub, { timeout: ATTENTE });
   }
 
-  test('neuf réglages en vrac deviennent trois groupes titrés', async () => {
+  test('neuf réglages en vrac deviennent quatre groupes titrés', async () => {
     await ouvrirReglages('mr');
     const ordre = await page.$$eval('#sub-mr > .form > *',
       (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select, textarea') || {}).name || e.tagName))));
@@ -214,8 +214,23 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
          personne pour les exécuter. */
       '# Automatisation', 'auto_refresh_minutes', 'stale_mr_days', 'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
       'auto_runner', 'P',
+      // Les croisements : l'interrupteur, son plafond juste dessous, puis le croisement entre cibles.
+      '# Découverte', 'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets', 'mr_commits_enabled', 'P',
+      // Les tests touchés : l'interrupteur, la note de dépendance (P), le seuil, puis les deux zones de motifs.
+      'tests_touched_enabled', 'P', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
+      // Les dépendances ajoutées : l'interrupteur, puis la zone des motifs de manifestes.
+      'deps_enabled', 'manifest_patterns',
+      /* Le contrôle au registre : UN bloc indenté sous « Afficher les dépendances », dont il dépend (il se
+         grise avec elle) ; son premier champ est l'interrupteur. */
+      'registry_enabled',
       '# Convergence', 'converge_threshold', 'converge_max_passes',
     ], 'l’interrupteur et son plafond ne sont plus séparés par un autre réglage');
+    /* Dans le bloc : le titre, l'interrupteur, la liste des hôtes (P), la note de dépendance (P), le seuil,
+       le plafond, les motifs privés, les URL de ce poste. */
+    const registre = await page.$$eval('#registryZone > *',
+      (els) => els.map((e) => (e.tagName === 'H3' ? `# ${e.textContent}` : ((e.querySelector('input, select, textarea') || {}).name || e.tagName))));
+    assert.deepEqual(registre, ['# Contrôle au registre', 'registry_enabled', 'P', 'P', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls']);
+    assert.ok(await page.$eval('#registryZone', (e) => e.classList.contains('sous-reglage')), 'indenté sous sa case parente');
   });
 
   /* LE CHOIX DE LA FORME : le rapport, ou son lien. La ligne ne s'affiche qu'avec un dépôt de

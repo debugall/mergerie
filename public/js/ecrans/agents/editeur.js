@@ -5,17 +5,36 @@
 
 function agentReposHtml(choisis) {
   const parId = new Map((choisis || []).map((r) => [Number(r.repo_id), r]));
+  /* La branche est un combo À RECHERCHE (un dépôt actif en aligne des centaines) ; vide = la
+     branche par défaut du dépôt. Le combo n'est pas dans le `<label>` : un clic dessus
+     cocherait le dépôt. */
   return repoOptions.map((r) => {
     const c = parId.get(r.id);
-    return `<label class="inline-check agent-repo-row" data-cherche="${esc(r.project.toLowerCase())}">
-      <input type="checkbox" class="ag-repo" value="${r.id}"${c ? ' checked' : ''} />
-      <span>${esc(r.project)}</span>
+    const br = (c && c.branch) || '';
+    return `<div class="agent-repo-row" data-row data-repo="${r.id}" data-cherche="${esc(r.project.toLowerCase())}">
+      <label class="inline-check">
+        <input type="checkbox" class="ag-repo" value="${r.id}"${c ? ' checked' : ''} />
+        <span>${esc(r.project)}</span>
+      </label>
       <select class="ag-role">
         <option value="readonly"${c && c.role === 'readonly' ? ' selected' : ''}>${esc(tr('agents.role.readonly'))}</option>
         <option value="target"${c && c.role === 'target' ? ' selected' : ''}>${esc(tr('agents.role.target'))}</option>
       </select>
-    </label>`;
+      ${comboHtml('ag-branch', { value: br, label: br, ph: tr('agents.f.branch-ph'), wrapClass: 'ag-branch-combo' })}
+    </div>`;
   }).join('');
+}
+
+/* Les branches de la ligne, à l'ouverture du menu : la même source que la vérification. */
+function brancherAgentRepos() {
+  wireCombo($('#agentRepos'), 'ag-branch', chargerBranchesAgent);
+}
+async function chargerBranchesAgent(row) {
+  const repoId = Number(row && row.dataset.repo);
+  if (!repoId) return [];
+  const d = await gitLoadRefs(repoId, 'branches');
+  return [{ value: '', label: tr('agents.f.branch-default') },
+    ...d.refs.map((x) => ({ value: x.name, label: x.name, hint: x.default ? tr('git.refs.default-suffix') : '' }))];
 }
 
 function lireAgentForm() {
@@ -40,7 +59,9 @@ function lireAgentForm() {
     schedule: lireHoraireForm(),
     runner: ($('#agentRunner') || {}).value || '',
     repos: $$('#agentRepos .ag-repo:checked').map((c) => ({
-      repo_id: Number(c.value), branch: '', role: c.closest('label').querySelector('.ag-role').value,
+      repo_id: Number(c.value),
+      branch: c.closest('.agent-repo-row').querySelector('.ag-branch').value,
+      role: c.closest('.agent-repo-row').querySelector('.ag-role').value,
     })),
   };
 }
@@ -267,6 +288,7 @@ async function ouvrirAgentModal(a) {
     ? JSON.stringify(JSON.parse(a.subagents_json), null, 2) : '';
   $('#agentOutputKind').value = a ? a.output_kind : 'report';
   $('#agentRepos').innerHTML = agentReposHtml(a ? a.repos : []);
+  brancherAgentRepos();
   poserHoraireForm(a ? a.schedule : '');
   poserExecutantForm(a ? a.runner : '');
   majPerimetreVisible();

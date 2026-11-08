@@ -1,6 +1,6 @@
 'use strict';
 /* Onglet Reviews : les statuts d'une MR, le libellé du bouton (A14), les 3 stades, recherche, à reviewer, miennes / autres, reviewers, note, constats. */
-// @expose aReviewerTotal, closeSplitMenus, currentSeg, estDeMoi, filtreAuteur, loadSegment, loadToReview, majBoutonReview, matchMr, moiSurLesForges, renderFiltreAuteur, renderToReview, toReviewRows
+// @expose aReviewerTotal, closeSplitMenus, currentSeg, epinglerMrs, estDeMoi, filtreAuteur, loadSegment, loadToReview, majBoutonReview, matchMr, moiSurLesForges, renderFiltreAuteur, renderToReview, toReviewRows
 // Statuts de MR : la base stocke de l'anglais snake_case, l'UI parle français
 // (symétrique de TASK_STATUS, qui le faisait déjà pour les tâches).
 const MR_STATUS = {
@@ -58,10 +58,12 @@ function loadSegment(seg = currentSeg) {
 }
 $$('.segmented [data-seg]').forEach((b) => b.addEventListener('click', () => loadSegment(b.dataset.seg)));
 
-/* ---------- Recherche (filtre client sur titre / auteur / projet / ticket) ---------- */
+/* ---------- Recherche (filtre client sur titre / auteur / projet / ticket / numéro) ----------
+   « 260 » ou « !260 » retrouve la merge request : c'est sous ce numéro que la page Équipe, les
+   croisements et les empilements la nomment. */
 function matchMr(m, q) {
-  return [m.title, m.author, m.project, m.ticket_key, m.source_branch]
-    .some((v) => (v || '').toLowerCase().includes(q));
+  return [m.title, m.author, m.project, m.ticket_key, m.source_branch, m.iid != null ? `!${m.iid}` : '']
+    .some((v) => String(v || '').toLowerCase().includes(q));
 }
 
 /* ---------- À reviewer ---------- */
@@ -192,7 +194,12 @@ function tailleNum(m) {
   if (s.additions != null || s.deletions != null) return (s.additions || 0) + (s.deletions || 0);
   return s.files != null ? s.files : Number.MAX_SAFE_INTEGER;
 }
-const ordonnerFile = (rows) => rows.slice().sort(TRIS[triFile] || TRIS.defaut);
+/* LES MERGE REQUESTS ÉPINGLÉES EN TÊTE, le temps d'une arrivée : le brief ouvre Reviews sur une
+   paire qui se croise, et les deux doivent se lire d'abord, quel que soit le tri. Une recherche
+   tapée ensuite relâche l'épingle. */
+let mrsEnTete = new Set();
+function epinglerMrs(ids) { mrsEnTete = new Set((ids || []).map(Number)); }
+const ordonnerFile = (rows) => rows.slice().sort((a, b) => (mrsEnTete.has(b.id) - mrsEnTete.has(a.id)) || (TRIS[triFile] || TRIS.defaut)(a, b));
 
 /* Le tri restauré doit SE VOIR dans la liste déroulante : une file rangée autrement que ce
    que le contrôle affiche ferait douter de la liste avant de douter du contrôle. */
@@ -270,6 +277,7 @@ function renderToReview() {
      l'écran dans son ancienne valeur — un dépôt renommé, un ticket rattaché après coup, une
      branche cible changée passeraient inaperçus. */
   const sig = rows.map((m) => [m.id, m.status, m.iid, m.title, m.project, m.author, m.gitlab_created_at,
+    m.reviewers, m.assignees, m.upvotes, m.is_draft,
     m.has_ticket, m.ticket_key, m.ticket_url, m.web_url, m.forge, m.source_branch, m.target_branch,
     m.size && [m.size.files, m.size.additions, m.size.deletions].join(','), m.updated_at,
     (m.risk || []).map((r) => r.label).join(','), m.closed_seen, m.stale, m.last_error, m.ticket_category,
@@ -280,7 +288,10 @@ function renderToReview() {
        changement d'un autre champ. */
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(','),
-    m.verifiable, mrSelection.has(m.id)].join('\u0001')).join('\u0002');
+    m.verifiable, mrSelection.has(m.id),
+    // Les badges de croisement et de tests touchés font partie de ce que la carte affiche.
+    sigCroise(m), sigTests(m), sigDeps(m), sigStack(m),
+    m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) { majBoutonReview(); return; }
   stagger('#toReviewList .card');
   majBoutonReview();       // la recherche et les filtres viennent peut-être de changer la liste
@@ -373,6 +384,7 @@ function renderToReview() {
 /* Debouncé : chaque frappe reconstruisait la liste entière. `debounce` existait déjà et
    servait pour les autres recherches — celle-ci avait été oubliée. */
 $('#searchReview').addEventListener('input', debounce(() => (currentSeg === 'to_review' ? renderToReview() : renderReports())));
+$('#searchReview').addEventListener('input', () => epinglerMrs([]));
 
 /* Merge d'une MR depuis la file (sans passer par une review) — pour une MR
    triviale. Confirmation obligatoire (action irréversible et visible par l'équipe).
@@ -407,7 +419,7 @@ function closeSplitMenus() {
 }
 // Un clic n'importe où ailleurs referme les menus ouverts (enregistré une seule fois).
 // `.split-menu-wrap` aussi : sans lui, le clic qui OUVRE le menu d'export le refermerait aussitôt.
-document.addEventListener('click', (e) => { if (!e.target.closest('.btn-split, .split-menu-wrap')) closeSplitMenus(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('.btn-split, .split-menu-wrap, .croise-panel')) closeSplitMenus(); });
 
 function mrCard(m) {
   return `<div class="card" data-id="${m.id}">
@@ -422,19 +434,30 @@ function mrCard(m) {
       ${/* Les tags sont des MÉTADONNÉES, pas des actions : les laisser dans la rangée de
             boutons décalait celle-ci d'une carte à l'autre selon le nombre de tags. */''}
       <div class="card-tags">
+        ${badgeTests(m)}
+        ${badgeDeps(m)}
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
         ${badgeDraft(m)}
+        ${badgeGens(m)}
+        ${badgeUpvotes(m)}
         ${fenteBrouillons(m)}
         ${badgeSeverites(m)}
         ${badgeCartes(m)}
         ${badgeTicket(m)}
+        ${badgeStack(m)}
+        ${badgeCroise(m)}
         ${badgeConflit(m)}
         ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}
         ${pluginsHtml('mr-badge', m)}
         ${badgeCIForge(m)}
         ${verifyBadge(m.verification)}
+        ${/* LA SESSION QUI A PRODUIT CETTE BRANCHE, quand elle existe sur ce poste : la puce mène à sa carte dans Dev IA. */''}
+        ${origineHtml(m)}
         ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+        ${/* « NOUVEAU POUR TOI » : un rapport d'un collègue, arrivé par la synchro, jamais ouvert ici.
+              C'est le correctif du « noyé dans la masse » du retour de congé — et il vaut tous les jours. */''}
+        ${m.new_for_me ? `<span class="tag new-for-me" title="${esc(tr('mr.tag.new-for-me-title'))}">${svgIco('users')} ${tr('mr.tag.new-for-me')}</span>` : ''}
         ${m.last_error ? `<span class="tag stale">${tr('mr.tag.error')}</span>` : ''}
       </div>
     </div>
@@ -461,9 +484,13 @@ function mrCard(m) {
           Les attributs `data-*` sont IDENTIQUES à ceux d'avant : les écouteurs délégués les
           retrouvent dans le menu comme ils les trouvaient sur la carte. */''}
     <span class="btn-split">
-      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}" aria-haspopup="true" aria-expanded="false">⋯</button>
+      ${/* Une liste de fichiers REFUSÉE (plus de 5 000 : migration massive, vendoring) se dit au
+            survol du « ⋯ » : la carte n'affiche pas de croisement, et ce n'est pas un oubli. */''}
+      <button class="btn" data-more="${m.id}" title="${esc(tr('mr.btn.more-title'))}${m.files_fetch && m.files_fetch.refused ? ` — ${esc(tr('mr.croise.refused'))}` : ''}${m.deps && m.deps.refused ? ` — ${esc(tr('mr.deps.refused'))}` : ''}" aria-haspopup="true" aria-expanded="false">⋯</button>
       <div class="split-menu" hidden role="menu">
         <button role="menuitem" data-dev="${m.id}" data-branch="${esc(m.source_branch)}">${tr('mr.btn.code')}</button>
+        ${/* …et REJOINDRE la session qui a produit la branche, quand elle existe ici — plutôt que d'en ouvrir une seconde. */''}
+        ${m.origin_task ? `<button role="menuitem" ${origineAttrs(m)}>${tr('mr.btn.open-session', { id: m.origin_task.id })}</button>` : ''}
         <button role="menuitem" data-verify="${m.id}" ${m.verifiable ? '' : 'disabled'} title="${m.verifiable ? '' : esc(tr('err.verify.no-verifier'))}">${tr('verify.btn.verify')}</button>
         ${m.verification ? `<button role="menuitem" data-vresults="${m.id}">${tr('verify.btn.results')}</button>` : ''}
         ${/* LE MESSAGE SLACK TOUT FAIT. « Où en est !217 ? » se répond en collant une ligne
@@ -471,6 +498,10 @@ function mrCard(m) {
         ${/* Les actions qu'un plugin ajoute au menu d'une merge request (cible « mr »). */''}
         ${pluginsHtml('mr', m)}
         <button role="menuitem" data-copy-ref="${m.id}">${tr('mr.btn.copy-ref')}</button>
+        ${/* RELIRE CETTE MERGE REQUEST À LA FORGE, sans attendre le prochain tour de découverte ni
+              le déclencher pour tous les dépôts : titre, branches, SHA, conflits, et son état
+              (mergée ou fermée, la carte le dit). */''}
+        <button role="menuitem" data-refresh="${m.id}" title="${esc(tr('mr.btn.refresh-title', { forge: forgeLabel(m.forge) }))}">${tr('mr.btn.refresh')}</button>
         ${/* C11 — SURVEILLER LE TICKET DE CETTE MR. La clé est déjà déduite (elle est écrite
               sur la carte) ; il fallait pourtant aller dans Jira → Surveillés et la retaper.
               L'entrée n'apparaît que si Jira est connecté et qu'une clé a été trouvée. */''}
@@ -533,6 +564,24 @@ document.addEventListener('click', (e) => {
   if (!m) return;
   copyText(refMr(m), null);
   toast(tr('mr.ref.copied'));
+});
+
+/* « Mettre à jour depuis la forge » : un appel pour CETTE merge request. Le message dit ce que la
+   forge a répondu — mergée, fermée, de nouveaux commits, mise à jour, ou rien de neuf — puis la
+   liste se recharge : une MR qui n'est plus ouverte prend son badge « mergée » sous les yeux. */
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-refresh]');
+  if (!b) return;
+  const id = Number(b.dataset.refresh);
+  const m = (toReviewRows || []).concat(reportRows || []).find((x) => x.id === id);
+  const forge = forgeLabel(m && m.forge);
+  try {
+    const r = await busy(b, () => api(`/mrs/${id}/refresh`, { method: 'POST' }));
+    const cle = r.etat === 'merged' ? 'merged' : r.etat === 'closed' ? 'closed' : r.stale ? 'stale' : r.changed ? 'updated' : 'same';
+    toast(tr(`mr.refresh.${cle}`, { forge }));
+  } catch (err) { toast(explainError(err.message), true); return; }
+  loadSegment();
+  refreshCounts();
 });
 
 $('#btnDiscover').addEventListener('click', async () => {

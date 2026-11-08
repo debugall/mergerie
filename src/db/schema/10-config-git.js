@@ -3,7 +3,7 @@
    Tranche de l'ancien db.js (réorganisation de src/ par couches), jouée à sa place dans l'ordre de `index.js` :
    un ALTER y suit toujours le CREATE qu'il retouche, comme avant. */
 const db = require('../connexion');
-const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT } = require('../../core/prompts');
+const { PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT, ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER } = require('../../core/prompts');
 const { DEFAULT_CLONE_DIR } = require('../../core/paths');
 
 /* Cocher une todo liée quand sa merge request est mergée. Coché par défaut : la todo perd sa
@@ -12,6 +12,19 @@ try { db.exec("ALTER TABLE config ADD COLUMN todo_close_on_merge TEXT DEFAULT '1
 /* Au-delà de combien de jours une MR reviewée et toujours ouverte est « dormante ». Cinq
    jours : au-dessous, on signalerait la MR d'avant-hier, qu'on n'a pas oubliée. */
 try { db.exec('ALTER TABLE config ADD COLUMN stale_mr_days INTEGER DEFAULT 5'); } catch { /* déjà présente */ }
+/* LE RATTRAPAGE D'UNE PÉRIODE (Notes → Période). Le seuil de la bannière « tu n'as pas ouvert
+   Mergerie depuis N jours » et le masquage des bots sont des habitudes de CE poste (drainées
+   vers `local_config`) ; surveiller les branches protégées en plus de la branche par défaut
+   est une décision d'équipe : c'est la définition de « ce qui est entré sans relecture ». */
+try { db.exec('ALTER TABLE config ADD COLUMN periode_banner_days INTEGER DEFAULT 3'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN periode_hide_bots TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN periode_watch_protected TEXT DEFAULT '1'"); } catch { /* déjà présente */ }
+
+/* JIRA → STATS : quels noms de type comptent comme « bug » et comme « US ». Le nom d'un type est
+   libre d'une instance à l'autre (Bug / Anomalie, Story / User Story / Récit) : une décision
+   d'équipe, partagée comme le reste de `config`. */
+try { db.exec("ALTER TABLE config ADD COLUMN jira_stats_bug_types TEXT DEFAULT 'Bug'"); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN jira_stats_us_types TEXT DEFAULT 'Story, User Story'"); } catch { /* déjà présente */ }
 
 /* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
 try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }
@@ -74,6 +87,12 @@ for (const lang of ['fr', 'en']) {
     .run(PROMPTS[lang].prompt_review, ANCIEN_PROMPT_REVIEW_COURT[lang]);
 }
 
+/* LE DÉFAUT GAGNE UNE RÈGLE : ouvrir le fichier entier avant de signaler un import ou une définition « manquant » (le diff n'en montre que les abords). Même garde-fou : seul un gabarit rigoureusement identique à l'ancien défaut, dans sa langue, est remplacé. Rejouable. */
+for (const lang of ['fr', 'en']) {
+  db.prepare('UPDATE config SET prompt_review = ? WHERE prompt_review = ?')
+    .run(PROMPTS[lang].prompt_review, ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER[lang]);
+}
+
 const DEFAULT_PROMPT_REVIEW = PROMPTS.fr.prompt_review;
 const DEFAULT_PROMPT_EXPLAIN = PROMPTS.fr.prompt_explain;
 const DEFAULT_PROMPT_MODIFY = PROMPTS.fr.prompt_modify;
@@ -132,6 +151,23 @@ try { db.exec("ALTER TABLE config ADD COLUMN auto_post_review_link TEXT DEFAULT 
 try { db.exec("ALTER TABLE config ADD COLUMN review_link_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 // Le gabarit du commentaire que « Prévenir Jira » poste sur le ticket (vide = le message livré, dans la langue de l'interface).
 try { db.exec("ALTER TABLE config ADD COLUMN jira_notify_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+/* PRÉVENIR JIRA À LA FUSION : la case (politique d'équipe, décochée par défaut — écrire sur le
+   ticket se décide) et le gabarit du commentaire (vide = le message livré, dans la langue de
+   l'interface). Le marqueur `mr.jira_merge_notified_at` garantit UN commentaire par merge request,
+   quel que soit le chemin qui a vu le merge (découverte, « Mettre à jour depuis la forge »). */
+try { db.exec('ALTER TABLE config ADD COLUMN jira_notify_merge INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+try { db.exec("ALTER TABLE config ADD COLUMN jira_merge_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN jira_merge_notified_at TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE mr ADD COLUMN jira_merge_key TEXT'); } catch { /* déjà présente */ }
+/* UN TICKET, UN COMMENTAIRE : cinq merge requests d'un même ticket ne lui écrivent pas cinq fois.
+   Le commentaire posté à la première fusion est RÉÉCRIT à chaque suivante avec la liste complète ;
+   on retient donc son id par clé de ticket. Une ligne par ticket, de poste (Jira ne se consulte pas
+   par la synchro). */
+db.exec(`CREATE TABLE IF NOT EXISTS jira_merge_comment (
+  cle TEXT PRIMARY KEY,
+  comment_id TEXT NOT NULL,
+  updated_at TEXT
+)`);
 /* L'amorçage des commandes git a déménagé À LA FIN de ce fichier : son drapeau
    (`git_commands_seeded`) est devenu une donnée de POSTE, et il faut donc que `local_config`
    existe et soit remplie avant de le lire. Lu ici, il aurait valu 0 sur une installation qui

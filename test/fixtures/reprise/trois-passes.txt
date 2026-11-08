@@ -1,0 +1,38 @@
+Reprise de la session de Claire (#123) — groupe/tarification, branche feature/tva.
+Dernier commit connu par la session : a1b2c3d (passe 3, il y a 3 j — 2026-11-04). Tête sur la forge : a1b2c3d.
+
+=== Prompt d'origine ===
+Applique le taux réduit de TVA aux abonnements annuels.
+
+=== Passe 1 · exécution ===
+Tu es un développeur…
+
+Applique le taux réduit de TVA aux abonnements annuels.
+--- retour ---
+J’ai ajouté `tauxReduit()` dans src/tva/taux.js et un test.
+
+=== Passe 2 · suivi ===
+Le taux doit venir de la configuration, pas d’une constante.
+--- retour ---
+Fait : `config.tva.reduit`, avec un défaut à 5,5 %.
+
+=== Passe 3 · réponse ===
+Réponses : la facture mensuelle reste au taux plein.
+--- retour ---
+J’ai limité le taux réduit aux abonnements annuels ; les tests passent.
+
+=== Questions posées et réponses ===
+Q : Le taux réduit s’applique-t-il aussi aux factures mensuelles ?
+   (Le code actuel ne distingue pas.)
+R : Non, annuel seulement.
+
+Q : Faut-il migrer les factures déjà émises ?
+R : (sans réponse)
+
+=== Dernier rapport de review lié (!214, v2, 7,8/10) ===
+# Review
+
+🟠 Le taux est lu à chaque appel.
+
+=== Consigne de reprise ===
+Termine : migre les factures émises depuis le 1er janvier.

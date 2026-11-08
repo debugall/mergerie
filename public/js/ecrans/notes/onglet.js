@@ -20,7 +20,7 @@ const NOTES = {
   affichees: [],        // la liste RÉELLEMENT à l'écran (le filtre courant), pour l'édition
 };
 
-const NOTES_SUBS = { today: 'notesSubToday', todos: 'notesSubTodos', pages: 'notesSubPages' };
+const NOTES_SUBS = { today: 'notesSubToday', todos: 'notesSubTodos', pages: 'notesSubPages', periode: 'notesSubPeriode' };
 
 function showNotesSub(sub) {
   NOTES.sub = NOTES_SUBS[sub] ? sub : 'today';
@@ -31,6 +31,7 @@ function showNotesSub(sub) {
   if (NOTES.sub === 'today') loadBrief();
   if (NOTES.sub === 'todos') loadTodos();
   if (NOTES.sub === 'pages') loadPages();
+  if (NOTES.sub === 'periode') loadPeriode();
 }
 $$('#tab-notes .subnav button').forEach((b) => b.addEventListener('click', () => showNotesSub(b.dataset.nsub)));
 

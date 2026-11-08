@@ -94,7 +94,7 @@ describe('Menu Agents : l’éditeur d’agent', { skip: dispo ? false : MSG_NAV
 
     await page.locator(`#agentRepos .ag-repo[value="${idApp}"]`).click();
     await page.locator('#agentRepoFilter').fill('autre');
-    await page.waitForFunction((id) => document.querySelector(`#agentRepos .ag-repo[value="${id}"]`).closest('label').hidden, idApp);
+    await page.waitForFunction((id) => document.querySelector(`#agentRepos .ag-repo[value="${id}"]`).closest('.agent-repo-row').hidden, idApp);
     assert.equal(await page.locator(`#agentRepos .ag-repo[value="${idApp}"]`).isChecked(), true,
       'filtrer masque la ligne, sans la décocher');
     await page.locator('#agentRepoFilter').fill('zzz-aucun');
@@ -212,7 +212,14 @@ describe('Menu Agents : l’éditeur d’agent', { skip: dispo ? false : MSG_NAV
     await page.locator('#agentForm input[name="scope_kind"][value="repos"]').click();
     await page.waitForSelector('#agentReposBox', { state: 'visible' });
     await page.locator(`#agentRepos .ag-repo[value="${idAutre}"]`).click();
-    await page.locator(`#agentRepos .ag-repo[value="${idAutre}"]`).locator('xpath=..').locator('.ag-role').selectOption('target');
+    await page.locator(`#agentRepos .ag-repo[value="${idAutre}"]`).locator('xpath=ancestor::div[contains(@class,"agent-repo-row")]').locator('.ag-role').selectOption('target');
+    // La branche se choisit dans un combo à recherche, alimenté par les refs du dépôt.
+    await page.route('**/api/git/refs?*', (r) => r.fulfill({ json: { refs: [{ name: 'main', default: true }, { name: 'release/2.1' }, { name: 'feat/x' }] } }));
+    const ligne = page.locator(`#agentRepos .agent-repo-row[data-repo="${idAutre}"]`);
+    await ligne.locator('.cb-search').click();
+    await ligne.locator('.cb-search').fill('release');
+    await page.locator('.combo-options:not([hidden]) .combo-opt[data-l="release/2.1"]').click();
+    await page.waitForFunction((id) => document.querySelector(`#agentRepos .agent-repo-row[data-repo="${id}"] .ag-branch`).value === 'release/2.1', idAutre);
     await page.locator('#agentSystemPrompt').fill('Tu es rigoureux.');
     await page.locator('#agentTemplate').fill('Fais : {question}');
     await page.locator('#agentModel').fill('sonnet');
@@ -246,7 +253,7 @@ describe('Menu Agents : l’éditeur d’agent', { skip: dispo ? false : MSG_NAV
     assert.equal(a.description, 'Tout est réglé.');
     assert.equal(a.kind, 'code');
     assert.equal(a.scope_kind, 'repos');
-    assert.deepEqual(a.repos.map((r) => [r.repo_id, r.role]), [[idAutre, 'target']]);
+    assert.deepEqual(a.repos.map((r) => [r.repo_id, r.role, r.branch]), [[idAutre, 'target', 'release/2.1']]);
     assert.equal(a.system_prompt, 'Tu es rigoureux.');
     assert.equal(a.prompt_template, 'Fais : {question}');
     assert.equal(a.model, 'sonnet');
@@ -282,7 +289,8 @@ describe('Menu Agents : l’éditeur d’agent', { skip: dispo ? false : MSG_NAV
     assert.equal(await page.locator('#agentForm input[name="scope_kind"][value="repos"]').isChecked(), true);
     assert.equal(await page.locator(`#agentRepos .ag-repo[value="${idAutre}"]`).isChecked(), true);
     assert.equal(await page.locator(`#agentRepos .ag-repo[value="${idApp}"]`).isChecked(), false);
-    assert.equal(await page.locator(`#agentRepos .ag-repo[value="${idAutre}"]`).locator('xpath=..').locator('.ag-role').inputValue(), 'target');
+    assert.equal(await page.locator(`#agentRepos .ag-repo[value="${idAutre}"]`).locator('xpath=ancestor::div[contains(@class,"agent-repo-row")]').locator('.ag-role').inputValue(), 'target');
+    assert.equal(await page.locator(`#agentRepos .agent-repo-row[data-repo="${idAutre}"] .ag-branch`).inputValue(), 'release/2.1', 'la branche choisie est relue à la réouverture');
     assert.equal(await page.locator('#agentSystemPrompt').inputValue(), 'Tu es rigoureux.');
     assert.equal(await page.locator('#agentTemplate').inputValue(), 'Fais : {question}');
     assert.equal(await page.locator('#agentModel').inputValue(), 'sonnet');

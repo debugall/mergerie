@@ -252,7 +252,9 @@ const SESSION_SELECTEUR = {
   local: (id) => `#localList .card[data-local="${id}"]`,
   ask: (id) => `#askList .card[data-ask="${id}"]`,
 };
-async function ouvrirSession(id, kind = 'code', { vivant = () => true } = {}) {
+/* `depuis` : d'où l'on vient quand c'est une merge request ({ mr: '!12', project, branch }) — le
+   bandeau d'atterrissage le dit. */
+async function ouvrirSession(id, kind = 'code', { vivant = () => true, depuis = null } = {}) {
   const saveur = ['explore', 'local', 'ask'].includes(kind) ? kind : 'code';
   navTab('task');
   const sous = $(`#tab-task .subnav [data-kind="${saveur}"]`);
@@ -260,13 +262,40 @@ async function ouvrirSession(id, kind = 'code', { vivant = () => true } = {}) {
   await loadTasks();
   if (!vivant()) return;                 // l'utilisateur a repris la main pendant le chargement
   const sel = (SESSION_SELECTEUR[saveur] || ((x) => `#taskList .task-row[data-task="${x}"]`))(Number(id) || 0);
-  const carte = $(sel);
+  let carte = $(sel);
+  // Rangée, ou cachée par un filtre : on la révèle plutôt que de ne mener nulle part.
+  let revelee = false;
+  if (!carte && saveur !== 'local' && saveur !== 'ask' && revelerSession(Number(id))) { carte = $(sel); revelee = !!carte; }
   if (!carte) return;
   // L'adresse est posée une fois qu'on a VRAIMENT atterri : une adresse vers une session
   // introuvable ne ramènerait nulle part au rechargement.
   poserAdresse(`#/sessions/${saveur}/${id}`);
+  poserAtterrissage(carte, { id: Number(id), depuis, revelee });
   carte.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  carte.classList.add('just-landed');
-  carte.addEventListener('animationend', () => carte.classList.remove('just-landed'), { once: true });
+  // Le balayage part quand le défilement est FINI : lancé avec lui, il était terminé avant que
+  // la carte entre dans l'écran.
+  await apresDefilement(carte);
+  const c = $(sel);        // la liste a pu se redessiner pendant le défilement
+  if (!c) return;
+  c.classList.add('just-landed');
+  c.addEventListener('animationend', () => c.classList.remove('just-landed'), { once: true });
+}
+
+/* Résolu quand la position de l'élément n'a plus bougé sur trois images — ou au bout de 1,5 s,
+   un défilement lissé ne dure jamais plus. Un élément redessiné entre-temps résout aussitôt. */
+function apresDefilement(el) {
+  return new Promise((resolve) => {
+    const debut = performance.now();
+    let dernier = null; let stables = 0;
+    const pas = () => {
+      if (!el.isConnected || performance.now() - debut > 1500) { resolve(); return; }
+      const top = Math.round(el.getBoundingClientRect().top);
+      stables = top === dernier ? stables + 1 : 0;
+      dernier = top;
+      if (stables >= 2) { resolve(); return; }
+      requestAnimationFrame(pas);
+    };
+    requestAnimationFrame(pas);
+  });
 }
 

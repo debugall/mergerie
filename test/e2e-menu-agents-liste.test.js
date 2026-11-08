@@ -386,7 +386,7 @@ describe('Menu Agents : la liste, les cartes et les skills', { skip: dispo ? fal
     await page.waitForFunction(() => document.querySelectorAll('#domainRepos .dom-repo').length === 3);
     await page.locator(`#domainRepos .dom-repo[value="${idDocs}"]`).click();
     await page.locator('#domainRepoFilter').fill('reel');
-    await page.waitForFunction((id) => document.querySelector(`#domainRepos .dom-repo[value="${id}"]`).closest('label').hidden, idDocs);
+    await page.waitForFunction((id) => document.querySelector(`#domainRepos .dom-repo[value="${id}"]`).closest('.agent-repo-row').hidden, idDocs);
     assert.equal(await page.locator(`#domainRepos .dom-repo[value="${idDocs}"]`).isChecked(), true);
     await page.locator('#domainRepoFilter').fill('zzz');
     await page.waitForSelector('#domainRepos [data-no-match]:not([hidden])');

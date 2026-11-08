@@ -10,6 +10,9 @@
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
             <span id="taskKindHint" class="muted"></span>
         </div>
+        <!-- ON EST ARRIVÉ ICI DEPUIS AILLEURS : laquelle des cartes, et d'où. Rempli par
+             `atterrissage.js`, vide sinon. -->
+        <div id="taskLanded" class="task-landed" role="status" hidden></div>
         <div class="task-filters">
             <input id="taskSearch" class="search" type="search" placeholder="Rechercher (prompt, projet, branche, dossier)…" data-i18n-placeholder="task.search.ph" aria-label="Rechercher une session" data-i18n-aria="task.search.aria" />
             <div id="taskAgentFilterBox"></div>

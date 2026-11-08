@@ -142,8 +142,13 @@ app.post('/api/agents/domain', wrap((req, res) => {
      `all_repos` et le reste — on ne modifie pas un profil livré pour un lancement. C'est
      `ciblesDe` qui applique la restriction, une fois, pour tous les appelants : la
      cartographie comme les mises à jour de connaissance qui la relanceront. */
+  /* `repos: [{ repo_id, branch }]` porte aussi la branche ; `repo_ids` reste accepté. */
+  const corps = req.body || {};
+  const choisis = Array.isArray(corps.repos) ? corps.repos : [];
+  const repoIds = choisis.length ? choisis.map((r) => r.repo_id) : corps.repo_ids;
+  const branches = Object.fromEntries(choisis.filter((r) => r.branch).map((r) => [Number(r.repo_id), String(r.branch)]));
   res.json(agentprofile.lancer(carto, {
-    mode: 'ask', question: subject, repoIds: (req.body || {}).repo_ids, triggeredBy: 'manual',
+    mode: 'ask', question: subject, repoIds, branches, triggeredBy: 'manual',
   }));
 }));
 /* Déclencher un tick d'horaire à la main. Attendre la minute dans un test serait un pari sur

@@ -17,6 +17,7 @@ const agentsession = require('../../agent/session');
 const agentpass = require('../../agent/pass');
 const localsnapshot = require('../../session/localsnapshot');
 const localcoder = require('../../session/localcoder');
+const localgit = require('../../session/localgit');
 const pieces = require('../../agent/pieces');
 const path = require('path');
 const fs = require('fs');
@@ -25,6 +26,26 @@ const { auteurs, basculerPartage, exigerProprietaire, passesPayload, programmati
 const { piecesExposees, savePiecesEtImages } = require('../lib/pieces');
 const { applySessionId, chapeauReponse, coutParSession, diffDePasse, dureeParSession, envoyerSuivi, lireCliSession, lireLibelle, localDirsFor, localTaskById, normalizeDirIds, normalizeSessionId, poserSuivi } = require('../lib/sessions');
 const { viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
+
+
+/* Les choix GIT d'une session hors dépôt, lus du corps. Un nom de branche vide = pas de git du tout :
+   les autres cases n'ont alors rien à dire, on les ramène à zéro plutôt que de les garder armées. */
+function lireGit(body, actuel = null) {
+  const b = body || {};
+  const branch = b.branch !== undefined ? String(b.branch || '').trim() : (actuel ? actuel.branch || '' : '');
+  if (branch && !localgit.brancheValide(branch)) throw new Error(t('err.local.branch-invalid', { branch }));
+  const pris = (k) => (b[k] !== undefined ? !!b[k] : !!(actuel && actuel[k]));
+  const converge = !!branch && pris('converge_after');
+  const mr = !!branch && (pris('create_mr') || converge);   // converger passe par la MR
+  return {
+    branch: branch || null,
+    commit_message: b.commit_message !== undefined ? (String(b.commit_message || '').trim() || null)
+      : (actuel ? actuel.commit_message || null : null),
+    auto_push: branch && (pris('auto_push') || mr) ? 1 : 0,   // la MR lit la forge : il faut pousser
+    create_mr: mr ? 1 : 0,
+    converge_after: converge ? 1 : 0,
+  };
+}
 
 app.get('/api/local-tasks', wrap((req, res) => {
   // Même tri que les sessions de codage : d'abord ce qui tourne, puis ce qui vient de finir.
@@ -66,10 +87,13 @@ app.post('/api/local-tasks', wrap((req, res) => {
   const list = (Array.isArray(dirs) ? dirs : []).map((d) => String(d || '').trim()).filter(Boolean);
   if (!list.length) throw new Error(t('err.local-dirs-required'));
   const now = new Date().toISOString();
-  const id = db.prepare(`INSERT INTO local_task (prompt, label, ask_questions, shared, cli_id, cli_name, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?)`)
+  const g = lireGit(req.body);
+  const id = db.prepare(`INSERT INTO local_task (prompt, label, ask_questions, shared, cli_id, cli_name, status,
+      branch, commit_message, auto_push, create_mr, converge_after, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?)`)
     .run(prompt.trim(), lireLibelle(label), ask_questions ? 1 : 0,
-      req.body && req.body.shared ? 1 : 0, cliChoisi.cliId || null, cliChoisi.cliName || null, now, now).lastInsertRowid;
+      req.body && req.body.shared ? 1 : 0, cliChoisi.cliId || null, cliChoisi.cliName || null,
+      g.branch, g.commit_message, g.auto_push, g.create_mr, g.converge_after, now, now).lastInsertRowid;
   // Même principe que pour les sessions sur dépôt : la session fournie est rangée comme
   // si la première passe l'avait créée, `localcoder` la reprend alors sans rien savoir.
   /* `path` reste à la chaîne vide : la colonne est `NOT NULL` depuis l'origine, et elle est
@@ -126,12 +150,15 @@ app.put('/api/local-tasks/:id', wrap((req, res) => {
     }
   }
   if (prompt != null && !String(prompt).trim()) throw new Error(t('err.prompt-requis'));
-  db.prepare('UPDATE local_task SET prompt = ?, label = ?, ask_questions = ?, cli_id = ?, cli_name = ?, updated_at = ? WHERE id = ?')
+  const g = lireGit(req.body, lt);
+  db.prepare(`UPDATE local_task SET prompt = ?, label = ?, ask_questions = ?, cli_id = ?, cli_name = ?,
+      branch = ?, commit_message = ?, auto_push = ?, create_mr = ?, converge_after = ?, updated_at = ? WHERE id = ?`)
     .run(prompt != null ? String(prompt).trim() : lt.prompt,
       label === undefined ? lt.label : lireLibelle(label),
       // Absent du body → on garde la valeur actuelle, comme pour les sessions sur dépôt.
       ask_questions == null ? lt.ask_questions : (ask_questions ? 1 : 0),
       cliEdit.cliId || null, cliEdit.cliName || null,
+      g.branch, g.commit_message, g.auto_push, g.create_mr, g.converge_after,
       new Date().toISOString(), lt.id);
   savePiecesEtImages('local', lt.id, req.body || {});
   applySessionId('local_task_dir', 'task_id', lt.id, sessionId, localDirsFor(lt.id));

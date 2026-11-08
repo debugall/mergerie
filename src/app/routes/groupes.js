@@ -9,6 +9,7 @@ const store = require('../../data/store');
 const groupes = require('../../data/groupes');
 const { t } = require('../../core/i18n');
 const { repoById, wrap } = require('../http');
+const testsTouches = require('../../review/tests-touches');
 
 function lireGroupe(body, courant) {
   const b = body || {};
@@ -24,6 +25,12 @@ function lireGroupe(body, courant) {
     name, description: texte('description', 500),
     prompt_review: texte('prompt_review', 20000), prompt_modify: texte('prompt_modify', 20000),
     prompt_fix: texte('prompt_fix', 20000), ai_extra_instructions: texte('ai_extra_instructions', 5000),
+    // Les motifs des tests touchés : un glob par ligne, refusé avec sa ligne s'il est invalide.
+    test_patterns: testsTouches.normaliserMotifs(texte('test_patterns', 20000)),
+    neutral_patterns: testsTouches.normaliserMotifs(texte('neutral_patterns', 20000)),
+    manifest_patterns: testsTouches.normaliserMotifs(texte('manifest_patterns', 20000)),
+    // Les motifs de paquets privés (contrôle au registre) : un glob de NOM de paquet par ligne.
+    private_patterns: testsTouches.normaliserMotifs(texte('private_patterns', 20000)),
     repos,
   };
 }
@@ -45,8 +52,8 @@ app.post('/api/repo-groups', wrap((req, res) => {
   const g = lireGroupe(req.body, null);
   if (db.prepare('SELECT 1 FROM repo_group WHERE name = ?').get(g.name)) throw new Error(t('err.group.name-taken', { name: g.name }));
   const cree = store.ecrire('repo_group', () => {
-    const id = db.prepare(`INSERT INTO repo_group (name, description, prompt_review, prompt_modify, prompt_fix, ai_extra_instructions, created_at)
-      VALUES (?,?,?,?,?,?,?)`).run(g.name, g.description, g.prompt_review, g.prompt_modify, g.prompt_fix, g.ai_extra_instructions, new Date().toISOString()).lastInsertRowid;
+    const id = db.prepare(`INSERT INTO repo_group (name, description, prompt_review, prompt_modify, prompt_fix, ai_extra_instructions, test_patterns, neutral_patterns, manifest_patterns, private_patterns, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(g.name, g.description, g.prompt_review, g.prompt_modify, g.prompt_fix, g.ai_extra_instructions, g.test_patterns, g.neutral_patterns, g.manifest_patterns, g.private_patterns, new Date().toISOString()).lastInsertRowid;
     ecrireMembres(id, g.repos || []);
     return id;
   });
@@ -58,8 +65,8 @@ app.put('/api/repo-groups/:id', wrap((req, res) => {
   const g = lireGroupe(req.body, cur);
   if (db.prepare('SELECT 1 FROM repo_group WHERE name = ? AND id <> ?').get(g.name, cur.id)) throw new Error(t('err.group.name-taken', { name: g.name }));
   store.ecrire('repo_group', () => {
-    db.prepare(`UPDATE repo_group SET name = ?, description = ?, prompt_review = ?, prompt_modify = ?, prompt_fix = ?, ai_extra_instructions = ? WHERE id = ?`)
-      .run(g.name, g.description, g.prompt_review, g.prompt_modify, g.prompt_fix, g.ai_extra_instructions, cur.id);
+    db.prepare(`UPDATE repo_group SET name = ?, description = ?, prompt_review = ?, prompt_modify = ?, prompt_fix = ?, ai_extra_instructions = ?, test_patterns = ?, neutral_patterns = ?, manifest_patterns = ?, private_patterns = ? WHERE id = ?`)
+      .run(g.name, g.description, g.prompt_review, g.prompt_modify, g.prompt_fix, g.ai_extra_instructions, g.test_patterns, g.neutral_patterns, g.manifest_patterns, g.private_patterns, cur.id);
     ecrireMembres(cur.id, g.repos);
     return cur.id;
   });

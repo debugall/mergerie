@@ -54,4 +54,25 @@ function matchingPaths(field, paths) {
   });
 }
 
-module.exports = { globToRegex, splitPatterns, pathMatches, matchingPaths };
+/* UNE LISTE DE MOTIFS, UN PAR LIGNE, validée À L'ENREGISTREMENT avec sa ligne — pas découverte à
+   l'affichage (les tests touchés : `config.test_patterns`, `repo_group.*`, `repo.*`). Refusé : une
+   ligne qui contient un espace (deux motifs collés), une accolade ou un crochet (lus ici comme des
+   caractères, pas comme des alternatives), une négation, et plus de `max` lignes — au-delà, c'est
+   une configuration à ranger dans un groupe. Rend le texte normalisé (une ligne par motif). */
+const MAX_MOTIFS = 100;
+function normaliserMotifs(texte, { max = MAX_MOTIFS } = {}) {
+  const { t } = require('./i18n');
+  const brutes = String(texte || '').split('\n');
+  const out = [];
+  for (let i = 0; i < brutes.length; i += 1) {
+    const l = brutes[i].trim();
+    if (!l) continue;
+    if (/\s/.test(l) || /[{}[\]]/.test(l) || l.startsWith('!')) throw new Error(t('err.patterns.invalid', { line: i + 1, pattern: l.slice(0, 60) }));
+    try { globToRegex(l); } catch { throw new Error(t('err.patterns.invalid', { line: i + 1, pattern: l.slice(0, 60) })); }
+    out.push(l);
+  }
+  if (out.length > max) throw new Error(t('err.patterns.too-many', { max, n: out.length }));
+  return out.join('\n');
+}
+
+module.exports = { globToRegex, splitPatterns, pathMatches, matchingPaths, normaliserMotifs, MAX_MOTIFS };

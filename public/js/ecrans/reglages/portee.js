@@ -72,6 +72,7 @@ async function loadConfig() {
   }
   // Le message de Jira qui partira si l'on ne touche à rien : montré tel quel, pas deviné.
   if (f.jira_notify_template) f.jira_notify_template.placeholder = tr('jira.notify.body', { iid: 214, project: 'groupe/projet', url: 'https://…/merge_requests/214' });
+  if (f.jira_merge_template) f.jira_merge_template.placeholder = tr('jira.merged.body', { iid: 214, project: 'groupe/projet', url: 'https://…/merge_requests/214' });
   majApercuJira();
   /* La ligne « publier le lien » n'a de sens qu'avec un dépôt de données : on retient ici ce
      que le serveur vient de dire, `syncAutoPostBlocking` s'en sert à chaque changement. */
@@ -92,17 +93,46 @@ async function loadConfig() {
   // tant qu'on n'y a pas touché.
   /* `String(...)` : ces colonnes-là sont des INTEGER, SQLite rend donc 1 et non '1'. Comparer
      strictement laissait la case décochée au rechargement — voir `defautsSession`. */
-  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment', 'clone_blobless']) {
+  for (const k of ['task_default_auto_push', 'task_default_ask_questions', 'task_default_notify_jira', 'task_default_converge', 'verify_jira_comment', 'jira_notify_merge', 'clone_blobless']) {
     if (f[k]) f[k].checked = String(c[k]) === '1';
   }
   if (f.stale_mr_days) f.stale_mr_days.value = Number(c.stale_mr_days) || 5;
+  // Période : le seuil s'écrit (0 est une valeur, « jamais »), les deux cases sont cochées d'office.
+  if (f.periode_banner_days) f.periode_banner_days.value = c.periode_banner_days == null || c.periode_banner_days === '' ? 3 : Number(c.periode_banner_days);
+  if (f.periode_hide_bots) f.periode_hide_bots.checked = c.periode_hide_bots !== '0';
+  if (f.periode_watch_protected) f.periode_watch_protected.checked = c.periode_watch_protected !== '0';
   // Partager sa dépense : DÉCOCHÉ par défaut, donc `=== '1'`, comme les autres réglages prudents.
   if (f.usage_share) f.usage_share.checked = c.usage_share === '1';
+  // La page Équipe : les deux seuils s'écrivent (0 est une valeur).
+  if (f.team_quiet_days) f.team_quiet_days.value = c.team_quiet_days == null || c.team_quiet_days === '' ? 2 : Number(c.team_quiet_days);
+  if (f.team_takeover_days) f.team_takeover_days.value = c.team_takeover_days == null || c.team_takeover_days === '' ? 7 : Number(c.team_takeover_days);
   /* C15 — LE DÉFAUT EFFECTIF S'ÉCRIT, il ne se devine pas dans un `placeholder`. Un champ vide
      avec « 5 » en gris se lit « rien n'est réglé », alors que 5 EST la valeur appliquée : on
      ne sait pas si l'on regarde un réglage ou une suggestion. `retention_days` et
      `stale_mr_days` le faisaient déjà ; le plafond de vérification automatique non. */
   if (f.verif_auto_max) f.verif_auto_max.value = Number(c.verif_auto_max) || 5;
+  // Les croisements : l'interrupteur est coché d'office, le plafond s'écrit (0 est une valeur), le croisement entre cibles est décoché d'office.
+  if (f.mr_files_enabled) f.mr_files_enabled.checked = String(c.mr_files_enabled) !== '0';
+  if (f.mr_files_cross_targets) f.mr_files_cross_targets.checked = String(c.mr_files_cross_targets) === '1';
+  if (f.mr_files_max) f.mr_files_max.value = c.mr_files_max == null || c.mr_files_max === '' ? 20 : Number(c.mr_files_max);
+  // Les MR empilées : coché d'office, sous le même plafond que les fichiers.
+  if (f.mr_commits_enabled) f.mr_commits_enabled.checked = String(c.mr_commits_enabled) !== '0';
+  // Les tests touchés : coché d'office, le seuil s'écrit, les motifs vides laissent les défauts livrés (montrés en invite).
+  if (f.tests_touched_enabled) f.tests_touched_enabled.checked = String(c.tests_touched_enabled) !== '0';
+  if (f.tests_touched_min_code) f.tests_touched_min_code.value = c.tests_touched_min_code == null || c.tests_touched_min_code === '' ? 3 : Number(c.tests_touched_min_code);
+  if (f.test_patterns) f.test_patterns.value = c.test_patterns || '';
+  if (f.neutral_patterns) f.neutral_patterns.value = c.neutral_patterns || '';
+  if (f.manifest_patterns) f.manifest_patterns.value = c.manifest_patterns || '';
+  /* Les dépendances : coché d'office, comme côté serveur. Sans cette ligne, la case se relisait décochée
+     quelle que soit la valeur — et « Enregistrer » depuis n'importe quel sous-onglet écrivait '0'. */
+  if (f.deps_enabled) f.deps_enabled.checked = String(c.deps_enabled) !== '0';
+  // Le contrôle au registre : DÉCOCHÉ d'office (`=== '1'`), le seuil et le plafond s'écrivent (0 est une valeur), les motifs privés vides, les URL de ce poste.
+  if (f.registry_enabled) f.registry_enabled.checked = String(c.registry_enabled) === '1';
+  if (f.registry_recent_days) f.registry_recent_days.value = c.registry_recent_days == null || c.registry_recent_days === '' ? 30 : Number(c.registry_recent_days);
+  if (f.registry_max) f.registry_max.value = c.registry_max == null || c.registry_max === '' ? 30 : Number(c.registry_max);
+  if (f.private_patterns) f.private_patterns.value = c.private_patterns || '';
+  if (f.registry_urls) f.registry_urls.value = c.registry_urls || '';
+  majMotifsTests();
   syncReviewAutoMax();
   syncAutoPostBlocking();
   convDefauts = { seuil: c.converge_threshold || '8', passes: c.converge_max_passes || '3' };

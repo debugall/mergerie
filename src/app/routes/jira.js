@@ -19,7 +19,7 @@ const tasks = require('../../agent/tasks');
 const { servirFichierNonFiable } = require('../fichiers');
 const { mrById, wrap } = require('../http');
 const { exigerJetonFrais, noterTest } = require('../lib/connexions');
-const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, statutsParProjet, watchRows } = require('../lib/jira');
+const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, teamFieldId, statutsDesProjets, personnesAssignables, watchRows } = require('../lib/jira');
 const { targetById } = require('../lib/sessions');
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -46,24 +46,16 @@ app.get('/api/jira/assignees', wrap(async (req, res) => {
   if (demoMode.isDemo()) return res.json({ configured: true, ...demoJira.assignees() });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, me: null, people: [] });
-  res.json({ configured: true, ...(await jira.listAssignees(cfg)) });
+  // Les projets cochés dans le filtre : les assignables de CES projets, en plus des assignés récents.
+  const projects = String(req.query.projects || '').split(',').map((s) => s.trim()).filter(Boolean);
+  res.json({ configured: true, ...(await personnesAssignables(cfg, projects)) });
 }));
 app.get('/api/jira/statuses', wrap(async (req, res) => {
   const cles = [...new Set(String(req.query.projects || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 20);
   if (demoMode.isDemo()) return res.json({ configured: true, statuses: demoJira.projectStatuses(cles) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, statuses: [] });
-  const par = new Map();
-  for (const cle of cles) {
-    if (!statutsParProjet.has(cle)) {
-      /* Un projet inaccessible ne doit pas priver le filtre des statuts des autres. L'échec
-         n'est PAS mémorisé : une panne passagère aurait vidé ce filtre jusqu'au redémarrage. */
-      try { statutsParProjet.set(cle, await jira.projectStatuses(cfg, cle)); }
-      catch { /* on retentera au prochain chargement */ }
-    }
-    for (const st of statutsParProjet.get(cle) || []) if (!par.has(st.name)) par.set(st.name, st);
-  }
-  res.json({ configured: true, statuses: [...par.values()] });
+  res.json({ configured: true, statuses: await statutsDesProjets(cfg, cles) });
 }));
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -76,9 +68,13 @@ app.get('/api/jira/tickets', wrap(async (req, res) => {
   if (demoMode.isDemo()) return res.json({ configured: true, ...demoJira.tickets(accountIds, req.query.includeDone === '1', projects, sprints, hideStatuses) });
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, issues: [], total: 0 });
+  /* `max` : combien de tickets lire au plus (une page Jira = cent). La liste veut tout (jusqu'au
+     plafond) ; l'échantillon qui alimente les valeurs des filtres de Stats se contente d'une page —
+     chaque page est un appel Jira, et on ne les dépense pas pour des cases à cocher. */
+  const max = Math.min(jira.PLAFOND_PAGES, Math.max(1, parseInt(req.query.max, 10) || jira.PLAFOND_PAGES));
   res.json({ configured: true, ...(await jira.searchByAssignees(cfg, {
-    accountIds, includeDone: req.query.includeDone === '1', projects, sprints, hideStatuses,
-    sprintField: await sprintFieldId(cfg),
+    accountIds, includeDone: req.query.includeDone === '1', projects, sprints, hideStatuses, max,
+    sprintField: await sprintFieldId(cfg), teamField: await teamFieldId(cfg),
   })) });
 }));
 // Détail d'un ticket Jira : métadonnées + description + commentaires + pièces jointes.

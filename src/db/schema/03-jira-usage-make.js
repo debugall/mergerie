@@ -96,6 +96,10 @@ try { db.exec('ALTER TABLE ticket_spec ADD COLUMN pending_instruction TEXT'); } 
 /* La branche à lire pour chaque dépôt choisi : { "<id du dépôt>": "release/2.4" }. Absente d'un dépôt, c'est sa branche par défaut. Partagée : c'est un choix
    d'analyse, comme les dépôts eux-mêmes. */
 try { db.exec("ALTER TABLE ticket_spec ADD COLUMN branches_json TEXT DEFAULT '{}'"); } catch { /* déjà présente */ }
+/* MASQUÉ de l'onglet « Analysés » (ticket implémenté, plus rien à en faire) : la liste ne s'allonge pas à
+   l'infini, et une case la réaffiche. Un DRAPEAU de poste, pas un état : la spec reste ce qu'elle est,
+   et ce que je range n'a pas à disparaître chez les collègues. */
+try { db.exec('ALTER TABLE ticket_spec ADD COLUMN hidden_at TEXT'); } catch { /* déjà présente */ }
 db.exec(`CREATE TABLE IF NOT EXISTS ticket_spec_version (
   id INTEGER PRIMARY KEY,
   spec_id INTEGER NOT NULL REFERENCES ticket_spec(id) ON DELETE CASCADE,

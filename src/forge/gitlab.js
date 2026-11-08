@@ -126,6 +126,11 @@ async function listOpenMRs(cfg, project, pattern) {
         || (typeof m.title === 'string' && /^\s*(draft|wip)\s*:/i.test(m.title)),
       reviewers: Array.isArray(m.reviewers)
         ? m.reviewers.map((r) => (r && (r.username || r.name)) || '').filter(Boolean) : [],
+      /* ASSIGNÉS et POUCES LEVÉS : la forge sait déjà qui porte la merge request et combien
+         de collègues l'ont approuvée d'un 👍 — la liste les donne, on les jetait. */
+      assignees: Array.isArray(m.assignees)
+        ? m.assignees.map((r) => (r && (r.username || r.name)) || '').filter(Boolean) : [],
+      upvotes: Number.isInteger(m.upvotes) && m.upvotes > 0 ? m.upvotes : 0,
       /* QUI, par son identifiant — le nom affiché se change en deux clics —, et D'OÙ : une
          merge request venue d'un fork porte le code de quelqu'un qui n'a pas accès au projet.
          La vérification automatique s'en sert pour ne pas l'exécuter. */
@@ -283,7 +288,38 @@ async function getMergeRequest(cfg, project, iid) {
   /* `include_diverged_commits_count` : le RETARD de la branche sur sa cible vient avec le détail,
      au même prix — GitLab le calcule à la demande et le rend en `diverged_commits_count`. */
   const m = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}?include_diverged_commits_count=true`);
-  return m && typeof m === 'object' ? { ...m, has_conflicts: conflitsDe(m), behind_by: retardDe(m) } : m;
+  return m && typeof m === 'object' ? { ...m, has_conflicts: conflitsDe(m), behind_by: retardDe(m), ...shasDe(m) } : m;
+}
+
+/* LES QUATRE SHA D'UNE MERGE REQUEST, sous les mêmes noms que GitHub. `base_sha` est le
+   merge-base AU MOMENT de la merge request (`diff_refs`) : c'est lui qui permet de relire
+   une MR déjà mergée — `target...head` est vide par construction une fois `head` dans
+   `target`, et `base_sha..head_sha` ne dépend pas de la stratégie de merge. Les deux SHA
+   de merge servent au rattrapage d'une période à exclure ce qui est passé par une MR. */
+function shasDe(m) {
+  const refs = m.diff_refs || {};
+  return {
+    head_sha: m.sha || refs.head_sha || null,
+    base_sha: refs.base_sha || null,
+    merge_commit_sha: m.merge_commit_sha || null,
+    squash_commit_sha: m.squash_commit_sha || null,
+    closed_at: m.closed_at || null,
+    updated_at: m.updated_at || null,
+  };
+}
+
+/* La ref que GitLab conserve pour chaque merge request, même après le merge et la
+   suppression de la branche : c'est par elle qu'une MR mergée se relit. Pure. */
+function mrHeadRef(iid) { return `refs/merge-requests/${iid}/head`; }
+
+/* QUELLES MERGE REQUESTS CONTIENNENT CE COMMIT. Dernier recours du rattrapage d'une période :
+   un commit qu'aucun SHA ni aucun patch-id connu n'explique. Rend les iid des MR mergées. */
+async function mergeRequestsOfCommit(cfg, project, sha) {
+  const enc = encodeProject(project);
+  const items = await gitlabFetch(cfg, `/projects/${enc}/repository/commits/${encodeURIComponent(sha)}/merge_requests`);
+  return (Array.isArray(items) ? items : [])
+    .filter((m) => m && m.state === 'merged')
+    .map((m) => ({ iid: m.iid, merged_at: m.merged_at || null, target_branch: m.target_branch || null }));
 }
 
 /* LE RETARD SUR LA CIBLE, normalisé comme le conflit : un entier (0 = à jour), ou `null` quand la
@@ -441,6 +477,42 @@ async function listBranchesFull(cfg, project) {
   }));
 }
 
+/* LE PIPELINE D'UNE BRANCHE — pas d'une merge request : le dernier lancé sur cette ref. C'est
+   ce que Notes → Période affiche en pied (« pipeline rouge sur main » à la date du retour). */
+async function refPipeline(cfg, project, ref) {
+  const enc = encodeProject(project);
+  const items = await gitlabFetch(cfg, `/projects/${enc}/pipelines?ref=${encodeURIComponent(ref)}&per_page=1`);
+  const p = Array.isArray(items) && items[0];
+  if (!p) return { state: 'none', url: null, label: '', sha: null, at: null };
+  return { state: normaliserPipeline(p.status), url: p.web_url || null, label: `#${p.id || ''}`.trim(), raw: p.status || '', sha: p.sha || null, at: p.updated_at || p.created_at || null };
+}
+
+/* LES PUSHS TELS QUE GITLAB LES A VUS (`events?action=pushed`) : `commit_from..commit_to` par
+   push, ce qui rend EXACT le regroupement des commits directs là où l'heuristique (même auteur,
+   moins de trente minutes) devine. GitHub n'expose pas les pushs hors webhooks : son client rend
+   `null`, et l'appelant retombe sur l'heuristique. Les événements expirent (90 jours), et
+   `after`/`before` sont des JOURS EXCLUSIFS : on élargit d'un jour de chaque côté et on filtre
+   sur `created_at`. */
+async function pushEvents(cfg, project, depuis, jusqua) {
+  const enc = encodeProject(project);
+  const jour = (iso, delta) => new Date(Date.parse(iso) + delta * 86400e3).toISOString().slice(0, 10);
+  const base = `/projects/${enc}/events?action=pushed&after=${jour(depuis, -1)}&before=${jour(jusqua, 1)}&sort=desc`;
+  const out = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const items = await gitlabFetch(cfg, `${base}&per_page=100&page=${page}`);
+    if (!Array.isArray(items) || !items.length) break;
+    out.push(...items);
+    if (items.length < 100) break;
+  }
+  return out
+    .filter((e) => e && e.push_data && e.push_data.ref_type === 'branch' && e.created_at && e.created_at >= depuis && e.created_at <= jusqua)
+    .map((e) => ({
+      ref: e.push_data.ref, commit_from: e.push_data.commit_from || null, commit_to: e.push_data.commit_to || null,
+      commit_count: e.push_data.commit_count || 0, action: e.push_data.action || '',
+      author: (e.author && (e.author.name || e.author.username)) || '', at: e.created_at,
+    }));
+}
+
 async function listTags(cfg, project) {
   const items = await fetchAllPages(cfg, `/projects/${encodeProject(project)}/repository/tags`);
   return items.map((tag) => ({
@@ -511,15 +583,19 @@ function compterLignes(diff) {
   return { plus, moins };
 }
 
-async function listMrChanges(cfg, project, iid) {
+/* `manifeste` : un prédicat sur un chemin ; les diffs des fichiers qu'il retient sont rendus dans
+   `manifests` (dépendances), le reste est jeté ici même — jamais tous les diffs en mémoire. */
+async function listMrChanges(cfg, project, iid, { manifeste = null } = {}) {
   const enc = encodeProject(project);
   const data = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/changes`);
   const changes = (data && data.changes) || [];
   let additions = 0; let deletions = 0;
   for (const c of changes) { const n = compterLignes(c.diff); additions += n.plus; deletions += n.moins; }
   return {
-    paths: [...new Set(changes.map((x) => x.new_path || x.old_path).filter(Boolean))],
+    // Un renommage compte pour deux chemins (ancien et nouveau) : les deux croisent une autre MR.
+    paths: [...new Set(changes.flatMap((x) => [x.new_path, x.old_path]).filter(Boolean))],
     files: changes.length, additions, deletions,
+    manifests: manifeste ? changes.filter((c) => manifeste(c.new_path || c.old_path)).map((c) => ({ path: c.new_path || c.old_path, diff: c.diff || '' })) : [],
   };
 }
 
@@ -527,18 +603,54 @@ async function listMrChangedPaths(cfg, project, iid) {
   return (await listMrChanges(cfg, project, iid)).paths;
 }
 
-async function listAllMRs(cfg, project) {
-  const items = await fetchAllPages(cfg, `/projects/${encodeProject(project)}/merge_requests?state=all&order_by=updated_at`);
-  return items.map((m) => ({
-    iid: m.iid, state: m.state, source_branch: m.source_branch, target_branch: m.target_branch,
-    merged_at: m.merged_at, web_url: m.web_url, title: m.title,
-    /* L'AUTEUR AUSSI : c'est ce qui manque en tête d'un rapport de review sur une MR fermée,
-       que la liste des MR OUVERTES ne ramènera jamais. */
-    author: (m.author && (m.author.name || m.author.username)) || '',
-    created_at: m.created_at || null,
-  }));
+/* LES COMMITS D'UNE MERGE REQUEST (`cible..source`), du plus ancien au plus récent — GitLab les rend
+   du plus récent au plus ancien, 100 par page. Pour les MR empilées : on s'arrête dès que la liste
+   dépasse ce que l'appelant stockera (501 suffit à dire « trop »), jamais plus de six pages. */
+async function listMrCommits(cfg, project, iid, { max = 500 } = {}) {
+  const enc = encodeProject(project);
+  const out = [];
+  for (let page = 1; page <= 6; page += 1) {
+    const items = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/commits?per_page=100&page=${page}`);
+    if (!Array.isArray(items) || !items.length) break;
+    out.push(...items.map((c) => c.id).filter(Boolean));
+    if (items.length < 100 || out.length > max) break;
+  }
+  return { shas: out.reverse(), truncated: false };
+}
+
+/* TOUTES LES MERGE REQUESTS — ou celles touchées depuis une date (`updatedAfter`, pour le
+   rattrapage d'une période). La liste est triée par `updated_at` décroissant : avec une
+   borne, la pagination S'ARRÊTE à la première page dont le dernier élément est plus ancien,
+   plutôt que de relire dix mille MR pour n'en garder que soixante. */
+async function listAllMRs(cfg, project, { updatedAfter = null } = {}) {
+  const enc = encodeProject(project);
+  const borne = updatedAfter ? `&updated_after=${encodeURIComponent(updatedAfter)}` : '';
+  const base = `/projects/${enc}/merge_requests?state=all&order_by=updated_at&sort=desc${borne}`;
+  const out = [];
+  for (let page = 1; page <= 50; page += 1) {
+    const items = await gitlabFetch(cfg, `${base}&per_page=100&page=${page}`);
+    if (!Array.isArray(items) || !items.length) break;
+    out.push(...items);
+    const dernier = items[items.length - 1];
+    if (updatedAfter && dernier && dernier.updated_at && dernier.updated_at < updatedAfter) break;
+    if (items.length < 100) break;
+  }
+  return out
+    .filter((m) => !updatedAfter || !m.updated_at || m.updated_at >= updatedAfter)
+    .map((m) => ({
+      iid: m.iid, state: m.state, source_branch: m.source_branch, target_branch: m.target_branch,
+      merged_at: m.merged_at, web_url: m.web_url, title: m.title,
+      /* L'AUTEUR AUSSI : c'est ce qui manque en tête d'un rapport de review sur une MR fermée,
+         que la liste des MR OUVERTES ne ramènera jamais. */
+      author: (m.author && (m.author.name || m.author.username)) || '',
+      created_at: m.created_at || null,
+      // De quoi CLASSER une MR dans une fenêtre de dates : mergée, fermée sans merge, arrivée, active.
+      updated_at: m.updated_at || null,
+      closed_at: m.closed_at || null,
+      sha: m.sha || null,
+    }));
 }
 
 module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
-  listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges,
-  createBranch, deleteBranch, createTag, deleteTag, listAllMRs };
+  listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges, listMrCommits,
+  createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents };

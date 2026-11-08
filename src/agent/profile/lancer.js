@@ -10,12 +10,12 @@ const jobs = require('../../jobs');
 const { exigerApprobation, lire, parCle, repos } = require('./modele');
 const { materialize } = require('./prompt');
 
-function lancer(agent, { mode = 'ask', question = '', repoIds = null, triggeredBy = 'manual', agentIdSur = null } = {}) {
+function lancer(agent, { mode = 'ask', question = '', repoIds = null, branches = null, triggeredBy = 'manual', agentIdSur = null } = {}) {
   /* DES PERMISSIONS OU UN HORAIRE VENUS D'AILLEURS NE TOURNENT PAS AVANT D'AVOIR ÉTÉ VUS ICI.
      Une porte pour le lancement manuel, la planification et la mise à jour d'un agent de
      domaine — tous passent par ici. */
   exigerApprobation(agent);
-  const m = materialize(agent, { mode, question, repoIds });
+  const m = materialize(agent, { mode, question, repoIds, branches });
   if (!m.targets.length) throw new Error(t('agents.err.no-repo'));
   const porteur = agentIdSur ? lire(agentIdSur) : agent;
   const taskId = tasks.creerTask({
@@ -54,11 +54,15 @@ async function refreshKnowledge(agent, triggeredBy = 'manual') {
   const carto = parCle('cartographer');
   if (!carto) throw new Error(t('agents.err.no-cartographer'));
   await knowledge.preparerRefresh(agent);
-  const repoIds = repos(agent.id).map((r) => r.repo_id);
+  const perimetre = repos(agent.id);
+  const repoIds = perimetre.map((r) => r.repo_id);
+  // Les branches de l'agent de domaine suivent : on recarte ce qu'on avait cartographié.
+  const branches = Object.fromEntries(perimetre.filter((r) => r.branch).map((r) => [r.repo_id, r.branch]));
   return lancer(carto, {
     mode: 'ask',
     question: agent.knowledge_prompt || agent.name,
     repoIds,
+    branches,
     triggeredBy,
     // La `task` porte l'agent de DOMAINE : c'est sur sa carte que la mise à jour doit apparaître.
     agentIdSur: agent.id,

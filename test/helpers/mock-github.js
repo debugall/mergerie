@@ -13,6 +13,7 @@ function freshState() {
     token: 'gh-test-token',
     repos: [],               // [{ id, full_name, clone_url, ssh_url, default_branch }]
     pulls: {},               // project -> [pr]
+    prCommits: {},           // `${project}#${number}` -> [{ sha }] rendus par /pulls/:n/commits (le plus ancien d'abord)
     branches: {},            // project -> [{ name, protected, commit:{ sha, commit:{...} } }]
     tags: {},                // project -> [{ name, commit:{ sha } }]
     commits: {},             // project -> [commit] (le plus récent d'abord)
@@ -25,6 +26,7 @@ function freshState() {
     checkRuns: {},           // sha -> [{ status, conclusion, html_url }]
     statuses: {},            // sha -> [{ state, target_url }]
     issueComments: {},       // `${project}#${n}` -> [comment]
+    reactions: {},           // `${project}#${n}` -> { '+1': n } rendus par /issues (liste)
     rulesets: {},            // project -> [ruleset]
     calls: [],               // journal { method, path, body }
     fail: {},                // fragment de chemin -> { status, body }
@@ -162,6 +164,7 @@ function handle(req, res, pathname, query, body) {
       return json(res, 200, { merged: !state.mergeRefuses, message: 'ok' });
     }
     if (sub === '/files' && req.method === 'GET') return paged(res, req, query, state.files[key] || []);
+    if (sub === '/commits' && req.method === 'GET') return paged(res, req, query, state.prCommits[key] || []);
     if (sub === '/reviews' && req.method === 'GET') return paged(res, req, query, state.reviews[key] || []);
     if (sub === '/reviews' && req.method === 'POST') {
       const r = { id: state.nextId++, user: { login: 'testeur' }, state: body.event === 'APPROVE' ? 'APPROVED' : body.event === 'REQUEST_CHANGES' ? 'CHANGES_REQUESTED' : 'COMMENTED', body: body.body || '' };
@@ -221,6 +224,16 @@ function handle(req, res, pathname, query, body) {
       if (c) { c.body = body.body; return json(res, 200, c); }
     }
     return json(res, 404, { message: 'Not Found' });
+  }
+
+  // --- Issues (la liste contient les pull requests, avec leurs réactions) ---
+  if (rest === '/issues' && req.method === 'GET') {
+    const wanted = query.get('state') || 'open';
+    const all = pullsOf().filter((p) => wanted === 'all' || prState(p) === wanted).map((p) => ({
+      number: p.number, title: p.title, state: p.state, pull_request: { url: `pulls/${p.number}` },
+      reactions: { '+1': 0, '-1': 0, ...(state.reactions[`${project}#${p.number}`] || {}) },
+    }));
+    return paged(res, req, query, all);
   }
 
   // --- Issue comments (commentaires généraux d'une PR) ---

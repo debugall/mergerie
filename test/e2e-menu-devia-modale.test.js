@@ -110,7 +110,8 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     app.state.branches['grp/lib'] = branches(r2.mainSha);
     app.state.jiraIssues['PROJ-7'] = {
       key: 'PROJ-7',
-      fields: { summary: 'Mettre les paniers en cache', status: { name: 'À faire', statusCategory: { key: 'new' } }, description: 'Le panier se recharge à chaque page.', issuetype: { name: 'Tâche' } },
+      fields: { summary: 'Mettre les paniers en cache', status: { name: 'À faire', statusCategory: { key: 'new' } }, description: 'Le panier se recharge à chaque page.', issuetype: { name: 'Tâche' },
+        attachment: [{ id: '701', filename: 'capture.png', mimeType: 'image/png', size: 12 }] },
     };
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira' });
     repoApp = (await app.api('POST', '/api/repos', { url: r1.url, project: 'grp/app' })).body.id;
@@ -156,7 +157,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     //                  dépôts local  avert. codeOnly commit agent jira  avancé skills
     code: [true, false, false, true, true, true, true, true, true],
     explore: [true, false, false, false, false, true, true, true, true],
-    local: [false, true, true, false, false, false, false, true, true],
+    local: [false, true, true, false, false, false, true, true, true],
     ask: [false, false, false, false, false, false, false, false, false],
   };
   const BLOCS = ['#taskReposWrap', '#taskLocalWrap', '#taskLocalWarn', '#codeOnlyFields', '#taskCommitRow',
@@ -556,6 +557,26 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.equal(body.images.length, 1);
   });
 
+  test('hors dépôt : un ticket Jira saisi donne son contexte et ses captures à la session', async () => {
+    const avant = compte('local_task');
+    await ouvrir('local');
+    await choisirDansCombo(
+      () => page.locator('#taskLocalDirRows .cb-search').nth(0).click(),
+      () => page.locator('.combo-options:not([hidden]) .combo-opt[data-v]', { hasText: 'scripts' }),
+      { fn: ([j, n]) => document.querySelectorAll('#taskLocalDirRows .cb-search')[j].value === n, arg: [0, 'scripts'] },
+    );
+    await page.locator('#taskJiraKey').fill('PROJ-7');
+    await page.locator('#taskJiraFetch').click();
+    await page.waitForFunction(() => /Mettre les paniers en cache/.test(document.querySelector('#taskPrompt').value) || /Le panier se recharge/.test(document.querySelector('#taskPrompt').value));
+    await page.waitForSelector('#taskJiraPieces [data-jira-piece="0"]:checked');
+    assert.match(await page.locator('#taskForm [name="label"]').inputValue(), /^PROJ-7 Mettre les paniers/, 'le libellé reprend le ticket');
+    await page.locator('#taskSubmitOnly').click();
+    await attendreServeur(async () => compte('local_task') === avant + 1, 'la session hors dépôt est créée');
+    const { body } = await app.api('GET', `/api/local-tasks/${derniere('local_task').id}`);
+    assert.match(body.task.prompt, /Contexte du ticket Jira PROJ-7/);
+    assert.equal(body.images.length, 1, 'la capture du ticket est jointe');
+  });
+
   test('hors dépôt : « Créer et lancer » code dans le dossier', async () => {
     const avant = compte('local_task');
     await ouvrir('local');
@@ -571,6 +592,100 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     await attendreServeur(async () => (await app.api('GET', `/api/local-tasks/${id}`)).body.task.status === 'done',
       'la session hors dépôt a tourné', 60000);
     assert.ok(fs.existsSync(path.join(racine, 'docs', 'PROJ_LOCAL_DRYRUN.md')), 'l’agent (dry-run) a écrit dans le dossier');
+  });
+
+  /* HORS DÉPÔT : LE GIT COMMENCE PAR UN NOM DE BRANCHE. Sans lui le formulaire ne montre rien de
+     plus (l'agent écrit en place, rien n'est commité) ; avec lui, les décisions d'une session de
+     codage reviennent — message, push, MR, convergence — avec leurs implications visibles. */
+  test('hors dépôt : la branche ouvre les décisions git, elles s’impliquent, et tout arrive en base puis se relit', async () => {
+    const avant = compte('local_task');
+    await ouvrir('local');
+    const visible = (sel) => page.locator(sel).isVisible();
+    await deplierAvance();
+    assert.equal(await visible('#taskLocalBranchRow'), true, 'le champ branche est offert hors dépôt');
+    for (const sel of ['#codeOnlyFields', '#taskCommitRow', '#taskCreateMrRow', '#taskConvergeRow']) {
+      assert.equal(await visible(sel), false, `${sel} : rien de git tant qu’aucune branche n’est donnée`);
+    }
+
+    await page.locator('#taskLocalBranch').fill('feature/PROJ-9-rangement');
+    for (const sel of ['#codeOnlyFields', '#taskCommitRow', '#taskCreateMrRow', '#taskConvergeRow', '#taskAutoPushRow']) {
+      assert.equal(await visible(sel), true, `${sel} : visible dès qu’une branche est donnée`);
+    }
+    for (const sel of ['#taskVerifier', '#taskNotifyJiraRow', '#taskReviewAfterRow']) {
+      assert.equal(await visible(sel), false, `${sel} : suppose un dépôt enregistré, absent hors dépôt`);
+    }
+
+    // Converger passe par la MR, la MR par le push : les cases impliquées se cochent et se figent.
+    const etat = (n) => page.locator(`#taskForm [name="${n}"]`).evaluate((e) => [e.checked, e.disabled]);
+    await page.locator('#taskForm [name="converge_after"]').check();
+    assert.deepEqual(await etat('create_mr'), [true, true]);
+    assert.deepEqual(await etat('auto_push'), [true, true]);
+    await page.locator('#taskForm [name="converge_after"]').uncheck();
+    assert.deepEqual(await etat('create_mr'), [true, false], 'la MR reste cochée mais se libère');
+    assert.deepEqual(await etat('auto_push'), [true, true], 'et elle garde le push figé');
+    await page.locator('#taskForm [name="create_mr"]').uncheck();
+    assert.deepEqual(await etat('auto_push'), [true, false]);
+    await page.locator('#taskForm [name="auto_push"]').uncheck();
+    await page.locator('#taskForm [name="create_mr"]').check();
+
+    await choisirDansCombo(
+      () => page.locator('#taskLocalDirRows .cb-search').first().click(),
+      () => page.locator('.combo-options:not([hidden]) .combo-opt[data-v]', { hasText: 'outils' }),
+      { fn: () => document.querySelector('#taskLocalDirRows .cb-search').value === 'outils' },
+    );
+    await page.locator('#taskPrompt').fill('Ranger les outils sur une branche');
+    await page.locator('#taskForm [name="label"]').fill('Branche locale');
+    await page.locator('#taskForm [name="commit_message"]').fill('Range les outils');
+    await page.locator('#taskSubmitOnly').click();
+    await attendreServeur(async () => compte('local_task') === avant + 1, 'la session hors dépôt est créée');
+
+    const id = derniere('local_task').id;
+    const { task } = (await app.api('GET', `/api/local-tasks/${id}`)).body;
+    assert.equal(task.branch, 'feature/PROJ-9-rangement');
+    assert.equal(task.commit_message, 'Range les outils');
+    assert.equal(task.create_mr, 1);
+    assert.equal(task.auto_push, 1, 'la MR a imposé le push');
+    assert.equal(task.converge_after, 0);
+
+    // L'édition relit tout, y compris les cases figées.
+    await aller('local');
+    const carte = `#localList .card[data-local="${id}"]`;
+    await page.waitForSelector(carte);
+    await page.locator(`${carte} [data-ledit]`).click();
+    await page.waitForSelector('#taskModal:not([hidden])');
+    await page.waitForFunction(() => document.querySelector('#taskLocalBranch').value === 'feature/PROJ-9-rangement');
+    assert.deepEqual(await etat('create_mr'), [true, false]);
+    assert.deepEqual(await etat('auto_push'), [true, true]);
+    assert.equal(await page.locator('#taskForm [name="commit_message"]').inputValue(), 'Range les outils');
+    // Vider la branche referme tout, et l'enregistrement la retire côté serveur.
+    await page.locator('#taskLocalBranch').fill('');
+    for (const sel of ['#codeOnlyFields', '#taskCommitRow']) assert.equal(await visible(sel), false, `${sel} se referme`);
+    await page.locator('#taskSubmit').click();
+    await attendreServeur(async () => (await app.api('GET', `/api/local-tasks/${id}`)).body.task.branch === null,
+      'la branche est retirée');
+    const sans = (await app.api('GET', `/api/local-tasks/${id}`)).body.task;
+    assert.equal(sans.create_mr, 0, 'sans branche, plus de MR');
+    assert.equal(sans.auto_push, 0);
+  });
+
+  test('hors dépôt : la carte dit la branche, l’état du commit et la MR de chaque dossier — et pourquoi elle manque', async () => {
+    const id = app.db.prepare("SELECT id FROM local_task WHERE label = 'Branche locale'").get().id;
+    const ligne = app.db.prepare('SELECT id FROM local_task_dir WHERE task_id = ?').get(id).id;
+    const poser = (patch) => app.db.prepare(`UPDATE local_task_dir SET ${Object.keys(patch).map((k) => `${k} = @${k}`).join(', ')} WHERE id = @id`)
+      .run({ ...patch, id: ligne });
+    poser({ branch: 'feature/PROJ-9-rangement', git_status: 'pushed', mr_iid: 12, mr_url: 'https://gitlab.test/grp/x/-/merge_requests/12', git_note: null });
+    await aller('local');
+    const ligneDossier = `#localList .card[data-local="${id}"] .target-line`;
+    await page.waitForSelector(`${ligneDossier} a[href$="/merge_requests/12"]`);
+    assert.match(await page.locator(ligneDossier).first().textContent(), /feature\/PROJ-9-rangement/);
+    assert.match(await page.locator(`${ligneDossier} a`).first().textContent(), /MR !12/);
+
+    poser({ mr_iid: null, mr_url: null, git_note: 'no-repo' });
+    await page.locator('#tab-task .subnav [data-kind="code"]').click();
+    await aller('local');
+    await page.waitForFunction(([sel, txt]) => document.querySelector(sel)
+      && document.querySelector(sel).textContent.includes(txt), [ligneDossier, await tr('local.git.note.no-repo')]);
+    assert.equal(await page.locator(`${ligneDossier} a[href$="/merge_requests/12"]`).count(), 0, 'plus de MR, plus de lien');
   });
 
   /* ------------------------------------------------------------ question libre ---- */

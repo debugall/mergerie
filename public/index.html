@@ -51,20 +51,28 @@
     <link rel="stylesheet" href="/css/ecrans/reglages-git.css" />
     <link rel="stylesheet" href="/css/ecrans/jira.css" />
     <link rel="stylesheet" href="/css/ecrans/jira-spec.css" />
+    <link rel="stylesheet" href="/css/ecrans/jira-stats.css" />
     <link rel="stylesheet" href="/css/transverse/demo.css" />
     <link rel="stylesheet" href="/css/ecrans/verification.css" />
     <link rel="stylesheet" href="/css/ecrans/reglages-menus.css" />
     <link rel="stylesheet" href="/css/ecrans/sessions-iterations.css" />
     <link rel="stylesheet" href="/css/ecrans/git-comparer.css" />
     <link rel="stylesheet" href="/css/ecrans/sessions-blocs.css" />
+    <link rel="stylesheet" href="/css/ecrans/sessions-reprise.css" />
     <link rel="stylesheet" href="/css/ecrans/notes.css" />
     <link rel="stylesheet" href="/css/ecrans/git-merge.css" />
     <link rel="stylesheet" href="/css/ecrans/agents.css" />
     <link rel="stylesheet" href="/css/ecrans/reglages-portee.css" />
     <link rel="stylesheet" href="/css/ecrans/reglages-partage-etat.css" />
     <link rel="stylesheet" href="/css/ecrans/notes-histoire.css" />
+    <link rel="stylesheet" href="/css/ecrans/notes-periode.css" />
     <link rel="stylesheet" href="/css/ecrans/reviews-approbation.css" />
     <link rel="stylesheet" href="/css/ecrans/reglages-plugins.css" />
+    <link rel="stylesheet" href="/css/ecrans/reviews-croisements.css" />
+    <link rel="stylesheet" href="/css/ecrans/reviews-tests.css" />
+<link rel="stylesheet" href="/css/ecrans/reviews-dependances.css" />
+<link rel="stylesheet" href="/css/ecrans/reviews-empilees.css" />
+<link rel="stylesheet" href="/css/ecrans/equipe.css" />
     <!-- LES PLUGINS ACTIFS posent ici leurs feuilles de style (src/plugins/pageplugins.js). -->
     <!--@plugins:styles-->
     <!-- Le thème avant le premier rendu. Un FICHIER et non un script en ligne : la politique
@@ -111,6 +119,7 @@
     <!--@include html/ecrans/jira.html-->
 
     <!--@include html/ecrans/notes.html-->
+    <!--@include html/ecrans/equipe.html-->
 
 
     <!--@include html/ecrans/reglages.html-->
@@ -174,6 +183,7 @@
 <script src="/i18n/stats.js"></script>
 <script src="/i18n/jobs.js"></script>
 <script src="/i18n/plugins.js"></script>
+<script src="/i18n/equipe.js"></script>
 <!-- Les dictionnaires des plugins actifs, AVANT le moteur qui les lit ; puis leurs déclarations d'écran, en JSON (pas un script : du texte que js/transverse/plugins.js lit). -->
 <!--@plugins:i18n-->
 <!--@plugins:meta-->
@@ -213,6 +223,7 @@
 <script src="/js/transverse/adresses.js"></script>
 <script src="/js/transverse/palette.js"></script>
 <script src="/js/transverse/kit.js"></script>
+<script src="/js/transverse/presence.js"></script>
 <script src="/js/ecrans/reviews/liste.js"></script>
 <script src="/js/ecrans/reviews/merge.js"></script>
 <script src="/js/ecrans/reviews/rapports.js"></script>
@@ -223,6 +234,10 @@
 <script src="/js/ecrans/reviews/contexte.js"></script>
 <script src="/js/ecrans/reviews/approbation.js"></script>
 <script src="/js/ecrans/reviews/selection.js"></script>
+<script src="/js/ecrans/reviews/croisements.js"></script>
+<script src="/js/ecrans/reviews/tests-touches.js"></script>
+<script src="/js/ecrans/reviews/dependances.js"></script>
+<script src="/js/ecrans/reviews/empilees.js"></script>
 <script src="/js/ecrans/dashboard/dashboard.js"></script>
 <script src="/js/ecrans/dashboard/activite.js"></script>
 <script src="/js/ecrans/reglages/sessions-ia.js"></script>
@@ -258,6 +273,12 @@
 <script src="/js/ecrans/sessions/lots.js"></script>
 <script src="/js/ecrans/sessions/lecture-seule.js"></script>
 <script src="/js/ecrans/sessions/binaire.js"></script>
+<script src="/js/ecrans/sessions/croisements.js"></script>
+<script src="/js/ecrans/sessions/tests-touches.js"></script>
+<script src="/js/ecrans/sessions/atterrissage.js"></script>
+<script src="/js/ecrans/sessions/vers-reviews.js"></script>
+<script src="/js/ecrans/sessions/dependances.js"></script>
+<script src="/js/ecrans/sessions/reprise.js"></script>
 <script src="/js/ecrans/git/actions.js"></script>
 <script src="/js/ecrans/git/explorateur.js"></script>
 <script src="/js/ecrans/git/navigation.js"></script>
@@ -272,6 +293,7 @@
 <script src="/js/ecrans/jira/surveilles.js"></script>
 <script src="/js/ecrans/jira/spec.js"></script>
 <script src="/js/ecrans/jira/analyses.js"></script>
+<script src="/js/ecrans/jira/stats.js"></script>
 <script src="/js/ecrans/agents/disque.js"></script>
 <script src="/js/ecrans/agents/profils.js"></script>
 <script src="/js/ecrans/agents/editeur.js"></script>
@@ -283,6 +305,8 @@
 <script src="/js/ecrans/notes/todos.js"></script>
 <script src="/js/ecrans/notes/pages.js"></script>
 <script src="/js/ecrans/notes/capture.js"></script>
+<script src="/js/ecrans/notes/periode.js"></script>
+<script src="/js/ecrans/notes/periode-pied.js"></script>
 <script src="/js/ecrans/verification/reglages.js"></script>
 <script src="/js/ecrans/verification/badges.js"></script>
 <script src="/js/ecrans/verification/rapport.js"></script>
@@ -291,6 +315,8 @@
 <script src="/js/ecrans/reglages/sous-onglets.js"></script>
 <script src="/js/ecrans/reglages/maintenance.js"></script>
 <script src="/js/ecrans/reglages/clis.js"></script>
+<script src="/js/ecrans/reglages/tests-touches.js"></script>
+<script src="/js/ecrans/equipe/equipe.js"></script>
 <!-- Le bundle de chaque plugin actif (/plugins/<nom>/bundle.js) : après tous les écrans, avant le câblage. -->
 <!--@plugins:scripts-->
 <script src="/js/demarrage.js"></script>

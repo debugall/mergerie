@@ -2,11 +2,12 @@
 /* « METTRE À JOUR AVEC L'IA » SUR UNE MERGE REQUEST EN CONFLIT.
  *
  * Le badge « en conflit » d'une carte offrait une voie : résoudre soi-même dans Git → Merge.
- * L'autre voie est de confier la mise à jour à l'agent : rejouer les changements de la branche
- * par-dessus la cible, résoudre en comprenant ce que la branche voulait, commiter — et NE PAS
- * pousser, pour relire. Le bouton ouvre la modale de session pré-remplie (dépôt, branche de la
- * MR, base = sa cible, consigne, push automatique décoché) ; la session créée est marquée
- * « push forcé », l'historique allant être réécrit. Rien n'est lancé sans le clic suivant.
+ * L'autre voie est de confier la mise à jour à l'agent : fusionner la cible dans la branche,
+ * résoudre en comprenant ce que la branche voulait, commiter — et NE PAS pousser, pour relire.
+ * Par des commits AJOUTÉS, jamais un rebase : la consigne le dit en toutes lettres, pour que
+ * personne n'ait à forcer un push ensuite, et la session créée n'est PAS marquée « push forcé ».
+ * Le bouton ouvre la modale de session pré-remplie (dépôt, branche de la MR, base = sa cible,
+ * consigne, push automatique décoché). Rien n'est lancé sans le clic suivant.
  */
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
@@ -73,14 +74,18 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
       assert.match(await page.locator('#taskModalTitle').innerText(), /feat\/paiement[\s\S]*main/);
       const prompt = await page.locator('#taskForm [name="prompt"]').inputValue();
       assert.match(prompt, /!77/);
-      assert.match(prompt, /git rebase origin\/main/);
+      assert.match(prompt, /git merge origin\/main/);
+      assert.doesNotMatch(prompt, /git rebase origin/, 'un rebase réécrirait l’historique : il faudrait forcer le push');
+      assert.match(prompt, /Important : ajoute des commit pour corriger les conflits afin qu'on ait pas besoin de faire des force push/);
       assert.match(prompt, /NE POUSSE PAS/);
       assert.equal(await page.locator('#taskForm [name="auto_push"]').isChecked(), false, 'on relit avant de pousser');
-      assert.match(await page.locator('#taskExistingImgs').innerText(), /force-with-lease/);
+      assert.match(await page.locator('#taskExistingImgs').innerText(), /sans forcer/);
+      assert.doesNotMatch(await page.locator('#taskExistingImgs').innerText(), /force-with-lease/);
       assert.match(await page.locator('#taskForm [name="commit_message"]').inputValue(), /feat\/paiement[\s\S]*main/);
+      assert.match(await page.locator('#taskForm [name="label"]').inputValue(), /!77[\s\S]*feat\/paiement[\s\S]*main/, 'le libellé est pré-rempli : la session se retrouve dans la liste');
     });
 
-    test('créer sans lancer : la session vise la branche de la MR depuis sa cible, et poussera en forçant', async () => {
+    test('créer sans lancer : la session vise la branche de la MR depuis sa cible, et ne poussera PAS en forçant', async () => {
       const avant = app.db.prepare('SELECT COUNT(*) n FROM task').get().n;
       await page.locator('#taskSubmitOnly').click();
       await page.waitForSelector('#taskModal', { state: 'hidden' });
@@ -90,12 +95,14 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
       const task = app.db.prepare('SELECT * FROM task ORDER BY id DESC LIMIT 1').get();
       assert.equal(task.status, 'new', 'rien n’est lancé sans le clic suivant');
       assert.equal(task.auto_push, 0);
-      assert.match(task.prompt, /git rebase origin\/main/);
+      assert.match(task.label, /!77/);
+      assert.match(task.prompt, /git merge origin\/main/);
+      assert.match(task.prompt, /pas besoin de faire des force push/);
       const tg = app.db.prepare('SELECT * FROM task_target WHERE task_id = ?').get(task.id);
       assert.equal(tg.repo_id, repoId);
       assert.equal(tg.branch, 'feat/paiement');
       assert.equal(tg.base_branch, 'main');
-      assert.equal(tg.force_push, 1, 'l’historique sera réécrit : « Pousser » forcera');
+      assert.equal(tg.force_push, 0, 'l’historique n’est pas réécrit : « Pousser » ne force pas');
     });
 
     test('en retard sans conflit : le badge dit le retard, et le même bouton est là ; à jour : rien', async () => {
@@ -108,14 +115,15 @@ describe('Merge request en conflit → « Mettre à jour avec l’IA »', () => 
       assert.equal(await page.locator(`[data-mr-conflit="${mrAJourId}"]`).count(), 0);
     });
 
-    test('en retard : la consigne dit le retard, pas un conflit, et rebase quand même', async () => {
+    test('en retard : la consigne dit le retard, pas un conflit, et fusionne quand même, sans force push', async () => {
       await page.locator(`[data-mr-rebase="${mrRetardId}"]`).click();
       await page.waitForSelector('#taskModal:not([hidden])');
       await page.waitForFunction(() => /!78/.test(document.querySelector('#taskForm [name="prompt"]').value));
       const prompt = await page.locator('#taskForm [name="prompt"]').inputValue();
       assert.match(prompt, /3 commit\(s\) de retard sur main/);
       assert.doesNotMatch(prompt, /est en conflit/);
-      assert.match(prompt, /git rebase origin\/main/);
+      assert.match(prompt, /git merge origin\/main/);
+      assert.match(prompt, /pas besoin de faire des force push/);
       assert.match(prompt, /NE POUSSE PAS/);
       assert.equal(await page.locator('#taskForm [name="auto_push"]').isChecked(), false);
       await page.locator("#taskCancel").click();

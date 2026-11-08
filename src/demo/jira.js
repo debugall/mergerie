@@ -5,6 +5,7 @@
 const ISSUES = [
   {
     key: 'PROJ-1421', summary: 'Le panier perd les articles après reconnexion', type: 'Bug', typeIcon: '',
+    team: { v: 'eq-tunnel', l: 'Équipe Tunnel de commande' },
     sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     status: 'En cours', statusCategory: 'indeterminate', priority: 'Haute',
@@ -32,6 +33,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1408', summary: 'Ajouter le paiement en 3× sans frais', type: 'Story', typeIcon: '',
+    team: { v: 'eq-paiement', l: 'Équipe Paiement' },
     sprints: [{ v: '42', l: 'Sprint 42', d: '2026-07-20T08:00:00.000Z', etat: 'future' }],
     epic: { key: 'PROJ-1100', summary: 'Fiabiliser le tunnel de commande', color: 'purple' },
     /* « En revue » : c'est l'état qui fait remonter ses merge requests en tête de la file —
@@ -50,6 +52,7 @@ const ISSUES = [
   },
   {
     key: 'PROJ-1390', summary: 'Migrer les logs vers le nouveau format JSON', type: 'Tâche', typeIcon: '',
+    team: { v: 'eq-plateforme', l: 'Équipe Plateforme' },
     sprints: [{ v: '43', l: 'Sprint 43', d: '2026-07-06T08:00:00.000Z', etat: 'active' }],
     epic: { key: 'PROJ-1050', summary: 'Observabilité : logs et métriques', color: 'blue' },
     status: 'En revue', statusCategory: 'indeterminate', priority: 'Basse',
@@ -218,6 +221,41 @@ function inProgressMine() {
     && i.assignee && i.assignee.accountId === 'me-001').length;
 }
 
+/* Jira → Stats : les tickets de démo dans la FORME BRUTE de Jira (`{ key, fields }`), filtrés
+   comme `tickets()` plus les filtres de champ de l'écran — les comptes eux-mêmes sont ceux du
+   cœur (`integrations/jirastats.statsDe`), la démo ne recompte pas à sa façon. */
+function statsIssues(c = {}, filtres = {}, plage = {}) {
+  const { issues: brutes } = tickets(c.accountIds, c.includeDone, c.projects, c.sprints, c.hideStatuses);
+  // La plage de mouvement : créé ou mis à jour dedans (jours entiers).
+  const jour = (iso) => String(iso || '').slice(0, 10);
+  const dedans = (iso) => (!plage.depuis || jour(iso) >= plage.depuis) && (!plage.jusqua || jour(iso) <= plage.jusqua);
+  const issues = brutes.filter((m) => dedans(m.updated) || dedans(m.created));
+  const ok = (vals, siennes) => !(vals || []).length || siennes.some((v) => vals.includes(v));
+  const f = filtres || {};
+  const gardes = issues.filter((m) => ok(f.type, [m.type]) && ok(f.priority, [m.priority])
+    && ok(f.labels, m.labels || []) && ok(f.components, m.components || []) && ok(f.fixVersions, m.fixVersions || [])
+    && ok(f.epic, m.epic ? [m.epic.key] : []) && ok(f.reporter, m.reporter ? [m.reporter.name] : []) && ok(f.team, m.team ? [m.team.v] : [])
+    && ok(f.assignee, m.assignee ? [m.assignee.name] : []));
+  const tous = [...ISSUES, ...DONE];
+  const brutDe = (k) => { const x = tous.find((i) => i.key === k); return x ? { key: x.key, fields: { issuetype: { name: x.type } } } : null; };
+  return gardes.map((m) => {
+    const i = tous.find((x) => x.key === m.key);
+    const liens = (i.related || []).map((l) => ({ ...l, autre: brutDe(l.key) })).filter((l) => l.autre);
+    return {
+      key: i.key,
+      fields: {
+        summary: i.summary,
+        issuetype: { name: i.type },
+        status: { name: i.status, statusCategory: { key: i.statusCategory } },
+        assignee: i.assignee ? { accountId: i.assignee.accountId, displayName: i.assignee.name } : null,
+        project: { key: String(i.project || '').split(' ')[0] },
+        issuelinks: liens.filter((l) => l.direction !== 'subtask').map((l) => (l.direction === 'inward' ? { inwardIssue: l.autre } : { outwardIssue: l.autre })),
+        subtasks: liens.filter((l) => l.direction === 'subtask').map((l) => l.autre),
+      },
+    };
+  });
+}
+
 const issueUrl = (key) => `https://jira.demo/browse/${key}`;
 
-module.exports = { assignees, tickets, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };
+module.exports = { assignees, tickets, statsIssues, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };

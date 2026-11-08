@@ -101,6 +101,8 @@ function capacites(bin) {
     denyTool: /--deny-tool\b/.test(aide),
     allowTool: /--allow-tool\b/.test(aide),
     allowAllTools: /--allow-all-tools\b/.test(aide),
+    allowAllPaths: /--allow-all-paths\b/.test(aide),
+    allowAllUrls: /--allow-all-urls\b/.test(aide),
     /* Ce que les AUTRES CLI savent dire (backends/codex.js, backends/gemini.js). */
     sandboxOpt: /--sandbox\b/.test(aide),
     fullAuto: /--full-auto\b/.test(aide),
@@ -406,7 +408,7 @@ function argvCopilot({ extra, kind, bin }) {
  * @returns {{ extra: string[], args: string[], lecture: boolean, note: string|null, mode: string }}
  */
 function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDirs = [], allowedToolsProfil = [], cwd }) {
-  if (!modeSecurise()) return argvYolo({ extra, kind, addDirs, backend });
+  if (!modeSecurise()) return argvYolo({ extra, kind, addDirs, backend, bin });
   if (backend === 'copilot') return argvCopilot({ extra, kind, bin });
   if (backend !== 'claude') {
     /* codex, gemini, un CLI inconnu : c'est le backend qui dit comment se borne sa lecture et
@@ -421,7 +423,7 @@ function argvPermissions({ backend, bin, extra = [], kind, profil = false, addDi
 /* LE MODE YOLO : l'argv est rendu tel quel — `extra` (AGENT_ARGS) intact, mode large compris,
    aucune option ajoutée hormis les dossiers liés qu'une lecture doit voir. `mode: 'yolo'` est
    l'échappatoire NOMMÉE que `npm run check` reconnaît, comme `mode: 'large'`. */
-function argvYolo({ extra, kind, addDirs, backend }) {
+function argvYolo({ extra, kind, addDirs, backend, bin }) {
   const args = [];
   let note = null;
   let noteVars = null;
@@ -442,6 +444,15 @@ function argvYolo({ extra, kind, addDirs, backend }) {
     args.push(large.flag);
     note = 'yolo-sans-restriction';
     noteVars = { flag: large.flag };
+  }
+  /* COPILOT : `--allow-all-tools` lève les validations d'OUTILS, pas la clôture des CHEMINS — un
+     fichier hors du répertoire courant reste « accès refusé » en lecture comme en écriture, et les
+     URL ont leur propre liste. Yolo ne bloque rien : on lève aussi ces deux-là quand le CLI les connaît. */
+  if (backend === 'copilot') {
+    const cap = capacites(bin || 'copilot');
+    const deja = (f) => a.some((x) => x === f);
+    if (cap.allowAllPaths && !deja('--allow-all-paths')) args.push('--allow-all-paths');
+    if (cap.allowAllUrls && !deja('--allow-all-urls')) args.push('--allow-all-urls');
   }
   return { extra: [...a], args, lecture: saveurDe(kind) === 'lecture', note, noteVars, mode: 'yolo' };
 }

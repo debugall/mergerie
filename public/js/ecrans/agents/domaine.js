@@ -14,9 +14,13 @@ let knowledgeVersion = null;
 async function ouvrirDomainModal() {
   await loadRepoOptions();
   $('#domainSubject').value = '';
-  $('#domainRepos').innerHTML = repoOptions.map((r) => `<label class="inline-check" data-cherche="${esc(r.project.toLowerCase())}">
-      <input type="checkbox" class="dom-repo" value="${r.id}" /><span>${esc(r.project)}</span></label>`).join('')
+  /* Une branche par dépôt, en combo à recherche ; vide = branche par défaut. Hors du `<label>` :
+     un clic dans le combo ne doit pas cocher le dépôt. */
+  $('#domainRepos').innerHTML = repoOptions.map((r) => `<div class="agent-repo-row" data-row data-repo="${r.id}" data-cherche="${esc(r.project.toLowerCase())}">
+      <label class="inline-check"><input type="checkbox" class="dom-repo" value="${r.id}" /><span>${esc(r.project)}</span></label>
+      ${comboHtml('dom-branch', { ph: tr('agents.f.branch-ph'), wrapClass: 'ag-branch-combo' })}</div>`).join('')
     + `<div class="muted" data-no-match hidden>${esc(tr('agents.skills.no-match'))}</div>`;
+  wireCombo($('#domainRepos'), 'dom-branch', chargerBranchesAgent);
   $('#domainModal').hidden = false;
   $('#domainSubject').focus();
 }
@@ -27,9 +31,11 @@ onEl($('#domainForm'), 'submit', async (e) => {
   e.preventDefault();
   const subject = $('#domainSubject').value.trim();
   if (!subject) return;
-  const repo_ids = $$('#domainRepos .dom-repo:checked').map((c) => Number(c.value));
+  const repos = $$('#domainRepos .dom-repo:checked').map((c) => ({
+    repo_id: Number(c.value), branch: c.closest('.agent-repo-row').querySelector('.dom-branch').value,
+  }));
   try {
-    await busy($('#domainStart'), () => api('/agents/domain', { method: 'POST', body: { subject, repo_ids } }));
+    await busy($('#domainStart'), () => api('/agents/domain', { method: 'POST', body: { subject, repos } }));
     $('#domainModal').hidden = true;
     toast(tr('agents.domain.started'));
     // La cartographie est une session comme une autre : on va la regarder tourner.

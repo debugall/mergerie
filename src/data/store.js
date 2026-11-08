@@ -1506,6 +1506,10 @@ function hydraterTout() {
 
 module.exports.versMd = versMd;
 module.exports.motifDe = motifDe;
+/* Pour relire ce qu'une synchro a fait entrer (Notes → Période, « fait par l'équipe ») : la table
+   d'un fichier du dépôt de données, et le document qu'il porte. */
+module.exports.tablePour = tablePour;
+module.exports.lireDocument = lireDocument;
 module.exports.tablePour = tablePour;
 module.exports.lireDocument = lireDocument;
 module.exports.validerDocument = validerDocument;

@@ -108,6 +108,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
     (it.labels && it.labels.length) ? jiraMetaRow(tr('jira.meta.labels'), it.labels.map((l) => `<span class="jira-label">${esc(l)}</span>`).join(' ')) : '',
     (it.components && it.components.length) ? jiraMetaRow(tr('jira.meta.components'), esc(it.components.join(', '))) : '',
     (it.fixVersions && it.fixVersions.length) ? jiraMetaRow(tr('jira.meta.fixversions'), esc(it.fixVersions.join(', '))) : '',
+    it.team ? jiraMetaRow(tr('jira.meta.team'), esc(it.team.l)) : '',
   ].join('');
   const cList = (it.comments || []).length
     ? (it.comments || []).map((c) => `<div class="jira-comment">
@@ -158,6 +159,7 @@ function renderJiraDetail(it, box = $('#jiraDetail')) {
                 et propose une précision à poster en commentaire. Le bouton mène à la section. */''}
           <button type="button" class="btn btn-sm" data-spec-goto="${esc(it.key)}" title="${esc(tr('jira.spec.btn.open-title'))}"><svg class="ico ico-sm"><use href="#i-edit"/></svg>${esc(tr('jira.spec.btn.open'))}</button>
           <button type="button" class="btn btn-sm btn-primary" data-jiracode="${esc(it.key)}" title="${esc(tr('jira.code-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.code'))}</button>
+          <button type="button" class="btn btn-sm" data-jiralocal="${esc(it.key)}" title="${esc(tr('jira.local-title'))}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${esc(tr('jira.local'))}</button>
           <a href="${esc(safeUrl(it.url))}" target="_blank" rel="noopener noreferrer" class="jira-open">${esc(tr('jira.open'))} ↗</a>
         </div>
         <h2 class="jira-title">${esc(it.summary)}</h2>
@@ -330,7 +332,7 @@ async function loadJira() {
   $('#jiraList').innerHTML = skeleton(3); $('#jiraDetail').innerHTML = ''; $('#jiraInfo').textContent = '';
   try { $('#jiraIncludeDone').checked = localStorage.getItem('aidevtools_jira_done') === '1'; } catch { /* ignore */ }
   let a;
-  try { a = await api('/jira/assignees'); }
+  try { a = await api(`/jira/assignees?projects=${encodeURIComponent((jiraFiltres().project || []).join(','))}`); }
   catch (e) { $('#jiraList').innerHTML = ''; errBox.innerHTML = errorBox(explainError(e.message)); return; }
   if (!a.configured) {
     errBox.innerHTML = '';
@@ -367,6 +369,7 @@ async function loadJiraTickets() {
   catch (e) { $('#jiraList').innerHTML = ''; $('#jiraError').innerHTML = errorBox(explainError(e.message)); return; }
   JIRA.issues = d.issues || [];
   JIRA.total = d.total != null ? d.total : null;
+  JIRA.tronque = !!d.tronque;   // le plafond de pagination atteint : la liste n'est pas tout
   /* On ne mémorise que ce qu'on a vu SANS la contrainte correspondante : sinon on figerait
      une liste déjà réduite par le filtre lui-même. */
   if (!sprints) jiraMemoriseValeurs('sprint', JIRA.issues.flatMap((i) => i.sprints || []));

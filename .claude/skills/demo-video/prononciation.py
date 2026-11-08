@@ -275,6 +275,9 @@ FR_NEURONAL = [
     (r'(?i)\breview\b', 'reviou'),
     (r'(?i)\btodos\b', 'toudouze'),
     (r'(?i)\btodo\b', 'toudou'),
+    # « commit » lu à l'anglaise (« keumitte ») : en français de développeur, c'est « comitte ».
+    (r'(?i)\bcommits\b', 'comittes'),
+    (r'(?i)\bcommit\b', 'comitte'),
     (r'(?i)\bdocker\b', 'dokère'),
     (r'(?i)\bprompts\b', 'promptes'),
     (r'(?i)\bprompt\b', 'prompte'),

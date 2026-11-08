@@ -268,7 +268,11 @@ async function ingest(task, agentCarto, texte, onLog = () => {}) {
     knowledge_prompt: task.agent_question || nom,
     max_turns: 60,
     output_kind: 'report',
-    repos: connus.map((r) => ({ repo_id: r.repo_id, branch: '', role: 'readonly' })),
+    // La branche cartographiée est gardée : les mises à jour reliront la même.
+    repos: connus.map((r) => ({
+      repo_id: r.repo_id, role: 'readonly',
+      branch: (db.prepare('SELECT branch FROM task_target WHERE task_id = ? AND repo_id = ?').get(task.id, r.repo_id) || {}).branch || '',
+    })),
   });
   const v = ecrireVersion(cree.id, { contenu, reposJson, taskId: task.id, gapsJson: [], status: 'active' });
   onLog(t('agents.log.agent-created', { name: cree.name, version: v.version }));

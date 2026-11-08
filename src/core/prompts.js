@@ -57,6 +57,11 @@ code rigoureuse, actionnable et honnête.
 - Priorise : sécurité > régression / perte de données > correction >
   performance > style.
 - Un finding sans impact concret n'est pas un finding.
+- **Le diff ne montre que quelques lignes autour de chaque changement** : le haut d'un
+  fichier (imports, déclarations, constantes) en est le plus souvent absent. Avant de signaler
+  quoi que ce soit comme **manquant** (import, déclaration, définition, constante, appel),
+  **ouvre le fichier modifié en entier** et vérifie. Une absence dans le diff n'est pas une
+  absence dans le fichier.
 - Les suggestions de code doivent être applicables telles quelles ou clairement
   indiquées comme indicatives.
 - Signale explicitement ce que tu **n'as pas pu vérifier** (ex. tests non
@@ -165,6 +170,10 @@ actionable and honest code review.
 - Prioritize: security > regression / data loss > correctness >
   performance > style.
 - A finding without a concrete impact is not a finding.
+- **The diff only shows a few lines around each change**: the top of a file (imports,
+  declarations, constants) is most often missing from it. Before reporting anything as
+  **missing** (import, declaration, definition, constant, call), **open the whole changed
+  file** and check. Absent from the diff does not mean absent from the file.
 - Code suggestions must be directly applicable, or clearly marked as
   indicative.
 - Explicitly flag what you **could not verify** (e.g. tests not provided,
@@ -296,6 +305,19 @@ const ANCIEN_PROMPT_REVIEW_COURT = {
     + 'concrete suggestions with file and line where possible, and an overall score.',
 };
 
+/* LE DÉFAUT D'AVANT LA RÈGLE « OUVRE LE FICHIER EN ENTIER » (le diff n'a que trois lignes de
+   contexte : l'IA signalait des imports « manquants » qui étaient hors du diff) : le gabarit
+   actuel moins ce seul paragraphe. Même raison que `ANCIENS_PROMPTS` : un gabarit resté
+   rigoureusement le défaut reçoit le nouveau ; un gabarit retouché n'est pas touché. */
+const REGLE_FICHIER_ENTIER = {
+  fr: "- **Le diff ne montre que quelques lignes autour de chaque changement** : le haut d'un\n  fichier (imports, déclarations, constantes) en est le plus souvent absent. Avant de signaler\n  quoi que ce soit comme **manquant** (import, déclaration, définition, constante, appel),\n  **ouvre le fichier modifié en entier** et vérifie. Une absence dans le diff n'est pas une\n  absence dans le fichier.\n",
+  en: '- **The diff only shows a few lines around each change**: the top of a file (imports,\n  declarations, constants) is most often missing from it. Before reporting anything as\n  **missing** (import, declaration, definition, constant, call), **open the whole changed\n  file** and check. Absent from the diff does not mean absent from the file.\n',
+};
+const ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER = {
+  fr: PROMPTS.fr.prompt_review.replace(REGLE_FICHIER_ENTIER.fr, ''),
+  en: PROMPTS.en.prompt_review.replace(REGLE_FICHIER_ENTIER.en, ''),
+};
+
 /* `prompt_fix` : la consigne donnée à l'IA pour APPLIQUER un rapport de revue au code. Elle
    vivait en dur, en français, recopiée à l'identique dans `server.js` (« Faire corriger par
    l'IA ») et dans `converge.js` (chaque passe de la boucle) — donc ni traduite, ni éditable,
@@ -334,5 +356,5 @@ function gabarit(field, cfg = {}) {
 }
 
 module.exports = {
-  PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT, FIELDS, isDefault, promptsFor, avecConsignes, gabarit,
+  PROMPTS, ANCIENS_PROMPTS, ANCIEN_PROMPT_REVIEW_COURT, ANCIEN_PROMPT_REVIEW_SANS_REGLE_FICHIER, FIELDS, isDefault, promptsFor, avecConsignes, gabarit,
 };

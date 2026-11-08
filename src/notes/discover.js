@@ -7,6 +7,24 @@ const notify = require('../core/notify');
 const notes = require('./notes');
 const { etat } = require('../data/localstate');
 const { t } = require('../core/i18n');
+const git = require('../git/git');
+const mrref = require('../git/mrref');
+const croisements = require('../review/croisements');
+const fs = require('fs');
+const path = require('path');
+
+/* LES QUATRE SHA QUI PERMETTENT DE RELIRE UNE MERGE REQUEST MERGÉE (`git/mrref.js`) : la
+   branche source est souvent supprimée et le diff à trois points est vide par construction une
+   fois la tête dans la cible — sans `base_sha..head_sha`, « Ouvrir le code » n'a rien à montrer.
+   La forge les rend avec le détail de la MR ; on les écrit dès qu'on le lit, sans jamais effacer
+   une valeur connue par un `null`. */
+const poserShas = (mrId, d) => db.prepare(`UPDATE mr SET
+    head_sha = COALESCE(@head_sha, head_sha), base_sha = COALESCE(@base_sha, base_sha),
+    merge_commit_sha = COALESCE(@merge_commit_sha, merge_commit_sha), squash_commit_sha = COALESCE(@squash_commit_sha, squash_commit_sha)
+  WHERE id = @id`).run({
+  id: mrId, head_sha: d.head_sha || d.sha || null, base_sha: d.base_sha || null,
+  merge_commit_sha: d.merge_commit_sha || null, squash_commit_sha: d.squash_commit_sha || null,
+});
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
    Best-effort ABSOLU : toute erreur est capturée et stockée, jamais propagée —
@@ -63,9 +81,9 @@ async function discoverAll() {
   let retardsReleves = 0;
   const insertMr = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at,
-     has_conflicts, is_draft, reviewers, description, author_username, is_fork)
+     has_conflicts, is_draft, reviewers, assignees, upvotes, description, author_username, is_fork)
     VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @gitlab_created_at, @author, 'to_review', @updated_at,
-     @has_conflicts, @is_draft, @reviewers, @description, @author_username, @is_fork)`);
+     @has_conflicts, @is_draft, @reviewers, @assignees, @upvotes, @description, @author_username, @is_fork)`);
   /* `has_conflicts` n'est écrasé QUE si la liste a une réponse : `COALESCE` garde ce qu'une
      tentative de merge (ou le détail d'une MR de session) a appris, plutôt que de le remplacer
      par « on ne sait pas » au prochain tour de découverte. */
@@ -73,6 +91,7 @@ async function discoverAll() {
     title = @title, source_branch = @source_branch, target_branch = @target_branch,
     web_url = @web_url, current_sha = @current_sha, gitlab_created_at = @gitlab_created_at, author = @author, updated_at = @updated_at,
     has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft, reviewers = @reviewers,
+    assignees = @assignees, upvotes = @upvotes,
     description = @description, author_username = @author_username, is_fork = @is_fork,
     closed_seen = 0
     WHERE id = @id`);
@@ -104,6 +123,8 @@ async function discoverAll() {
           has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
           is_draft: m.draft ? 1 : 0,
           reviewers: Array.isArray(m.reviewers) ? m.reviewers.join(',') : '',
+          assignees: Array.isArray(m.assignees) ? m.assignees.join(',') : '',
+          upvotes: Number.isInteger(m.upvotes) && m.upvotes > 0 ? m.upvotes : 0,
           author_username: String(m.author_username || ''),
           is_fork: m.is_fork === true ? 1 : (m.is_fork === false ? 0 : null),
         };
@@ -158,6 +179,7 @@ async function discoverAll() {
         try {
           const detail = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, g.iid);
           if (detail && detail.merged_at) { poserMerge.run(detail.merged_at, g.id); mergee = true; }
+          if (detail) poserShas(g.id, detail); // ce qu'il faut pour relire son diff plus tard
         } catch { /* la forge n'a pas répondu : le rattrapage ci-dessous s'en chargera */ }
         const recent = g.updated_at && (Date.parse(now) - Date.parse(g.updated_at)) < FRESH_MS;
         if (recent) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
@@ -171,17 +193,10 @@ async function discoverAll() {
            qu'une MR a existé — « Créer la MR » réapparaît sur une branche déjà mergée. `COALESCE`
            ne prend la main que si la session ne savait pas déjà mieux ; et une cible déjà liée à UNE
            AUTRE merge request (branche réutilisée) n'est pas touchée : ce merge n'est pas le sien. */
-        if (mergee && g.source_branch) {
-          db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
-            WHERE repo_id = ? AND branch = ? AND (mr_iid IS NULL OR mr_iid = ?)`).run(g.iid, now, repo.id, g.source_branch, g.iid);
-        }
-        /* B1 — LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE. Elle se
-           coche, avec la mention de ce qui l'a fermée ; rien n'est supprimé. Débrayable
-           (Réglages → Général) pour qui veut cocher lui-même. */
-        if (cfg.todo_close_on_merge !== '0') {
-          const n = notes.fermerTodosDeMr(g.id, t('notes.todo.closed-by-merge', { iid: g.iid }));
-          if (n) result.todos_closed = (result.todos_closed || 0) + n;
-        }
+        /* B1 — ET LA TODO QUI SUIVAIT CETTE MERGE REQUEST N'A PLUS DE RAISON D'ÊTRE : les deux
+           gestes vivent dans `apresMerge`, que le rattrapage d'une période appelle aussi. */
+        const n = apresMerge(repo, g, { mergee, cfg, now });
+        if (n) result.todos_closed = (result.todos_closed || 0) + n;
       }
 
       /* LE RATTRAPAGE DES MERGE REQUESTS FERMÉES, UNE FOIS PAR DÉPÔT.
@@ -242,23 +257,11 @@ async function discoverAll() {
     for (const mr of newMrs) await fetchJiraContext(cfg, mr.id, mr.title, mr.branch);
   }
 
-  /* Chemins modifiés (pour le badge « risque » et les règles par chemin). On les
-     récupère pour les MR ouvertes qui ne les ont pas encore — nouvelles incluses,
-     et rétro-remplissage des existantes, PLAFONNÉ pour ne pas cogner l'API. Chaque
-     échec est ignoré (best-effort) : le badge sera juste absent pour cette MR. */
-  const MAX_PATH_FETCHES = 25;
-  const needPaths = db.prepare(`SELECT mr.id, mr.iid, repo.project, repo.forge
-      FROM mr JOIN repo ON repo.id = mr.repo_id
-      WHERE mr.changed_paths IS NULL AND (mr.closed_seen IS NULL OR mr.closed_seen = 0)
-      ORDER BY mr.updated_at DESC LIMIT ?`).all(MAX_PATH_FETCHES);
-  for (const m of needPaths) {
-    try {
-      const ch = await forge.clientFor(m).listMrChanges(cfg, m.project, m.iid);
-      db.prepare(`UPDATE mr SET changed_paths = ?, changed_files = ?, changed_additions = ?,
-        changed_deletions = ? WHERE id = ?`)
-        .run(ch.paths.join('\n'), ch.files, ch.additions, ch.deletions, m.id);
-    } catch { /* best-effort : pas de badge pour cette MR, on continue */ }
-  }
+  /* LES FICHIERS MODIFIÉS PAR CHAQUE MR OUVERTE (`review/croisements.js`) : la liste relevée sur la
+     tête actuelle, pour les croisements — et, au passage, les chemins du badge « risque » et des
+     règles par chemin. Dans la découverte, jamais à l'affichage ; plafonné par tour ; best-effort
+     par MR, le journal dit ce qui attend et ce qui a été refusé. */
+  result.files = await croisements.releverTour(cfg);
 
   // État réel des MR issues des Dev sessions : elles peuvent avoir été mergées
   // directement sur GitLab. Vérification CIBLÉE (uniquement les tâches dont la MR n'est
@@ -297,6 +300,87 @@ async function discoverAll() {
   db.prepare('DELETE FROM feed WHERE id NOT IN (SELECT id FROM feed ORDER BY at DESC LIMIT 200)').run();
   result.new_mr_ids = newMrs.map((m) => m.id);
   return result;
+}
+
+/* CE QU'UN MERGE ENTRAÎNE DANS LA BASE, quel que soit celui qui l'a vu — la découverte au tour
+   suivant, ou le rattrapage d'une période dix jours plus tard. Lier la session qui a ouvert la
+   branche (`task_target.mr_merged`, voir le commentaire de la boucle `gone`), et cocher les
+   todos qui suivaient la merge request (débrayable, Réglages → Général). Rend le nombre de
+   todos cochées. Idempotent : rejoué sur une MR déjà traitée, il ne change rien. */
+function apresMerge(repo, mr, { mergee = true, cfg = getConfig(), now = new Date().toISOString(), prevenirJira = true } = {}) {
+  // La session n'est liée que sur un merge AVÉRÉ : une fermeture sans merge n'est pas le sien.
+  if (mergee && mr.source_branch) {
+    db.prepare(`UPDATE task_target SET mr_iid = COALESCE(mr_iid, ?), mr_merged = 1, mr_conflicts = 0, updated_at = ?
+      WHERE repo_id = ? AND branch = ? AND (mr_iid IS NULL OR mr_iid = ?)`).run(mr.iid, now, repo.id, mr.source_branch, mr.iid);
+  }
+  // Et le ticket apprend la fusion — en tâche de fond, best-effort : Jira ne retarde jamais la découverte.
+  if (mergee && prevenirJira) prevenirJiraDuMerge(repo, mr.id, cfg, now).catch(() => {});
+  // La todo, elle, n'a plus de raison d'être dès que la merge request n'est plus ouverte — mergée OU fermée.
+  if (cfg.todo_close_on_merge === '0') return 0;
+  return notes.fermerTodosDeMr(mr.id, t('notes.todo.closed-by-merge', { iid: mr.iid }));
+}
+
+/* PRÉVENIR JIRA QUE LA MERGE REQUEST EST MERGÉE (Réglages → Jira). Le ticket est lu par la QA, le
+   support, le chef de projet — ceux qui demandent « c'est livré ? » sans ouvrir la forge. Opt-in
+   d'équipe (`jira_notify_merge`), décoché par défaut : écrire chez les autres se décide. UN
+   commentaire par TICKET : la première fusion le poste, chaque suivante le RÉÉCRIT avec la liste
+   complète des merge requests mergées (une entrée du gabarit par MR) — cinq merge requests d'un
+   même ticket ne font pas cinq commentaires. `jira_merge_notified_at` est posé AVANT l'appel, par
+   une mise à jour conditionnelle, pour que deux chemins qui voient le même merge (découverte puis
+   « Mettre à jour depuis la forge ») n'écrivent pas deux fois ; un échec de Jira libère le marqueur,
+   le tour suivant réessaiera. Le texte : le gabarit de l'équipe (`jira_merge_template`), ou le
+   message livré ; les variables sont celles du commentaire « à la création », une inconnue reste telle quelle. */
+/* LES COMMENTAIRES JIRA DE FUSION PARTENT UN PAR UN : deux merge requests du même ticket vues dans le
+   même tour de découverte liraient toutes deux « pas encore de commentaire » et en posteraient deux. */
+let fileJiraMerge = Promise.resolve();
+function texteJiraMerge(cfg, v) {
+  const gabarit = String((cfg && cfg.jira_merge_template) || '').trim();
+  if (!gabarit) return t('jira.merged.body', { iid: v.iid, project: v.project, url: v.url });
+  const valeurs = { url: v.url, iid: v.iid, project: v.project, title: v.title || '', branch: v.branch || '', target: v.target || '', key: v.key || '' };
+  return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
+}
+/* Le corps du commentaire d'un ticket : TOUTES ses merge requests mergées (celles déjà annoncées,
+   dans l'ordre de leur fusion), une entrée du gabarit par merge request. */
+function corpsJiraMerge(cfg, cle) {
+  const lignes = db.prepare(`SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
+    WHERE mr.jira_merge_key = ? AND mr.jira_merge_notified_at IS NOT NULL
+    ORDER BY COALESCE(mr.merged_at, mr.jira_merge_notified_at), mr.id`).all(cle);
+  return lignes.map((m) => texteJiraMerge(cfg, {
+    iid: m.iid, project: m.project, url: m.web_url || '', title: m.title || '',
+    branch: m.source_branch || '', target: m.target_branch || '', key: cle,
+  })).join('\n\n');
+}
+function prevenirJiraDuMerge(repo, mrId, cfg, now = new Date().toISOString()) {
+  if (String((cfg && cfg.jira_notify_merge) || '') !== '1' || isDemo() || !jira.isConfigured(cfg)) return Promise.resolve(null);
+  const mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
+  if (!mr) return Promise.resolve(null);
+  const cle = mr.ticket_jira_key || jira.ticketKey(mr.title, mr.source_branch);
+  if (!cle) return Promise.resolve(null);
+  const pris = db.prepare('UPDATE mr SET jira_merge_notified_at = ?, jira_merge_key = ? WHERE id = ? AND jira_merge_notified_at IS NULL').run(now, cle, mrId);
+  if (!pris.changes) return Promise.resolve(null); // déjà prévenu (ou en cours) par un autre chemin
+  const envoyer = async () => {
+    const texte = corpsJiraMerge(cfg, cle);
+    const connu = db.prepare('SELECT comment_id FROM jira_merge_comment WHERE cle = ?').get(cle);
+    let poste = null;
+    /* Le commentaire existant est RÉÉCRIT avec la liste complète. Disparu, ou plus le nôtre (403) : un
+       nouveau commentaire reprend la liste, et c'est lui qu'on suivra désormais. */
+    if (connu) {
+      try { poste = await jira.updateComment(cfg, cle, connu.comment_id, texte); } catch { poste = null; }
+    }
+    if (!poste) poste = await jira.addComment(cfg, cle, texte);
+    if (poste && poste.id) {
+      db.prepare(`INSERT INTO jira_merge_comment (cle, comment_id, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(cle) DO UPDATE SET comment_id = excluded.comment_id, updated_at = excluded.updated_at`).run(cle, String(poste.id), now);
+    }
+    return cle;
+  };
+  const tour = fileJiraMerge.then(envoyer, envoyer).catch((e) => {
+    db.prepare('UPDATE mr SET jira_merge_notified_at = NULL, jira_merge_key = NULL WHERE id = ? AND jira_merge_notified_at = ?').run(mrId, now);
+    console.error(t('jira.merged.failed', { iid: mr.iid, project: repo.project, key: cle, message: e.message }));
+    throw e;
+  });
+  fileJiraMerge = tour.catch(() => {});
+  return tour;
 }
 
 /* Upsert CIBLÉ d'une seule MR (objet API GitLab) dans la table `mr`, sans balayer
@@ -338,4 +422,119 @@ async function upsertMrFromApi(repoId, m) {
   return id;
 }
 
-module.exports = { discoverAll, upsertMrFromApi };
+/* UNE SEULE MERGE REQUEST, RELUE À LA FORGE — le bouton « Mettre à jour depuis la forge » du
+   menu ⋯. La découverte balaie tous les dépôts activés (une page par dépôt, puis des appels
+   plafonnés) : quand on vient de pousser un commit ou de changer la cible d'UNE merge request,
+   c'est beaucoup pour rafraîchir une carte. Ici : le détail de cette MR (un appel, le retard sur
+   la cible vient avec chez GitLab), les fichiers changés si le SHA a bougé (un appel), et le
+   retard chez GitHub (un appel de comparaison). Les mêmes colonnes que la découverte, les mêmes
+   suites : une MR qui n'est plus ouverte passe par `apresMerge`, un SHA qui a changé est
+   renvoyé (`stale`) pour que l'appelant relance ce que la découverte relancerait.
+   Rend `{ id, etat: 'open' | 'merged' | 'closed', stale, changed }`. */
+function detailNormalise(m) {
+  const auteur = m.author && typeof m.author === 'object' ? m.author : null;
+  const titre = String(m.title || '');
+  const gens = (l) => (Array.isArray(l)
+    ? l.map((r) => (typeof r === 'string' ? r : (r && (r.username || r.name || r.login)) || '')).filter(Boolean)
+    : null);
+  const reviewers = gens(m.reviewers);
+  const assignees = gens(m.assignees);
+  return {
+    title: titre, source_branch: m.source_branch || null, target_branch: m.target_branch || null,
+    web_url: m.web_url || null, sha: m.sha || m.head_sha || null, created_at: m.created_at || null,
+    author: auteur ? (auteur.name || auteur.username || '') : String(m.author || ''),
+    author_username: auteur ? (auteur.username || '') : String(m.author || ''),
+    // GitHub ne rend pas le corps dans la forme normalisée du détail : `null` garde l'existant.
+    description: m.description != null || m.body != null ? String(m.description || m.body || '').slice(0, 4000) : null,
+    has_conflicts: m.has_conflicts === true ? 1 : (m.has_conflicts === false ? 0 : null),
+    is_draft: m.draft === true || m.work_in_progress === true || /^\s*(draft|wip)\s*:/i.test(titre) ? 1 : 0,
+    reviewers: reviewers ? reviewers.join(',') : null,
+    assignees: assignees ? assignees.join(',') : null,
+    // Les 👍 : GitLab les met sur le détail ; GitHub non (ils vivent sur l'issue) — `null` garde l'existant.
+    upvotes: Number.isInteger(m.upvotes) && m.upvotes >= 0 ? m.upvotes : null,
+    is_fork: m.source_project_id != null && m.target_project_id != null
+      ? (m.source_project_id !== m.target_project_id ? 1 : 0) : null,
+    behind_by: Number.isInteger(m.behind_by) && m.behind_by >= 0 ? m.behind_by : null,
+    merged_at: m.merged_at || null,
+    etat: m.state === 'merged' || m.merged_at ? 'merged' : (m.state === 'closed' || m.state === 'locked' ? 'closed' : 'open'),
+  };
+}
+const COLONNES_SUIVIES = ['title', 'source_branch', 'target_branch', 'web_url', 'current_sha', 'author', 'has_conflicts',
+  'is_draft', 'reviewers', 'assignees', 'upvotes', 'description', 'behind_by', 'closed_seen', 'merged_at', 'changed_paths'];
+async function rafraichirMr(mrId) {
+  const avant = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
+  if (!avant) return null;
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(avant.repo_id);
+  if (!repo) return null;
+  const etatDe = (mr) => (mr.closed_seen ? (mr.merged_at ? 'merged' : 'closed') : 'open');
+  // En démo la forge n'existe pas : la carte est déjà ce qu'elle sera.
+  if (isDemo()) return { id: avant.id, etat: etatDe(avant), stale: false, changed: false };
+  const cfg = getConfig();
+  const now = new Date().toISOString();
+  const client = forge.clientFor(repo);
+  const brut = await client.getMergeRequest(cfg, repo.project, avant.iid);
+  if (!brut || typeof brut !== 'object') throw new Error(t('err.mr-introuvable'));
+  const d = detailNormalise(brut);
+  const stale = !!(d.sha && avant.current_sha && d.sha !== avant.current_sha);
+  poserShas(avant.id, brut);
+  db.prepare(`UPDATE mr SET
+      title = @title, source_branch = COALESCE(@source_branch, source_branch), target_branch = COALESCE(@target_branch, target_branch),
+      web_url = COALESCE(@web_url, web_url), current_sha = COALESCE(@sha, current_sha), gitlab_created_at = COALESCE(@created_at, gitlab_created_at),
+      author = @author, author_username = @author_username, updated_at = @now,
+      has_conflicts = COALESCE(@has_conflicts, has_conflicts), is_draft = @is_draft,
+      reviewers = COALESCE(@reviewers, reviewers), description = COALESCE(@description, description),
+      assignees = COALESCE(@assignees, assignees), upvotes = COALESCE(@upvotes, upvotes),
+      is_fork = COALESCE(@is_fork, is_fork), behind_by = COALESCE(@behind_by, behind_by)
+    WHERE id = @id`).run({ ...d, now, id: avant.id });
+  if (d.etat !== 'open') {
+    const mergee = d.etat === 'merged';
+    if (mergee) db.prepare('UPDATE mr SET merged_at = ? WHERE id = ? AND merged_at IS NULL').run(d.merged_at || now, avant.id);
+    if (!avant.closed_seen) {
+      db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?').run(avant.id);
+      if (mergee) {
+        db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)')
+          .run('mr_merged', avant.iid, repo.project, avant.author || '', d.title || avant.title || '', now);
+        notify.push('mr_merged', { iid: avant.iid, project: repo.project, title: d.title || avant.title || '' });
+      }
+      apresMerge(repo, { ...avant, source_branch: d.source_branch || avant.source_branch }, { mergee, cfg, now });
+    }
+    /* LE DIFF À JOUR, TOUT DE SUITE. « Ouvrir le code » sur une MR mergée relit `base_sha..head_sha`
+       par la ref que la forge conserve (`refs/merge-requests/<iid>/head`) : si le clone est déjà
+       là, on le met à jour et on ramène cette ref maintenant — l'ouverture n'aura plus rien à
+       aller chercher. Pas de clone : on ne crée pas un dépôt entier pour un bouton ; la
+       visionneuse le fera à la première ouverture, comme avant. Best-effort. */
+    if (fs.existsSync(path.join(git.cloneDirFor(cfg, repo), '.git'))) {
+      try {
+        const cwd = await git.ensureRepo(cfg, repo, () => {});
+        await mrref.fetchMrRefs(cwd, repo, [avant.iid]);
+      } catch { /* la ref n'est plus sur la forge, ou le réseau : la visionneuse réessaiera */ }
+    }
+  } else {
+    // Réapparue ouverte (rouverte sur la forge) : elle revient dans la file.
+    db.prepare('UPDATE mr SET closed_seen = 0 WHERE id = ?').run(avant.id);
+    /* Le retard sur la cible : GitLab le rend avec le détail, GitHub par une comparaison —
+       un appel de plus, seulement là où le détail ne l'a pas dit. Best-effort. */
+    if (d.behind_by == null && d.is_fork !== 1 && avant.is_fork !== 1) {
+      try {
+        const div = await client.divergence(cfg, repo.project, { ...d, iid: avant.iid, is_fork: avant.is_fork === 1 });
+        if (div && Number.isInteger(div.behind_by)) {
+          db.prepare('UPDATE mr SET behind_by = ?, has_conflicts = COALESCE(?, has_conflicts) WHERE id = ?')
+            .run(div.behind_by, div.has_conflicts === true ? 1 : (div.has_conflicts === false ? 0 : null), avant.id);
+        }
+      } catch { /* la forge n'a pas répondu : la valeur connue reste */ }
+    }
+    /* Les fichiers changés suivent le SHA : relus quand il bouge, ou quand on ne les a jamais eus —
+       par les mêmes sources que la découverte (diff stocké, clone, forge), pour les croisements. */
+    const releve = db.prepare('SELECT head_sha FROM mr_file_fetch WHERE mr_id = ?').get(avant.id);
+    if (stale || avant.changed_paths == null || !releve || releve.head_sha !== (d.sha || avant.current_sha)) {
+      try {
+        await croisements.releverEtPoser(cfg, repo, { ...avant, current_sha: d.sha || avant.current_sha });
+      } catch { /* best-effort : le badge « risque » attendra la prochaine découverte */ }
+    }
+  }
+  const apres = db.prepare('SELECT * FROM mr WHERE id = ?').get(avant.id);
+  const changed = COLONNES_SUIVIES.some((c) => (avant[c] ?? null) !== (apres[c] ?? null));
+  return { id: avant.id, etat: etatDe(apres), stale, changed };
+}
+
+module.exports = { discoverAll, upsertMrFromApi, apresMerge, rafraichirMr, prevenirJiraDuMerge, texteJiraMerge };

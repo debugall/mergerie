@@ -19,12 +19,18 @@ function freshState() {
     commits: {},             // project -> [{ id, short_id, title, author_name, committed_date, web_url }] (le plus récent d'abord)
     tags: {},                // project -> [{ name, target, message, commit:{ id, committed_date } }]
     compare: {},             // project -> [commit] rendus par /repository/compare (commits depuis la review)
+    commitMrs: {},           // project -> { sha -> [mr] } rendus par /repository/commits/:sha/merge_requests
+    events: {},              // project -> [{ action_name:'pushed', created_at, author:{name}, push_data:{ ref, ref_type, commit_from, commit_to, commit_count } }]
+    refPipelines: {},        // project -> { ref -> [{ id, status, web_url, sha }] } rendus par /pipelines?ref=
+    jiraStatusChanged: {},   // KEY -> date ISO du dernier changement d'état (JQL `status CHANGED DURING`)
+    jiraAssignedAt: {},      // KEY -> date ISO de l'affectation au compte courant (JQL `assignee CHANGED TO currentUser() DURING`)
     protectedBranches: {},   // project -> [name]
     protectedTags: {},       // project -> [name]
     discussions: {},         // `${project}!${iid}` -> [discussion]
     approvals: {},           // `${project}!${iid}` -> [username] (qui a approuvé)
     pipelines: {},           // `${project}!${iid}` -> [{ id, status, web_url }] (le plus récent d'abord)
     changes: {},             // `${project}!${iid}` -> [{ new_path }]
+    mrCommits: {},           // `${project}!${iid}` -> [{ id }] rendus par /merge_requests/:iid/commits (le plus récent d'abord)
     jiraIssues: {},          // KEY -> { key, fields }
     jiraFail: null,          // { status, body } pour forcer un refus Jira
     jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
@@ -130,6 +136,7 @@ function handleGitlab(req, res, pathname, query, body) {
     if (sub === '/changes' && req.method === 'GET') {
       return json(res, 200, { ...mr, changes: state.changes[key] || [] });
     }
+    if (sub.startsWith('/commits') && req.method === 'GET') return json(res, 200, paged(state.mrCommits[key] || []));
     if (sub === '/notes' && req.method === 'POST') {
       /* `failNextNote` : un refus de la forge, à la demande. Il sert à prouver qu'un échec de
          publication ne laisse PAS de trace « publié » — sans lui, ce chemin ne se teste pas. */
@@ -191,8 +198,26 @@ function handleGitlab(req, res, pathname, query, body) {
     return json(res, 404, { message: '404 Not Found' });
   }
 
+  /* Les pushs vus par GitLab (`events?action=pushed`) et le pipeline d'une BRANCHE (`pipelines?ref=`),
+     pour Notes → Période : posés par le test ; sans eux, des listes vides. */
+  if (rest === '/events' && req.method === 'GET') {
+    const action = query.get('action');
+    return json(res, 200, paged((state.events[project] || []).filter((e) => !action || e.action_name === action)));
+  }
+  if (rest === '/pipelines' && req.method === 'GET') {
+    const ref = query.get('ref');
+    return json(res, 200, ((state.refPipelines[project] || {})[ref] || []).slice(0, 1));
+  }
+
   // --- Commits (dernier commit d'un projet) ---
   if (rest === '/repository/commits' && req.method === 'GET') return json(res, 200, paged(commitsOf()));
+  /* Les merge requests qui contiennent un commit (passe 3 du rattrapage d'une période) : posées
+     par le test dans `state.commitMrs[project][sha]` ; sans elles, GitLab répond une liste vide. */
+  m = /^\/repository\/commits\/([^/]+)\/merge_requests$/.exec(rest);
+  if (m && req.method === 'GET') {
+    const sha = decodeURIComponent(m[1]);
+    return json(res, 200, ((state.commitMrs || {})[project] || {})[sha] || []);
+  }
   /* Comparaison entre deux SHA (commits arrivés depuis la review) : la liste est posée par le
      test dans `state.compare[project]` ; sans elle, GitLab répond une comparaison vide. */
   if (rest === '/repository/compare' && req.method === 'GET') {
@@ -274,12 +299,49 @@ function handleJira(req, res, pathname, body = {}) {
     return json(res, 200, state.jiraProjectStatuses[cle]);
   }
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
+  // Qui peut être assigné dans des projets (`jiraAssignable`, tableau d'utilisateurs Jira bruts).
   /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
      émet — `key IN (…)` (tickets surveillés) et `statusCategory = "In Progress"` (compteur du
      menu). Sans ça, un test de surveillance passerait quoi qu'on demande, et ne prouverait rien. */
   if (/^\/rest\/api\/3\/search/.test(pathname)) {
-    const jql = String(new URL(req.url, 'http://localhost').searchParams.get('jql') || '');
+    let jql = String(new URL(req.url, 'http://localhost').searchParams.get('jql') || '');
     let issues = Object.values(state.jiraIssues);
+    /* Notes → Période : « les miens ou ces clés », les changements d'état et les affectations
+       DANS une fenêtre (`CHANGED … DURING`), lus dans `jiraStatusChanged` / `jiraAssignedAt`. */
+    const borne = (x) => Date.parse(String(x).trim().replace(/^"|"$/g, '').replace(' ', 'T'));
+    const miens = /\(assignee = currentUser\(\) OR key IN \(([^)]*)\)\)/i.exec(jql);
+    if (miens) {
+      const set = new Set(miens[1].split(',').map((k) => k.trim().toUpperCase()));
+      issues = issues.filter((i) => set.has(String(i.key).toUpperCase()) || (i.fields && i.fields.assignee && i.fields.assignee.accountId === 'me-test'));
+      jql = jql.replace(miens[0], '');
+    }
+    /* Jira → Stats, la plage de mouvement : un seul bloc OR (créé / mis à jour / statut, assigné,
+       priorité, résolution changés). Le mock le lit d'un coup — créé ou mis à jour dans la plage,
+       ou statut changé dans la plage (`jiraStatusChanged`) — puis le RETIRE de la JQL, sinon le
+       `status CHANGED DURING` plus bas le rejouerait seul, en ET. */
+    const mvt = /\(\(created >= "([^"]+)" AND created <= "([^"]+)"\) OR \(updated >= [^)]+\)(?: OR \w+ CHANGED DURING \([^)]+\))+\)/i.exec(jql);
+    if (mvt) {
+      const [a, b] = [borne(mvt[1]), borne(mvt[2])];
+      const dedans = (x) => { const d = Date.parse(String(x || '').replace(/(\d{2})(\d{2})$/, '$1:$2')); return Number.isFinite(d) && d >= a && d <= b; };
+      issues = issues.filter((i) => dedans(i.fields && i.fields.created) || dedans(i.fields && i.fields.updated) || dedans(state.jiraStatusChanged[i.key]));
+      jql = jql.replace(mvt[0], '');
+    }
+    const chg = /status CHANGED DURING \(([^,]+),([^)]+)\)/i.exec(jql);
+    if (chg) {
+      const [a, b] = [borne(chg[1]), borne(chg[2])];
+      issues = issues.filter((i) => { const d = Date.parse(state.jiraStatusChanged[i.key] || ''); return d >= a && d <= b; });
+    }
+    const aff = /assignee CHANGED TO currentUser\(\) DURING \(([^,]+),([^)]+)\)/i.exec(jql);
+    if (aff) {
+      const [a, b] = [borne(aff[1]), borne(aff[2])];
+      issues = issues.filter((i) => { const d = Date.parse(state.jiraAssignedAt[i.key] || ''); return d >= a && d <= b; });
+    }
+    // « mis à jour depuis N jours » : la fenêtre d'activité du filtre Assignés.
+    const rel = /updated\s*>=\s*-(\d+)d/i.exec(jql);
+    if (rel) {
+      const depuis = Date.now() - Number(rel[1]) * 86400000;
+      issues = issues.filter((i) => Date.parse((i.fields && i.fields.updated) || '') >= depuis);
+    }
     const keys = /key\s+IN\s*\(([^)]*)\)/i.exec(jql);
     if (keys) {
       const set = new Set(keys[1].split(',').map((k) => k.trim().replace(/^"|"$/g, '').toUpperCase()));
@@ -301,6 +363,22 @@ function handleJira(req, res, pathname, body = {}) {
       const cle = par[1].toUpperCase();
       issues = issues.filter((i) => i.fields && i.fields.parent && String(i.fields.parent.key).toUpperCase() === cle);
     }
+    /* Jira → Stats : les filtres de champ partent en JQL (`issuetype IN`, `labels IN`, `priority IN`). */
+    const champIn = (nom, lire) => {
+      const m = new RegExp(`(?:^|\\s)${nom}\\s+IN\\s*\\(([^)]*)\\)`, 'i').exec(jql);
+      if (!m) return;
+      const set = new Set(m[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => lire(i.fields || {}).some((v) => set.has(v)));
+    };
+    champIn('issuetype', (f) => [f.issuetype && f.issuetype.name]);
+    // Un champ personnalisé par identifiant (`cf[10030] IN (…)`) : l'équipe, par son id ou son nom.
+    const cfm = /cf\[(\d+)\]\s+IN\s*\(([^)]*)\)/i.exec(jql);
+    if (cfm) {
+      const set = new Set(cfm[2].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
+      issues = issues.filter((i) => { const v = (i.fields || {})[`customfield_${cfm[1]}`]; return v && (set.has(String(v.id)) || set.has(String(v.name))); });
+    }
+    champIn('labels', (f) => f.labels || []);
+    champIn('priority', (f) => [f.priority && f.priority.name]);
     const nonStat = /status\s+NOT\s+IN\s*\(([^)]*)\)/i.exec(jql);
     if (nonStat) {
       const exclus = new Set(nonStat[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')));
@@ -313,6 +391,11 @@ function handleJira(req, res, pathname, body = {}) {
         const v = i.fields && i.fields.customfield_10020;
         return Array.isArray(v) && v.some((sp) => ids.has(String(sp.id)));
       });
+    }
+    // « Mes tickets » et les stats écartent les terminés PAR Jira : le mock doit le faire aussi,
+    // sinon « Inclure les terminés » ne changerait rien de visible et ne prouverait rien.
+    if (/statusCategory\s*!=\s*"?Done"?/i.test(jql)) {
+      issues = issues.filter((i) => !(i.fields && i.fields.status && i.fields.status.statusCategory && i.fields.status.statusCategory.key === 'done'));
     }
     if (/statusCategory\s*=\s*"?In Progress"?/i.test(jql)) {
       issues = issues.filter((i) => i.fields && i.fields.status

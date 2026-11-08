@@ -49,12 +49,13 @@ function applyKindToModal(kind) {
   const cr = $('#taskCliRow'); if (cr && isAsk) cr.hidden = true;
   // Codage hors dépôt : dossiers locaux à la place des projets, Jira & avertissement.
   $('#taskReposWrap').hidden = isLocal || isAsk;
+  majGitLocal(kind);   // en dernier : hors dépôt, c'est lui qui décide quelles cases de « une fois le code écrit » restent
   /* Projets liés en lecture seule : CODAGE seulement. Une exploration voit déjà tous ses
      dépôts côte à côte (§ runExploration) et n'a rien à distinguer lecture/écriture. */
   const ctxRow = $('#taskContextRepos'); if (ctxRow) ctxRow.hidden = kind !== 'code';
   $('#taskLocalWrap').hidden = !isLocal;
   $('#taskLocalWarn').hidden = !isLocal;
-  if (isLocal) { $('#taskJiraRow').hidden = true; renderLocalRootPicker(); renderLocalDirRows(); }
+  if (isLocal) { setupTaskJira(''); renderLocalRootPicker(); renderLocalDirRows(); }   // le contexte d'un ticket vaut aussi hors dépôt
   if (isAsk) $('#taskJiraRow').hidden = true;
   /* La case « l'IA peut me poser des questions » et l'identifiant de session supposent une
      cible sur laquelle l'agent hésite ou travaille : sans dépôt ni dossier, elles n'ont rien
@@ -204,6 +205,38 @@ async function appliquerDefautsSession(f) {
   for (const [k, v] of Object.entries(d)) { if (f[k] && v) f[k].checked = true; }
   majLienVerifPush();
 }
+/* HORS DÉPÔT, LE GIT EST FACULTATIF ET COMMENCE PAR UN NOM DE BRANCHE. Sans lui, le formulaire reste ce
+   qu'il était (l'agent écrit en place, rien n'est commité) : ni cases, ni message de commit. Avec lui,
+   on retrouve les décisions d'une session de codage — message, push, MR, convergence — en gardant leurs
+   implications visibles : converger passe par la MR, la MR par le push. Les cases impliquées se
+   cochent et se figent plutôt que de laisser croire qu'on peut converger sans pousser. */
+function majGitLocal(kind) {
+  const f = $('#taskForm');
+  const local = kind === 'local';
+  const rangee = $('#taskLocalBranchRow'); if (rangee) rangee.hidden = !local;
+  const mr = $('#taskCreateMrRow'); const checks = $('#taskCodeChecks');
+  if (!local) {
+    if (mr) mr.hidden = true;
+    if (checks) checks.hidden = false;
+    for (const n of ['auto_push', 'create_mr']) if (f[n]) f[n].disabled = false;
+    return;
+  }
+  const avec = !!(f.branch && f.branch.value.trim());
+  checks.hidden = true;                                  // vérificateur, Jira, review : supposent un dépôt enregistré
+  $('#codeOnlyFields').hidden = !avec;
+  mr.hidden = !avec;
+  $('#taskConvergeRow').hidden = !avec;
+  $('#taskCommitRow').hidden = !avec;
+  if (f.converge_after.checked) f.create_mr.checked = true;
+  f.create_mr.disabled = f.converge_after.checked;
+  if (f.create_mr.checked) f.auto_push.checked = true;
+  f.auto_push.disabled = f.create_mr.checked;
+}
+for (const sel of ['#taskLocalBranch', '[name=create_mr]', '[name=converge_after]']) {
+  const el = $(`#taskForm ${sel}`);
+  if (el) el.addEventListener(sel === '#taskLocalBranch' ? 'input' : 'change', () => majGitLocal(taskKind));
+}
+
 async function majLibelleConverge() {
   const l = $('#taskConvergeLbl');
   if (!l) return;
@@ -294,6 +327,7 @@ function showTaskModal() {
   if (hint && !hint.dataset.keep) { hint.textContent = ''; hint.hidden = true; }
   if (hint) delete hint.dataset.keep;
   $('#taskModal').hidden = false;
+  majCroisementsSession();   // ce que les dépôts cochés portent comme MR ouvertes
 }
 
 async function openTaskForMr(m, opts = {}) {
@@ -308,6 +342,7 @@ async function openTaskForMr(m, opts = {}) {
   setupTaskJira(m.source_branch);
   if (opts.prompt) f.prompt.value = opts.prompt;
   if (opts.commitMessage && f.commit_message) f.commit_message.value = opts.commitMessage;
+  if (opts.label && f.label) f.label.value = String(opts.label).slice(0, 120);
   /* Reprendre la session de codage d'origine évite à l'IA de redécouvrir un code qu'elle vient
      d'écrire. Le champ est PRÉ-REMPLI, pas verrouillé : le lien est déduit de (dépôt, branche),
      ce qui n'est pas une preuve — la branche a pu être reprise à la main. On voit donc ce qui

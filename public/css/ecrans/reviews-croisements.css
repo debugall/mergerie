@@ -1,0 +1,24 @@
+/* ============ Reviews : les croisements de merge requests ============
+   Le badge « croise !214 · 3 fichiers · 2 j » dans la rangée des pastilles, et son panneau ancré
+   sur la carte — même police, même taille, même survol que les autres pastilles. Tout passe par
+   les variables de thème : clair et sombre suivent sans règle dédiée. */
+.tag.croise { color: var(--purple); border-color: var(--purple); cursor: pointer; }
+.tag.croise:hover { background: var(--panel2); }
+.tag.croise:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Le panneau est DANS la carte : elle devient son repère et passe au-dessus des suivantes, la
+   liste débloque son overflow — la mécanique du menu « ⋯ », pour les mêmes raisons. */
+.list.croise-open { overflow: visible; }
+.card.croise-open { position: relative; z-index: 50; }
+.croise-panel {
+  position: absolute; z-index: 40; min-width: 280px; max-width: min(560px, calc(100% - 16px));
+  padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--sh-2); font-size: 13px; text-align: left; white-space: normal;
+}
+.croise-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.croise-head strong { flex: 1; }
+.croise-mr { margin: 6px 0; }
+.croise-go { background: none; border: 0; padding: 0; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.croise-go:hover, .croise-go:focus-visible { text-decoration: underline; color: var(--accent); outline: none; }
+.croise-paths { list-style: none; margin: 4px 0 0; padding: 0 0 0 12px; }
+.croise-paths code { font-size: 12px; }
+.croise-foot { margin-top: 8px; font-size: 12px; }

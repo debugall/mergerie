@@ -21,10 +21,11 @@ const agentpass = require('../agent/pass');
 const protocol = require('../agent/protocol');
 const { etat } = require('../data/localstate');
 const { optionsFor } = require('../agent/profile/prompt');
+const reprise = require('./reprise');
 const apres = require('../agent/profile/apres');
 const demoAgents = require('../demo/agents');
 const pieces = require('../agent/pieces');
-const { t } = require('../core/i18n');
+const { t, deNom } = require('../core/i18n');
 
 const WORK_REL = 'ai-dev-tools-internal';
 
@@ -375,6 +376,24 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
   let doResume = !!(resume || tg.session_key);
+  /* LA REPRISE DE LA SESSION D'UN COLLÈGUE : la première passe envoie le premier message assemblé
+     (tout l'historique de la session d'origine, puis ma consigne) à la place du prompt — et jamais
+     un handle venu d'ailleurs : un `session_key` qui serait arrivé par le fichier partagé n'est pas
+     repris, il est ignoré et le journal le dit. */
+  if (task.resumed_from_uid && !agentpass.list('task', task.id, tg.id).length) {
+    if (tg.session_key) { onLog(t('log.task.reprise-handle-ignored', { handle: String(tg.session_key).slice(0, 12) })); doResume = false; setTarget(tg.id, { session_key: null, session_backend: null, session_cwd: null }); }
+    const premier = reprise.premierMessage(task.id);
+    if (premier) {
+      task = { ...task, prompt: premier };
+      promptText = buildCodePrompt(task);
+      if (promptRepli != null) promptRepli = promptText;
+      const b = reprise.bilan(task.id) || {};
+      onLog(t('log.task.reprise', {
+        id: task.id, origine: b.origine_id || '?', de_auteur: deNom(b.auteur || '?'), branch: b.branch || tg.base_branch || '', sha: String(b.sha || '').slice(0, 7),
+        passes: t('log.task.reprise.passes', { n: b.passes || 0, count: b.passes || 0 }), tokens: reprise.tokensCourt(b.tokens || 0),
+      }));
+    }
+  }
   const cfg = getConfig();
   const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
   if (!repo) throw new Error(t('err.depot-introuvable'));
@@ -811,8 +830,12 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
     `Tu explores ${dirs.length} dépôt(s) de code, chacun dans un sous-dossier du répertoire courant :\n${listing}\n\n`
     + `QUESTION : ${question}${blocEntrees}\n\n`
     + `Explore librement le code de ces dépôts (lecture de fichiers, recherche) pour y répondre.\n`
-    + `IMPORTANT : c'est une exploration en LECTURE SEULE — ne modifie, ne crée et ne supprime AUCUN fichier `
-    + `dans les dépôts, et ne fais aucun commit.${prev}${imgBlock}\n\n`
+    + (agentpolicy.modeSecurise()
+      ? `IMPORTANT : c'est une exploration en LECTURE SEULE — ne modifie, ne crée et ne supprime AUCUN fichier `
+        + `dans les dépôts, et ne fais aucun commit.`
+      // Yolo : rien n'est bloqué, y compris l'écriture hors du répertoire de travail — la consigne ne doit pas le re-bloquer.
+      : `Tu as le droit d'écrire où il le faut, dans ces dépôts comme dans d'autres dossiers, si la demande l'exige.`)
+    + `${prev}${imgBlock}\n\n`
     + `Rédige UNE SEULE réponse de synthèse, transversale aux dépôts, en Markdown (français), `
     + (agentpolicy.sortieSurStdout('explore', copilot.COPILOT_BIN)
       // Lecture seule tenue par le lanceur : aucun fichier ne peut être écrit, la réponse finale en tient lieu.

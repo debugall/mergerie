@@ -144,3 +144,20 @@ describe('Le prompt', () => {
     assert.match(s, /<<<SPEC abc/);
   });
 });
+
+describe('La fenêtre JQL d’une période', () => {
+  const jira = require('../src/integrations/jira');
+  test('se formate dans le fuseau du compte, pas dans celui du serveur', () => {
+    // 23:30 UTC le 1er : déjà le 2 à Paris, encore le 1er à New York.
+    const iso = '2026-03-01T23:30:00.000Z';
+    assert.equal(jira.dateJql(iso, 'Europe/Paris'), '2026-03-02 00:30');
+    assert.equal(jira.dateJql(iso, 'America/New_York'), '2026-03-01 18:30');
+    assert.equal(jira.dateJql(iso, 'UTC'), '2026-03-01 23:30');
+  });
+  test('sans fuseau connu, retombe sur celui du serveur sans planter', () => {
+    const iso = '2026-03-01T12:00:00.000Z';
+    const local = jira.dateJql(iso, null);
+    assert.match(local, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    assert.equal(jira.dateJql(iso, 'Nulle/Part'), local);
+  });
+});

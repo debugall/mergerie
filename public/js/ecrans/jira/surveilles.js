@@ -205,8 +205,10 @@ function showJiraSub(sub) {
   $('#jiraSubMine').hidden = sub !== 'mine';
   $('#jiraSubWatch').hidden = sub !== 'watch';
   $('#jiraSubAnalysed').hidden = sub !== 'analysed';
+  $('#jiraSubStats').hidden = sub !== 'stats';
   if (sub === 'watch') loadJiraWatch();
   if (sub === 'analysed') chargerAnalyses();
+  if (sub === 'stats') chargerJiraStats();
 }
 $$('#tab-jira .subnav [data-jsub]').forEach((b) => b.addEventListener('click', () => showJiraSub(b.dataset.jsub)));
 
@@ -293,6 +295,8 @@ $('#jiraList') && $('#jiraList').addEventListener('click', (e) => {
 // Lightbox : clic sur une vignette d'image → aperçu en grand (Échap/clic dehors ferme, cf. handler modales).
 surLeDetailJira('click', (e) => {
   const code = e.target.closest('[data-jiracode]');
+  const hors = e.target.closest('[data-jiralocal]');
+  if (hors) { openLocalTaskForJira(hors.dataset.jiralocal).catch((err) => toast(explainError(err.message), true)); return; }
   if (code) { openTaskForJira(code.dataset.jiracode).catch((err) => toast(explainError(err.message), true)); return; }
   const img = e.target.closest('[data-jimg]'); if (!img) return; // vignettes ET images inline
   e.preventDefault();

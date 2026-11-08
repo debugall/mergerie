@@ -17,7 +17,8 @@ function reportSig(d) {
     // sans elle ici, une publication automatique laissait l'ancien libellé à l'écran.
     r && r.comment_posted_at,
     d.convergence && d.convergence.status, d.stale, t2.text && t2.text.length, t2.has_image,
-    t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd].join('\u0001');
+    t2.jira_text && t2.jira_text.length, (d.comments || []).length, d.resume_cmd,
+    sigCroise(d), sigTests(d), sigDeps(d), sigStack(d)].join('\u0001');
 }
 
 /* UNE DÉCOUVERTE PEUT CHANGER CE QUE LE RAPPORT OUVERT AFFICHE. Une branche qui a bougé rend un rapport « périmé » : le badge et « Relancer
@@ -43,6 +44,13 @@ async function openReport(id, opts = {}) {
   // on met simplement à jour la sélection.
   $$('#reportList .card').forEach((c) => c.classList.toggle('active', Number(c.dataset.id) === id));
   const d = await api(`/mrs/${id}`);
+  /* Le rapport est ouvert ICI : la pastille « nouveau pour toi » tombe (état de ce poste). Sans
+     attendre — l'écran n'en dépend pas, et une liste rechargée le relira. */
+  if (d.review) api(`/mrs/${id}/seen`, { method: 'POST' }).catch(() => {});
+  /* Le dernier rapport demandé gagne. Deux ouvertures en vol (Précédent deux fois de suite, deux
+     clics rapprochés) finissent dans le désordre : la plus lente rendait un rapport qu'on avait
+     déjà quitté — et reposait son adresse, ce qui ajoutait une entrée à l'historique. */
+  if (selectedMr !== id) return;
   poserAdresse(`#/reviews/${id}`);   // le rapport existe : l'adresse mène quelque part
   const sig = reportSig(d);
   const stamp = (d.review && d.review.updated_at) || '';
@@ -80,6 +88,11 @@ async function openReport(id, opts = {}) {
           ${fenteBrouillons({ ...mLigne, drafts: d.drafts || mLigne.drafts })}
           ${badgeSeverites(mLigne)}
           ${badgeCartes({ cards: d.cards || mLigne.cards })}
+          ${/* Le badge de croisement, repris de la carte : le rapport est aussi l'endroit où l'on décide de merger. */''}
+          ${badgeTests({ id: m.id, tests: d.tests || mLigne.tests })}
+          ${badgeDeps({ id: m.id, deps: d.deps || mLigne.deps })}
+          ${badgeStack({ id: m.id, stack: d.stack || mLigne.stack })}
+          ${badgeCroise({ id: m.id, overlaps: d.overlaps || mLigne.overlaps, files_fetch: d.files_fetch || mLigne.files_fetch })}
           ${badgeConflit(mLigne)}
           ${pluginsHtml('mr-badge', m)}
           ${verifyBadge(d.verification)}
@@ -90,7 +103,7 @@ async function openReport(id, opts = {}) {
                 possible sans ouvrir la forge. */''}
           ${m.reviewed_sha ? ` · <span class="muted" title="${esc(tr('report.reviewed-sha.title'))}"><code>${esc(String(m.reviewed_sha).slice(0, 8))}</code></span>` : ''}
           ${d.stale ? `<button type="button" class="tag stale" id="aStaleRe" data-stale-mr="${m.id}" title="${esc(tr('report.tag.stale-go'))}">${tr('report.tag.stale')}</button>` : ''}
-          ${origineHtml(d.origin_task)}
+          ${origineHtml({ ...m, origin_task: d.origin_task })}
           ${/* CE QUE CETTE REVIEW A COÛTÉ. Les statistiques n'en donnaient qu'une moyenne :
                 « celle-ci a-t-elle coûté cher ? » n'avait pas de réponse là où on la lit. */''}
           ${d.tokens_est ? ` · <span class="muted" title="${esc(tr('report.cost.title'))}">${esc(tr('task.cost.tokens', { n: fmtMilliers(d.tokens_est) }))}</span>` : ''}</div>
@@ -123,6 +136,7 @@ async function openReport(id, opts = {}) {
                   sur GitLab, une review APPROVE sur GitHub, sans aucun commentaire inline. Dans le
                   menu, comme Publier : la barre garde ses trois actions. L'état (qui a déjà
                   approuvé, moi compris) arrive à part, après le rendu — c'est un appel à la forge. */''}
+            <button id="aRefresh" role="menuitem" title="${esc(tr('mr.btn.refresh-title', { forge: forgeLabel(m.forge) }))}">${tr('mr.btn.refresh')}</button>
             ${m.closed_seen ? '' : `<button id="aApprove" role="menuitem" data-mine="0" title="${esc(tr('report.btn.approve-title', { forge: forgeLabel(m.forge) }))}">${tr('report.btn.approve')}</button>`}
             ${d.review ? (() => {
               /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà
@@ -469,6 +483,16 @@ async function openReport(id, opts = {}) {
   const done = $('#aDone'); if (done) done.addEventListener('click', async () => {
     await api(`/mrs/${id}/done`, { method: 'POST' });
     toast(tr('toast.marquee-done'));
+    openReport(id); loadSegment(); refreshCounts();
+  });
+  /* Relire la merge request à la forge : le rapport se redessine (en-tête, badges, « périmé »),
+     et la liste suit — mergée ou fermée, sa carte le dit. */
+  const aRefresh = $('#aRefresh'); if (aRefresh) aRefresh.addEventListener('click', async () => {
+    try {
+      const r = await api(`/mrs/${id}/refresh`, { method: 'POST' });
+      const cle = r.etat === 'merged' ? 'merged' : r.etat === 'closed' ? 'closed' : r.stale ? 'stale' : r.changed ? 'updated' : 'same';
+      toast(tr(`mr.refresh.${cle}`, { forge: forgeLabel(m.forge) }));
+    } catch (e) { toast(explainError(e.message), true); return; }
     openReport(id); loadSegment(); refreshCounts();
   });
   const reopen = $('#aReopen'); if (reopen) reopen.addEventListener('click', async () => {

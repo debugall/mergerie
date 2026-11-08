@@ -143,3 +143,10 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 /* La session d'analyse d'un ticket porte sa clé : un bouton, pas une étiquette — il ouvre le ticket. */
 .tag.task-spec { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font: inherit; font-size: inherit; color: var(--accent); border-color: var(--accent); background: transparent; }
 .tag.task-spec:hover, .tag.task-spec:focus-visible { background: var(--panel2); }
+
+/* L'atterrissage depuis ailleurs : la carte visée garde un contour tant qu'on n'a pas cliqué
+   ailleurs — un balayage d'une seconde pendant un défilement, personne ne le voit — et le
+   bandeau dit laquelle et d'où l'on vient. */
+.task-landed { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.task-landed-text { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; flex-wrap: wrap; }
+.task-landed-text .ico { color: var(--accent); }

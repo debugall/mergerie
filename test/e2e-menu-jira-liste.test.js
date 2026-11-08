@@ -171,6 +171,7 @@ describe('Menu Jira — Mes tickets : liste et filtres', { skip: dispo ? false :
     assert.match(jql, /statusCategory != Done/, 'les terminés sont écartés par Jira');
     assert.ok(!(await clesAffichees()).includes('PROJ-4'), 'le ticket de Bob n’est pas dans « mes tickets »');
     assert.match(await page.locator('#jiraInfo').textContent(), /3 tickets/);
+    assert.equal(await page.locator('#jiraMineCount').innerText(), '3', 'le même nombre sur l’onglet « Mes tickets »');
 
     // Le premier ticket est ouvert d'office, et sa carte se distingue.
     const premier = (await clesAffichees())[0];
@@ -194,6 +195,7 @@ describe('Menu Jira — Mes tickets : liste et filtres', { skip: dispo ? false :
     await page.locator('#jiraSearch').fill('tva');
     await attendreCles(['PROJ-1']);
     assert.match(await page.locator('#jiraInfo').textContent(), /1 ticket/);
+    assert.equal(await page.locator('#jiraMineCount').innerText(), '1', 'le badge de l’onglet suit le filtre');
     await page.locator('#jiraSearch').fill('ops-3');
     await attendreCles(['OPS-3']);
     await page.locator('#jiraSearch').fill('facturation 2026');

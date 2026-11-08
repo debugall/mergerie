@@ -28,6 +28,8 @@ function retryJob(jobId) {
   if (sp.fn === 'converge') return startConvergeJob(sp.mrId, sp.opts);
   if (sp.fn === 'converge-session') return startConvergeSessionJob(sp.taskId, sp.opts);
   if (sp.fn === 'merge-ai') return startMergeAiJob(sp.mergeId);
+  if (sp.fn === 'periode') return startPeriodeJob(sp.periodeId);
+  if (sp.fn === 'periode-resume') return startPeriodeResumeJob(sp.periodeId);
   return startJob(sp.kind, sp.mrIds, sp.opts);
 }
 /* Aiguillage : quel exécutant pour quelle sorte de job. Chaque exécutant s'est INSCRIT dans
@@ -44,6 +46,8 @@ function runEntry(e) {
   if (e.kind === 'reconcile') return RUNNERS['reconcile'](e.jobId, e.taskId, e.opts);
   if (e.kind === 'verify') return RUNNERS['verify'](e.jobId, e.verificationId);
   if (e.kind === 'merge-ai') return RUNNERS['merge-ai'](e.jobId, e.mergeId);
+  if (e.kind === 'periode') return RUNNERS['periode'](e.jobId, e.periodeId);
+  if (e.kind === 'periode-resume') return RUNNERS['periode-resume'](e.jobId, e.periodeId);
   return RUNNERS.review(e.jobId, e.rows, e.kind, e.opts);
 }
 /* Exécute un job dans SON contexte d'annulation. `lane` distingue la voie séquentielle de
@@ -191,6 +195,29 @@ function startVerifyJob(verificationId) {
   setImmediate(pump);
   return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
 }
+/* Le rattrapage d'une période (Notes → Période) : la construction d'une fenêtre, depuis la
+   forge et le clone. Un job, parce qu'il fetch dans les clones et paye des appels paginés. */
+function startPeriodeJob(periodeId) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('periode', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'periode', periodeId);
+  rememberRetry(jobId, { fn: 'periode', periodeId });
+  queue.push({ jobId, kind: 'periode', periodeId });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
+/* Le résumé IA d'une période : un appel, sur demande, aucun clone touché. */
+function startPeriodeResumeJob(periodeId) {
+  const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
+    VALUES ('periode-resume', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
+  const jobId = info.lastInsertRowid;
+  setJobTarget(jobId, 'periode', periodeId);
+  rememberRetry(jobId, { fn: 'periode-resume', periodeId });
+  queue.push({ jobId, kind: 'periode-resume', periodeId });
+  setImmediate(pump);
+  return db.prepare('SELECT * FROM job WHERE id = ?').get(jobId);
+}
 function startReconcileJob(taskId, opts = {}) {
   const info = db.prepare(`INSERT INTO job (kind, status, total, done_count, message, started_at)
     VALUES ('reconcile', 'queued', 1, 0, 'en file', ?)`).run(new Date().toISOString());
@@ -319,5 +346,5 @@ function isRunning() {
 }
 
 module.exports = {
-  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, startNow, startJob, startGitJob, clearTaskError, startVerifyJob, startReconcileJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
+  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, startNow, startJob, startGitJob, clearTaskError, startVerifyJob, startReconcileJob, startPeriodeJob, startPeriodeResumeJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
 };

@@ -45,3 +45,8 @@
 .jira-spec-chip.is-stale, .jira-spec-chip.is-needs_input { color: var(--warn); border-color: var(--warn); }
 .jira-spec-chip.is-running { color: var(--accent); border-color: var(--accent); }
 .jira-spec-chip.is-error { color: var(--danger); border-color: var(--danger); }
+/* « Analysés » : la ligne porte son bouton Masquer ; une ligne masquée (visible par la case) s'estompe. */
+.jira-item[role="button"] { cursor: pointer; display: block; width: 100%; }
+.jira-ana-hide { margin-left: auto; flex: none; }
+.jira-item.jira-ana-masque { opacity: 0.6; }
+.jira-item.jira-ana-masque:hover, .jira-item.jira-ana-masque.active { opacity: 1; }

@@ -63,7 +63,14 @@ describe('Réglages → Jira : prévenir Jira et son gabarit', { skip: dispo ? f
     await ouvrir('jiracfg');
     await page.check('#sub-jiracfg [name="task_default_notify_jira"]');
     await page.fill('#sub-jiracfg [name="jira_notify_template"]', 'MR !{iid} : {url}');
+    /* LE SERVEUR PEUT TENIR LA VALEUR AVANT QUE L'ÉCRAN AIT FINI SON CYCLE : sur un runner lent, le
+       sondage de l'API passait, la saisie suivante partait, puis la réponse de l'enregistrement
+       arrivait et son rechargement remettait le gabarit valide par-dessus « sans lien » — le second
+       envoi n'avait plus rien à refuser. On attend donc l'événement que le formulaire émet à la fin
+       de son enregistrement, enregistré AVANT le clic. */
+    const sauve = page.evaluate(() => new Promise((r) => document.querySelector('#configForm').addEventListener('mergerie:config-saved', r, { once: true })));
     await page.locator('#sub-jiracfg button[type="submit"]').click();
+    await sauve;
     await attendreServeur(async () => {
       const c = (await app.api('GET', '/api/config')).body;
       return c.jira_notify_template === 'MR !{iid} : {url}' && String(c.task_default_notify_jira) === '1';
@@ -73,5 +80,35 @@ describe('Réglages → Jira : prévenir Jira et son gabarit', { skip: dispo ? f
     await page.locator('#sub-jiracfg button[type="submit"]').click();
     await page.waitForSelector('#toasts .toast.err');
     assert.equal((await app.api('GET', '/api/config')).body.jira_notify_template, 'MR !{iid} : {url}', 'la valeur valide est conservée');
+  });
+
+  /* PRÉVENIR JIRA À LA FUSION : sa case et son gabarit, dans le même onglet, avec le même aperçu. */
+  test('à la fusion : la case et le gabarit sont là, l’aperçu suit la frappe, le serveur retient les deux', async () => {
+    await ouvrir('jiracfg');
+    // Le test précédent a laissé « sans lien » dans le gabarit « à la création » : l'enregistrement du formulaire entier serait refusé pour lui.
+    await page.fill('#sub-jiracfg [name="jira_notify_template"]', 'MR !{iid} : {url}');
+    assert.equal(await page.locator('#sub-jiracfg [name="jira_notify_merge"]').count(), 1);
+    const tip = await page.locator('#sub-jiracfg label:has([name="jira_notify_merge"]) .hint').getAttribute('data-tip');
+    assert.ok(tip && tip.length > 40, 'la case explique ce qui part, et quand');
+    await page.waitForFunction(() => document.querySelector('#jiraMergePreview').textContent.includes('214'));
+    assert.match(await page.locator('#jiraMergePreview').innerText(), /merge_requests\/214/, 'vide : le message livré');
+    await page.fill('#sub-jiracfg [name="jira_merge_template"]', '[{key}] {title} mergée → {url}');
+    await page.waitForFunction(() => document.querySelector('#jiraMergePreview').textContent.startsWith('[PROJ-42] Ajout du paiement mergée → https://'));
+    assert.equal(await page.locator('#sub-jiracfg [name="jira_notify_merge"]').isChecked(), false, 'décochée par défaut : écrire sur le ticket se décide');
+    await page.check('#sub-jiracfg [name="jira_notify_merge"]');
+    await page.locator('#sub-jiracfg button[type="submit"]').click();
+    await attendreServeur(async () => {
+      const c = (await app.api('GET', '/api/config')).body;
+      return c.jira_merge_template === '[{key}] {title} mergée → {url}' && String(c.jira_notify_merge) === '1';
+    }, 'la case et le gabarit « à la fusion » sont enregistrés');
+    // Rechargé, l'écran relit les deux.
+    await ouvrir('config'); await ouvrir('jiracfg');
+    await page.waitForFunction(() => document.querySelector('#sub-jiracfg [name="jira_notify_merge"]').checked);
+    assert.equal(await page.locator('#sub-jiracfg [name="jira_merge_template"]').inputValue(), '[{key}] {title} mergée → {url}');
+
+    await page.fill('#sub-jiracfg [name="jira_merge_template"]', 'sans lien');
+    await page.locator('#sub-jiracfg button[type="submit"]').click();
+    await page.waitForSelector('#toasts .toast.err');
+    assert.equal((await app.api('GET', '/api/config')).body.jira_merge_template, '[{key}] {title} mergée → {url}', 'sans {url} : refusé, la valeur valide est conservée');
   });
 });

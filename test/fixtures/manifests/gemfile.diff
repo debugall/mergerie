@@ -1,0 +1,11 @@
+diff --git a/Gemfile b/Gemfile
+--- a/Gemfile
++++ b/Gemfile
+@@ -1,6 +1,7 @@
+ gem 'rails', '~> 7.1'
++gem 'sidekiq', '~> 7.2'
+ group :test, :development do
+-  gem 'rspec-rails', '~> 6.0'
++  gem 'rspec-rails', '~> 6.1'
++  gem 'factory_bot'
+ end

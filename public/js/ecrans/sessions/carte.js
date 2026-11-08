@@ -26,6 +26,15 @@ const auteurPartage = (o) => {
   const txt = texteAuteurPartage(o);
   return txt ? ` <span class="auteur-partage muted">${esc(txt)}</span>` : '';
 };
+/* LA SESSION D'UN COLLÈGUE : reçue du dépôt partagé, son agent tourne sur SON poste. Le serveur le dit
+   pour une session de codage (`reprise.reason` vaut `mine` quand elle est à moi) ; pour les autres
+   saveurs, l'auteur du fichier tranche. Tant que `partageEtMoi` n'est pas chargé, rien n'est étranger. */
+function sessionEtrangere(t, tg) {
+  const e = tg && tg.reprise;
+  if (e && e.reason === 'mine') return false;
+  if (e && (e.ok || (e.reason && e.reason !== 'kind'))) return true;
+  return !!(t && t.author && partageEtMoi && partageEtMoi.name && t.author !== partageEtMoi.name);
+}
 /* …et le pictogramme qui dit, sans cliquer, que cette session est chez tout le monde. */
 const shareMark = (t) => (t.shared
   ? ` <span class="note-partagee" title="${esc(tr('session.shared-mark'))}">${svgIco('users')}</span>` : '');
@@ -102,11 +111,12 @@ function taskHead(t) {
       ${badgeProgrammation(t, '')}
       ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une
             page de notes. Le pictogramme est le même — c'est le même geste. */''}
-      ${shareMark(t)}
+      ${shareMark(t)}${tagReprise(t)}
       ${t.auto_push && t.kind !== 'explore' ? '<span class="tag">auto-push</span>' : ''}
       <span class="task-date" title="${tr('task.created-at')}" data-when="${esc(t.created_at || '')}">${esc(fmtDateTime(t.created_at))}</span>
     </div>
     ${libelleBlock(t)}
+    ${ligneOrigine(t)}
     ${promptBlock(t.prompt)}
     ${chapeauCarte(t)}
     ${coutCarte(t)}${badgeTodoAttente(t)}`;

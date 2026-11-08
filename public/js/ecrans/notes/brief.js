@@ -14,6 +14,9 @@ async function loadBrief() {
   await notesIndex();
   let d;
   try { d = await api('/brief'); } catch (err) { box.innerHTML = `<p class="err">${esc(explainError(err.message))}</p>`; return; }
+  /* L'ABSENCE : « tu n'as pas ouvert Mergerie depuis 12 jours ». Mesurée sur un geste, pas sur
+     le poll (voir transverse/presence.js) ; sans réponse, pas de bannière — jamais une fausse. */
+  try { d.absence = await api('/periode/absence'); } catch { d.absence = null; }
   /* Le seuil du filtre « prêtes à merger » de l'onglet Reviews vient d'ICI : le brief est la
      seule source de cette règle, et les deux écrans doivent compter la même chose. */
   if (d.ready_threshold) seuilPret = Number(d.ready_threshold) || 8;
@@ -116,6 +119,37 @@ function renderBrief(d) {
         <div class="meta">${esc(m.project)} · ${esc(tr('notes.brief.stale.line', { n: m.days, count: m.days }))}</div>
       </div>
       ${briefHideBtn('mr', m.id)}
+    </div>`).join('');
+
+  const joursDepuis = (iso) => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86400000));
+  /* LES MR QUI SE CROISENT : une ligne par paire, les plus anciennes d'abord. Clic : Reviews
+     filtré sur le dépôt, les deux merge requests en tête. On écarte une paire, pas un dépôt. */
+  const croisements = (d.overlaps || []).map((p) => `<div class="brief-item brief-clickable" data-brief-croise="${p.a_id},${p.b_id}" data-project="${esc(p.project)}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${esc(p.a_iid)} ↔ !${esc(p.b_iid)}</div>
+        <div class="meta">${esc(p.project)} · ${esc(tr('mr.croise.files', { n: p.shared, count: p.shared }))}${p.since ? ` · ${esc(joursDepuis(p.since) ? tr('notes.brief.overlaps.since', { n: joursDepuis(p.since), count: joursDepuis(p.since) }) : tr('notes.brief.overlaps.today'))}` : ''}</div>
+      </div>
+      ${briefHideBtn('croisement', p.key)}
+    </div>`).join('');
+
+  /* LES MR SANS TEST : celles qui portent le badge accentué, les plus anciennes d'abord. Clic : la
+     merge request dans Reviews. On écarte une merge request sur un SHA : un nouveau relevé la ramène. */
+  const sansTest = (d.no_tests || []).map((m) => `<div class="brief-item brief-clickable" data-brief-notest="${m.mr_id}" data-status="${esc(m.status || '')}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${esc(m.iid)} — ${esc(m.title || '')}</div>
+        <div class="meta">${esc(m.project)} · ${esc(tr('mr.size.files', { n: m.code, count: m.code }))} · <span class="tag tests alert">${esc(tr('mr.tests.none'))}</span>${m.created_at ? ` · ${esc(tr('mr.croise.opened', { age: depuis(m.created_at) }))}` : ''}</div>
+      </div>
+      ${briefHideBtn('sanstest', m.key)}
+    </div>`).join('');
+
+  /* LES MR QUI AJOUTENT DES DÉPENDANCES : celles dont le badge est accentué, les plus anciennes
+     d'abord. Clic : la merge request dans Reviews. Écartée sur un SHA, comme les MR sans test. */
+  const avecDeps = (d.new_deps || []).map((m) => `<div class="brief-item brief-clickable" data-brief-deps="${m.mr_id}" data-status="${esc(m.status || '')}">
+      <div class="brief-item-main">
+        <div class="brief-item-title">!${esc(m.iid)} — ${esc(m.title || '')}</div>
+        <div class="meta">${esc(m.project)} · <span class="tag deps alert">${esc(tr('mr.deps.added', { n: m.added, count: m.added }))}${m.unknown ? ` · ${esc(tr('mr.deps.unknown', { n: m.unknown, count: m.unknown }))}` : ''}${m.recent ? ` · ${esc(tr('mr.deps.recent', { n: m.recent, count: m.recent }))}` : ''}${m.major ? ` · ${esc(tr('mr.deps.major', { n: m.major, count: m.major }))}` : ''}</span>${m.created_at ? ` · ${esc(tr('mr.croise.opened', { age: depuis(m.created_at) }))}` : ''}</div>
+      </div>
+      ${briefHideBtn('dependance', m.key)}
     </div>`).join('');
 
   /* LES SESSIONS QUI ATTENDENT UN GESTE. Trois attentes, un seul oubli : le travail est fait,
@@ -232,6 +266,9 @@ function renderBrief(d) {
     briefSection(tr('agents.brief.title'), agentsBrief, { icon: 'zap', hint: tr('agents.brief.hint') }),
     briefSection(tr('notes.brief.sec.fresh'), fresh, { icon: 'merge', hint: tr('notes.brief.fresh.hint') }),
     briefSection(tr('notes.brief.sec.stale'), stale, { icon: 'clock', hint: tr('notes.brief.stale.hint', { n: d.stale_days }) }),
+    briefSection(tr('notes.brief.sec.overlaps'), croisements, { icon: 'branch', hint: tr('notes.brief.overlaps.hint') }),
+    briefSection(tr('notes.brief.sec.no-tests'), sansTest, { icon: 'check', hint: tr('notes.brief.no-tests.hint') }),
+    briefSection(tr('notes.brief.sec.new-deps'), avecDeps, { icon: 'inbox', hint: tr('notes.brief.new-deps.hint') }),
     briefSection(tr('notes.brief.sec.ready'), pretes, { icon: 'merge' }),
     briefSection(tr('notes.brief.sec.cleanup'), branches, { icon: 'branch' }),
     briefSection(tr('notes.brief.sec.activity'), activite, { icon: 'chart' }),
@@ -239,7 +276,14 @@ function renderBrief(d) {
     pluginsBriefSections(d),
   ].join('');
 
-  box.innerHTML = `<header class="brief-head">
+  const absence = d.absence && d.absence.banner ? `<div class="notes-periode-banner">
+      ${svgIco('clock')}<span class="notes-periode-banner-text">${esc(d.absence.explicit
+    ? tr('notes.periode.banner.explicit', { n: d.absence.days, count: d.absence.days, date: fmtDate(d.absence.depart) })
+    : tr('notes.periode.banner', { n: d.absence.days, count: d.absence.days }))}</span>
+      <button type="button" class="btn btn-primary btn-sm" id="briefAbsenceGo">${esc(tr('notes.periode.banner.go'))}</button>
+      <button type="button" class="btn btn-icon btn-sm brief-hide" id="briefAbsenceHide" title="${esc(tr('notes.brief.hide'))}" aria-label="${esc(tr('notes.brief.hide'))}"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+    </div>` : '';
+  box.innerHTML = `${absence}<header class="brief-head">
       <div class="brief-hello">${esc(tr('notes.brief.hello'))}</div>
       <div class="brief-date">${esc(jour)}</div>
       <span class="spacer"></span>
@@ -252,6 +296,12 @@ function renderBrief(d) {
     ${corps || emptyState({ icon: 'check', title: esc(tr('notes.brief.empty.title')), text: esc(tr('notes.brief.empty.text')) })}
     ${d.hidden_count ? `<p class="brief-hidden-foot muted">${esc(tr('notes.brief.hidden', { n: d.hidden_count, count: d.hidden_count }))}
       <button type="button" class="btn btn-sm" id="briefRestore">${esc(tr('notes.brief.restore'))}</button></p>` : ''}`;
+  const btnAbsence = $('#briefAbsenceGo');
+  if (btnAbsence) btnAbsence.addEventListener('click', () => ouvrirPeriodeDepuis(d.absence.last_seen, d.absence.last_periode));
+  const btnAbsenceHide = $('#briefAbsenceHide');
+  if (btnAbsenceHide) btnAbsenceHide.addEventListener('click', async () => {
+    try { await api('/periode/absence/dismiss', { method: 'POST' }); loadBrief(); } catch (err) { toast(explainError(err.message), true); }
+  });
   const btnCopie = $('#briefCopy');
   if (btnCopie) {
     btnCopie.addEventListener('click', () => {
@@ -434,6 +484,18 @@ document.addEventListener('click', async (e) => {
   const v = e.target.closest && e.target.closest('[data-brief-verif]');
   if (v) { openVerifyReport(Number(v.dataset.briefVerif)); return; }
   const m = e.target.closest && e.target.closest('[data-brief-mr]');
-  if (m) navMrReport(Number(m.dataset.briefMr));
+  if (m) { navMrReport(Number(m.dataset.briefMr)); return; }
+  // Une merge request sans test : sa carte si elle est à traiter, son rapport sinon.
+  const nt = e.target.closest && e.target.closest('[data-brief-notest]');
+  if (nt) { allerALaMr(Number(nt.dataset.briefNotest), nt.dataset.status); return; }
+  const nd = e.target.closest && e.target.closest('[data-brief-deps]');
+  if (nd) { allerALaMr(Number(nd.dataset.briefDeps), nd.dataset.status); return; }
+  // Une paire qui se croise : Reviews filtré sur le dépôt, les deux merge requests en tête.
+  const cr = e.target.closest && e.target.closest('[data-brief-croise]');
+  if (cr) {
+    epinglerMrs(cr.dataset.briefCroise.split(',').map(Number));
+    $('#searchReview').value = cr.dataset.project || '';
+    navReviews('to_review');
+  }
 });
 

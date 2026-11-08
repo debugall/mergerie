@@ -78,7 +78,8 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       const marche = (parent) => {
         for (const el of parent.children) {
           if (el.hidden || el.getClientRects().length === 0) continue;
-          if (el.id === 'codeOnlyFields') { marche(el); continue; }
+          // `taskCodeChecks` n'est qu'une enveloppe (elle se masque d'un bloc hors dépôt) : on lit ce qu'elle contient.
+          if (el.id === 'codeOnlyFields' || el.id === 'taskCodeChecks') { marche(el); continue; }
           if (el.classList.contains('modal-actions')) continue;
           out.push(cle(el));
         }
@@ -113,7 +114,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
          des deux (un avis sur ce qui vient d'être écrit), et la convergence l'englobe. */
       'taskReviewAfterRow',
       'taskConvergeRow',
-      'auto_push',
+      'taskAutoPushRow',
       'taskImages',                    // une possibilité, pas une étape
       'taskAskQuestionsRow',           // COMMENT : l'IA peut demander, hors de l'accordéon
       'taskPlanFirstRow',              // …et planifier d'abord : même famille, codage seulement
@@ -130,9 +131,11 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     const ordre = await ordreAffiche('local');
     assert.deepEqual(ordre, [
       'prompt',
+      'taskJiraRow',                   // le ticket remplit le prompt, hors dépôt aussi
       'taskLocalWrap',
       'taskLocalWarn',
       'label',
+      'taskLocalBranchRow',            // la branche, facultative : sans elle, rien de « une fois le code écrit »
       'taskImages',
       'taskAskQuestionsRow',
       'taskScheduleRow',
@@ -141,7 +144,6 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
     assert.equal(ordre[ordre.indexOf('taskLocalWrap') + 1], 'taskLocalWarn',
       '« l’IA modifie en place, sans commit » qualifie le choix des dossiers : il le suit '
       + 'immédiatement, au lieu d’attendre le bas du formulaire');
-    assert.ok(!ordre.includes('taskJiraRow'), 'pas de ticket Jira hors dépôt : il n’y a pas de branche');
   });
 
   test('exploration : rien de ce qui suppose un commit', async () => {

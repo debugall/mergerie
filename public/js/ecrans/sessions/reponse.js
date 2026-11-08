@@ -65,18 +65,6 @@ function dureeCourte(ms) {
   return m < 60 ? tr('task.cost.min', { n: m }) : tr('task.cost.hour', { n: (m / 60).toFixed(1) });
 }
 
-/* CE QUE LA MERGE REQUEST EST DEVENUE, SUR LA LIGNE DU PROJET. « MR !216 ↗ » ne disait rien
-   de ce qu'elle vaut : il fallait retourner dans Reviews pour lire la note et le verdict de ce
-   que la session venait de produire. Trois faits, aucun calcul — ils viennent avec la ligne. */
-function etatMrDeLaLigne(tg) {
-  const bouts = [];
-  // `note_value` est une FRACTION [0,1] en base : la note sur 10 vaut dix fois.
-  if (tg.mr_note != null) bouts.push(`<span class="tmr-note">${esc(fmtNote10(tg.mr_note * 10))}</span>`);
-  if (tg.mr_verdict) bouts.push(`<span class="tmr-verdict v-${esc(tg.mr_verdict)}">${esc(tr(`mr.ref.verdict.${tg.mr_verdict}`))}</span>`);
-  if (tg.mr_drafts) bouts.push(esc(tr('task.mr.drafts', { n: tg.mr_drafts, count: tg.mr_drafts })));
-  if (!bouts.length) return '';
-  return ` <span class="tmr-etat muted">${bouts.join(' · ')}</span>`;
-}
 
 function targetLine(t, tg) {
   const st = TASK_STATUS[tg.status] || { label: tg.status, cls: '' };
@@ -114,13 +102,14 @@ function targetLine(t, tg) {
   return `<div class="target-line">
     <span class="tag ${st.cls}">${st.label}</span>
     ${tg.status === 'error' ? '' : targetStepper(tg)}
+    ${badgeTestsCible(tg)}
+    ${badgeDepsCible(tg)}
     <span class="t-name">${esc(tg.project)}</span>
     ${chipBranche(tg.branch || '')}
     ${/* La session demandée n'a pas pu être reprise : on le dit ICI, pas seulement dans un
           journal qui défile — sinon l'écran affiche un identifiant que personne n'a saisi. */''}
     ${tg.session_note ? `<span class="t-note" title="${esc(tr('task.session.fallback-title', { detail: tg.session_note }))}">${svgIco('alert')} ${esc(tr('task.session.fallback'))}</span>` : ''}
-    ${mrIid ? (mrUrl ? ` <a href="${esc(safeUrl(mrUrl))}" target="_blank" rel="noopener noreferrer">MR !${mrIid} ↗</a>` : ` <span class="muted">MR !${mrIid}</span>`) : ''}
-    ${etatMrDeLaLigne(tg)}
+    ${puceMr(tg, mrIid, mrUrl)}
     ${/* LE MÊME TAG QUE DANS REVIEWS. Le bouton « Mettre à jour avec {base} » offre le geste,
           mais rien ne disait POURQUOI il est là — sur la file des MR, un conflit se voit avant
           de cliquer quoi que ce soit ; ici il fallait deviner. Seulement sur un vrai conflit
@@ -150,6 +139,7 @@ function targetLine(t, tg) {
     ? `<button class="btn btn-sm" data-tgjira="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-key="${esc(tg.ticket_key)}" title="${esc(tr('task.title.notify-jira'))}"><svg class="ico ico-sm"><use href="#i-tag"/></svg>${esc(tr('task.btn.notify-jira'))}</button>` : ''}
     ${tg.mr_merged ? `<span class="tag merged" title="${tr('task.tag.merged-title', { forge: forgeLabel(tg.forge) })}">${tr('task.tag.merged')}</span>` : ''}
     <span class="spacer"></span>
+    ${boutonReprise(t, tg)}
     ${resumeCmdBtn(tg.resume_cmd)}
     ${tg.has_output ? `<button class="btn btn-sm" data-tgout="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}
     ${showDiff ? `<button class="btn btn-sm" data-tgdiff="${tg.id}" data-task="${t.id}" title="${esc(tr('task.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}
@@ -165,7 +155,7 @@ function targetLine(t, tg) {
     ${canMr ? `<button class="btn btn-sm btn-primary" data-tgmr="${tg.id}" data-task="${t.id}" data-project="${esc(tg.project || '')}" data-title="${esc(defaultMrTitle)}" data-branch="${esc(tg.branch || '')}" data-target="${esc(tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" title="${esc(tr('task.title.open-mr'))}"><svg class="ico ico-sm"><use href="#i-branch"/></svg>${tr('task.btn.create-mr')}</button>` : ''}
     ${mrIid && !tg.mr_merged ? `<button class="btn btn-sm btn-danger" data-tgmerge="${tg.id}" data-task="${t.id}" data-iid="${mrIid}" data-target="${esc(tg.mr_target || tg.base_branch || '')}" data-forge="${esc(tg.forge || '')}" data-project="${esc(tg.project || '')}" title="${esc(tr('task.title.merge-mr'))}"><svg class="ico ico-sm"><use href="#i-merge"/></svg>${tr('task.btn.merge')}</button>` : ''}
     ${tg.last_error ? `<span class="t-err" title="${esc(tg.last_error)}">${svgIco('alert')} ${tr('task.failed')}</span>` : ''}
-  </div>${followTarget ? `
+  </div>${lignesReprises(t, tg)}${followTarget ? `
   <div class="mr-create followup followup-target" data-followform="tg${tg.id}" hidden>
     <textarea class="followup-text" placeholder="${esc(tr('task.followup.ph-target', { project: tg.project }))}"></textarea>
     ${suiviCapturesHtml()}
@@ -174,7 +164,27 @@ function targetLine(t, tg) {
     ${pluginsHtml('session-target', { task: t, target: tg })}
     <button class="btn" data-followcancel="tg${tg.id}">${tr('ui.cancel')}</button>
     <button class="btn btn-primary" data-followsubmit="${t.id}" data-followtarget="${tg.id}">${tr('task.btn.run-iteration')}</button>
-  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length ? questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;
+  </div>` : ''}${tg.status === 'needs_input' && tg.questions && tg.questions.length
+    ? (sessionEtrangere(t, tg) ? questionsLecture(t, tg) : questionsForm(t, tg, `/tasks/${t.id}/targets/${tg.id}/answer`)) : ''}${tg.status === 'planned' ? planForm(t, tg) : ''}`;
+}
+
+/* LA QUESTION D'UN COLLÈGUE SE LIT, ELLE NE SE RÉPOND PAS D'ICI : son agent attend sur son poste, et un
+   « Répondre et reprendre » actif sous « Répondre et reprendre sur ce poste » proposait deux gestes du
+   même nom pour deux choses différentes. La question et ses options restent visibles ; le seul geste
+   d'ici est la reprise, sur la ligne du projet. */
+function questionsLecture(t, tg) {
+  const qs = tg.questions || [];
+  const who = t.author || tr('task.reprise.someone');
+  const rows = qs.map((q) => `<div class="q-item">
+        <div class="q-question">${esc(q.question)}</div>
+        ${q.context ? `<div class="q-context muted">${esc(q.context)}</div>` : ''}
+        ${q.options && q.options.length ? `<div class="q-opts q-opts-lecture muted">${q.options.map((o) => `<span>${esc(o.label)}</span>`).join('')}</div>` : ''}
+      </div>`).join('');
+  return `<div class="questions-box questions-lecture" data-qlecture="${tg.id}">
+      <div class="q-head"><svg class="ico ico-sm"><use href="#i-info"/></svg> <strong>${esc(tr('task.questions.title', { n: qs.length, count: qs.length }))}</strong> <span class="muted">· ${esc(tr('task.questions.foreign-head', { who }))}</span></div>
+      ${rows}
+      <p class="q-lecture-note muted">${esc(tr(tg.reprise && tg.reprise.ok ? 'task.questions.foreign-take' : 'task.questions.foreign'))}</p>
+    </div>`;
 }
 
 /* LE PLAN À APPROUVER. La passe de lecture a rendu un plan (« Retour de l'IA » l'ouvre) ; ici on

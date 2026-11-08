@@ -9,6 +9,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const forge = require('../../forge');
 const git = require('../../git/git');
+const mrref = require('../../git/mrref');
 const path = require('path');
 const fs = require('fs');
 const { readFileSafe } = require('../http');
@@ -58,18 +59,69 @@ async function diffDeLaMr(mr, cwdConnu = null) {
       cwd = await git.ensureRepo(getConfig(), repo, () => {});
       ref = await vise();
     }
+    /* MERGÉE, OU BRANCHE DISPARUE : par les SHA (`git/mrref.js`), jamais par un trois-points qui
+       serait vide par construction. */
+    const mergee = !!(mr.merged_at || mr.merge_commit_sha || mr.squash_commit_sha);
+    if (mergee || !ref) {
+      const r = await mrref.refARelire(cwd, mr, repo);
+      if (r) return await mrref.diffARelire(cwd, r);
+      if (!ref) return null;
+    }
     if (!ref || !await git.refExists(cwd, base)) return null;
-    return await git.diffTroisPoints(cwd, base, ref);
-  } catch { return null; }
+    try {
+      return await git.diffTroisPoints(cwd, base, ref);
+    } catch (e) {
+      // Aucune base commune : comme la review, par les `diff_refs` de la forge (voir `mrref`).
+      if (e.code !== 'NO_MERGE_BASE') throw e;
+      const r = await mrref.diffSansBaseCommune(cwd, mr, repo, getConfig());
+      if (!r.diff) { e.message += ` — ${t('err.git.no-merge-base.why', { raison: r.raison })}`; throw e; }
+      if (!r.arbres) db.prepare('UPDATE mr SET base_sha = COALESCE(base_sha, ?), head_sha = COALESCE(head_sha, ?) WHERE id = ?').run(r.base, r.head, mr.id);
+      return r.diff;
+    }
+  } catch (e) {
+    if (e && e.code === 'NO_MERGE_BASE') throw e; // la raison précise vaut mieux qu'un écran vide
+    return null;
+  }
 }
-function mrCloneCtx(mr) {
+/* LE CLONE N'A PAS FORCÉMENT LE COMMIT RELU. Chez le COLLÈGUE, `reviewed_sha` arrive par le
+   dépôt de données partagé et son clone n'a pas fetché depuis — ou la branche a été force-pushée
+   et le commit n'existe plus nulle part. `/tree` retombait sur la tête de branche, mais `/file`
+   et `/filediff` visaient toujours le SHA absent : `ls-tree` échouait, la liste était vide, et
+   CHAQUE fichier de l'arbre répondait « hors arborescence ». « Mettre à jour depuis la forge »
+   n'y changeait rien : il relit la merge request, pas le clone.
+   On tente donc UN fetch avant d'abandonner le commit relu — un seul à la fois par clone (les
+   trois routes partent ensemble depuis l'écran), et pas plus d'un par dix minutes : un commit
+   que le remote ne porte plus ne se refetche pas à chaque fichier ouvert. */
+const FETCH_VIEWER_TTL_MS = 10 * 60 * 1000;
+const fetchsViewer = new Map(); // cwd -> { at, promesse }
+async function fetchPourLeViewer(cwd, repo) {
+  const enCours = fetchsViewer.get(cwd);
+  if (enCours && enCours.promesse) return enCours.promesse;
+  if (enCours && Date.now() - enCours.at < FETCH_VIEWER_TTL_MS) return false;
+  const promesse = git.ensureRepo(getConfig(), repo, () => {}).then(() => true, () => false)
+    .finally(() => { fetchsViewer.set(cwd, { at: Date.now(), promesse: null }); });
+  fetchsViewer.set(cwd, { at: Date.now(), promesse });
+  return promesse;
+}
+async function mrCloneCtx(mr) {
   const cfg = getConfig();
   const cwd = git.cloneDirFor(cfg, { project: mr.project, forge: mr.forge });
   if (!fs.existsSync(path.join(cwd, '.git'))) {
     throw new Error(t('err.depot-non-clone-localement-lance'));
   }
-  const ref = mr.reviewed_sha || `origin/${mr.source_branch}`;
-  return { cwd, ref, target: mr.target_branch || 'main' };
+  /* MERGÉE : la branche source a souvent disparu du remote ; la tête relue est celle que la
+     forge a donnée (`head_sha`), fetchée sous `refs/mergerie/mr/` par `diffDeLaMr`. Ouverte : la
+     tête vivante, pour que l'arborescence et le diff à trois points parlent du même commit. */
+  const mergee = !!(mr.merged_at || mr.merge_commit_sha || mr.squash_commit_sha);
+  const candidats = [mr.reviewed_sha, mergee && mr.head_sha, mr.source_branch && `origin/${mr.source_branch}`].filter(Boolean);
+  const target = mr.target_branch || 'main';
+  if (!candidats.length) return { cwd, ref: `origin/${mr.source_branch}`, target };
+  if (await git.refExists(cwd, candidats[0])) return { cwd, ref: candidats[0], target };
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(mr.repo_id);
+  if (repo && await fetchPourLeViewer(cwd, repo) && await git.refExists(cwd, candidats[0])) return { cwd, ref: candidats[0], target };
+  for (const c of candidats.slice(1)) if (await git.refExists(cwd, c)) return { cwd, ref: c, target };
+  // Rien n'existe : la ref préférée, pour que l'erreur dise ce qu'on visait.
+  return { cwd, ref: candidats[0], target };
 }
 /* Même contexte pour un PROJET DE SESSION : le viewer plein écran est identique,
    seule la source change (la branche produite par l'IA au lieu de la MR). On vise le

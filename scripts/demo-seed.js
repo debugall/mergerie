@@ -269,9 +269,16 @@ function insertMr(m, extra = {}) {
   const numero = extra.iid || (iid += 1);
   const sha = require('crypto').randomBytes(20).toString('hex');
   const info = db.prepare(`INSERT INTO mr
-    (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, reviewed_sha, status, updated_at, gitlab_created_at, author, changed_paths)
-    VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @reviewed_sha, @status, @updated_at, @gitlab_created_at, @author, @changed_paths)`)
+    (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, reviewed_sha, status, updated_at, gitlab_created_at, author, changed_paths,
+     reviewers, assignees, upvotes)
+    VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @reviewed_sha, @status, @updated_at, @gitlab_created_at, @author, @changed_paths,
+     @reviewers, @assignees, @upvotes)`)
     .run({
+      /* Ce que la forge dit de QUI porte la merge request : un reviewer demandé sur une carte sur
+         deux, l'auteur assigné sur une sur trois, et quelques 👍 — assez pour voir les pastilles. */
+      reviewers: numero % 2 ? AUTHORS[(numero + 1) % AUTHORS.length] : '',
+      assignees: numero % 3 ? '' : (extra.author || AUTHORS[numero % AUTHORS.length]),
+      upvotes: numero % 4 === 0 ? 2 : (numero % 5 === 0 ? 1 : 0),
       repo_id: repoIds[m.project], iid: numero, title: m.title,
       source_branch: m.branch, target_branch: extra.target || 'main',
       web_url: (PROJECTS.find((p) => p.project === m.project) || {}).forge === 'github'
@@ -664,6 +671,58 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
     { id: 'q2', question: 'Combien de tentatives au maximum avant d’abandonner ?', context: 'Aucune valeur n’est imposée par le code existant.', options: null, answer: null },
   ]), at(0.3));
 
+/* LA SESSION PARTAGÉE « DE CLAIRE », reprenable sur ce poste : une session de codage reçue du dépôt
+   d'équipe (ici : son auteur semé dans l'état local, comme la synchro le ferait), branche poussée,
+   deux passes, et une question en attente — le bouton dit « Répondre et reprendre sur ce poste ». */
+{
+  const tC = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, ask_questions, shared, label, created_at, updated_at) VALUES (?,?,?,?,?,?,1,1,?,?,?)')
+    .run(repoIds['groupe/tarification'], 'Introduis des paliers de remise (5 %, 10 %, 15 %) selon le volume annuel, configurables par pays.',
+      'feature/remise-paliers', 'main', 'needs_input', 'code', 'Paliers de remise par pays', at(2), at(0.5));
+  const tgC = Number(db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, push_command, questions_json, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(tC.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers', 'main', 'needs_input', require('crypto').randomBytes(20).toString('hex'),
+    'git push -u origin feature/remise-paliers', JSON.stringify([
+      { id: 'q1', question: 'Les paliers se cumulent-ils avec la remise fidélité ?', context: 'Le code applique aujourd’hui une seule remise, la plus forte.', options: [
+        { value: 'cumul', label: 'Oui, cumul plafonné à 20 %' }, { value: 'max', label: 'Non, la plus forte seulement' }], answer: null },
+    ]), at(0.5)).lastInsertRowid);
+  const dossierC = ensureDir(path.join(TASKS_DIR, String(tC.lastInsertRowid), String(tgC)));
+  [
+    { kind: 'run', prompt: 'Introduis des paliers de remise (5 %, 10 %, 15 %) selon le volume annuel, configurables par pays.', out: '# Retour de l’IA\n\nJ’ai ajouté `src/remise/paliers.js` (lecture des paliers par pays) et branché le calcul dans `calcul.js`. Les tests existants passent ; j’en ai ajouté trois sur les bornes.', jours: 2 },
+    { kind: 'followup', prompt: 'Les paliers doivent se lire dans la configuration par pays, pas dans une table en dur.', out: '# Retour de l’IA\n\nLes paliers viennent maintenant de `config/remises/<pays>.json`, avec un défaut. Je me suis arrêté sur une question : les paliers se cumulent-ils avec la remise fidélité ?', jours: 0.5 },
+  ].forEach((passe, i) => {
+    const sortie = path.join(dossierC, `output-v${i + 1}.md`);
+    fs.writeFileSync(sortie, passe.out, 'utf8');
+    db.prepare(`INSERT INTO agent_pass (scope, task_id, unit_id, n, kind, prompt, output_path, created_at) VALUES ('task',?,?,?,?,?,?,?)`)
+      .run(tC.lastInsertRowid, tgC, i + 1, passe.kind, passe.prompt, sortie, at(passe.jours));
+  });
+  const uidC = db.prepare('SELECT uid FROM task WHERE id = ?').get(tC.lastInsertRowid).uid;
+  // eslint-disable-next-line global-require
+  const etatDemo = require('../src/data/localstate').etat;
+  // eslint-disable-next-line global-require
+  const storeDemo = require('../src/data/store');
+  /* Le chemin est celui que le dépôt de données donnerait à cette session (`cheminSur`), jamais écrit à la
+     main : c'est sous ce chemin que la carte et la page Équipe relisent l'auteur, et c'est à ce nom que le
+     dépôt de démonstration (src/demo/shared.js) commite le fichier. */
+  const cheminTache = (id) => storeDemo.cheminSur('task', db.prepare('SELECT * FROM task WHERE id = ?').get(id));
+  etatDemo.ecrire('author', cheminTache(tC.lastInsertRowid), 'name', 'Claire');
+  /* LA PAGE ÉQUIPE « NOTRE MATIN » : deux auteurs fictifs dans le dépôt de données de démonstration —
+     Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés ; une décision
+     attend (la review d'Ali sur une MR de Claire, voir plus bas), une question sans réponse (la session
+     de Claire ci-dessus), et une reprise : ma session repart de la sienne. */
+  etatDemo.ecrire('author_last', 'Claire', 'at', new Date(Date.now() - 10 * 60000).toISOString());
+  etatDemo.ecrire('author_last', 'Ali', 'at', at(7));
+  const tR = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, shared, label, resumed_from_uid, resumed_target_uid, created_at, updated_at, finished_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)')
+    .run(repoIds['groupe/tarification'], 'Réponse : cumul plafonné à 20 %. Termine les paliers et ajoute les tests par pays.', 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'done', 'code',
+      'Reprise de la session de Claire', uidC, db.prepare('SELECT uid FROM task_target WHERE id = ?').get(tgC).uid, at(1), at(1), at(1));
+  db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, updated_at) VALUES (?,?,?,?,?,?,?)`)
+    .run(tR.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'committed', require('crypto').randomBytes(20).toString('hex'), at(1));
+  /* La reprise est À MOI : son fichier porte mon nom git, comme si je l'avais poussé — la carte dit
+     « partagé par moi », et la page Équipe « #6 Claire → #7 moi ». */
+  // eslint-disable-next-line global-require
+  const moiDemo = require('../src/core/identite').nom();
+  if (moiDemo) etatDemo.ecrire('author', cheminTache(tR.lastInsertRowid), 'name', moiDemo);
+  // compté plus bas, avec les autres (`counts` n'existe pas encore ici)
+}
+
 /* Session MULTI-DÉPÔTS partiellement en échec : le cas où « relancer » en bloc coûte cher.
    Deux projets sont passés, deux ont échoué — on voit donc le bouton « Lancer » par projet, le
    raccourci « Relancer les projets en échec », et « Vérifier l'état des branches ». C'est
@@ -844,6 +903,23 @@ const lt0 = db.prepare('INSERT INTO local_task (prompt, status, created_at, upda
   .run('Passe ces scripts en ES modules et remplace les require() restants.', 'new', at(0.4), at(0.4));
 db.prepare('INSERT INTO local_task_dir (task_id, path, status, updated_at) VALUES (?,?,?,?)')
   .run(lt0.lastInsertRowid, '/home/moi/dev/scripts', 'new', at(0.4));
+/* Codage hors dépôt AVEC UNE BRANCHE : le dossier est un dépôt git (`boutique-api`), la session y a créé
+   sa branche, commité, poussé, et la merge request s'est ouverte parce que son remote est un dépôt connu.
+   C'est la carte qui montre la branche, l'état du commit et le lien de la MR sur chaque dossier. */
+{
+  const lt = db.prepare(`INSERT INTO local_task (prompt, label, status, branch, auto_push, create_mr, created_at, updated_at)
+    VALUES (?,?,?,?,1,1,?,?)`)
+    .run('Ajoute la pagination à GET /orders (limit/offset) et un test de bout en bout.', 'Pagination des commandes', 'done',
+      'feature/orders-pagination', at(1.2), at(1.2));
+  const dir = db.prepare(`INSERT INTO local_task_dir (task_id, path, status, branch, base_branch, git_status, mr_iid, mr_url, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`)
+    .run(lt.lastInsertRowid, '/home/moi/dev/boutique-api', 'done', 'feature/orders-pagination', 'main', 'pushed', 312,
+      'https://gitlab.demo/groupe/boutique-api/-/merge_requests/312', at(1.2));
+  const sortie = ensureDir(path.join(TASKS_DIR, 'local', String(lt.lastInsertRowid), String(dir.lastInsertRowid)));
+  fs.writeFileSync(path.join(sortie, 'output.md'),
+    '## Ce que j\'ai fait\n\n- `GET /orders` accepte `limit` (50 par défaut, 200 max) et `offset`.\n- Test de bout en bout ajouté.\n- Branche `feature/orders-pagination` commitée et poussée ; merge request !312 ouverte.\n', 'utf8');
+  db.prepare('UPDATE local_task_dir SET output_path = ? WHERE id = ?').run(path.join(sortie, 'output.md'), dir.lastInsertRowid);
+}
 /* …ET PROGRAMMÉE : elle partira demain à 7:00, toute seule. La date est de poste (`local_pref`,
    sous l'uid de la session) — c'est cette machine qui la lancera —, et c'est ce que la carte
    montre : le badge à l'horloge et sa croix. */
@@ -1500,6 +1576,69 @@ const counts = {
   gitOps: db.prepare('SELECT COUNT(*) c FROM git_op').get().c,
   commentDrafts: db.prepare('SELECT COUNT(*) c FROM mr_comment_draft').get().c,
 };
+/* ---------- Notes → Période : le retour de congé ----------
+   Dix jours d'absence, terminés hier. La forge n'existe pas en démo : la période est semée
+   telle que le job l'aurait construite — six merge requests mergées (deux reviewées avant le
+   merge, quatre jamais), deux arrivées, une fermée sans merge, trois pushs directs dont un
+   revert et un bot (masqué d'office), deux tags —, et `last_seen` à dix jours pour que le brief
+   affiche la bannière « tu n'as pas ouvert Mergerie depuis 10 jours » à l'ouverture. */
+{
+  const depuis = at(11); const jusqua = at(1);
+  const pid = db.prepare('INSERT INTO periode (depuis, jusqua, built_at, partiel) VALUES (?, ?, ?, 0)').run(depuis, jusqua, at(0.5)).lastInsertRowid;
+  const insItem = db.prepare(`INSERT INTO periode_item (periode_id, repo_id, kind, ref, author, title, at, extra, mr_id, seen_at)
+    VALUES (?,?,?,?,?,?,?,?,?,NULL)`);
+  const item = (repo, kind, ref, author, title, when, extra = {}, mrId = null) => insItem.run(pid, repoIds[repo], kind, String(ref), author, title, when, JSON.stringify(extra), mrId);
+  const sha20 = () => require('crypto').randomBytes(20).toString('hex');
+  // Les mergées : des MR déjà en base (reviewées avant le merge), et quatre jamais vues, écrites ici.
+  const dejaLa = db.prepare(`SELECT mr.id, mr.iid, mr.title, mr.author, mr.source_branch, mr.target_branch, mr.web_url, repo.project
+    FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.status IN ('reviewed', 'done') ORDER BY mr.iid LIMIT 2`).all();
+  dejaLa.forEach((m, i) => {
+    db.prepare('UPDATE mr SET closed_seen = 1, merged_at = COALESCE(merged_at, ?), head_sha = COALESCE(head_sha, current_sha), base_sha = COALESCE(base_sha, ?), merge_commit_sha = COALESCE(merge_commit_sha, ?) WHERE id = ?').run(at(3 + i), sha20(), sha20(), m.id);
+    item(m.project, 'mr_merged', m.iid, m.author, m.title, at(3 + i), { source_branch: m.source_branch, target_branch: m.target_branch, web_url: m.web_url, bot: false }, m.id);
+  });
+  const nouvelles = [
+    { project: 'groupe/api-core', title: 'Quotas par organisation', branch: 'feat/PROJ-860-quotas', author: 'sofia', j: 8, changed: ['src/middleware/quota.js', 'src/dao/orgs.js'], summary: 'ajoute des quotas par organisation' },
+    { project: 'groupe/api-core', title: 'Journal d’audit des exports', branch: 'feat/PROJ-871-audit', author: 'karim', j: 6, changed: ['src/audit.js'], summary: 'journalise chaque export' },
+    { project: 'groupe/webapp-front', title: 'Tableau des commandes : tri serveur', branch: 'feat/PROJ-866-orders-sort', author: 'lina', j: 5, changed: ['src/pages/Orders.jsx'], summary: 'trie les commandes côté serveur' },
+    { project: 'groupe/batch-jobs', title: 'Purge des exports de plus de 90 jours', branch: 'feat/PROJ-852-purge', author: 'noah', j: 2, changed: ['jobs/purgeExports.js'], summary: 'purge les vieux exports' },
+  ];
+  for (const n of nouvelles) {
+    const mr = insertMr({ ...n, status: 'to_review' }, { date: at(n.j + 4), author: n.author });
+    db.prepare('UPDATE mr SET closed_seen = 1, merged_at = ?, head_sha = current_sha, base_sha = ?, merge_commit_sha = ? WHERE id = ?').run(at(n.j), sha20(), sha20(), mr.id);
+    item(n.project, 'mr_merged', mr.iid, n.author, n.title, at(n.j), { source_branch: n.branch, target_branch: 'main', web_url: `https://gitlab.demo/${n.project}/-/merge_requests/${mr.iid}`, bot: false }, mr.id);
+  }
+  // Deux arrivées (encore ouvertes, déjà dans la file « à traiter ») et une fermée sans merge.
+  for (const m of mrsAtraiter.slice(0, 2)) item(m.project, 'mr_new', m.iid, m.author || 'lina', m.title, at(1.5), { source_branch: m.source_branch, target_branch: 'main', bot: false }, m.id);
+  item('groupe/webapp-front', 'mr_closed', 299, 'karim', 'Essai de bundler, abandonné', at(4), { source_branch: 'spike/bundler', target_branch: 'main', bot: false });
+  // Trois pushs directs : un hotfix de deux commits, un revert, un bot.
+  const push = (repo, author, when, commits, extra) => item(repo, 'push', commits[commits.length - 1].sha, author, commits.map((c) => c.title).join(' · '), when,
+    { branche: 'main', base_sha: sha20(), head_sha: commits[commits.length - 1].sha, author_email: `${author}@demo`, commits, revert: false, merge_manuel: false, bot: false, non_verifie: false, ...extra });
+  push('groupe/api-core', 'karim', at(7), [{ sha: sha20(), title: 'hotfix: timeout on /health', date: at(7.01), author: 'karim' }, { sha: sha20(), title: 'bump version 2.3.1', date: at(7), author: 'karim' }], { stat: { files: 2, additions: 84, deletions: 12 } });
+  push('groupe/api-core', 'lina', at(4), [{ sha: sha20(), title: 'Revert "feat: cache Redis sur le catalogue"', date: at(4), author: 'lina' }], { revert: true, stat: { files: 2, additions: 3, deletions: 61 } });
+  push('groupe/webapp-front', 'renovate[bot]', at(9), [{ sha: sha20(), title: 'chore(deps): update dependency react to v19.1.2', date: at(9), author: 'renovate[bot]' }], { bot: true, stat: { files: 2, additions: 4, deletions: 4 } });
+  // Deux tags, une branche supprimée.
+  item('groupe/api-core', 'tag', 'v2.3.1', 'karim', 'Hotfix /health', at(7), { sha: sha20() });
+  item('groupe/api-core', 'tag', 'v2.4.0', 'sofia', 'Quotas et audit', at(2), { sha: sha20() });
+  item('groupe/api-core', 'branch_gone', 'feat/PROJ-860-quotas', 'sofia', 'Quotas par organisation', at(8), { iid: 0 });
+  // Un pipeline rouge sur main à la date du retour, deux tickets Jira qui ont bougé, et ce que
+  // Mergerie a fait seul pendant ce temps (une passe d'agent planifié, une vérification rouge).
+  item('groupe/api-core', 'pipeline', 'main', '', '#4812', at(1.2), { state: 'failed', url: 'https://gitlab.demo/groupe/api-core/-/pipelines/4812', sha: sha20(), branche: 'main' });
+  const jiraItem = (key, title, author, when, extra) => insItem.run(pid, null, 'jira', key, author, title, when, JSON.stringify(extra), null);
+  jiraItem('PROJ-860', 'Quotas par organisation', 'sofia', at(7.5), { objet: 'status', status: 'Done', category: 'done', url: 'https://jira.demo/browse/PROJ-860', type: 'Story', project: 'PROJ', done: true, status_changed: true });
+  jiraItem('PROJ-902', 'Relance automatique des exports en échec', 'Amady', at(2.2), { objet: 'assigned', status: 'À faire', category: 'new', url: 'https://jira.demo/browse/PROJ-902', type: 'Story', project: 'PROJ', done: false });
+  const agentDemo = db.prepare('SELECT id, name FROM agent ORDER BY id LIMIT 1').get();
+  const runDemo = agentDemo ? db.prepare('SELECT id, kind FROM task WHERE agent_id = ? ORDER BY id DESC LIMIT 1').get(agentDemo.id) : null;
+  if (agentDemo && runDemo) insItem.run(pid, null, 'mergerie', `agent:${agentDemo.id}`, '', agentDemo.name, at(1), JSON.stringify({ objet: 'agent', agent_id: agentDemo.id, runs: 3, erreurs: 0, task_id: runDemo.id, task_kind: runDemo.kind || 'explore' }), null);
+  const verifDemo = db.prepare("SELECT id, verifier_name, lot_name, verdict FROM verification WHERE verdict = 'verified_fail' ORDER BY id LIMIT 1").get();
+  if (verifDemo) insItem.run(pid, null, 'mergerie', `verif:${verifDemo.id}`, '', `${verifDemo.verifier_name}${verifDemo.lot_name ? ` · ${verifDemo.lot_name}` : ''}`, at(1.4), JSON.stringify({ objet: 'verification', verification_id: verifDemo.id, verdict: verifDemo.verdict, status: 'done', rouge: true }), null);
+  // L'absence : dix jours sans geste, le seuil est à trois.
+  const poser = db.prepare("INSERT OR REPLACE INTO local_state (kind, ref, key, value, updated_at) VALUES ('absence', 'poste', ?, ?, ?)");
+  poser.run('last_seen', at(0.01), at(0.01));
+  poser.run('depart', at(10.5), at(0.01));  // l'absence FIGÉE : dix jours, terminée à l'instant
+  poser.run('retour', at(0.01), at(0.01));
+  counts.periode_items = db.prepare('SELECT COUNT(*) c FROM periode_item').get().c;
+}
+
 /* ---------- des branches mortes à nettoyer (décor Git) ----------
    Une merge request vue fermée porte encore sa branche source : c'est ce que « Supprimer les
    N branches de merge requests mergées » ramasse. Sans elles, le bouton n'existerait pas dans
@@ -1691,6 +1830,107 @@ async function semerPlugins() {
   const semes = await plugins.semerDemo();
   await plugins.arreter();
   for (const [nom, n] of Object.entries(semes)) counts[`plugin:${nom}`] = n;
+}
+
+/* LES CROISEMENTS : deux merge requests ouvertes de `groupe/tarification` qui modifient le MÊME
+   fichier (`tarification.js`), pour que le badge « croise », son panneau, la ligne de la modale de
+   session et la section du brief se voient sans forge. Puis la liste de fichiers de TOUTES les
+   merge requests, relevée sur leur SHA courant depuis leurs chemins semés — ce que la découverte
+   ferait avec une forge. */
+{
+  /* …et les TESTS TOUCHÉS : la première modifie quatorze fichiers de code sans un seul test
+     (« 14 fichiers · 0 test », accentué), la seconde six fichiers de code et deux tests. */
+  /* …et les MR EMPILÉES : !260 repart de la branche de !214 (le socle des remises, douze commits, douze
+     fichiers) et y ajoute quatre commits et quatre fichiers — `contient !214` sur l'une, `contenue dans
+     !260` sur l'autre, `12 commits communs · 4 commits propres`, `Diff propre : 4 fichiers`. */
+  insertMr({
+    project: 'groupe/tarification', title: 'Socle des remises : paliers et règles', branch: 'feature/remise-socle', status: 'to_review',
+    changed: ['tarification.js', 'src/remise/calcul.js', 'src/remise/regles.js', 'src/remise/index.js',
+      'src/abonnement/annuel.js', 'src/abonnement/mensuel.js', 'src/abonnement/index.js', 'src/facture/lignes.js', 'src/facture/total.js',
+      'src/api/tarifs.js', 'src/api/remises.js', 'src/cli/simuler.js'],
+    summary: 'pose les paliers et les règles de remise',
+  }, { iid: 214, date: at(4) });
+  insertMr({
+    project: 'groupe/tarification', title: 'Remise fidélité portée à 10 %', branch: 'feature/remise-fidelite', status: 'to_review',
+    changed: ['tarification.js', 'plafond.js', 'src/remise/calcul.js', 'src/remise/paliers.js', 'src/remise/regles.js', 'src/remise/index.js',
+      'src/abonnement/annuel.js', 'src/abonnement/mensuel.js', 'src/abonnement/index.js', 'src/facture/lignes.js', 'src/facture/total.js',
+      'src/api/tarifs.js', 'src/api/remises.js', 'src/cli/simuler.js', 'package.json', 'README.md'],
+    summary: 'porte la remise fidélité à 10 % et ajoute un plafond',
+  }, { iid: 260, date: at(2) });
+  insertMr({
+    project: 'groupe/tarification', title: 'TVA : taux réduit sur les abonnements annuels', branch: 'feature/tva-reduite', status: 'to_review',
+    changed: ['tarification.js', 'tva.js', 'src/tva/taux.js', 'src/tva/regimes.js', 'src/facture/total.js', 'src/api/tarifs.js',
+      'test/tva.test.js', 'test/tarification.test.js', 'docs/tva.md', 'package.json'],
+    summary: 'applique le taux réduit de TVA aux abonnements annuels',
+  }, { iid: 261, date: at(0.5) });
+  // eslint-disable-next-line global-require
+  const croisements = require('../src/review/croisements');
+  // eslint-disable-next-line global-require
+  const dependances = require('../src/review/dependances');
+  /* …et les DÉPENDANCES AJOUTÉES : le `package.json` de !260 fait entrer `left-pad` et `date-fns` et
+     passe `axios` de ^0.27 à ^1.7 (« +2 dépendances · 1 majeur », accentué) ; celui de !261 ne change
+     qu'un script (aucun badge). Le diff des seuls manifestes, comme le relevé le garderait. */
+  const MANIFESTES = {
+    260: `@@ -12,8 +12,10 @@
+   "scripts": {
+     "test": "node --test"
+   },
+   "dependencies": {
+-    "axios": "^0.27.2",
++    "axios": "^1.7.0",
++    "date-fns": "^3.6.0",
+     "express": "^4.18.2",
++    "left-pad": "^1.3.0",
+     "pg": "^8.11.0"
+   }`,
+    261: `@@ -10,6 +10,6 @@
+   "scripts": {
+-    "test": "node --test",
++    "test": "node --test test/",
+     "lint": "eslint ."
+   },`,
+  };
+  let n = 0;
+  for (const m of db.prepare("SELECT id, iid, current_sha, changed_paths FROM mr WHERE changed_paths IS NOT NULL AND changed_paths <> ''").all()) {
+    const chemins = m.changed_paths.split('\n').filter(Boolean);
+    croisements.poserFichiers(m.id, m.current_sha, chemins, { source: 'forge', now: at(0.01) });
+    dependances.poserManifestes(m.id, m.current_sha, MANIFESTES[m.iid] ? [{ path: 'package.json', diff: MANIFESTES[m.iid] }] : [], { now: at(0.01) });
+    n += 1;
+  }
+  counts.mr_files = n;
+  // eslint-disable-next-line global-require
+  const empilees = require('../src/review/empilees');
+  /* Les listes de commits de !214 et !260 : les douze du socle, puis quatre de plus dans !260 — ce que la
+     découverte relèverait du clone ou de la forge. Les autres MR n'en ont pas : aucun badge, jamais
+     un faux « indépendante ». */
+  const sha = (texte) => require('crypto').createHash('sha1').update(texte).digest('hex');
+  const socle = Array.from({ length: 12 }, (x, i) => sha(`socle-${i}`));
+  const propres = Array.from({ length: 4 }, (x, i) => sha(`fidelite-${i}`));
+  for (const m of db.prepare('SELECT id, iid, current_sha FROM mr WHERE iid IN (214, 260)').all()) {
+    empilees.poserCommits(m.id, { sha: m.current_sha, target: 'main', shas: m.iid === 214 ? socle : [...socle, ...propres], source: 'forge', now: at(0.01) });
+  }
+  counts.mr_commits = 2;
+  // eslint-disable-next-line global-require
+  const registreDeps = require('../src/review/registre');
+  /* …et LE CONTRÔLE AU REGISTRE, coché dans la démo et SANS RÉSEAU : le cache porte déjà ce que npm
+     dirait de `left-pad` (inconnu — le nom n'existe pas sur ce registre de démo) et de `date-fns`
+     (publié depuis 2014). « +2 dépendances · 1 inconnue » sur la carte de !260, le détail dans le panneau. */
+  db.prepare("UPDATE config SET registry_enabled = '1' WHERE id = 1").run();
+  registreDeps.poser('npm', 'left-pad', { status: 'unknown', reason: '404', now: at(0.01) });
+  registreDeps.poser('npm', 'date-fns', { status: 'known', first_published: '2014-11-18T13:52:20.000Z', latest_published: at(40), now: at(0.01) });
+  counts.registry_lookup = 2;
+  counts.reprise_claire = db.prepare("SELECT COUNT(*) c FROM task WHERE label = 'Paliers de remise par pays'").get().c;
+  /* LA PAGE ÉQUIPE : une DÉCISION EN ATTENTE — une merge request ouverte de Claire, notée au-dessus du seuil par
+     une review d'Ali (l'auteur du fichier de review, comme la synchro le saurait). Posée ici, une fois toutes
+     les merge requests et reviews semées, pour que la ligne tienne à l'affichage. */
+  const dec = db.prepare(`SELECT review.*, mr.id AS mr_row FROM review JOIN mr ON mr.id = review.mr_id
+    WHERE review.note_value >= 0.8 AND COALESCE(mr.closed_seen, 0) = 0 AND mr.merged_at IS NULL AND mr.status IN ('to_review', 'reviewed') ORDER BY review.note_value DESC LIMIT 1`).get();
+  if (dec) {
+    db.prepare("UPDATE mr SET author = 'Claire' WHERE id = ?").run(dec.mr_row);
+    const chemin = require('../src/data/store').cheminSur('review', dec);
+    if (chemin) require('../src/data/localstate').etat.ecrire('author', chemin, 'name', 'Ali');
+  }
+  counts.team_decision = dec ? 1 : 0;
 }
 
 semerDiffsLocaux().then(semerPlugins).then(() => {
