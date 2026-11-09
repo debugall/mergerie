@@ -129,8 +129,9 @@ d'IA, aucun token : les trois réglages sont dans *Réglages → Merge Request �
 **Et combien de fichiers de test elle modifie.** À côté de la taille, la carte dit `14 fichiers · 3 tests`
 — discret — ou `14 fichiers · 0 test`, accentué comme « périmé », quand la merge request modifie au moins
 N fichiers de code (3 par défaut, réglable) sans toucher un seul fichier de test. En dessous de N, ou
-quand tout est neutre (documentation, images, lockfiles, outillage), rien : une correction de deux lignes
-ne porte pas de badge. Un fichier *est* un test ou n'en est pas un selon des **motifs de chemin**
+quand tout est neutre (documentation, images, lockfiles, outillage — et un **sous-module** remonté, qui
+est un pointeur de commit, pas un fichier écrit), rien : une correction de deux lignes ne porte pas de
+badge. Un fichier *est* un test ou n'en est pas un selon des **motifs de chemin**
 (`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), résolus dépôt → groupe(s) → réglages globaux → défauts
 livrés, un niveau rempli remplaçant celui du dessus ; c'est calculé sur les listes de fichiers des
 croisements, à l'affichage, sans IA — des fichiers comptés, jamais une couverture ni un « testée ». Le
@@ -973,7 +974,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
 - **Combien de tests la branche modifie.** Dès qu'un projet de session est *commité*, sa ligne porte
   `0 test modifié` (accentué) ou `3 tests modifiés` (discret), d'après le diff de la branche et les motifs
   de test du dépôt — avant que la merge request n'existe, quand un suivi « ajoute les tests » coûte le
-  moins. Hors dépôt : rien.
+  moins. Une session qui ne fait que remonter un sous-module n'a touché aucun code : rien. Hors dépôt :
+  rien.
 - **Quelles dépendances la branche ajoute.** Sur la même ligne, `2 dépendances ajoutées` (accentué) ou
   `1 dépendance changée` (discret), lues dans les manifestes du diff de la branche — c'est là qu'un suivi
   « enlève left-pad, écris la fonction » coûte le moins. Le détail est sur la carte de la merge request.

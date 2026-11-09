@@ -591,9 +591,12 @@ async function listMrChanges(cfg, project, iid, { manifeste = null } = {}) {
   const changes = (data && data.changes) || [];
   let additions = 0; let deletions = 0;
   for (const c of changes) { const n = compterLignes(c.diff); additions += n.plus; deletions += n.moins; }
+  // Un sous-module (mode 160000, « Subproject commit ») n'est pas un fichier écrit : nommé à part.
+  const gitlink = (c) => c.a_mode === '160000' || c.b_mode === '160000' || /^[-+]Subproject commit /m.test(c.diff || '');
   return {
     // Un renommage compte pour deux chemins (ancien et nouveau) : les deux croisent une autre MR.
     paths: [...new Set(changes.flatMap((x) => [x.new_path, x.old_path]).filter(Boolean))],
+    gitlinks: [...new Set(changes.filter(gitlink).flatMap((x) => [x.new_path, x.old_path]).filter(Boolean))],
     files: changes.length, additions, deletions,
     manifests: manifeste ? changes.filter((c) => manifeste(c.new_path || c.old_path)).map((c) => ({ path: c.new_path || c.old_path, diff: c.diff || '' })) : [],
   };

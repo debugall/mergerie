@@ -9,7 +9,8 @@
  * `agent/` et un test le garde fermé.
  *
  * Trois nombres par merge request : code, tests, neutres (documentation, images, lockfiles,
- * outillage — ni d'un côté ni de l'autre). Les motifs se résolvent dépôt → groupe(s) → défaut
+ * outillage — ni d'un côté ni de l'autre ; un SOUS-MODULE remonté est neutre aussi : c'est un
+ * pointeur de commit, pas un fichier écrit). Les motifs se résolvent dépôt → groupe(s) → défaut
  * global → défauts livrés : un niveau rempli remplace celui du dessus. Rien n'est stocké : un
  * motif qui change change le badge sans attendre un relevé. */
 const fs = require('fs');
@@ -82,15 +83,18 @@ function compiler(motifs) {
   return (motifs || []).map(regexDe).filter(Boolean);
 }
 /* Un chemin est testé contre `tests` d'abord, puis `neutres` : le premier qui matche l'emporte
-   (`docs/example.test.js` est un test). Le reste est du code. */
-function classer(paths, motifs) {
+   (`docs/example.test.js` est un test). Le reste est du code — sauf un gitlink (`gitlinks`, les
+   chemins qui sont des sous-modules), neutre quoi qu'en disent les motifs. */
+function classer(paths, motifs, gitlinks = []) {
   const reTests = compiler(motifs.tests);
   const reNeutres = compiler(motifs.neutres);
+  const liens = new Set((gitlinks || []).map((p) => String(p || '').replace(/^\.?\//, '')));
   const out = { code: 0, tests: 0, neutral: 0, testPaths: [] };
   for (const brut of paths || []) {
     const p = String(brut || '').replace(/^\.?\//, '');
     if (!p) continue;
-    if (reTests.some((re) => re.test(p))) { out.tests += 1; out.testPaths.push(p); } else if (reNeutres.some((re) => re.test(p))) out.neutral += 1;
+    if (liens.has(p)) out.neutral += 1;
+    else if (reTests.some((re) => re.test(p))) { out.tests += 1; out.testPaths.push(p); } else if (reNeutres.some((re) => re.test(p))) out.neutral += 1;
     else out.code += 1;
   }
   out.testPaths.sort();
@@ -107,12 +111,12 @@ const alerte = (cfg, c) => c.tests === 0 && c.code > 0 && c.code >= seuil(cfg);
 function cheminsFrais(mrIds = null) {
   const borne = Array.isArray(mrIds) && mrIds.length ? `AND mr.id IN (${mrIds.map(() => '?').join(',')})` : '';
   const par = new Map();
-  for (const r of db.prepare(`SELECT mr.id, mr.repo_id, f.path, ff.head_sha, ff.fetched_at
+  for (const r of db.prepare(`SELECT mr.id, mr.repo_id, f.path, f.gitlink, ff.head_sha, ff.fetched_at
       FROM mr JOIN mr_file_fetch ff ON ff.mr_id = mr.id AND ff.head_sha IS mr.current_sha AND ff.refused IS NULL
       LEFT JOIN mr_files f ON f.mr_id = mr.id
       WHERE COALESCE(mr.closed_seen, 0) = 0 ${borne}`).all(...(borne ? mrIds : []))) {
-    if (!par.has(r.id)) par.set(r.id, { repo_id: r.repo_id, sha: r.head_sha, at: r.fetched_at, paths: [] });
-    if (r.path) par.get(r.id).paths.push(r.path);
+    if (!par.has(r.id)) par.set(r.id, { repo_id: r.repo_id, sha: r.head_sha, at: r.fetched_at, paths: [], gitlinks: [] });
+    if (r.path) { par.get(r.id).paths.push(r.path); if (r.gitlink) par.get(r.id).gitlinks.push(r.path); }
   }
   return par;
 }
@@ -126,7 +130,7 @@ function pourCartes(cfg, { mrIds = null } = {}) {
   for (const [id, m] of cheminsFrais(mrIds)) {
     if (!motifsParRepo.has(m.repo_id)) motifsParRepo.set(m.repo_id, motifsPour(cfg, m.repo_id));
     const motifs = motifsParRepo.get(m.repo_id);
-    const c = classer(m.paths, motifs);
+    const c = classer(m.paths, motifs, m.gitlinks);
     out[id] = {
       code: c.code, tests: c.tests, neutral: c.neutral,
       test_paths: c.testPaths.slice(0, CHEMINS_PAR_MR),
@@ -167,7 +171,7 @@ function pourCible(cfg, cible) {
   if (cacheCibles.has(cle)) return cacheCibles.get(cle);
   let diff = null;
   try { diff = fs.readFileSync(cible.diff_path, 'utf8'); } catch { return null; }
-  const c = classer(croisements.cheminsDuDiff(diff), motifs);
+  const c = classer(croisements.cheminsDuDiff(diff), motifs, croisements.sousModulesDuDiff(diff));
   const r = { code: c.code, tests: c.tests, neutral: c.neutral };
   if (cacheCibles.size > 500) cacheCibles.clear();
   cacheCibles.set(cle, r);
@@ -195,7 +199,7 @@ function apercu(cfg, { repoId = null, groupId = null, test_patterns = null, neut
         neutres: lignes(neutral_patterns).length ? lignes(neutral_patterns) : base.neutres,
       });
     }
-    const c = classer(m.paths, motifsParRepo.get(m.repo_id));
+    const c = classer(m.paths, motifsParRepo.get(m.repo_id), m.gitlinks);
     out.mrs += 1; out.code += c.code; out.tests += c.tests; out.neutral += c.neutral;
   }
   return out;

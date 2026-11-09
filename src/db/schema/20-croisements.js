@@ -22,6 +22,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS mr_files (
   PRIMARY KEY (mr_id, path)
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_mr_files_path ON mr_files(path, mr_id)');
+/* `gitlink` : le chemin est un SOUS-MODULE (mode 160000), pas un fichier écrit — le badge des tests
+   touchés le range avec les neutres au lieu de le compter comme du code. */
+try { db.exec('ALTER TABLE mr_files ADD COLUMN gitlink INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
 db.exec(`CREATE TABLE IF NOT EXISTS mr_file_fetch (
   mr_id INTEGER PRIMARY KEY REFERENCES mr(id) ON DELETE CASCADE,
   head_sha TEXT,

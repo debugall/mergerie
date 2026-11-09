@@ -52,6 +52,25 @@ function cheminsDuDiff(diff) {
   return [...out];
 }
 
+/* LES SOUS-MODULES D'UN DIFF : un chemin dont le bloc est un « gitlink » (mode 160000, corps
+   `Subproject commit <sha>`). Ce n'est pas un fichier que quelqu'un a écrit — c'est un pointeur de
+   commit — et le compter comme du code faisait dire « 0 test modifié » à une session qui n'avait
+   fait que remonter un sous-module. Pour les croisements, en revanche, il reste un chemin : deux
+   merge requests qui le remontent toutes les deux se marcheront dessus. */
+function sousModulesDuDiff(diff) {
+  const out = new Set();
+  const blocs = String(diff || '').split(/^(?=diff --git )/m);
+  for (const bloc of blocs) {
+    const m = bloc.match(/^diff --git a\/(.+?) b\/(.+)$/m);
+    if (!m) continue;
+    if (/^(index [0-9a-f]+\.\.[0-9a-f]+ 160000|(old|new|deleted file|new file) mode 160000)$/m.test(bloc) || /^[-+]Subproject commit [0-9a-f]+/m.test(bloc)) {
+      if (m[1] && m[1] !== '/dev/null') out.add(m[1]);
+      if (m[2] && m[2] !== '/dev/null') out.add(m[2]);
+    }
+  }
+  return [...out];
+}
+
 /* `git diff --name-status` : `M\tchemin`, `R100\tancien\tnouveau`, `C\tancien\tnouveau`. */
 function cheminsNameStatus(stdout) {
   const out = new Set();
@@ -61,6 +80,18 @@ function cheminsNameStatus(stdout) {
     for (const p of parts.slice(1)) if (p) out.add(p);
   }
   return [...out];
+}
+/* `git diff --raw` : `:100644 160000 <sha> <sha> M\tchemin` — les modes disent le sous-module, ce que
+   `--name-status` tait. Rend les chemins (comme `cheminsNameStatus`) et ceux qui sont des gitlinks. */
+function cheminsRaw(stdout) {
+  const paths = new Set(); const gitlinks = new Set();
+  for (const ligne of String(stdout || '').split('\n')) {
+    const m = ligne.match(/^:(\d{6}) (\d{6}) \S+ \S+ (\S+)\t(.*)$/);
+    if (!m) continue;
+    const chemins = m[4].split('\t').filter(Boolean);
+    for (const p of chemins) { paths.add(p); if (m[1] === '160000' || m[2] === '160000') gitlinks.add(p); }
+  }
+  return { paths: [...paths], gitlinks: [...gitlinks] };
 }
 
 /* 1. Le diff stocké par la review, s'il parle de la tête ACTUELLE. `manifeste` (prédicat sur un
@@ -73,7 +104,7 @@ function depuisLaReview(mr, manifeste = null) {
   try { diff = fs.readFileSync(rev.diff_path, 'utf8'); } catch { return null; }
   if (!diff.trim()) return null;
   const paths = cheminsDuDiff(diff);
-  return { paths, files: paths.length, additions: null, deletions: null, source: 'review', manifests: manifeste ? dependances.blocsManifestes(diff, manifeste) : [] };
+  return { paths, gitlinks: sousModulesDuDiff(diff), files: paths.length, additions: null, deletions: null, source: 'review', manifests: manifeste ? dependances.blocsManifestes(diff, manifeste) : [] };
 }
 
 /* 2. Le clone local, s'il porte la branche À SA TÊTE ACTUELLE — aucun fetch : la découverte ne
@@ -86,8 +117,8 @@ async function depuisLeClone(cfg, repo, mr, manifeste = null) {
     const { stdout: tete } = await git.run('git', ['rev-parse', '--verify', '--quiet', `origin/${mr.source_branch}^{commit}`], { cwd });
     if (String(tete).trim() !== mr.current_sha) return null;
     if (!await git.refExists(cwd, `origin/${mr.target_branch}`)) return null;
-    const { stdout } = await git.run('git', ['diff', '--name-status', '--find-renames', `origin/${mr.target_branch}...origin/${mr.source_branch}`], { cwd, maxBuffer: 1024 * 1024 * 64 });
-    const paths = cheminsNameStatus(stdout);
+    const { stdout } = await git.run('git', ['diff', '--raw', '--find-renames', `origin/${mr.target_branch}...origin/${mr.source_branch}`], { cwd, maxBuffer: 1024 * 1024 * 64 });
+    const { paths, gitlinks } = cheminsRaw(stdout);
     // Les manifestes seulement : un second diff, borné à leurs chemins — toujours aucun réseau.
     let manifests = [];
     const mans = manifeste ? paths.filter(manifeste) : [];
@@ -95,14 +126,14 @@ async function depuisLeClone(cfg, repo, mr, manifeste = null) {
       const { stdout: d } = await git.run('git', ['diff', '--find-renames', `origin/${mr.target_branch}...origin/${mr.source_branch}`, '--', ...mans], { cwd, maxBuffer: 1024 * 1024 * 64 });
       manifests = dependances.blocsManifestes(d, manifeste);
     }
-    return { paths, files: paths.length, additions: null, deletions: null, source: 'clone', manifests };
+    return { paths, gitlinks, files: paths.length, additions: null, deletions: null, source: 'clone', manifests };
   } catch { return null; }
 }
 
 /* 3. La forge — par `clientFor(repo)`, pour qu'une autre forge s'y branche sans toucher au calcul. */
 async function depuisLaForge(cfg, repo, mr, manifeste = null) {
   const ch = await forge.clientFor(repo).listMrChanges(cfg, repo.project, mr.iid, { manifeste });
-  return { paths: [...new Set(ch.paths || [])], files: ch.files, additions: ch.additions, deletions: ch.deletions, source: 'forge', manifests: ch.manifests || [] };
+  return { paths: [...new Set(ch.paths || [])], gitlinks: [...new Set(ch.gitlinks || [])], files: ch.files, additions: ch.additions, deletions: ch.deletions, source: 'forge', manifests: ch.manifests || [] };
 }
 
 async function releverFichiers(cfg, repo, mr, { manifeste = null } = {}) {
@@ -111,11 +142,12 @@ async function releverFichiers(cfg, repo, mr, { manifeste = null } = {}) {
 
 /* ---------- Écrire ---------- */
 
-const poserFichiers = db.transaction((mrId, sha, paths, { source = null, refused = null, now = new Date().toISOString() } = {}) => {
+const poserFichiers = db.transaction((mrId, sha, paths, { source = null, refused = null, gitlinks = [], now = new Date().toISOString() } = {}) => {
   db.prepare('DELETE FROM mr_files WHERE mr_id = ?').run(mrId);
   if (!refused) {
-    const ins = db.prepare('INSERT OR IGNORE INTO mr_files (mr_id, path) VALUES (?, ?)');
-    for (const p of paths) ins.run(mrId, p);
+    const liens = new Set(gitlinks || []);
+    const ins = db.prepare('INSERT OR IGNORE INTO mr_files (mr_id, path, gitlink) VALUES (?, ?, ?)');
+    for (const p of paths) ins.run(mrId, p, liens.has(p) ? 1 : 0);
   }
   db.prepare(`INSERT INTO mr_file_fetch (mr_id, head_sha, fetched_at, files, source, refused) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(mr_id) DO UPDATE SET head_sha = excluded.head_sha, fetched_at = excluded.fetched_at,
@@ -137,7 +169,7 @@ async function releverEtPoser(cfg, repo, mr, { now = new Date().toISOString() } 
     dependances.poserManifestes(mr.id, mr.current_sha, null, { now });
     return { source: r.source, files: r.paths.length, refused: 'too-many-files' };
   }
-  poserFichiers(mr.id, mr.current_sha, r.paths, { source: r.source, now });
+  poserFichiers(mr.id, mr.current_sha, r.paths, { source: r.source, gitlinks: r.gitlinks || [], now });
   dependances.poserManifestes(mr.id, mr.current_sha, depsActives ? (r.manifests || []) : null, { now });
   db.prepare(`UPDATE mr SET changed_paths = ?, changed_files = COALESCE(?, changed_files),
       changed_additions = COALESCE(?, changed_additions), changed_deletions = COALESCE(?, changed_deletions) WHERE id = ?`)
@@ -394,7 +426,7 @@ function purger(mrIds) {
 
 module.exports = {
   MAX_FICHIERS, CHEMINS_PAR_MR, actif, plafond, entreCibles,
-  cheminsDuDiff, cheminsNameStatus, cheminsCites,
+  cheminsDuDiff, sousModulesDuDiff, cheminsNameStatus, cheminsRaw, cheminsCites,
   releverFichiers, releverEtPoser, releverTour, poserFichiers,
   croisements, releves, pourCartes, paires, pourSession, purger,
 };

@@ -115,7 +115,8 @@ No AI call, no token: the three settings live in *Settings → Merge Request →
 **And how many test files it changes.** Next to the size, the card says `14 files · 3 tests` — discreet —
 or `14 files · 0 tests`, emphasised like "stale", when the merge request changes at least N code files
 (3 by default, adjustable) without touching a single test file. Below N, or when everything is neutral
-(documentation, images, lockfiles, tooling), nothing: a two-line fix carries no badge. A file *is* a test
+(documentation, images, lockfiles, tooling — and a bumped **submodule**, which is a commit pointer, not a
+written file), nothing: a two-line fix carries no badge. A file *is* a test
 or is not, by **path patterns** (`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), resolved repository →
 group(s) → global settings → shipped defaults, a filled level replacing the one above; it is computed on
 the overlaps' file lists, at display time, without AI — files counted, never a coverage nor a "tested".
@@ -935,7 +936,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 - **How many tests the branch changes.** As soon as a session project is *committed*, its line carries
   `0 tests modified` (emphasised) or `3 tests modified` (discreet), from the branch diff and the
   repository's test patterns — before the merge request exists, when a follow-up "add the tests" costs
-  the least. Outside a repository: nothing.
+  the least. A session that only bumps a submodule touched no code: nothing. Outside a repository:
+  nothing.
 - **Which dependencies the branch adds.** On the same line, `2 dependencies added` (emphasised) or
   `1 dependency changed` (discreet), read from the manifests in the branch diff — where a follow-up
   "drop left-pad, write the function" costs the least. The detail is on the merge request's card. With the
