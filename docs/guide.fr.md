@@ -2051,9 +2051,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
 - **Tags par période** — « qu'a-t-on livré ces deux semaines ? ». Deux dates (raccourcis *7* et *30
   derniers jours* ; les 30 derniers sont posés à l'ouverture) et l'outil liste **tous les tags créés entre
   ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date,
-  première ligne du message. **`Copier le tableau`** le pose dans le presse-papiers sous deux formes à la
-  fois — un vrai tableau HTML, que Teams, un mail ou Word rendent en tableau, et du texte tabulé pour un
-  tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne
+  première ligne du message. La croix au bout d'une ligne la **masque** — un tag de test, une rustine
+  qu'on n'annonce pas — et « Tout réafficher » la rend ; **`Copier le tableau`** pose les lignes visibles
+  dans le presse-papiers sous deux formes à la fois — un vrai tableau HTML, que Teams, un mail ou Word
+  rendent en tableau, et du texte tabulé pour un tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne
   (GitLab, tag annoté), sinon celle du commit pointé ; les tags GitHub, que l'API ne date pas, sont lus
   dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
   hasard ; un dépôt injoignable est nommé.

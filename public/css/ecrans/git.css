@@ -155,3 +155,6 @@
 .git-tags-presets { display: inline-flex; gap: 6px; }
 .git-tags-actions { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
 .git-tags-table td.git-tags-msg { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.git-tags-table td.git-tags-hide { width: 1%; white-space: nowrap; text-align: right; }
+.git-tags-table td.git-tags-hide .btn { opacity: .55; }
+.git-tags-table tr:hover td.git-tags-hide .btn { opacity: 1; }

@@ -49,7 +49,10 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
       app.state.mrs[projet] = [];
     }
     app.state.tags['grp/alpha'] = [{ name: 'v1.0.0', target: 'tagobj', message: 'Première livraison',
-      commit: { id: alpha.mainSha, committed_date: '2026-08-01T10:00:00Z', author_name: 'Alice' } }];
+      commit: { id: alpha.mainSha, committed_date: '2026-08-01T10:00:00Z', author_name: 'Alice' } },
+    // Un tag de test dans la même période : celui qu'on MASQUE avant de copier le tableau pour Teams.
+    { name: 'v1.0.0-rc1', target: alpha.mainSha, message: 'Candidate, pas pour Teams',
+      commit: { id: alpha.mainSha, committed_date: '2026-07-25T10:00:00Z', author_name: 'Alice' } }];
     app.state.tags['grp/beta'] = [];
     idAlpha = (await app.api('POST', '/api/repos', { url: alpha.url, project: 'grp/alpha' })).body.id;
     idBeta = (await app.api('POST', '/api/repos', { url: beta.url, project: 'grp/beta' })).body.id;
@@ -282,13 +285,27 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
 
     test('le tableau : un tag par ligne avec son dépôt, et le compte au-dessus', async () => {
       await chercher('2026-07-01', '2026-08-31');
-      assert.match(await page.locator('#tagsPeriodInfo').innerText(), /1 tag du 01\/07\/2026 au 31\/08\/2026, dans 1 dépôt/);
+      assert.match(await page.locator('#tagsPeriodInfo').innerText(), /2 tags du 01\/07\/2026 au 31\/08\/2026, dans 1 dépôt/);
       const lignes = page.locator('#tagsPeriodBox tbody tr');
-      assert.equal(await lignes.count(), 1);
+      assert.equal(await lignes.count(), 2);
       assert.match(await lignes.first().innerText(), /grp\/alpha\s+v1\.0\.0 ↗\s+01\/08\/2026\s+Première livraison/);
     });
 
-    test('« Copier le tableau » pose un vrai tableau HTML et sa version tabulée', async () => {
+    test('masquer une ligne la sort de l’écran et de la copie ; « Tout réafficher » la rend', async () => {
+      const rc = page.locator('#tagsPeriodBox tbody tr', { hasText: 'v1.0.0-rc1' });
+      await rc.locator('[data-tags-hide]').click();
+      await rc.waitFor({ state: 'hidden' });
+      assert.match(await page.locator('#tagsPeriodHidden').innerText(), /1 ligne masquée, hors de la copie/);
+      assert.equal(await page.locator('#tagsPeriodBox tbody tr:not([hidden])').count(), 1);
+      await page.locator('#tagsPeriodShowAll').click();
+      await rc.waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#tagsPeriodHidden').isHidden(), true);
+      // Masquée de nouveau : c'est l'état dans lequel on copie, au test suivant.
+      await rc.locator('[data-tags-hide]').click();
+      await rc.waitFor({ state: 'hidden' });
+    });
+
+    test('« Copier le tableau » pose un vrai tableau HTML et sa version tabulée — sans la ligne masquée', async () => {
       await page.locator('#tagsPeriodCopy').click();
       await toast(/Tableau copié : 1 ligne/);
       const copie = await page.evaluate(async () => {
@@ -298,6 +315,7 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
       assert.match(copie.html, /^<table[\s\S]*<th[^>]*>Dépôt<\/th><th[^>]*>Tag<\/th><th[^>]*>Date<\/th><th[^>]*>Message<\/th>/);
       assert.match(copie.html, /<td[^>]*>grp\/alpha<\/td><td[^>]*><a href="[^"]*\/-\/tags\/v1\.0\.0">v1\.0\.0<\/a><\/td><td[^>]*>01\/08\/2026<\/td><td[^>]*>Première livraison<\/td>/);
       assert.equal(copie.text, 'Dépôt\tTag\tDate\tMessage\ngrp/alpha\tv1.0.0\t01/08/2026\tPremière livraison');
+      assert.ok(!/rc1/.test(copie.html) && !/rc1/.test(copie.text), 'la ligne masquée n’est dans aucune des deux formes');
     });
 
     test('une période sans tag : un vide qui le dit, sans bouton copier', async () => {

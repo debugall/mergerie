@@ -1965,9 +1965,10 @@ Operations across **several repositories at once**, and branch exploration.
 - **Tags by period** — “what did we ship these two weeks?”. Two dates (shortcuts *Last 7* and *Last 30
   days*; the last 30 are set when the sub-tab opens) and the tool lists **every tag created between those
   two days, both included, across all active repositories**: repository, tag (link to the forge), date,
-  first line of the message. **`Copy the table`** puts it in the clipboard in two forms at once — a real
-  HTML table, which Teams, an email or Word render as a table, and tab-separated text for a spreadsheet or
-  a plain editor. A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
+  first line of the message. The cross at the end of a row **hides** it — a test tag, a hotfix nobody
+  announces — and “Show all” brings it back; **`Copy the table`** puts the visible rows in the clipboard
+  in two forms at once — a real HTML table, which Teams, an email or Word render as a table, and
+  tab-separated text for a spreadsheet or a plain editor. A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
   otherwise the date of the commit it points to; GitHub tags, which the API does not date, are read from
   the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
   unreachable repository is named.
