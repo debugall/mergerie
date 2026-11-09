@@ -1547,18 +1547,20 @@ sharing nothing more and with no AI or forge call. The brief stays "me, this mor
 now". It only exists when a data repository is attached (without it, one sentence leads there); with a
 single person in the repository it works and says so.
 
-**Seven lists of facts**, each hidden when empty, capped at twelve lines with `and N more`: the **pending
-decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali · awaiting for 5 d` — open merge
-requests whose latest report reaches the team threshold and that nobody has filed or merged yet, sorted by
-wait), the **unanswered questions** (*shared* sessions whose agent is waiting for an answer, the question
-in one line, `answered in takeover #207` when a takeover took it on), the **running sessions** (shared,
-marked running at the last sync — with the freshness of their author's sync, because a "running" session
-whose machine has not synced for three hours may well be over), the **takeovers** (`#123 Claire → #207 Amady
-· yesterday`), the **failing verifications** (red head, green base), the **overlaps and stacks** already
-computed, shown with both authors, and the **workstations** — one line per author of the data repository:
-their last sync, the decisions awaited from them, `quiet` past N working days (weekends do not count), and
-nothing more: they may be on leave. At the top, three numbers and the sync line; two filters, repository
-group and person — picking a person shows what is *waiting on them*, not what they did.
+**Three lists of facts**, each hidden when empty, capped at twelve lines with `and N more` — and only what
+is *waiting on someone*: the **pending decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali
+· awaiting for 5 d` — open merge requests whose latest report reaches the team threshold and that nobody has
+filed or merged yet, sorted by wait), the **unanswered questions** (*shared* sessions whose agent is waiting
+for an answer, the question in one line; a question a takeover took on waits on nobody and leaves), the
+**failing verifications** (red head, green base). At the top, two numbers, the sync line and, when there are
+any, the number of **quiet workstations** — a number, not a name — leading to Settings → Shared data: that is
+where the **team workstations** list lives, one line per author of the data repository with their last sync
+and `quiet` past N working days (weekends do not count), and nothing more: they may be on leave. A sync
+diagnostic — whose data is stale — not a presence board. Two filters, repository group and person — picking
+a person shows what is *waiting on them*, not what they did.
+
+*Running sessions*, *takeovers* and *overlaps and stacks* had their section and lost it: they told what had
+happened, not what anyone had to do, and the Reviews and AI Dev cards already say it.
 
 **Non-negotiable rule**: the page shows only facts already shared, and **nothing about a person that is not
 the state of a piece of work**. How many tokens someone burns, how many merge requests they merged, who is
@@ -1833,7 +1835,10 @@ Operations across **several repositories at once**, and branch exploration.
   is picked), which matters when the list is long — **and so is the ref**: an active repository has hundreds
   of branches and tags. A single choice goes through a selector with search; a multiple choice (checkboxes,
   the explorer's table) gets a filter that **hides rows without unticking anything** — you tick, you filter
-  something else, you tick again, then you delete in one go.
+  something else, you tick again, then you delete in one go. The ref list is read once per repository:
+  **`Refresh the list`** re-reads it from the forge — and it re-reads itself when a git operation finishes,
+  so the branches you just deleted leave the list, with the chosen repositories and the still-valid ticks
+  kept in place.
 - **Nothing runs without a preview.** The preview lists each row (project × ref) and its expected outcome:
   *will run · already exists — skipped · protected ref · default branch · not found*. “Already exists” is
   not an error: the operation is **idempotent**, you can run it again. Each actionable row also shows **the
@@ -2900,10 +2905,10 @@ otherwise) and is not merged (`branch merged (!214)`); the forge is re-read when
 missing from the forge`), and the header says when it is `N commits past the last known pass`. Out of a
 repository, explorations, free questions: nothing to take over in v1.
 
-**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say where we
-are, who is waiting for what, since when — pending decisions, unanswered questions, running sessions,
-takeovers, failing verifications, overlaps, workstation freshness — sharing nothing more. See the *Team*
-section.
+**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say who is
+waiting for what, since when — pending decisions, unanswered questions, failing verifications — sharing
+nothing more; the team's workstations and their last sync are read right here, under *Team workstations*.
+See the *Team* section.
 
 **What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
 this machine's absolute paths, tidied-away sessions, job logs. Every column of

@@ -705,9 +705,11 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   const cheminTache = (id) => storeDemo.cheminSur('task', db.prepare('SELECT * FROM task WHERE id = ?').get(id));
   etatDemo.ecrire('author', cheminTache(tC.lastInsertRowid), 'name', 'Claire');
   /* LA PAGE ÉQUIPE « NOTRE MATIN » : deux auteurs fictifs dans le dépôt de données de démonstration —
-     Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés ; une décision
-     attend (la review d'Ali sur une MR de Claire, voir plus bas), une question sans réponse (la session
-     de Claire ci-dessus), et une reprise : ma session repart de la sienne. */
+     Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés (Réglages →
+     Données partagées le liste, la page Équipe compte « 1 poste silencieux ») ; des décisions attendent
+     (la review d'Ali sur une MR de Claire, voir plus bas). La question de Claire ci-dessus est reprise
+     par ma session : prise en charge, elle n'attend plus personne et la page ne la liste pas — la
+     filiation se lit sur les cartes Dev IA. */
   etatDemo.ecrire('author_last', 'Claire', 'at', new Date(Date.now() - 10 * 60000).toISOString());
   etatDemo.ecrire('author_last', 'Ali', 'at', at(7));
   const tR = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, shared, label, resumed_from_uid, resumed_target_uid, created_at, updated_at, finished_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)')
@@ -716,7 +718,7 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, updated_at) VALUES (?,?,?,?,?,?,?)`)
     .run(tR.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'committed', require('crypto').randomBytes(20).toString('hex'), at(1));
   /* La reprise est À MOI : son fichier porte mon nom git, comme si je l'avais poussé — la carte dit
-     « partagé par moi », et la page Équipe « #6 Claire → #7 moi ». */
+     « partagé par moi », et « reprise de #6 ». */
   // eslint-disable-next-line global-require
   const moiDemo = require('../src/core/identite').nom();
   if (moiDemo) etatDemo.ecrire('author', cheminTache(tR.lastInsertRowid), 'name', moiDemo);

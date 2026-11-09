@@ -54,3 +54,9 @@
 .skill-export { margin-top: var(--s-6); padding-top: var(--s-4); border-top: 1px solid var(--line); max-width: 520px; }
 .skill-export h3 { margin: 0 0 var(--s-2); }
 .skill-export p.muted { margin: 0 0 var(--s-3); }
+
+/* Données partagées → Postes de l'équipe : une ligne par auteur du dépôt de données. */
+.datasync-postes { margin: 4px 0 12px; max-width: 620px; }
+.datasync-poste { display: flex; gap: 10px; align-items: baseline; padding: 4px 0; font-size: 13px; }
+.datasync-poste-nom { font-weight: 600; min-width: 120px; }
+.datasync-poste.quiet .datasync-poste-nom { color: var(--muted); }

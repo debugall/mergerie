@@ -1,8 +1,10 @@
 'use strict';
-/* LA PAGE D'ÉQUIPE « NOTRE MATIN » — où en est-on, qui attend quoi, depuis quand. Sept listes de faits,
-   chacune masquée si vide, plafonnée à douze lignes, calculées par le serveur sur ce que l'équipe partage
-   déjà. Rien n'est stocké ici au-delà des deux filtres en mémoire ; aucune action : chaque ligne mène à la
-   carte (Reviews, Dev IA) où les gestes existent déjà. Une personne n'est jamais un lien. */
+/* LA PAGE D'ÉQUIPE « NOTRE MATIN » — qui attend quoi, depuis quand. Trois listes de faits — décisions,
+   questions, vérifications en échec —, chacune masquée si vide, plafonnée à douze lignes, calculées par le
+   serveur sur ce que l'équipe partage déjà. Rien n'est stocké ici au-delà des deux filtres en mémoire ;
+   aucune action : chaque ligne mène à la carte (Reviews, Dev IA) où les gestes existent déjà. La liste des
+   postes et leur dernière synchro vit dans Réglages → Données partagées : ici, un nombre de postes
+   silencieux qui y mène. */
 // @expose loadEquipe
 let equipeFiltres = { group_id: '', person: '' };
 let equipeChargement = 0;
@@ -16,7 +18,6 @@ function attenteCourte(jours) {
   const m = Math.max(1, Math.round(jours * 24 * 60));
   return tr('team.wait.minutes', { n: m, count: m });
 }
-const qui = (nom) => esc(nom || tr('team.unknown'));
 const depuisOuInconnu = (iso) => (iso ? depuis(iso) : tr('team.unknown'));
 
 function equipeSection(cle, s, lignes, { icon = 'inbox', hint = '', plusDestination = null } = {}) {
@@ -29,8 +30,8 @@ function equipeSection(cle, s, lignes, { icon = 'inbox', hint = '', plusDestinat
   </section>`;
 }
 /* Une ligne mène quelque part (Reviews, Dev IA, un rapport) : elle le dit à droite, en gris, pour que le
-   clic ne soit pas une surprise. Une ligne inerte (une personne) n'a pas de destination. */
-const equipeLigne = (attrs, titre, meta, { inerte = false, vers = null, classe = '' } = {}) => `<div class="equipe-item${inerte ? ' inerte' : ''}${classe ? ` ${classe}` : ''}" ${attrs}${vers ? ` title="${esc(tr('team.go.title', { where: tr(`team.go.${vers}`) }))}"` : ''}>
+   clic ne soit pas une surprise. */
+const equipeLigne = (attrs, titre, meta, { vers = null } = {}) => `<div class="equipe-item" ${attrs}${vers ? ` title="${esc(tr('team.go.title', { where: tr(`team.go.${vers}`) }))}"` : ''}>
     <div class="equipe-item-main"><div class="equipe-item-title">${titre}</div><div class="meta">${meta}</div></div>
     ${vers ? `<span class="equipe-go muted">${esc(tr(`team.go.${vers}`))} ›</span>` : ''}
   </div>`;
@@ -44,16 +45,18 @@ function renderEquipe(d) {
   const c = d.counts || {};
   // Un compteur à zéro n'est pas une nouvelle : il reste, en retrait, pour que la ligne garde sa forme.
   const chiffre = (cle, n) => `<span class="equipe-chiffre${n ? '' : ' zero'}"><b>${n}</b> ${esc(tr(cle, { n, count: n }).replace(/^\d+\s*/, ''))}</span>`;
+  /* Les postes silencieux : un nombre, et le chemin vers la liste (Réglages → Données partagées) — pas
+     de nom ici, la page parle du travail. */
+  const silencieux = c.quiet ? ` · <button type="button" class="croise-go equipe-silencieux" data-equipe-reglages>${esc(tr('team.quiet', { n: c.quiet, count: c.quiet }))}</button>` : '';
   const tete = `<div class="equipe-tete">
       ${chiffre('team.count.decisions', c.decisions || 0)}
       ${chiffre('team.count.questions', c.questions || 0)}
-      ${chiffre('team.count.running', c.running || 0)}
     </div>
     <div class="equipe-sync">${esc(d.sync && d.sync.last
     ? (d.sync.next && Date.parse(d.sync.next) > Date.now()
       ? tr('team.sync.line', { age: depuis(d.sync.last), next: attenteCourte((Date.parse(d.sync.next) - Date.now()) / 86400000) })
       : tr('team.sync.line-nonext', { age: depuis(d.sync.last) }))
-    : tr('team.sync.never'))}${d.single_person ? ` · ${esc(tr('team.single'))}` : ''}</div>`;
+    : tr('team.sync.never'))}${d.single_person ? ` · ${esc(tr('team.single'))}` : ''}${silencieux}</div>`;
 
   const decisions = equipeSection('decisions', d.decisions, (d.decisions.items || []).map((x) => equipeLigne(
     `data-equipe-mr="${x.mr_id}" data-status="${esc(x.status || '')}"`,
@@ -62,28 +65,12 @@ function renderEquipe(d) {
     { vers: 'reviews' },
   )).join(''), { icon: 'check', hint: tr('team.sec.decisions.hint', { threshold: d.threshold }) });
 
-  /* Une question qu'une reprise a prise en charge reste listée, annotée et en retrait : elle n'attend plus
-     personne (le compteur ne la compte pas), mais rien ne dit encore que son auteur l'a vue. */
   const questions = equipeSection('questions', d.questions, (d.questions.items || []).map((x) => equipeLigne(
     `data-equipe-session="${x.task_id}"`,
     esc(tr('team.question.line', { id: x.task_id, author: x.author || tr('team.unknown'), project: x.project, age: depuisOuInconnu(x.since) })),
-    `${x.question ? `<span class="equipe-question">« ${esc(x.question)} »</span>` : ''}${x.answered_in ? `<span>· ${esc(tr('team.question.answered', { id: x.answered_in }))}</span>` : ''}`,
-    { vers: 'sessions', classe: x.answered_in ? 'repondue' : '' },
+    x.question ? `<span class="equipe-question">« ${esc(x.question)} »</span>` : '',
+    { vers: 'sessions' },
   )).join(''), { icon: 'alert' });
-
-  const running = equipeSection('running', d.running, (d.running.items || []).map((x) => equipeLigne(
-    `data-equipe-session="${x.task_id}"`,
-    esc(tr(x.synced_at ? 'team.running.line' : 'team.running.line-nosync', { author: x.author || tr('team.unknown'), project: x.project, since: attenteCourte(x.running_minutes != null ? x.running_minutes / 1440 : null), synced: x.synced_at ? depuis(x.synced_at) : '' })),
-    x.label ? esc(x.label) : '',
-    { vers: 'sessions' },
-  )).join(''), { icon: 'bot' });
-
-  const takeovers = equipeSection('takeovers', d.takeovers, (d.takeovers.items || []).map((x) => equipeLigne(
-    `data-equipe-session="${x.task_id}"`,
-    esc(tr('team.takeover.line', { from: x.from_task_id, from_author: x.from_author || tr('team.unknown'), to: x.task_id, author: x.author || tr('team.unknown'), when: depuisOuInconnu(x.at) })),
-    esc(x.project),
-    { vers: 'sessions' },
-  )).join(''), { icon: 'play' });
 
   const failing = equipeSection('failing', d.failing, (d.failing.items || []).map((x) => equipeLigne(
     `data-equipe-verif="${x.verification_id}"`,
@@ -92,24 +79,8 @@ function renderEquipe(d) {
     { vers: 'report' },
   )).join(''), { icon: 'alert' });
 
-  const pairs = equipeSection('pairs', d.pairs, (d.pairs.items || []).map((x) => equipeLigne(
-    `data-equipe-paire="${x.a_id},${x.b_id}" data-project="${esc(x.project || '')}"`,
-    esc(x.kind === 'stack'
-      ? tr('team.pair.stack', { a: x.a_iid, a_author: x.a_author || tr('team.unknown'), b: x.b_iid, b_author: x.b_author || tr('team.unknown') })
-      : tr('team.pair.overlap', { a: x.a_iid, a_author: x.a_author || tr('team.unknown'), b: x.b_iid, b_author: x.b_author || tr('team.unknown'), files: tr('team.pair.files', { n: x.shared, count: x.shared }) })),
-    esc(x.project || ''),
-    { vers: 'reviews' },
-  )).join(''), { icon: 'branch' });
-
-  const workstations = equipeSection('workstations', d.workstations, (d.workstations.items || []).map((x) => equipeLigne(
-    'data-equipe-poste',
-    qui(x.name),
-    `${esc(x.synced_at ? tr('team.ws.line', { age: depuis(x.synced_at) }) : tr('team.ws.never'))}${x.decisions_awaited ? ` · ${esc(tr('team.ws.awaited', { n: x.decisions_awaited, count: x.decisions_awaited }))}` : ''}${x.quiet ? ` · <span class="quiet">${esc(tr('team.ws.quiet'))}</span>` : ''}`,
-    { inerte: true },
-  )).join(''), { icon: 'users' });
-
-  const corps = decisions + questions + running + takeovers + failing + pairs;
-  box.innerHTML = tete + (corps || `<p class="equipe-vide">${esc(tr('team.empty'))}</p>`) + workstations;
+  const corps = decisions + questions + failing;
+  box.innerHTML = tete + (corps || `<p class="equipe-vide">${esc(tr('team.empty'))}</p>`);
 }
 
 function remplirFiltresEquipe(d) {
@@ -162,11 +133,9 @@ document.addEventListener('click', (e) => {
   if (s) { ouvrirSession(s.dataset.equipeSession, 'code'); return; }
   const v = e.target.closest('[data-equipe-verif]');
   if (v) { openVerifyReport(Number(v.dataset.equipeVerif)); return; }
-  const p = e.target.closest('[data-equipe-paire]');
-  if (p) { epinglerMrs(p.dataset.equipePaire.split(',').map(Number)); $('#searchReview').value = p.dataset.project || ''; navReviews('to_review'); return; }
   const plus = e.target.closest('[data-equipe-plus]');
   if (plus) {
     const sec = plus.dataset.equipePlus;
-    if (['questions', 'running', 'takeovers'].includes(sec)) navTab('task'); else navReviews(sec === 'decisions' ? 'reviewed' : 'to_review');
+    if (sec === 'questions') navTab('task'); else navReviews(sec === 'decisions' ? 'reviewed' : 'to_review');
   }
 });

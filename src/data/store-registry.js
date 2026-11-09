@@ -1871,8 +1871,8 @@ const REGISTRE = [
       'mr_commits_enabled',
       // Le contrôle au registre : l'interrupteur, le seuil « récent », le plafond par tour, les motifs de paquets privés — d'équipe ; les URL, elles, sont de poste.
       'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns',
-      // La page Équipe : quand un poste est dit silencieux, combien de temps une reprise reste listée — une lecture commune.
-      'team_quiet_days', 'team_takeover_days'],
+      // Les postes de l'équipe : quand un poste est dit silencieux — une lecture commune.
+      'team_quiet_days'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que

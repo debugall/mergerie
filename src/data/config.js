@@ -56,7 +56,7 @@ const ALLOWED = [
   'deps_enabled', 'manifest_patterns',
   'mr_commits_enabled',
   'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls',
-  'team_quiet_days', 'team_takeover_days',
+  'team_quiet_days',
 ];
 
 /* `NOM=valeur`, une par ligne, lignes vides et `#` ignorés — la règle des variables d'un agent,
@@ -164,14 +164,10 @@ function updateConfig(patch) {
     next.registry_max = Number.isFinite(rm) && rm >= 0 ? Math.min(1000, rm) : 30;
   }
   if ('registry_urls' in patch) next.registry_urls = require('../core/registres').normaliserUrls(patch.registry_urls);
-  // La page Équipe : un poste silencieux après N jours ouvrés (2), une reprise listée N jours (7).
+  // La page Équipe : un poste silencieux après N jours ouvrés (2).
   if ('team_quiet_days' in patch) {
     const tq = parseInt(patch.team_quiet_days, 10);
     next.team_quiet_days = Number.isFinite(tq) && tq >= 0 ? Math.min(365, tq) : 2;
-  }
-  if ('team_takeover_days' in patch) {
-    const tt = parseInt(patch.team_takeover_days, 10);
-    next.team_takeover_days = Number.isFinite(tt) && tt >= 0 ? Math.min(365, tt) : 7;
   }
   // Brief à la première ouverture de la journée : booléen en texte, comme review_explain.
   next.brief_on_open = next.brief_on_open === '0' ? '0' : '1';
@@ -367,8 +363,7 @@ function updateConfig(patch) {
       registry_recent_days = @registry_recent_days,
       registry_max = @registry_max,
       private_patterns = @private_patterns,
-      team_quiet_days = @team_quiet_days,
-      team_takeover_days = @team_takeover_days
+      team_quiet_days = @team_quiet_days
     WHERE id = 1`).run(next);
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */

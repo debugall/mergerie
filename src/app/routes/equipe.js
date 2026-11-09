@@ -11,7 +11,7 @@ const { wrap } = require('../http');
 app.get('/api/equipe', wrap((req, res) => {
   const cfg = getConfig();
   const d = equipe.construire(cfg, {
-    seuilPret: cfg.converge_threshold, silencieuxJours: cfg.team_quiet_days, repriseJours: cfg.team_takeover_days,
+    seuilPret: cfg.converge_threshold, silencieuxJours: cfg.team_quiet_days,
     groupId: Number(req.query.group_id) || null, personne: String(req.query.person || '').trim() || null,
   });
   const s = datasync.statut();

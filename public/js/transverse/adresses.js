@@ -213,6 +213,8 @@ async function pollNotifications() {
     if (currentSeg === 'to_review') loadToReview(); else loadReports(currentSeg);
     loadLots();
   }
+  // De même pour une opération git aboutie : l'écran Git relit ses listes de refs (branches supprimées, créées).
+  for (const e of (d.events || []).filter((x) => x.type === 'git_done')) document.dispatchEvent(new CustomEvent('mergerie:git-done', { detail: e }));
   // Muet ou permission non accordée : on avance quand même le curseur (pas d'accumulation).
   if (!p.muted && notifPermission() === 'granted') {
     for (const e of (d.events || [])) handleNotifEvent(e, p);

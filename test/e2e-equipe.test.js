@@ -4,8 +4,9 @@
  * Sans dépôt de données attaché, l'onglet Équipe dit une phrase et ne calcule rien. Un dépôt nu attaché
  * (le vrai rattachement), deux auteurs connus de l'état local — Claire il y a dix minutes, Ali
  * silencieux —, une décision en attente, une question d'une session partagée, une session non partagée
- * qui n'apparaît nulle part : l'API rend les sept sections, l'écran les trois chiffres, les lignes, le
- * « silencieux », le filtre par personne, la phrase de la page vide ; une ligne mène à la carte ; rien
+ * qui n'apparaît nulle part : l'API rend les trois sections et les postes, l'écran les deux chiffres, les
+ * lignes, le nombre de postes silencieux qui mène aux réglages — où la liste des postes vit, avec son
+ * « silencieux » —, le filtre par personne, la phrase de la page vide ; une ligne mène à la carte ; rien
  * n'est écrit par la page (aucune ligne de plus en base après l'avoir lue). Aucun appel forge. */
 
 const { test, before, after, describe } = require('node:test');
@@ -41,7 +42,7 @@ describe('Page d’équipe « Notre matin »', () => {
     assert.equal(d.attached, false);
   });
 
-  test('attaché : les sept sections sur ce que l’équipe partage ; une session non partagée n’existe nulle part ; la lecture n’écrit rien', async () => {
+  test('attaché : les trois sections et les postes sur ce que l’équipe partage ; une session non partagée n’existe nulle part ; la lecture n’écrit rien', async () => {
     nu = path.join(fs.mkdtempSync(path.join(app.dataDir, 'equipe-')), 'donnees.git');
     execFileSync('git', ['init', '--bare', '--initial-branch=main', nu], { stdio: 'ignore' });
     assert.equal((await app.api('PUT', '/api/config', { data_repo_url: nu, data_repo_branch: 'main', data_sync_seconds: '600' })).status, 200);
@@ -66,7 +67,8 @@ describe('Page d’équipe « Notre matin »', () => {
     const avant = app.db.prepare('SELECT (SELECT COUNT(*) FROM local_state) + (SELECT COUNT(*) FROM local_pref) + (SELECT COUNT(*) FROM task) + (SELECT COUNT(*) FROM review) AS n').get().n;
     const d = await page();
     assert.equal(d.attached, true);
-    assert.deepEqual(d.counts, { decisions: 1, questions: 1, running: 0 });
+    assert.deepEqual(d.counts, { decisions: 1, questions: 1, quiet: 1 });
+    assert.deepEqual(Object.keys(d).filter((k) => d[k] && d[k].items).sort(), ['decisions', 'failing', 'questions', 'workstations']);
     assert.deepEqual(d.decisions.items.map((x) => [x.iid, x.author, x.reviewer, x.score, Math.round(x.waiting_days)]), [[214, 'Claire', 'Ali', 8.6, 5]]);
     assert.deepEqual(d.questions.items.map((x) => [x.task_id, x.author, x.question]), [[sc, 'Claire', 'Faut-il arrondir la TVA au centime ?']]);
     assert.ok(!JSON.stringify(d).includes('PRIV'), 'rien d’une session non partagée, pas même son existence');
@@ -105,21 +107,20 @@ describe('Page d’équipe « Notre matin »', () => {
     test('les trois chiffres, les sections, « silencieux » sur Ali, le filtre par personne ; une ligne mène à la carte ; une personne n’est jamais un lien', async () => {
       await pg.locator('#equipeBox .equipe-tete').waitFor();
       const tete = await pg.locator('#equipeBox .equipe-tete').innerText();
-      assert.match(tete, /1\s*(décision en attente|pending decision)/); assert.match(tete, /1\s*(question sans réponse|unanswered question)/); assert.match(tete, /0\s*(sessions? en cours|running sessions?)/);
-      assert.match(await pg.locator('#equipeBox .equipe-sync').innerText(), /(Dépôt de données synchronisé|Data repository synced|jamais synchronisé|never synced)/);
+      assert.match(tete, /1\s*(décision en attente|pending decision)/); assert.match(tete, /1\s*(question sans réponse|unanswered question)/);
+      assert.doesNotMatch(tete, /session|running/, 'plus de compteur de sessions en cours');
+      const sync = await pg.locator('#equipeBox .equipe-sync').innerText();
+      assert.match(sync, /(Dépôt de données synchronisé|Data repository synced|jamais synchronisé|never synced)/);
+      assert.match(sync, /1 (poste silencieux|quiet workstation)/, 'Ali est silencieux : un nombre, pas un nom');
       const decision = pg.locator('[data-equipe-sec="decisions"] .equipe-item').first();
       assert.match(await decision.innerText(), /!214 · grp\/tarification[\s\S]*8,6\/10 · Claire · (reviewée par|reviewed by) Ali · (attend depuis|awaiting for) 5 (j|d)/);
       assert.match(await pg.locator('[data-equipe-sec="questions"] .equipe-item').first().innerText(), /#\d+ · Claire · grp\/tarification[\s\S]*« Faut-il arrondir la TVA au centime \? »/);
-      const postes = await pg.locator('[data-equipe-sec="workstations"] .equipe-item').allInnerTexts();
-      assert.ok(postes.some((t) => /^Claire/.test(t) && /(1 décision attendue|1 decision awaited)/.test(t) && !/silencieux|quiet/.test(t)));
-      assert.ok(postes.some((t) => /^Ali/.test(t) && /(silencieux|quiet)/.test(t)));
+      assert.equal(await pg.locator('[data-equipe-sec="workstations"]').count(), 0, 'la liste des postes n’est plus sur la page');
       assert.equal(await pg.locator('#equipeBox a[href]').count(), 0, 'aucun lien : ni sur un nom, ni ailleurs');
-      assert.equal(await pg.locator('[data-equipe-sec="workstations"] .equipe-item.inerte').count(), 2, 'une personne n’est pas cliquable');
       // Le filtre personne.
       await pg.selectOption('#equipePersonne', 'Ali');
       await pg.waitForFunction(() => /0\s*(décision|pending)/.test(document.querySelector('#equipeBox .equipe-tete')?.textContent || ''));
       assert.equal(await pg.locator('[data-equipe-sec="decisions"]').count(), 0);
-      assert.equal(await pg.locator('[data-equipe-sec="workstations"] .equipe-item').count(), 1);
       await pg.selectOption('#equipePersonne', '');
       await pg.waitForFunction(() => /1\s*(décision|pending)/.test(document.querySelector('#equipeBox .equipe-tete')?.textContent || ''));
       // Une ligne mène à la carte : la décision ouvre Reviews sur !214.
@@ -137,7 +138,20 @@ describe('Page d’équipe « Notre matin »', () => {
       await pg.locator('nav button[data-tab="team"]').click();
       await pg.locator('#equipeBox .equipe-vide').waitFor();
       assert.match(await pg.locator('#equipeBox .equipe-vide').innerText(), /Rien n’attend personne ce matin\.|Nothing is waiting on anyone this morning\./);
-      assert.equal(await pg.locator('[data-equipe-sec="workstations"]').count(), 1, 'la fraîcheur des postes reste');
+      // Le nombre de postes silencieux mène aux réglages, où la liste vit : Claire fraîche, Ali silencieux.
+      await pg.locator('#equipeBox .equipe-silencieux').click();
+      await pg.locator('#sub-datasync.active').waitFor();
+      await pg.locator('#dataSyncPostes .datasync-poste').first().waitFor();
+      const postes = await pg.locator('#dataSyncPostes .datasync-poste').allInnerTexts();
+      assert.ok(postes.some((t) => /^Claire/.test(t) && !/silencieux|quiet/.test(t)), postes.join(' | '));
+      assert.ok(postes.some((t) => /^Ali/.test(t) && /(silencieux|quiet)/.test(t)), postes.join(' | '));
+      assert.equal(await pg.locator('#dataSyncPostes a[href]').count(), 0, 'une personne n’est pas un lien');
+      // Le seuil de silence se règle juste en dessous et s'applique : à 30 jours, plus personne n'est silencieux.
+      assert.equal((await app.api('PUT', '/api/config', { team_quiet_days: '30' })).status, 200);
+      await pg.locator('nav button[data-tab="team"]').click();
+      // La page se recalcule : on attend l'état où le nombre a disparu, pas la page vide d'avant.
+      await pg.waitForFunction(() => document.querySelector('#equipeBox .equipe-vide') && !document.querySelector('#equipeBox .equipe-silencieux'));
+      await app.api('PUT', '/api/config', { team_quiet_days: '2' });
       await app.api('PUT', '/api/config', { data_repo_url: '' });
       await pg.locator('nav button[data-tab="notes"]').click();
       await pg.locator('nav button[data-tab="team"]').click();

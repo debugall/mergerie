@@ -1611,20 +1611,22 @@ partager de plus et sans aucun appel d'IA ni de forge. Le brief reste « moi, ce
 « nous, maintenant ». Elle n'existe que si un dépôt de données est attaché (sans lui, une phrase y mène) ;
 avec une seule personne dans le dépôt, elle fonctionne et le dit.
 
-**Sept listes de faits**, chacune masquée si vide, plafonnée à douze lignes avec `et N autres` : les
-**décisions en attente** (`!214 · tarification · 8,6/10 · Claire · reviewée par Ali · attend depuis 5 j` —
-les merge requests ouvertes dont le dernier rapport atteint le seuil d'équipe et que personne n'a encore
-classées ni mergées, triées par attente), les **questions sans réponse** (les sessions *partagées* dont
-l'agent attend une réponse, la question en une ligne, `répondue dans la reprise #207` quand une reprise s'en
-est chargée), les **sessions en cours** (partagées, marquées en cours à la dernière synchro — avec la
-fraîcheur de la synchro de leur auteur, parce qu'une session « en cours » dont le poste n'a pas synchronisé
-depuis trois heures est peut-être finie), les **reprises** (`#123 Claire → #207 Amady · hier`), les
-**vérifications en échec** (tête rouge, base verte), les **croisements et empilements** déjà calculés, vus
-avec les deux auteurs, et la **fraîcheur des postes** — une ligne par auteur du dépôt de données : sa
-dernière synchro, les décisions attendues de lui, `silencieux` au-delà de N jours ouvrés (le week-end ne
-compte pas), sans autre mot : il est peut-être en congé. En tête, trois chiffres et la ligne de synchro ;
-deux filtres, groupe de dépôts et personne — choisir une personne montre ce qui *l'attend*, pas ce qu'elle
-a fait.
+**Trois listes de faits**, chacune masquée si vide, plafonnée à douze lignes avec `et N autres` — et seulement
+ce qui *attend quelqu'un* : les **décisions en attente** (`!214 · tarification · 8,6/10 · Claire · reviewée par
+Ali · attend depuis 5 j` — les merge requests ouvertes dont le dernier rapport atteint le seuil d'équipe et
+que personne n'a encore classées ni mergées, triées par attente), les **questions sans réponse** (les
+sessions *partagées* dont l'agent attend une réponse, la question en une ligne ; une question qu'une reprise
+a prise en charge n'attend plus personne et sort), les **vérifications en échec** (tête rouge, base verte).
+En tête, deux chiffres, la ligne de synchro et, s'il y en a, le nombre de **postes silencieux** — un nombre,
+pas un nom — qui mène à Réglages → Données partagées : c'est là que vit la liste des **postes de l'équipe**,
+une ligne par auteur du dépôt de données avec sa dernière synchro et `silencieux` au-delà de N jours ouvrés
+(le week-end ne compte pas), sans autre mot : il est peut-être en congé. Un diagnostic de synchro — les
+données de qui sont périmées —, pas un tableau de présence. Deux filtres, groupe de dépôts et personne —
+choisir une personne montre ce qui *l'attend*, pas ce qu'elle a fait.
+
+Les *sessions en cours*, les *reprises* et les *croisements et empilements* ont eu leur section et l'ont
+perdue : ils disaient ce qui s'était passé, pas ce que quelqu'un avait à faire, et les cartes Reviews et
+Dev IA le disent déjà.
 
 **Règle non négociable** : la page n'affiche que des faits déjà partagés, et **rien sur une personne qui ne
 soit l'état d'un travail**. Combien de tokens quelqu'un consomme, combien de merge requests il a mergées, qui
@@ -1911,7 +1913,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   liste est longue — **et le choix de la ref aussi** : un dépôt actif compte des centaines de branches
   et de tags. Un choix unique passe par un sélecteur avec recherche ; un choix multiple (cases à cocher,
   tableau de l'explorateur) reçoit un filtre qui **masque des lignes sans décocher quoi que ce soit** —
-  on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
+  on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup. La liste des refs est
+  lue une fois par dépôt : **`Rafraîchir la liste`** la relit sur la forge — et elle se relit d'elle-même
+  quand une opération git se termine, de sorte que les branches que l'on vient de supprimer la quittent,
+  les dépôts choisis et les cases encore valables restant en place.
 - **Rien ne s'exécute sans aperçu.** L'aperçu liste chaque ligne (projet × ref) et son résultat
   attendu : *sera exécutée · existe déjà — ignorée · ref protégée · branche par défaut · introuvable*.
   « Existe déjà » n'est pas une erreur : l'opération est **idempotente**, on peut relancer.
@@ -3023,10 +3028,10 @@ dont la branche a été poussée (`branche non poussée par Claire` sinon) et n'
 `N commits plus loin que la dernière passe connue`. Hors dépôt, exploration, question libre : rien à
 reprendre en v1.
 
-**Et l'équipe, ce matin ?** L'onglet *Équipe* (« Notre matin ») lit ce même dépôt pour dire où en est-on,
-qui attend quoi, depuis quand — décisions en attente, questions sans réponse, sessions en cours, reprises,
-vérifications en échec, croisements, fraîcheur des postes — sans rien partager de plus. Voir la section
-*Équipe*.
+**Et l'équipe, ce matin ?** L'onglet *Équipe* (« Notre matin ») lit ce même dépôt pour dire qui attend
+quoi, depuis quand — décisions en attente, questions sans réponse, vérifications en échec — sans rien
+partager de plus ; les postes de l'équipe et leur dernière synchro se lisent ici même, sous *Postes de
+l'équipe*. Voir la section *Équipe*.
 
 **Ce qui ne part JAMAIS dans le dépôt.** Les six jetons d'API, le dossier de clonage, la langue,
 les chemins absolus de cette machine, les sessions rangées, les journaux de

@@ -5,13 +5,12 @@
  * semé dans l'état local, là où la synchro l'écrit) : une décision en attente (score 8,6 ≥ seuil, MR
  * ouverte non classée) est listée avec auteur, reviewer et attente — classée « traitée » ou notée 7,9,
  * elle ne l'est pas ; une question d'une session PARTAGÉE en `needs_input` est listée avec son texte,
- * une session non partagée n'existe pas (ni ligne, ni compteur), une reprise l'annote ; une session
- * partagée `running` dit la fraîcheur de la synchro de son auteur ; une reprise entre deux auteurs est
- * listée, pas entre une personne et elle-même, plus après la fenêtre ; une vérification `verified_fail`
- * est listée, pas une base cassée ; croisements et empilements portent les deux auteurs ; la fraîcheur
- * compte les jours OUVRÉS et marque « silencieux » le seul poste muet ; le filtre personne ne garde que
- * ce qui l'attend ; sans dépôt attaché, `{ attached: false }` et rien d'autre ; aucune métrique par
- * personne dans la sortie ; le module n'importe ni `agent/` ni `forge/`. */
+ * une session non partagée n'existe pas (ni ligne, ni compteur), une reprise qui la prend en charge la
+ * fait sortir ; une vérification `verified_fail` est listée, pas une base cassée ; la fraîcheur compte
+ * les jours OUVRÉS et marque « silencieux » le seul poste muet, et la page n'en rend que le nombre ; le
+ * filtre personne ne garde que ce qui l'attend ; sans dépôt attaché, `{ attached: false }` et rien
+ * d'autre ; aucune métrique par personne dans la sortie ; le module n'importe ni `agent/` ni `forge/`
+ * ni `review/` (sessions en cours, reprises et croisements n'ont plus de section). */
 const { test, before, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -70,7 +69,8 @@ describe('Page d’équipe « Notre matin »', () => {
     db.prepare("UPDATE local_config SET data_repo_url = 'https://gitlab.test/equipe/donnees.git' WHERE id = 1").run();
     const vide = eq.construire(cfg, { maintenant: NOW });
     assert.equal(vide.attached, true); assert.equal(vide.empty, true);
-    assert.deepEqual(vide.counts, { decisions: 0, questions: 0, running: 0 });
+    assert.deepEqual(vide.counts, { decisions: 0, questions: 0, quiet: 1 }, 'Ali est silencieux : un nombre, pas une section');
+    assert.deepEqual(Object.keys(vide).filter((k) => vide[k] && vide[k].items).sort(), ['decisions', 'failing', 'questions', 'workstations']);
     assert.deepEqual(vide.people, ['Claire', 'Ali'], 'les postes connus du dépôt, même sans rien en attente');
   });
 
@@ -90,7 +90,7 @@ describe('Page d’équipe « Notre matin »', () => {
     assert.deepEqual(d2.decisions.items.map((x) => [x.iid, x.reviewer]), [[214, 'Ali'], [218, 'Amady']], 'triées par attente décroissante');
   });
 
-  test('questions sans réponse : partagée → listée avec la question ; non partagée → nulle part, pas même au compteur ; reprise → annotée', () => {
+  test('questions sans réponse : partagée → listée avec la question ; non partagée → nulle part, pas même au compteur ; reprise → sortie', () => {
     ids.sClaire = session({ auteurNom: 'Claire', status: 'needs_input' });
     ids.tgClaire = cible(ids.sClaire, { status: 'needs_input', questions: [{ id: 'q1', question: 'Faut-il arrondir la TVA au centime ?', answer: null }] });
     const privee = session({ auteurNom: null, shared: 0, status: 'needs_input' });
@@ -104,8 +104,8 @@ describe('Page d’équipe « Notre matin »', () => {
     ids.reprise = session({ auteurNom: 'Amady', status: 'running', resumed: ids.sClaire.uid });
     db.prepare('UPDATE task SET resumed_target_uid = ? WHERE id = ?').run(tgUid, ids.reprise.id);
     const d3 = eq.construire(cfg, { maintenant: NOW });
-    assert.equal(d3.questions.items[0].answered_in, ids.reprise.id);
-    assert.equal(d3.counts.questions, 0, 'prise en charge par une reprise, la question reste listée mais n’attend plus personne : le compteur ne la compte pas');
+    assert.deepEqual(d3.questions.items, [], 'prise en charge par une reprise, la question n’attend plus personne : elle sort');
+    assert.equal(d3.counts.questions, 0, 'et le compteur dit la même chose que la liste');
   });
 
   test('une personne, deux noms : l’identifiant de forge (`claire`) et le nom git (`Claire`) sont la même personne pour le filtre, l’affichage et la liste', () => {
@@ -124,22 +124,8 @@ describe('Page d’équipe « Notre matin »', () => {
     db.prepare('DELETE FROM mr WHERE id IN (?, ?)').run(m230, m231);
   });
 
-  test('sessions en cours : partagée `running` → listée avec la synchro de son auteur ; reprises : deux auteurs, fenêtre de 7 jours', () => {
+  test('vérifications en échec : head KO / base OK → listée ; base KO aussi → absente ; une session `running` partagée n’a pas de section', () => {
     ids.sAli = session({ auteurNom: 'Ali', status: 'running', repo: repoId2, updated: il_y_a(0.03) });
-    const d = eq.construire(cfg, { maintenant: NOW });
-    const ali = d.running.items.find((x) => x.task_id === ids.sAli.id);
-    assert.deepEqual([ali.author, ali.project, ali.synced_at], ['Ali', 'grp/facturation', '2026-10-31T16:00:00Z']);
-    assert.equal(d.counts.running, 2, 'la reprise d’Amady tourne aussi');
-    assert.deepEqual(d.takeovers.items.map((t) => [t.from_task_id, t.from_author, t.task_id, t.author]), [[ids.sClaire.id, 'Claire', ids.reprise.id, 'Amady']]);
-    // Même auteur des deux côtés → pas une reprise d'équipe ; terminée depuis 8 jours → sortie.
-    session({ auteurNom: 'Claire', status: 'done', resumed: ids.sClaire.uid, finished: il_y_a(1) });
-    session({ auteurNom: 'Ali', status: 'done', resumed: ids.sClaire.uid, finished: il_y_a(8), updated: il_y_a(8) });
-    const d2 = eq.construire(cfg, { maintenant: NOW, repriseJours: 7 });
-    assert.deepEqual(d2.takeovers.items.map((t) => t.author), ['Amady']);
-    assert.deepEqual(eq.construire(cfg, { maintenant: NOW, repriseJours: 30 }).takeovers.items.map((t) => t.author).sort(), ['Ali', 'Amady']);
-  });
-
-  test('vérifications en échec : head KO / base OK → listée ; base KO aussi → absente ; croisements et empilements avec les deux auteurs', () => {
     ids.m219 = mr(219, { repo: repoId2, author: 'Ali', sha: 'bbb' });
     db.prepare(`INSERT INTO verification (verifier_name, status, verdict, targets_json, imputable_json, finished_at, created_at) VALUES ('tests', 'done', 'verified_fail', ?, ?, ?, ?)`)
       .run(JSON.stringify([{ repo_id: repoId2, mr_id: ids.m219, head_sha: 'bbb', branch: 'feature/219' }]), JSON.stringify([{ test: 'a' }, { test: 'b' }, { test: 'c' }]), il_y_a(1), il_y_a(1));
@@ -148,15 +134,8 @@ describe('Page d’équipe « Notre matin »', () => {
       .run(JSON.stringify([{ repo_id: repoId, mr_id: m220, head_sha: 'ccc' }]), il_y_a(1), il_y_a(1));
     const d = eq.construire(cfg, { maintenant: NOW });
     assert.deepEqual(d.failing.items.map((f) => [f.iid, f.failed, f.author]), [[219, 3, 'Ali']]);
-    // Croisements : !214 (Claire) et !220 (Claire → Ali pour le test) touchent le même fichier.
-    db.prepare("UPDATE mr SET author = 'Ali' WHERE id = ?").run(m220);
-    const now = new Date().toISOString();
-    for (const [id, sha] of [[ids.m214, 'aaa'], [m220, 'ccc']]) {
-      db.prepare('INSERT INTO mr_files (mr_id, path) VALUES (?, ?)').run(id, 'src/tva.js');
-      db.prepare("INSERT INTO mr_file_fetch (mr_id, head_sha, fetched_at, files, source) VALUES (?, ?, ?, 1, 'forge')").run(id, sha, now);
-    }
-    const d2 = eq.construire({ mr_files_enabled: '1' }, { maintenant: NOW });
-    assert.deepEqual(d2.pairs.items.filter((p) => p.kind === 'overlap').map((p) => [p.a_iid, p.a_author, p.b_iid, p.b_author, p.shared]), [[214, 'Claire', 220, 'Ali', 1]]);
+    assert.ok(!('running' in d) && !('takeovers' in d) && !('pairs' in d) && !('running' in d.counts), 'ni sessions en cours, ni reprises, ni croisements : rien n’y attend personne');
+    assert.ok(!JSON.stringify(d).includes(`"task_id":${ids.sAli.id}`), 'la session en cours d’Ali n’est nulle part');
   });
 
   test('fraîcheur : Claire il y a 10 min, Ali il y a 3 jours ouvrés → « silencieux » sur Ali seul (week-end non compté) ; décisions attendues comptées, rien d’autre', () => {
@@ -171,13 +150,12 @@ describe('Page d’équipe « Notre matin »', () => {
   });
 
   test('filtre personne : ne garde que ce qui attend cette personne ; filtre groupe : ses dépôts', () => {
-    const d = eq.construire(cfg, { maintenant: NOW, personne: 'Ali', repriseJours: 30 });
+    const d = eq.construire(cfg, { maintenant: NOW, personne: 'Ali' });
     assert.deepEqual(d.decisions.items.map((x) => x.iid), [218]);
     assert.deepEqual(d.questions.items, []);
-    assert.deepEqual(d.running.items.map((x) => x.author), ['Ali']);
     assert.deepEqual(d.failing.items.map((x) => x.iid), [219]);
     assert.deepEqual(d.workstations.items.map((w) => w.name), ['Ali']);
-    assert.ok(d.pairs.items.every((p) => p.a_author === 'Ali' || p.b_author === 'Ali'));
+    assert.equal(d.counts.quiet, 1);
     const gid = Number(db.prepare("INSERT INTO repo_group (name, created_at) VALUES ('factu', ?)").run(new Date().toISOString()).lastInsertRowid);
     db.prepare('INSERT INTO repo_group_member (group_id, repo_id) VALUES (?, ?)').run(gid, repoId2);
     const g = eq.construire(cfg, { maintenant: NOW, groupId: gid });
@@ -194,7 +172,7 @@ describe('Page d’équipe « Notre matin »', () => {
     for (const k of cles) assert.ok(!/tokens|cost|merged|count$|_count|classement|rank/i.test(k) || k === 'counts', `clé de métrique refusée : ${k}`);
     assert.ok(!cles.has('usage') && !cles.has('cost_usd'));
     const src = lireSource('notes/equipe');
-    assert.ok(!/require\(['"][^'"]*\/(agent|forge)[/'"]/.test(src), 'aucun require vers agent/ ni forge/');
+    assert.ok(!/require\(['"][^'"]*\/(agent|forge|review)[/'"]/.test(src), 'aucun require vers agent/, forge/ ni review/');
     assert.ok(!/fetch\(|http\./.test(src), 'aucun appel sortant');
   });
 });

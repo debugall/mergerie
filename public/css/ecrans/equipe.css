@@ -9,20 +9,16 @@
 .equipe-chiffre.zero { color: var(--muted); font-weight: 400; }
 .equipe-chiffre.zero b { font-weight: 500; }
 .equipe-sync { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+.equipe-silencieux { font-size: 12px; }
 .equipe-sec { margin-bottom: 22px; }
 .equipe-sec h3 { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 6px; }
 .equipe-sec h3 .ico { width: 15px; height: 15px; }
 .equipe-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 6px; cursor: pointer; }
 .equipe-item:hover { background: var(--panel2); }
-.equipe-item.inerte { cursor: default; }
-.equipe-item.inerte:hover { background: none; }
 .equipe-item-main { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .equipe-item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 8px; }
-.equipe-item .quiet { color: var(--muted); font-style: italic; }
 .equipe-go { font-size: 12px; white-space: nowrap; align-self: center; opacity: .7; }
 .equipe-item:hover .equipe-go { opacity: 1; color: var(--accent); }
-.equipe-item.repondue { opacity: .72; }
-.equipe-item.repondue:hover { opacity: 1; }
 .equipe-question { color: var(--muted); font-size: 12.5px; }
 .equipe-plus { font-size: 12px; }
 .equipe-vide, .equipe-absente { color: var(--muted); padding: 24px 0; }

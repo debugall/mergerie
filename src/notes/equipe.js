@@ -2,9 +2,16 @@
 /* LA PAGE D'ÉQUIPE « NOTRE MATIN » — où en est-on, qui attend quoi, depuis quand.
  *
  * Le brief est « moi, ce matin » ; cette page est « nous, maintenant ». Elle est calculée en SQL sur
- * ce que l'équipe partage DÉJÀ par le dépôt de données (reviews, vérifications, sessions partagées,
- * croisements, empilements) et sur l'historique git de ce dépôt (qui a écrit quoi, quand) — sans rien
- * partager de plus, sans table nouvelle, sans aucun appel d'IA ni de forge.
+ * ce que l'équipe partage DÉJÀ par le dépôt de données (reviews, vérifications, sessions partagées) et
+ * sur l'historique git de ce dépôt (qui a écrit quoi, quand) — sans rien partager de plus, sans table
+ * nouvelle, sans aucun appel d'IA ni de forge.
+ *
+ * Trois sections, et seulement ce qui ATTEND QUELQU'UN : une décision, une réponse, une correction.
+ * Les sessions en cours, les reprises et les croisements en ont fait partie et en sont sortis : un
+ * journal de ce qui s'est passé, déjà dit sur les cartes Reviews et Dev IA, et sur lequel personne
+ * n'avait de geste à faire. La fraîcheur des postes se calcule toujours ici (une ligne par auteur du
+ * dépôt de données), mais se lit dans Réglages → Données partagées, où elle est un diagnostic de
+ * synchro ; la page n'en garde qu'un nombre : les postes silencieux.
  *
  * Règle produit, non négociable : LA PAGE N'AFFICHE QUE DES FAITS DÉJÀ PARTAGÉS, et RIEN SUR UNE
  * PERSONNE QUI NE SOIT L'ÉTAT D'UN TRAVAIL. Une merge request attend une décision, une question attend
@@ -20,8 +27,6 @@ const datasync = require('../data/datasync');
 const store = require('../data/store');
 const groupes = require('../data/groupes');
 const identite = require('../core/identite');
-const croisements = require('../review/croisements');
-const empilees = require('../review/empilees');
 const reprise = require('../session/reprise');
 
 const MAX_PAR_SECTION = 12;
@@ -86,7 +91,7 @@ function decisionsEnAttente(maintenant, seuil, reposFiltre) {
   })).sort((a, b) => (b.waiting_days || 0) - (a.waiting_days || 0));
 }
 
-/* Les sessions partagées, avec leur auteur et leur premier dépôt — la base des sections 2, 3 et 4. */
+/* Les sessions partagées, avec leur auteur et leur premier dépôt — la base de la section 2 et des postes. */
 function sessionsPartagees() {
   const rows = db.prepare(`SELECT task.*, repo.project AS project FROM task JOIN repo ON repo.id = task.repo_id
     WHERE task.shared = 1 AND task.kind IN ('code', 'explore')`).all();
@@ -94,8 +99,9 @@ function sessionsPartagees() {
   return rows.map((t) => ({ ...t, auteur: auteurs.get(t.id) || null }));
 }
 
-/* 2. QUESTIONS SANS RÉPONSE : les cibles de sessions PARTAGÉES en attente d'une réponse. Si une reprise
-   l'a prise en charge, la ligne le dit. */
+/* 2. QUESTIONS SANS RÉPONSE : les cibles de sessions PARTAGÉES en attente d'une réponse. Une question
+   qu'une reprise a prise en charge n'attend plus personne : elle sort (le compteur et la liste disent
+   la même chose). */
 function questionsSansReponse(maintenant, sessions, reposFiltre) {
   const parId = new Map(sessions.map((s) => [s.id, s]));
   const rows = db.prepare(`SELECT tt.id, tt.uid, tt.task_id, tt.repo_id, tt.branch, tt.questions_json, tt.updated_at, repo.project
@@ -110,40 +116,10 @@ function questionsSansReponse(maintenant, sessions, reposFiltre) {
       waiting_days: jours(r.updated_at, maintenant), question: premiereQuestion(r.questions_json),
       answered_in: rep.length ? rep[0].id : null,
     };
-  }).sort((a, b) => (!!a.answered_in - !!b.answered_in) || (b.waiting_days || 0) - (a.waiting_days || 0));   // celles qui attendent encore d'abord
+  }).filter((q) => !q.answered_in).sort((a, b) => (b.waiting_days || 0) - (a.waiting_days || 0));
 }
 
-/* 3. SESSIONS EN COURS : partagées et marquées `running` à la dernière synchronisation — la fraîcheur
-   de la synchro de leur auteur est toujours dite. */
-function sessionsEnCours(maintenant, sessions, fraicheur, reposFiltre) {
-  return sessions.filter((s) => s.status === 'running' && (!reposFiltre || reposFiltre.has(s.repo_id))).map((s) => ({
-    task_id: s.id, author: s.auteur, project: s.project, label: s.label || null, since: s.updated_at || s.created_at,
-    running_minutes: jours(s.updated_at || s.created_at, maintenant) != null ? Math.round(jours(s.updated_at || s.created_at, maintenant) * 24 * 60) : null,
-    synced_at: (s.auteur && fraicheur.get(s.auteur)) || null,
-  })).sort((a, b) => String(b.since || '').localeCompare(String(a.since || '')));
-}
-
-/* 4. REPRISES : les sessions reprises par quelqu'un d'autre que leur auteur, en cours ou terminées depuis
-   moins de N jours. */
-function reprises(maintenant, sessions, fenetreJours, reposFiltre) {
-  const parUid = new Map(sessions.map((s) => [s.uid, s]));
-  const rows = db.prepare(`SELECT task.*, repo.project AS project FROM task JOIN repo ON repo.id = task.repo_id
-    WHERE task.resumed_from_uid IS NOT NULL`).all();
-  const auteurs = auteursDes('task', rows);
-  return rows.map((t) => {
-    const origine = parUid.get(t.resumed_from_uid) || null;
-    const qui = auteurs.get(t.id) || null;
-    return { t, origine, qui };
-  }).filter(({ t, origine, qui }) => origine && origine.auteur && qui && origine.auteur !== qui
-    && (!reposFiltre || reposFiltre.has(t.repo_id))
-    && (t.status === 'running' || (jours(t.finished_at || t.updated_at || t.created_at, maintenant) ?? Infinity) <= fenetreJours))
-    .map(({ t, origine, qui }) => ({
-      from_task_id: origine.id, from_author: origine.auteur, task_id: t.id, author: qui, project: t.project,
-      status: t.status, at: t.finished_at || t.updated_at || t.created_at,
-    })).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-}
-
-/* 5. VÉRIFICATIONS EN ÉCHEC : la dernière vérification de chaque merge request ouverte, quand elle a
+/* 3. VÉRIFICATIONS EN ÉCHEC : la dernière vérification de chaque merge request ouverte, quand elle a
    cassé sur la tête et passait sur la base (`verified_fail`) — une base déjà rouge n'accuse pas la MR. */
 function verificationsEnEchec(maintenant, reposFiltre) {
   const derniere = new Map();
@@ -165,27 +141,7 @@ function verificationsEnEchec(maintenant, reposFiltre) {
   return out.sort((a, b) => (a.days || 0) - (b.days || 0));
 }
 
-/* 6. CROISEMENTS ET EMPILEMENTS : les paires déjà calculées, vues pour toute l'équipe, avec les auteurs
-   des deux côtés. Aucun recalcul. */
-function croisementsEtEmpilements(cfg, reposFiltre) {
-  const auteurDe = db.prepare('SELECT author FROM mr WHERE id = ?');
-  const nom = (id) => ((auteurDe.get(id) || {}).author || null);
-  const paires = croisements.paires(cfg, 0).filter((p) => !reposFiltre || reposFiltre.has(p.repo_id)).map((p) => ({
-    kind: 'overlap', project: p.project, a_id: p.a_id, a_iid: p.a_iid, a_author: nom(p.a_id), b_id: p.b_id, b_iid: p.b_iid, b_author: nom(p.b_id), shared: p.shared,
-  }));
-  const cartes = empilees.pourCartes(cfg);
-  const piles = [];
-  for (const [id, c] of Object.entries(cartes)) {
-    for (const inner of (c.contains || [])) {
-      const outer = db.prepare('SELECT mr.id, mr.iid, mr.author, mr.repo_id, repo.project FROM mr JOIN repo ON repo.id = mr.repo_id WHERE mr.id = ?').get(Number(id));
-      if (!outer || (reposFiltre && !reposFiltre.has(outer.repo_id))) continue;
-      piles.push({ kind: 'stack', project: outer.project, a_id: outer.id, a_iid: outer.iid, a_author: outer.author || null, b_id: inner.id, b_iid: inner.iid, b_author: inner.author || null, shared: inner.shared });
-    }
-  }
-  return [...paires, ...piles];
-}
-
-/* 7. FRAÎCHEUR DES POSTES : une ligne par auteur connu du dépôt de données — sa dernière synchro, le
+/* 4. FRAÎCHEUR DES POSTES : une ligne par auteur connu du dépôt de données — sa dernière synchro, le
    nombre de décisions attendues de lui (les siennes), « silencieux » au-delà de N jours ouvrés. Rien d'autre. */
 function fraicheurDesPostes(maintenant, fraicheur, decisions, silencieuxJours, autresAuteurs = []) {
   const noms = new Set([...fraicheur.keys(), ...autresAuteurs.filter(Boolean)]);
@@ -216,7 +172,6 @@ function harmoniserNoms(d) {
     ...d,
     decisions: d.decisions.map((x) => ({ ...x, author: nom(x.author) })),
     failing: d.failing.map((x) => ({ ...x, author: nom(x.author) })),
-    pairs: d.pairs.map((x) => ({ ...x, a_author: nom(x.a_author), b_author: nom(x.b_author) })),
   };
 }
 /* Le filtre « Personne » propose chaque nom une fois : les postes du dépôt de données d'abord, puis les
@@ -224,14 +179,13 @@ function harmoniserNoms(d) {
 function personnes(d) {
   const vues = new Map(d.workstations.map((w) => [cleNom(w.name), w.name]));
   for (const x of [...d.decisions, ...d.failing]) if (x.author && !vues.has(cleNom(x.author))) vues.set(cleNom(x.author), x.author);
-  for (const x of d.pairs) for (const a of [x.a_author, x.b_author]) if (a && !vues.has(cleNom(a))) vues.set(cleNom(a), a);
   return [...vues.values()];
 }
 
 /* ---------- La page ---------- */
 
-/* `personne` : « ce qui l'attend, elle » — ses décisions, ses questions, ses sessions, ses reprises, les
-   vérifications de ses merge requests, les paires où elle figure, sa ligne de fraîcheur. */
+/* `personne` : « ce qui l'attend, elle » — ses décisions, ses questions, les vérifications de ses merge
+   requests, sa ligne de fraîcheur. */
 function filtrerPersonne(d, p) {
   if (!p) return d;
   const est = (x) => memePersonne(x, p);
@@ -239,15 +193,12 @@ function filtrerPersonne(d, p) {
     ...d,
     decisions: d.decisions.filter((x) => est(x.author)),
     questions: d.questions.filter((x) => est(x.author)),
-    running: d.running.filter((x) => est(x.author)),
-    takeovers: d.takeovers.filter((x) => est(x.author) || est(x.from_author)),
     failing: d.failing.filter((x) => est(x.author)),
-    pairs: d.pairs.filter((x) => est(x.a_author) || est(x.b_author)),
     workstations: d.workstations.filter((x) => est(x.name)),
   };
 }
 
-function construire(cfg = {}, { maintenant = new Date(), seuilPret = 8, silencieuxJours = 2, repriseJours = 7, groupId = null, personne = null } = {}) {
+function construire(cfg = {}, { maintenant = new Date(), seuilPret = 8, silencieuxJours = 2, groupId = null, personne = null } = {}) {
   if (!attache()) return { attached: false };
   const reposFiltre = groupId ? new Set(groupes.membres(groupId)) : null;
   const fraicheur = datasync.fraicheurAuteurs();
@@ -257,26 +208,23 @@ function construire(cfg = {}, { maintenant = new Date(), seuilPret = 8, silencie
     attached: true,
     decisions,
     questions: questionsSansReponse(maintenant, sessions, reposFiltre),
-    running: sessionsEnCours(maintenant, sessions, fraicheur, reposFiltre),
-    takeovers: reprises(maintenant, sessions, Number(repriseJours) >= 0 ? Number(repriseJours) : 7, reposFiltre),
     failing: verificationsEnEchec(maintenant, reposFiltre),
-    pairs: croisementsEtEmpilements(cfg, reposFiltre),
     workstations: fraicheurDesPostes(maintenant, fraicheur, decisions, Number(silencieuxJours) >= 0 ? Number(silencieuxJours) : 2, sessions.map((s) => s.auteur)),
   };
   const d = filtrerPersonne(harmoniserNoms(brut), personne);
   const sections = {};
-  for (const k of ['decisions', 'questions', 'running', 'takeovers', 'failing', 'pairs', 'workstations']) sections[k] = borner(d[k]);
+  for (const k of ['decisions', 'questions', 'failing', 'workstations']) sections[k] = borner(d[k]);
   return {
     attached: true,
-    /* Une question qu'une reprise a prise en charge reste listée, annotée — mais elle n'attend plus
-       personne : le compteur ne la compte pas. */
-    counts: { decisions: d.decisions.length, questions: d.questions.filter((q) => !q.answered_in).length, running: d.running.length },
+    /* `quiet` : combien de postes n'ont rien commité depuis le seuil — la page le dit en un nombre, la
+       liste nominative vit dans Réglages → Données partagées. */
+    counts: { decisions: d.decisions.length, questions: d.questions.length, quiet: d.workstations.filter((w) => w.quiet).length },
     people: personnes(harmoniserNoms(brut)),
     single_person: brut.workstations.length <= 1,
     threshold: Number(seuilPret) > 0 ? Number(seuilPret) : 8,
-    empty: Object.values(sections).every((s) => !s.items.length || s === sections.workstations) && !d.decisions.length && !d.questions.length && !d.running.length && !d.takeovers.length && !d.failing.length && !d.pairs.length,
+    empty: !d.decisions.length && !d.questions.length && !d.failing.length,
     ...sections,
   };
 }
 
-module.exports = { construire, joursOuvres, cleNom, memePersonne, MAX_PAR_SECTION, decisionsEnAttente, questionsSansReponse, sessionsEnCours, reprises, verificationsEnEchec, croisementsEtEmpilements, fraicheurDesPostes };
+module.exports = { construire, joursOuvres, cleNom, memePersonne, MAX_PAR_SECTION, decisionsEnAttente, questionsSansReponse, verificationsEnEchec, fraicheurDesPostes };
