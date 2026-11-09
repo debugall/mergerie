@@ -288,7 +288,7 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
       assert.match(await page.locator('#tagsPeriodInfo').innerText(), /2 tags du 01\/07\/2026 au 31\/08\/2026, dans 1 dépôt/);
       const lignes = page.locator('#tagsPeriodBox tbody tr');
       assert.equal(await lignes.count(), 2);
-      assert.match(await lignes.first().innerText(), /grp\/alpha\s+v1\.0\.0 ↗\s+01\/08\/2026\s+Première livraison/);
+      assert.match(await lignes.first().innerText(), /grp\/alpha\s+v1\.0\.0 ↗\s+01\/08\/2026 \d\d:\d\d\s+Première livraison/);
     });
 
     test('masquer une ligne la sort de l’écran et de la copie ; « Tout réafficher » la rend', async () => {
@@ -313,8 +313,8 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
         return { html: await (await item.getType('text/html')).text(), text: await (await item.getType('text/plain')).text() };
       });
       assert.match(copie.html, /^<table[\s\S]*<th[^>]*>Dépôt<\/th><th[^>]*>Tag<\/th><th[^>]*>Date<\/th><th[^>]*>Message<\/th>/);
-      assert.match(copie.html, /<td[^>]*>grp\/alpha<\/td><td[^>]*><a href="[^"]*\/-\/tags\/v1\.0\.0">v1\.0\.0<\/a><\/td><td[^>]*>01\/08\/2026<\/td><td[^>]*>Première livraison<\/td>/);
-      assert.equal(copie.text, 'Dépôt\tTag\tDate\tMessage\ngrp/alpha\tv1.0.0\t01/08/2026\tPremière livraison');
+      assert.match(copie.html, /<td[^>]*>grp\/alpha<\/td><td[^>]*><a href="[^"]*\/-\/tags\/v1\.0\.0">v1\.0\.0<\/a><\/td><td[^>]*>01\/08\/2026 \d\d:\d\d<\/td><td[^>]*>Première livraison<\/td>/);
+      assert.match(copie.text, /^Dépôt\tTag\tDate\tMessage\ngrp\/alpha\tv1\.0\.0\t01\/08\/2026 \d\d:\d\d\tPremière livraison$/);
       assert.ok(!/rc1/.test(copie.html) && !/rc1/.test(copie.text), 'la ligne masquée n’est dans aucune des deux formes');
     });
 

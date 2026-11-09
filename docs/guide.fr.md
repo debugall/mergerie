@@ -2052,8 +2052,8 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   signalé à part, jamais confondu avec « absente ».
 - **Tags par période** — « qu'a-t-on livré ces deux semaines ? ». Deux dates (raccourcis *7* et *30
   derniers jours* ; les 30 derniers sont posés à l'ouverture) et l'outil liste **tous les tags créés entre
-  ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date,
-  première ligne du message. La croix au bout d'une ligne la **masque** — un tag de test, une rustine
+  ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date **et heure**
+  (deux tags du même jour se distinguent), première ligne du message. La croix au bout d'une ligne la **masque** — un tag de test, une rustine
   qu'on n'annonce pas — et « Tout réafficher » la rend ; **`Copier le tableau`** pose les lignes visibles
   dans le presse-papiers sous deux formes à la fois — un vrai tableau HTML, que Teams, un mail ou Word
   rendent en tableau, et du texte tabulé pour un tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne

@@ -13,6 +13,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Added
 
+- **Git → Tags by period: the hour next to the date.** Two tags of the same day — a release, then its hotfix in the evening — read the same and the table's order looked arbitrary; each row now shows the time, in the copied table too.
 - **Git → Tags by period: hide a row before copying.** A cross at the end of each row takes it out of the table and of *Copy the table* — a test tag, a hotfix nobody announces — with a line above counting the hidden rows and *Show all* to bring them back. A new search starts afresh.
 - **Git → Actions: `Refresh the list`.** The branches and tags of each repository were read once and kept for the whole screen: after *Delete branches*, the deleted ones stayed listed — still ticked — until the page was reloaded, and a branch pushed in the meantime never showed. A button next to *Add a project* re-reads the forge, keeping the chosen repositories and whatever is still ticked and still exists; and the list re-reads itself when a git operation finishes, so what you just deleted leaves it on its own.
 
