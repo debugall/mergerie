@@ -1927,7 +1927,9 @@ Operations across **several repositories at once**, and branch exploration.
     proposal and its reason on a file that has one; clicking it selects it, like a passage on either side.
 - **Navigate** — checks out **several projects on your machine** (not the tool's clones: your own
   repositories) on the branch of your choice, in one gesture. You pick a **local directory** — a folder
-  holding one subfolder per git project, declared in *Settings → Repositories* — then, row by row, a
+  holding one subfolder per git project, declared in *Settings → Repositories*, where each directory lists
+  the projects found and is **re-read from disk** with a button: a folder deleted by hand disappears, a
+  repository cloned since appears, here as in the pickers — then, row by row, a
   **project** and its **remote branch**, both with search as you type. The **current branch** is shown next
   to the selector: without it you choose blind, not knowing whether the operation changes anything at all. A
   `git fetch` precedes the branch list and the checkout, and the local branch is then aligned

@@ -251,7 +251,7 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git', { sk
 
   /* ------------------------------------------------------ Répertoires locaux ---- */
 
-  test('un répertoire local s’ajoute avec son décompte de projets git, et se supprime', async () => {
+  test('un répertoire local s’ajoute avec son décompte de projets git, se relit sur le disque, et se supprime', async () => {
     const racine = fs.mkdtempSync(path.join(app.dataDir, 'racine-locale-'));
     fs.mkdirSync(path.join(racine, 'projet-git'));
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: path.join(racine, 'projet-git') });
@@ -268,6 +268,23 @@ describe('Menu Réglages — dépôts, répertoires, règles, palette git', { sk
     assert.equal(r.count, 2);
     await page.waitForFunction(() => /projet-git/.test(document.querySelector('#localRootList').textContent)
       && /Mes projets/.test(document.querySelector('#localRootList').textContent));
+
+    /* RELIRE : un dossier supprimé à la main et un dépôt cloné depuis — le panneau ne le sait
+       pas tant qu'on ne le relit pas. Le bouton relit le disque, et vide le cache des projets
+       que Navigation et le codage hors dépôt partagent. */
+    await page.evaluate((id) => localProjectsOf(id), r.id);
+    assert.equal(await page.evaluate(() => localProjectsCache.size), 1, 'le cache des projets est rempli');
+    fs.rmSync(path.join(racine, 'dossier-simple'), { recursive: true });
+    fs.mkdirSync(path.join(racine, 'nouveau-git'));
+    execFileSync('git', ['init', '-q', '-b', 'develop'], { cwd: path.join(racine, 'nouveau-git') });
+    assert.match(await page.locator('#localRootList').innerText(), /dossier-simple/, 'avant la relecture, l’ancien dossier est encore là');
+    await page.locator(`#localRootList [data-rootrefresh="${r.id}"]`).click();
+    await page.waitForFunction(() => /nouveau-git/.test(document.querySelector('#localRootList').textContent)
+      && !/dossier-simple/.test(document.querySelector('#localRootList').textContent));
+    assert.match(await page.locator('#localRootList').innerText(), /2 projets git sur 2 dossiers/);
+    assert.match(await page.locator('#localRootList').innerText(), /nouveau-git\s+develop/);
+    assert.equal(await page.evaluate(() => localProjectsCache.size), 0, 'le cache des projets est vidé : les autres écrans reliront');
+    await page.waitForFunction(() => [...document.querySelectorAll('#toasts .toast')].some((t) => /Répertoire relu : 2 projets git sur 2 dossiers/.test(t.textContent)));
 
     await page.locator(`#localRootList [data-rootdel="${r.id}"]`).click();
     await confirmer();

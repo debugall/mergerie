@@ -2009,7 +2009,9 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
     `fatal: refusing to merge unrelated histories` de git.
 - **Navigation** — positionne **plusieurs projets de ta machine** (pas les clones de l'outil : tes
   propres dépôts) sur la branche de ton choix, en un geste. On choisit un **répertoire local** — un
-  dossier contenant un sous-dossier par projet git, déclaré dans *Réglages → Dépôts* —, puis ligne par
+  dossier contenant un sous-dossier par projet git, déclaré dans *Réglages → Dépôts*, où chaque répertoire
+  liste les projets trouvés et se **relit sur le disque** d'un bouton : un dossier supprimé à la main
+  disparaît, un dépôt cloné depuis apparaît, ici comme dans les sélecteurs —, puis ligne par
   ligne un **projet** et sa **branche distante**, les deux avec recherche à la frappe. La **branche
   courante** est affichée à côté du sélecteur : sans elle on choisit à l'aveugle, sans savoir si
   l'opération change quoi que ce soit. Un `git fetch` précède la liste des branches et le checkout, la
