@@ -1614,7 +1614,11 @@ projects if any, deactivated accounts and applications excluded; **you ticked by
   a second one. The **current sprint sits at the top of the list** and is flagged as such — it is the one
   you are after nine times out of ten, and the date alone does not tell it apart from a future sprint. Then
   come the others by **descending date**; a sprint with no known date (Jira does not always give one for a
-  future sprint) comes after those that have one. The **Assignees** and **Statuses** filters each have
+  future sprint) comes after those that have one. Above the cards, a **quick status filter**: one checkbox per
+  status **present** in the loaded tickets, with its count. Untick one and its cards leave **at once**, nothing
+  asked of Jira; **Show all** brings them back; the choice is remembered. The **Statuses** menu on the right
+  acts on the **query** instead: what you untick there is excluded by Jira, and changes what is loaded.
+  The **Assignees** and **Statuses** filters each have
   their own **search** — which **hides** rows without unticking anything — and **Check all / Uncheck all** —
   handy to empty everything then keep only one or two rows. On the assignees, **ticking nobody does not
   filter**: the list then takes **every** ticket the account can see, including those assigned to someone

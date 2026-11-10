@@ -16,6 +16,16 @@
 .jira-search:focus { border-color: var(--accent); outline: none; }
 .jira-search::placeholder { color: var(--muted); }
 .jira-list { display: flex; flex-direction: column; gap: 6px; max-height: 76vh; overflow: auto; padding-right: 2px; }
+/* Filtre rapide par statut, au-dessus des cartes : une case par statut présent, son compte à
+   côté ; un statut décoché s'éteint (la pastille garde sa couleur, estompée) plutôt que de
+   disparaître — c'est là qu'on le recoche. */
+.jira-status-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.jira-quick-item { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; padding: 2px 8px 2px 4px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; }
+.jira-quick-item input { margin: 0; }
+.jira-quick-item .jira-status { font-size: 10px; padding: 1px 8px; }
+.jira-quick-item.jira-quick-off .jira-status { opacity: .45; }
+.jira-quick-n { font-size: 11px; }
+.jira-quick-all { font-size: 12px; padding: 2px 8px; }
 /* Filtre par statut : liste de cases à cocher (persisté), repliable. */
 /* Les trois filtres tiennent sur UNE ligne, côte à côte. Celui qu'on ouvre prend toute la
    largeur (`flex-basis: 100%`) : à 360 px de colonne, un panneau déplié sur un tiers de ligne

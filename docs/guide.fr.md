@@ -1683,6 +1683,10 @@ bougé sur la fenêtre, dans les projets du filtre s'il y en a, comptes désacti
   sur dix, et la date seule ne le distingue pas d'un sprint futur. Viennent ensuite les autres par **date
   décroissante** ; un sprint sans date connue (Jira n'en donne pas toujours pour un sprint futur) passe
   après ceux qui en ont une.
+  Au-dessus des cartes, un **filtre rapide par statut** : une case par statut **présent** dans les tickets
+  chargés, avec son nombre. Décocher retire ses cartes **tout de suite**, sans rien redemander à Jira ;
+  **Tout afficher** les ramène ; le choix est mémorisé. Le menu **Statuts** de droite, lui, agit sur la
+  **requête** : ce qu'on y décoche est exclu par Jira, et change donc ce qui est chargé.
   Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
   sans rien décocher — et **Tout cocher / Tout décocher** —
   pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
