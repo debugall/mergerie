@@ -375,7 +375,7 @@ function majDetailChoix() {
   if (!v) { box.innerHTML = ''; return; }
   const modes = (v.repos || []).map((r) => `${esc(r.project || `#${r.repo_id}`)} <span class="tag ${r.mode === 'in_place' ? 'warn' : ''}">${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`).join(' · ');
   box.innerHTML = `
-    <p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c)}`).join('\n')}</pre>
+    <p class="muted">${esc(tr('verify.pick.commands'))}</p><pre class="verify-log">${(v.commands || []).map((c) => `$ ${esc(c.command)}${c.scope === 'global' ? `   (${esc(tr('verify.cmd.global-title', { repo: c.project || tr('verify.cmd.global-first') }))})` : ''}`).join('\n')}</pre>
     <p class="muted">${modes}</p>
     <p class="muted">${esc(v.run_base ? tr('verify.pick.with-base') : tr('verify.pick.no-base'))} · ${esc(tr('verify.verifier.meta', { timeout: v.timeout_s }))}</p>
     ${(v.repos || []).some((r) => r.mode === 'in_place') ? `${/* B6 — l'état des services du répertoire « in place » : un plugin (Docker) le dit avant le clic, cible « verify-launch ». */''}${pluginsHtml('verify-launch', { dirs: [...new Set((v.repos || []).filter((r) => r.mode === 'in_place' && r.workdir).map((r) => r.workdir))] })}<p class="converge-note">${svgIco('alert')} <span>${esc(tr('verify.pick.in-place-warn'))}</span></p>` : ''}`;
