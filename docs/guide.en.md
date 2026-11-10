@@ -3321,7 +3321,8 @@ without external diff or `textconv`, without the `ext::` protocol, with an allow
 **Targeted guards**:
 - **Git palette** — an **allowlist** of subcommands (`status fetch pull push log show diff branch
   checkout switch stash tag merge rebase reset restore cherry-pick remote rev-parse ls-files describe
-  blame shortlog reflog clean`); refused by prefix (git accepts abbreviations): `--ex…`, `--up…`,
+  blame shortlog reflog clean submodule` — for `submodule`, only `status init update sync summary deinit
+  set-branch add set-url`, never `foreach`, and an address over https or ssh); refused by prefix (git accepts abbreviations): `--ex…`, `--up…`,
   `--rec…`, `--out…`, `--no-index`, `--textconv`, `rebase -x/-i`; no absolute path nor `..`; a
   `remote add|set-url` only towards https or ssh. 60 s timeout, output capped while reading. The same
   filter applies when saving the palette.

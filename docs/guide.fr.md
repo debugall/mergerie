@@ -3467,7 +3467,8 @@ sans diff externe ni `textconv`, sans protocole `ext::`, avec un environnement e
 **Garde-fous ciblés** :
 - **Palette git** — une **liste blanche** de sous-commandes (`status fetch pull push log show diff branch
   checkout switch stash tag merge rebase reset restore cherry-pick remote rev-parse ls-files describe
-  blame shortlog reflog clean`) ; refusés par préfixe (git accepte les abréviations) : `--ex…`, `--up…`,
+  blame shortlog reflog clean submodule` — pour `submodule`, seulement `status init update sync summary
+  deinit set-branch add set-url`, jamais `foreach`, et une adresse en https ou ssh) ; refusés par préfixe (git accepte les abréviations) : `--ex…`, `--up…`,
   `--rec…`, `--out…`, `--no-index`, `--textconv`, `rebase -x/-i` ; aucun chemin absolu ni `..` ; un
   `remote add|set-url` seulement vers https ou ssh. Délai de 60 s, sortie plafonnée pendant la lecture.
   Le même filtre s'applique à l'enregistrement de la palette.
