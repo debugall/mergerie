@@ -329,8 +329,10 @@ app.post('/api/verify/mrs', wrap((req, res) => {
      `develop` à `develop` ;
    · l'imputabilité disparaît : rien n'est « cassé par cette branche », ce qui est rouge est
      rouge. L'affichage et le commentaire le disent autrement (voir `blocsCommentaire`). */
-async function ciblesDepuisBranches(entrees) {
-  const cfg = getConfig();
+/* Une ref telle que git l'admet — et surtout pas une option : elle sera passée à `rev-parse` dans
+   le job. Pas de tiret en tête, pas de `..`, ni blanc ni caractère que git refuse de toute façon. */
+const REF_SURE = /^(?!-)(?!.*\.\.)(?!.*[\s~^:?*[\\])[^\0]{1,200}$/;
+function ciblesDepuisBranches(entrees) {
   const cibles = [];
   const vus = new Set();
   for (const e of entrees) {
@@ -341,25 +343,20 @@ async function ciblesDepuisBranches(entrees) {
     const tag = String(e.tag || '').trim();
     const branche = String(e.branch || '').trim();
     if (!tag && !branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
-    /* Le SHA est résolu MAINTENANT, dans le clone : un verdict est attaché à des commits, pas
-       à un nom de branche qui bougera. C'est aussi ce qui rend la péremption possible. */
-    const cwd = await git.ensureRepo(cfg, repo, () => {});
-    /* UN TAG AUSSI BIEN QU'UNE BRANCHE : « la 3.2.0 livrée vendredi passe-t-elle encore avec les
-       services d'aujourd'hui ? ». Le tag est rapatrié exprès — posé sur un commit déjà présent,
-       le fetch général ne le ramène pas toujours — et c'est le COMMIT pointé qui est résolu
-       (`^{commit}`) : l'objet d'un tag annoté a son propre SHA, qu'aucun checkout ne veut. */
-    if (tag) await git.fetchTag(cwd, tag);
-    const ref = tag ? `refs/tags/${tag}` : `origin/${branche}`;
-    if (!await git.refExists(cwd, ref)) {
-      throw new Error(tag
-        ? t('err.verify.tag-unknown', { tag, project: repo.project })
-        : t('err.verify.branch-unknown', { branch: branche, project: repo.project }));
-    }
-    const { stdout } = await git.run('git', ['rev-parse', `${ref}^{commit}`], { cwd });
+    if (!REF_SURE.test(tag || branche)) throw new Error(t('err.verify.invalid-ref', { ref: tag || branche, project: repo.project }));
+    /* LE SHA N'EST PLUS RÉSOLU ICI MAIS DANS LE JOB. Cloner ou rapatrier chaque dépôt avant de
+       répondre tenait la fenêtre de lancement ouverte, bouton en attente, pendant une dizaine de
+       secondes par dépôt — sans rien dire. La cible part avec sa ref (`origin/<branche>` ou le
+       commit pointé par le tag, `^{commit}` : l'objet d'un tag annoté a son propre SHA, qu'aucun
+       checkout ne veut), et `executerVerification` la résout en SHA au premier usage, clone et
+       fetch compris, sous les yeux du journal — comme il le fait déjà pour la base d'une MR. Une
+       ref inconnue met la vérification en erreur, avec son nom, au lieu de bloquer la fenêtre.
+       Le verdict reste attaché à des commits : la cible est réécrite résolue avant de tourner. */
+    const ref = tag ? `refs/tags/${tag}^{commit}` : `origin/${branche}`;
     /* `branch` porte le nom du tag aussi : c'est le champ que le rapport, le brief et le
        commentaire écrivent déjà ; `tag` dit qu'il s'agit d'un tag, pour l'annoncer comme tel. */
     cibles.push({
-      repo_id: repo.id, mr_id: null, head_sha: stdout.trim(),
+      repo_id: repo.id, mr_id: null, head_sha: ref,
       base_sha: null, branch: tag || branche, tag: tag || null, mode: 'worktree',
     });
   }
@@ -368,7 +365,7 @@ async function ciblesDepuisBranches(entrees) {
 app.post('/api/verify/branches', wrap(async (req, res) => {
   const entrees = (req.body && req.body.targets) || [];
   if (!entrees.length) throw new Error(t('err.verify.branch-required', { project: '' }));
-  const cibles = await ciblesDepuisBranches(entrees);
+  const cibles = ciblesDepuisBranches(entrees);
   const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
   /* Le run base s'éteint tout seul à l'exécution : `executerVerification` le déduit de
      l'absence de merge request dans les cibles. Rien à forcer ici, donc rien à désynchroniser. */

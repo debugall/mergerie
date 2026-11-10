@@ -118,14 +118,26 @@ describe('Vérification d’une branche', () => {
     assert.deepEqual(c.mrs, [], 'il n’y a aucune merge request où publier');
   });
 
-  test('une branche inconnue est refusée, avec son nom', async () => {
+  /* LA ROUTE RÉPOND SANS TOUCHER AU CLONE : clone, fetch et résolution se font dans le job, sous
+     les yeux du journal — tenir la fenêtre de lancement pendant un fetch par dépôt, c'était
+     l'écran bloqué sur son loader. Une ref inconnue n'est donc plus un 400 : c'est une
+     vérification en erreur, qui nomme la ref et le dépôt dans son journal. */
+  test('une branche inconnue met la vérification en erreur, avec son nom — la route, elle, répond aussitôt', async () => {
     const v = await poser('inconnue', 'exit 0');
     const r = await app.api('POST', '/api/verify/branches', {
       verifier_id: v.id, targets: [{ repo_id: repoId, branch: 'pas-de-branche' }],
     });
-    assert.equal(r.status, 400);
-    assert.match(r.body.error, /pas-de-branche/);
-    assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c > 0, true);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const d = await attendre(r.body.verification.id);
+    assert.equal(d.status, 'error');
+    assert.match(d.log_excerpt, /pas-de-branche/);
+    assert.match(d.log_excerpt, /grp\/app/);
+    // Et une ref qui ressemble à une option de git est refusée AVANT, elle : rien à résoudre.
+    const r2 = await app.api('POST', '/api/verify/branches', {
+      verifier_id: v.id, targets: [{ repo_id: repoId, branch: '--output=/tmp/x' }],
+    });
+    assert.equal(r2.status, 400);
+    assert.match(r2.body.error, /--output/);
   });
 
   /* UN TAG AUSSI BIEN QU'UNE BRANCHE. « La 3.2.0 livrée vendredi passe-t-elle encore ? » est la
@@ -149,13 +161,15 @@ describe('Vérification d’une branche', () => {
     assert.match(c.body, /grp\/app · tag `v1\.0\.0` @ `[0-9a-f]{8}`/, 'le commentaire dit que c’est un tag');
   });
 
-  test('un tag inconnu est refusé, avec son nom ; un rouge sur un tag ne se « corrige » pas', async () => {
+  test('un tag inconnu met la vérification en erreur, avec son nom ; un rouge sur un tag ne se « corrige » pas', async () => {
     const v = await poser('tag-rouge', 'exit 1');
     const r0 = await app.api('POST', '/api/verify/branches', {
       verifier_id: v.id, targets: [{ repo_id: repoId, tag: 'v9.9.9' }],
     });
-    assert.equal(r0.status, 400);
-    assert.match(r0.body.error, /v9\.9\.9/);
+    assert.equal(r0.status, 200, JSON.stringify(r0.body));
+    const d0 = await attendre(r0.body.verification.id);
+    assert.equal(d0.status, 'error');
+    assert.match(d0.log_excerpt, /v9\.9\.9/);
     const r = await app.api('POST', '/api/verify/branches', {
       verifier_id: v.id, targets: [{ repo_id: repoId, tag: 'v1.0.0' }],
     });
@@ -344,10 +358,12 @@ describe('Vérification d’une branche', () => {
       await page.locator('#branchVerifyGo').click();
       await page.waitForSelector('#branchVerifyModal[hidden]', { state: 'attached' });
       assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant + 1);
-      const cible = JSON.parse(app.db.prepare('SELECT targets_json t FROM verification ORDER BY id DESC LIMIT 1').get().t)[0];
+      // Le SHA se résout dans le JOB : c'est une fois le run fini qu'on lit la cible réécrite.
+      const derniere = app.db.prepare('SELECT id FROM verification ORDER BY id DESC LIMIT 1').get().id;
+      await attendre(derniere);
+      const cible = JSON.parse(app.db.prepare('SELECT targets_json t FROM verification WHERE id = ?').get(derniere).t)[0];
       assert.equal(cible.tag, 'v1.0.0', 'c’est un TAG qui part');
       assert.equal(cible.head_sha, shaDevelop, 'résolu sur le commit pointé');
-      await attendre(app.db.prepare('SELECT id FROM verification ORDER BY id DESC LIMIT 1').get().id);
 
       // Le choix est RETENU : la modale se rouvre sur « Tag », et sur ce tag-là.
       await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();

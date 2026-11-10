@@ -463,11 +463,28 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
        SHA au premier usage et on la réécrit dans la vérification. Un verdict porte sur des
        commits, pas sur un nom de branche qui aura bougé demain — et le cache des runs n'a de
        sens que sur des SHAs. */
-    const resoudre = async (repo, ref) => {
+    /* UNE VÉRIFICATION DE BRANCHE OU DE TAG ARRIVE AVEC SA REF, PAS SON SHA : la route répond
+       sans toucher au clone, c'est ici — dans le journal — que le dépôt est cloné ou rapatrié et
+       la ref résolue. Le tag est rapatrié exprès : posé sur un commit déjà présent, le fetch
+       général ne le ramène pas toujours. Une ref inconnue est dite avec son nom et son dépôt,
+       pas avec le `fatal:` de git. */
+    const resoudre = async (repo, ref, cible = null) => {
       if (/^[0-9a-f]{7,40}$/i.test(String(ref))) return String(ref);
       const clone = await git.ensureRepo(cfg, repo, noter);
-      const out = await git.run('git', ['rev-parse', String(ref)], { cwd: clone });
-      return String(out && out.stdout != null ? out.stdout : '').trim().split('\n')[0];
+      if (cible && cible.tag) await git.fetchTag(clone, cible.tag);
+      const nom = String(ref).replace(/^refs\/tags\//, '').replace(/^origin\//, '').replace(/\^\{commit\}$/, '');
+      let sha = '';
+      try {
+        const out = await git.run('git', ['rev-parse', '--verify', '--quiet', String(ref)], { cwd: clone });
+        sha = String(out && out.stdout != null ? out.stdout : '').trim().split('\n')[0];
+      } catch { sha = ''; }
+      if (!sha) {
+        throw new Error(cible && cible.tag
+          ? t('err.verify.tag-unknown', { tag: nom, project: repo.project })
+          : t('err.verify.branch-unknown', { branch: nom, project: repo.project }));
+      }
+      noter(t('log.verify.resolved', { project: repo.project, ref: nom, sha: sha.slice(0, 12) }));
+      return sha;
     };
     let ciblesResolues = null;
 
@@ -484,7 +501,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
           ciblesResolues.push({
             ...c,
             base_sha: c.base_sha ? await resoudre(repo, c.base_sha) : null,
-            head_sha: await resoudre(repo, c.head_sha),
+            head_sha: await resoudre(repo, c.head_sha, c),
           });
         }
         db.prepare('UPDATE verification SET targets_json = ? WHERE id = ?')

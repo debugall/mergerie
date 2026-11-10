@@ -2678,7 +2678,10 @@ Back from holiday, several merge requests have been merged: the question is no l
 this branch break?” but **“is `develop` still green?”**. The **`Verify a branch`** button lives in
 the **Git** tab and on every verifier's card. One row per covered repository, each on its **default
 branch**, picked from a searchable selector — an active repository lines up hundreds of them. The
-last branch verified is remembered.
+last branch verified is remembered. `Run` answers at once: cloning or fetching each repository,
+reading the tag and resolving the commit happen in the job, line by line in the **log** — an unknown
+ref puts the verification in error with its name and repository, in the log and the report, instead
+of holding the dialog.
 
 **A tag as well as a branch.** In front of the ref, a **Branch / Tag** selector: “does the 3.2.0
 shipped on Friday still pass with today's services?” is the same question, asked about a ref that

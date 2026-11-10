@@ -2801,6 +2801,9 @@ que cette branche casse ? » mais **« est-ce que `develop` est encore vert ? »
 **`Vérifier une branche`** vit dans l'onglet **Git** et sur la carte de chaque vérificateur. Une
 ligne par dépôt couvert, chacune sur sa **branche par défaut**, choisie dans un sélecteur à
 recherche — un dépôt actif en aligne des centaines. La dernière branche vérifiée est mémorisée.
+`Lancer` répond aussitôt : clone ou fetch de chaque dépôt, lecture du tag et résolution du commit
+se font dans le job, ligne par ligne dans le **journal** — une ref inconnue met la vérification en
+erreur avec son nom et son dépôt, dans le journal et le rapport, au lieu de retenir la fenêtre.
 
 **Un tag aussi bien qu'une branche.** Devant la ref, un sélecteur **Branche / Tag** : « la 3.2.0
 livrée vendredi passe-t-elle encore avec les services d'aujourd'hui ? » est la même question, posée

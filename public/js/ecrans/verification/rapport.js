@@ -8,6 +8,11 @@ let verifyReportVu = null;    // le rapport actuellement affiché (pour « Enqu�
 
 /* Les échecs à confier à l'enquêteur : ceux imputables aux branches testées, et à défaut ceux
    de la base — une base rouge est justement le cas où l'on ne sait pas d'où ça vient. */
+/* Le SHA court d'une cible — ou « … » tant que le job ne l'a pas résolu : une vérification de
+   branche ou de tag part avec sa ref (`origin/develop`, `refs/tags/v1^{commit}`), que huit
+   caractères rendraient en « refs/tag ». */
+const shaCourt = (s) => (/^[0-9a-f]{7,40}$/i.test(String(s || '')) ? String(s).slice(0, 8) : '…');
+
 function echecsDuRapport(d) {
   const t2 = (d && d.imputable) || [];
   if (t2.length) return t2;
@@ -194,7 +199,7 @@ function verifyReportHtml(d) {
      la retrouver à la main dans la liste. */
   const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? (c.mr_id
     ? ` <button type="button" class="lien-mr" data-vmr="${c.mr_id}" title="${esc(tr('verify.report.open-mr', { iid: c.iid }))}">!${esc(c.iid)}</button>`
-    : ` !${esc(c.iid)}`) : ''} · ${c.tag ? `<span class="tag">${esc(tr('verify.target.tag'))}</span> ` : ''}<code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn" title="${esc(c.workdir || '')}">${esc(tr('verify.mode.in-place-short'))}</span>${c.workdir ? ` <code class="muted">${esc(c.workdir)}</code>` : ''}` : ''}</li>`;
+    : ` !${esc(c.iid)}`) : ''} · ${c.tag ? `<span class="tag">${esc(tr('verify.target.tag'))}</span> ` : ''}<code>${esc(c.branch || '')}</code> @ <code>${esc(shaCourt(c.head_sha))}</code>${c.mode === 'in_place' ? ` <span class="tag warn" title="${esc(c.workdir || '')}">${esc(tr('verify.mode.in-place-short'))}</span>${c.workdir ? ` <code class="muted">${esc(c.workdir)}</code>` : ''}` : ''}</li>`;
   const duree = d.started_at && d.finished_at
     ? tr('verify.report.duration', { s: fmtSecondes(new Date(d.finished_at) - new Date(d.started_at)).replace(' s', '') }) : '';
   /* A23 — LE RAPPORT DIT CE QU'IL SAIT DÉJÀ. Stockés dans le run et jamais rendus : le NOMBRE
@@ -309,7 +314,7 @@ async function remplirHistoriqueVerifs(mrId) {
           ? ` <span class="tag done" title="${esc(h.corriges.join('\n'))}">${esc(tr('verify.hist.fixed', { n: h.corriges.length, count: h.corriges.length }))}</span>` : '';
         return `<li>${verifyBadge({ verdict: h.verdict, failed_count: (h.failed || []).length })}`
           + ` <span class="muted" data-when="${esc(h.finished_at || '')}">${esc(h.finished_at ? fmtDateTime(h.finished_at) : '')}</span>`
-          + `${h.head_sha ? ` <code class="muted">${esc(String(h.head_sha).slice(0, 8))}</code>` : ''}`
+          + `${h.head_sha ? ` <code class="muted">${esc(shaCourt(h.head_sha))}</code>` : ''}`
           + `${nouveaux}${corriges}</li>`;
       }).join('') + '</ul>';
   }
