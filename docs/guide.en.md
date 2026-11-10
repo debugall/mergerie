@@ -1986,7 +1986,11 @@ Operations across **several repositories at once**, and branch exploration.
   (two tags of the same day stay apart), first line of the message. The cross at the end of a row **hides** it — a test tag, a hotfix nobody
   announces — and “Show all” brings it back; **`Copy the table`** puts the visible rows in the clipboard
   in two forms at once — a real HTML table, which Teams, an email or Word render as a table, and
-  tab-separated text for a spreadsheet or a plain editor. A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
+  tab-separated text for a spreadsheet or a plain editor. **`Verify these tags`** asks the next question:
+  “does what we shipped still pass?” — it opens *Verify a branch* with the table's repositories ticked, each in
+  *Tag* mode on its tag, hidden rows staying out; the proposed verifier is the one covering most of those
+  repositories, the ones it does not cover are named under the selector, and a repository with several visible
+  tags gets the most recent (changeable on its row). A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
   otherwise the date of the commit it points to; GitHub tags, which the API does not date, are read from
   the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
   unreachable repository is named.

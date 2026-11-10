@@ -390,9 +390,9 @@ describe('Menu Git : sous-onglets, Actions et Historique', { skip: dispo ? false
     assert.equal(v.status, 200, v.text);
 
     await page.locator('#btnVerifyBranch').click();
-    await page.waitForSelector('#branchVerifyModal:not([hidden])');
+    await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
     assert.match(await page.locator('#branchVerifySelect').innerText(), /Tests unitaires/);
-    await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'main');
+    await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'main');
     assert.match(await page.locator('#branchVerifyRows').innerText(), /grp\/alpha/);
     await page.locator('#branchVerifyCancel').click();
     await page.waitForSelector('#branchVerifyModal', { state: 'hidden' });

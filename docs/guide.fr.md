@@ -2073,7 +2073,11 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   (deux tags du même jour se distinguent), première ligne du message. La croix au bout d'une ligne la **masque** — un tag de test, une rustine
   qu'on n'annonce pas — et « Tout réafficher » la rend ; **`Copier le tableau`** pose les lignes visibles
   dans le presse-papiers sous deux formes à la fois — un vrai tableau HTML, que Teams, un mail ou Word
-  rendent en tableau, et du texte tabulé pour un tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne
+  rendent en tableau, et du texte tabulé pour un tableur ou un éditeur brut. **`Vérifier ces tags`** pose la question d'après :
+  « ce qu'on a livré passe-t-il encore ? » — il ouvre *Vérifier une branche* avec les dépôts du tableau cochés,
+  chacun en genre *Tag* sur son tag, les lignes masquées restant dehors ; le vérificateur proposé est celui qui
+  couvre le plus de ces dépôts, ceux qu'il ne couvre pas sont nommés sous le sélecteur, et un dépôt à plusieurs tags
+  visibles reçoit le plus récent (changeable sur sa ligne). La date d'un tag est sa date de **création** quand la forge la donne
   (GitLab, tag annoté), sinon celle du commit pointé ; les tags GitHub, que l'API ne date pas, sont lus
   dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
   hasard ; un dépôt injoignable est nommé.

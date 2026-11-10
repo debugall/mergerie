@@ -46,26 +46,81 @@ const genreDeLigne = (row) => (row.dataset.genre === 'tag' ? 'tag' : 'branch');
    zéro dépôt coché ne dirait pas pourquoi le bouton refuse. */
 const memoDepots = () => lireMemo(BRANCHE_MEMO_DEPOTS);
 const memoriserDepots = (verifierId, repoIds) => ecrireMemo(BRANCHE_MEMO_DEPOTS, verifierId, repoIds);
+/* OUVERTE SUR DES CIBLES (Git → Tags par période → « Vérifier ces tags ») : `[{ repo_id, project,
+   tag, n }]`, un dépôt par entrée. La sélection n'est alors plus l'habitude mémorisée mais CES
+   dépôts-là — ceux que le vérificateur couvre ; les autres sont nommés sous le sélecteur, pour que
+   l'absence d'une ligne ne passe pas pour un oubli. Le vérificateur proposé d'office est celui qui
+   en couvre le plus. `null` en dehors de ce cas : la modale reprend ses mémoires. */
+let branchVerifCibles = null;
 
-async function ouvrirVerifBranche(verifierId = null) {
+/* OUVERTE D'ABORD, REMPLIE ENSUITE. La modale attendait d'avoir lu les vérificateurs puis la
+   branche par défaut de chaque dépôt couvert — une lecture de forge par dépôt — avant de
+   s'afficher : sur un vérificateur à cinq dépôts, le clic restait sans réponse plusieurs
+   secondes. Elle s'ouvre maintenant sur un squelette, et « Lancer » reste éteint tant que les
+   lignes se remplissent. */
+async function ouvrirVerifBranche(verifierId = null, { cibles = null } = {}) {
+  const modal = $('#branchVerifyModal');
+  $('#branchVerifySelect').innerHTML = '';
+  $('#branchVerifyRows').innerHTML = skeleton(3);
+  if ($('#branchVerifyNote')) $('#branchVerifyNote').hidden = true;
+  $('#branchVerifyGo').disabled = true;
+  modal.hidden = false;
   try {
     const d = await api('/verifiers');
     branchVerifVerifiers = (Array.isArray(d) ? d : (d.verifiers || [])).filter((v) => (v.repos || []).length);
-  } catch (e) { toast(explainError(e.message), true); return; }
-  if (!branchVerifVerifiers.length) { toast(tr('verify.branch.none'), true); return; }
+  } catch (e) { refermerEtDire(modal, explainError(e.message)); return; }
+  if (!branchVerifVerifiers.length) { refermerEtDire(modal, tr('verify.branch.none')); return; }
+  branchVerifCibles = cibles && cibles.length ? cibles : null;
+  if (branchVerifCibles) {
+    const couvre = (v) => branchVerifCibles.filter((c) => (v.repos || []).some((r) => r.repo_id === c.repo_id)).length;
+    const meilleur = branchVerifVerifiers.reduce((best, v) => (couvre(v) > couvre(best) ? v : best), branchVerifVerifiers[0]);
+    if (!couvre(meilleur)) { branchVerifCibles = null; refermerEtDire(modal, tr('verify.branch.none-for-targets')); return; }
+    if (!verifierId) verifierId = meilleur.id;
+    // Les tags du tableau prennent la place des refs mémorisées : c'est eux qu'on vient vérifier.
+    for (const c of branchVerifCibles) { memoriserGenre(c.repo_id, 'tag'); memoriserTag(c.repo_id, c.tag); }
+  }
   const sel = $('#branchVerifySelect');
   sel.innerHTML = branchVerifVerifiers.map((v) => `<option value="${v.id}">${esc(v.name)}</option>`).join('');
   if (verifierId && branchVerifVerifiers.some((v) => v.id === verifierId)) sel.value = String(verifierId);
   await renderVerifBrancheRows();
-  $('#branchVerifyModal').hidden = false;
 }
 
+/* Rien à montrer : la modale se referme et l'erreur se dit APRÈS — fermer une modale emporte les
+   toasts d'erreur qu'elle a produits (observateur de `champs.js`), et le nôtre, posé dans le même
+   tour, partait avec. */
+function refermerEtDire(modal, msg) {
+  modal.hidden = true;
+  setTimeout(() => toast(msg, true), 0);
+}
+
+/* Sous le sélecteur, ce que les cibles ont à dire pour CE vérificateur : les dépôts du tableau qu'il
+   ne couvre pas (ils ne partiront pas), et ceux qui avaient plusieurs tags (le plus récent est posé). */
+function majNoteCibles(v) {
+  const note = $('#branchVerifyNote');
+  if (!note) return;
+  const lignes = [];
+  if (branchVerifCibles && v) {
+    const hors = branchVerifCibles.filter((c) => !(v.repos || []).some((r) => r.repo_id === c.repo_id));
+    if (hors.length) lignes.push(esc(tr('verify.branch.uncovered', { n: hors.length, count: hors.length, repos: hors.map((c) => c.project).join(', ') })));
+    for (const c of branchVerifCibles.filter((x) => x.n > 1 && !hors.includes(x))) {
+      lignes.push(esc(tr('verify.branch.several-tags', { repo: c.project, n: c.n, tag: c.tag })));
+    }
+  }
+  note.hidden = !lignes.length;
+  note.innerHTML = lignes.join('<br>');
+}
+
+/* Numéro du rendu en cours : changer de vérificateur pendant que les branches par défaut du
+   précédent arrivent encore ne doit pas rallumer « Lancer » sur des lignes à moitié remplies. */
+let branchVerifRendu = 0;
 async function renderVerifBrancheRows() {
+  const rendu = ++branchVerifRendu;
   const v = branchVerifVerifiers.find((x) => String(x.id) === $('#branchVerifySelect').value);
   const homeB = $('#branchVerifyHome');
   if (homeB && v) { homeB.checked = !!v.isolated_home; majNoteHome(homeB, $('#branchVerifyHomeNote')); }
   const el = $('#branchVerifyRows');
-  if (!v) { el.innerHTML = ''; return; }
+  const go = $('#branchVerifyGo');
+  if (!v) { el.innerHTML = ''; majNoteCibles(null); go.disabled = false; return; }
   const memo = memoBranches();
   const memoT = memoTags();
   const genres = memoGenres();
@@ -73,7 +128,9 @@ async function renderVerifBrancheRows() {
      de la couverture depuis la dernière fois ne doit pas rendre la mémoire inutilisable. */
   const couverts = (v.repos || []).map((r) => r.repo_id);
   const retenus = (memoDepots()[v.id] || []).filter((id) => couverts.includes(id));
-  const coche = (id) => (retenus.length ? retenus.includes(id) : true);
+  const cibles = branchVerifCibles && new Set(branchVerifCibles.map((c) => c.repo_id));
+  const coche = (id) => (cibles ? cibles.has(id) : (retenus.length ? retenus.includes(id) : true));
+  majNoteCibles(v);
   const lignes = (v.repos || []).map((r) => {
     const projet = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     /* `data-row` est le contrat de `wireCombo` : c'est cet ancêtre-là qu'il passe au chargeur
@@ -117,25 +174,35 @@ async function renderVerifBrancheRows() {
      laquelle tout a été mergé », dans la quasi-totalité des cas. La dernière vérifiée gagne.
      On ne va la chercher que pour les dépôts RETENUS : un dépôt décoché n'a pas à faire
      attendre l'ouverture de la modale pour une valeur qui ne partira pas. */
-  for (const row of $$('#branchVerifyRows .verif-branche-row')) {
-    if (row.querySelector('.vb-pick').checked) await proposerBrancheDefaut(row);
-  }
+  /* Toutes EN MÊME TEMPS, pas l'une après l'autre : cinq dépôts, c'était cinq lectures de forge
+     à la file. « Lancer » attend la dernière — et seulement si ce rendu est encore le courant. */
+  go.disabled = true;
+  await Promise.all($$('#branchVerifyRows .verif-branche-row')
+    .filter((row) => row.querySelector('.vb-pick').checked)
+    .map((row) => proposerBrancheDefaut(row)));
+  if (rendu === branchVerifRendu) go.disabled = false;
 }
 
 /* Remplit une ligne vide, de genre « branche », avec la branche par défaut du dépôt. Un tag n'a
-   pas de défaut qui vaille : la dernière version livrée se choisit, elle ne se devine pas. */
+   pas de défaut qui vaille : la dernière version livrée se choisit, elle ne se devine pas. Le
+   temps de la lecture, le champ le dit — sur un dépôt lent, un champ vide ressemble à une panne. */
 async function proposerBrancheDefaut(row) {
   const cache = row.querySelector('.vb-branch');
   if (cache.value || genreDeLigne(row) === 'tag') return;
+  const champ = row.querySelector('.cb-search');
+  const attente = champ.placeholder;
+  champ.placeholder = tr('verify.branch.loading');
+  row.classList.add('is-loading');
   try {
     const d = await gitLoadRefs(Number(row.dataset.repo), 'branches');
     const def = (d.refs || []).find((r) => r.default);
-    if (def) {
+    if (def && !cache.value && genreDeLigne(row) === 'branch') {
       cache.value = def.name;
       cache.dataset.label = def.name;
-      row.querySelector('.cb-search').value = def.name;
+      champ.value = def.name;
     }
   } catch { /* dépôt injoignable : la ligne reste à remplir à la main */ }
+  finally { champ.placeholder = attente; row.classList.remove('is-loading'); }
 }
 
 /* Cocher/décocher un dépôt : la ligne s'éteint, son champ de branche se désactive, et la
@@ -168,7 +235,7 @@ $('#branchVerifyRows') && $('#branchVerifyRows').addEventListener('change', asyn
 
 $('#btnVerifyBranch') && $('#btnVerifyBranch').addEventListener('click', () => ouvrirVerifBranche());
 $('#branchVerifySelect') && $('#branchVerifySelect').addEventListener('change', () => renderVerifBrancheRows());
-$('#branchVerifyCancel') && $('#branchVerifyCancel').addEventListener('click', () => { $('#branchVerifyModal').hidden = true; });
+$('#branchVerifyCancel') && $('#branchVerifyCancel').addEventListener('click', () => { $('#branchVerifyModal').hidden = true; branchVerifCibles = null; });
 $('#branchVerifyGo') && $('#branchVerifyGo').addEventListener('click', async (e) => {
   /* SEULES LES LIGNES COCHÉES PARTENT — et une ligne masquée par la recherche compte comme les
      autres : le filtre cache, il ne désélectionne pas. Une branche manquante sur une ligne
@@ -193,6 +260,7 @@ $('#branchVerifyGo') && $('#branchVerifyGo').addEventListener('click', async (e)
     }
     memoriserDepots(verifierId, targets.map((t) => t.repo_id));
     $('#branchVerifyModal').hidden = true;
+    branchVerifCibles = null;
     toast(tr('verify.toast.started'));
     refreshStatus();
   } catch (err) { toast(explainError(err.message), true); }

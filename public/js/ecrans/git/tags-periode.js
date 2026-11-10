@@ -49,7 +49,7 @@ async function tagsPeriodeChercher(e) {
   try { d = await busy($('#tagsPeriodGo'), () => api(`/git/tags-period?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)); }
   catch (err) { info.textContent = ''; box.innerHTML = errorBox(err.message); return; }
 
-  tagsPeriodeLignes = d.repos.flatMap((r) => r.tags.map((tg) => ({ project: r.project, name: tg.name, date: tg.date, message: tg.message || '', url: tg.url || '' })));
+  tagsPeriodeLignes = d.repos.flatMap((r) => r.tags.map((tg) => ({ project: r.project, repo_id: r.repo_id, name: tg.name, date: tg.date, message: tg.message || '', url: tg.url || '' })));
   tagsPeriodeMasquees = new Set();
   const errored = d.repos.filter((r) => r.error);
   const undated = d.repos.reduce((n, r) => n + (r.undated || 0), 0);
@@ -59,6 +59,7 @@ async function tagsPeriodeChercher(e) {
 
   let html = tagsPeriodeLignes.length
     ? `<p class="git-tags-actions"><button type="button" class="btn" id="tagsPeriodCopy" title="${esc(tr('git.tags.period.copy-title'))}">${svgIco('copy')}${esc(tr('git.tags.period.copy'))}</button>`
+      + `<button type="button" class="btn" id="tagsPeriodVerify" title="${esc(tr('git.tags.period.verify-title'))}">${svgIco('check')}${esc(tr('git.tags.period.verify'))}</button>`
       + `<span id="tagsPeriodHidden" class="muted" hidden></span></p>`
       + '<div class="md-tablewrap"><table class="md-table git-tags-table"><thead><tr>'
       + `<th>${esc(tr('git.tags.period.col.repo'))}</th><th>${esc(tr('git.tags.period.col.tag'))}</th><th>${esc(tr('git.tags.period.col.date'))}</th><th>${esc(tr('git.tags.period.col.message'))}</th><th></th></tr></thead><tbody>`
@@ -76,6 +77,29 @@ async function tagsPeriodeChercher(e) {
   box.innerHTML = html;
   const copier = $('#tagsPeriodCopy');
   if (copier) copier.addEventListener('click', () => tagsPeriodeCopier(copier));
+  const verifier = $('#tagsPeriodVerify');
+  if (verifier) verifier.addEventListener('click', tagsPeriodeVerifier);
+}
+
+/* « Vérifier ces tags » : la question d'après le tableau — « ce qu'on a livré passe-t-il encore ? ».
+   Le bouton n'invente pas d'écran : il ouvre « Vérifier une branche » avec les dépôts du tableau
+   cochés, chacun en genre TAG sur son tag — les lignes masquées restent dehors, comme pour la copie.
+   Un dépôt n'a qu'une ref dans cette modale : avec plusieurs tags visibles, c'est le plus RÉCENT
+   qui est proposé (le tableau est trié ainsi par dépôt), et la modale le dit — il se change sur sa
+   ligne. */
+function tagsPeriodeCibles() {
+  const parDepot = new Map();
+  for (const l of tagsPeriodeVisibles()) {
+    const c = parDepot.get(l.repo_id);
+    if (!c) parDepot.set(l.repo_id, { repo_id: l.repo_id, project: l.project, tag: l.name, date: l.date, n: 1 });
+    else { c.n += 1; if (Date.parse(l.date) > Date.parse(c.date)) { c.tag = l.name; c.date = l.date; } }
+  }
+  return [...parDepot.values()];
+}
+function tagsPeriodeVerifier() {
+  const cibles = tagsPeriodeCibles();
+  if (!cibles.length) { toast(tr('git.tags.period.verify-none'), true); return; }
+  ouvrirVerifBranche(null, { cibles });
 }
 
 /* Masquer, c'est cacher la ligne (pas la reconstruire : le tableau reste où il est) et le dire au-dessus. */

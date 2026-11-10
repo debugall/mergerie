@@ -9,7 +9,8 @@
  *   - « Créer la MR » (la MR existe sur la forge), l'auteur d'un tag lu à la demande ;
  *   - « Vérifier », « Coder dessus », « Ajouter aux todos » depuis la ligne ;
  *   - les dépôts cochés ne sont PAS retenus au rechargement ;
- *   - Tags par période : la période posée, le tableau, sa copie HTML + texte, le vide ;
+ *   - Tags par période : la période posée, le tableau, sa copie HTML + texte, « Vérifier ces
+ *     tags » (la modale s'ouvre sur les dépôts du tableau, en genre tag, sans les masqués), le vide ;
  *   - Trouver une ref : tag, branche, rien, dépôt inaccessible, auteur, mémoire.
  *
  * Un seul `startApp()`, un seul navigateur ; les tests s'enchaînent dans l'ordre. */
@@ -217,8 +218,8 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
   test('« Vérifier cette branche » ouvre la vérification sur CETTE branche', async () => {
     await page.locator('#tab-git .subnav [data-gsub="explore"]').click();
     await bloc().locator(`[data-gitverif="${BRANCHE}"]`).click();
-    await page.waitForSelector('#branchVerifyModal:not([hidden])');
-    await page.waitForFunction((b) => document.querySelector('#branchVerifyRows .cb-search').value === b, BRANCHE);
+    await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
+    await page.waitForFunction((b) => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === b, BRANCHE);
     assert.match(await page.locator('#branchVerifySelect').innerText(), /Tests unitaires/);
     await page.locator('#branchVerifyCancel').click();
     await page.waitForSelector('#branchVerifyModal', { state: 'hidden' });
@@ -316,6 +317,57 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
       assert.match(copie.html, /<td[^>]*>grp\/alpha<\/td><td[^>]*><a href="[^"]*\/-\/tags\/v1\.0\.0">v1\.0\.0<\/a><\/td><td[^>]*>01\/08\/2026 \d\d:\d\d<\/td><td[^>]*>Première livraison<\/td>/);
       assert.match(copie.text, /^Dépôt\tTag\tDate\tMessage\ngrp\/alpha\tv1\.0\.0\t01\/08\/2026 \d\d:\d\d\tPremière livraison$/);
       assert.ok(!/rc1/.test(copie.html) && !/rc1/.test(copie.text), 'la ligne masquée n’est dans aucune des deux formes');
+    });
+
+    /* « VÉRIFIER CES TAGS » : la modale « Vérifier une branche » s'ouvre sur les dépôts du tableau,
+       chacun en genre TAG sur son tag — les lignes MASQUÉES restent dehors, comme pour la copie ; avec
+       deux tags visibles sur un même dépôt, le plus récent est posé et la note le dit ; un dépôt du
+       tableau que le vérificateur ne couvre pas est nommé, pas tu. Et « Lancer » part bien sur le tag. */
+    test('« Vérifier ces tags » ouvre la modale sur les dépôts du tableau, en tag, sans les lignes masquées', async () => {
+      // Un tag sur beta dans la période : beta n'est couvert par aucun vérificateur, la modale doit le dire.
+      app.state.tags['grp/beta'] = [{ name: 'v2.0.0', target: beta.mainSha, message: 'Beta livrée',
+        commit: { id: beta.mainSha, committed_date: '2026-08-10T10:00:00Z', author_name: 'Alice' } }];
+      await chercher('2026-07-01', '2026-08-31');
+      assert.equal(await page.locator('#tagsPeriodBox tbody tr').count(), 3);
+
+      // v1.0.0 (la plus récente d'alpha) masquée : c'est rc1 qui doit partir, pas elle.
+      const v1 = page.locator('#tagsPeriodBox tbody tr', { hasText: 'Première livraison' });
+      await v1.locator('[data-tags-hide]').click();
+      await v1.waitFor({ state: 'hidden' });
+      await page.locator('#tagsPeriodVerify').click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
+      const ligne = page.locator('#branchVerifyRows .verif-branche-row');
+      assert.equal(await ligne.count(), 1, 'le vérificateur ne couvre qu’alpha');
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'v1.0.0-rc1');
+      assert.equal(await ligne.first().locator('.vb-genre').inputValue(), 'tag');
+      assert.equal(await ligne.first().locator('.vb-pick').isChecked(), true);
+      assert.match(await page.locator('#branchVerifyNote').innerText(), /Hors de ce vérificateur, ne partira pas : grp\/beta/);
+      await page.locator('#branchVerifyCancel').click();
+      await page.waitForSelector('#branchVerifyModal', { state: 'hidden' });
+
+      // Tout réaffiché : deux tags visibles sur alpha, le plus récent est posé et la note le dit.
+      await page.locator('#tagsPeriodShowAll').click();
+      await v1.waitFor({ state: 'visible' });
+      await page.locator('#tagsPeriodVerify').click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'v1.0.0');
+      assert.match(await page.locator('#branchVerifyNote').innerText(), /grp\/alpha : 2 tags dans le tableau, le plus récent est proposé \(v1\.0\.0\)/);
+
+      // « Lancer » : c'est le TAG qui part, sur alpha seul.
+      const avant = app.db.prepare('SELECT COUNT(*) c FROM verification').get().c;
+      await page.locator('#branchVerifyGo').click();
+      await page.waitForSelector('#branchVerifyModal', { state: 'hidden' });
+      const derniere = app.db.prepare('SELECT id, targets_json t FROM verification ORDER BY id DESC LIMIT 1').get();
+      assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant + 1);
+      const cibles = JSON.parse(derniere.t);
+      assert.deepEqual(cibles.map((c) => [c.repo_id, c.tag]), [[idAlpha, 'v1.0.0']]);
+      // La vérification tient le verrou du dépôt : on la laisse finir avant la suite.
+      await attendreServeur(async () => {
+        const { body } = await app.api('GET', `/api/verifications/${derniere.id}`);
+        const { body: st } = await app.api('GET', '/api/status');
+        return (body.status === 'done' || body.status === 'error') && !st.running && !st.queued;
+      }, 'la vérification lancée sur le tag se termine', 120000);
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
     });
 
     test('une période sans tag : un vide qui le dit, sans bouton copier', async () => {

@@ -195,6 +195,50 @@ describe('Vérification d’une branche', () => {
   /* DEPUIS L'ÉCRAN. Le sélecteur de branche est un `combo` : son chargeur reçoit l'ancêtre
      portant `data-row` — et sans cet attribut il reçoit `null`, ce qui se voit à l'ouverture de
      la liste, jamais avant. Le bug est parti en production une fois ; il ne repartira pas. */
+  /* LA MODALE S'OUVRE TOUT DE SUITE. Elle attendait les vérificateurs puis la branche par défaut
+     de chaque dépôt — une lecture de forge par dépôt, à la file — avant de s'afficher : sur un
+     vérificateur à plusieurs dépôts, le clic restait sans réponse. On RETIENT les deux réponses
+     côté navigateur pour regarder l'écran entre les deux : squelette d'abord, puis les lignes
+     avec leur champ « en lecture », « Lancer » éteint jusqu'à la dernière branche. */
+  test('depuis l’écran : la modale s’ouvre avant d’avoir lu les branches, et « Lancer » attend la lecture', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    app.state.branches['grp/app'] = [
+      { name: 'main', default: true, protected: false, merged: false, commit: { id: git(distant, 'rev-parse', 'main') } },
+    ];
+    const v = await poser('ui-loader', 'exit 0');
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    const retenues = { verifiers: [], refs: [] };
+    const lacher = (liste) => { for (const r of liste.splice(0)) r.continue(); };
+    try {
+      await page.goto(app.base);
+      await page.locator('[data-tab="admin"]').click();
+      await page.waitForLoadState('networkidle');
+      await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+      await page.waitForSelector('#verifierList .card');
+      // Retenues seulement MAINTENANT : la liste des vérificateurs, elle, doit s'être affichée.
+      await page.route('**/api/verifiers', (route) => (route.request().method() === 'GET' ? retenues.verifiers.push(route) : route.continue()));
+      await page.route('**/api/git/refs?*', (route) => retenues.refs.push(route));
+      await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
+      // Les vérificateurs ne sont pas encore arrivés : la modale est déjà là, sur un squelette, Lancer éteint.
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyRows .sk');
+      assert.equal(await page.locator('#branchVerifyGo').isDisabled(), true);
+      lacher(retenues.verifiers);
+      // Les lignes sont là, mais la branche par défaut se lit encore : le champ le dit, Lancer attend.
+      await page.waitForSelector('#branchVerifyRows .verif-branche-row.is-loading');
+      assert.equal(await page.locator('#branchVerifyRows .cb-search').first().getAttribute('placeholder'), 'Lecture de la branche par défaut…');
+      assert.equal(await page.locator('#branchVerifyGo').isDisabled(), true);
+      lacher(retenues.refs);
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'main');
+      await page.waitForFunction(() => !document.querySelector('#branchVerifyGo').disabled);
+      assert.equal(await page.locator('#branchVerifyRows .verif-branche-row.is-loading').count(), 0);
+      assert.equal(await page.locator('#branchVerifyRows .cb-search').first().getAttribute('placeholder'), 'Chercher une branche…');
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
+    } finally { await nav.close(); }
+  });
+
   test('depuis l’écran : la liste des branches s’ouvre, se filtre, et lance la vérification', async (t) => {
     if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
     app.state.branches['grp/app'] = [
@@ -213,7 +257,7 @@ describe('Vérification d’une branche', () => {
       await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
       await page.waitForSelector('#verifierList .card');
       await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
-      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
 
       // La branche par défaut du dépôt est proposée d'emblée : c'est elle, dans la plupart des cas.
       const champ = page.locator('#branchVerifyRows .cb-search').first();
@@ -276,16 +320,16 @@ describe('Vérification d’une branche', () => {
       await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
       await page.waitForSelector('#verifierList .card');
       await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
-      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
       const ligne = page.locator('#branchVerifyRows .verif-branche-row').first();
       const champ = ligne.locator('.cb-search');
       // Branche par défaut proposée, comme avant…
-      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'main');
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'main');
       assert.equal(await ligne.locator('.vb-genre').inputValue(), 'branch');
 
       // …puis on passe sur « Tag » : le champ se vide — une branche n'est pas un tag.
       await ligne.locator('.vb-genre').selectOption('tag');
-      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === '');
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === '');
       assert.equal(await ligne.evaluate((r) => r.dataset.genre), 'tag');
 
       await champ.click();
@@ -307,12 +351,12 @@ describe('Vérification d’une branche', () => {
 
       // Le choix est RETENU : la modale se rouvre sur « Tag », et sur ce tag-là.
       await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
-      await page.waitForSelector('#branchVerifyModal:not([hidden])');
-      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'v1.0.0');
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'v1.0.0');
       assert.equal(await page.locator('#branchVerifyRows .vb-genre').first().inputValue(), 'tag');
       // Revenir sur « Branche » retrouve la branche d'avant, pas un champ vide.
       await page.locator('#branchVerifyRows .vb-genre').first().selectOption('branch');
-      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'main');
+      await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'main');
       assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
     } finally { await nav.close(); }
   });
@@ -331,7 +375,7 @@ describe('Vérification d’une branche', () => {
       await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
       await page.waitForSelector('#verifierList .card');
       await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
-      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
       // Décochée d'office (le vérificateur ne demande pas de HOME jetable) : la note avertit.
       assert.equal(await page.locator('#branchVerifyHome').isChecked(), false);
       assert.match(await page.locator('#branchVerifyHomeNote').textContent(), /HOME/);
@@ -376,7 +420,7 @@ describe('Vérification d’une branche', () => {
     page.on('pageerror', (e) => erreurs.push(e.message));
     const ouvrir = async () => {
       await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
-      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
       await page.waitForFunction(() => document.querySelectorAll('#branchVerifyRows .verif-branche-row').length === 2);
       /* Les branches par défaut arrivent APRÈS le rendu, dépôt par dépôt : attendre les lignes
          ne suffit pas, il faut attendre que les lignes COCHÉES soient remplies — sinon on
