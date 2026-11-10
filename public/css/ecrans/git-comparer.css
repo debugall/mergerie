@@ -74,6 +74,11 @@
 .vc-row { align-items: center; }
 .vc-rank { flex: 0 0 18px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
 .vc-row .vc-move { flex: 0 0 auto; padding: 6px 8px; }
+/* Portée d'une ligne : « dans chaque dépôt » ou « une fois » — et, une fois, dans quel dépôt. */
+.vc-row .vc-scope { flex: 0 0 auto; width: auto; padding: 6px 8px; font-size: 13px; }
+.vc-row .vc-ou { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 240px; min-width: 0; }
+.vc-row .vc-ou .repo-combo { flex: 1; min-width: 0; }
+.vc-global-tag { vertical-align: middle; }
 /* Choix d'un projet local en mode « in place » : le combo précède le champ libre. Son menu
    n'est plus rogné par le défilement de la liste des dépôts — il se pose en `position: fixed`
    aux coordonnées du champ (voir `placerMenu`), donc aucun ancêtre ne le découpe. */

@@ -333,6 +333,40 @@ describe('Panneau de journal — Activité et relance', { skip: dispo ? false : 
     await page.locator('#tab-review.active').waitFor({ timeout: ATTENTE });
   });
 
+  /* UN VÉRIFICATEUR ROUGE NE SE LIT PAS « ok ». Le job, lui, a fini son travail (statut `done`) :
+     c'est le VERDICT que l'Activité, le bandeau et le bouton de pied de page doivent dire — en
+     rouge —, et « Échecs seulement » doit le garder. */
+  test('une vérification rouge se lit « rouge ✗ » dans l’Activité et le bandeau, jamais « ok »', async () => {
+    const repoId = (await app.api('GET', '/api/repos')).body.find((r) => r.project === 'grp/app').id;
+    const v = await app.api('POST', '/api/verifiers', {
+      name: 'rouge', kind: 'commands', commands: ['/usr/bin/false'], run_base: false, timeout_s: 60,
+      repos: [{ repo_id: repoId, mode: 'worktree' }],
+    });
+    assert.equal(v.status, 200, v.text);
+    const lance = await app.api('POST', '/api/verify/mrs', { mr_ids: [mr[200]], verifier_id: v.body.id });
+    assert.equal(lance.status, 200, JSON.stringify(lance.body));
+    const idJob = lance.body.job && lance.body.job.id;
+    assert.ok(idJob, 'le lancement rend son job');
+    await attendreStatutServeur(idJob, 'done');
+    const j = (await tousLesJobs()).find((x) => x.id === idJob);
+    assert.equal(j.verdict, 'verified_fail', 'l’historique porte le verdict à côté du statut');
+
+    await rafraichir();
+    await attendreBandeau(/terminé — rouge ✗/);
+    assert.equal(await page.locator('#logStatus').evaluate((e) => e.classList.contains('error')), true, 'le bandeau est rouge');
+    await ouvrirActivite();
+    await ligneHist(idJob).waitFor({ timeout: ATTENTE });
+    assert.equal(await ligneHist(idJob).locator('.note').innerText(), 'rouge ✗');
+    assert.equal(await ligneHist(idJob).locator('.note').evaluate((e) => e.classList.contains('bad')), true);
+    await page.locator('#histErrOnly').check();
+    await page.waitForFunction((id) => {
+      const r = [...document.querySelectorAll('#logHist .log-queue-row')].find((x) => x.querySelector(`[data-histlog="${id}"]`));
+      return r && !r.hidden;
+    }, idJob, { timeout: ATTENTE });
+    await page.locator('#histErrOnly').uncheck();
+    await fermerActivite();
+  });
+
   test('aucune erreur JavaScript pendant le parcours', () => {
     assert.deepEqual(erreurs, []);
   });

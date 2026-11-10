@@ -166,7 +166,7 @@ function commandesHtml(run) {
     <ul class="verify-list">${run.commands.map((c) => `<li>
       <span class="tag ${c.code === 0 ? 'verify ok' : 'verify ko'}">${c.code === 0 ? '✓' : `✗ ${c.code}`}</span>
       ${/* Le dépôt n'est affiché que s'il y en a plusieurs : sinon il se répète pour rien. */''}
-      ${plusieursDepots(run) && c.repo ? `<strong>${esc(c.repo)}</strong> · ` : ''}<code>${esc(c.command)}</code> <span class="muted">${fmtSecondes(c.duration_ms)}</span>
+      ${plusieursDepots(run) && c.repo ? `<strong>${esc(c.repo)}</strong> · ` : ''}<code>${esc(c.command)}</code>${c.global ? ` <span class="tag vc-global-tag" title="${esc(tr('verify.cmd.global-title', { repo: c.repo || '' }))}">${esc(tr('verify.cmd.global'))}</span>` : ''} <span class="muted">${fmtSecondes(c.duration_ms)}</span>
       ${c.output_tail ? `<pre class="verify-log">${esc(c.output_tail)}</pre>` : ''}
     </li>`).join('')}</ul>
     ${src ? `<p class="muted">${esc(src)}</p>` : ''}

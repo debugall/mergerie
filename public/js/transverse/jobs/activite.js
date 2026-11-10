@@ -22,6 +22,12 @@ function jobDuree(j) {
   return ms < 60000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60000)} min`;
 }
 const JOB_STATUT = { done: 'ok', error: 'bad', stopped: 'mid', interrupted: 'mid', running: 'mid', queued: '' };
+/* UN JOB DE VÉRIFICATION FINI SE LIT PAR SON VERDICT, pas par « ok » : le job a fait son travail,
+   mais la batterie est rouge — et c'est ça qu'on vient lire dans l'Activité. */
+const JOB_VERDICT = { verified_pass: 'ok', verified_fail: 'bad', broken_base: 'mid', verify_error: 'bad' };
+const etatDuJob = (j) => (j.status === 'done' && j.verdict && JOB_VERDICT[j.verdict] !== undefined
+  ? { cle: j.verdict, classe: JOB_VERDICT[j.verdict], libelle: tr(`job.verdict.${j.verdict}`), rate: JOB_VERDICT[j.verdict] === 'bad' }
+  : { cle: j.status, classe: JOB_STATUT[j.status] || '', libelle: tr(`job.status.${j.status}`), rate: j.status === 'error' || j.status === 'stopped' });
 
 /* Le filtre de l'historique des jobs : il MASQUE. « Échecs seulement » répond à la question
    qu'on se pose en l'ouvrant — « qu'est-ce qui a raté pendant que je regardais ailleurs ? ». */
@@ -29,7 +35,7 @@ function filtrerHistoriqueJobs() {
   const q = (($('#histFilter') || {}).value || '').trim().toLowerCase();
   const ratesSeuls = !!(($('#histErrOnly') || {}).checked);
   $$('#logHist .log-queue-row').forEach((r) => {
-    const rate = r.dataset.histStatut === 'error' || r.dataset.histStatut === 'stopped';
+    const rate = r.dataset.histRate === '1';
     r.hidden = (q && !(r.dataset.cherche || '').includes(q)) || (ratesSeuls && !rate);
   });
 }
@@ -49,10 +55,11 @@ async function renderLogHist() {
   box.innerHTML = d.jobs.map((j) => {
     const neuf = JOB_FINI.includes(j.status) && j.id > vu;
     const duree = jobDuree(j);
-    const rate = j.status === 'error' || j.status === 'stopped';
-    return `<div class="log-queue-row${neuf ? ' hist-neuf' : ''}" data-hist-statut="${esc(j.status)}"
+    const etat = etatDuJob(j);
+    const rate = etat.rate;
+    return `<div class="log-queue-row${neuf ? ' hist-neuf' : ''}" data-hist-statut="${esc(etat.cle)}" data-hist-rate="${rate ? 1 : 0}"
       data-cherche="${esc([j.label, jobKindLabel(j.kind), j.message].filter(Boolean).join(' ').toLowerCase())}">
-      <span class="note ${JOB_STATUT[j.status] || ''}">${esc(tr(`job.status.${j.status}`))}</span>
+      <span class="note ${etat.classe}">${esc(etat.libelle)}</span>
       <span class="tag">${esc(jobKindLabel(j.kind))}</span>
       <span class="log-queue-what">${j.label ? `<button class="linklike" data-histgo="${j.id}">${esc(j.label)}</button>` : '<span class="muted">—</span>'}
         ${rate && j.message ? `<div class="hist-raison muted" title="${esc(j.message)}">${esc(String(j.message).split('\n')[0].slice(0, 120))}</div>` : ''}</span>

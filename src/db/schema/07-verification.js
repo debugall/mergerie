@@ -79,6 +79,12 @@ db.exec(`CREATE TABLE IF NOT EXISTS verifier_command (
   command TEXT NOT NULL,
   PRIMARY KEY (verifier_id, position)
 )`);
+/* UNE COMMANDE GLOBALE TOURNE UNE FOIS, pas dans chaque dépôt : `docker compose up -d` après
+   avoir positionné les dépôts, `docker compose down` à la fin. `scope` : 'repo' (rejouée dans
+   chaque dépôt visé, le défaut d'avant) ou 'global' (une fois, à sa place dans la liste) ;
+   `repo_id` : le dépôt dans le répertoire duquel elle tourne — NULL = le premier dépôt préparé. */
+try { db.exec("ALTER TABLE verifier_command ADD COLUMN scope TEXT NOT NULL DEFAULT 'repo'"); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE verifier_command ADD COLUMN repo_id INTEGER'); } catch { /* déjà présente */ }
 
 /* Couverture DÉCLARATIVE : quels dépôts ce vérificateur sait tester, et comment. Déclarer
    n'est pas exécuter — un dépôt couvert hors du lot ne sert qu'à consigner le contexte. */

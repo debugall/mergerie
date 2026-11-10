@@ -1079,8 +1079,10 @@ const verifierId = db.prepare(`INSERT INTO verifier
 /* Sa couverture passe par le GROUPE : « teste tout backend » — un dépôt ajouté au groupe demain
    sera couvert sans retoucher le vérificateur. */
 db.prepare('INSERT INTO verifier_group (verifier_id, group_id) VALUES (?, ?)').run(verifierId, groupeBackend);
-['npm ci', 'npm run test:integ'].forEach((c, i) => {
-  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(verifierId, i, c);
+/* `docker compose up -d` est GLOBALE : une fois, dans api-core, une fois les deux dépôts
+   positionnés — pas dans chacun. C'est ce que la carte et le formulaire montrent. */
+[['npm ci', 'repo', null], ['docker compose up -d', 'global', repoIds['groupe/api-core'] || null], ['npm run test:integ', 'repo', null]].forEach(([c, scope, repoId], i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command, scope, repo_id) VALUES (?,?,?,?,?)').run(verifierId, i, c, scope, repoId);
 });
 
 /* Celui-ci part TOUT SEUL sur les nouvelles merge requests (`auto_on_mr`). C'est la

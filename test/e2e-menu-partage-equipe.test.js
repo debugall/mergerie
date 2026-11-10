@@ -199,15 +199,20 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
   /* ------------------------------------------------------------ Vérificateurs ---- */
 
   test('Vérificateurs : un vérificateur part dans le dépôt ; celui de Claire arrive dans la liste', async () => {
+    /* Une ligne de dépôt voyage en CHAÎNE (le format de toujours) ; une ligne GLOBALE en objet,
+       avec le dépôt par sa clé naturelle — et elle revient telle quelle chez le collègue. */
     const v = await app.api('POST', '/api/verifiers', {
-      name: 'tests-equipe', kind: 'commands', commands: ['npm test'], repos: [{ repo_id: repoId, mode: 'worktree' }],
+      name: 'tests-equipe', kind: 'commands',
+      commands: ['npm test', { command: 'docker compose down', scope: 'global', repo_id: repoId }],
+      repos: [{ repo_id: repoId, mode: 'worktree' }],
     });
     assert.equal(v.status, 200, v.text);
     const uid = app.db.prepare("SELECT uid FROM verifier WHERE name = 'tests-equipe'").get().uid;
     const fichier = `verifiers/${uid}.json`;
     await synchroniserJusqua(app, async () => fichiers().includes(fichier), 'le vérificateur est dans le dépôt');
     const doc = JSON.parse(contenuDuDepot(nu, fichier));
-    assert.deepEqual((doc.commands || []).map((c) => c.command || c), ['npm test']);
+    assert.equal(doc.commands[0], 'npm test', 'une ligne de dépôt reste une chaîne');
+    assert.deepEqual(doc.commands[1], { command: 'docker compose down', global: true, repo: doc.repos[0].repo }, 'la globale porte son dépôt');
 
     claire.publier('vérificateur de Claire', ({ ecrire }) => {
       ecrire(`verifiers/${uidDe('CLVERIF1')}.json`, { ...doc, uid: uidDe('CLVERIF1'), name: 'lint-de-claire' });
@@ -216,6 +221,9 @@ describe('Partage — objets d’équipe et objets de poste', { skip: dispo ? fa
       const b = (await app.api('GET', '/api/verifiers')).body;
       return (Array.isArray(b) ? b : (b.verifiers || [])).some((x) => x.name === 'lint-de-claire');
     }, 'le vérificateur de Claire est arrivé');
+    const recu = (await app.api('GET', '/api/verifiers')).body.find((x) => x.name === 'lint-de-claire');
+    assert.deepEqual(recu.commands.map((c) => [c.command, c.scope, c.repo_id]),
+      [['npm test', 'repo', null], ['docker compose down', 'global', repoId]], 'la portée et le dépôt de la globale sont revenus');
 
     await ouvrirReglages('verifiers');
     await page.evaluate(() => loadVerifiers());

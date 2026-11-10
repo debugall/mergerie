@@ -725,9 +725,13 @@ const REGISTRE = [
       created_at: r.created_at,
       /* L'ORDRE DES COMMANDES PORTE DU SENS : `npm ci` avant `npm test`. Le tableau le garde,
          et la sérialisation ne trie jamais un tableau. */
+      /* Une ligne de dépôt reste une CHAÎNE (le format de toujours) ; une ligne GLOBALE est un
+         objet `{ command, global: true, repo }`, le dépôt par sa clé naturelle. */
       commands: ctx.enfants('verifier_command', 'verifier_id', r.id)
         .sort((a, b) => a.position - b.position)
-        .map((c) => c.command),
+        .map((c) => (c.scope === 'global'
+          ? { command: c.command, global: true, repo: c.repo_id ? (ctx.repoRef(c.repo_id) || null) : null }
+          : c.command)),
       /* La couverture : quels dépôts ce script sait tester, par clé naturelle. Un dépôt inconnu
          ici est SIGNALÉ et sa ligne sautée — déclarer une couverture sur un dépôt qu'on n'a pas
          ferait échouer la vérification au lancement, bien plus tard. */
@@ -779,10 +783,21 @@ const REGISTRE = [
         colonneParent: 'verifier_id',
         /* Pas d'`uid` sur cette table : (vérificateur, position) la décrit entièrement. La liste
            est donc remplacée en bloc — voir `remplacerListe` dans le store. */
-        remplace: (db2, parent, items) => {
+        remplace: (db2, parent, items, ctx, signaler) => {
           db2.prepare('DELETE FROM verifier_command WHERE verifier_id = ?').run(parent.id);
-          const ins = db2.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)');
-          items.forEach((cmd, i) => ins.run(parent.id, i, String(cmd)));
+          const ins = db2.prepare('INSERT INTO verifier_command (verifier_id, position, command, scope, repo_id) VALUES (?,?,?,?,?)');
+          items.forEach((item, i) => {
+            if (typeof item === 'string' || !item) { ins.run(parent.id, i, String(item || ''), 'repo', null); return; }
+            const globale = item.global === true || item.scope === 'global';
+            let repoId = null;
+            if (globale && item.repo) {
+              repoId = ctx.repoId(item.repo) || null;
+              /* Dépôt inconnu ici : la commande reste globale, sur le premier dépôt préparé — et
+                 c'est dit, pour que le run qui tournerait au mauvais endroit se relise avec ça. */
+              if (!repoId) signaler(`commande globale « ${String(item.command || '').slice(0, 60)} » : dépôt « ${item.repo} » inconnu sur ce poste, elle tournera dans le premier dépôt préparé`);
+            }
+            ins.run(parent.id, i, String(item.command || ''), globale ? 'global' : 'repo', repoId);
+          });
         },
       },
       {

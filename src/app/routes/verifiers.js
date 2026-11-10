@@ -29,8 +29,12 @@ const verifierRepos = (id) => db.prepare(`SELECT vr.*, r.project
 const verifierGroupes = (id) => db.prepare(`SELECT g.id, g.name FROM verifier_group vg
   JOIN repo_group g ON g.id = vg.group_id WHERE vg.verifier_id = ? ORDER BY g.name`).all(id);
 const groupes = require('../../data/groupes');
-const verifierCommandes = (id) => db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
-  .all(id).map((c) => c.command);
+/* Les commandes, SOUS LEUR FORME PLEINE : `{ command, scope, repo_id, project }`. `scope`
+   'global' = une fois, dans le répertoire du dépôt `repo_id` (null : le premier dépôt préparé). */
+const verifierCommandes = (id) => db.prepare(`SELECT vc.command, vc.scope, vc.repo_id, r.project
+  FROM verifier_command vc LEFT JOIN repo r ON r.id = vc.repo_id
+  WHERE vc.verifier_id = ? ORDER BY vc.position`).all(id)
+  .map((c) => ({ command: c.command, scope: c.scope === 'global' ? 'global' : 'repo', repo_id: c.scope === 'global' ? (c.repo_id || null) : null, project: c.scope === 'global' ? (c.project || null) : null }));
 // « CLE=valeur », une par ligne : les noms d'équipe, les valeurs de ce poste.
 const envTexte = (v) => {
   const valeurs = verifierenv.valeurs(v);
@@ -73,13 +77,16 @@ function lireVerifier(body, courant) {
   const brut = b.commands != null
     ? (Array.isArray(b.commands) ? b.commands : [])
     : (courant ? verifierCommandes(courant.id) : []);
-  const commands = brut.map((x) => String(x || '').trim()).filter(Boolean);
+  /* Une chaîne OU `{ command, scope, repo_id }` : la chaîne reste « rejouée dans chaque dépôt ». */
+  const commands = brut.map((x) => verifyLib.normaliserCommande(x)).filter((c) => c && c.command);
   if (!commands.length) throw new Error(t('err.verifier.commands-required'));
   /* Chaque ligne est validée MAINTENANT, pas au premier run : découvrir un « && » au bout
      de dix minutes de préparation serait un run perdu et une erreur loin de sa cause. */
   for (const c of commands) {
-    const d = verifyLib.decouperCommande(c);
-    if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c, reason: d.erreur }));
+    const d = verifyLib.decouperCommande(c.command);
+    if (!d.ok) throw new Error(t('err.verifier.command-invalid', { command: c.command, reason: d.erreur }));
+    // Le dépôt d'une commande globale doit exister ; qu'il fasse partie de la vérification se juge au run.
+    if (c.repo_id && !repoById(c.repo_id)) throw new Error(t('err.projet-inconnu'));
   }
 
   /* Variables ajoutées à l'environnement minimal : « CLE=valeur », une par ligne. Les VALEURS
@@ -160,8 +167,8 @@ function lireVerifier(body, courant) {
 function ecrireCommandes(verifierId, commands) {
   if (commands == null) return;   // absent du corps = liste inchangée
   db.prepare('DELETE FROM verifier_command WHERE verifier_id = ?').run(verifierId);
-  const ins = db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)');
-  commands.forEach((c, i) => ins.run(verifierId, i, c));
+  const ins = db.prepare('INSERT INTO verifier_command (verifier_id, position, command, scope, repo_id) VALUES (?,?,?,?,?)');
+  commands.forEach((c, i) => ins.run(verifierId, i, c.command, c.scope, c.repo_id));
 }
 function ecrireGroupes(verifierId, groupIds) {
   if (groupIds == null) return;

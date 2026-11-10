@@ -134,6 +134,18 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
     await page.locator('#verifierCommandList .vc-row').nth(2).locator('.vc-del').click();
     await page.waitForFunction(() => document.querySelectorAll('#verifierCommandList .vc-row').length === 2);
     assert.deepEqual(await commandes(), ['npm ci', 'npm test']);
+    /* PORTÉE : « npm ci » devient globale, dans grp/front — le combo du dépôt n'apparaît que
+       sur une ligne « une fois », et il se cherche à la frappe. */
+    const ligne0 = page.locator('#verifierCommandList .vc-row').nth(0);
+    assert.equal(await ligne0.locator('.vc-ou').isHidden(), true, 'ligne de dépôt : pas de dépôt à choisir');
+    await ligne0.locator('.vc-scope').selectOption('global');
+    await ligne0.locator('.vc-ou').waitFor({ state: 'visible' });
+    assert.equal(await ligne0.locator('.vc-ou .rc-search').getAttribute('placeholder'), 'le premier dépôt de la vérification');
+    await ligne0.locator('.vc-ou .rc-search').click();
+    await ligne0.locator('.vc-ou .rc-search').fill('fro');
+    await ligne0.locator('.vc-ou .combo-opt[data-r]', { hasText: 'grp/front' }).waitFor();
+    await ligne0.locator('.vc-ou .combo-opt[data-r]', { hasText: 'grp/front' }).dispatchEvent('mousedown');
+    await page.waitForFunction((id) => document.querySelector('#verifierCommandList .vc-row .vc-repo').value === String(id), ids.front);
 
     // La couverture : la recherche MASQUE sans décocher.
     await ligneDepot(ids.front).locator('.vr-pick').click();
@@ -188,7 +200,7 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
 
     await attendreServeur(async () => Boolean(await verificateur('intégration complète')), 'le vérificateur est créé');
     const v = await verificateur('intégration complète');
-    assert.deepEqual(v.commands, ['npm ci', 'npm test']);
+    assert.deepEqual(v.commands.map((c) => [c.command, c.scope, c.repo_id]), [['npm ci', 'global', ids.front], ['npm test', 'repo', null]]);
     assert.equal(v.timeout_s, 120);
     assert.equal(Boolean(v.auto_on_mr), true);
     assert.equal(Boolean(v.auto_on_stale), true);
@@ -214,6 +226,9 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
     await formOuvert(true);
     await page.evaluate(() => document.querySelectorAll('#verifierForm details').forEach((d) => { d.open = true; }));
     assert.deepEqual(await commandes(), ['npm ci', 'npm test']);
+    // La portée et le dépôt de la ligne globale reviennent avec elle.
+    assert.deepEqual(await page.$$eval('#verifierCommandList .vc-row', (rows) => rows.map((r) => [r.querySelector('.vc-scope').value, r.querySelector('.vc-repo').value, r.querySelector('.vc-ou').hidden])),
+      [['global', String(ids.front), false], ['repo', '', true]].map((x) => x));
     assert.equal(await form('[name="timeout_s"]').inputValue(), '120');
     assert.equal(await form('[name="auto_on_mr"]').isChecked(), true);
     assert.equal(await form('[name="auto_on_stale"]').isChecked(), true);
@@ -273,6 +288,10 @@ describe('Menu Réglages → Vérificateurs : chaque champ du formulaire', { ski
     assert.match(texte, /npm ci/);
     assert.match(texte, /npm test/);
     assert.match(texte, /grp\/front/);
+    // La ligne globale porte son badge, avec le dépôt où elle tourne.
+    const badge = page.locator(`#verifierList .card[data-id="${v.id}"] .vc-global-tag`);
+    assert.equal(await badge.count(), 1);
+    assert.equal(await badge.getAttribute('title'), 'Commande globale : lancée une seule fois, dans grp/front');
     assert.match(texte, /grp\/back/);
     assert.match(texte, /reports\/junit\.xml/);
   });

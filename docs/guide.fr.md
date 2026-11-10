@@ -990,7 +990,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   cette même session ne peut pas être aussi lié en lecture seule. Facultatif — l'exploration n'en a
   pas l'usage, elle voit déjà tous ses dépôts côte à côte.
 - **Activité — ce que tu as lancé, et ce qui s'est terminé.** Le panneau de log expose une vue
-  **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini. Chaque ligne
+  **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini — une **vérification**
+  finie se lit par son **verdict** (*vert ✓*, *rouge ✗*, *base déjà rouge*, *échec*), jamais « ok » devant une
+  batterie cassée, et *Échecs seulement* la garde quand elle est rouge ; le bandeau du journal et le bouton
+  de pied de page la disent en rouge de même. Chaque ligne
   **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé** — la vue y
   reste tant qu'un autre job écrit, et un job **lancé ensuite** la reprend. Ce qui
   s'est terminé depuis ta dernière visite est marqué, et le compte s'affiche sur le bouton. Le bouton
@@ -2533,6 +2536,17 @@ et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer.
 
 L'**ordre compte** — `npm ci` avant `npm test` — et se corrige d'un clic : chaque ligne porte son rang et
 deux flèches pour la déplacer.
+
+**Une ligne peut tourner une seule fois.** Devant chaque commande, une portée : *dans chaque dépôt* (le
+défaut) ou *une fois* — `docker compose up -d` une fois les dépôts positionnés n'a pas à tourner trois
+fois. Une ligne *une fois* dit aussi **dans quel dépôt** elle tourne (son worktree, ou son répertoire
+*in place*), choisi avec recherche ; vide, c'est le premier dépôt de la vérification. L'ordre de la liste
+est respecté, les dépôts à l'intérieur : `npm ci` dans chacun, puis `compose up` une fois, puis `npm test`
+dans chacun, puis `compose down`. Une ligne *une fois* qui échoue **arrête tout** ; elle est **sautée** si
+une commande a déjà échoué avant elle (le journal le dit) ; et si elle désigne un dépôt qui ne fait pas
+partie de la vérification, c'est une erreur avec son nom, pas un dossier deviné. Le rapport et le journal
+marquent la ligne et le dépôt où elle a tourné, la carte porte un badge `1×`, et l'endroit où elle tourne
+fait partie de ce qu'on **approuve** (voir plus bas) — la ligne voyage avec le vérificateur partagé.
 
 Un tel vérificateur peut **couvrir plusieurs dépôts**. Attention à ce que « couvrir » veut dire : déclarer
 un dépôt annonce seulement que ce vérificateur **sait le tester**. À l'exécution, la liste ne tourne que

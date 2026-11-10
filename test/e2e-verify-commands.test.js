@@ -181,7 +181,7 @@ describe('Vérification objective — vérificateur « commandes »', () => {
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     });
     assert.equal(ok.status, 200);
-    assert.deepEqual(ok.body.commands, ['npm test -- --grep "mon test"']);
+    assert.deepEqual(ok.body.commands.map((c) => c.command), ['npm test -- --grep "mon test"']);
     await app.api('DELETE', `/api/verifiers/${ok.body.id}`);
   });
 
@@ -192,18 +192,56 @@ describe('Vérification objective — vérificateur « commandes »', () => {
       name: 'ordre', kind: 'commands', commands: ['/bin/echo un', '/bin/echo deux', '/bin/echo trois'],
       repos: [{ repo_id: repoId, mode: 'worktree' }],
     })).body;
-    assert.deepEqual(v.commands, ['/bin/echo un', '/bin/echo deux', '/bin/echo trois']);
+    const noms = (liste) => liste.map((c) => c.command);
+    assert.deepEqual(noms(v.commands), ['/bin/echo un', '/bin/echo deux', '/bin/echo trois']);
+    // Une chaîne vaut « dans chaque dépôt » : la forme pleine le dit.
+    assert.deepEqual(v.commands.map((c) => [c.scope, c.repo_id]), [['repo', null], ['repo', null], ['repo', null]]);
 
     // Relecture indépendante : l'ordre vient de la base, pas de la réponse de création.
     const relu = (await app.api('GET', '/api/verifiers')).body.find((x) => x.id === v.id);
-    assert.deepEqual(relu.commands, ['/bin/echo un', '/bin/echo deux', '/bin/echo trois']);
+    assert.deepEqual(noms(relu.commands), ['/bin/echo un', '/bin/echo deux', '/bin/echo trois']);
 
     const maj = await app.api('PUT', `/api/verifiers/${v.id}`, {
       commands: ['/bin/echo trois', '/bin/echo un', '/bin/echo deux'],
     });
     assert.equal(maj.status, 200);
-    assert.deepEqual(maj.body.commands, ['/bin/echo trois', '/bin/echo un', '/bin/echo deux'],
+    assert.deepEqual(noms(maj.body.commands), ['/bin/echo trois', '/bin/echo un', '/bin/echo deux'],
       'réordonner remplace les positions, il n’en reste pas d’anciennes');
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
+  /* UNE COMMANDE GLOBALE : `{ command, scope: 'global', repo_id }`. Elle se relit telle quelle,
+     avec le dépôt nommé ; un dépôt inconnu est refusé ; et OÙ elle tourne fait partie de
+     l'empreinte approuvée — la passer de « chaque dépôt » à « une fois » périme l'approbation. */
+  test('une commande globale s’enregistre avec son dépôt, et changer sa portée périme l’approbation', async () => {
+    const v = (await app.api('POST', '/api/verifiers', {
+      name: 'globale', kind: 'commands',
+      commands: ['/bin/echo un', { command: '/bin/echo compose', scope: 'global', repo_id: repoId }, '/bin/echo deux'],
+      repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: repo2Id, mode: 'worktree' }],
+    })).body;
+    assert.deepEqual(v.commands.map((c) => [c.command, c.scope, c.repo_id, c.project]), [
+      ['/bin/echo un', 'repo', null, null],
+      ['/bin/echo compose', 'global', repoId, 'grp/app'],
+      ['/bin/echo deux', 'repo', null, null],
+    ]);
+    const mauvais = await app.api('PUT', `/api/verifiers/${v.id}`, {
+      commands: [{ command: '/bin/echo x', scope: 'global', repo_id: 999999 }],
+    });
+    assert.equal(mauvais.status, 400);
+
+    /* L'EMPREINTE approuvée (ce qui s'exécute, et où) : la ligne globale y figure avec son dépôt.
+       Enregistrer depuis ce poste approuve de soi-même ; c'est l'empreinte qu'on compare, comme
+       la synchro le fera chez un collègue. */
+    const approbation = require('../src/data/approbation');   // après startApp : MERGERIE_DATA_DIR est posé
+    const avecGlobale = JSON.parse(approbation.empreinteVerificateur(v.id));
+    assert.deepEqual(avecGlobale.globals, [[1, 'grp/app']], 'l’empreinte dit quelle ligne est globale, et où');
+    // Même commandes, même ordre, mais « compose » devient une ligne de dépôt : autre empreinte.
+    await app.api('PUT', `/api/verifiers/${v.id}`, { commands: ['/bin/echo un', '/bin/echo compose', '/bin/echo deux'] });
+    const sansGlobale = JSON.parse(approbation.empreinteVerificateur(v.id));
+    assert.deepEqual(sansGlobale.commands, avecGlobale.commands, 'mêmes chaînes…');
+    assert.notEqual(JSON.stringify(sansGlobale), JSON.stringify(avecGlobale), '…mais changer la portée change ce qui s’exécute');
+    // Et sans ligne globale, l'empreinte reprend sa forme d'avant : pas de `globals`.
+    assert.equal('globals' in sansGlobale, false);
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 
@@ -430,6 +468,80 @@ describe('Vérification objective — vérificateur « commandes »', () => {
   /* La couverture DÉCLARÉE n'est pas ce qui est exécuté. Lancer sur une seule merge request
      ne doit toucher QUE son dépôt — même si le vérificateur en couvre d'autres. Déclarer dit
      « je sais tester ça » ; ce sont les cibles de la vérification qui disent « teste ça ». */
+  /* UNE COMMANDE GLOBALE TOURNE UNE FOIS, À SA PLACE : `npm ci` dans chaque dépôt, `compose up`
+     une fois dans le dépôt choisi, puis `npm test` dans chaque dépôt — l'ordre de la liste est
+     respecté, les dépôts à l'intérieur. La trace écrit QUI tourne OÙ. */
+  test('une commande globale tourne une seule fois, dans le dépôt choisi, à sa place dans la liste', async () => {
+    const trace = path.join(bin, 'trace-globale.txt');
+    fs.writeFileSync(trace, '');
+    const marque = (etape) => outil(`${etape}.sh`, `echo "${etape} $(basename "$(pwd)")" >> ${trace}\nexit 0`);
+    const v = (await app.api('POST', '/api/verifiers', {
+      name: 'avec-globale', kind: 'commands', run_base: false,
+      commands: [marque('install'), { command: marque('compose'), scope: 'global', repo_id: repo2Id }, marque('test')],
+      repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: repo2Id, mode: 'worktree' }],
+    })).body;
+    const lance = await app.api('POST', '/api/verify/mrs', { mr_ids: [mrId, mrVoisinId], verifier_id: v.id });
+    assert.equal(lance.status, 200, JSON.stringify(lance.body));
+    const d = await attendre(lance.body.verification.id);
+    assert.equal(d.verdict, 'verified_pass', d.log_excerpt);
+    const lignes = fs.readFileSync(trace, 'utf8').split('\n').filter(Boolean);
+    assert.equal(lignes.length, 5, 'install ×2, compose ×1, test ×2');
+    assert.deepEqual(lignes.map((l) => l.split(' ')[0]), ['install', 'install', 'compose', 'test', 'test'], 'l’ordre de la liste, les dépôts dedans');
+    const dossierDe = (etape) => lignes.filter((l) => l.startsWith(etape)).map((l) => l.split(' ')[1]);
+    assert.equal(new Set(dossierDe('install')).size, 2, 'une ligne de dépôt visite les deux répertoires');
+    assert.equal(dossierDe('compose').length, 1);
+    assert.match(dossierDe('compose')[0], /^grp_lib-/, 'la globale tourne dans le worktree du dépôt choisi (grp/lib)');
+    assert.equal(d.head_run.commands.length, 5);
+    const globale = d.head_run.commands.find((c) => c.global);
+    assert.equal(globale.repo, 'grp/lib', 'le rapport dit où la globale a tourné');
+    assert.match(d.log_excerpt, /\(une fois, dans grp\/lib\)/, 'le journal le dit aussi');
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
+  test('une globale qui échoue arrête tout ; une globale après un échec ne part pas ; un dépôt absent est une erreur nommée', async () => {
+    const trace = path.join(bin, 'trace-globale-2.txt');
+    fs.writeFileSync(trace, '');
+    const ok = (etape) => outil(`${etape}.sh`, `echo "${etape}" >> ${trace}\nexit 0`);
+    const ko = (etape) => outil(`${etape}.sh`, `echo "${etape}" >> ${trace}\nexit 2`);
+    // 1. La globale échoue : rien après elle ne tourne, le verdict est rouge.
+    let v = (await app.api('POST', '/api/verifiers', {
+      name: 'globale-rouge', kind: 'commands', run_base: false,
+      commands: [ok('avant'), { command: ko('casse'), scope: 'global' }, ok('apres')],
+      repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: repo2Id, mode: 'worktree' }],
+    })).body;
+    let d = await attendre((await app.api('POST', '/api/verify/mrs', { mr_ids: [mrId, mrVoisinId], verifier_id: v.id })).body.verification.id);
+    assert.equal(d.verdict, 'verified_fail');
+    assert.deepEqual(fs.readFileSync(trace, 'utf8').split('\n').filter(Boolean), ['avant', 'avant', 'casse'], 'sans dépôt désigné, la globale tourne dans le premier préparé — et « apres » ne part pas');
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+
+    // 2. Un dépôt a échoué avant : la globale est sautée (dit dans le journal), l'autre dépôt continue.
+    fs.writeFileSync(trace, '');
+    const selonDepot = outil('selon.sh', `echo "selon $(basename "$(pwd)")" >> ${trace}\nls b.txt >/dev/null 2>&1 && exit 1\nexit 0`);
+    v = (await app.api('POST', '/api/verifiers', {
+      name: 'globale-sautee', kind: 'commands', run_base: false,
+      commands: [selonDepot, { command: ok('compose'), scope: 'global' }, ok('fin')],
+      repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: repo2Id, mode: 'worktree' }],
+    })).body;
+    d = await attendre((await app.api('POST', '/api/verify/mrs', { mr_ids: [mrId, mrVoisinId], verifier_id: v.id })).body.verification.id);
+    assert.equal(d.verdict, 'verified_fail');
+    const lignes = fs.readFileSync(trace, 'utf8').split('\n').filter(Boolean);
+    assert.equal(lignes.filter((l) => l === 'compose').length, 0, 'la globale n’est pas partie');
+    assert.equal(lignes.filter((l) => l === 'fin').length, 1, 'le dépôt encore vert a continué, pas l’autre');
+    assert.match(d.log_excerpt, /\(globale\) non lancée : une commande a déjà échoué/);
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+
+    // 3. La globale vise grp/lib, mais la vérification ne porte que sur grp/app : erreur nommée, pas de dossier deviné.
+    v = (await app.api('POST', '/api/verifiers', {
+      name: 'globale-ailleurs', kind: 'commands', run_base: false,
+      commands: [{ command: ok('compose'), scope: 'global', repo_id: repo2Id }],
+      repos: [{ repo_id: repoId, mode: 'worktree' }, { repo_id: repo2Id, mode: 'worktree' }],
+    })).body;
+    d = await attendre((await app.api('POST', '/api/verify/mrs', { mr_ids: [mrId], verifier_id: v.id })).body.verification.id);
+    assert.equal(d.status, 'error');
+    assert.match(d.log_excerpt, /doit tourner dans grp\/lib, qui ne fait pas partie de cette vérification/);
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
   test('lancé sur une seule MR, il ne touche que le dépôt de cette MR', async () => {
     const trace = path.join(bin, 'trace-solo.txt');
     fs.writeFileSync(trace, '');

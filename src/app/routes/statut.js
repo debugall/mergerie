@@ -47,7 +47,7 @@ app.get('/api/status', wrap((req, res) => {
     /* La dernière découverte de MR de ce processus : l'onglet Reviews relance une découverte à
        l'ouverture quand elle date de plus d'un intervalle — sans attendre le prochain tour. */
     lastDiscoveryAt: require('../lib/decouverte').derniereDecouverteA(),
-    job: jobs.currentJob(),
+    job: require('../lib/verifications').verdictDuJob(jobs.currentJob()),
     running: jobs.isRunning(),
     // Objets en cours de traitement : le front marque la carte concernée (cf. P9).
     targets: jobs.runningTargets(),

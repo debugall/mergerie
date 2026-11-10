@@ -952,7 +952,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   coding target of this same session cannot also be linked read-only. Optional — exploration has no
   use for it, it already sees all its repositories side by side.
 - **Activity — what you launched, and what finished.** The log panel exposes an **Activity** view: what ran,
-  on what, for how long, and how it ended. Each row **names its object** and takes you there in one click; a
+  on what, for how long, and how it ended — a finished **verification** is read by its **verdict** (*green ✓*,
+  *red ✗*, *base already red*, *failed*), never “ok” in front of a broken test suite, and *Failures only* keeps
+  it when it is red; the log banner and the footer button say it in red as well. Each row **names its object**
+  and takes you there in one click; a
   button reopens the **log of a past job** — the view stays on it while another job writes, and a job
   **launched afterwards** takes it back. What has finished since your last visit is marked, and the count
   appears on the button. Desktop notifications did not answer that question: they only live in the server's
@@ -2421,6 +2424,17 @@ You give a **list of commands** (`npm ci`, then `npm test`), Mergerie runs it in
 
 The **order matters** — `npm ci` before `npm test` — and is corrected in one click: each row carries its
 rank and two arrows to move it.
+
+**A line can run only once.** In front of each command, a scope: *in each repository* (the default) or
+*once* — `docker compose up -d` after the repositories are checked out has no business running three
+times. A *once* line also says **in which repository** it runs (its worktree, or its *in place* folder),
+picked with search; left empty, the first repository of the verification. The list order is kept and the
+repositories run inside it: `npm ci` in each, then `compose up` once, then `npm test` in each, then
+`compose down`. A failed *once* line **stops everything**; it is **skipped** when a command already failed
+before it (the log says so); and if it points at a repository that is not part of the verification, that is
+an error with its name, not a guessed folder. The report and the log mark the line and the repository it ran
+in, the card shows a `1×` badge, and where it runs is part of what you **approve** (see below) — the line
+travels with the shared verifier.
 
 Such a verifier can **cover several repositories**. Be careful about what “cover” means: declaring a
 repository only announces that this verifier **knows how to test it**. At run time, the list only runs in

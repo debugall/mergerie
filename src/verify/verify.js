@@ -424,6 +424,8 @@ function composerRunCommandes(resultats, detail) {
       code: r.code,
       duration_ms: r.duration_ms || 0,
       output_tail: tronquer(queue(r.output, 40), MAX_EXTRAIT),
+      // Une commande GLOBALE (une fois, dans ce dépôt) se distingue dans le rapport.
+      ...(r.global ? { global: true } : {}),
     })),
     detail_source: source,
     // A25 — les cinq plus lents, quand la sortie donne des durées. Une donnée de CONFORT :
@@ -620,7 +622,21 @@ function composerCommentaire(donnees, gabarit, maintenant = new Date()) {
   return rendu.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/* UNE LIGNE DE COMMANDE DE VÉRIFICATEUR, SOUS SA FORME PLEINE : `{ command, scope, repo_id }`.
+   L'API, le partage et les tests en donnent aussi la forme courte — une chaîne, c'est-à-dire
+   « rejouée dans chaque dépôt » —, et l'ancienne forme reste la plus fréquente. `global: true`
+   est admis comme synonyme de `scope: 'global'` (c'est la forme du fichier partagé). */
+function normaliserCommande(x) {
+  if (x == null) return null;
+  if (typeof x === 'string') return { command: x.trim(), scope: 'repo', repo_id: null };
+  const command = String(x.command || '').trim();
+  const global = x.scope === 'global' || x.global === true;
+  const repo = Number(x.repo_id);
+  return { command, scope: global ? 'global' : 'repo', repo_id: global && repo ? repo : null };
+}
+
 module.exports = {
+  normaliserCommande,
   GABARIT_COMMENTAIRE_DEFAUT, CHAMPS_COMMENTAIRE, EXEMPLE_COMMENTAIRE, composerCommentaire, doitCommenterAuto,
   VERDICTS, MAX_FAILED, MAX_LOG, MAX_REPONSE,
   validerReponse, derniereLigneJson, deltaImputable, composerVerdict, estPerime,
