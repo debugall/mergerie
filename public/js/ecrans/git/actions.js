@@ -118,7 +118,7 @@ async function gitFillRow(idx) {
         + '<div class="git-ref-list">'
         + list.map((r) => '<label class="git-ref-item" data-name="' + esc(r.name.toLowerCase()) + '"><input type="checkbox" data-row="' + idx + '" value="' + esc(r.name) + '"' + (sel.includes(r.name) ? ' checked' : '') + ' />' +
           '<code>' + esc(r.name) + '</code>' + (r.merged ? '<span class="tag done">' + esc(tr('git.tag.merged')) + '</span>' : '') +
-          '<span class="muted git-ref-date">' + (r.date ? fmtDate(r.date) : '') + '</span></label>').join('')
+          '<span class="muted git-ref-date">' + (r.date ? fmtDateHour(r.date) : '') + '</span></label>').join('')
         + '<div class="muted git-ref-nomatch" hidden>' + esc(tr('git.refs.no-match')) + '</div></div>'
       : '<span class="muted">' + esc(tr('git.refs.none')) + '</span>')
       + (hidden ? '<div class="muted git-ref-hidden">' + esc(tr('git.refs.hidden', { n: hidden, count: hidden })) + '</div>' : '');
@@ -329,7 +329,7 @@ function gitRenderPreview(pv) {
        `git show` ou un message d'incident veut le complet, et il n'existait nulle part. */
     const sha = r.sha ? '<button type="button" class="muted git-sha git-sha-copy" data-copy-txt="' + esc(r.sha)
       + '" title="' + esc(tr('git.copy-sha')) + '">' + esc(String(r.sha).slice(0, 8)) + '</button>' : '';
-    const when = r.committed_date ? '<span class="muted">' + fmtDate(r.committed_date) + '</span>' : '';
+    const when = r.committed_date ? '<span class="muted">' + fmtDateHour(r.committed_date) + '</span>' : '';
     /* CE QUI DIT SI C'EST SÛR. Trois cas, trois couleurs : mergée (vert, on peut y aller),
        merge request encore ouverte (ambre, on va casser quelque chose), ni l'un ni l'autre
        (ambre aussi — « non mergée » est une information, pas un blocage). */

@@ -8,11 +8,12 @@
    là où la liste s'arrête à cent tickets : une statistique sur un extrait trié par date de mise
    à jour ne dirait rien du backlog. Les valeurs proposées par les filtres, elles, viennent d'un
    échantillon (la même requête que la liste) : proposer une valeur qui ne compte rien n'aide pas. */
-const JSTATS = { me: null, people: [], echantillon: [], connus: {}, seq: 0 };
+const JSTATS = { me: null, people: [], echantillon: [], connus: {}, seq: 0, seqDelai: 0 };
 const JSTATS_CLES = {
   assignees: 'aidevtools_jira_stats_assignees', hidden: 'aidevtools_jira_stats_status_hidden',
   sprints: 'aidevtools_jira_stats_sprints', filtres: 'aidevtools_jira_stats_filtres', done: 'aidevtools_jira_stats_done',
   dates: 'aidevtools_jira_stats_dates',   // la plage de mouvement — propre aux stats, la liste n'en a pas
+  delai: 'aidevtools_jira_stats_delai',   // les deux statuts du délai (« en cours » → « en prod »)
 };
 // Les clés de « Mes tickets », d'où l'on hérite une seule fois.
 const JSTATS_ORIGINE = {
@@ -133,6 +134,82 @@ async function jsCompter(seq = JSTATS.seq) {
   catch (e) { if (seq !== JSTATS.seq) return; corps.innerHTML = ''; err.innerHTML = errorBox(explainError(e.message)); return; }
   if (seq !== JSTATS.seq) return;
   jsRendre(d);
+  jsDelai();
+}
+
+/* ---------- Le délai entre deux statuts ---------- */
+/* « Combien de temps entre le passage en cours et la mise en prod ? » Deux statuts choisis ici,
+   mémorisés par le navigateur ; une recherche Jira de plus, payée seulement quand les deux sont
+   posés. Les statuts proposés sont ceux que l'écran connaît déjà (échantillon + workflow). */
+function jsDelaiChoix() {
+  const v = jsLire('delai', {}) || {};
+  return { de: typeof v.de === 'string' ? v.de : '', vers: typeof v.vers === 'string' ? v.vers : '' };
+}
+function jsRenderDelaiChoix() {
+  const sec = $('#jiraStatsDelai'); if (!sec) return;
+  const statuts = jsUnion('status', []);
+  sec.hidden = !statuts.length;
+  if (sec.hidden) return;
+  const c = jsDelaiChoix();
+  for (const [id, cls, val] of [['#jiraStatsDelaiDe', 'js-delai-de', c.de], ['#jiraStatsDelaiVers', 'js-delai-vers', c.vers]]) {
+    const hote = $(id);
+    if (!hote.querySelector(`.${cls}`)) hote.innerHTML = comboHtml(cls, { value: val, label: val, ph: tr('jira.stats.delai.ph') });
+    wireCombo(hote, cls, () => jsUnion('status', []).map((s) => ({ value: s.v, label: s.l })));
+  }
+}
+async function jsDelai() {
+  const corps = $('#jiraStatsDelaiCorps'); if (!corps) return;
+  // Sa propre séquence : changer un statut du délai ne doit pas annuler un comptage en cours.
+  const seq = ++JSTATS.seqDelai;
+  jsRenderDelaiChoix();
+  const c = jsDelaiChoix();
+  if (!c.de || !c.vers) { corps.innerHTML = `<p class="muted">${esc(tr('jira.stats.delai.pick'))}</p>`; return; }
+  if (c.de.toLowerCase() === c.vers.toLowerCase()) { corps.innerHTML = `<p class="muted">${esc(tr('jira.stats.delai.same'))}</p>`; return; }
+  corps.innerHTML = skeleton(2);
+  const f = jsFiltres(); const dates = jsDates();
+  const q = `de=${encodeURIComponent(c.de)}&vers=${encodeURIComponent(c.vers)}&assignees=${encodeURIComponent([...jsCoches()].join(','))}`
+    + `&depuis=${encodeURIComponent(dates.depuis)}&jusqua=${encodeURIComponent(dates.jusqua)}`
+    + `&projects=${encodeURIComponent((f.project || []).join(','))}&sprints=${encodeURIComponent(jsSprints().join(','))}&filtres=${encodeURIComponent(JSON.stringify(f))}`;
+  let d;
+  try { d = await api(`/jira/stats/delai?${q}`); }
+  catch (e) { if (seq !== JSTATS.seqDelai) return; corps.innerHTML = errorBox(explainError(e.message)); return; }
+  if (seq !== JSTATS.seqDelai) return;
+  jsRendreDelai(d);
+}
+function jsRendreDelai(d) {
+  const corps = $('#jiraStatsDelaiCorps');
+  const j = (n) => tr('jira.stats.delai.days', { n: String(n) });
+  const tuile = (cls, val, lbl, sous, cle) => `<div class="stat-tile ${cls}" data-delai="${cle}"><div class="stat-val">${esc(String(val))}</div><div class="stat-lbl">${esc(lbl)}</div>${sous ? `<div class="jira-stats-sous muted">${esc(sous)}</div>` : ''}</div>`;
+  const notes = [];
+  if (d.tronque) notes.push(`<p class="jira-stats-note warn">${esc(d.total != null && d.total > d.lus ? tr('jira.stats.truncated', { max: d.plafond, total: d.total }) : tr('jira.stats.truncated-nototal', { max: d.plafond }))}</p>`);
+  if (d.sansDepart) notes.push(`<p class="jira-stats-note muted">${esc(tr('jira.stats.delai.no-start', { n: d.sansDepart, count: d.sansDepart, de: d.de, vers: d.vers }))}</p>`);
+  if (d.sansArrivee) notes.push(`<p class="jira-stats-note muted">${esc(tr('jira.stats.delai.no-end', { n: d.sansArrivee, count: d.sansArrivee, de: d.de, vers: d.vers }))}</p>`);
+  const portee = `<p class="muted" id="jiraStatsDelaiInfo">${esc(tr('jira.stats.delai.scope', { n: d.lus, count: d.lus, vers: d.vers }))}</p>`;
+  if (!d.n) { corps.innerHTML = `${portee}${notes.join('')}<p class="muted jira-empty">${esc(tr('jira.stats.delai.empty'))}</p>`; return; }
+  const tableau = (titre, lignes, colonne, attr) => `<h3 class="jira-stats-h">${esc(titre)}</h3>
+    <table class="jira-stats-table">
+      <thead><tr><th>${esc(colonne)}</th><th class="num">${esc(tr('jira.stats.col.n'))}</th><th class="num">${esc(tr('jira.stats.delai.median'))}</th><th class="num">${esc(tr('jira.stats.delai.mean'))}</th><th class="num">${esc(tr('jira.stats.delai.p90'))}</th></tr></thead>
+      <tbody>${lignes.map((x) => `<tr ${attr}="${esc(x.name)}"><td>${esc(x.name || '—')}</td><td class="num">${x.n}</td><td class="num">${esc(j(x.mediane))}</td><td class="num">${esc(j(x.moyenne))}</td><td class="num">${esc(j(x.p90))}</td></tr>`).join('')}</tbody>
+    </table>`;
+  corps.innerHTML = `${portee}${notes.join('')}
+    <div class="stat-row jira-stats-tuiles" data-delai-n="${d.n}">
+      ${tuile('', d.n, tr('jira.stats.delai.n'), '', 'n')}
+      ${tuile('accent', j(d.mediane), tr('jira.stats.delai.median'), tr('jira.stats.delai.min-max', { min: d.min, max: d.max }), 'mediane')}
+      ${tuile('', j(d.moyenne), tr('jira.stats.delai.mean'), '', 'moyenne')}
+      ${tuile('amber', j(d.p90), tr('jira.stats.delai.p90'), '', 'p90')}
+    </div>
+    ${(d.parProjet || []).length > 1 ? tableau(tr('jira.stats.delai.by-project'), d.parProjet, tr('jira.stats.delai.col.project'), 'data-delai-project') : ''}
+    ${(d.parType || []).length > 1 ? tableau(tr('jira.stats.delai.by-type'), d.parType, tr('jira.stats.col.type'), 'data-delai-type') : ''}
+    <h3 class="jira-stats-h">${esc(tr('jira.stats.delai.tickets'))}</h3>
+    <table class="jira-stats-table jira-stats-delai-tickets">
+      <thead><tr><th></th><th></th><th>${esc(tr('jira.stats.col.type'))}</th><th class="num">${esc(tr('jira.stats.delai.col.start'))}</th><th class="num">${esc(tr('jira.stats.delai.col.end'))}</th><th class="num">${esc(tr('jira.stats.delai.col.days'))}</th></tr></thead>
+      <tbody>${(d.tickets || []).map((x) => `<tr data-delai-key="${esc(x.key)}">
+          <td><a class="jira-key" href="${safeUrl(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.key)}</a></td>
+          <td class="jira-stats-delai-sum" title="${esc(x.summary)}">${esc(x.summary)}</td>
+          <td class="muted">${esc(x.type || '')}</td>
+          <td class="num muted">${esc(fmtDateHour(x.debut))}</td><td class="num muted">${esc(fmtDateHour(x.fin))}</td>
+          <td class="num"><b>${esc(j(x.jours))}</b></td></tr>`).join('')}</tbody>
+    </table>`;
 }
 
 /* ---------- Le rendu des comptes ---------- */
@@ -328,6 +405,14 @@ $('#jiraSubStats') && (() => {
     e.preventDefault(); jsOuvrirListe(el.dataset.jsl);
   });
   $('#jiraStatsListClose').addEventListener('click', () => { $('#jiraStatsListModal').hidden = true; });
+  // Un des deux statuts du délai change (le combo signale son choix par un `change` sur son input caché).
+  $('#jiraStatsDelai').addEventListener('change', (e) => {
+    const h = e.target.closest('.js-delai-de, .js-delai-vers'); if (!h) return;
+    const c = jsDelaiChoix();
+    if (h.classList.contains('js-delai-de')) c.de = h.value; else c.vers = h.value;
+    jsEcrire('delai', c);
+    jsDelai();
+  });
   fermerAuFond('#jiraStatsListModal', null, { salissable: false });
   $('#jiraStatsIncludeDone').addEventListener('change', (e) => { jsEcrire('done', e.target.checked); chargerJiraStats(); });
   // La plage ne change que les comptes, pas les valeurs proposées par les filtres : on recompte seulement.

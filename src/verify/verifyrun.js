@@ -711,7 +711,7 @@ function blocsCommentaire(v, verifier) {
   const commits = ['Commits testés :'];
   for (const c of cibles) {
     const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
-    commits.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
+    commits.push(`- ${(repo && repo.project) || c.repo_id} · ${c.tag ? 'tag ' : ''}\`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
   }
   /* LES MENTIONS NE PARTENT QUE SI QUELQUE CHOSE CASSE. Écrire `@amady` sur chaque merge
      request vérifiée, y compris pour dire que tout va bien, envoie un mail à quelqu'un pour

@@ -83,7 +83,10 @@
 .vb-list .verif-branche-row { padding: 4px 2px 8px; border-bottom: 1px solid var(--line); }
 .vb-list .verif-branche-row:last-child { border-bottom: 0; padding-bottom: 2px; }
 .vb-list .verif-branche-row.is-off { opacity: .55; }
-.vb-list .verif-branche-row .combo { margin-left: 26px; }
+/* Devant la ref, son GENRE : Branche ou Tag. Un sélecteur natif court, la ref prend le reste. */
+.vb-list .verif-branche-row .vb-ref { display: flex; align-items: center; gap: 6px; margin-left: 26px; }
+.vb-list .verif-branche-row .vb-ref .combo { flex: 1; min-width: 0; }
+.vb-list .verif-branche-row .vb-genre { width: auto; flex: 0 0 auto; padding: 5px 6px; font-size: 13px; }
 .vb-list .verif-branche-row .combo input { padding: 6px 10px; font-size: 13px; }
 
 /* Un bloc de résultat par dépôt, replié par défaut. */

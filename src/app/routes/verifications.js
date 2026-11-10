@@ -338,18 +338,29 @@ async function ciblesDepuisBranches(entrees) {
     if (!repo) throw new Error(t('err.depot-introuvable'));
     if (vus.has(repo.id)) throw new Error(t('err.verify.repo-twice'));
     vus.add(repo.id);
+    const tag = String(e.tag || '').trim();
     const branche = String(e.branch || '').trim();
-    if (!branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
+    if (!tag && !branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
     /* Le SHA est résolu MAINTENANT, dans le clone : un verdict est attaché à des commits, pas
        à un nom de branche qui bougera. C'est aussi ce qui rend la péremption possible. */
     const cwd = await git.ensureRepo(cfg, repo, () => {});
-    if (!await git.refExists(cwd, `origin/${branche}`)) {
-      throw new Error(t('err.verify.branch-unknown', { branch: branche, project: repo.project }));
+    /* UN TAG AUSSI BIEN QU'UNE BRANCHE : « la 3.2.0 livrée vendredi passe-t-elle encore avec les
+       services d'aujourd'hui ? ». Le tag est rapatrié exprès — posé sur un commit déjà présent,
+       le fetch général ne le ramène pas toujours — et c'est le COMMIT pointé qui est résolu
+       (`^{commit}`) : l'objet d'un tag annoté a son propre SHA, qu'aucun checkout ne veut. */
+    if (tag) await git.fetchTag(cwd, tag);
+    const ref = tag ? `refs/tags/${tag}` : `origin/${branche}`;
+    if (!await git.refExists(cwd, ref)) {
+      throw new Error(tag
+        ? t('err.verify.tag-unknown', { tag, project: repo.project })
+        : t('err.verify.branch-unknown', { branch: branche, project: repo.project }));
     }
-    const { stdout } = await git.run('git', ['rev-parse', `origin/${branche}`], { cwd });
+    const { stdout } = await git.run('git', ['rev-parse', `${ref}^{commit}`], { cwd });
+    /* `branch` porte le nom du tag aussi : c'est le champ que le rapport, le brief et le
+       commentaire écrivent déjà ; `tag` dit qu'il s'agit d'un tag, pour l'annoncer comme tel. */
     cibles.push({
       repo_id: repo.id, mr_id: null, head_sha: stdout.trim(),
-      base_sha: null, branch: branche, mode: 'worktree',
+      base_sha: null, branch: tag || branche, tag: tag || null, mode: 'worktree',
     });
   }
   return cibles;
@@ -377,6 +388,8 @@ app.post('/api/verifications/:id/fix', wrap((req, res) => {
   if (!v) throw new Error(t('err.verify.not-found'));
   const d = detailVerification(v);
   if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
+  // Un tag ne bouge pas : il n'y a pas de branche où poser une correction.
+  if (d.targets.some((c) => c.tag)) throw new Error(t('err.verify.fix-not-on-tag'));
 
   const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
   const list = normalizeTargets(cibles, 'code');

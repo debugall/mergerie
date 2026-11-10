@@ -35,10 +35,6 @@ let tagsPeriodeLignes = [];
 let tagsPeriodeMasquees = new Set();   // index dans tagsPeriodeLignes
 const tagsPeriodeVisibles = () => tagsPeriodeLignes.filter((_, i) => !tagsPeriodeMasquees.has(i));
 
-/* Date ET heure : plusieurs tags tombent le même jour (une livraison, puis sa rustine le soir) ;
-   la date seule les rend indiscernables, et l'ordre du tableau paraît arbitraire. */
-const tagsPeriodeQuand = (iso) => `${fmtDate(iso)} ${fmtHour(iso)}`.trim();
-
 async function tagsPeriodeChercher(e) {
   if (e) e.preventDefault();
   const from = $('#tagsPeriodFrom').value;
@@ -68,7 +64,7 @@ async function tagsPeriodeChercher(e) {
       + `<th>${esc(tr('git.tags.period.col.repo'))}</th><th>${esc(tr('git.tags.period.col.tag'))}</th><th>${esc(tr('git.tags.period.col.date'))}</th><th>${esc(tr('git.tags.period.col.message'))}</th><th></th></tr></thead><tbody>`
       + tagsPeriodeLignes.map((l, i) => `<tr data-tags-row="${i}"><td>${esc(l.project)}</td>`
         + `<td>${l.url ? `<a href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer"><code>${esc(l.name)}</code> ↗</a>` : `<code>${esc(l.name)}</code>`}</td>`
-        + `<td class="muted">${tagsPeriodeQuand(l.date)}</td>`
+        + `<td class="muted">${fmtDateHour(l.date)}</td>`
         + `<td class="git-tags-msg" title="${esc(l.message)}">${esc(l.message) || '<span class="muted">—</span>'}</td>`
         + `<td class="git-tags-hide"><button type="button" class="btn btn-icon btn-sm" data-tags-hide="${i}" title="${esc(tr('git.tags.period.hide-title'))}" aria-label="${esc(tr('git.tags.period.hide-title'))}">${svgIco('eye-off')}</button></td></tr>`).join('')
       + '</tbody></table></div>'
@@ -109,11 +105,11 @@ function tagsPeriodeExport() {
     + tagsPeriodeVisibles().map((l) => '<tr>'
       + cell(esc(l.project))
       + cell(l.url ? `<a href="${esc(safeUrl(l.url))}">${esc(l.name)}</a>` : esc(l.name))
-      + cell(esc(tagsPeriodeQuand(l.date)))
+      + cell(esc(fmtDateHour(l.date)))
       + cell(esc(l.message)) + '</tr>').join('')
     + '</tbody></table>';
   const propre = (s) => String(s || '').replace(/[\t\r\n]+/g, ' ');
-  const text = [colonnes.join('\t'), ...tagsPeriodeVisibles().map((l) => [l.project, l.name, tagsPeriodeQuand(l.date), propre(l.message)].join('\t'))].join('\n');
+  const text = [colonnes.join('\t'), ...tagsPeriodeVisibles().map((l) => [l.project, l.name, fmtDateHour(l.date), propre(l.message)].join('\t'))].join('\n');
   return { html, text };
 }
 

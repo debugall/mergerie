@@ -142,7 +142,7 @@ function verificationsEnEchec(limite = MAX_PAR_SECTION) {
       failed: imputable.length,
       failed_label: (imputable[0] || {}).test || null,
       // `branch` voyage AVEC la cible : c'est ce qui permet à l'écran d'écrire « dépôt · branche ».
-      targets: enrichies.map((c) => ({ mr_id: c.mr_id, iid: c.iid, project: c.project, branch: c.branch })),
+      targets: enrichies.map((c) => ({ mr_id: c.mr_id, iid: c.iid, project: c.project, branch: c.branch, tag: c.tag || null })),
     });
     if (out.length >= limite) break;
   }

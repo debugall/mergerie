@@ -39,6 +39,8 @@ describe('Vérification d’une branche', () => {
     fs.writeFileSync(path.join(distant, 'a.txt'), 'develop\n');
     git(distant, 'add', '-A'); git(distant, 'commit', '-qm', 'develop');
     git(distant, 'checkout', '-q', 'main');
+    // Un tag ANNOTÉ sur develop : son objet a son propre SHA, distinct du commit qu'il pointe.
+    git(distant, 'tag', '-a', 'v1.0.0', '-m', 'livraison', 'develop');
     await app.configure();
     repoId = (await app.api('POST', '/api/repos', { project: 'grp/app', url: distant })).body.id;
   });
@@ -126,6 +128,45 @@ describe('Vérification d’une branche', () => {
     assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c > 0, true);
   });
 
+  /* UN TAG AUSSI BIEN QU'UNE BRANCHE. « La 3.2.0 livrée vendredi passe-t-elle encore ? » est la
+     même question, sur une ref qui ne bouge pas. Deux pièges : l'objet d'un tag annoté a SON
+     SHA, et c'est le commit pointé qu'il faut tester ; et un tag posé sur un commit déjà présent
+     n'est pas toujours ramené par le fetch général du clone. */
+  test('un tag se vérifie comme une branche : c’est le COMMIT pointé qui part, annoncé comme tag', async () => {
+    const v = await poser('tag-vert', 'exit 0');
+    const r = await app.api('POST', '/api/verify/branches', {
+      verifier_id: v.id, targets: [{ repo_id: repoId, tag: 'v1.0.0' }],
+    });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const d = await attendre(r.body.verification.id);
+    assert.equal(d.verdict, 'verified_pass');
+    assert.equal(d.base_run, null, 'un tag EST la base : pas de double run');
+    assert.equal(d.targets[0].tag, 'v1.0.0');
+    assert.equal(d.targets[0].branch, 'v1.0.0', 'le nom voyage dans `branch`, que rapport et brief écrivent déjà');
+    assert.equal(d.targets[0].head_sha, git(distant, 'rev-parse', 'develop'), 'le commit POINTÉ, pas l’objet tag');
+    assert.notEqual(d.targets[0].head_sha, git(distant, 'rev-parse', 'v1.0.0'));
+    const { body: c } = await app.api('GET', `/api/verifications/${d.id}/comment`);
+    assert.match(c.body, /grp\/app · tag `v1\.0\.0` @ `[0-9a-f]{8}`/, 'le commentaire dit que c’est un tag');
+  });
+
+  test('un tag inconnu est refusé, avec son nom ; un rouge sur un tag ne se « corrige » pas', async () => {
+    const v = await poser('tag-rouge', 'exit 1');
+    const r0 = await app.api('POST', '/api/verify/branches', {
+      verifier_id: v.id, targets: [{ repo_id: repoId, tag: 'v9.9.9' }],
+    });
+    assert.equal(r0.status, 400);
+    assert.match(r0.body.error, /v9\.9\.9/);
+    const r = await app.api('POST', '/api/verify/branches', {
+      verifier_id: v.id, targets: [{ repo_id: repoId, tag: 'v1.0.0' }],
+    });
+    const d = await attendre(r.body.verification.id);
+    assert.equal(d.verdict, 'verified_fail');
+    // Un tag ne bouge pas : il n'y a pas de branche où poser une correction.
+    const fix = await app.api('POST', `/api/verifications/${d.id}/fix`, {});
+    assert.equal(fix.status, 400);
+    assert.match(fix.body.error, /tag/);
+  });
+
   test('sans branche, on refuse plutôt que de deviner', async () => {
     const v = await poser('sans', 'exit 0');
     assert.equal((await app.api('POST', '/api/verify/branches', {
@@ -206,6 +247,73 @@ describe('Vérification d’une branche', () => {
       // La vérification lancée tient le verrou du dépôt : on la laisse finir, sinon c'est le
       // test suivant qui se fait refuser son lancement.
       await attendre(app.db.prepare('SELECT id FROM verification ORDER BY id DESC LIMIT 1').get().id);
+    } finally { await nav.close(); }
+  });
+
+  /* DEPUIS L'ÉCRAN : le genre de la ref se choisit devant elle. Passer sur « Tag » vide le champ
+     (une branche n'est pas un tag), la liste qui s'ouvre est celle des tags, et c'est `tag` qui
+     part — puis le choix est retenu : la modale se rouvre sur « Tag » et sur ce tag-là. */
+  test('depuis l’écran : on choisit un tag à la place de la branche, et le choix est retenu', async (t) => {
+    if (!navigateurDispo().dispo) { t.skip(MSG_NAVIGATEUR); return; }
+    const shaDevelop = git(distant, 'rev-parse', 'develop');
+    app.state.branches['grp/app'] = [
+      { name: 'main', default: true, protected: false, merged: false, commit: { id: git(distant, 'rev-parse', 'main') } },
+      { name: 'develop', default: false, protected: false, merged: false, commit: { id: shaDevelop } },
+    ];
+    app.state.tags['grp/app'] = [
+      { name: 'v1.0.0', target: 'tagobj', message: 'livraison', commit: { id: shaDevelop, committed_date: '2026-08-01T10:00:00Z' } },
+      { name: 'v0.9.0', target: shaDevelop, message: '', commit: { id: shaDevelop, committed_date: '2026-07-01T10:00:00Z' } },
+    ];
+    const v = await poser('ui-tag', 'exit 0');
+    const nav = await lancerNavigateur();
+    const page = await nav.newPage({ viewport: { width: 1400, height: 950 } });
+    const erreurs = [];
+    page.on('pageerror', (e) => erreurs.push(e.message));
+    try {
+      await page.goto(app.base);
+      await page.locator('[data-tab="admin"]').click();
+      await page.waitForLoadState('networkidle');
+      await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+      await page.waitForSelector('#verifierList .card');
+      await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      const ligne = page.locator('#branchVerifyRows .verif-branche-row').first();
+      const champ = ligne.locator('.cb-search');
+      // Branche par défaut proposée, comme avant…
+      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'main');
+      assert.equal(await ligne.locator('.vb-genre').inputValue(), 'branch');
+
+      // …puis on passe sur « Tag » : le champ se vide — une branche n'est pas un tag.
+      await ligne.locator('.vb-genre').selectOption('tag');
+      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === '');
+      assert.equal(await ligne.evaluate((r) => r.dataset.genre), 'tag');
+
+      await champ.click();
+      // « chargement… » est aussi une `.combo-opt` : on attend une VRAIE option.
+      await page.waitForSelector('.combo-options:not([hidden]) .combo-opt:not(.muted)');
+      const options = await page.locator('.combo-options:not([hidden]) .combo-opt').allTextContents();
+      assert.ok(options.some((o) => o.includes('v1.0.0')) && !options.some((o) => o.includes('develop')),
+        `la liste est celle des TAGS : ${options.join(', ')}`);
+      await page.locator('.combo-options:not([hidden]) .combo-opt', { hasText: 'v1.0.0' }).click();
+
+      const avant = app.db.prepare('SELECT COUNT(*) c FROM verification').get().c;
+      await page.locator('#branchVerifyGo').click();
+      await page.waitForSelector('#branchVerifyModal[hidden]', { state: 'attached' });
+      assert.equal(app.db.prepare('SELECT COUNT(*) c FROM verification').get().c, avant + 1);
+      const cible = JSON.parse(app.db.prepare('SELECT targets_json t FROM verification ORDER BY id DESC LIMIT 1').get().t)[0];
+      assert.equal(cible.tag, 'v1.0.0', 'c’est un TAG qui part');
+      assert.equal(cible.head_sha, shaDevelop, 'résolu sur le commit pointé');
+      await attendre(app.db.prepare('SELECT id FROM verification ORDER BY id DESC LIMIT 1').get().id);
+
+      // Le choix est RETENU : la modale se rouvre sur « Tag », et sur ce tag-là.
+      await page.locator(`#verifierList .card[data-id="${v.id}"] [data-vbranch]`).click();
+      await page.waitForSelector('#branchVerifyModal:not([hidden])');
+      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'v1.0.0');
+      assert.equal(await page.locator('#branchVerifyRows .vb-genre').first().inputValue(), 'tag');
+      // Revenir sur « Branche » retrouve la branche d'avant, pas un champ vide.
+      await page.locator('#branchVerifyRows .vb-genre').first().selectOption('branch');
+      await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'main');
+      assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
     } finally { await nav.close(); }
   });
 

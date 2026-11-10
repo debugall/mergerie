@@ -1834,6 +1834,19 @@ vit sa vie.
 - **Chaque nombre se clique** — une tuile, ou le compte d'une ligne des tableaux — et ouvre **la liste des
   tickets qu'il compte** : clé (lien vers Jira), libellé, statut, type, assigné. Rien n'est redemandé à
   Jira : tout a déjà été lu pour compter.
+- **Le délai entre deux statuts** — « combien de temps entre le passage *en cours* et la mise *en prod* ? ».
+  Sous les comptes, deux sélecteurs : le statut de départ et celui d'arrivée (ceux que l'écran connaît,
+  workflow compris), mémorisés. Jira ne tient pas ce chiffre, il tient l'**historique** de chaque ticket :
+  Mergerie lit, pour chaque ticket **arrivé dans le second statut** — terminés compris, sans le filtre de
+  statut, et avec les autres filtres de l'écran —, le délai de la **première** entrée dans le premier statut
+  à la **dernière** entrée dans le second qui la suit (un ticket repris trois fois a commencé la première
+  fois ; une mise en prod refaite n'est livrée qu'à la seconde). Quatre tuiles — tickets mesurés, **médiane**
+  (avec min et max), moyenne, **90 % en moins de** — puis par projet, par type, et la liste des tickets avec
+  leurs deux dates et leur délai en jours. Un ticket arrivé sans être passé par le départ, ou reparti au
+  départ après sa dernière arrivée, est compté à part, jamais mesuré. Avec la plage de dates : les tickets
+  arrivés dans le second statut **pendant** la plage. Coût : une recherche de plus, dix pages au plus,
+  l'historique voyageant avec chaque page (`expand=changelog`) — rien tant que les deux statuts ne sont pas
+  choisis.
 - **Ce que ça coûte en appels Jira** : une page de cent tickets = un appel. La liste et les stats en font
   donc au plus dix chacune (plafond de 1 000) ; les valeurs des filtres de Stats viennent d'une seule page ;
   la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les
@@ -2771,13 +2784,22 @@ commentaire »** montre le rendu de TON gabarit sur des données d'exemple — c
 moteur que le vrai commentaire, sinon l'aperçu finirait par mentir. Laissé vide, c'est le gabarit
 par défaut qui sert, et il profite alors des améliorations à venir.
 
-### Vérifier une branche, sans merge request
+### Vérifier une branche — ou un tag —, sans merge request
 
 Au retour de congés, plusieurs merge requests ont été mergées : la question n'est plus « qu'est-ce
 que cette branche casse ? » mais **« est-ce que `develop` est encore vert ? »**. Le bouton
 **`Vérifier une branche`** vit dans l'onglet **Git** et sur la carte de chaque vérificateur. Une
 ligne par dépôt couvert, chacune sur sa **branche par défaut**, choisie dans un sélecteur à
 recherche — un dépôt actif en aligne des centaines. La dernière branche vérifiée est mémorisée.
+
+**Un tag aussi bien qu'une branche.** Devant la ref, un sélecteur **Branche / Tag** : « la 3.2.0
+livrée vendredi passe-t-elle encore avec les services d'aujourd'hui ? » est la même question, posée
+sur une ref qui ne bouge pas. Le vérificateur se positionne sur le **commit pointé** par le tag de
+chaque dépôt coché (pas sur l'objet du tag annoté, qui a son propre SHA), et le rapport, le brief et
+le commentaire annoncent la cible comme un tag. Le genre est mémorisé par dépôt, avec le dernier tag
+et la dernière branche chacun de leur côté : revenir sur *Branche* retrouve la branche d'avant. Un
+rouge sur un tag ne propose pas `Corriger` : un tag ne bouge pas, il n'y a pas de branche où poser
+une correction.
 
 **On coche les dépôts qu'on veut, pas toute la couverture.** Chaque ligne porte une case, cochée
 d'emblée : un vérificateur qui couvre cinq dépôts peut donc n'en vérifier qu'un, sans avoir à

@@ -18,25 +18,34 @@
 let branchVerifVerifiers = [];
 const BRANCHE_MEMO = 'aidevtools_verif_branche';
 const BRANCHE_MEMO_DEPOTS = 'aidevtools_verif_branche_depots';
+/* UN TAG AUSSI BIEN QU'UNE BRANCHE. « La 3.2.0 livrée vendredi passe-t-elle encore avec les
+   services d'aujourd'hui ? » est la même question que « develop est-il encore vert ? », posée
+   sur une ref qui ne bouge pas. Chaque ligne porte donc son GENRE (branche ou tag), mémorisé
+   par dépôt comme la ref elle-même — et chaque genre a sa propre mémoire : revenir à
+   « Branche » après un tag doit retrouver la branche d'avant, pas un champ vide. */
+const BRANCHE_MEMO_TAGS = 'aidevtools_verif_branche_tags';
+const BRANCHE_MEMO_GENRE = 'aidevtools_verif_branche_genre';
 
-const memoBranches = () => { try { return JSON.parse(localStorage.getItem(BRANCHE_MEMO) || '{}'); } catch { return {}; } };
-const memoriserBranche = (repoId, branche) => {
+const lireMemo = (cle) => { try { return JSON.parse(localStorage.getItem(cle) || '{}'); } catch { return {}; } };
+const ecrireMemo = (cle, id, valeur) => {
   try {
-    const m = memoBranches(); m[repoId] = branche;
-    localStorage.setItem(BRANCHE_MEMO, JSON.stringify(m));
+    const m = lireMemo(cle); m[id] = valeur;
+    localStorage.setItem(cle, JSON.stringify(m));
   } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
 };
+const memoBranches = () => lireMemo(BRANCHE_MEMO);
+const memoriserBranche = (repoId, branche) => ecrireMemo(BRANCHE_MEMO, repoId, branche);
+const memoTags = () => lireMemo(BRANCHE_MEMO_TAGS);
+const memoriserTag = (repoId, tag) => ecrireMemo(BRANCHE_MEMO_TAGS, repoId, tag);
+const memoGenres = () => lireMemo(BRANCHE_MEMO_GENRE);
+const memoriserGenre = (repoId, genre) => ecrireMemo(BRANCHE_MEMO_GENRE, repoId, genre);
+const genreDeLigne = (row) => (row.dataset.genre === 'tag' ? 'tag' : 'branch');
 /* Les dépôts retenus, par vérificateur : « seulement api-core » n'est pas une envie du jour,
    c'est une habitude. Absente de la mémoire, la sélection vaut TOUT — et une mémoire devenue
    vide (les dépôts retenus ne sont plus couverts) revaut tout aussi : rouvrir la modale sur
    zéro dépôt coché ne dirait pas pourquoi le bouton refuse. */
-const memoDepots = () => { try { return JSON.parse(localStorage.getItem(BRANCHE_MEMO_DEPOTS) || '{}'); } catch { return {}; } };
-const memoriserDepots = (verifierId, repoIds) => {
-  try {
-    const m = memoDepots(); m[verifierId] = repoIds;
-    localStorage.setItem(BRANCHE_MEMO_DEPOTS, JSON.stringify(m));
-  } catch { /* stockage indisponible : on perd le confort, pas la fonction */ }
-};
+const memoDepots = () => lireMemo(BRANCHE_MEMO_DEPOTS);
+const memoriserDepots = (verifierId, repoIds) => ecrireMemo(BRANCHE_MEMO_DEPOTS, verifierId, repoIds);
 
 async function ouvrirVerifBranche(verifierId = null) {
   try {
@@ -58,6 +67,8 @@ async function renderVerifBrancheRows() {
   const el = $('#branchVerifyRows');
   if (!v) { el.innerHTML = ''; return; }
   const memo = memoBranches();
+  const memoT = memoTags();
+  const genres = memoGenres();
   /* Sélection retenue pour CE vérificateur, réduite à ce qu'il couvre encore : un dépôt retiré
      de la couverture depuis la dernière fois ne doit pas rendre la mémoire inutilisable. */
   const couverts = (v.repos || []).map((r) => r.repo_id);
@@ -69,9 +80,14 @@ async function renderVerifBrancheRows() {
        (`combo.closest('[data-row]')`). Sans lui, le chargeur reçoit `null`. LA LIGNE N'EST PLUS
        UN <label> : elle en contient un, celui de la case. Un `<label>` englobant la ligne
        entière ferait basculer la case à chaque clic dans le champ de branche. */
-    return `<div class="verif-branche-row${coche(r.repo_id) ? '' : ' is-off'}" data-row="${r.repo_id}" data-repo="${r.repo_id}">
+    const genre = genres[r.repo_id] === 'tag' ? 'tag' : 'branch';
+    const ref = (genre === 'tag' ? memoT[r.repo_id] : memo[r.repo_id]) || '';
+    return `<div class="verif-branche-row${coche(r.repo_id) ? '' : ' is-off'}" data-row="${r.repo_id}" data-repo="${r.repo_id}" data-genre="${genre}">
       <label class="repo-multi-item"><input type="checkbox" class="vb-pick"${coche(r.repo_id) ? ' checked' : ''} /> <span>${esc(projet)}</span></label>
-      ${comboHtml('vb-branch', { value: memo[r.repo_id] || '', label: memo[r.repo_id] || '', ph: tr('verify.branch.ph'), disabled: !coche(r.repo_id) })}</div>`;
+      <div class="vb-ref"><select class="vb-genre" title="${esc(tr('verify.branch.kind-title'))}" aria-label="${esc(tr('verify.branch.kind-title'))}"${coche(r.repo_id) ? '' : ' disabled'}>
+        <option value="branch"${genre === 'branch' ? ' selected' : ''}>${esc(tr('verify.branch.kind-branch'))}</option>
+        <option value="tag"${genre === 'tag' ? ' selected' : ''}>${esc(tr('verify.branch.kind-tag'))}</option></select>
+      ${comboHtml('vb-branch', { value: ref, label: ref, ph: tr(genre === 'tag' ? 'verify.branch.ph-tag' : 'verify.branch.ph'), disabled: !coche(r.repo_id) })}</div></div>`;
   }).join('');
   /* Recherche obligatoire dès qu'on choisit des dépôts (règle du projet) : elle MASQUE les
      lignes sans jamais décocher — filtrer ne doit pas changer ce qui va être lancé. */
@@ -89,6 +105,11 @@ async function renderVerifBrancheRows() {
   wireCombo(el, 'vb-branch', async (row) => {
     const repoId = Number(row && row.dataset.repo);
     if (!repoId) return [];
+    // La liste suit le genre de la ligne : les tags, datés, ou les branches, défaut signalé.
+    if (genreDeLigne(row) === 'tag') {
+      const d = await gitLoadRefs(repoId, 'tags');
+      return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.date ? fmtDate(r.date) : '' }));
+    }
     const d = await gitLoadRefs(repoId, 'branches');
     return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
   });
@@ -97,36 +118,52 @@ async function renderVerifBrancheRows() {
      On ne va la chercher que pour les dépôts RETENUS : un dépôt décoché n'a pas à faire
      attendre l'ouverture de la modale pour une valeur qui ne partira pas. */
   for (const row of $$('#branchVerifyRows .verif-branche-row')) {
-    const cache = row.querySelector('.vb-branch');
-    if (cache.value || !row.querySelector('.vb-pick').checked) continue;
-    try {
-      const d = await gitLoadRefs(Number(row.dataset.repo), 'branches');
-      const def = (d.refs || []).find((r) => r.default);
-      if (def) {
-        cache.value = def.name;
-        row.querySelector('.cb-search').value = def.name;
-      }
-    } catch { /* dépôt injoignable : la ligne reste à remplir à la main */ }
+    if (row.querySelector('.vb-pick').checked) await proposerBrancheDefaut(row);
   }
+}
+
+/* Remplit une ligne vide, de genre « branche », avec la branche par défaut du dépôt. Un tag n'a
+   pas de défaut qui vaille : la dernière version livrée se choisit, elle ne se devine pas. */
+async function proposerBrancheDefaut(row) {
+  const cache = row.querySelector('.vb-branch');
+  if (cache.value || genreDeLigne(row) === 'tag') return;
+  try {
+    const d = await gitLoadRefs(Number(row.dataset.repo), 'branches');
+    const def = (d.refs || []).find((r) => r.default);
+    if (def) {
+      cache.value = def.name;
+      cache.dataset.label = def.name;
+      row.querySelector('.cb-search').value = def.name;
+    }
+  } catch { /* dépôt injoignable : la ligne reste à remplir à la main */ }
 }
 
 /* Cocher/décocher un dépôt : la ligne s'éteint, son champ de branche se désactive, et la
    branche par défaut est cherchée à la première coche — une ligne qu'on vient d'ajouter doit
    arriver remplie comme les autres, sans avoir à la remplir soi-même. */
 $('#branchVerifyRows') && $('#branchVerifyRows').addEventListener('change', async (e) => {
+  const g = e.target.closest && e.target.closest('.vb-genre');
+  if (g) {
+    /* Changer de genre : une branche n'est pas un tag, le champ repart — sur la mémoire de
+       l'autre genre quand il y en a une, sinon vide (ou sur la branche par défaut). */
+    const row = g.closest('.verif-branche-row');
+    row.dataset.genre = g.value;
+    const ref = (g.value === 'tag' ? memoTags() : memoBranches())[row.dataset.repo] || '';
+    const cache = row.querySelector('.vb-branch');
+    const champ = row.querySelector('.cb-search');
+    cache.value = ref; cache.dataset.label = ref;
+    champ.value = ref; champ.title = ref;
+    champ.placeholder = tr(g.value === 'tag' ? 'verify.branch.ph-tag' : 'verify.branch.ph');
+    await proposerBrancheDefaut(row);
+    return;
+  }
   const c = e.target.closest && e.target.closest('.vb-pick');
   if (!c) return;
   const row = c.closest('.verif-branche-row');
   row.classList.toggle('is-off', !c.checked);
-  const cache = row.querySelector('.vb-branch');
-  const champ = row.querySelector('.cb-search');
-  champ.disabled = !c.checked;
-  if (!c.checked || cache.value) return;
-  try {
-    const d = await gitLoadRefs(Number(row.dataset.repo), 'branches');
-    const def = (d.refs || []).find((r) => r.default);
-    if (def) { cache.value = def.name; champ.value = def.name; }
-  } catch { /* dépôt injoignable : la ligne reste à remplir à la main */ }
+  row.querySelector('.cb-search').disabled = !c.checked;
+  row.querySelector('.vb-genre').disabled = !c.checked;
+  if (c.checked) await proposerBrancheDefaut(row);
 });
 
 $('#btnVerifyBranch') && $('#btnVerifyBranch').addEventListener('click', () => ouvrirVerifBranche());
@@ -141,15 +178,19 @@ $('#branchVerifyGo') && $('#branchVerifyGo').addEventListener('click', async (e)
     .filter((row) => row.querySelector('.vb-pick').checked)
     .map((row) => ({
       repo_id: Number(row.dataset.repo),
-      branch: (row.querySelector('.vb-branch').value || '').trim(),
+      // `branch` OU `tag`, jamais les deux : le serveur résout l'un sur `origin/`, l'autre sur `refs/tags/`.
+      [genreDeLigne(row)]: (row.querySelector('.vb-branch').value || '').trim(),
     }));
   if (!targets.length) { toast(tr('verify.branch.no-repo'), true); return; }
-  if (targets.some((t) => !t.branch)) { toast(tr('verify.branch.missing'), true); return; }
+  if (targets.some((t) => !(t.branch || t.tag))) { toast(tr('verify.branch.missing'), true); return; }
   try {
     await busy(e.currentTarget, () => api('/verify/branches', {
       method: 'POST', body: { verifier_id: verifierId, targets, ...($('#branchVerifyHome') ? { isolated_home: $('#branchVerifyHome').checked } : {}) },
     }));
-    for (const t of targets) memoriserBranche(t.repo_id, t.branch);
+    for (const t of targets) {
+      memoriserGenre(t.repo_id, t.tag ? 'tag' : 'branch');
+      if (t.tag) memoriserTag(t.repo_id, t.tag); else memoriserBranche(t.repo_id, t.branch);
+    }
     memoriserDepots(verifierId, targets.map((t) => t.repo_id));
     $('#branchVerifyModal').hidden = true;
     toast(tr('verify.toast.started'));
@@ -169,6 +210,7 @@ document.addEventListener('click', (e) => {
   const v = e.target.closest && e.target.closest('[data-gitverif]');
   if (v) {
     memoriserBranche(Number(v.dataset.repo), v.dataset.gitverif);
+    memoriserGenre(Number(v.dataset.repo), 'branch');
     ouvrirVerifBranche();
     return;
   }

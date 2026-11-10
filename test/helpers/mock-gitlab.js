@@ -326,6 +326,17 @@ function handleJira(req, res, pathname, body = {}) {
       issues = issues.filter((i) => dedans(i.fields && i.fields.created) || dedans(i.fields && i.fields.updated) || dedans(state.jiraStatusChanged[i.key]));
       jql = jql.replace(mvt[0], '');
     }
+    /* Jira → Stats, le délai entre deux statuts : les tickets ARRIVÉS dans un statut (dans une
+       fenêtre, le cas échéant), lus dans leur `changelog` — que le mock rend tel qu'il est posé
+       sur le ticket, comme Jira avec `expand=changelog`. */
+    const arrivee = /status CHANGED TO "([^"]+)"(?: DURING \(([^,]+),([^)]+)\))?/i.exec(jql);
+    if (arrivee) {
+      const [a, b] = arrivee[2] ? [borne(arrivee[2]), borne(arrivee[3])] : [-Infinity, Infinity];
+      issues = issues.filter((i) => (((i.changelog || {}).histories) || []).some((h) => {
+        const d = Date.parse(h.created);
+        return d >= a && d <= b && (h.items || []).some((it) => it.field === 'status' && it.toString === arrivee[1]);
+      }));
+    }
     const chg = /status CHANGED DURING \(([^,]+),([^)]+)\)/i.exec(jql);
     if (chg) {
       const [a, b] = [borne(chg[1]), borne(chg[2])];

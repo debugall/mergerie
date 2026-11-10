@@ -21,6 +21,48 @@ describe('typesDe : les noms de type d’un réglage', () => {
   });
 });
 
+/* LE DÉLAI ENTRE DEUX STATUTS. Jira ne tient pas ce chiffre, il tient l'historique : de la
+   PREMIÈRE entrée dans le statut de départ à la DERNIÈRE entrée dans le statut d'arrivée qui la
+   suit — un ticket repris trois fois a commencé la première fois, une mise en prod refaite n'est
+   livrée qu'à la seconde. */
+describe('delaisDe : le délai entre deux statuts, lu dans l’historique', () => {
+  const h = (created, vers, field = 'status') => ({ created, items: [{ field, fromString: 'x', toString: vers }] });
+  const tk = (key, histories, extra = {}) => ({ key, fields: { summary: key, issuetype: { name: 'Bug' }, project: { key: key.split('-')[0] }, ...extra }, changelog: { histories } });
+  test('première entrée dans le départ, dernière dans l’arrivée — sans tenir compte de la casse ni de l’ordre des entrées', () => {
+    const r = jirastats.delaisDe([tk('A-1', [
+      h('2026-06-10T10:00:00.000+0000', 'En prod'),      // une mise en prod AVANT le départ : ignorée
+      h('2026-06-20T10:00:00.000+0000', 'En cours'),
+      h('2026-06-25T10:00:00.000+0000', 'EN PROD'),      // livré…
+      h('2026-06-22T10:00:00.000+0000', 'En cours'),     // (entrée arrivée dans le désordre : repris)
+      h('2026-06-28T22:00:00.000+0000', 'en prod'),      // …et relivré : c'est la dernière qui compte
+      h('2026-06-21T10:00:00.000+0000', 'Assigné', 'assignee'),   // un autre champ ne compte pas
+    ])], { de: 'en cours', vers: 'En Prod' });
+    assert.equal(r.n, 1);
+    assert.equal(r.tickets[0].jours, 8.5);
+    assert.equal(r.tickets[0].debut, '2026-06-20T10:00:00.000Z');
+    assert.equal(r.tickets[0].fin, '2026-06-28T22:00:00.000Z');
+  });
+  test('médiane, moyenne, p90, min, max — et les non mesurables comptés à part', () => {
+    const j = (n) => new Date(Date.UTC(2026, 0, 1 + n)).toISOString();
+    const vers = (key, jours, extra) => tk(key, [h(j(0), 'En cours'), h(j(jours), 'En prod')], extra);
+    const r = jirastats.delaisDe([
+      vers('A-1', 1), vers('A-2', 2), vers('A-3', 3), vers('A-4', 4), vers('B-5', 30, { issuetype: { name: 'Story' } }),
+      tk('A-6', [h(j(5), 'En prod')]),                            // jamais passé par « En cours »
+      tk('A-7', [h(j(1), 'En prod'), h(j(2), 'En cours')]),        // repassé en cours APRÈS sa dernière livraison
+    ], { de: 'En cours', vers: 'En prod' });
+    assert.equal(r.n, 5);
+    assert.equal(r.mediane, 3); assert.equal(r.moyenne, 8); assert.equal(r.p90, 30); assert.equal(r.min, 1); assert.equal(r.max, 30);
+    assert.equal(r.sansDepart, 1); assert.equal(r.sansArrivee, 1);
+    assert.deepEqual(r.parProjet.map((p) => [p.name, p.n, p.mediane]), [['A', 4, 2.5], ['B', 1, 30]]);
+    assert.deepEqual(r.parType.map((p) => [p.name, p.n]), [['Bug', 4], ['Story', 1]]);
+    assert.deepEqual(r.tickets.map((x) => x.key), ['B-5', 'A-4', 'A-3', 'A-2', 'A-1'], 'les dernières arrivées d’abord');
+  });
+  test('la médiane de deux valeurs est leur milieu ; sans ticket, tout est nul', () => {
+    assert.equal(jirastats.resumeJours([1, 4]).mediane, 2.5);
+    assert.deepEqual(jirastats.resumeJours([]), { n: 0, mediane: null, moyenne: null, p90: null, min: null, max: null });
+  });
+});
+
 describe('statsDe : les comptes', () => {
   const types = { bugTypes: 'Bug', usTypes: 'Story, User Story' };
   test('total, bugs, US, autres — et le type se lit sans tenir compte de la casse', () => {

@@ -1761,6 +1761,18 @@ then each lives its own life.
 - **Every number can be clicked** — a tile, or the count of a row in the tables — and opens **the list of the
   tickets it counts**: key (link to Jira), summary, status, type, assignee. Nothing is asked of Jira again:
   everything was already read to count.
+- **The time between two statuses** — “how long from *in progress* to *in production*?”. Under the counts,
+  two selectors: the start status and the arrival status (those the screen knows, workflow included),
+  remembered. Jira does not keep that figure, it keeps each ticket's **history**: Mergerie reads, for every
+  ticket that **reached the second status** — done ones included, without the status filter, with the
+  screen's other filters —, the time from the **first** entry into the first status to the **last** entry
+  into the second that follows it (a ticket picked up three times started the first time; a redone release
+  is only shipped the second time). Four tiles — tickets measured, **median** (with min and max), mean,
+  **90% in under** — then by project, by type, and the list of tickets with both dates and their time in
+  days. A ticket that arrived without going through the start, or went back to the start after its last
+  arrival, is counted apart, never measured. With the date range: the tickets that reached the second
+  status **within** the range. Cost: one more search, ten pages at most, the history travelling with each
+  page (`expand=changelog`) — nothing until both statuses are chosen.
 - **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
   most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
   (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are
@@ -2650,13 +2662,21 @@ extra blank line. Under the field, **“See an example comment”** shows YOUR t
 sample data — composed by the same engine as the real comment, otherwise the preview would end up
 lying. Left empty, the default template is used, and it then benefits from later improvements.
 
-### Verifying a branch, with no merge request
+### Verifying a branch — or a tag —, with no merge request
 
 Back from holiday, several merge requests have been merged: the question is no longer “what does
 this branch break?” but **“is `develop` still green?”**. The **`Verify a branch`** button lives in
 the **Git** tab and on every verifier's card. One row per covered repository, each on its **default
 branch**, picked from a searchable selector — an active repository lines up hundreds of them. The
 last branch verified is remembered.
+
+**A tag as well as a branch.** In front of the ref, a **Branch / Tag** selector: “does the 3.2.0
+shipped on Friday still pass with today's services?” is the same question, asked about a ref that
+does not move. The verifier checks out the **commit the tag points to** in every ticked repository
+(not the annotated tag object, which has its own SHA), and the report, the brief and the comment
+announce the target as a tag. The kind is remembered per repository, with the last tag and the last
+branch each on their own side: going back to *Branch* finds the previous branch again. A red run on
+a tag offers no `Fix`: a tag does not move, there is no branch to put a correction on.
 
 **You tick the repositories you want, not the whole coverage.** Every row carries a checkbox,
 ticked to start with: a verifier covering five repositories can therefore verify just one, without

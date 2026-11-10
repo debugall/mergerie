@@ -25,8 +25,9 @@ async function openVerifyReport(id) {
     const d = await api(`/verifications/${id}`);
     verifyReportVu = d;
     $('#verifyReport').innerHTML = verifyReportHtml(d);
-    // « Corriger » n'a de sens que si l'échec est imputable aux branches testées.
-    $('#verifyFix').hidden = d.verdict !== 'verified_fail';
+    // « Corriger » n'a de sens que si l'échec est imputable aux branches testées — et un tag
+    // ne bouge pas : il n'y a pas de branche où poser une correction.
+    $('#verifyFix').hidden = d.verdict !== 'verified_fail' || (d.targets || []).some((c) => c.tag);
     /* B9 — « Enquêter » va plus loin que « Corriger » : il vaut aussi quand la BASE est déjà
        rouge (ce n'est pas nous qui avons cassé, mais quelqu'un doit trouver où), et il n'a
        besoin que d'une chose — un échec nommé à se mettre sous la dent. */
@@ -193,7 +194,7 @@ function verifyReportHtml(d) {
      la retrouver à la main dans la liste. */
   const cible = (c) => `<li>${esc(c.project || `#${c.repo_id}`)}${c.iid ? (c.mr_id
     ? ` <button type="button" class="lien-mr" data-vmr="${c.mr_id}" title="${esc(tr('verify.report.open-mr', { iid: c.iid }))}">!${esc(c.iid)}</button>`
-    : ` !${esc(c.iid)}`) : ''} · <code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn" title="${esc(c.workdir || '')}">${esc(tr('verify.mode.in-place-short'))}</span>${c.workdir ? ` <code class="muted">${esc(c.workdir)}</code>` : ''}` : ''}</li>`;
+    : ` !${esc(c.iid)}`) : ''} · ${c.tag ? `<span class="tag">${esc(tr('verify.target.tag'))}</span> ` : ''}<code>${esc(c.branch || '')}</code> @ <code>${esc(String(c.head_sha || '').slice(0, 8))}</code>${c.mode === 'in_place' ? ` <span class="tag warn" title="${esc(c.workdir || '')}">${esc(tr('verify.mode.in-place-short'))}</span>${c.workdir ? ` <code class="muted">${esc(c.workdir)}</code>` : ''}` : ''}</li>`;
   const duree = d.started_at && d.finished_at
     ? tr('verify.report.duration', { s: fmtSecondes(new Date(d.finished_at) - new Date(d.started_at)).replace(' s', '') }) : '';
   /* A23 — LE RAPPORT DIT CE QU'IL SAIT DÉJÀ. Stockés dans le run et jamais rendus : le NOMBRE
@@ -276,7 +277,7 @@ async function openVerifResultats(mrId) {
     $('#verifyReport').innerHTML = liste.map((d) => `<section class="verify-bloc">
       ${verifyReportHtml(d)}
       <div class="verify-hist" data-hist-mr="${mrId}" data-hist-verif="${d.verifier_id || ''}"></div>
-      <p>${d.verdict === 'verified_fail' && (d.imputable || []).length
+      <p>${d.verdict === 'verified_fail' && (d.imputable || []).length && !(d.targets || []).some((c) => c.tag)
     ? `<button class="btn btn-primary btn-sm" data-vfix="${d.id}"><svg class="ico ico-sm"><use href="#i-bot"/></svg>${tr('verify.btn.fix')}</button> ` : ''}
       <button class="btn btn-sm" data-vcomment="${d.id}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('verify.btn.comment')}</button>
       ${d.comment_posted_at ? `<span class="muted">${esc(tr('verify.comment.already', { date: fmtDateTime(d.comment_posted_at), liste: (lireListe(d.comment_targets) || []).join(', ') }))}</span>` : ''}</p>

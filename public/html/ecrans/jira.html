@@ -178,5 +178,18 @@
             </div>
             <div id="jiraStatsError"></div>
             <div id="jiraStatsCorps" class="jira-stats"></div>
+            <!-- Le délai entre deux statuts (« en cours » → « en prod »), hors du corps des comptes :
+                 il survit à leur redessin, et ne coûte sa recherche Jira que si les deux statuts sont choisis. -->
+            <section id="jiraStatsDelai" class="jira-stats-delai" hidden>
+                <h3 class="jira-stats-h" data-i18n="jira.stats.delai.title">Délai entre deux statuts</h3>
+                <p class="muted jira-stats-delai-hint" data-i18n="jira.stats.delai.hint">De la première entrée dans le premier statut à la dernière entrée dans le second, lu dans l'historique de chaque ticket arrivé dans le second — terminés compris, sans le filtre de statut. Avec la plage ci-dessus : les tickets arrivés dans le second statut pendant la plage.</p>
+                <div class="jira-stats-delai-choix">
+                    <span class="muted" data-i18n="jira.stats.delai.from">Du passage à</span>
+                    <span id="jiraStatsDelaiDe" class="jira-stats-delai-combo"></span>
+                    <span class="muted" data-i18n="jira.stats.delai.to">jusqu'au passage à</span>
+                    <span id="jiraStatsDelaiVers" class="jira-stats-delai-combo"></span>
+                </div>
+                <div id="jiraStatsDelaiCorps"></div>
+            </section>
         </div>
     </section>

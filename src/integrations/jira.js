@@ -361,11 +361,12 @@ const PAGE = 100;                     // la page maximale de Jira
    plafond, d'où un « plafond atteint sur 1 000 » sur un Jira qui n'en compte pas tant. Quand le
    plafond est vraiment atteint, Cloud ne donnant pas de total, on le demande à part
    (`approximate-count`) — et s'il refuse, on dit « plafond atteint » sans chiffrer l'ensemble. */
-async function searchAll(cfg, jql, fields, plafond = PLAFOND_PAGES) {
+async function searchAll(cfg, jql, fields, plafond = PLAFOND_PAGES, { expand = '' } = {}) {
   const issues = []; let total = null; let token = null; let startAt = 0; let enhanced = true; let encore = true;
   while (encore && issues.length < plafond) {
     const n = Math.min(PAGE, plafond - issues.length);
-    const base = `jql=${encodeURIComponent(jql)}&maxResults=${n}&fields=${encodeURIComponent(fields)}`;
+    // `expand=changelog` : l'historique des transitions arrive AVEC chaque ticket — même nombre d'appels.
+    const base = `jql=${encodeURIComponent(jql)}&maxResults=${n}&fields=${encodeURIComponent(fields)}${expand ? `&expand=${encodeURIComponent(expand)}` : ''}`;
     let data;
     if (enhanced) {
       try { data = await jiraGet(cfg, `/rest/api/3/search/jql?${base}${token ? `&nextPageToken=${encodeURIComponent(token)}` : ''}`); }
