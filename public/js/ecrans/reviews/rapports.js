@@ -141,7 +141,7 @@ function renderReports() {
           ${origineHtml(m)}
           ${/* Une MR déjà reviewée se vérifie aussi : la review est un avis, le verdict un fait. */''}
           ${m.verifiable ? `<button class="btn btn-sm" data-verify-report="${m.id}" title="${tr('verify.btn.verify-title')}">${svgIco('check')}${tr('verify.btn.verify')}</button>` : ''}
-          ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+          ${mrFermetureTag(m)}
           ${m.stale ? `<span class="tag stale" data-stale-mr="${m.id}">${tr('mr.tag.stale')}</span>` : ''}
         </div>
       </div>

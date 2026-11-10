@@ -1,6 +1,16 @@
 'use strict';
 /* Onglet Reviews : les statuts d'une MR, le libellé du bouton (A14), les 3 stades, recherche, à reviewer, miennes / autres, reviewers, note, constats. */
 // @expose aReviewerTotal, closeSplitMenus, currentSeg, epinglerMrs, estDeMoi, filtreAuteur, loadSegment, loadToReview, majBoutonReview, matchMr, moiSurLesForges, renderFiltreAuteur, renderToReview, toReviewRows
+/* La pastille d'une merge request qui n'est plus ouverte : « mergée » quand la forge a donné une
+   date de merge, « fermée » quand elle a dit l'avoir fermée sans merger, « plus ouverte » quand
+   elle n'a rien dit (injoignable au moment où la MR a disparu de la liste). */
+function mrFermetureTag(m) {
+  if (!m || !m.closed_seen) return '';
+  const forge = forgeLabel(m.forge);
+  if (m.merged_at) return `<span class="tag merged" title="${esc(tr('mr.tag.merged-title', { forge }))}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>`;
+  if (m.closed_at) return `<span class="tag closed" title="${esc(tr('mr.tag.closed-only-title', { forge }))}">${svgIco('close')} ${tr('mr.tag.closed')}</span>`;
+  return `<span class="tag merged" title="${esc(tr('mr.tag.closed-title', { forge }))}">${svgIco('merge')} ${tr('mr.tag.gone')}</span>`;
+}
 // Statuts de MR : la base stocke de l'anglais snake_case, l'UI parle français
 // (symétrique de TASK_STATUS, qui le faisait déjà pour les tâches).
 const MR_STATUS = {
@@ -454,7 +464,7 @@ function mrCard(m) {
         ${verifyBadge(m.verification)}
         ${/* LA SESSION QUI A PRODUIT CETTE BRANCHE, quand elle existe sur ce poste : la puce mène à sa carte dans Dev IA. */''}
         ${origineHtml(m)}
-        ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+        ${mrFermetureTag(m)}
         ${/* « NOUVEAU POUR TOI » : un rapport d'un collègue, arrivé par la synchro, jamais ouvert ici.
               C'est le correctif du « noyé dans la masse » du retour de congé — et il vaut tous les jours. */''}
         ${m.new_for_me ? `<span class="tag new-for-me" title="${esc(tr('mr.tag.new-for-me-title'))}">${svgIco('users')} ${tr('mr.tag.new-for-me')}</span>` : ''}

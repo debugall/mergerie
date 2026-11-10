@@ -447,7 +447,7 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   every repository: title, branches, latest commit, conflicts, how far behind the target it is, draft,
   reviewers, assignees, 👍 (GitLab), and its state. A commit that landed since makes the report **stale** and triggers what
   discovery would have (the automatic re-review and the “on stale” verifications, when enabled); a
-  merge request merged or closed in the meantime gets its **merged** badge. The message says what the
+  merge request merged in the meantime gets its **merged** badge, one closed without merging its **closed** badge. The message says what the
   forge answered: refreshed, nothing new, new commits, merged, closed. On a **merged** merge request
   it also records the SHAs that let it be re-read (the merge-base of the time and the head, which the
   forge keeps even after the branch is deleted) and, when the repository is already cloned, fetches

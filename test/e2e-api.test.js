@@ -1157,6 +1157,28 @@ describe('API de bout en bout', () => {
     assert.equal(mr8.merged_at, '2026-03-02T10:00:00Z');
   });
 
+  test('Une MR fermée SANS merge est signalée fermée, pas mergée — et sa branche n’est pas à supprimer', async () => {
+    app.state.mrs['grp/app'].push({
+      iid: 9, title: 'Essai abandonné', state: 'opened', source_branch: 'spike/essai', target_branch: 'main',
+      web_url: 'https://gitlab.test/grp/app/-/merge_requests/9', sha: 'sha9', created_at: new Date().toISOString(), author: { name: 'Carol' },
+    });
+    assert.equal((await app.api('POST', '/api/discover')).body.found, 1, 'vue ouverte une fois');
+    const partie = app.state.mrs['grp/app'].find((m) => m.iid === 9);
+    partie.state = 'closed';
+    partie.closed_at = '2026-03-03T10:00:00Z';
+    await app.api('POST', '/api/discover');
+    const mr9 = app.db.prepare('SELECT closed_seen, merged_at, closed_at FROM mr WHERE iid = 9').get();
+    assert.equal(mr9.closed_seen, 1);
+    assert.equal(mr9.merged_at, null, 'pas de date de merge : elle n’a pas été mergée');
+    assert.equal(mr9.closed_at, '2026-03-03T10:00:00Z', 'la date de fermeture vient de la forge');
+    const feed = (await app.api('GET', '/api/footer')).body.feed;
+    assert.ok(feed.some((f) => f.type === 'mr_closed' && f.mr_iid === 9), 'le journal la dit fermée');
+    assert.ok(!feed.some((f) => f.type === 'mr_merged' && f.mr_iid === 9), 'et jamais mergée');
+    const lot = (await app.api('GET', '/api/git/merged-branches')).body;
+    assert.ok(!lot.repos.some((r) => r.refs.some((b) => b.name === 'spike/essai')), 'sa branche porte un travail non mergé : pas dans le lot');
+    assert.ok(lot.repos.some((r) => r.refs.some((b) => b.name === 'chore/menage')), 'celle de la MR mergée (!8) y est');
+  });
+
   test('une MR fermée retrouve son titre, ses branches et son auteur — le rattrapage', async () => {
     /* LE CAS DU POSTE QUI REJOINT. Il reçoit du dépôt des reviews sur des merge requests fermées
        depuis longtemps ; la découverte, elle, ne liste que les OUVERTES. Sans rattrapage, l'en-

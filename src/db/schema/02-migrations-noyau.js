@@ -32,6 +32,10 @@ try { db.exec('ALTER TABLE mr ADD COLUMN gitlab_created_at TEXT'); } catch { /* 
    dire — et sur un poste qui vient de rejoindre, elle n'existe pas du tout, donc le graphique
    restait vide. La forge, elle, connaît l'instant exact et le même pour tout le monde. */
 try { db.exec('ALTER TABLE mr ADD COLUMN merged_at TEXT'); } catch { /* déjà présente */ }
+/* Et l'instant où la forge l'a FERMÉE SANS MERGE : avec `merged_at` vide, c'est ce qui distingue
+   une merge request abandonnée d'une merge request mergée — jusqu'ici les deux portaient le même
+   badge « mergée », et la branche de l'abandonnée partait dans le lot des branches à supprimer. */
+try { db.exec('ALTER TABLE mr ADD COLUMN closed_at TEXT'); } catch { /* déjà présente */ }
 // Migration : auteur de la MR.
 try { db.exec('ALTER TABLE mr ADD COLUMN author TEXT'); } catch { /* déjà présente */ }
 // Migration : chemin du diff sauvegardé (pour la vue rapport + diff).

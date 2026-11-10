@@ -95,6 +95,7 @@ function upsertMr(repo, m, detail, now) {
     title: m.title || null, source_branch: m.source_branch || null, target_branch: m.target_branch || null,
     web_url: m.web_url || null, author: m.author || null, gitlab_created_at: m.created_at || null,
     merged_at: m.merged_at || null,
+    closed_at: fermee ? (m.closed_at || null) : null,
     head_sha: d.head_sha || m.sha || null, base_sha: d.base_sha || null,
     merge_commit_sha: d.merge_commit_sha || null, squash_commit_sha: d.squash_commit_sha || null,
     closed_seen: mergee || fermee ? 1 : 0,
@@ -104,7 +105,7 @@ function upsertMr(repo, m, detail, now) {
         title = COALESCE(NULLIF(@title, ''), title), source_branch = COALESCE(NULLIF(@source_branch, ''), source_branch),
         target_branch = COALESCE(NULLIF(@target_branch, ''), target_branch), web_url = COALESCE(NULLIF(@web_url, ''), web_url),
         author = COALESCE(NULLIF(@author, ''), author), gitlab_created_at = COALESCE(gitlab_created_at, @gitlab_created_at),
-        merged_at = COALESCE(merged_at, @merged_at),
+        merged_at = COALESCE(merged_at, @merged_at), closed_at = COALESCE(closed_at, @closed_at),
         head_sha = COALESCE(@head_sha, head_sha), base_sha = COALESCE(@base_sha, base_sha),
         merge_commit_sha = COALESCE(@merge_commit_sha, merge_commit_sha), squash_commit_sha = COALESCE(@squash_commit_sha, squash_commit_sha),
         closed_seen = CASE WHEN @closed_seen = 1 THEN 1 ELSE closed_seen END
@@ -117,9 +118,9 @@ function upsertMr(repo, m, detail, now) {
   if (!mergee && !fermee && pattern && !String(m.source_branch || '').includes(pattern)) return null;
   const info = db.prepare(`INSERT INTO mr
     (repo_id, iid, title, source_branch, target_branch, web_url, current_sha, gitlab_created_at, author, status, updated_at,
-     merged_at, head_sha, base_sha, merge_commit_sha, squash_commit_sha, closed_seen)
+     merged_at, closed_at, head_sha, base_sha, merge_commit_sha, squash_commit_sha, closed_seen)
     VALUES (@repo_id, @iid, @title, @source_branch, @target_branch, @web_url, @current_sha, @gitlab_created_at, @author, 'to_review', @updated_at,
-     @merged_at, @head_sha, @base_sha, @merge_commit_sha, @squash_commit_sha, @closed_seen)`)
+     @merged_at, @closed_at, @head_sha, @base_sha, @merge_commit_sha, @squash_commit_sha, @closed_seen)`)
     .run({ ...base, repo_id: repo.id, iid: m.iid, current_sha: base.head_sha, updated_at: now });
   return { id: Number(info.lastInsertRowid), cree: true, dejaFermee: false, existing: null };
 }

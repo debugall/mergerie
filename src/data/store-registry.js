@@ -224,7 +224,7 @@ const REGISTRE = [
        est du même bois : l'instant que la FORGE donne, le même pour toute l'équipe, là où la
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'status_at', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
-      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
+      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at', 'closed_at',
       /* LES SHA DE MERGE, du même bois que `merged_at` : immuables une fois la MR mergée, et
          c'est avec eux qu'un poste relit une merge request dont la branche a disparu. */
       'head_sha', 'base_sha', 'merge_commit_sha', 'squash_commit_sha',
@@ -253,6 +253,7 @@ const REGISTRE = [
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
+        closed_at: r.closed_at || null,
         head_sha: r.head_sha || null,
         base_sha: r.base_sha || null,
         merge_commit_sha: r.merge_commit_sha || null,
@@ -315,6 +316,7 @@ const REGISTRE = [
       web_url: doc.web_url || null,
       gitlab_created_at: doc.gitlab_created_at || null,
       merged_at: doc.merged_at || null,
+      closed_at: doc.closed_at || null,
       /* On ne pose ces colonnes QUE si le fichier les porte : les absentes ne doivent pas
          devenir des `null` qui effaceraient ce que la découverte sait déjà. */
       ...(doc.head_sha ? { head_sha: doc.head_sha } : {}),

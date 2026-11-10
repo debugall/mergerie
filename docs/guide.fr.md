@@ -469,7 +469,7 @@ Mergerie la lit, il ne la remplace pas.
   sur tous les dépôts : titre, branches, dernier commit, conflits, retard sur la cible, brouillon,
   reviewers, assignés, 👍 (GitLab), et son état. Un commit arrivé depuis rend le rapport **périmé** et déclenche ce que la
   découverte aurait déclenché (re-review et vérifications automatiques « sur péremption », si elles
-  sont activées) ; une merge request mergée ou fermée entre-temps prend son badge **mergée**. Le
+  sont activées) ; une merge request mergée entre-temps prend son badge **mergée**, fermée sans merge son badge **fermée**. Le
   message dit ce que la forge a répondu : mise à jour, rien de nouveau, nouveaux commits, mergée,
   fermée. Sur une merge request **mergée**, il écrit aussi les SHA qui permettent de la relire
   (merge-base d'alors et tête, que la forge conserve même après la suppression de la branche) et,

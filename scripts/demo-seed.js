@@ -1646,8 +1646,11 @@ const counts = {
    N branches de merge requests mergées » ramasse. Sans elles, le bouton n'existerait pas dans
    la démo — et c'est exactement le geste de fin de sprint qu'on vient y voir. */
 {
-  const fermer = db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?');
-  for (const m of db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all()) fermer.run(m.id);
+  const fermer = db.prepare('UPDATE mr SET closed_seen = 1, merged_at = COALESCE(merged_at, ?) WHERE id = ?');
+  const fermees = db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all();
+  fermees.slice(0, 3).forEach((m, i) => fermer.run(at(6 + i), m.id));
+  // Et une fermée SANS merge : sa pastille dit « fermée », pas « mergée », et sa branche n'est pas dans le lot.
+  if (fermees[3]) db.prepare('UPDATE mr SET closed_seen = 1, closed_at = ? WHERE id = ?').run(at(5), fermees[3].id);
 }
 
 /* ---------- ce que CHAQUE session a coûté ----------
