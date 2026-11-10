@@ -21,6 +21,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **A corporate proxy no longer kills the server at start-up.** With `HTTPS_PROXY` set, the dependency registry check (npm, PyPI…) opened a CONNECT tunnel through the proxy, then sent the request *outside* it, and a certificate the proxy signed itself — the usual corporate set-up — raised an error nobody was listening to: Node stopped the whole process with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` a few lines after the plugins loaded. The request now really goes through the tunnel, the TLS handshake is awaited and bounded by the same timeout, and a refused certificate is an ordinary failed lookup — the registry panel says the registry is unreachable, the rest of Mergerie runs. `MERGERIE_CA_CERT` (or `GITLAB_CA_CERT` / `GITHUB_CA_CERT`) still names the proxy's CA to get the lookups back.
 - **A bumped submodule no longer counts as code in the “tests touched” badge.** A coding session that only moved a submodule to a newer commit showed `0 tests modified` on every project, as if it had written code without a test. The submodule pointer (git's `160000` mode, “Subproject commit”) is now neutral, like documentation or a lockfile — in the session's diff, and in the file list of a merge request whether it comes from the review's diff, the local clone or the forge.
 
 ### Changed

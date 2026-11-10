@@ -97,7 +97,14 @@ function tunnel(proxy, cible, tlsOpts, timeoutMs) {
     });
     req.on('connect', (res, socket) => {
       if (res.statusCode !== 200) { socket.destroy(); reject(Object.assign(new Error(`proxy CONNECT ${res.statusCode}`), { code: 'EPROXY' })); return; }
-      resolve(tls.connect({ ...tlsOpts, socket, servername: cible.hostname }));
+      // La poignée de main TLS se joue ICI, avant de rendre la socket : rendue nue, un certificat
+      // refusé (proxy d'entreprise qui signe lui-même, CA absente) émettait `error` sur une socket
+      // que personne n'écoutait encore — et Node tuait le process entier.
+      const sec = tls.connect({ ...tlsOpts, socket, servername: cible.hostname });
+      const echec = (err) => { sec.destroy(); reject(err); };
+      sec.once('error', echec);
+      sec.setTimeout(timeoutMs, () => echec(Object.assign(new Error(t('err.http.timeout', { s: timeoutMs / 1000 })), { code: 'ETIMEDOUT' })));
+      sec.once('secureConnect', () => { sec.removeListener('error', echec); sec.setTimeout(0); resolve(sec); });
     });
     req.on('error', reject);
     req.setTimeout(timeoutMs, () => { req.destroy(Object.assign(new Error(t('err.http.timeout', { s: timeoutMs / 1000 })), { code: 'ETIMEDOUT' })); });
@@ -130,7 +137,8 @@ async function request(url, { method = 'GET', headers = {}, body, agent, proxy =
     if (p.username) opts.headers['Proxy-Authorization'] = `Basic ${Buffer.from(`${decodeURIComponent(p.username)}:${decodeURIComponent(p.password || '')}`).toString('base64')}`;
   } else if (p && secure) {
     const socket = await tunnel(p, u, tlsOpts, timeoutMs);
-    opts.agent = false;
+    // Pas d'`agent` du tout : avec `agent: false`, Node fabrique un agent neuf et IGNORE
+    // `createConnection` — la requête partait alors en direct, le tunnel ouvert pour rien.
     opts.createConnection = () => socket;
   } else if (secure && agent) {
     opts.agent = agent;
