@@ -1444,7 +1444,8 @@ champ de saisie.
 
 #### Pages
 Des pages de notes **plates** : ni dossiers ni hiérarchie. À gauche la liste (**épinglées en tête**, puis
-les plus récemment modifiées) avec une **recherche qui porte sur le titre ET le contenu** — c'est souvent
+les plus récemment modifiées, chaque titre **en entier**, sur plusieurs lignes s'il le faut, la date et le compte de sous-pages dessous) avec une
+**recherche qui porte sur le titre ET le contenu** — c'est souvent
 dans le corps que se trouve le mot cherché. À droite le titre éditable, puis **la saisie et l'aperçu
 Markdown côte à côte** (le même rendu que les rapports de review, donc le même échappement).
 

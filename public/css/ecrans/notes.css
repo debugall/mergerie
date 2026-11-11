@@ -122,14 +122,20 @@
 .lien-page { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer;
   border-bottom: 1px dotted currentColor; }
 .lien-page:hover { color: var(--accent-hi); }
-.note-item { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+/* DEUX LIGNES : le titre seul sur la première, toute la largeur ; le compte de sous-pages et la
+   date en dessous. Sur une seule ligne, la date et la pastille prenaient un tiers de la colonne
+   et le titre passait à la ligne trois mots plus tôt. */
+.note-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; width: 100%; text-align: left;
   padding: 8px 10px; background: var(--panel); color: var(--text);
   border: 1px solid var(--line); border-radius: 9px; cursor: pointer; font: inherit; }
 .note-item:hover { background: var(--panel2); }
 .note-item.active { border-color: var(--accent); background: var(--panel2); }
-.note-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* LE TITRE SE LIT EN ENTIER. Coupé par des points de suspension, « Carte des services — groupe/api-… »
+   et « Carte des services — groupe/api-… » se ressemblaient trait pour trait ; il passe à la ligne,
+   et un mot plus long que la colonne (une URL, un chemin) se casse plutôt que de la faire défiler. */
+.note-item-title { flex: 1 0 100%; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
 .note-item-title .ico { width: 12px; height: 12px; }
-.note-item-date { color: var(--muted); font-size: 11px; flex: none; }
+.note-item-date { color: var(--muted); font-size: 11px; flex: none; margin-left: auto; }
 .notes-editor { display: flex; flex-direction: column; gap: 10px; }
 .note-none { padding: 40px 0; text-align: center; }
 .note-editor-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

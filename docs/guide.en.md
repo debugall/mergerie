@@ -1385,7 +1385,8 @@ seconds, you would go back to the sticky note. The key is ignored while the curs
 
 #### Pages
 **Flat** note pages: no folders, no hierarchy. On the left the list (**pinned first**, then most recently
-modified) with a **search covering the title AND the content** — the word you are after is often in the
+modified, each title **in full**, over several lines when needed, the date and the sub-page count below it) with a **search covering the title AND
+the content** — the word you are after is often in the
 body. On the right the editable title, then **the editor and the Markdown preview side by side** (the same
 renderer as the review reports, hence the same escaping).
 
