@@ -1183,7 +1183,9 @@ launch (an impossible permission mode, say) is refused right away rather than th
 log. A trial holds for the session you open: the next one starts clean.
 
 **Use.** *Ask* launches an exploration over its repositories, knowledge first. *Code* opens the session
-window with **its repositories pre-ticked** — you untick and confirm. Any answer may end with the list of
+window with **its repositories pre-ticked** — you untick and confirm, or, facing a long list (*all active
+repositories*), **Remove all** empties it to one blank row ready to pick, and you add them one by one.
+Any answer may end with the list of
 what the agent found to be wrong in its own map; it does not fix it itself, it **reports** it, and the
 gap counter goes up on its card.
 

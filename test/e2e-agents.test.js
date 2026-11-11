@@ -196,6 +196,22 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
     const projets = await page.$$eval('#targetRows .target-row .t-repo-search', (els) => els.map((e) => e.value));
     assert.deepEqual(projets, ['grp/app', 'grp/autre']);
 
+    /* « TOUT RETIRER » : trente dépôts pré-remplis pour n'en vouloir que deux, c'était
+       vingt-huit croix. Le bouton vide la liste en une ligne prête à choisir, puis se cache
+       — devant une seule ligne, il n'a plus rien à retirer. */
+    const vider = page.locator('#clearTargets');
+    assert.equal(await vider.isHidden(), false, 'le bouton se montre devant plusieurs lignes');
+    const posAvant = await page.$eval('#addTarget', (e) => e.getBoundingClientRect().left);
+    await vider.click();
+    await page.waitForFunction(() => document.querySelectorAll('#targetRows .target-row').length === 1);
+    assert.equal(await page.$eval('#targetRows .target-row .t-repo-search', (e) => e.value), '', 'la ligne restante est vide');
+    assert.equal(await vider.isHidden(), true, 'plus rien à retirer : le bouton se cache');
+    assert.equal(await page.$eval('#addTarget', (e) => e.getBoundingClientRect().left), posAvant,
+      '« Ajouter un projet » garde sa place quand « Tout retirer » se cache');
+    await page.locator('#addTarget').click();
+    await page.waitForFunction(() => document.querySelectorAll('#targetRows .target-row').length === 2);
+    assert.equal(await vider.isHidden(), false, 'il revient dès la deuxième ligne');
+
     await page.locator('#taskCancel').click();
     await page.waitForSelector('#taskModal', { state: 'hidden' });
   });

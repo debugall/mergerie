@@ -1238,7 +1238,9 @@ suite plutôt que trois minutes plus tard dans un journal. L'essai ne vaut que p
 ouvre : la suivante repart vierge.
 
 **Utiliser.** *Demander* lance une exploration sur ses dépôts, connaissance en tête. *Coder* ouvre la
-modale de session avec **ses dépôts pré-cochés** — on décoche et on confirme. Toute réponse peut se
+modale de session avec **ses dépôts pré-cochés** — on décoche et on confirme, ou, devant une longue
+liste (« tous les dépôts actifs »), **Tout retirer** la vide en une ligne prête à choisir, et l'on
+ajoute un par un. Toute réponse peut se
 terminer par la liste de ce que l'agent a constaté de faux dans sa propre carte ; il ne la corrige pas
 lui-même, il la **signale**, et le compteur d'écarts monte sur sa carte.
 

@@ -15,6 +15,11 @@
 /* Tête à trois éléments (libellé + ⓘ + bouton) : le libellé seul ne suffit plus à occuper
    l'espace que `justify-content: space-between` laissait au bouton, côté projets liés. */
 .targets-head .spacer { flex: 1; }
+/* LES BOUTONS NE BOUGENT PAS. Le libellé pousse tout le reste à droite, et « Tout retirer »,
+   devant une seule ligne, garde sa place au lieu de la rendre : sinon « Ajouter un projet »
+   glissait d'une largeur de bouton à chaque fois que l'autre apparaissait ou disparaissait. */
+#targetsLabel { margin-right: auto; }
+#clearTargets[hidden] { display: inline-flex; visibility: hidden; }
 .target-row { display: flex; gap: var(--s-2); align-items: center; margin-bottom: var(--s-2); }
 .target-row:last-child { margin-bottom: 0; }
 .target-row { flex-wrap: wrap; align-items: flex-start; }
