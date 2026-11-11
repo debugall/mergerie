@@ -59,6 +59,7 @@ const EXCEPTIONS = {
   'ticket_spec.epic_key': 'la clé de l’epic jointe en contexte, pas un secret',
   'ticket_spec_version.ticket_key': 'la clé du ticket, reprise pour nommer le dossier du fichier',
   'agent.builtin_key': 'le nom d’un profil livré avec l’outil, pas un secret',
+  'note_page.agent_key': 'le titre réduit qu’un agent a donné à une sous-page, pour la retrouver renommée : pas un secret',
   'config.jira_test_key': 'la clé d’un ticket de test, saisie à la main',
   'config.review_skill': 'le nom d’une compétence (« git-review »)',
   'verifier.report_path': 'un chemin RELATIF dans le dépôt vérifié, le même partout',
