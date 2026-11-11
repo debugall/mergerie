@@ -37,6 +37,13 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_note_page_parent ON note_page(parent_id)
    l'inverse aurait poussé des brouillons chez tout le monde au premier démarrage.
    Migration APRÈS le `CREATE TABLE note_page` ci-dessus. */
 try { db.exec('ALTER TABLE note_page ADD COLUMN shared INTEGER NOT NULL DEFAULT 0'); } catch { /* déjà présente */ }
+/* LA CLÉ D'UNE SOUS-PAGE ÉCRITE PAR UN AGENT : le titre qu'il lui a donné au premier passage,
+   réduit (lettres et chiffres, sans casse ni accent), posé une fois et jamais réécrit. Le run
+   suivant retrouve la page par cette clé AVANT de regarder le titre : renommée à la main, elle
+   reste la même page au lieu de renaître à côté sous son ancien nom. NULL pour une page
+   écrite par quelqu'un — ou par un agent d'avant cette colonne, qui la reçoit au premier
+   passage qui la retrouve par son titre. Migration APRÈS le `CREATE TABLE note_page`. */
+try { db.exec('ALTER TABLE note_page ADD COLUMN agent_key TEXT'); } catch { /* déjà présente */ }
 
 /* Captures collées DANS une page de notes. Le fichier vit sur disque, la page ne garde qu'un
    lien Markdown : mettre l'image en base64 dans `content` ferait grossir la ligne de plusieurs

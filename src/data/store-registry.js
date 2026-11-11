@@ -1509,7 +1509,7 @@ const REGISTRE = [
   /* ── Notes, todos, liens, Jira ───────────────────────────────────────────────────────── */
   {
     table: 'note_page', famille: 'P', uidPropre: true, cle: 'slug', chemin: 'notes/{slug}.md', fusion: 'last-writer',
-    fichiers: ['notes/{slug}.json (uid, parent, épinglage, dates)', 'notes/{slug}/{uid}.png'],
+    fichiers: ['notes/{slug}.json (uid, parent, épinglage, clé d’agent, dates)', 'notes/{slug}/{uid}.png'],
     note: 'le corps du .md EST le contenu de la page ; PAGE PAR PAGE : `shared` décide, et vaut 0 par défaut',
     corps: 'content',
     /* LA SEULE TABLE QUI SE PARTAGE LIGNE PAR LIGNE. Ailleurs la famille suffit : une review,
@@ -1529,6 +1529,8 @@ const REGISTRE = [
       /* Le parent par son SLUG, jamais par son id : deux postes numérotent leurs pages
          différemment, et une sous-page rattachée au mauvais parent serait pire qu'orpheline. */
       parent: r.parent_id ? ctx.slug('note_page', r.parent_id) : null,
+      // La clé posée par l'agent qui a écrit la sous-page : chez le collègue, son documentaliste la retrouve aussi.
+      agent_key: r.agent_key || null,
       created_at: r.created_at,
       updated_at: r.updated_at,
       /* Les captures vivent dans le fichier de LEUR PAGE : elles ne changent qu'avec elle, et un
@@ -1544,6 +1546,7 @@ const REGISTRE = [
       content: doc.content || '',
       pinned: doc.pinned ? 1 : 0,
       parent_id: doc.parent ? ctx.idParSlug('note_page', doc.parent) : null,
+      agent_key: doc.agent_key || null,
       /* ELLE EST DANS LE DÉPÔT, DONC ELLE EST PARTAGÉE. Arriver avec `shared = 0` ferait
          retirer le fichier au premier écoulement : le poste qui reçoit effacerait chez tout le
          monde la page qu'on vient de lui envoyer. */

@@ -1148,8 +1148,11 @@ between humans.
   report as the request.
 - **Librarian** — it reads every repository and writes the **service map** into a note page: what each
   repository does, what it exposes, what it consumes, how to run it locally, where its configuration
-  lives, and “who calls whom”. The page is **created on the first run then updated**, never duplicated.
-  With a schedule, the morning brief announces that it changed.
+  lives, and “who calls whom”. The page is **created on the first run then updated**, never duplicated —
+  nor are its sub-pages: each one keeps the title the agent gave it on the first run as a key, and that
+  is how the next run finds it. **Renaming a sub-page by hand does not break it**: it stays the same page
+  under its new name. The run also receives the existing titles, and finds them even written a little
+  differently (case, accents, quotes). With a schedule, the morning brief announces that it changed.
   **It draws**: the general page carries a “who calls whom” `flowchart` — one node per service, the
   arrow's label saying the means (REST, event, job), databases and queues being nodes too — and, when a
   flow crosses three services, a `sequenceDiagram` unrolling it. Each repository gets **its own

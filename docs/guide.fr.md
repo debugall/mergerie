@@ -1201,7 +1201,11 @@ entre humains.
 - **Documentaliste** — il relit tous les dépôts et écrit la **carte des services** dans une page de
   notes : ce que fait chaque dépôt, ce qu'il expose, ce qu'il consomme, comment on le lance en local, où
   est sa configuration, et « qui appelle qui ». La page est **créée au premier run puis mise à jour**,
-  jamais dupliquée. Avec un horaire, le brief du matin annonce qu'elle a changé.
+  jamais dupliquée — et ses sous-pages non plus : chacune garde le titre que l'agent lui a donné au
+  premier run comme clé, et c'est par elle que le run suivant la retrouve. **Renommer une sous-page à
+  la main ne la casse pas** : elle reste la même page sous son nouveau nom. Le run reçoit aussi les titres
+  existants, et les retrouve même écrits un peu autrement (casse, accents, guillemets). Avec un horaire,
+  le brief du matin annonce qu'elle a changé.
   **Il dessine** : la page générale porte un `flowchart` « qui appelle qui » — un nœud par service, le
   libellé de la flèche disant le moyen (REST, événement, job), les bases et les files étant des nœuds
   aussi — et, quand un enchaînement traverse trois services, un `sequenceDiagram` qui le déroule. Chaque

@@ -100,7 +100,7 @@ function lireLien(kind, ref, msgInvalide, genresExtra = []) {
 
 /* ---------------------------------------------------------------- pages ---- */
 
-const PAGE_COLS = 'id, title, pinned, shared, parent_id, created_at, updated_at';
+const PAGE_COLS = 'id, title, pinned, shared, parent_id, agent_key, created_at, updated_at';
 
 /* La liste ne rend PAS le contenu : vingt pages de plusieurs dizaines de kilo-octets à
    chaque affichage de colonne, pour n'en lire qu'une. La recherche, elle, porte bien sur
@@ -143,7 +143,7 @@ function lireParent(v, { inconnue, tropProfond }) {
   return pere.id;
 }
 
-function creerPage({ title, content, parent_id: parent } = {}, msgs) {
+function creerPage({ title, content, parent_id: parent, agent_key: cle } = {}, msgs) {
   const now = nowIso();
   const titre = lireTitre(title, msgs.titreVide);
   /* Le slug nomme le fichier de la page dans le dépôt partagé (`notes/deploiement-prod.md`) et
@@ -154,9 +154,9 @@ function creerPage({ title, content, parent_id: parent } = {}, msgs) {
      ligne. Si l'écriture du fichier échoue, la base revient en arrière — « enregistré » ne peut
      jamais vouloir dire « enregistré ici seulement ». */
   const page = store.ecrire('note_page', () => db.prepare(
-    `INSERT INTO note_page (title, content, pinned, parent_id, slug, created_at, updated_at)
-     VALUES (?,?,0,?,?,?,?)`,
-  ).run(titre, lireContenu(content), lireParent(parent, msgs), slug, now, now).lastInsertRowid);
+    `INSERT INTO note_page (title, content, pinned, parent_id, slug, agent_key, created_at, updated_at)
+     VALUES (?,?,0,?,?,?,?,?)`,
+  ).run(titre, lireContenu(content), lireParent(parent, msgs), slug, String(cle || '').trim() || null, now, now).lastInsertRowid);
   return lirePage(page.id);
 }
 
@@ -171,6 +171,8 @@ function majPage(id, patch = {}, msgs) {
   if (patch.title !== undefined) { champs.push('title = ?'); vals.push(lireTitre(patch.title, msgs.titreVide)); }
   if (patch.content !== undefined) { champs.push('content = ?'); vals.push(lireContenu(patch.content)); }
   if (patch.pinned !== undefined) { champs.push('pinned = ?'); vals.push(patch.pinned ? 1 : 0); }
+  // Posée par l'agent qui range la page (jamais par l'écran) : une page d'avant la clé la reçoit au passage qui la retrouve.
+  if (patch.agent_key !== undefined) { champs.push('agent_key = ?'); vals.push(String(patch.agent_key || '').trim() || null); }
   const partage = patch.shared === undefined ? null : (patch.shared ? 1 : 0);
   if (partage !== null) { champs.push('shared = ?'); vals.push(partage); }
   /* DÉPLACER une page sous une autre. Deux refus : se ranger sous soi-même, et ranger sous
