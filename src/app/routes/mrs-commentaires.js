@@ -79,11 +79,16 @@ app.post('/api/mrs/:id/comment-drafts/from-findings', wrap((req, res) => {
   if (!version) throw new Error(t('err.findings.none'));
   const rev = db.prepare('SELECT diff_path FROM review WHERE mr_id = ?').get(mr.id);
   const bloquantsSeuls = !!(req.body && req.body.blocking_only);
-  const rows = db.prepare(`SELECT file, line, severity, title FROM finding
+  /* UN SEUL CONSTAT, désigné par son empreinte (ce que la liste des constats rend) : le bouton
+     de sa ligne. Même tri, même garde-fous, même réponse que pour le lot — l'écran dit alors
+     POURQUOI rien n'a été créé (hors du diff, déjà là), un compte à zéro ne le dirait pas. */
+  const cible = req.body && req.body.fingerprint ? String(req.body.fingerprint) : null;
+  const rows = db.prepare(`SELECT fingerprint, file, line, severity, title FROM finding
     WHERE mr_id = ? AND version = ? AND COALESCE(status, '') <> 'resolved'
     ORDER BY CASE severity WHEN 'blocker' THEN 0 WHEN 'major' THEN 1 WHEN 'minor' THEN 2 ELSE 3 END, file, line`)
     .all(mr.id, version)
-    .filter((f) => !bloquantsSeuls || f.severity === 'blocker');
+    .filter((f) => (cible ? f.fingerprint === cible : !bloquantsSeuls || f.severity === 'blocker'));
+  if (cible && !rows.length) throw new Error(t('err.finding-introuvable'));
 
   /* UN COMMENTAIRE NE S'ACCROCHE PAS N'IMPORTE OÙ. Un constat cite une ligne de la version
      finale du fichier — c'est ce que l'IA reçoit —, et l'IA a parfaitement le droit de parler

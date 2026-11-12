@@ -262,6 +262,17 @@ describe('Les liens manquants · 4ᵉ passe', () => {
     // « Les bloquants » ne prend que ceux-là.
     const r3 = (await app.api('POST', `/api/mrs/${mrId}/comment-drafts/from-findings`, { blocking_only: true })).body;
     assert.equal(r3.created, 1);
+
+    /* UN SEUL CONSTAT : le bouton de sa ligne. On en garde souvent un ou deux, pas les quarante ;
+       et sur un seul, la réponse doit dire POURQUOI rien n'est créé. */
+    const un = (body) => app.api('POST', `/api/mrs/${mrId}/comment-drafts/from-findings`, body);
+    const r4 = (await un({ fingerprint: 'fp2' })).body;
+    assert.deepEqual([r4.created, r4.total], [1, 1], 'ce constat, et lui seul');
+    assert.equal((await app.api('GET', `/api/mrs/${mrId}/comment-drafts`)).body.drafts.length, 2, 'le bloquant du lot, plus celui-ci');
+    assert.equal((await un({ fingerprint: 'fp2' })).body.skipped_existing, 1, 'deux clics ne doublent pas');
+    assert.equal((await un({ fingerprint: 'fp5' })).body.skipped_outside_diff, 1, 'hors du diff : dit, pas posé');
+    assert.equal((await un({ fingerprint: 'fp4' })).status, 400, 'un constat résolu n’a plus de ligne à commenter');
+    assert.equal((await un({ fingerprint: 'inconnu' })).status, 400);
   });
 
   /* A14 — « REVIEWER » PORTE SUR CE QUI EST DÉSIGNÉ, pas sur la file entière : on cherchait

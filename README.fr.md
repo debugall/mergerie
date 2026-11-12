@@ -106,7 +106,9 @@ demandent de traverser des dossiers.
   elle-même — voir le guide.
   Les listes se filtrent par **couleur de note**. On peut **poser une question sur un rapport** —
   pourquoi ce constat bloque, vaut-il pour l'autre appelant — et la réponse arrive sous le rapport
-  sans toucher ni à lui ni à sa note.
+  sans toucher ni à lui ni à sa note. Chaque constat porte ses gestes : demander pourquoi, le faire
+  corriger, ou le **mettre en brouillon** seul — une remarque inline non envoyée, à relire dans la
+  visionneuse — là où « Mettre en brouillons » les pose tous.
   Un rapport se **publie en commentaire sur la MR** d'un bouton — et un réglage le fait automatiquement à la
   fin de chaque review, décoché par défaut parce qu'écrire sur le travail des autres est une décision ; quand
   l'équipe partage un dépôt de données, un second bouton en publie le **lien** plutôt que ses six cents

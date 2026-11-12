@@ -241,6 +241,10 @@ async function renderResolution(id, versions) {
               ENTIER, quarante constats compris, pour en faire traiter un. */''}
         <span class="f-actions">
           <button type="button" class="btn btn-sm btn-ghost f-ask" data-f-ask="${esc(f.title || '')}" data-f-file="${esc(f.file || '')}" data-f-line="${f.line || ''}" title="${esc(tr('report.finding.ask-title'))}">${svgIco('info')}</button>
+          ${/* …ET À UN BROUILLON, SEUL. « Mettre en brouillons » pose tout le rapport ; on veut
+                souvent n'en garder qu'un ou deux. Pas de bouton sans ligne ni sur un constat
+                résolu : il n'y a rien où l'accrocher. */''}
+          ${f.file && f.line && f.status !== 'resolved' ? `<button type="button" class="btn btn-sm btn-ghost f-draft" data-f-draft="${esc(f.fingerprint || '')}" title="${esc(tr('report.finding.draft-title'))}">${svgIco('doc')}</button>` : ''}
           <button type="button" class="btn btn-sm btn-ghost f-fix" data-f-fix="${esc(f.title || '')}" data-f-file="${esc(f.file || '')}" data-f-line="${f.line || ''}" data-f-sev="${esc(f.severity || '')}" title="${esc(tr('report.finding.fix-title'))}">${svgIco('bot')}</button>
         </span>
         ${/* DEPUIS QUAND. « Persistant » dit « déjà là à la passe d'avant » ; il ne dit pas
@@ -272,11 +276,8 @@ async function renderResolution(id, versions) {
         <button type="button" class="btn btn-sm" data-f-drafts="all" title="${esc(tr('report.finding.drafts-all-title'))}">${svgIco('doc')}${esc(tr('report.finding.drafts-all'))}</button>
         ${parSev.blocker ? `<button type="button" class="btn btn-sm" data-f-drafts="blocking" title="${esc(tr('report.finding.drafts-blocking-title'))}">${esc(tr('report.finding.drafts-blocking', { n: parSev.blocker, count: parSev.blocker }))}</button>` : ''}`;
     chips.hidden = data.findings.length < 2;
-    $$('#findingsChips [data-f-drafts]').forEach((b) => b.addEventListener('click', async () => {
-      try {
-        const r = await busy(b, () => api(`/mrs/${id}/comment-drafts/from-findings`, {
-          method: 'POST', body: { blocking_only: b.dataset.fDrafts === 'blocking' },
-        }));
+    $$('#findingsChips [data-f-drafts]').forEach((b) => b.addEventListener('click', () => poserEnBrouillons(id, b,
+      { blocking_only: b.dataset.fDrafts === 'blocking' }, (r) => {
         /* ON DIT CE QUI N'EST PAS PARTI. Un constat sans fichier ni ligne n'a pas d'endroit où
            s'accrocher, un brouillon identique existe déjà : taire ces deux cas ferait croire à
            un compte qui ne tombe pas juste. */
@@ -289,15 +290,31 @@ async function renderResolution(id, versions) {
           r.skipped_outside_diff ? tr('report.finding.drafts-outside', { n: r.skipped_outside_diff, count: r.skipped_outside_diff }) : '',
           r.skipped_existing ? tr('report.finding.drafts-dup', { n: r.skipped_existing, count: r.skipped_existing }) : '',
         ].filter(Boolean).join(' · ');
-        toast(`${tr('report.finding.drafts-done', { n: r.created, count: r.created })}${restes ? ` — ${restes}` : ''}`);
-        openReport(id, { force: true });      // le badge « brouillons » de l'en-tête doit suivre
-        await rafraichirBrouillons(id);       // et celui de la carte dans la liste, avec lui
-      } catch (e) { toast(explainError(e.message), true); }
-    }));
+        return `${tr('report.finding.drafts-done', { n: r.created, count: r.created })}${restes ? ` — ${restes}` : ''}`;
+      })));
   }
   appliquerFiltreConstats();
   list.hidden = false;
 }
+
+/* Un constat ou tout le rapport en brouillons : même route, même suite. `dire` fait la phrase du
+   toast à partir de la réponse — le lot compte, le constat seul explique. */
+async function poserEnBrouillons(id, b, body, dire) {
+  try {
+    const r = await busy(b, () => api(`/mrs/${id}/comment-drafts/from-findings`, { method: 'POST', body }));
+    toast(dire(r));
+    openReport(id, { force: true });      // le badge « brouillons » de l'en-tête doit suivre
+    await rafraichirBrouillons(id);       // et celui de la carte dans la liste, avec lui
+  } catch (e) { toast(explainError(e.message), true); }
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-f-draft]');
+  if (!b || !selectedMr) return;
+  poserEnBrouillons(selectedMr, b, { fingerprint: b.dataset.fDraft }, (r) => (r.created ? tr('report.finding.draft-done')
+    : r.skipped_outside_diff ? tr('report.finding.draft-outside')
+      : r.skipped_existing ? tr('report.finding.draft-dup')
+        : tr('report.finding.drafts-skipped', { n: 1, count: 1 })));
+});
 
 /* Ce qui est masqué dans la liste des constats. En mémoire d'écran : c'est un coup d'œil, pas
    une préférence — on ne veut pas retrouver des constats cachés trois jours plus tard. */
