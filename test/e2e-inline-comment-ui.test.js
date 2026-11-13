@@ -167,10 +167,19 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     const avant = posts();
 
     await ouvrirEditeur();
-    await page.locator('.cmt-editor textarea').fill('à revoir : nom trop court');
+    /* Un VRAI paragraphe : court, le défaut ne se voyait pas. Le fil vit dans le <pre> du code,
+       et un brouillon long qui ne plie pas envoyait ses boutons hors du panneau. */
+    await page.locator('.cmt-editor textarea').fill('à revoir : nom trop court, et ce que la fonction fait quand la liste est vide n’est dit nulle part, '
+      + 'ni dans le nom, ni dans un commentaire, ni dans un test ; le prochain lecteur devra relire tout l’appelant pour le savoir.');
     await page.locator('.cmt-editor .cmt-draft-save').click();
 
     await page.waitForSelector('#fileContent .cmt-draft');
+    const dansLePanneau = async (sel) => {
+      const [b, p] = await Promise.all([page.locator(sel).first().boundingBox(), page.locator('#fileContent').boundingBox()]);
+      assert.ok(b && p && b.x >= p.x && b.x + b.width <= p.x + p.width + 1, `${sel} tient dans le panneau visible (${JSON.stringify(b)} vs ${JSON.stringify(p)})`);
+      return b;
+    };
+    await dansLePanneau('[data-draftedit]');
     assert.equal(posts(), avant, 'enregistrer ne doit RIEN envoyer à la forge');
     assert.match(await page.locator('.cmt-draft').textContent(), /nom trop court/);
     assert.match(await page.locator('.cmt-draft-head').textContent(), /attente/,
@@ -179,6 +188,9 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
 
     // On le corrige — tant qu'il n'est pas parti, il n'appartient qu'à nous.
     await page.locator('[data-draftedit]').first().click();
+    // …et l'éditeur a une vraie largeur, sans l'agrandir à la main.
+    const ta = await dansLePanneau('.cmt-draft-edit');
+    assert.ok(ta.width >= 400, `éditeur assez large (${ta.width}px)`);
     await page.locator('.cmt-draft-edit').fill('à revoir : nom trop court, et le test manque');
     await page.locator('[data-draftsave]').first().click();
     await page.waitForFunction(() => /le test manque/.test(document.querySelector('.cmt-draft').textContent));

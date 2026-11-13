@@ -184,7 +184,7 @@ $('#fileContent').addEventListener('click', async (e) => {
   const corps = bloc.querySelector('.cmt-draft-body');
   corps.innerHTML = '<textarea class="cmt-draft-edit"></textarea>';
   const ta = corps.querySelector('textarea');
-  ta.value = d.body; ta.focus();
+  ta.value = d.body; ta.rows = Math.min(12, Math.max(3, d.body.split('\n').length + 1)); ta.focus();
   bloc.querySelector('.cmt-actions').innerHTML = `<button type="button" class="btn btn-sm" data-draftcancel="1">${esc(tr('ui.cancel'))}</button>`
     + `<button type="button" class="btn btn-sm btn-primary" data-draftsave="${id}">${esc(tr('ui.save'))}</button>`;
   bloc.querySelector('[data-draftcancel]').addEventListener('click', () => renderFile());
