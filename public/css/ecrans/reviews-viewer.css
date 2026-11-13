@@ -97,10 +97,17 @@ pre.diff .dl.flash { outline: 2px solid var(--accent); outline-offset: -2px; }
    boutons « Modifier / Supprimer », alignés à droite, partaient hors du panneau — à aller
    chercher au scroll horizontal. Le texte garde ses retours à la ligne, mais il plie. */
 .cmt-thread { white-space: normal; }
-.cmt-thread .cmt-draft-body { max-width: 620px; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* LE BROUILLON SE RECONNAÎT AU PREMIER REGARD — liseré et en-tête ambre : il n'est PAS parti.
+   Ces règles avaient suivi le style.css monolithique dans le plugin Jenkins lors de son
+   extraction : sans ce plugin, un brouillon ressemblait à un commentaire publié, et avec lui
+   son `width: 100%` d'éditeur, dans un bloc en `fit-content`, se repliait à 177 px. Elles vivent
+   ici, et le sélecteur de l'éditeur est assez précis pour qu'aucune feuille de plugin ne le batte. */
+.cmt-thread.cmt-draft { border-left: 3px solid var(--amber); }
+.cmt-draft-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--amber); margin-bottom: 4px; }
+.cmt-thread .cmt-draft-body { max-width: 620px; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 6px; }
 /* L'éditeur d'un brouillon : la même largeur que l'éditeur d'un nouveau commentaire, pas la
    taille par défaut d'un textarea (vingt colonnes), qu'il fallait agrandir à chaque fois. */
-.cmt-thread textarea.cmt-draft-edit { display: block; width: 620px; max-width: calc(100vw - 200px); background: var(--panel); border: 1px solid var(--line);
+.cmt-thread.cmt-draft textarea.cmt-draft-edit { display: block; width: 620px; max-width: calc(100vw - 200px); background: var(--panel); border: 1px solid var(--line);
   color: var(--text); border-radius: var(--radius); padding: 8px; font: inherit; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 80px; resize: vertical; }
 .cmt-thread .cmt { padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .cmt-thread .cmt:last-child { border-bottom: none; }

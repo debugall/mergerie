@@ -39,6 +39,12 @@
 .todo-quick:focus { border-color: var(--accent); outline: none; }
 .todo-list { display: flex; flex-direction: column; gap: 6px; max-width: 900px; }
 .todo-row { display: flex; align-items: flex-start; gap: 10px; }
+/* La poignée de réordonnancement : discrète — on coche et on édite bien plus souvent qu'on ne
+   réordonne. (Revenues du plugin Jenkins, où l'extraction du style.css les avait emportées.) */
+.todo-grip { display: inline-flex; align-items: center; color: var(--muted); cursor: grab; opacity: .45; flex: 0 0 auto; }
+.todo-row:hover .todo-grip { opacity: 1; }
+.todo-row.dragging { opacity: .5; outline: 1px dashed var(--accent); }
+.todo-row.todo-move { cursor: default; }
 .todo-check { margin-top: 3px; width: 16px; height: 16px; flex: none; cursor: pointer; }
 /* Une todo faite reste LISIBLE, seulement barrée : elle attend sept jours avant de partir,
    et on veut voir ce qu'on a fait cette semaine — pas deviner sous un gris illisible. */

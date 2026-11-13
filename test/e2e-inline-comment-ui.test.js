@@ -204,6 +204,13 @@ describe('Commentaire en ligne — le bouton reste sous les yeux', { skip: dispo
     await page.locator('.cmt-editor textarea').fill('deuxième remarque');
     await page.locator('.cmt-editor .cmt-draft-save').click();
     await page.waitForFunction(() => document.querySelector('#draftsCount').textContent === '2');
+    /* Sur une remarque COURTE aussi : la largeur de l'éditeur ne doit pas suivre le texte — un
+       `width: 100%` dans un bloc en fit-content se repliait à 177 px. */
+    await page.locator('#fileContent .cmt-draft').filter({ hasText: 'deuxième remarque' }).locator('[data-draftedit]').click();
+    const ta2 = await dansLePanneau('.cmt-draft-edit');
+    assert.ok(ta2.width >= 400, `éditeur assez large sur une remarque courte (${ta2.width}px)`);
+    await page.locator('[data-draftcancel]').click();
+    await page.waitForSelector('.cmt-draft-edit', { state: 'detached' });
 
     /* L'envoi CONFIRME : publier notifie l'auteur de la MR. Et la question dit combien
        partent — c'est le seul moyen de s'apercevoir qu'on en avait oublié un. */

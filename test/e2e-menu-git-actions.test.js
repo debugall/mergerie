@@ -198,6 +198,13 @@ describe('Menu Git : sous-onglets, Actions et Historique', { skip: dispo ? false
     const libelles = await ligne(0).locator('.git-ref-item code').allTextContents();
     assert.ok(!libelles.includes('main'), libelles.join(', '));
     assert.match(await ligne(0).locator('.git-ref-hidden').innerText(), /masquée/);
+    // Un nom long PLIE, sans points de suspension : la colonne est étroite, et le nom est l'information.
+    const mesure = await ligne(0).locator('.git-ref-item code').first().evaluate((el, nom) => {
+      el.textContent = nom;
+      const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+      return { h: r.height, fs: parseFloat(cs.fontSize), deborde: el.scrollWidth > el.clientWidth + 1, ws: cs.whiteSpace };
+    }, 'feature/' + 'segment-au-nom-long-'.repeat(8) + 'fin');
+    assert.ok(mesure.h > mesure.fs * 2 && !mesure.deborde && mesure.ws !== 'nowrap', JSON.stringify(mesure));
 
     await action('delete_tag');
     assert.match(await page.locator('#gitTargetsLabel').innerText(), /tag/i);

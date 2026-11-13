@@ -13,7 +13,8 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
-- **Code viewer: a pending remark's buttons stay in view.** A draft remark of a full paragraph did not wrap under its line of code, so `Edit` and `Delete`, aligned to the right, went off the panel and had to be fetched with the horizontal scroll. The text now wraps, and `Edit` opens an editor as wide as the one for a new comment instead of a twenty-column textarea to enlarge every time.
+- **Code viewer: a pending remark's buttons stay in view.** A draft remark of a full paragraph did not wrap under its line of code, so `Edit` and `Delete`, aligned to the right, went off the panel and had to be fetched with the horizontal scroll. The text now wraps, and `Edit` opens an editor as wide as the one for a new comment instead of a twenty-column textarea to enlarge every time. The amber mark of a pending remark, and the handle to reorder todos, had left with the Jenkins plugin when it was extracted: without that plugin a draft looked like a published comment, and with it the editor shrank to a few words wide. Both are back in the core.
+- **Git → Actions: a branch or tag name wraps in the list to delete.** The list is a narrow column and a long name was cut with an ellipsis, which does not tell two sibling branches apart. It now wraps over several lines, in full.
 
 ## [3.2.0] - 2026-11-13
 
