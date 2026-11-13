@@ -544,8 +544,10 @@ overridden at launch**. A
 - **Findings become remarks in one gesture.** Eight findings meant eight trips through the viewer:
   find the file, scroll to the line, click “+”, retype the finding. Two buttons above the list —
   **`Turn into drafts`** and **`The N blocking ones`** — turn them into inline comments **as drafts**,
-  one per finding, attached to their line. Nothing is sent: you re-read, adjust, and send them as a
-  batch as usual. Four things are left aside, and the tool says so: **resolved** findings (commenting
+  one per finding, attached to their line; and each finding carries **its own draft button**, next to
+  “ask why” and “fix this”, to keep one or two out of forty. Nothing is sent: you re-read, adjust, and send them as a
+  batch as usual. On a single finding, the message says *why* nothing was created — outside the diff,
+  an identical draft already there. Four things are left aside, and the tool says so: **resolved** findings (commenting
   what was just fixed is noise), those **without a file and a line** (they would have nowhere to
   attach), those that **already** have an identical draft — clicking twice is the most natural gesture
   in the world — and above all those that fall **outside the diff**.
@@ -2203,7 +2205,8 @@ the same path can exist on both; without a token for that forge, the bulk-add wi
 to the field to fill —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
-tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
+tree, and a button **re-reads the directory from disk** — a folder deleted by hand disappears, a repository
+cloned since appears, wherever the directory is offered; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
 state of its clone**, with a **`Re-clone`** button — nothing is lost on the forge, but unpushed changes in
 the local clone are, so it asks first); a **`Sheet`** button unfolds **what is attached** to that
 repository — verifiers, Jenkins jobs, review rules limited to it, grid services, default linked projects,

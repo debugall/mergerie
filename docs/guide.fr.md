@@ -568,8 +568,11 @@ Mergerie la lit, il ne la remplace pas.
 - **Les constats deviennent des remarques d'un geste.** Huit constats, c'était huit ouvertures du
   viewer : chercher le fichier, descendre à la ligne, cliquer « + », recopier le constat. Deux boutons
   au-dessus de la liste — **`Mettre en brouillons`** et **`Les N bloquants`** — en font des commentaires
-  inline **en brouillon**, un par constat, accrochés à leur ligne. Rien n'est envoyé : on relit, on
-  ajuste, on envoie groupé comme d'habitude. Quatre choses sont laissées de côté, et l'outil le dit : les
+  inline **en brouillon**, un par constat, accrochés à leur ligne ; et chaque constat porte **son propre
+  bouton brouillon**, à côté de « pourquoi ce constat ? » et « corriger ceci », pour n'en garder qu'un ou
+  deux sur quarante. Rien n'est envoyé : on relit, on
+  ajuste, on envoie groupé comme d'habitude. Sur un constat seul, le message dit *pourquoi* rien n'a été
+  créé — hors du diff, brouillon identique déjà là. Quatre choses sont laissées de côté, et l'outil le dit : les
   constats **résolus** (commenter ce qui vient d'être corrigé est du bruit), ceux **sans fichier ni
   ligne** (ils n'auraient nulle part où s'accrocher), ceux qui ont **déjà** un brouillon identique —
   cliquer deux fois est le geste le plus naturel du monde — et surtout ceux qui tombent **hors du
@@ -2283,7 +2286,7 @@ première fois : sans jeton, aucun autre réglage ne sert à rien ·
 de forge, et un même chemin peut exister sur les deux ; une adresse collée est rangée dans sa forge
 d'après son **hôte**, comparé d'abord à ceux configurés dans Réglages → Git — un GitHub Enterprise sur
 `git.entreprise.com` n'est plus pris pour un GitLab ; sans jeton pour cette forge, la fenêtre
-d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
+d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence, et un bouton **relit le répertoire sur le disque** — un dossier supprimé à la main disparaît, un dépôt cloné depuis apparaît, partout où le répertoire est proposé) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
 recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
 les modifications non poussées du clone local le sont, d'où la confirmation) ; un bouton **`Fiche`**
 déplie **ce qui est rattaché** à ce dépôt — vérificateurs, jobs Jenkins, règles de review limitées à lui,

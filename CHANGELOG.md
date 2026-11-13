@@ -11,9 +11,11 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-13
+
 ### Added
 
-- **Report: one finding at a time in draft.** `Put in drafts` turned the whole report into inline remarks; keeping one or two of forty meant deleting the rest in the viewer. Each finding now carries a draft button next to *Ask why* and *Fix this*: an inline remark, not sent, to re-read in the viewer — the same rule as the batch, and the toast says why nothing was created when the finding cites a line outside the diff or an identical draft already exists. No button on a finding without a line, or on a resolved one.
+- **Report: one finding at a time in draft.** `Turn into drafts` turned the whole report into inline remarks; keeping one or two of forty meant deleting the rest in the viewer. Each finding now carries a draft button next to *Ask why* and *Fix this*: an inline remark, not sent, to re-read in the viewer — the same rule as the batch, and the toast says why nothing was created when the finding cites a line outside the diff or an identical draft already exists. No button on a finding without a line, or on a resolved one.
 - **Session dialog: `Remove all` next to `Add a project`.** Launching an agent whose scope is *all active repositories* opens the dialog with every repository already listed; keeping two of them meant a cross on each of the others. The button empties the list to one blank row, ready to pick, and hides itself when a single row is left.
 - **Git palette: `git submodule` is allowed.** `submodule update --init --recursive`, `sync`, `status`, `summary`, `deinit`, `set-branch`, `add` and `set-url` can now be saved in the palette (Settings → Git) and run on your local projects. `foreach`, which runs an arbitrary command, stays refused, and `add` / `set-url` only take an https or ssh address, like `remote`.
 - **Verifiers: a command that runs once.** Some commands have no business running in every repository — `docker compose up -d` once the repositories are checked out, `docker compose down` at the end. Each line of a verifier now has a scope: *in each repository* (the default, what every existing line does) or *once*, with the repository whose folder it runs in, picked with search — left empty, the first repository of the verification. The list order is kept and the repositories run inside it: `npm ci` in each, then `compose up` once, then `npm test` in each. A failed *once* line stops everything; a *once* line is skipped when an earlier command already failed, and the log says so; a *once* line pointing at a repository that is not part of the verification is an error with its name, not a guessed folder. The report and the log mark the line and where it ran, the card shows a `1×` badge, where a *once* line runs is part of what you approve, and the line travels with the shared verifier.
@@ -4230,7 +4232,8 @@ well; a few things now ask for a click or a setting, and those are listed first.
 
 First public release — see the [README](./README.md) for what the tool does.
 
-[Unreleased]: https://github.com/debugall/mergerie/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/debugall/mergerie/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/debugall/mergerie/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/debugall/mergerie/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/debugall/mergerie/compare/v2.0.1...v3.0.0
 [2.0.1]: https://github.com/debugall/mergerie/compare/v2.0.0...v2.0.1
