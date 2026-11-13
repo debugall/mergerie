@@ -1,4 +1,7 @@
 'use strict';
+/* Un verdict de vérification qui se lit en rouge : la batterie est cassée ou n'a pas pu tourner. */
+const VERDICTS_JOB = ['verified_pass', 'verified_fail', 'broken_base', 'verify_error'];
+const verdictRouge = (v) => v === 'verified_fail' || v === 'verify_error';
 /* Log en direct du job, hauteur du panneau, le filtre A41, un volet de journal par job. */
 /* ---------- Log en direct du job ---------- */
 let logJobId = null;
@@ -42,8 +45,9 @@ function updateFooterLogs() {
   if (!b) return;
   b.hidden = !(logJobId && $('#logPanel').hidden);
   b.classList.toggle('st-running', lastJobRunning);
-  b.classList.toggle('st-done', !lastJobRunning && lastJobStatus === 'done');
-  b.classList.toggle('st-error', !lastJobRunning && lastJobStatus === 'error');
+  const rouge = lastJobStatus === 'done' && verdictRouge(LOGP.verdict.get(logJobId));
+  b.classList.toggle('st-done', !lastJobRunning && lastJobStatus === 'done' && !rouge);
+  b.classList.toggle('st-error', !lastJobRunning && (lastJobStatus === 'error' || rouge));
 }
 
 /* Coloration d'une ligne de journal. La détection d'erreur reste volontairement large et
@@ -103,11 +107,11 @@ function logLineClass(t) {
    `state` retient le statut final de chacun : c'est lui qui colore l'onglet et qui dit
    quand cesser de l'interroger. */
 const TERMINAL = new Set(['done', 'error', 'stopped']);
-const LOGP = { after: new Map(), active: null, shown: [], state: new Map() };
+const LOGP = { after: new Map(), active: null, shown: [], state: new Map(), verdict: new Map() };
 
 function logReset() {
   $('#logBox').innerHTML = '';
-  LOGP.after.clear(); LOGP.state.clear();
+  LOGP.after.clear(); LOGP.state.clear(); LOGP.verdict.clear();
   LOGP.shown = []; LOGP.active = null;
 }
 
@@ -256,6 +260,7 @@ async function pumpLogUneFois() {
   appendLogLines(pane, d.lines);
   if (d.lines.length) LOGP.after.set(d.job_id, d.lines[d.lines.length - 1].id);
   LOGP.state.set(d.job_id, d.status);
+  LOGP.verdict.set(d.job_id, d.verdict || null);
   if (!LOGP.shown.includes(d.job_id)) LOGP.shown.push(d.job_id);
   // Tout job en cours rejoint le lot affiché ; aucun n'en sort avant le prochain lot.
   for (const id of d.running_ids || []) if (!LOGP.shown.includes(id)) LOGP.shown.push(id);
@@ -281,7 +286,10 @@ async function pumpLogUneFois() {
   showLogPane(LOGP.active);
   const st = $('#logStatus');
   const running = d.running && d.status === 'running';
-  st.className = 'logstatus ' + (running ? 'running' : (d.status === 'error' ? 'error' : (d.status === 'done' ? 'done' : '')));
+  /* UNE VÉRIFICATION FINIE SE DIT PAR SON VERDICT : « terminé — rouge ✗ », en rouge. Le job a
+     bien fait son travail, mais un bandeau vert devant une batterie cassée mentait. */
+  const rouge = d.status === 'done' && verdictRouge(d.verdict);
+  st.className = 'logstatus ' + (running ? 'running' : (d.status === 'error' || rouge ? 'error' : (d.status === 'done' ? 'done' : '')));
   const wait = d.queued ? ` · ${tr('job.waiting', { n: d.queued })}` : '';
   /* Le bandeau décrit UN job — celui qui a son onglet actif. Avec plusieurs jobs en cours il
      mentirait par omission : on annonce donc combien tournent, l'onglet disant lequel on lit. */
@@ -291,7 +299,7 @@ async function pumpLogUneFois() {
   const plusieurs = vivants > 1 ? ` · ${tr('job.running-n', { n: vivants, count: vivants })}` : '';
   const label = running
     ? `${tr('job.in-progress', { done: d.done_count || 0, total: d.total || 0, message: d.message || '' })}${plusieurs}${wait}`
-    : (d.status === 'done' ? (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare'))
+    : (d.status === 'done' ? (VERDICTS_JOB.includes(d.verdict) ? tr('job.done', { message: tr(`job.verdict.${d.verdict}`) }) : (d.message ? tr('job.done', { message: d.message }) : tr('job.done.bare')))
       : (d.status === 'error' ? (d.message ? tr('job.error', { message: d.message }) : tr('job.error.bare')) : (d.status === 'stopped' ? (d.message ? tr('job.stopped', { message: d.message }) : tr('job.stopped.bare')) : d.status)));
   st.innerHTML = `<span class="dot"></span>${esc(label)}`;
   jobClock = { started: d.started_at || null, finished: d.finished_at || null, running, done: d.done_count || 0, total: d.total || 0 };

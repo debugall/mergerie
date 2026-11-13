@@ -255,6 +255,57 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.equal(await page.locator('#jiraStatsDepuis').inputValue(), '');
   });
 
+  /* LE DÉLAI ENTRE DEUX STATUTS. Deux combos sous les comptes ; rien n'est demandé à Jira tant
+     que les deux ne sont pas choisis, puis UNE recherche de plus — les tickets arrivés dans le
+     second statut, terminés compris, avec leur historique (`expand=changelog`). */
+  test('le délai entre deux statuts : choisi à l’écran, lu dans l’historique, mémorisé', async () => {
+    const h = (created, de, vers) => ({ created, items: [{ field: 'status', fromString: de, toString: vers }] });
+    // PROJ-6 (terminé) : 10 jours ; PROJ-5 (en cours) : terminé une fois, puis repris — non mesuré.
+    app.state.jiraIssues['PROJ-6'].changelog = { histories: [h('2026-08-01T10:00:00.000+0000', 'À faire', 'En cours'), h('2026-08-11T10:00:00.000+0000', 'En cours', 'Terminé')] };
+    app.state.jiraIssues['PROJ-5'].changelog = { histories: [h('2026-07-01T10:00:00.000+0000', 'À faire', 'Terminé'), h('2026-08-20T10:00:00.000+0000', 'Terminé', 'En cours')] };
+    // PROJ-7, le bug de Bob : 2,5 jours — hors de « moi seul », dedans quand on coche tout le monde.
+    app.state.jiraIssues['PROJ-7'].changelog = { histories: [h('2026-09-01T00:00:00.000+0000', 'À faire', 'En cours'), h('2026-09-03T12:00:00.000+0000', 'En cours', 'Terminé')] };
+    await ouvrirStats();
+    await attendreTotal(5);
+    await page.waitForSelector('#jiraStatsDelai:not([hidden])');
+    assert.match(await page.locator('#jiraStatsDelaiCorps').innerText(), /Choisis les deux statuts/);
+    const avant = app.state.calls.filter((c) => /^\/rest\/api\/3\/search/.test(c.path)).length;
+
+    const choisir = async (hote, statut) => {
+      await page.locator(`${hote} .cb-search`).click();
+      await page.locator(`${hote} .combo-options:not([hidden]) .combo-opt:not(.muted)`, { hasText: statut }).first().click();
+    };
+    await choisir('#jiraStatsDelaiDe', 'En cours');
+    // Un seul statut : toujours rien demandé à Jira.
+    assert.equal(app.state.calls.filter((c) => /^\/rest\/api\/3\/search/.test(c.path)).length, avant);
+    await choisir('#jiraStatsDelaiVers', 'Terminé');
+    await page.waitForSelector('#jiraStatsDelaiCorps [data-delai-n]');
+    const delai = app.state.calls.map((c) => decodeURIComponent(c.path)).filter((p) => /status CHANGED TO "Terminé"/.test(p)).at(-1) || '';
+    assert.match(delai, /expand=changelog/, 'l’historique arrive avec la recherche');
+    assert.match(delai, /assignee IN \("me-test"\)/, 'les contraintes de l’écran s’appliquent…');
+    assert.doesNotMatch(delai, /statusCategory != Done/, '…sauf « terminés » : un ticket en prod est terminé');
+    const val = async (cle) => (await page.locator(`#jiraStatsDelaiCorps [data-delai="${cle}"] .stat-val`).innerText()).trim();
+    assert.equal(await val('n'), '1');
+    assert.equal(await val('mediane'), '10 j');
+    assert.match(await page.locator('#jiraStatsDelaiCorps').innerText(), /2 tickets arrivés dans « Terminé »/);
+    assert.match(await page.locator('#jiraStatsDelaiCorps').innerText(), /1 ticket passé par « En cours » APRÈS/, 'PROJ-5, repris après sa livraison, est compté à part');
+    assert.match(await page.locator('#jiraStatsDelaiCorps tr[data-delai-key="PROJ-6"]').innerText(), /PROJ-6\s+Un bug terminé\s+Bug\s+01\/08\/2026 \d\d:\d\d\s+11\/08\/2026 \d\d:\d\d\s+10 j/);
+
+    // Tout le monde : le ticket de Bob entre, et la médiane devient le milieu de 2,5 et 10.
+    await page.locator('#jiraStatsAssigneeFilter summary').click();   // le panneau est replié : on l'ouvre
+    await page.locator('#jiraSubStats [data-jsall="assignee"]').click();
+    await page.waitForFunction(() => (document.querySelector('#jiraStatsDelaiCorps [data-delai-n]') || {}).dataset?.delaiN === '2');
+    assert.equal(await val('mediane'), '6.3 j');
+
+    // Le choix survit à un rechargement de l'onglet.
+    await page.reload();
+    await page.locator('nav button[data-tab="jira"]').click();
+    await page.locator('#tab-jira [data-jsub="stats"]').click();
+    await page.waitForSelector('#jiraStatsDelaiCorps [data-delai-n]');
+    assert.equal(await page.locator('#jiraStatsDelaiDe .cb-search').inputValue(), 'En cours');
+    assert.equal(await page.locator('#jiraStatsDelaiVers .cb-search').inputValue(), 'Terminé');
+  });
+
   test('aucune erreur JavaScript pendant tout le parcours', () => {
     assert.deepEqual(erreurs, []);
   });

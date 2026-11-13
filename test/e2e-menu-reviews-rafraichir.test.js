@@ -144,6 +144,19 @@ describe('Menu Reviews — mettre à jour une merge request depuis la forge', { 
     assert.equal(await page.locator(`#toReviewList .card[data-id="${id[32]}"] .tag.merged`).count(), 0);
   });
 
+  test('fermée sur la forge SANS merge : la carte porte « fermée », pas « mergée »', async () => {
+    Object.assign(mrs().find((m) => m.iid === 31), { state: 'closed', closed_at: '2026-04-12T09:00:00.000Z' });
+    const toast = await mettreAJour(31);
+    assert.match(toast, /Fermée|Closed/, `vu : ${toast}`);
+    await attendreServeur(async () => (await enBase(31)).closed_seen === 1, 'closed_seen posé en base');
+    const m = await enBase(31);
+    assert.equal(m.merged_at, null, 'aucune date de merge');
+    assert.equal(m.closed_at, '2026-04-12T09:00:00.000Z', 'la date de fermeture est celle de la forge');
+    await page.locator(`#toReviewList .card[data-id="${id[31]}"] .tag.closed`).waitFor({ state: 'visible' });
+    assert.equal(await page.locator(`#toReviewList .card[data-id="${id[31]}"] .tag.merged`).count(), 0, 'pas la pastille « mergée »');
+    assert.equal(await page.locator(`#toReviewList [data-merge="${id[31]}"]`).count(), 0, 'plus rien à merger');
+  });
+
   test('la découverte, elle aussi, écrit les SHA d’une MR qui vient d’être mergée : son diff se relit', async () => {
     // !34 disparaît de la liste des ouvertes (même branche, déjà mergée) : la découverte la voit partir.
     Object.assign(mrs().find((m) => m.iid === 34), {

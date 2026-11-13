@@ -239,13 +239,66 @@ $('#jiraFieldFilterBody') && $('#jiraFieldFilterBody').addEventListener('input',
   }
 });
 
-function jiraVisibleIssues() {
+/* ---------- Le filtre RAPIDE par statut, au-dessus des cartes ----------
+   Une case par statut PRÉSENT dans les tickets chargés, avec son compte. Il agit sur la liste
+   seule, sans rien redemander à Jira : c'est sa raison d'être — le menu « Statuts » de droite,
+   lui, change la requête (les statuts décochés y sont exclus par Jira) et coûte un appel.
+   On mémorise les statuts DÉCOCHÉS ; un statut mémorisé mais absent des tickets du moment n'a
+   rien à masquer et n'apparaît pas. */
+const JIRA_QUICK_KEY = 'aidevtools_jira_status_quick';
+function jiraQuickDecoches() { try { return new Set(JSON.parse(localStorage.getItem(JIRA_QUICK_KEY) || '[]')); } catch { return new Set(); } }
+function setJiraQuickDecoches(set) { try { localStorage.setItem(JIRA_QUICK_KEY, JSON.stringify([...set])); } catch { /* stockage indisponible */ } }
+function renderJiraStatusQuick(base) {
+  const box = $('#jiraStatusQuick'); if (!box) return;
+  const comptes = new Map();
+  for (const it of base) if (it.status) comptes.set(it.status, { n: (comptes.get(it.status) || { n: 0 }).n + 1, cat: it.statusCategory });
+  const statuts = [...comptes.keys()].sort((a, b) => a.localeCompare(b));
+  if (statuts.length <= 1) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  const decoches = jiraQuickDecoches();
+  const signature = statuts.join('\u001f');
+  if (box.dataset.signature !== signature) {
+    // Les statuts ont changé : on reconstruit. Sinon on met à jour EN PLACE, pour ne pas perdre
+    // la case qui a le focus à chaque clic.
+    box.dataset.signature = signature;
+    box.innerHTML = statuts.map((s) => `<label class="jira-quick-item" title="${esc(tr('jira.quick.item-title', { status: s }))}">
+        <input type="checkbox" value="${esc(s)}" />
+        <span class="jira-status jira-status-${JIRA_CAT[comptes.get(s).cat] || 'todo'}">${esc(s)}</span><span class="jira-quick-n muted" data-quick-n></span></label>`).join('')
+      + `<button type="button" class="btn btn-sm btn-ghost jira-quick-all" data-jquickall hidden>${esc(tr('jira.quick.all'))}</button>`;
+  }
+  let masques = 0;
+  for (const lab of $$('#jiraStatusQuick .jira-quick-item')) {
+    const cb = lab.querySelector('input'); const s = cb.value;
+    cb.checked = !decoches.has(s);
+    if (!cb.checked) masques += 1;
+    lab.querySelector('[data-quick-n]').textContent = String(comptes.get(s).n);
+    lab.classList.toggle('jira-quick-off', !cb.checked);
+  }
+  const tout = $('#jiraStatusQuick [data-jquickall]'); if (tout) tout.hidden = !masques;
+}
+$('#jiraStatusQuick') && $('#jiraStatusQuick').addEventListener('change', (e) => {
+  const cb = e.target.closest('input[type="checkbox"]'); if (!cb) return;
+  const d = jiraQuickDecoches();
+  if (cb.checked) d.delete(cb.value); else d.add(cb.value);
+  setJiraQuickDecoches(d);
+  renderJiraList();
+});
+$('#jiraStatusQuick') && $('#jiraStatusQuick').addEventListener('click', (e) => {
+  if (!e.target.closest('[data-jquickall]')) return;
+  setJiraQuickDecoches(new Set());
+  renderJiraList();
+});
+
+/* Les tickets qui passent tous les filtres. `sansRapide` : tout sauf le filtre rapide — c'est
+   sur cette base que la rangée compte ses statuts, sinon décocher un statut le ferait disparaître. */
+function jiraVisibleIssues({ sansRapide = false } = {}) {
   const q = ($('#jiraSearch').value || '').toLowerCase().trim();
   const hidden = jiraHiddenStatuses();
+  const rapide = sansRapide ? new Set() : jiraQuickDecoches();
   // L'epic entre dans la recherche : « montre-moi les tickets de tel epic » est une demande courante.
   const foin = (it) => `${it.key} ${it.summary} ${it.epic ? `${it.epic.key} ${it.epic.summary}` : ''}`.toLowerCase();
   const filtres = jiraFiltres();
-  return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status)
+  return JIRA.issues.filter((it) => (!q || foin(it).includes(q)) && !hidden.has(it.status) && !rapide.has(it.status)
     && jiraPasseFiltres(it, filtres) && jiraPasseFiltreAnalyse(it));
 }
 function jiraUpdateStatusFilterCount() {
@@ -273,6 +326,7 @@ function renderJiraStatusFilter() {
 }
 function renderJiraList() {
   const box = $('#jiraList'); if (!box) return;
+  renderJiraStatusQuick(jiraVisibleIssues({ sansRapide: true }));
   const items = jiraVisibleIssues();
   // Compteur = nombre de tickets APRÈS filtres (assigné côté serveur + statut/recherche côté client).
   if ($('#jiraInfo')) {

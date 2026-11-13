@@ -705,9 +705,11 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   const cheminTache = (id) => storeDemo.cheminSur('task', db.prepare('SELECT * FROM task WHERE id = ?').get(id));
   etatDemo.ecrire('author', cheminTache(tC.lastInsertRowid), 'name', 'Claire');
   /* LA PAGE ÉQUIPE « NOTRE MATIN » : deux auteurs fictifs dans le dépôt de données de démonstration —
-     Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés ; une décision
-     attend (la review d'Ali sur une MR de Claire, voir plus bas), une question sans réponse (la session
-     de Claire ci-dessus), et une reprise : ma session repart de la sienne. */
+     Claire a synchronisé il y a dix minutes, Ali est silencieux depuis cinq jours ouvrés (Réglages →
+     Données partagées le liste, la page Équipe compte « 1 poste silencieux ») ; des décisions attendent
+     (la review d'Ali sur une MR de Claire, voir plus bas). La question de Claire ci-dessus est reprise
+     par ma session : prise en charge, elle n'attend plus personne et la page ne la liste pas — la
+     filiation se lit sur les cartes Dev IA. */
   etatDemo.ecrire('author_last', 'Claire', 'at', new Date(Date.now() - 10 * 60000).toISOString());
   etatDemo.ecrire('author_last', 'Ali', 'at', at(7));
   const tR = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, shared, label, resumed_from_uid, resumed_target_uid, created_at, updated_at, finished_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?)')
@@ -716,7 +718,7 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   db.prepare(`INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, updated_at) VALUES (?,?,?,?,?,?,?)`)
     .run(tR.lastInsertRowid, repoIds['groupe/tarification'], 'feature/remise-paliers-reprise-amady', 'feature/remise-paliers', 'committed', require('crypto').randomBytes(20).toString('hex'), at(1));
   /* La reprise est À MOI : son fichier porte mon nom git, comme si je l'avais poussé — la carte dit
-     « partagé par moi », et la page Équipe « #6 Claire → #7 moi ». */
+     « partagé par moi », et « reprise de #6 ». */
   // eslint-disable-next-line global-require
   const moiDemo = require('../src/core/identite').nom();
   if (moiDemo) etatDemo.ecrire('author', cheminTache(tR.lastInsertRowid), 'name', moiDemo);
@@ -1077,8 +1079,10 @@ const verifierId = db.prepare(`INSERT INTO verifier
 /* Sa couverture passe par le GROUPE : « teste tout backend » — un dépôt ajouté au groupe demain
    sera couvert sans retoucher le vérificateur. */
 db.prepare('INSERT INTO verifier_group (verifier_id, group_id) VALUES (?, ?)').run(verifierId, groupeBackend);
-['npm ci', 'npm run test:integ'].forEach((c, i) => {
-  db.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)').run(verifierId, i, c);
+/* `docker compose up -d` est GLOBALE : une fois, dans api-core, une fois les deux dépôts
+   positionnés — pas dans chacun. C'est ce que la carte et le formulaire montrent. */
+[['npm ci', 'repo', null], ['docker compose up -d', 'global', repoIds['groupe/api-core'] || null], ['npm run test:integ', 'repo', null]].forEach(([c, scope, repoId], i) => {
+  db.prepare('INSERT INTO verifier_command (verifier_id, position, command, scope, repo_id) VALUES (?,?,?,?,?)').run(verifierId, i, c, scope, repoId);
 });
 
 /* Celui-ci part TOUT SEUL sur les nouvelles merge requests (`auto_on_mr`). C'est la
@@ -1644,8 +1648,11 @@ const counts = {
    N branches de merge requests mergées » ramasse. Sans elles, le bouton n'existerait pas dans
    la démo — et c'est exactement le geste de fin de sprint qu'on vient y voir. */
 {
-  const fermer = db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?');
-  for (const m of db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all()) fermer.run(m.id);
+  const fermer = db.prepare('UPDATE mr SET closed_seen = 1, merged_at = COALESCE(merged_at, ?) WHERE id = ?');
+  const fermees = db.prepare("SELECT id FROM mr WHERE status = 'done' ORDER BY id LIMIT 4").all();
+  fermees.slice(0, 3).forEach((m, i) => fermer.run(at(6 + i), m.id));
+  // Et une fermée SANS merge : sa pastille dit « fermée », pas « mergée », et sa branche n'est pas dans le lot.
+  if (fermees[3]) db.prepare('UPDATE mr SET closed_seen = 1, closed_at = ? WHERE id = ?').run(at(5), fermees[3].id);
 }
 
 /* ---------- ce que CHAQUE session a coûté ----------

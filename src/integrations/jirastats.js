@@ -6,6 +6,7 @@
    On pagine donc jusqu'à un plafond, et on le dit quand il est atteint. */
 const jira = require('./jira');
 
+const { t } = require('../core/i18n');
 const PLAFOND = jira.PLAFOND_PAGES;   // tickets lus au plus : dix pages Jira, quelques secondes
 const CHAMPS = 'summary,issuetype,status,issuelinks,parent,subtasks,assignee,project';
 
@@ -173,4 +174,78 @@ async function stats(cfg, { accountIds, includeDone, projects, sprints, hideStat
   return { ...(workflow ? statsDe(lu.issues, { bugTypes, usTypes, workflow }) : premier), lus: lu.issues.length, total: lu.total, tronque: lu.tronque, plafond: PLAFOND, ignores, jql };
 }
 
-module.exports = { PLAFOND, CHAMPS, typesDe, clausesFiltres, clauseMouvement, searchAll: jira.searchAll, statsDe, stats };
+/* ============ LE DÉLAI ENTRE DEUX STATUTS ============
+   « Combien de temps entre le passage en cours et la mise en prod ? » Jira ne tient pas ce chiffre :
+   il tient l'HISTORIQUE de chaque ticket (`changelog`), et le délai s'en déduit — de la PREMIÈRE
+   entrée dans le statut de départ à la DERNIÈRE entrée dans le statut d'arrivée qui la suit. La
+   première, parce qu'un ticket repris trois fois a commencé la première fois ; la dernière, parce
+   qu'une mise en prod annulée puis refaite n'est livrée qu'à la seconde. Les noms de statut se
+   comparent sans la casse : « En prod » et « EN PROD » sont le même état d'un workflow. Pur. */
+const CHAMPS_DELAI = 'summary,issuetype,status,assignee,project';
+const bas = (s) => String(s || '').trim().toLowerCase();
+function bornesDelai(issue, de, vers) {
+  const hist = (((issue || {}).changelog || {}).histories || [])
+    .map((h) => ({ t: Date.parse(h.created), items: h.items || [] }))
+    .filter((h) => Number.isFinite(h.t))
+    .sort((a, b) => a.t - b.t);
+  let debut = null; let fin = null;
+  for (const h of hist) {
+    for (const it of h.items) {
+      if (String(it.field || '').toLowerCase() !== 'status') continue;
+      if (debut == null && bas(it.toString) === bas(de)) debut = h.t;
+      else if (debut != null && bas(it.toString) === bas(vers)) fin = h.t;
+    }
+  }
+  return { debut, fin };
+}
+const dixieme = (x) => Math.round(x * 10) / 10;
+/* Médiane, moyenne, 90e centile (rang le plus proche), min, max — en JOURS, au dixième. */
+function resumeJours(vals) {
+  const v = [...vals].sort((a, b) => a - b);
+  if (!v.length) return { n: 0, mediane: null, moyenne: null, p90: null, min: null, max: null };
+  const m = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+  return {
+    n: v.length, mediane: dixieme(m), moyenne: dixieme(v.reduce((a, b) => a + b, 0) / v.length),
+    p90: dixieme(v[Math.min(v.length - 1, Math.ceil(0.9 * v.length) - 1)]), min: dixieme(v[0]), max: dixieme(v[v.length - 1]),
+  };
+}
+function delaisDe(issues, { de, vers }) {
+  const tickets = []; let sansDepart = 0; let sansArrivee = 0;
+  for (const i of issues || []) {
+    const { debut, fin } = bornesDelai(i, de, vers);
+    if (debut == null) { sansDepart += 1; continue; }
+    if (fin == null) { sansArrivee += 1; continue; }
+    const f = i.fields || {};
+    tickets.push({
+      key: i.key, summary: f.summary || '', type: (f.issuetype && f.issuetype.name) || '',
+      project: (f.project && f.project.key) || '', status: (f.status && f.status.name) || '',
+      cat: (f.status && f.status.statusCategory && f.status.statusCategory.key) || '',
+      assignee: f.assignee ? { accountId: f.assignee.accountId || '', name: f.assignee.displayName || f.assignee.name || '' } : null,
+      debut: new Date(debut).toISOString(), fin: new Date(fin).toISOString(), jours: dixieme((fin - debut) / 86400000),
+    });
+  }
+  tickets.sort((a, b) => (a.fin < b.fin ? 1 : a.fin > b.fin ? -1 : 0));
+  const groupe = (cle) => {
+    const par = new Map();
+    for (const x of tickets) { const k = x[cle] || ''; if (!par.has(k)) par.set(k, []); par.get(k).push(x.jours); }
+    return [...par].map(([name, vals]) => ({ name, ...resumeJours(vals) })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+  };
+  return { ...resumeJours(tickets.map((x) => x.jours)), sansDepart, sansArrivee, parProjet: groupe('project'), parType: groupe('type'), tickets };
+}
+/* La requête : les contraintes de l'écran SAUF le filtre de statut et « terminés » — un ticket en
+   prod est terminé, et c'est justement lui qu'on mesure — plus l'arrivée dans le second statut
+   (`status CHANGED TO`), bornée à la plage si elle est posée. L'historique arrive avec chaque page. */
+async function delais(cfg, { accountIds, projects, sprints, filtres, people, de, vers, depuis, jusqua, tz, teamField = '' } = {}) {
+  const [v] = jira.valeursJql([vers]);
+  if (!v) throw new Error(t('err.jira.stats.statuses-required'));
+  const clauses = jira.jqlDe({ accountIds, includeDone: true, projects, sprints, hideStatuses: [] });
+  const { clauses: cf, ignores } = clausesFiltres(filtres, people, { teamField });
+  const a = JOUR.test(String(depuis || '')) ? depuis : null;
+  const b = JOUR.test(String(jusqua || '')) ? jusqua : null;
+  const pendant = (a || b) ? ` DURING ("${jira.dateJql(`${a || '1970-01-01'}T00:00:00`, tz)}", "${jira.dateJql(`${b || '2999-12-31'}T23:59:00`, tz)}")` : '';
+  const jql = `${[...clauses, ...cf, `status CHANGED TO "${v}"${pendant}`].join(' AND ')} ORDER BY updated DESC`;
+  const lu = await jira.searchAll(cfg, jql, CHAMPS_DELAI, PLAFOND, { expand: 'changelog' });
+  return { ...delaisDe(lu.issues, { de, vers }), lus: lu.issues.length, total: lu.total, tronque: lu.tronque, plafond: PLAFOND, ignores, jql };
+}
+
+module.exports = { PLAFOND, CHAMPS, typesDe, clausesFiltres, clauseMouvement, searchAll: jira.searchAll, statsDe, stats, bornesDelai, resumeJours, delaisDe, delais };

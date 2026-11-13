@@ -39,8 +39,13 @@ const signature = (empreinte) => (empreinte == null ? null
 function empreinteVerificateur(id) {
   const v = db.prepare('SELECT * FROM verifier WHERE id = ?').get(Number(id));
   if (!v) return null;
-  const commands = db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
-    .all(v.id).map((c) => c.command);
+  const lignes = db.prepare(`SELECT vc.command, vc.scope, r.project FROM verifier_command vc
+    LEFT JOIN repo r ON r.id = vc.repo_id WHERE vc.verifier_id = ? ORDER BY vc.position`).all(v.id);
+  const commands = lignes.map((c) => c.command);
+  /* OÙ tourne une commande globale fait partie de ce qui s'exécute : [rang, dépôt] par ligne
+     globale — et rien du tout sans ligne globale, pour ne pas périmer les approbations données
+     avant que la notion existe. */
+  const globals = lignes.map((c, i) => (c.scope === 'global' ? [i, c.project || null] : null)).filter(Boolean);
   const repos = db.prepare('SELECT repo_id, mode FROM verifier_repo WHERE verifier_id = ? ORDER BY repo_id')
     .all(v.id).map((r) => [r.repo_id, r.mode || 'worktree']);
   /* Les GROUPES couverts, par leur uid (stable d'un poste à l'autre) : une couverture élargie
@@ -48,7 +53,7 @@ function empreinteVerificateur(id) {
   const groups = db.prepare(`SELECT g.uid FROM verifier_group vg JOIN repo_group g ON g.id = vg.group_id
     WHERE vg.verifier_id = ? ORDER BY g.uid`).all(v.id).map((g) => g.uid);
   return JSON.stringify({
-    kind: v.kind || 'commands', command: v.command || '', commands,
+    kind: v.kind || 'commands', command: v.command || '', commands, ...(globals.length ? { globals } : {}),
     run_base: v.run_base ? 1 : 0, auto_on_mr: v.auto_on_mr ? 1 : 0, auto_on_stale: v.auto_on_stale ? 1 : 0,
     repos, ...(groups.length ? { groups } : {}),
   });

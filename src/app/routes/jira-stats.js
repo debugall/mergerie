@@ -9,6 +9,7 @@ const jirastats = require('../../integrations/jirastats');
 const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const { wrap } = require('../http');
+const { t } = require('../../core/i18n');
 const { personnesAssignables, statutsDesProjets, teamFieldId } = require('../lib/jira');
 
 const liste = (v, sep = ',') => String(v || '').split(sep).map((x) => x.trim()).filter(Boolean);
@@ -49,4 +50,32 @@ app.get('/api/jira/stats', wrap(async (req, res) => {
   const r = await jirastats.stats(cfg, { ...contraintes, filtres, people, ...types, ...plage, tz, workflowDe: (cles) => statutsDesProjets(cfg, cles), teamField: await teamFieldId(cfg) });
   r.tickets = r.tickets.map((x) => ({ ...x, url: jira.issueUrl(cfg, x.key) }));   // le lien vers Jira, pour la liste d'un nombre
   res.json({ configured: true, types: nommes, ...r });
+}));
+
+/* Le délai entre deux statuts (« en cours » → « en prod ») : une recherche de plus, à la demande,
+   sur les tickets ARRIVÉS dans le second — terminés compris, sans le filtre de statut — avec leur
+   historique. Les deux statuts viennent de l'écran, mémorisés par le navigateur. */
+app.get('/api/jira/stats/delai', wrap(async (req, res) => {
+  const q = req.query || {};
+  const de = String(q.de || '').trim(); const vers = String(q.vers || '').trim();
+  if (!de || !vers || de.toLowerCase() === vers.toLowerCase()) throw new Error(t('err.jira.stats.statuses-required'));
+  const contraintes = { accountIds: liste(q.assignees), projects: liste(q.projects), sprints: liste(q.sprints) };
+  const jour = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : '');
+  const plage = { depuis: jour(q.depuis), jusqua: jour(q.jusqua) };
+  let filtres = {};
+  try { const v = JSON.parse(String(q.filtres || '{}')); if (v && typeof v === 'object' && !Array.isArray(v)) filtres = v; } catch { /* illisible : sans filtre de champ */ }
+  const cfg = getConfig();
+  if (demoMode.isDemo()) {
+    const lus = demoJira.delaiIssues(contraintes, filtres, plage, vers);
+    const r = jirastats.delaisDe(lus, { de, vers });
+    r.tickets = r.tickets.map((x) => ({ ...x, url: demoJira.issueUrl(x.key) }));
+    return res.json({ configured: true, de, vers, ...r, lus: lus.length, total: lus.length, tronque: false, plafond: jirastats.PLAFOND, ignores: [] });
+  }
+  if (!jira.isConfigured(cfg)) return res.json({ configured: false });
+  const besoinPersonnes = ['reporter', 'assignee'].some((k) => Array.isArray(filtres[k]) && filtres[k].length);
+  const people = besoinPersonnes ? ((await personnesAssignables(cfg, contraintes.projects)).people || []) : [];
+  const tz = (plage.depuis || plage.jusqua) ? await jira.jiraGet(cfg, '/rest/api/3/myself').then((me) => (me && me.timeZone) || null).catch(() => null) : null;
+  const r = await jirastats.delais(cfg, { ...contraintes, filtres, people, de, vers, ...plage, tz, teamField: await teamFieldId(cfg) });
+  r.tickets = r.tickets.map((x) => ({ ...x, url: jira.issueUrl(cfg, x.key) }));
+  res.json({ configured: true, de, vers, ...r });
 }));

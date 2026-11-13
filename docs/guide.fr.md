@@ -129,8 +129,9 @@ d'IA, aucun token : les trois réglages sont dans *Réglages → Merge Request �
 **Et combien de fichiers de test elle modifie.** À côté de la taille, la carte dit `14 fichiers · 3 tests`
 — discret — ou `14 fichiers · 0 test`, accentué comme « périmé », quand la merge request modifie au moins
 N fichiers de code (3 par défaut, réglable) sans toucher un seul fichier de test. En dessous de N, ou
-quand tout est neutre (documentation, images, lockfiles, outillage), rien : une correction de deux lignes
-ne porte pas de badge. Un fichier *est* un test ou n'en est pas un selon des **motifs de chemin**
+quand tout est neutre (documentation, images, lockfiles, outillage — et un **sous-module** remonté, qui
+est un pointeur de commit, pas un fichier écrit), rien : une correction de deux lignes ne porte pas de
+badge. Un fichier *est* un test ou n'en est pas un selon des **motifs de chemin**
 (`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), résolus dépôt → groupe(s) → réglages globaux → défauts
 livrés, un niveau rempli remplaçant celui du dessus ; c'est calculé sur les listes de fichiers des
 croisements, à l'affichage, sans IA — des fichiers comptés, jamais une couverture ni un « testée ». Le
@@ -253,6 +254,17 @@ Mergerie la lit, il ne la remplace pas.
   permet de **surcharger ponctuellement** une MR (`Review + explication` / `Review sans explication`).
   Si l'explication manque, un bouton **`Générer l'explication`** sur le rapport la produit à la demande
   (un seul appel IA, sans relancer la review ni créer de nouvelle version).
+- **Emporter le reviewer.** **Réglages → Merge Request**, section **« Emporter le reviewer »** sous le formulaire : **« Exporter le reviewer en skill »** télécharge un
+  skill Claude Code **autonome** — un seul fichier `branch-review/SKILL.md`, sans script et sans référence à
+  Mergerie — qui refait **la même review** sur la branche courante d'un dépôt cloné : le gabarit de review de
+  l'équipe mot pour mot, les règles de review actives avec leur condition et leur portée, la note sur 10.
+  `/branch-review [cible]` : la cible est la branche où le travail doit arriver (par défaut la branche par
+  défaut du dépôt, lue sur `origin/HEAD` ; le skill demande quand plusieurs sont plausibles) ; la source est
+  toujours la branche courante. L'agent lance lui-même `git fetch` et `git diff origin/<cible>...HEAD` (le
+  diff depuis l'ancêtre commun, celui qu'une merge request montrerait) et lit les messages de commit en guise
+  d'intention. Le rapport est rangé dans `.branch-review/<branche>/<branche>-<AAAA-MM-JJ-HH-mm-ss>.md`
+  (un sous-dossier par branche, un fichier par review, le diff effacé une fois le rapport écrit). À
+  poser dans `.claude/skills/` du dépôt ou de la machine.
 - **Reviewer sans y penser.** **Réglages → Merge Request → « Lancer automatiquement la review à
   l'arrivée d'une MR »** met en review toute merge request nouvellement découverte, sans qu'on la
   demande. **Décoché par défaut**, et **plafonné** même une fois coché (**« Au plus N reviews automatiques par
@@ -457,7 +469,7 @@ Mergerie la lit, il ne la remplace pas.
   sur tous les dépôts : titre, branches, dernier commit, conflits, retard sur la cible, brouillon,
   reviewers, assignés, 👍 (GitLab), et son état. Un commit arrivé depuis rend le rapport **périmé** et déclenche ce que la
   découverte aurait déclenché (re-review et vérifications automatiques « sur péremption », si elles
-  sont activées) ; une merge request mergée ou fermée entre-temps prend son badge **mergée**. Le
+  sont activées) ; une merge request mergée entre-temps prend son badge **mergée**, fermée sans merge son badge **fermée**. Le
   message dit ce que la forge a répondu : mise à jour, rien de nouveau, nouveaux commits, mergée,
   fermée. Sur une merge request **mergée**, il écrit aussi les SHA qui permettent de la relire
   (merge-base d'alors et tête, que la forge conserve même après la suppression de la branche) et,
@@ -556,8 +568,11 @@ Mergerie la lit, il ne la remplace pas.
 - **Les constats deviennent des remarques d'un geste.** Huit constats, c'était huit ouvertures du
   viewer : chercher le fichier, descendre à la ligne, cliquer « + », recopier le constat. Deux boutons
   au-dessus de la liste — **`Mettre en brouillons`** et **`Les N bloquants`** — en font des commentaires
-  inline **en brouillon**, un par constat, accrochés à leur ligne. Rien n'est envoyé : on relit, on
-  ajuste, on envoie groupé comme d'habitude. Quatre choses sont laissées de côté, et l'outil le dit : les
+  inline **en brouillon**, un par constat, accrochés à leur ligne ; et chaque constat porte **son propre
+  bouton brouillon**, à côté de « pourquoi ce constat ? » et « corriger ceci », pour n'en garder qu'un ou
+  deux sur quarante. Rien n'est envoyé : on relit, on
+  ajuste, on envoie groupé comme d'habitude. Sur un constat seul, le message dit *pourquoi* rien n'a été
+  créé — hors du diff, brouillon identique déjà là. Quatre choses sont laissées de côté, et l'outil le dit : les
   constats **résolus** (commenter ce qui vient d'être corrigé est du bruit), ceux **sans fichier ni
   ligne** (ils n'auraient nulle part où s'accrocher), ceux qui ont **déjà** un brouillon identique —
   cliquer deux fois est le geste le plus naturel du monde — et surtout ceux qui tombent **hors du
@@ -962,7 +977,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
 - **Combien de tests la branche modifie.** Dès qu'un projet de session est *commité*, sa ligne porte
   `0 test modifié` (accentué) ou `3 tests modifiés` (discret), d'après le diff de la branche et les motifs
   de test du dépôt — avant que la merge request n'existe, quand un suivi « ajoute les tests » coûte le
-  moins. Hors dépôt : rien.
+  moins. Une session qui ne fait que remonter un sous-module n'a touché aucun code : rien. Hors dépôt :
+  rien.
 - **Quelles dépendances la branche ajoute.** Sur la même ligne, `2 dépendances ajoutées` (accentué) ou
   `1 dépendance changée` (discret), lues dans les manifestes du diff de la branche — c'est là qu'un suivi
   « enlève left-pad, écris la fonction » coûte le moins. Le détail est sur la carte de la merge request.
@@ -977,7 +993,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   cette même session ne peut pas être aussi lié en lecture seule. Facultatif — l'exploration n'en a
   pas l'usage, elle voit déjà tous ses dépôts côte à côte.
 - **Activité — ce que tu as lancé, et ce qui s'est terminé.** Le panneau de log expose une vue
-  **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini. Chaque ligne
+  **Activité** : ce qui a tourné, sur quoi, combien de temps, et comment ça s'est fini — une **vérification**
+  finie se lit par son **verdict** (*vert ✓*, *rouge ✗*, *base déjà rouge*, *échec*), jamais « ok » devant une
+  batterie cassée, et *Échecs seulement* la garde quand elle est rouge ; le bandeau du journal et le bouton
+  de pied de page la disent en rouge de même. Chaque ligne
   **nomme son objet** et y mène en un clic ; un bouton rouvre le **journal d'un job passé** — la vue y
   reste tant qu'un autre job écrit, et un job **lancé ensuite** la reprend. Ce qui
   s'est terminé depuis ta dernière visite est marqué, et le compte s'affiche sur le bouton. Le bouton
@@ -1185,7 +1204,11 @@ entre humains.
 - **Documentaliste** — il relit tous les dépôts et écrit la **carte des services** dans une page de
   notes : ce que fait chaque dépôt, ce qu'il expose, ce qu'il consomme, comment on le lance en local, où
   est sa configuration, et « qui appelle qui ». La page est **créée au premier run puis mise à jour**,
-  jamais dupliquée. Avec un horaire, le brief du matin annonce qu'elle a changé.
+  jamais dupliquée — et ses sous-pages non plus : chacune garde le titre que l'agent lui a donné au
+  premier run comme clé, et c'est par elle que le run suivant la retrouve. **Renommer une sous-page à
+  la main ne la casse pas** : elle reste la même page sous son nouveau nom. Le run reçoit aussi les titres
+  existants, et les retrouve même écrits un peu autrement (casse, accents, guillemets). Avec un horaire,
+  le brief du matin annonce qu'elle a changé.
   **Il dessine** : la page générale porte un `flowchart` « qui appelle qui » — un nœud par service, le
   libellé de la flèche disant le moyen (REST, événement, job), les bases et les files étant des nœuds
   aussi — et, quand un enchaînement traverse trois services, un `sequenceDiagram` qui le déroule. Chaque
@@ -1218,7 +1241,9 @@ suite plutôt que trois minutes plus tard dans un journal. L'essai ne vaut que p
 ouvre : la suivante repart vierge.
 
 **Utiliser.** *Demander* lance une exploration sur ses dépôts, connaissance en tête. *Coder* ouvre la
-modale de session avec **ses dépôts pré-cochés** — on décoche et on confirme. Toute réponse peut se
+modale de session avec **ses dépôts pré-cochés** — on décoche et on confirme, ou, devant une longue
+liste (« tous les dépôts actifs »), **Tout retirer** la vide en une ligne prête à choisir, et l'on
+ajoute un par un. Toute réponse peut se
 terminer par la liste de ce que l'agent a constaté de faux dans sa propre carte ; il ne la corrige pas
 lui-même, il la **signale**, et le compteur d'écarts monte sur sa carte.
 
@@ -1422,7 +1447,8 @@ champ de saisie.
 
 #### Pages
 Des pages de notes **plates** : ni dossiers ni hiérarchie. À gauche la liste (**épinglées en tête**, puis
-les plus récemment modifiées) avec une **recherche qui porte sur le titre ET le contenu** — c'est souvent
+les plus récemment modifiées, chaque titre **en entier**, sur plusieurs lignes s'il le faut, la date et le compte de sous-pages dessous) avec une
+**recherche qui porte sur le titre ET le contenu** — c'est souvent
 dans le corps que se trouve le mot cherché. À droite le titre éditable, puis **la saisie et l'aperçu
 Markdown côte à côte** (le même rendu que les rapports de review, donc le même échappement).
 
@@ -1600,20 +1626,22 @@ partager de plus et sans aucun appel d'IA ni de forge. Le brief reste « moi, ce
 « nous, maintenant ». Elle n'existe que si un dépôt de données est attaché (sans lui, une phrase y mène) ;
 avec une seule personne dans le dépôt, elle fonctionne et le dit.
 
-**Sept listes de faits**, chacune masquée si vide, plafonnée à douze lignes avec `et N autres` : les
-**décisions en attente** (`!214 · tarification · 8,6/10 · Claire · reviewée par Ali · attend depuis 5 j` —
-les merge requests ouvertes dont le dernier rapport atteint le seuil d'équipe et que personne n'a encore
-classées ni mergées, triées par attente), les **questions sans réponse** (les sessions *partagées* dont
-l'agent attend une réponse, la question en une ligne, `répondue dans la reprise #207` quand une reprise s'en
-est chargée), les **sessions en cours** (partagées, marquées en cours à la dernière synchro — avec la
-fraîcheur de la synchro de leur auteur, parce qu'une session « en cours » dont le poste n'a pas synchronisé
-depuis trois heures est peut-être finie), les **reprises** (`#123 Claire → #207 Amady · hier`), les
-**vérifications en échec** (tête rouge, base verte), les **croisements et empilements** déjà calculés, vus
-avec les deux auteurs, et la **fraîcheur des postes** — une ligne par auteur du dépôt de données : sa
-dernière synchro, les décisions attendues de lui, `silencieux` au-delà de N jours ouvrés (le week-end ne
-compte pas), sans autre mot : il est peut-être en congé. En tête, trois chiffres et la ligne de synchro ;
-deux filtres, groupe de dépôts et personne — choisir une personne montre ce qui *l'attend*, pas ce qu'elle
-a fait.
+**Trois listes de faits**, chacune masquée si vide, plafonnée à douze lignes avec `et N autres` — et seulement
+ce qui *attend quelqu'un* : les **décisions en attente** (`!214 · tarification · 8,6/10 · Claire · reviewée par
+Ali · attend depuis 5 j` — les merge requests ouvertes dont le dernier rapport atteint le seuil d'équipe et
+que personne n'a encore classées ni mergées, triées par attente), les **questions sans réponse** (les
+sessions *partagées* dont l'agent attend une réponse, la question en une ligne ; une question qu'une reprise
+a prise en charge n'attend plus personne et sort), les **vérifications en échec** (tête rouge, base verte).
+En tête, deux chiffres, la ligne de synchro et, s'il y en a, le nombre de **postes silencieux** — un nombre,
+pas un nom — qui mène à Réglages → Données partagées : c'est là que vit la liste des **postes de l'équipe**,
+une ligne par auteur du dépôt de données avec sa dernière synchro et `silencieux` au-delà de N jours ouvrés
+(le week-end ne compte pas), sans autre mot : il est peut-être en congé. Un diagnostic de synchro — les
+données de qui sont périmées —, pas un tableau de présence. Deux filtres, groupe de dépôts et personne —
+choisir une personne montre ce qui *l'attend*, pas ce qu'elle a fait.
+
+Les *sessions en cours*, les *reprises* et les *croisements et empilements* ont eu leur section et l'ont
+perdue : ils disaient ce qui s'était passé, pas ce que quelqu'un avait à faire, et les cartes Reviews et
+Dev IA le disent déjà.
 
 **Règle non négociable** : la page n'affiche que des faits déjà partagés, et **rien sur une personne qui ne
 soit l'état d'un travail**. Combien de tokens quelqu'un consomme, combien de merge requests il a mergées, qui
@@ -1668,6 +1696,10 @@ bougé sur la fenêtre, dans les projets du filtre s'il y en a, comptes désacti
   sur dix, et la date seule ne le distingue pas d'un sprint futur. Viennent ensuite les autres par **date
   décroissante** ; un sprint sans date connue (Jira n'en donne pas toujours pour un sprint futur) passe
   après ceux qui en ont une.
+  Au-dessus des cartes, un **filtre rapide par statut** : une case par statut **présent** dans les tickets
+  chargés, avec son nombre. Décocher retire ses cartes **tout de suite**, sans rien redemander à Jira ;
+  **Tout afficher** les ramène ; le choix est mémorisé. Le menu **Statuts** de droite, lui, agit sur la
+  **requête** : ce qu'on y décoche est exclu par Jira, et change donc ce qui est chargé.
   Les filtres **Assignés** et **Statuts** ont chacun leur **recherche** — qui **masque** les lignes
   sans rien décocher — et **Tout cocher / Tout décocher** —
   pratique pour vider puis ne garder qu'une ou deux lignes. Sur les assignés, **ne cocher personne ne
@@ -1819,6 +1851,19 @@ vit sa vie.
 - **Chaque nombre se clique** — une tuile, ou le compte d'une ligne des tableaux — et ouvre **la liste des
   tickets qu'il compte** : clé (lien vers Jira), libellé, statut, type, assigné. Rien n'est redemandé à
   Jira : tout a déjà été lu pour compter.
+- **Le délai entre deux statuts** — « combien de temps entre le passage *en cours* et la mise *en prod* ? ».
+  Sous les comptes, deux sélecteurs : le statut de départ et celui d'arrivée (ceux que l'écran connaît,
+  workflow compris), mémorisés. Jira ne tient pas ce chiffre, il tient l'**historique** de chaque ticket :
+  Mergerie lit, pour chaque ticket **arrivé dans le second statut** — terminés compris, sans le filtre de
+  statut, et avec les autres filtres de l'écran —, le délai de la **première** entrée dans le premier statut
+  à la **dernière** entrée dans le second qui la suit (un ticket repris trois fois a commencé la première
+  fois ; une mise en prod refaite n'est livrée qu'à la seconde). Quatre tuiles — tickets mesurés, **médiane**
+  (avec min et max), moyenne, **90 % en moins de** — puis par projet, par type, et la liste des tickets avec
+  leurs deux dates et leur délai en jours. Un ticket arrivé sans être passé par le départ, ou reparti au
+  départ après sa dernière arrivée, est compté à part, jamais mesuré. Avec la plage de dates : les tickets
+  arrivés dans le second statut **pendant** la plage. Coût : une recherche de plus, dix pages au plus,
+  l'historique voyageant avec chaque page (`expand=changelog`) — rien tant que les deux statuts ne sont pas
+  choisis.
 - **Ce que ça coûte en appels Jira** : une page de cent tickets = un appel. La liste et les stats en font
   donc au plus dix chacune (plafond de 1 000) ; les valeurs des filtres de Stats viennent d'une seule page ;
   la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les
@@ -1900,7 +1945,10 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   liste est longue — **et le choix de la ref aussi** : un dépôt actif compte des centaines de branches
   et de tags. Un choix unique passe par un sélecteur avec recherche ; un choix multiple (cases à cocher,
   tableau de l'explorateur) reçoit un filtre qui **masque des lignes sans décocher quoi que ce soit** —
-  on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup.
+  on coche, on filtre autre chose, on coche encore, puis on supprime d'un coup. La liste des refs est
+  lue une fois par dépôt : **`Rafraîchir la liste`** la relit sur la forge — et elle se relit d'elle-même
+  quand une opération git se termine, de sorte que les branches que l'on vient de supprimer la quittent,
+  les dépôts choisis et les cases encore valables restant en place.
 - **Rien ne s'exécute sans aperçu.** L'aperçu liste chaque ligne (projet × ref) et son résultat
   attendu : *sera exécutée · existe déjà — ignorée · ref protégée · branche par défaut · introuvable*.
   « Existe déjà » n'est pas une erreur : l'opération est **idempotente**, on peut relancer.
@@ -1974,7 +2022,9 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
     `fatal: refusing to merge unrelated histories` de git.
 - **Navigation** — positionne **plusieurs projets de ta machine** (pas les clones de l'outil : tes
   propres dépôts) sur la branche de ton choix, en un geste. On choisit un **répertoire local** — un
-  dossier contenant un sous-dossier par projet git, déclaré dans *Réglages → Dépôts* —, puis ligne par
+  dossier contenant un sous-dossier par projet git, déclaré dans *Réglages → Dépôts*, où chaque répertoire
+  liste les projets trouvés et se **relit sur le disque** d'un bouton : un dossier supprimé à la main
+  disparaît, un dépôt cloné depuis apparaît, ici comme dans les sélecteurs —, puis ligne par
   ligne un **projet** et sa **branche distante**, les deux avec recherche à la frappe. La **branche
   courante** est affichée à côté du sélecteur : sans elle on choisit à l'aveugle, sans savoir si
   l'opération change quoi que ce soit. Un `git fetch` précède la liste des branches et le checkout, la
@@ -2034,10 +2084,15 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   signalé à part, jamais confondu avec « absente ».
 - **Tags par période** — « qu'a-t-on livré ces deux semaines ? ». Deux dates (raccourcis *7* et *30
   derniers jours* ; les 30 derniers sont posés à l'ouverture) et l'outil liste **tous les tags créés entre
-  ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date,
-  première ligne du message. **`Copier le tableau`** le pose dans le presse-papiers sous deux formes à la
-  fois — un vrai tableau HTML, que Teams, un mail ou Word rendent en tableau, et du texte tabulé pour un
-  tableur ou un éditeur brut. La date d'un tag est sa date de **création** quand la forge la donne
+  ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date **et heure**
+  (deux tags du même jour se distinguent), première ligne du message. La croix au bout d'une ligne la **masque** — un tag de test, une rustine
+  qu'on n'annonce pas — et « Tout réafficher » la rend ; **`Copier le tableau`** pose les lignes visibles
+  dans le presse-papiers sous deux formes à la fois — un vrai tableau HTML, que Teams, un mail ou Word
+  rendent en tableau, et du texte tabulé pour un tableur ou un éditeur brut. **`Vérifier ces tags`** pose la question d'après :
+  « ce qu'on a livré passe-t-il encore ? » — il ouvre *Vérifier une branche* avec les dépôts du tableau cochés,
+  chacun en genre *Tag* sur son tag, les lignes masquées restant dehors ; le vérificateur proposé est celui qui
+  couvre le plus de ces dépôts, ceux qu'il ne couvre pas sont nommés sous le sélecteur, et un dépôt à plusieurs tags
+  visibles reçoit le plus récent (changeable sur sa ligne). La date d'un tag est sa date de **création** quand la forge la donne
   (GitLab, tag annoté), sinon celle du commit pointé ; les tags GitHub, que l'API ne date pas, sont lus
   dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
   hasard ; un dépôt injoignable est nommé.
@@ -2231,7 +2286,7 @@ première fois : sans jeton, aucun autre réglage ne sert à rien ·
 de forge, et un même chemin peut exister sur les deux ; une adresse collée est rangée dans sa forge
 d'après son **hôte**, comparé d'abord à ceux configurés dans Réglages → Git — un GitHub Enterprise sur
 `git.entreprise.com` n'est plus pris pour un GitLab ; sans jeton pour cette forge, la fenêtre
-d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
+d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence, et un bouton **relit le répertoire sur le disque** — un dossier supprimé à la main disparaît, un dépôt cloné depuis apparaît, partout où le répertoire est proposé) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
 recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
 les modifications non poussées du clone local le sont, d'où la confirmation) ; un bouton **`Fiche`**
 déplie **ce qui est rattaché** à ce dépôt — vérificateurs, jobs Jenkins, règles de review limitées à lui,
@@ -2491,6 +2546,17 @@ et **le verdict vient des codes de sortie**. Rien à écrire, rien à installer.
 
 L'**ordre compte** — `npm ci` avant `npm test` — et se corrige d'un clic : chaque ligne porte son rang et
 deux flèches pour la déplacer.
+
+**Une ligne peut tourner une seule fois.** Devant chaque commande, une portée : *dans chaque dépôt* (le
+défaut) ou *une fois* — `docker compose up -d` une fois les dépôts positionnés n'a pas à tourner trois
+fois. Une ligne *une fois* dit aussi **dans quel dépôt** elle tourne (son worktree, ou son répertoire
+*in place*), choisi avec recherche ; vide, c'est le premier dépôt de la vérification. L'ordre de la liste
+est respecté, les dépôts à l'intérieur : `npm ci` dans chacun, puis `compose up` une fois, puis `npm test`
+dans chacun, puis `compose down`. Une ligne *une fois* qui échoue **arrête tout** ; elle est **sautée** si
+une commande a déjà échoué avant elle (le journal le dit) ; et si elle désigne un dépôt qui ne fait pas
+partie de la vérification, c'est une erreur avec son nom, pas un dossier deviné. Le rapport et le journal
+marquent la ligne et le dépôt où elle a tourné, la carte porte un badge `1×`, et l'endroit où elle tourne
+fait partie de ce qu'on **approuve** (voir plus bas) — la ligne voyage avec le vérificateur partagé.
 
 Un tel vérificateur peut **couvrir plusieurs dépôts**. Attention à ce que « couvrir » veut dire : déclarer
 un dépôt annonce seulement que ce vérificateur **sait le tester**. À l'exécution, la liste ne tourne que
@@ -2752,13 +2818,25 @@ commentaire »** montre le rendu de TON gabarit sur des données d'exemple — c
 moteur que le vrai commentaire, sinon l'aperçu finirait par mentir. Laissé vide, c'est le gabarit
 par défaut qui sert, et il profite alors des améliorations à venir.
 
-### Vérifier une branche, sans merge request
+### Vérifier une branche — ou un tag —, sans merge request
 
 Au retour de congés, plusieurs merge requests ont été mergées : la question n'est plus « qu'est-ce
 que cette branche casse ? » mais **« est-ce que `develop` est encore vert ? »**. Le bouton
 **`Vérifier une branche`** vit dans l'onglet **Git** et sur la carte de chaque vérificateur. Une
 ligne par dépôt couvert, chacune sur sa **branche par défaut**, choisie dans un sélecteur à
 recherche — un dépôt actif en aligne des centaines. La dernière branche vérifiée est mémorisée.
+`Lancer` répond aussitôt : clone ou fetch de chaque dépôt, lecture du tag et résolution du commit
+se font dans le job, ligne par ligne dans le **journal** — une ref inconnue met la vérification en
+erreur avec son nom et son dépôt, dans le journal et le rapport, au lieu de retenir la fenêtre.
+
+**Un tag aussi bien qu'une branche.** Devant la ref, un sélecteur **Branche / Tag** : « la 3.2.0
+livrée vendredi passe-t-elle encore avec les services d'aujourd'hui ? » est la même question, posée
+sur une ref qui ne bouge pas. Le vérificateur se positionne sur le **commit pointé** par le tag de
+chaque dépôt coché (pas sur l'objet du tag annoté, qui a son propre SHA), et le rapport, le brief et
+le commentaire annoncent la cible comme un tag. Le genre est mémorisé par dépôt, avec le dernier tag
+et la dernière branche chacun de leur côté : revenir sur *Branche* retrouve la branche d'avant. Un
+rouge sur un tag ne propose pas `Corriger` : un tag ne bouge pas, il n'y a pas de branche où poser
+une correction.
 
 **On coche les dépôts qu'on veut, pas toute la couverture.** Chaque ligne porte une case, cochée
 d'emblée : un vérificateur qui couvre cinq dépôts peut donc n'en vérifier qu'un, sans avoir à
@@ -3012,10 +3090,10 @@ dont la branche a été poussée (`branche non poussée par Claire` sinon) et n'
 `N commits plus loin que la dernière passe connue`. Hors dépôt, exploration, question libre : rien à
 reprendre en v1.
 
-**Et l'équipe, ce matin ?** L'onglet *Équipe* (« Notre matin ») lit ce même dépôt pour dire où en est-on,
-qui attend quoi, depuis quand — décisions en attente, questions sans réponse, sessions en cours, reprises,
-vérifications en échec, croisements, fraîcheur des postes — sans rien partager de plus. Voir la section
-*Équipe*.
+**Et l'équipe, ce matin ?** L'onglet *Équipe* (« Notre matin ») lit ce même dépôt pour dire qui attend
+quoi, depuis quand — décisions en attente, questions sans réponse, vérifications en échec — sans rien
+partager de plus ; les postes de l'équipe et leur dernière synchro se lisent ici même, sous *Postes de
+l'équipe*. Voir la section *Équipe*.
 
 **Ce qui ne part JAMAIS dans le dépôt.** Les six jetons d'API, le dossier de clonage, la langue,
 les chemins absolus de cette machine, les sessions rangées, les journaux de
@@ -3399,7 +3477,8 @@ sans diff externe ni `textconv`, sans protocole `ext::`, avec un environnement e
 **Garde-fous ciblés** :
 - **Palette git** — une **liste blanche** de sous-commandes (`status fetch pull push log show diff branch
   checkout switch stash tag merge rebase reset restore cherry-pick remote rev-parse ls-files describe
-  blame shortlog reflog clean`) ; refusés par préfixe (git accepte les abréviations) : `--ex…`, `--up…`,
+  blame shortlog reflog clean submodule` — pour `submodule`, seulement `status init update sync summary
+  deinit set-branch add set-url`, jamais `foreach`, et une adresse en https ou ssh) ; refusés par préfixe (git accepte les abréviations) : `--ex…`, `--up…`,
   `--rec…`, `--out…`, `--no-index`, `--textconv`, `rebase -x/-i` ; aucun chemin absolu ni `..` ; un
   `remote add|set-url` seulement vers https ou ssh. Délai de 60 s, sortie plafonnée pendant la lecture.
   Le même filtre s'applique à l'enregistrement de la palette.

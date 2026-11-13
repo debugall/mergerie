@@ -6,6 +6,9 @@ $('#gitSameName').addEventListener('change', () => {
   gitRenderTargets();
 });
 $('#gitAddTarget').addEventListener('click', () => { gitTargets.push({}); gitDropPreview(); gitRenderTargets(); });
+$('#gitRefreshRefs').addEventListener('click', () => busy($('#gitRefreshRefs'), gitRafraichirRefs));
+// Une opération git vient d'aboutir (suppression, création) : la liste des refs ne dit plus vrai, on la relit.
+document.addEventListener('mergerie:git-done', () => { if ($$('#gitTargetRows .git-row').length) gitRafraichirRefs(); });
 $('#gitPreview').addEventListener('click', gitDoPreview);
 $('#gitExploreGo').addEventListener('click', gitAnalyze);
 document.addEventListener('change', (e) => {

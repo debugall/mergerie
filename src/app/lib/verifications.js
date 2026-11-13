@@ -261,6 +261,17 @@ function messageCorrectionVerif(d) {
   return `fix: ${premier} (+${noms.length - 1} autres tests)`;
 }
 
+/* LE VERDICT D'UN JOB DE VÉRIFICATION, à côté de son statut. Le job finit « done » dès qu'il a
+   fait son travail — un verdict rouge n'est pas une erreur de job — mais l'écran ne peut pas
+   écrire « ok » ou « terminé » en vert devant une batterie cassée. Le journal, l'historique et le
+   bouton de pied de page lisent donc `verdict` quand le job porte sur une vérification. */
+function verdictDuJob(job) {
+  if (!job || job.target_kind !== 'verification' || !job.target_id) return job;
+  const v = db.prepare('SELECT verdict FROM verification WHERE id = ?').get(job.target_id);
+  return { ...job, verdict: (v && v.verdict) || null };
+}
+
 module.exports = {
+  verdictDuJob,
   exigerMemeEtat, ciblesDepuisMrs, verifierPour, appliquerModes, creerVerification, detailVerification, resumeVerification, verifsParMrDuTour, dernieresVerificationsParMr, lotAvecMembres, promptCorrectionVerif, messageCorrectionVerif,
 };

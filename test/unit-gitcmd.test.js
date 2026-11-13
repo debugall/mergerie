@@ -20,6 +20,12 @@ describe('Palette git : liste blanche', () => {
     'log main..feature', 'push -u origin HEAD', 'cherry-pick -x abc123', 'remote add amont https://gitlab.test/g/p.git',
     'remote set-url origin git@gitlab.test:g/p.git', 'clean -fdx', 'stash pop', 'diff HEAD~1 -- src/a.js',
     'rebase origin/main', 'reset --hard origin/main', 'tag -l', 'branch -vv',
+    // Les sous-modules du quotidien — jamais `foreach`, et une adresse seulement en https ou ssh.
+    'submodule update --init --recursive', 'submodule sync --recursive', 'submodule status', 'submodule',
+    'submodule --quiet update --remote', 'submodule add https://gitlab.test/g/lib.git libs/lib',
+    'submodule set-url libs/lib git@gitlab.test:g/lib.git', 'submodule deinit -f libs/lib', 'submodule summary',
+    'fetch --recurse-submodules', 'checkout --recurse-submodules main',
+    'submodule add -b main --name lib https://gitlab.test/g/lib.git libs/lib', 'submodule add --name=lib -- git@gitlab.test:g/lib.git',
   ];
   for (const c of ADMISES) test(`admise : git ${c}`, () => assert.equal(verifierArgs(args(c)), true));
 
@@ -31,6 +37,13 @@ describe('Palette git : liste blanche', () => {
     'clone -u x y', 'fetch ext::sh', 'show --textconv HEAD', 'diff --ext-diff', 'checkout -- ../../x',
     'log --pathspec-from-file=/etc/passwd', 'remote add x file:///tmp/r', 'remote set-url origin http://h/x',
     'status --git-dir=/tmp/x', 'log -C /tmp',
+    'submodule foreach git pull', 'submodule --quiet foreach ls', 'submodule add ext::sh x', 'submodule add file:///tmp/r x',
+    'submodule set-url libs/lib http://h/x', 'submodule update --reference /tmp/r', 'submodule absorbgitdirs',
+    'submodule update --rec', 'fetch --recu=x',
+    // Une option à valeur ne décale pas l'adresse lue : le dépôt réel reste vérifié.
+    'submodule add --name https://ok.test/x file:///tmp/r libs', 'submodule add --name https://ok.test/x -- file:///tmp/r libs',
+    'submodule add https://ok.test/x file:///tmp/r', 'submodule add https://ok.test/x libs trop', 'submodule set-url libs/lib',
+    'submodule set-url https://ok.test/x libs/lib',
   ];
   for (const c of CONTOURNEMENTS) {
     test(`refusée : git ${c}`, () => assert.throws(() => verifierArgs(args(c))));

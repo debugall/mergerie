@@ -181,6 +181,23 @@ describe('Menu Reviews — le rapport ouvert', { skip: dispo ? false : MSG_NAVIG
     await fermerModaleSession();
   });
 
+  test('le bouton d’un constat le pose seul en brouillon', async () => {
+    await page.evaluate(() => { document.querySelector('#aMore').dataset.ecranPrecedent = '1'; });
+    await page.locator('#findingsList .finding[data-sev="blocker"] [data-f-draft]').click();
+    await attendreServeur(async () => (await app.api('GET', `/api/mrs/${id[21]}/comment-drafts`)).body.drafts.length === 1,
+      'un brouillon, celui du constat cliqué');
+    const [d] = (await app.api('GET', `/api/mrs/${id[21]}/comment-drafts`)).body.drafts;
+    assert.equal(d.new_path, 'db/migration.sql', 'le constat bloquant, pas le rapport entier');
+    assert.match(d.body, /Point de revue sur db\/migration\.sql/);
+    await page.waitForFunction(() => {
+      const b = document.querySelector('#aMore');
+      const fente = document.querySelector('#reportDetail [data-drafts-slot]');
+      return b && !b.dataset.ecranPrecedent && fente && fente.textContent.trim() !== '';
+    });
+    assert.equal(app.state.calls.filter((c) => c.method === 'POST' && /\/discussions$/.test(c.path)).length, 0,
+      'rien n’est parti vers la forge');
+  });
+
   test('« en brouillons » pose les constats en remarques inline non envoyées', async () => {
     /* Le geste RÉÉCRIT le rapport (le badge « brouillons » de l'en-tête doit suivre). On marque
        l'écran d'avant, et l'on attend un écran qui ne porte plus la marque : sans quoi le test
@@ -188,8 +205,8 @@ describe('Menu Reviews — le rapport ouvert', { skip: dispo ? false : MSG_NAVIG
        avec lui. */
     await page.evaluate(() => { document.querySelector('#aMore').dataset.ecranPrecedent = '1'; });
     await page.locator('#findingsChips [data-f-drafts="all"]').click();
-    await attendreServeur(async () => (await app.api('GET', `/api/mrs/${id[21]}/comment-drafts`)).body.drafts.length > 0,
-      'les constats sont devenus des brouillons');
+    await attendreServeur(async () => (await app.api('GET', `/api/mrs/${id[21]}/comment-drafts`)).body.drafts.length > 1,
+      'les constats sont devenus des brouillons — celui déjà posé n’est pas doublé');
     await page.waitForFunction(() => {
       const b = document.querySelector('#aMore');
       const fente = document.querySelector('#reportDetail [data-drafts-slot]');

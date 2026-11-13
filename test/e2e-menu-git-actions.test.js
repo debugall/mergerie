@@ -362,6 +362,18 @@ describe('Menu Git : sous-onglets, Actions et Historique', { skip: dispo ? false
     assert.deepEqual(supp.map((o) => o.ref_name).sort(), ['old/1', 'old/2'],
       'une suppression par branche : le refus précédent n’a rien lancé');
     assert.ok(supp.every((o) => o.status === 'done' && o.restorable));
+    /* La liste se relit d'elle-même à la fin de l'opération (événement `git_done`) : les branches
+       supprimées quittent la liste, old/3 reste. Puis à la main : une branche poussée entre-temps
+       sur la forge apparaît après « Rafraîchir la liste », sur le même dépôt. */
+    await page.waitForFunction(() => !document.querySelector('.git-ref-item[data-name="old/1"]') && !document.querySelector('.git-ref-item[data-name="old/2"]')
+      && !!document.querySelector('.git-ref-item[data-name="old/3"]'));
+    app.state.branches['grp/alpha'].push(branche('old/4', alpha.mainSha, { merged: true }));
+    await caseDe('old/3').click();
+    await page.locator('#gitRefreshRefs').click();
+    await page.waitForFunction(() => !!document.querySelector('.git-ref-item[data-name="old/4"]'));
+    assert.equal(await ligne(0).locator('.rc-search').inputValue(), 'grp/alpha', 'le dépôt de la ligne est gardé');
+    assert.equal(await caseDe('old/3').isChecked(), true, 'ce qui était coché le reste : la branche existe encore');
+    app.state.branches['grp/alpha'] = app.state.branches['grp/alpha'].filter((b) => b.name !== 'old/4');
   });
 
   test('« Vérifier une branche » depuis Git : refus sans vérificateur, puis la modale sur la branche par défaut', async () => {
@@ -378,9 +390,9 @@ describe('Menu Git : sous-onglets, Actions et Historique', { skip: dispo ? false
     assert.equal(v.status, 200, v.text);
 
     await page.locator('#btnVerifyBranch').click();
-    await page.waitForSelector('#branchVerifyModal:not([hidden])');
+    await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
     assert.match(await page.locator('#branchVerifySelect').innerText(), /Tests unitaires/);
-    await page.waitForFunction(() => document.querySelector('#branchVerifyRows .cb-search').value === 'main');
+    await page.waitForFunction(() => (document.querySelector('#branchVerifyRows .cb-search') || {}).value === 'main');
     assert.match(await page.locator('#branchVerifyRows').innerText(), /grp\/alpha/);
     await page.locator('#branchVerifyCancel').click();
     await page.waitForSelector('#branchVerifyModal', { state: 'hidden' });

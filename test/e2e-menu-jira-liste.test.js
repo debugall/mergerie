@@ -253,6 +253,38 @@ describe('Menu Jira — Mes tickets : liste et filtres', { skip: dispo ? false :
     assert.equal(await page.locator('#jiraAssigneeFilterBody input:checked').count(), 2);
   });
 
+  test('Filtre rapide : une case par statut présent, décocher masque sans appel Jira, mémorisé', async () => {
+    await ouvrirJira();
+    await attendreCles(['PROJ-1', 'PROJ-2', 'OPS-3']);
+    await page.waitForSelector('#jiraStatusQuick:not([hidden])');
+    // Les statuts PRÉSENTS seulement : « Recette » (workflow, aucun ticket) n'y est pas.
+    const cases = await page.$$eval('#jiraStatusQuick .jira-quick-item', (l) => l.map((x) => [x.querySelector('input').value, x.querySelector('[data-quick-n]').textContent]));
+    assert.deepEqual(cases, [['À faire', '2'], ['En revue', '1']], 'triées par nom, accents compris');
+    assert.equal(await page.locator('#jiraStatusQuick [data-jquickall]').isHidden(), true, 'rien à ramener tant que tout est coché');
+
+    const appels = recherches().length;
+    await page.locator('#jiraStatusQuick input[value="À faire"]').click();
+    await attendreCles(['PROJ-2']);
+    assert.match(await page.locator('#jiraInfo').textContent(), /^1 ticket/, 'le compteur suit');
+    assert.equal((await page.locator('#jiraMineCount').textContent()).trim(), '1', 'le badge de l’onglet aussi');
+    // La case reste là, décochée, avec son compte : c'est par elle qu'on revient.
+    assert.equal(await page.locator('#jiraStatusQuick input[value="À faire"]').isChecked(), false);
+    assert.equal(await page.locator('#jiraStatusQuick .jira-quick-item.jira-quick-off [data-quick-n]').textContent(), '2');
+    assert.equal(recherches().length, appels, 'aucune requête Jira : le filtre est local');
+    // Le menu « Statuts » de droite n'a pas bougé : les deux filtres sont distincts.
+    assert.equal((await page.locator('#jiraStatusFilterCount').textContent()).trim(), '3/3');
+
+    // Mémorisé au rechargement.
+    await page.reload();
+    await page.locator('nav button[data-tab="jira"]').click();
+    await attendreCles(['PROJ-2']);
+    assert.equal(await page.locator('#jiraStatusQuick input[value="À faire"]').isChecked(), false);
+
+    await page.locator('#jiraStatusQuick [data-jquickall]').click();
+    await attendreCles(['PROJ-1', 'PROJ-2', 'OPS-3']);
+    await page.waitForFunction(() => document.querySelector('#jiraStatusQuick [data-jquickall]').hidden);
+  });
+
   test('Statuts : décocher masque et exclut côté Jira ; un statut du workflow sans ticket est proposé', async () => {
     await ouvrirJira();
     await page.waitForSelector('#jiraStatusFilter:not([hidden])');

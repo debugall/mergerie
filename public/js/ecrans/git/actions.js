@@ -118,7 +118,7 @@ async function gitFillRow(idx) {
         + '<div class="git-ref-list">'
         + list.map((r) => '<label class="git-ref-item" data-name="' + esc(r.name.toLowerCase()) + '"><input type="checkbox" data-row="' + idx + '" value="' + esc(r.name) + '"' + (sel.includes(r.name) ? ' checked' : '') + ' />' +
           '<code>' + esc(r.name) + '</code>' + (r.merged ? '<span class="tag done">' + esc(tr('git.tag.merged')) + '</span>' : '') +
-          '<span class="muted git-ref-date">' + (r.date ? fmtDate(r.date) : '') + '</span></label>').join('')
+          '<span class="muted git-ref-date">' + (r.date ? fmtDateHour(r.date) : '') + '</span></label>').join('')
         + '<div class="muted git-ref-nomatch" hidden>' + esc(tr('git.refs.no-match')) + '</div></div>'
       : '<span class="muted">' + esc(tr('git.refs.none')) + '</span>')
       + (hidden ? '<div class="muted git-ref-hidden">' + esc(tr('git.refs.hidden', { n: hidden, count: hidden })) + '</div>' : '');
@@ -128,7 +128,9 @@ async function gitFillRow(idx) {
     const hidden2 = row.querySelector('.git-ref');
     const search = row.querySelector('[data-combo="git-ref"]');
     if (!hidden2 || !search) return;
-    const cur = (gitTargets[idx] && gitTargets[idx].ref) || d.default || (d.refs[0] && d.refs[0].name) || '';
+    // La ref retenue n'est gardée que si elle existe encore : après un rafraîchissement, une branche partie ne reste pas choisie.
+    const voulu = gitTargets[idx] && gitTargets[idx].ref;
+    const cur = (voulu && d.refs.some((r) => r.name === voulu) ? voulu : null) || d.default || (d.refs[0] && d.refs[0].name) || '';
     hidden2.value = cur;
     hidden2.dataset.label = cur;
     search.value = cur;
@@ -177,6 +179,28 @@ async function gitRenderTargets() {
     return d.refs.map((r) => ({ value: r.name, label: r.name, hint: r.default ? tr('git.refs.default-suffix') : '' }));
   });
   await Promise.all(gitTargets.map((_, i) => gitFillRow(i)));
+}
+
+/* RAFRAÎCHIR LA LISTE. Les refs sont mises en cache par dépôt pour la durée de l'écran : après une
+   suppression, les branches parties restaient affichées — cochées, même — jusqu'au prochain chargement
+   de la page, et une branche poussée entre-temps n'apparaissait pas. On relit donc la forge : les lignes
+   sont reconstruites avec leurs dépôts, et ce qui était coché le reste si la branche existe encore. Appelé
+   par le bouton, et de lui-même quand une opération git se termine (`mergerie:git-done`). */
+function gitSyncTargetsDepuisEcran() {
+  const lignes = $$('#gitTargetRows .git-row');
+  if (!lignes.length) return;
+  gitTargets = lignes.map((row) => {
+    const t = gitTargets[Number(row.dataset.row)] || {};
+    const out = { ...t, repo_id: Number(row.querySelector('.git-repo').value) || undefined };
+    if (gitIsDelete()) out.refs = [...row.querySelectorAll('.git-refs input:checked')].map((i) => i.value);
+    return out;
+  });
+}
+async function gitRafraichirRefs() {
+  gitSyncTargetsDepuisEcran();
+  oublierRefs();
+  gitDropPreview();
+  await gitRenderTargets();
 }
 
 function gitReadTargets() {
@@ -305,7 +329,7 @@ function gitRenderPreview(pv) {
        `git show` ou un message d'incident veut le complet, et il n'existait nulle part. */
     const sha = r.sha ? '<button type="button" class="muted git-sha git-sha-copy" data-copy-txt="' + esc(r.sha)
       + '" title="' + esc(tr('git.copy-sha')) + '">' + esc(String(r.sha).slice(0, 8)) + '</button>' : '';
-    const when = r.committed_date ? '<span class="muted">' + fmtDate(r.committed_date) + '</span>' : '';
+    const when = r.committed_date ? '<span class="muted">' + fmtDateHour(r.committed_date) + '</span>' : '';
     /* CE QUI DIT SI C'EST SÛR. Trois cas, trois couleurs : mergée (vert, on peut y aller),
        merge request encore ouverte (ambre, on va casser quelque chose), ni l'un ni l'autre
        (ambre aussi — « non mergée » est une information, pas un blocage). */

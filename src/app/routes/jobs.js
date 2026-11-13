@@ -1,6 +1,7 @@
 'use strict';
 /* La découverte des MR et la file de jobs : lancer, arrêter, relancer, lire le journal.
    Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
+const { verdictDuJob } = require('../lib/verifications');
 const { app } = require('../app');
 const db = require('../../db');
 const { REVIEWS_DIR, TICKETS_DIR, TASKS_DIR, NOTES_DIR, TMP_DIR, ensureDir } = require('../../core/paths');
@@ -98,7 +99,7 @@ app.get('/api/jobs/history', wrap((req, res) => {
        ligne à ligne. `can_retry` évite d'afficher un bouton qui répondrait 400. */
     // `retry` sert à `canRetry` (sans lui, jamais de bouton « Relancer ») ; la spec n'a pas à sortir.
     const { retry, ...ligne } = j;
-    return { ...ligne, label, href, can_retry: jobs.canRetry(j) };
+    return { ...verdictDuJob(ligne), label, href, can_retry: jobs.canRetry(j) };
   });
   // `latest` = plus grand id vu, pas le premier de la liste : l'ordre d'affichage n'est plus
   // celui des ids, et un curseur pris sur la tête raterait un job plus récent classé plus bas.
@@ -137,6 +138,8 @@ function jobLogPayload(job, after) {
     job_id: job.id,
     kind: job.kind,
     status: job.status,
+    // Le verdict d'une vérification : « terminé » ne se dit pas en vert devant un rouge.
+    verdict: verdictDuJob(job).verdict || null,
     running: jobs.isRunning(),
     // Les autres jobs EN COURS : le panneau en tire ses onglets sans requête de plus.
     running_ids: jobs.runningJobs().map((j) => j.id),

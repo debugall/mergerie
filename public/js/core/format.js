@@ -130,3 +130,10 @@ function fmtHour(iso) {
   } catch { return ''; }
 }
 
+/* Date ET heure, année entière : le format de l'onglet Git. Une branche, un tag, un commit se
+   datent au quart d'heure près — deux tags du même jour, une branche poussée « ce matin » ou
+   « ce soir » — et la date seule rendait l'ordre d'un tableau arbitraire. */
+function fmtDateHour(iso) {
+  return `${fmtDate(iso)} ${fmtHour(iso)}`.trim();
+}
+

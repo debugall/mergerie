@@ -65,7 +65,7 @@ function nommerBranches(repoId, rows) {
     if (mr) {
       b.mr = {
         iid: mr.iid, title: mr.title || '', url: mr.web_url || '',
-        status: mr.status, merged: !!mr.closed_seen,
+        status: mr.status, merged: !!mr.closed_seen && !(!mr.merged_at && mr.closed_at), closed: !mr.merged_at && !!mr.closed_at,
         conflicts: mr.has_conflicts === 1, draft: !!mr.is_draft,
       };
       if (mr.ticket_jira_key) b.ticket = { key: mr.ticket_jira_key, status: mr.ticket_jira_status || '' };

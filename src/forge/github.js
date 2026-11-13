@@ -322,17 +322,19 @@ async function mergeMergeRequest(cfg, project, iid, opts = {}) {
    lui, compte les lignes pour nous (`additions` / `deletions` par fichier). */
 async function listMrChanges(cfg, project, iid, { manifeste = null } = {}) {
   const files = await fetchAllPages(cfg, `/repos/${encodeProject(project)}/pulls/${iid}/files`);
-  const out = []; const manifests = [];
+  const out = []; const manifests = []; const gitlinks = [];
   let additions = 0; let deletions = 0;
   for (const f of files) {
     if (f.filename) out.push(f.filename);
     if (f.previous_filename) out.push(f.previous_filename);   // renommage : les deux chemins comptent
+    // Un sous-module : GitHub ne donne pas le mode, mais son patch est un « Subproject commit ».
+    if (f.filename && /^[-+]Subproject commit /m.test(f.patch || '')) gitlinks.push(f.filename);
     additions += Number(f.additions) || 0;
     deletions += Number(f.deletions) || 0;
     // Le `patch` d'un manifeste est gardé (dépendances) ; GitHub l'omet sur un fichier trop gros ou binaire.
     if (manifeste && f.filename && manifeste(f.filename)) manifests.push({ path: f.filename, diff: f.patch || '' });
   }
-  return { paths: [...new Set(out)], files: files.length, additions, deletions, manifests };
+  return { paths: [...new Set(out)], gitlinks: [...new Set(gitlinks)], files: files.length, additions, deletions, manifests };
 }
 
 async function listMrChangedPaths(cfg, project, iid) {

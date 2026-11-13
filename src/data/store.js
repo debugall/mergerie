@@ -1110,9 +1110,14 @@ function validerDocument(table, doc) {
     const mauvais = doc.repos.find((r) => r && r.mode && !MODES_DEPOT.includes(r.mode));
     if (mauvais) return `repos[].mode « ${String(mauvais.mode).slice(0, 40)} » hors de la liste admise`;
   }
+  /* Une chaîne par ligne — ou, pour une commande GLOBALE, un objet `{ command, global, repo }` dont
+     la commande est une chaîne. Rien d'autre : un objet quelconque n'a pas à passer la porte. */
+  const ligneAdmise = (c) => typeof c === 'string'
+    || (c && typeof c === 'object' && !Array.isArray(c) && typeof c.command === 'string'
+      && (c.repo == null || typeof c.repo === 'string') && (c.global == null || typeof c.global === 'boolean'));
   if (table === 'verifier' && doc.commands !== undefined
-    && (!Array.isArray(doc.commands) || doc.commands.some((c) => typeof c !== 'string'))) {
-    return 'commands n’est pas une liste de chaînes';
+    && (!Array.isArray(doc.commands) || doc.commands.some((c) => !ligneAdmise(c)))) {
+    return 'commands n’est pas une liste de chaînes (ou d’objets { command, global, repo })';
   }
   return null;
 }

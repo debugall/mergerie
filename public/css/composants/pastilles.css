@@ -194,7 +194,8 @@ body.footer-hidden { padding-bottom: var(--logpanel-h, 0px); --footer-h: 0px; }
    pastille-ci est une INFORMATION posée sur une ligne de session, pas un bouton — le geste qui
    résout le conflit est déjà juste à côté (« Mettre à jour avec {base} »). */
 .tag.conflict-info { color: var(--red); border-color: var(--red); }
-.tag.merged { color: var(--purple); border-color: var(--purple); } /* n'est plus ouverte sur GitLab */
+.tag.merged { color: var(--purple); border-color: var(--purple); } /* mergée sur la forge */
+.tag.closed { color: var(--muted); border-color: var(--line); text-decoration: line-through; } /* fermée sans merge : abandonnée */
 .tag.new-for-me { color: var(--accent); border-color: var(--accent); } /* rapport d'un collègue, jamais ouvert ici */
 /* Qui porte la merge request d'après la forge (reviewers, assignés) et ses 👍 : des informations,
    dans la couleur neutre des pastilles — le vert est réservé à ce qui est vérifié. */

@@ -88,6 +88,19 @@ function versPageDeNotes(agent, task, texte, onLog) {
   }
   return { page_id: racineId, children: rangerSousPages(agent, racineId, blocks, entete, msgs, onLog) };
 }
+/* L'APPARIEMENT PAR TITRE TOLÈRE CE QU'UN AGENT CHANGE SANS LE VOULOIR : la casse, les accents, un
+   titre mis en gras ou entre guillemets, un tiret devenu deux-points. Relancé après qu'on a
+   retouché sa demande, l'agent écrivait « API-Core » là où le passage précédent avait écrit
+   `api-core` : la comparaison exacte ne voyait pas la même page et en créait une seconde, à
+   chaque passage. On compare donc une forme réduite — lettres et chiffres, sans accent ni
+   casse — et jamais le texte tel quel. */
+function cleTitre(titre) {
+  return String(titre || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 /* Chaque bloc `<<<PAGE>>>` devient une sous-page de la racine, APPARIÉE PAR TITRE : l'agent
    repasse chaque semaine, et vingt exemplaires de « Détail du routage » au bout de cinq mois
    seraient exactement ce que la règle « jamais dupliquée » interdit pour la page racine.
@@ -95,7 +108,7 @@ function versPageDeNotes(agent, task, texte, onLog) {
    être relue et complétée à la main, et un run qui l'oublie n'est pas un ordre d'effacer. */
 function rangerSousPages(agent, racineId, blocks, entete, msgs, onLog) {
   const existantes = notes.sousPages(racineId);
-  const vues = new Set();
+  const vues = new Set();   // ids des pages déjà appariées à ce passage : deux blocs ne prennent pas la même
   const out = [];
   for (const bloc of blocks) {
     const lignes = String(bloc || '').split('\n');
@@ -106,16 +119,24 @@ function rangerSousPages(agent, racineId, blocks, entete, msgs, onLog) {
     const corps = lignes.slice(i + 1).join('\n').trim();
     if (!titre || !corps) { onLog(t('agents.log.subpage-untitled')); continue; }
     const texte = `${entete}\n\n${corps}`;
-    const deja = existantes.find((p) => p.title.toLowerCase() === titre.toLowerCase());
+    const cle = cleTitre(titre);
+    /* PAR LA CLÉ D'ABORD — le titre que l'agent avait donné, figé sur la page à sa création :
+       renommée à la main depuis, la page reste la sienne. Par le titre ensuite, pour la page
+       d'avant la clé ou celle dont l'agent reprend le nom retouché : elle reçoit la clé au passage. */
+    const deja = existantes.find((p) => p.agent_key === cle && !vues.has(p.id))
+      || existantes.find((p) => cleTitre(p.title) === cle && !vues.has(p.id));
     if (deja) {
-      notes.majPage(deja.id, { content: texte }, msgs);
+      // Le titre existant est gardé : il a pu être retouché à la main, et c'est lui qu'on a cité à l'agent.
+      notes.majPage(deja.id, { content: texte, ...(deja.agent_key ? {} : { agent_key: cle }) }, msgs);
       out.push(deja.id);
+      vues.add(deja.id);
     } else {
-      out.push(notes.creerPage({ title: titre, content: texte, parent_id: racineId }, msgs).id);
+      const cree = notes.creerPage({ title: titre, content: texte, parent_id: racineId, agent_key: cle }, msgs);
+      out.push(cree.id);
+      vues.add(cree.id);
     }
-    vues.add(titre.toLowerCase());
   }
-  const orphelines = existantes.filter((p) => !vues.has(p.title.toLowerCase()));
+  const orphelines = existantes.filter((p) => !vues.has(p.id));
   if (orphelines.length) {
     onLog(t('agents.log.subpages-orphan', { n: orphelines.length, count: orphelines.length,
       titles: orphelines.map((p) => p.title).join(', ') }));
@@ -158,12 +179,31 @@ async function ecrireEntrees(task, root, cibles) {
    fichiers d'entrée n'existent qu'une fois les clones à jour, ils ne peuvent donc pas être
    dans le prompt stocké. */
 function blocEntrees(task, entrees) {
-  if (!task || !task.agent_id || !entrees || !entrees.length) return '';
+  if (!task || !task.agent_id) return '';
   const a = db.prepare('SELECT * FROM agent WHERE id = ?').get(task.agent_id);
   if (!a) return '';
-  const lignes = [t('agents.prompt.inputs'), ...entrees.map((f) => `- \`${f.path}\` — ${f.role}`)];
-  if (a.knowledge_prompt) lignes.push(t('agents.prompt.read-knowledge-first'));
-  return `\n\n${lignes.join('\n')}`;
+  const lignes = [];
+  if (entrees && entrees.length) {
+    lignes.push(t('agents.prompt.inputs'), ...entrees.map((f) => `- \`${f.path}\` — ${f.role}`));
+    if (a.knowledge_prompt) lignes.push(t('agents.prompt.read-knowledge-first'));
+  }
+  lignes.push(...lignesPagesExistantes(a));
+  return lignes.length ? `\n\n${lignes.join('\n')}` : '';
+}
+/* CE QUE LE PASSAGE PRÉCÉDENT A DÉJÀ ÉCRIT, dit à l'agent AU LANCEMENT. Le protocole lui demande de
+   « reprendre le même titre d'un passage à l'autre », mais une session neuve — ou une session
+   relancée après qu'on a retouché sa demande — ne sait pas quels titres elle a donnés : elle
+   en inventait d'autres, et chaque sous-page renaissait à côté de la précédente. La liste est
+   lue au moment du run, jamais dans le prompt stocké : les pages changent entre deux passages. */
+function lignesPagesExistantes(agent) {
+  if (agent.output_kind !== 'note_page') return [];
+  const id = Number(agent.output_ref) || 0;
+  const racine = id ? notes.lirePage(id) : null;
+  if (!racine) return [];
+  const out = [t('agents.prompt.pages-root', { title: racine.title })];
+  const sous = notes.sousPages(racine.id);
+  if (sous.length) out.push(t('agents.prompt.pages-subs', { titles: sous.map((p) => `« ${p.title} »`).join(', ') }));
+  return out;
 }
 
 module.exports = {

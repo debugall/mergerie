@@ -368,7 +368,7 @@ describe('Transverse — la palette de commandes', { skip: dispo ? false : MSG_N
 
   test('un vérificateur ouvre « Vérifier une branche », présélectionné', async () => {
     await choisir('Tests palette', 'Vérifier avec « Tests palette »');
-    await page.waitForSelector('#branchVerifyModal:not([hidden])');
+    await page.waitForSelector('#branchVerifyModal:not([hidden]) #branchVerifyGo:not([disabled])');
     assert.equal(await page.locator('#branchVerifySelect').inputValue(), String(ids.verif));
   });
 

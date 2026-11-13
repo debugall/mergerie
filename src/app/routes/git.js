@@ -80,6 +80,10 @@ app.get('/api/git/merged-branches', wrap((req, res) => {
     FROM mr JOIN repo ON repo.id = mr.repo_id
     WHERE mr.closed_seen = 1 AND mr.source_branch IS NOT NULL AND mr.source_branch != ''
       AND repo.enabled = 1
+      /* Fermée SANS merge, la branche porte un travail que main n'a pas : elle n'est pas morte.
+         Une MR fermée dont la forge n'a rien dit (ni date de merge, ni de fermeture) reste listée :
+         l'aperçu, branche par branche, dira si elle est mergée. */
+      AND NOT (mr.merged_at IS NULL AND mr.closed_at IS NOT NULL)
       /* Une branche encore portée par une merge request OUVERTE n'est pas morte : deux merge
          requests ont pu se succéder sur la même branche. */
       AND NOT EXISTS (SELECT 1 FROM mr m2 WHERE m2.repo_id = mr.repo_id

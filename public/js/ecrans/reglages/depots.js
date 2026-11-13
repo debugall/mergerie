@@ -202,7 +202,13 @@ $('#repoSearch') && $('#repoSearch').addEventListener('input', debounce(() => {
 /* ---- Réglages → Dépôts : les répertoires LOCAUX ----
    Rien n'est cloné ici : on déclare un dossier déjà présent sur la machine. Le
    décompte affiché (« 12 projets git sur 14 dossiers ») est ce qui dit d'un coup
-   d'œil qu'on a désigné le bon niveau d'arborescence, et non son parent. */
+   d'œil qu'on a désigné le bon niveau d'arborescence, et non son parent.
+
+   « RELIRE » : la liste des projets vient du disque à chaque chargement du panneau, jamais de la
+   base — mais le panneau, lui, ne se recharge pas tout seul. Un dossier supprimé à la main
+   restait affiché, et proposé par Navigation et le codage hors dépôt, jusqu'à ce qu'on change
+   d'onglet. Le bouton relit le répertoire et VIDE le cache des projets : les sélecteurs des
+   autres écrans relisent à leur tour. */
 async function loadLocalRootSettings() {
   const el = $('#localRootList');
   if (!el) return;
@@ -211,7 +217,10 @@ async function loadLocalRootSettings() {
     <div class="card local-root-card">
       <div style="min-width:0;flex:1">
         <div class="title">${esc(r.label || r.path)}
-          <button class="btn btn-icon btn-sm btn-danger" data-rootdel="${r.id}" title="${esc(tr('settings.localroot.del-title'))}" style="float:right"><svg class="ico"><use href="#i-close"/></svg></button>
+          <span class="local-root-actions">
+            <button class="btn btn-icon btn-sm" data-rootrefresh="${r.id}" title="${esc(tr('settings.localroot.refresh-title'))}" aria-label="${esc(tr('settings.localroot.refresh-title'))}"><svg class="ico"><use href="#i-refresh"/></svg></button>
+            <button class="btn btn-icon btn-sm btn-danger" data-rootdel="${r.id}" title="${esc(tr('settings.localroot.del-title'))}" aria-label="${esc(tr('settings.localroot.del-title'))}"><svg class="ico"><use href="#i-close"/></svg></button>
+          </span>
         </div>
         <div class="meta">${r.label ? `${esc(r.path)} · ` : ''}${r.error
           ? `<span class="t-err">${esc(r.error)}</span>`
@@ -223,6 +232,15 @@ async function loadLocalRootSettings() {
       </div>
     </div>`).join('')
     : emptyState({ icon: 'inbox', title: tr('settings.localroot.empty.title'), text: tr('settings.localroot.empty.text') });
+  $$('#localRootList [data-rootrefresh]').forEach((b) => b.addEventListener('click', async () => {
+    const id = Number(b.dataset.rootrefresh);
+    localProjectsCache.clear();
+    await busy(b, () => loadLocalRootSettings());
+    const r = localRoots.find((x) => x.id === id);
+    if (!r) return;
+    if (r.error) toast(r.error, true);
+    else toast(tr('toast.local-root-refreshed', { n: r.count, count: r.count, git: r.git_count }));
+  }));
   $$('#localRootList [data-rootdel]').forEach((b) => b.addEventListener('click', async () => {
     if (!await confirmDialog({ text: tr('confirm.delete-local-root'), confirmLabel: tr('ui.delete') })) return;
     try {

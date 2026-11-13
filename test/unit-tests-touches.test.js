@@ -115,6 +115,24 @@ describe('Tests touchés par une merge request', () => {
     assert.equal(tt.pourCible({ ...cfg, tests_touched_enabled: '0' }, { id: 1, repo_id: repoId, commit_sha: 'c1', diff_path: avec }), null);
   });
 
+  test('un sous-module remonté n’est pas du code : neutre dans le diff d’une session comme dans la liste d’une MR', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diff-'));
+    const sub = path.join(dir, 'sub.patch');
+    // Le diff que git écrit pour un gitlink : mode 160000, corps « Subproject commit ».
+    fs.writeFileSync(sub, 'diff --git a/libs/logger b/libs/logger\nindex a1b2c3d..f192ea3 160000\n--- a/libs/logger\n+++ b/libs/logger\n@@ -1 +1 @@\n-Subproject commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\n+Subproject commit f192ea3de667d6aa79301448cbd78eb744a63d48\n');
+    assert.deepEqual(c.sousModulesDuDiff(fs.readFileSync(sub, 'utf8')), ['libs/logger']);
+    assert.deepEqual(tt.pourCible(cfg, { id: 9, repo_id: repoId, commit_sha: 'c9', diff_path: sub }), { code: 0, tests: 0, neutral: 1 }, 'rien à dire : pas de « 0 test modifié »');
+    // Côté merge request : la liste relevée nomme les gitlinks ; quatre fichiers de code + le sous-module → 4, pas 5.
+    mr(7, ['src/a.js', 'src/b.js', 'src/c.js', 'src/d.js', 'libs/logger'], { sha: 'sha7' });
+    c.poserFichiers(mrs[7], 'sha7', ['src/a.js', 'src/b.js', 'src/c.js', 'src/d.js', 'libs/logger'], { gitlinks: ['libs/logger'] });
+    assert.deepEqual([carte(7).code, carte(7).tests, carte(7).neutral, carte(7).alert], [4, 0, 1, true]);
+    // `git diff --raw` dit les modes : le sous-module en 160000, un renommage sur deux chemins.
+    assert.deepEqual(c.cheminsRaw(':100644 100644 abc def M\tsrc/x.js\n:160000 160000 abc def M\tlibs/logger\n:100644 100644 abc def R100\ta.js\tb.js\n'),
+      { paths: ['src/x.js', 'libs/logger', 'a.js', 'b.js'], gitlinks: ['libs/logger'] });
+    // Cette merge request n'appartient qu'à ce test : les suivants comptent les leurs.
+    db.prepare('DELETE FROM mr WHERE id = ?').run(mrs[7]); delete mrs[7];
+  });
+
   test('les MR sans test du brief : les plus anciennes d’abord, plafonnées, écartables sur un SHA', () => {
     mr(5, ['a.js', 'b.js', 'c.js'], { created: '2026-10-01T10:00:00.000Z' });
     const l = tt.sansTest(cfg, 0);

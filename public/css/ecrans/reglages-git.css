@@ -6,6 +6,7 @@
 .gitcmd-actions { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* Réglages → Répertoires locaux : projets trouvés sous chaque répertoire. */
+.local-root-card .local-root-actions { float: right; display: inline-flex; gap: 4px; }
 .local-root-projects { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .local-proj { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--border, #ccc); border-radius: 999px; font-size: 13px; background: var(--code-bg, #f4f4f4); }
 .local-proj code { font-size: 12px; }

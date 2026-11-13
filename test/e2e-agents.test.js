@@ -196,6 +196,22 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
     const projets = await page.$$eval('#targetRows .target-row .t-repo-search', (els) => els.map((e) => e.value));
     assert.deepEqual(projets, ['grp/app', 'grp/autre']);
 
+    /* « TOUT RETIRER » : trente dépôts pré-remplis pour n'en vouloir que deux, c'était
+       vingt-huit croix. Le bouton vide la liste en une ligne prête à choisir, puis se cache
+       — devant une seule ligne, il n'a plus rien à retirer. */
+    const vider = page.locator('#clearTargets');
+    assert.equal(await vider.isHidden(), false, 'le bouton se montre devant plusieurs lignes');
+    const posAvant = await page.$eval('#addTarget', (e) => e.getBoundingClientRect().left);
+    await vider.click();
+    await page.waitForFunction(() => document.querySelectorAll('#targetRows .target-row').length === 1);
+    assert.equal(await page.$eval('#targetRows .target-row .t-repo-search', (e) => e.value), '', 'la ligne restante est vide');
+    assert.equal(await vider.isHidden(), true, 'plus rien à retirer : le bouton se cache');
+    assert.equal(await page.$eval('#addTarget', (e) => e.getBoundingClientRect().left), posAvant,
+      '« Ajouter un projet » garde sa place quand « Tout retirer » se cache');
+    await page.locator('#addTarget').click();
+    await page.waitForFunction(() => document.querySelectorAll('#targetRows .target-row').length === 2);
+    assert.equal(await vider.isHidden(), false, 'il revient dès la deuxième ligne');
+
     await page.locator('#taskCancel').click();
     await page.waitForSelector('#taskModal', { state: 'hidden' });
   });
@@ -400,6 +416,55 @@ describe('Agents : l’onglet, les profils, les runs', { skip: dispo ? false : M
       'les sous-pages sont appariées par titre, jamais recréées');
     assert.equal(apres.filter((x) => !x.parent_id && /Documentaliste/.test(x.title)).length, 1,
       'la page générale non plus');
+  });
+
+  /* RELANCÉ, L'AGENT NE RETROUVAIT PAS SES SOUS-PAGES. Deux causes, vues en vrai : un titre
+     qu'il réécrit autrement (« API-Core » pour `api-core`, des guillemets, un accent), et une
+     session neuve qui ne sait pas quels titres elle avait donnés. L'appariement tolère donc la
+     forme, et la demande du run cite les pages déjà écrites, avec leurs titres. */
+  test('relancé, le documentaliste met à jour une sous-page dont le titre a changé de forme, et sa demande cite les pages existantes', async () => {
+    const doc = (await app.api('GET', '/api/agents')).body.find((x) => /Documentaliste/i.test(x.name));
+    const pages = (await app.api('GET', '/api/notes')).body.pages;
+    const racine = pages.find((x) => !x.parent_id && /Documentaliste/.test(x.title));
+    const sous = pages.filter((x) => x.parent_id === racine.id);
+    assert.ok(sous.length >= 1);
+    // La même page, écrite autrement qu'au passage précédent : guillemets, casse, gras.
+    const r0 = await app.api('PUT', `/api/notes/${sous[0].id}`, { title: `« **${sous[0].title.toUpperCase()}** »` });
+    assert.equal(r0.status, 200, r0.text);
+    const avant = (await app.api('GET', `/api/notes/${sous[0].id}`)).body;
+
+    // Ce que la demande du run reçoit, lue au lancement : la page générale et ses sous-pages.
+    const apres = require('../src/agent/profile/apres');   // après startApp : MERGERIE_DATA_DIR est posé
+    const bloc = apres.blocEntrees({ agent_id: doc.id }, []);
+    assert.ok(bloc.includes(racine.title), `la page générale n'est pas citée : ${bloc}`);
+    assert.ok(bloc.includes(avant.title), `la sous-page n'est pas citée : ${bloc}`);
+    assert.equal(apres.blocEntrees({ agent_id: null }, []), '', 'rien sans agent');
+
+    const r = await app.api('POST', `/api/agents/${doc.id}/run`, { mode: 'ask', question: 'la carte des services, section sécurité en plus' });
+    assert.equal(r.status, 200, r.text);
+    await waitForJobs(app.api, { timeout: 120000 });
+    const liste = (await app.api('GET', '/api/notes')).body.pages;
+    assert.equal(liste.filter((x) => x.parent_id === racine.id).length, sous.length,
+      `une sous-page a été recréée : ${liste.filter((x) => x.parent_id === racine.id).map((x) => x.title).join(' | ')}`);
+    const maj = (await app.api('GET', `/api/notes/${sous[0].id}`)).body;
+    assert.equal(maj.title, avant.title, 'le titre retouché à la main est gardé');
+    assert.notEqual(maj.updated_at, avant.updated_at, 'la sous-page a été mise à jour, pas laissée telle quelle');
+    assert.ok(maj.agent_key, 'la page retrouvée par son titre reçoit la clé de l’agent');
+
+    /* RENOMMÉE DE SENS, PAS SEULEMENT DE FORME : « Service de paiement » n'a plus rien du titre
+       que l'agent donne. La clé figée à la création la retrouve quand même — c'est elle, pas le
+       titre, qui dit que c'est la même page. */
+    const r1 = await app.api('PUT', `/api/notes/${sous[0].id}`, { title: 'Service de paiement' });
+    assert.equal(r1.status, 200, r1.text);
+    const r2 = await app.api('POST', `/api/agents/${doc.id}/run`, { mode: 'ask', question: 'la carte des services' });
+    assert.equal(r2.status, 200, r2.text);
+    await waitForJobs(app.api, { timeout: 120000 });
+    const liste2 = (await app.api('GET', '/api/notes')).body.pages;
+    assert.equal(liste2.filter((x) => x.parent_id === racine.id).length, sous.length,
+      `une sous-page renommée a été recréée : ${liste2.filter((x) => x.parent_id === racine.id).map((x) => x.title).join(' | ')}`);
+    const maj2 = (await app.api('GET', `/api/notes/${sous[0].id}`)).body;
+    assert.equal(maj2.title, 'Service de paiement', 'le nouveau nom est gardé');
+    assert.notEqual(maj2.updated_at, maj.updated_at, 'la page renommée a bien reçu le nouveau passage');
   });
 
   /* LES TROIS MODALES DE CRÉATION FONT LA MÊME LARGEUR. Celles des agents étaient plus

@@ -59,6 +59,7 @@ const EXCEPTIONS = {
   'ticket_spec.epic_key': 'la clé de l’epic jointe en contexte, pas un secret',
   'ticket_spec_version.ticket_key': 'la clé du ticket, reprise pour nommer le dossier du fichier',
   'agent.builtin_key': 'le nom d’un profil livré avec l’outil, pas un secret',
+  'note_page.agent_key': 'le titre réduit qu’un agent a donné à une sous-page, pour la retrouver renommée : pas un secret',
   'config.jira_test_key': 'la clé d’un ticket de test, saisie à la main',
   'config.review_skill': 'le nom d’une compétence (« git-review »)',
   'verifier.report_path': 'un chemin RELATIF dans le dépôt vérifié, le même partout',
@@ -224,7 +225,7 @@ const REGISTRE = [
        est du même bois : l'instant que la FORGE donne, le même pour toute l'équipe, là où la
        ligne du journal d'activité ne disait que « quand CE poste s'en est aperçu ». */
     partagees: ['status', 'status_at', 'reviewed_sha', 'ticket_text', 'ticket_image', 'squash',
-      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at',
+      'remove_source_branch', 'closed_seen', 'web_url', 'gitlab_created_at', 'merged_at', 'closed_at',
       /* LES SHA DE MERGE, du même bois que `merged_at` : immuables une fois la MR mergée, et
          c'est avec eux qu'un poste relit une merge request dont la branche a disparu. */
       'head_sha', 'base_sha', 'merge_commit_sha', 'squash_commit_sha',
@@ -253,6 +254,7 @@ const REGISTRE = [
         web_url: r.web_url || null,
         gitlab_created_at: r.gitlab_created_at || null,
         merged_at: r.merged_at || null,
+        closed_at: r.closed_at || null,
         head_sha: r.head_sha || null,
         base_sha: r.base_sha || null,
         merge_commit_sha: r.merge_commit_sha || null,
@@ -315,6 +317,7 @@ const REGISTRE = [
       web_url: doc.web_url || null,
       gitlab_created_at: doc.gitlab_created_at || null,
       merged_at: doc.merged_at || null,
+      closed_at: doc.closed_at || null,
       /* On ne pose ces colonnes QUE si le fichier les porte : les absentes ne doivent pas
          devenir des `null` qui effaceraient ce que la découverte sait déjà. */
       ...(doc.head_sha ? { head_sha: doc.head_sha } : {}),
@@ -723,9 +726,13 @@ const REGISTRE = [
       created_at: r.created_at,
       /* L'ORDRE DES COMMANDES PORTE DU SENS : `npm ci` avant `npm test`. Le tableau le garde,
          et la sérialisation ne trie jamais un tableau. */
+      /* Une ligne de dépôt reste une CHAÎNE (le format de toujours) ; une ligne GLOBALE est un
+         objet `{ command, global: true, repo }`, le dépôt par sa clé naturelle. */
       commands: ctx.enfants('verifier_command', 'verifier_id', r.id)
         .sort((a, b) => a.position - b.position)
-        .map((c) => c.command),
+        .map((c) => (c.scope === 'global'
+          ? { command: c.command, global: true, repo: c.repo_id ? (ctx.repoRef(c.repo_id) || null) : null }
+          : c.command)),
       /* La couverture : quels dépôts ce script sait tester, par clé naturelle. Un dépôt inconnu
          ici est SIGNALÉ et sa ligne sautée — déclarer une couverture sur un dépôt qu'on n'a pas
          ferait échouer la vérification au lancement, bien plus tard. */
@@ -777,10 +784,21 @@ const REGISTRE = [
         colonneParent: 'verifier_id',
         /* Pas d'`uid` sur cette table : (vérificateur, position) la décrit entièrement. La liste
            est donc remplacée en bloc — voir `remplacerListe` dans le store. */
-        remplace: (db2, parent, items) => {
+        remplace: (db2, parent, items, ctx, signaler) => {
           db2.prepare('DELETE FROM verifier_command WHERE verifier_id = ?').run(parent.id);
-          const ins = db2.prepare('INSERT INTO verifier_command (verifier_id, position, command) VALUES (?,?,?)');
-          items.forEach((cmd, i) => ins.run(parent.id, i, String(cmd)));
+          const ins = db2.prepare('INSERT INTO verifier_command (verifier_id, position, command, scope, repo_id) VALUES (?,?,?,?,?)');
+          items.forEach((item, i) => {
+            if (typeof item === 'string' || !item) { ins.run(parent.id, i, String(item || ''), 'repo', null); return; }
+            const globale = item.global === true || item.scope === 'global';
+            let repoId = null;
+            if (globale && item.repo) {
+              repoId = ctx.repoId(item.repo) || null;
+              /* Dépôt inconnu ici : la commande reste globale, sur le premier dépôt préparé — et
+                 c'est dit, pour que le run qui tournerait au mauvais endroit se relise avec ça. */
+              if (!repoId) signaler(`commande globale « ${String(item.command || '').slice(0, 60)} » : dépôt « ${item.repo} » inconnu sur ce poste, elle tournera dans le premier dépôt préparé`);
+            }
+            ins.run(parent.id, i, String(item.command || ''), globale ? 'global' : 'repo', repoId);
+          });
         },
       },
       {
@@ -1492,7 +1510,7 @@ const REGISTRE = [
   /* ── Notes, todos, liens, Jira ───────────────────────────────────────────────────────── */
   {
     table: 'note_page', famille: 'P', uidPropre: true, cle: 'slug', chemin: 'notes/{slug}.md', fusion: 'last-writer',
-    fichiers: ['notes/{slug}.json (uid, parent, épinglage, dates)', 'notes/{slug}/{uid}.png'],
+    fichiers: ['notes/{slug}.json (uid, parent, épinglage, clé d’agent, dates)', 'notes/{slug}/{uid}.png'],
     note: 'le corps du .md EST le contenu de la page ; PAGE PAR PAGE : `shared` décide, et vaut 0 par défaut',
     corps: 'content',
     /* LA SEULE TABLE QUI SE PARTAGE LIGNE PAR LIGNE. Ailleurs la famille suffit : une review,
@@ -1512,6 +1530,8 @@ const REGISTRE = [
       /* Le parent par son SLUG, jamais par son id : deux postes numérotent leurs pages
          différemment, et une sous-page rattachée au mauvais parent serait pire qu'orpheline. */
       parent: r.parent_id ? ctx.slug('note_page', r.parent_id) : null,
+      // La clé posée par l'agent qui a écrit la sous-page : chez le collègue, son documentaliste la retrouve aussi.
+      agent_key: r.agent_key || null,
       created_at: r.created_at,
       updated_at: r.updated_at,
       /* Les captures vivent dans le fichier de LEUR PAGE : elles ne changent qu'avec elle, et un
@@ -1527,6 +1547,7 @@ const REGISTRE = [
       content: doc.content || '',
       pinned: doc.pinned ? 1 : 0,
       parent_id: doc.parent ? ctx.idParSlug('note_page', doc.parent) : null,
+      agent_key: doc.agent_key || null,
       /* ELLE EST DANS LE DÉPÔT, DONC ELLE EST PARTAGÉE. Arriver avec `shared = 0` ferait
          retirer le fichier au premier écoulement : le poste qui reçoit effacerait chez tout le
          monde la page qu'on vient de lui envoyer. */
@@ -1871,8 +1892,8 @@ const REGISTRE = [
       'mr_commits_enabled',
       // Le contrôle au registre : l'interrupteur, le seuil « récent », le plafond par tour, les motifs de paquets privés — d'équipe ; les URL, elles, sont de poste.
       'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns',
-      // La page Équipe : quand un poste est dit silencieux, combien de temps une reprise reste listée — une lecture commune.
-      'team_quiet_days', 'team_takeover_days'],
+      // Les postes de l'équipe : quand un poste est dit silencieux — une lecture commune.
+      'team_quiet_days'],
     commitMessage: () => 'settings',
     /* UNE SEULE LIGNE, UN SEUL FICHIER. On n'énumère pas les colonnes ici : c'est `partagees`
        qui fait foi, et la dupliquer serait la garantie qu'un jour les deux divergent — et que

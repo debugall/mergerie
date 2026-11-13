@@ -178,56 +178,93 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis 
  *   — d'un dépôt à l'autre, on CONTINUE : ils sont indépendants, et savoir que deux dépôts
  *     cassent plutôt qu'un seul vaut mieux que de s'arrêter au premier.
  * Le verdict est le ET : tout doit passer.
+ *
+ * UNE COMMANDE GLOBALE TOURNE UNE FOIS, à sa place dans la liste — `npm ci` dans chaque dépôt,
+ * puis `docker compose up -d` une fois, puis `npm test` dans chaque dépôt, puis `compose down`.
+ * C'est ce qui impose l'ordre de parcours : LA LISTE D'ABORD, LES DÉPÔTS DEDANS. Une commande
+ * de dépôt est rejouée dans chacun — en sautant ceux où une précédente a déjà échoué —, une
+ * globale tourne dans le répertoire du dépôt qu'elle désigne (ou du premier préparé), et elle
+ * ne part pas si quoi que ce soit a échoué avant : ce qui la suit en dépend, comme dans un
+ * dépôt. Un dépôt désigné qui ne fait pas partie de cette vérification est une erreur, dite
+ * avec son nom — pas un dossier deviné.
  */
-/** @param {any} verifier @param {string[]} commandes @param {any[]} repos
- * @param {(ligne: string) => void} [onLog] @param {{ home?: string|null }} [options] */
+/** @param {any} verifier @param {(string|{command:string,scope?:string,repo_id?:number|null})[]} commandes
+ * @param {any[]} repos @param {(ligne: string) => void} [onLog] @param {{ home?: string|null }} [options] */
 async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home } = {}) {
   if (!repos.length) return { erreur: 'aucun dépôt préparé' };
-  if (!commandes.length) return { erreur: 'aucune commande déclarée' };
+  const lignes = (commandes || []).map((c) => verify.normaliserCommande(c)).filter((c) => c && c.command);
+  if (!lignes.length) return { erreur: 'aucune commande déclarée' };
 
   const env = envVerifier(verifier, { home });
   const fin = Date.now() + Math.max(1, verifier.timeout_s) * 1000;   // budget GLOBAL
   const multi = repos.length > 1;
   const tous = [];
-  const details = [];
+  // Par dépôt : l'instant d'avant sa première commande (le rapport lu doit être le nôtre), ses
+  // résultats, et s'il a déjà échoué (ses commandes suivantes ne tournent plus).
+  const etat = new Map(repos.map((r) => [r.name, { debut: Date.now(), resultats: [], echoue: false }]));
+  let echec = false;
 
-  for (const r of repos) {
-    if (multi) onLog(`— ${r.name}`);
-    // L'instant d'avant la première commande : c'est lui qui dira si le rapport lu est le nôtre.
-    const debutRepo = Date.now();
-    const duRepo = [];
-    for (const brut of commandes) {
-      const d = verify.decouperCommande(brut);
-      if (!d.ok) return { erreur: `commande « ${brut} » : ${d.erreur}` };
-      const reste = fin - Date.now();
-      if (reste <= 0) return { erreur: `délai dépassé (${verifier.timeout_s} s)` };
+  const executer = async (ligne, r, { globale }) => {
+    const brut = ligne.command;
+    const d = verify.decouperCommande(brut);
+    if (!d.ok) return { erreur: `commande « ${brut} » : ${d.erreur}` };
+    const reste = fin - Date.now();
+    if (reste <= 0) return { erreur: `délai dépassé (${verifier.timeout_s} s)` };
 
-      /* UN ARRÊT N'EST PAS UN ÉCHEC DE TESTS. « Stop » tue le processus courant : la commande
-         revient avec un code ≠ 0, et sans cette garde elle était lue comme une batterie rouge —
-         la vérification se concluait en `verified_fail` et la merge request héritait d'un
-         verdict qu'aucun test n'avait prononcé. On sort donc en ERREUR, avant et après chaque
-         commande : avant pour ne pas en lancer une de plus, après parce que le code ≠ 0 qu'on
-         vient de lire est la conséquence du kill, pas un résultat. */
-      if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
+    /* UN ARRÊT N'EST PAS UN ÉCHEC DE TESTS. « Stop » tue le processus courant : la commande
+       revient avec un code ≠ 0, et sans cette garde elle était lue comme une batterie rouge —
+       la vérification se concluait en `verified_fail` et la merge request héritait d'un
+       verdict qu'aucun test n'avait prononcé. On sort donc en ERREUR, avant et après chaque
+       commande : avant pour ne pas en lancer une de plus, après parce que le code ≠ 0 qu'on
+       vient de lire est la conséquence du kill, pas un résultat. */
+    if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
 
-      onLog(`$ ${brut}`);
-      const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
-      if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
-      if (res.erreurLancement) {
-        return { erreur: `${d.programme} : ${res.erreurLancement} — vérifie le PATH du serveur, ou déclare les variables d'environnement du vérificateur` };
-      }
-      duRepo.push({ command: brut, repo: r.name, code: res.code, duration_ms: res.duration_ms, output: res.output });
-      if (res.timedOut) return { erreur: `délai dépassé (${verifier.timeout_s} s) pendant « ${brut} »` };
-      if (res.code !== 0) {
-        onLog(t('log.verify.cmd-failed', { cmd: brut, code: res.code }));
-        break;
-      }
-      onLog(`« ${brut} » : ok (${Math.round(res.duration_ms / 1000)} s)`);
+    onLog(globale ? t('log.verify.cmd-global', { cmd: brut, repo: r.name }) : `$ ${brut}`);
+    const res = await lancerUne(d.programme, d.args, { cwd: r.dir, env, resteMs: reste, onLog });
+    if (proc.isCancelled()) return { erreur: t('err.job.stopped') };
+    if (res.erreurLancement) {
+      return { erreur: `${d.programme} : ${res.erreurLancement} — vérifie le PATH du serveur, ou déclare les variables d'environnement du vérificateur` };
     }
-    details.push(detailDesTests(verifier, r.dir, duRepo, onLog, multi ? r.name : null, debutRepo));
-    tous.push(...duRepo);
+    const resultat = { command: brut, repo: r.name, code: res.code, duration_ms: res.duration_ms, output: res.output, ...(globale ? { global: true } : {}) };
+    etat.get(r.name).resultats.push(resultat);
+    tous.push(resultat);
+    if (res.timedOut) return { erreur: `délai dépassé (${verifier.timeout_s} s) pendant « ${brut} »` };
+    if (res.code !== 0) {
+      onLog(t('log.verify.cmd-failed', { cmd: brut, code: res.code }));
+      return { echec: true };
+    }
+    onLog(`« ${brut} » : ok (${Math.round(res.duration_ms / 1000)} s)`);
+    return {};
+  };
+
+  for (const ligne of lignes) {
+    if (ligne.scope === 'global') {
+      if (echec) { onLog(t('log.verify.cmd-global-skipped', { cmd: ligne.command })); continue; }
+      const r = ligne.repo_id ? repos.find((x) => x.repo_id === ligne.repo_id) : repos[0];
+      if (!r) {
+        const projet = (db.prepare('SELECT project FROM repo WHERE id = ?').get(ligne.repo_id) || {}).project || `#${ligne.repo_id}`;
+        return { erreur: t('err.verify.global-repo-absent', { cmd: ligne.command, project: projet }) };
+      }
+      const res = await executer(ligne, r, { globale: true });
+      if (res.erreur) return res;
+      // Une globale en échec arrête TOUT : l'environnement qu'elle montait manque à chaque dépôt.
+      if (res.echec) { echec = true; for (const e of etat.values()) e.echoue = true; }
+      continue;
+    }
+    for (const r of repos) {
+      const e = etat.get(r.name);
+      if (e.echoue) continue;
+      if (multi) onLog(`— ${r.name}`);
+      const res = await executer(ligne, r, { globale: false });
+      if (res.erreur) return res;
+      if (res.echec) { e.echoue = true; echec = true; }
+    }
   }
 
+  const details = repos.map((r) => {
+    const e = etat.get(r.name);
+    return detailDesTests(verifier, r.dir, e.resultats, onLog, multi ? r.name : null, e.debut);
+  });
   return { run: verify.composerRunCommandes(tous, verify.fusionnerDetails(details)) };
 }
 
@@ -418,8 +455,8 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
     throw e;
   }
   const cibles = JSON.parse(v.targets_json || '[]');
-  const commandes = db.prepare('SELECT command FROM verifier_command WHERE verifier_id = ? ORDER BY position')
-    .all(verifier.id).map((c) => c.command);
+  const commandes = db.prepare('SELECT command, scope, repo_id FROM verifier_command WHERE verifier_id = ? ORDER BY position')
+    .all(verifier.id).map((c) => verify.normaliserCommande(c));
   db.prepare("UPDATE verification SET status = 'running', started_at = ? WHERE id = ?")
     .run(nowIso(), verificationId);
 
@@ -463,11 +500,28 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
        SHA au premier usage et on la réécrit dans la vérification. Un verdict porte sur des
        commits, pas sur un nom de branche qui aura bougé demain — et le cache des runs n'a de
        sens que sur des SHAs. */
-    const resoudre = async (repo, ref) => {
+    /* UNE VÉRIFICATION DE BRANCHE OU DE TAG ARRIVE AVEC SA REF, PAS SON SHA : la route répond
+       sans toucher au clone, c'est ici — dans le journal — que le dépôt est cloné ou rapatrié et
+       la ref résolue. Le tag est rapatrié exprès : posé sur un commit déjà présent, le fetch
+       général ne le ramène pas toujours. Une ref inconnue est dite avec son nom et son dépôt,
+       pas avec le `fatal:` de git. */
+    const resoudre = async (repo, ref, cible = null) => {
       if (/^[0-9a-f]{7,40}$/i.test(String(ref))) return String(ref);
       const clone = await git.ensureRepo(cfg, repo, noter);
-      const out = await git.run('git', ['rev-parse', String(ref)], { cwd: clone });
-      return String(out && out.stdout != null ? out.stdout : '').trim().split('\n')[0];
+      if (cible && cible.tag) await git.fetchTag(clone, cible.tag);
+      const nom = String(ref).replace(/^refs\/tags\//, '').replace(/^origin\//, '').replace(/\^\{commit\}$/, '');
+      let sha = '';
+      try {
+        const out = await git.run('git', ['rev-parse', '--verify', '--quiet', String(ref)], { cwd: clone });
+        sha = String(out && out.stdout != null ? out.stdout : '').trim().split('\n')[0];
+      } catch { sha = ''; }
+      if (!sha) {
+        throw new Error(cible && cible.tag
+          ? t('err.verify.tag-unknown', { tag: nom, project: repo.project })
+          : t('err.verify.branch-unknown', { branch: nom, project: repo.project }));
+      }
+      noter(t('log.verify.resolved', { project: repo.project, ref: nom, sha: sha.slice(0, 12) }));
+      return sha;
     };
     let ciblesResolues = null;
 
@@ -484,7 +538,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
           ciblesResolues.push({
             ...c,
             base_sha: c.base_sha ? await resoudre(repo, c.base_sha) : null,
-            head_sha: await resoudre(repo, c.head_sha),
+            head_sha: await resoudre(repo, c.head_sha, c),
           });
         }
         db.prepare('UPDATE verification SET targets_json = ? WHERE id = ?')
@@ -514,13 +568,13 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
             catch { await git.run('git', ['fetch', 'origin'], { cwd: ligne.workdir }); }
             await git.run('git', ['checkout', '--detach', c[champ]], { cwd: ligne.workdir });
           }
-          repos.push({ name: repo.project, dir: ligne.workdir, sha: c[champ], branch: c.branch, mode: 'in_place', changed: true });
+          repos.push({ repo_id: repo.id, name: repo.project, dir: ligne.workdir, sha: c[champ], branch: c.branch, mode: 'in_place', changed: true });
           continue;
         }
         const clone = git.cloneDirFor(cfg, repo);
         const dir = await ajouterWorktree(cfg, repo, c[champ], noter);
         aNettoyer.push({ clone, dir });
-        repos.push({ name: repo.project, dir, sha: c[champ], branch: c.branch, mode: 'worktree', changed: true });
+        repos.push({ repo_id: repo.id, name: repo.project, dir, sha: c[champ], branch: c.branch, mode: 'worktree', changed: true });
       }
       return repos;
     };
@@ -711,7 +765,7 @@ function blocsCommentaire(v, verifier) {
   const commits = ['Commits testés :'];
   for (const c of cibles) {
     const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id);
-    commits.push(`- ${(repo && repo.project) || c.repo_id} · \`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
+    commits.push(`- ${(repo && repo.project) || c.repo_id} · ${c.tag ? 'tag ' : ''}\`${c.branch || ''}\` @ \`${String(c.head_sha || '').slice(0, 8)}\``);
   }
   /* LES MENTIONS NE PARTENT QUE SI QUELQUE CHOSE CASSE. Écrire `@amady` sur chaque merge
      request vérifiée, y compris pour dire que tout va bien, envoie un mail à quelqu'un pour

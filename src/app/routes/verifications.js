@@ -329,8 +329,10 @@ app.post('/api/verify/mrs', wrap((req, res) => {
      `develop` à `develop` ;
    · l'imputabilité disparaît : rien n'est « cassé par cette branche », ce qui est rouge est
      rouge. L'affichage et le commentaire le disent autrement (voir `blocsCommentaire`). */
-async function ciblesDepuisBranches(entrees) {
-  const cfg = getConfig();
+/* Une ref telle que git l'admet — et surtout pas une option : elle sera passée à `rev-parse` dans
+   le job. Pas de tiret en tête, pas de `..`, ni blanc ni caractère que git refuse de toute façon. */
+const REF_SURE = /^(?!-)(?!.*\.\.)(?!.*[\s~^:?*[\\])[^\0]{1,200}$/;
+function ciblesDepuisBranches(entrees) {
   const cibles = [];
   const vus = new Set();
   for (const e of entrees) {
@@ -338,18 +340,24 @@ async function ciblesDepuisBranches(entrees) {
     if (!repo) throw new Error(t('err.depot-introuvable'));
     if (vus.has(repo.id)) throw new Error(t('err.verify.repo-twice'));
     vus.add(repo.id);
+    const tag = String(e.tag || '').trim();
     const branche = String(e.branch || '').trim();
-    if (!branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
-    /* Le SHA est résolu MAINTENANT, dans le clone : un verdict est attaché à des commits, pas
-       à un nom de branche qui bougera. C'est aussi ce qui rend la péremption possible. */
-    const cwd = await git.ensureRepo(cfg, repo, () => {});
-    if (!await git.refExists(cwd, `origin/${branche}`)) {
-      throw new Error(t('err.verify.branch-unknown', { branch: branche, project: repo.project }));
-    }
-    const { stdout } = await git.run('git', ['rev-parse', `origin/${branche}`], { cwd });
+    if (!tag && !branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
+    if (!REF_SURE.test(tag || branche)) throw new Error(t('err.verify.invalid-ref', { ref: tag || branche, project: repo.project }));
+    /* LE SHA N'EST PLUS RÉSOLU ICI MAIS DANS LE JOB. Cloner ou rapatrier chaque dépôt avant de
+       répondre tenait la fenêtre de lancement ouverte, bouton en attente, pendant une dizaine de
+       secondes par dépôt — sans rien dire. La cible part avec sa ref (`origin/<branche>` ou le
+       commit pointé par le tag, `^{commit}` : l'objet d'un tag annoté a son propre SHA, qu'aucun
+       checkout ne veut), et `executerVerification` la résout en SHA au premier usage, clone et
+       fetch compris, sous les yeux du journal — comme il le fait déjà pour la base d'une MR. Une
+       ref inconnue met la vérification en erreur, avec son nom, au lieu de bloquer la fenêtre.
+       Le verdict reste attaché à des commits : la cible est réécrite résolue avant de tourner. */
+    const ref = tag ? `refs/tags/${tag}^{commit}` : `origin/${branche}`;
+    /* `branch` porte le nom du tag aussi : c'est le champ que le rapport, le brief et le
+       commentaire écrivent déjà ; `tag` dit qu'il s'agit d'un tag, pour l'annoncer comme tel. */
     cibles.push({
-      repo_id: repo.id, mr_id: null, head_sha: stdout.trim(),
-      base_sha: null, branch: branche, mode: 'worktree',
+      repo_id: repo.id, mr_id: null, head_sha: ref,
+      base_sha: null, branch: tag || branche, tag: tag || null, mode: 'worktree',
     });
   }
   return cibles;
@@ -357,7 +365,7 @@ async function ciblesDepuisBranches(entrees) {
 app.post('/api/verify/branches', wrap(async (req, res) => {
   const entrees = (req.body && req.body.targets) || [];
   if (!entrees.length) throw new Error(t('err.verify.branch-required', { project: '' }));
-  const cibles = await ciblesDepuisBranches(entrees);
+  const cibles = ciblesDepuisBranches(entrees);
   const verifier = verifierPour(cibles, req.body && req.body.verifier_id);
   /* Le run base s'éteint tout seul à l'exécution : `executerVerification` le déduit de
      l'absence de merge request dans les cibles. Rien à forcer ici, donc rien à désynchroniser. */
@@ -377,6 +385,8 @@ app.post('/api/verifications/:id/fix', wrap((req, res) => {
   if (!v) throw new Error(t('err.verify.not-found'));
   const d = detailVerification(v);
   if (d.verdict !== 'verified_fail') throw new Error(t('err.verify.fix-only-on-fail'));
+  // Un tag ne bouge pas : il n'y a pas de branche où poser une correction.
+  if (d.targets.some((c) => c.tag)) throw new Error(t('err.verify.fix-not-on-tag'));
 
   const cibles = d.targets.map((c) => ({ repo_id: c.repo_id, branch: c.branch, base_branch: null }));
   const list = normalizeTargets(cibles, 'code');

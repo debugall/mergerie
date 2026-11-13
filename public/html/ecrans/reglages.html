@@ -439,12 +439,12 @@
             <label class="inline-check"><input form="configForm" name="usage_share" type="checkbox" /> <span data-i18n="datasync.lbl.usage">Partager ma dépense IA (un total par jour)</span> <button type="button" class="hint" tabindex="-1" aria-label="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-tip="Décoché, ce que coûte ton abonnement ne quitte pas ce poste. Coché, l'équipe voit un total par jour — jamais le détail par appel." data-i18n-tip="datasync.tip.usage"><svg class="ico"><use href="#i-info"/></svg></button></label>
             <div id="dataSyncState" class="muted"></div>
             <div id="dataSyncConflicts"></div>
-            <!-- LA PAGE ÉQUIPE « NOTRE MATIN » : deux réglages d'équipe sous leur propre titre — quand un poste est
-                 dit silencieux (jours ouvrés sans commit dans le dépôt de données), combien de temps une reprise
-                 terminée reste listée. -->
-            <h3 data-i18n="datasync.group.team">Page Équipe</h3>
+            <!-- LES POSTES : une ligne par auteur du dépôt de données — sa dernière synchro, « silencieux »
+                 au-delà du seuil ci-dessous. Un diagnostic de synchro (les données de qui sont périmées),
+                 pas une présence : il vit ici, et la page Équipe n'en dit qu'un nombre. -->
+            <h3 data-i18n="datasync.group.team">Postes de l'équipe</h3>
+            <div id="dataSyncPostes" class="datasync-postes"></div>
             <label><span data-i18n="datasync.lbl.team-quiet-days">Poste silencieux après N jours ouvrés</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-quiet-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_quiet_days" type="number" min="0" max="365" step="1" placeholder="2" /></label>
-            <label><span data-i18n="datasync.lbl.team-takeover-days">Une reprise terminée reste listée N jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="datasync.tip.team-takeover-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button> <input form="configForm" name="team_takeover_days" type="number" min="0" max="365" step="1" placeholder="7" /></label>
         </div>
         </div><!-- /sub-datasync -->
 
@@ -731,6 +731,19 @@
             <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
             <span id="configInfoMr" class="muted"></span>
         </div>
+        <!-- LE REVIEWER, EMPORTÉ — une section à part, SOUS le formulaire : ce n'est pas un réglage qui
+             s'enregistre, c'est un export de ce que le formulaire règle. Un skill Claude Code autonome qui
+             refait la même review sur la branche courante d'un dépôt. Un POST et une archive, comme la
+             sauvegarde (reglages/skill-export.js). -->
+        <section class="skill-export" aria-labelledby="skillExportTitle">
+            <h3 id="skillExportTitle" data-i18n="settings.skill.section">Emporter le reviewer</h3>
+            <p class="muted" data-i18n="settings.skill.section.text">Un skill Claude Code autonome, un seul fichier, qui refait la même review — ce gabarit, ces règles, cette note — sur la branche courante de n’importe quel dépôt cloné, sans Mergerie.</p>
+            <p class="form-actions skill-export-row">
+                <button type="button" id="btnSkillExport" class="btn"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="settings.skill.btn">Exporter le reviewer en skill</span></button>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.skill.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <span id="skillExportInfo" class="muted"></span>
+            </p>
+        </section>
         </div><!-- /sub-mr -->
 
         <div id="sub-aisession" class="subtab">

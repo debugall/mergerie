@@ -39,3 +39,12 @@
 .jira-stats-list-row .jira-stats-list-who span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jira-stats-list-row .jira-avatar { display: inline-flex; width: 22px; height: 22px; flex: none; }
 @media (max-width: 900px) { .jira-stats-list-row { grid-template-columns: 1fr auto; } }
+
+/* Le délai entre deux statuts : deux combos sur une ligne, puis tuiles, tableaux et la liste des tickets. */
+.jira-stats-delai { margin-top: 20px; border-top: 1px solid var(--line); }
+.jira-stats-delai-hint { margin: 0 0 8px; font-size: 12px; }
+.jira-stats-delai-choix { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.jira-stats-delai-combo { display: inline-block; width: 240px; max-width: 100%; }
+.jira-stats-delai-combo .combo input { padding: 6px 10px; font-size: 13px; }
+.jira-stats-delai-tickets td.num { white-space: nowrap; }
+.jira-stats-delai-sum { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

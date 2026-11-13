@@ -109,7 +109,7 @@ async function openReport(id, opts = {}) {
           ${d.tokens_est ? ` · <span class="muted" title="${esc(tr('report.cost.title'))}">${esc(tr('task.cost.tokens', { n: fmtMilliers(d.tokens_est) }))}</span>` : ''}</div>
       </div>
       <div class="spacer"></div>
-      ${m.closed_seen ? `<span class="tag merged" title="${tr('mr.tag.closed-title', { forge: forgeLabel(m.forge) })}">${svgIco('merge')} ${tr('mr.tag.merged')}</span>` : ''}
+      ${mrFermetureTag(m)}
       ${m.web_url ? `<a href="${esc(safeUrl(m.web_url))}" target="_blank" rel="noopener noreferrer">${forgeLabel(m.forge)} ↗</a>` : ''}
     </div>
 

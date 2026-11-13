@@ -97,7 +97,7 @@ function navRenderTargets() {
     const name = row.querySelector('.nav-project').value;
     if (!name) throw new Error(tr('git.navigate.pick-project-first'));
     const d = await navBranchesOf(navRootId, name);
-    return d.branches.map((b) => ({ value: b.name, label: b.name, hint: b.date ? fmtDate(b.date) : '' }));
+    return d.branches.map((b) => ({ value: b.name, label: b.name, hint: b.date ? fmtDateHour(b.date) : '' }));
   });
 }
 

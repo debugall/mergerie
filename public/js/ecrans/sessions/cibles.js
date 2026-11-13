@@ -176,10 +176,22 @@ function renderTargetRows(list) {
   $('#targetsHint').textContent = taskKind === 'code'
     ? tr('task.hint.code')
     : tr('task.hint.explore');
+  /* « TOUT RETIRER » n'a de sens que devant une liste : un agent sur « tous les dépôts actifs »
+     ouvre la modale sur trente lignes pré-remplies, et n'en garder deux demandait vingt-huit
+     croix. Une seule ligne, et le bouton n'a rien à retirer — il se cache. */
+  const vider = $('#clearTargets');
+  if (vider) vider.hidden = list.length < 2;
 }
 $('#addTarget').addEventListener('click', () => {
   renderTargetRows([...readTargetRows(), {}]);
   majVerificateursSession(); majSkillsSession();
+});
+// Une ligne vide, prête à choisir : le premier projet se pose sans passer par « Ajouter ».
+$('#clearTargets').addEventListener('click', () => {
+  renderTargetRows([]);
+  majVerificateursSession(); majSkillsSession();
+  const premier = $('#targetRows .target-row .t-repo-search');
+  if (premier) premier.focus();
 });
 /* LES PASTILLES DE GROUPE : « une session sur tout le groupe backend » — une ligne par membre qui
    n'en a pas encore, la branche proposée comme pour une ligne ajoutée à la main. */

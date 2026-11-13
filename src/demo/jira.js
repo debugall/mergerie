@@ -256,6 +256,27 @@ function statsIssues(c = {}, filtres = {}, plage = {}) {
   });
 }
 
+/* L'HISTORIQUE des transitions (`changelog`), pour le délai entre deux statuts : fixe, comme le reste.
+   Le bug 1375 a mis neuf jours de « En cours » à « Terminé » ; 1421 est reparti en cours sans être
+   terminé ; 1408 et 1390 sont en revue. */
+const transition = (created, de, vers) => ({ created, items: [{ field: 'status', fromString: de, toString: vers }] });
+const HISTORIQUES = {
+  'PROJ-1375': [transition('2026-06-22T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-06-28T17:30:00.000+0000', 'En cours', 'En revue'), transition('2026-07-01T15:30:00.000+0000', 'En revue', 'Terminé')],
+  'PROJ-1421': [transition('2026-07-19T09:00:00.000+0000', 'À faire', 'En cours')],
+  'PROJ-1408': [transition('2026-07-10T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-07-22T11:00:00.000+0000', 'En cours', 'En revue')],
+  'PROJ-1390': [transition('2026-07-02T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-07-15T11:00:00.000+0000', 'En cours', 'En revue')],
+};
+/* Les tickets ARRIVÉS dans `vers` (dans la plage, si elle est posée), avec leur historique — ce
+   que la vraie requête `status CHANGED TO … DURING …` + `expand=changelog` rend. */
+function delaiIssues(c = {}, filtres = {}, plage = {}, vers = '') {
+  const jour = (iso) => String(iso || '').slice(0, 10);
+  const dedans = (iso) => (!plage.depuis || jour(iso) >= plage.depuis) && (!plage.jusqua || jour(iso) <= plage.jusqua);
+  const bas = (s) => String(s || '').trim().toLowerCase();
+  return statsIssues({ ...c, includeDone: true, hideStatuses: [] }, filtres, {})
+    .map((i) => ({ ...i, changelog: { histories: HISTORIQUES[i.key] || [] } }))
+    .filter((i) => i.changelog.histories.some((h) => h.items.some((it) => bas(it.toString) === bas(vers)) && dedans(h.created)));
+}
+
 const issueUrl = (key) => `https://jira.demo/browse/${key}`;
 
-module.exports = { assignees, tickets, statsIssues, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };
+module.exports = { assignees, tickets, statsIssues, delaiIssues, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };

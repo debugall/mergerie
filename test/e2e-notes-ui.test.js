@@ -613,6 +613,35 @@ describe('Onglet Notes', { skip: dispo ? false : 'chromium absent — npx playwr
     const deborde = await page.locator('#pageList').evaluate((el) => el.scrollWidth > el.clientWidth + 1);
     assert.equal(deborde, false, 'la colonne des pages défile horizontalement');
 
+    /* UN TITRE LONG SE LIT EN ENTIER. Tronqué par des points de suspension, deux pages au même
+       début ne se distinguaient plus dans la colonne : il passe à la ligne, et la colonne ne
+       défile toujours pas horizontalement — un mot sans espace se casse plutôt que de déborder. */
+    const long = 'Compte rendu de la revue d’architecture du service de paiement et de ses files d’attente';
+    const cree = await app.api('POST', '/api/notes', { title: long, content: 'x' });
+    assert.equal(cree.status, 200, cree.text);
+    await page.evaluate(() => loadPages());
+    const ligne = page.locator('#pageList .note-item', { hasText: 'Compte rendu de la revue' });
+    await ligne.waitFor();
+    const mesure = await ligne.locator('.note-item-title').evaluate((el) => ({
+      texte: el.textContent.trim(), tronque: el.scrollWidth > el.clientWidth + 1,
+      hauteur: el.getBoundingClientRect().height, ligneH: parseFloat(getComputedStyle(el).lineHeight),
+    }));
+    assert.equal(mesure.texte, long, 'le titre est rendu entier');
+    assert.equal(mesure.tronque, false, 'le titre déborde de sa boîte au lieu de passer à la ligne');
+    assert.ok(mesure.hauteur > mesure.ligneH * 1.5, `le titre tient sur une seule ligne, il n’est donc pas en entier : ${mesure.hauteur}px`);
+    const deborde2 = await page.locator('#pageList').evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    assert.equal(deborde2, false, 'un titre long fait défiler la colonne horizontalement');
+    /* …ET LA DATE PASSE DESSOUS : sur la même ligne, elle et la pastille prenaient un tiers de
+       la colonne. Le titre occupe toute la largeur de la ligne, la date est plus bas. */
+    const place = await ligne.evaluate((el) => {
+      const t = el.querySelector('.note-item-title').getBoundingClientRect();
+      const d = el.querySelector('.note-item-date').getBoundingClientRect();
+      const boite = el.getBoundingClientRect();
+      return { titreDroite: t.right, boiteDroite: boite.right, dateHaut: d.top, titreBas: t.bottom };
+    });
+    assert.ok(place.boiteDroite - place.titreDroite < 16, `le titre ne prend pas toute la largeur : ${place.boiteDroite - place.titreDroite}px restent`);
+    assert.ok(place.dateHaut >= place.titreBas - 1, 'la date est restée sur la ligne du titre');
+
     // Elle dit de quoi elle est le détail, et le lien y ramène.
     await sub.click();
     await page.waitForFunction(() => NOTES.page && NOTES.page.parent_id);

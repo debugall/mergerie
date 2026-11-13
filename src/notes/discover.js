@@ -20,10 +20,12 @@ const path = require('path');
    une valeur connue par un `null`. */
 const poserShas = (mrId, d) => db.prepare(`UPDATE mr SET
     head_sha = COALESCE(@head_sha, head_sha), base_sha = COALESCE(@base_sha, base_sha),
-    merge_commit_sha = COALESCE(@merge_commit_sha, merge_commit_sha), squash_commit_sha = COALESCE(@squash_commit_sha, squash_commit_sha)
+    merge_commit_sha = COALESCE(@merge_commit_sha, merge_commit_sha), squash_commit_sha = COALESCE(@squash_commit_sha, squash_commit_sha),
+    closed_at = COALESCE(@closed_at, closed_at)
   WHERE id = @id`).run({
   id: mrId, head_sha: d.head_sha || d.sha || null, base_sha: d.base_sha || null,
   merge_commit_sha: d.merge_commit_sha || null, squash_commit_sha: d.squash_commit_sha || null,
+  closed_at: d.closed_at || null,
 });
 
 /* Récupère le contexte Jira d'une MR nouvelle et le range dans ticket_jira_*.
@@ -98,6 +100,7 @@ async function discoverAll() {
   const insertFeed = db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)');
   const markClosed = db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?');
   const poserMerge = db.prepare('UPDATE mr SET merged_at = ? WHERE id = ? AND merged_at IS NULL');
+  const poserFermeture = db.prepare('UPDATE mr SET closed_at = ? WHERE id = ? AND closed_at IS NULL');
   // On ne signale « mergée » que si la MR a été vue ouverte récemment (évite un burst
   // d'événements pour de vieilles MR fantômes au 1er passage). Fenêtre : 7 jours.
   const FRESH_MS = 7 * 24 * 3600 * 1000;
@@ -175,14 +178,20 @@ async function discoverAll() {
            QUAND. Un appel par MR qui vient de disparaître, ce qui se compte sur les doigts d'un
            tour de découverte. Best-effort : la date manquante ne doit jamais faire échouer la
            découverte, et le tour suivant n'y reviendra pas (`closed_seen` est posé). */
-        let mergee = false;
+        /* MERGÉE OU FERMÉE SANS MERGE, ce n'est pas la même nouvelle : la seconde ne prend pas le
+           badge « mergée », n'alimente pas « vient d'être mergée », et sa branche n'est pas morte.
+           `null` : la forge n'a pas répondu — on ne dit rien plutôt que de dire faux. */
+        let etat = null;
         try {
           const detail = await forge.clientFor(repo).getMergeRequest(cfg, repo.project, g.iid);
-          if (detail && detail.merged_at) { poserMerge.run(detail.merged_at, g.id); mergee = true; }
+          if (detail && detail.merged_at) { poserMerge.run(detail.merged_at, g.id); etat = 'merged'; }
+          else if (detail && (detail.state === 'closed' || detail.closed_at)) { poserFermeture.run(detail.closed_at || now, g.id); etat = 'closed'; }
           if (detail) poserShas(g.id, detail); // ce qu'il faut pour relire son diff plus tard
         } catch { /* la forge n'a pas répondu : le rattrapage ci-dessous s'en chargera */ }
+        const mergee = etat === 'merged';
         const recent = g.updated_at && (Date.parse(now) - Date.parse(g.updated_at)) < FRESH_MS;
-        if (recent) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
+        if (recent && mergee) { insertFeed.run('mr_merged', g.iid, repo.project, g.author || '', g.title || '', now); notify.push('mr_merged', { iid: g.iid, project: repo.project, title: g.title || '' }); } // 🔀 vient d'être mergée
+        else if (recent && etat === 'closed') insertFeed.run('mr_closed', g.iid, repo.project, g.author || '', g.title || '', now);
         markClosed.run(g.id); // dans tous les cas : ne pas re-signaler
         /* LE LIEN AVEC LA SESSION QUI L'A OUVERTE NE DOIT PAS DÉPENDRE DE QUI L'A MERGÉE.
            `/tasks/.../merge` pose déjà `mr_iid`/`mr_merged` — mais seulement quand la réponse de
@@ -456,11 +465,12 @@ function detailNormalise(m) {
       ? (m.source_project_id !== m.target_project_id ? 1 : 0) : null,
     behind_by: Number.isInteger(m.behind_by) && m.behind_by >= 0 ? m.behind_by : null,
     merged_at: m.merged_at || null,
+    closed_at: m.closed_at || null,
     etat: m.state === 'merged' || m.merged_at ? 'merged' : (m.state === 'closed' || m.state === 'locked' ? 'closed' : 'open'),
   };
 }
 const COLONNES_SUIVIES = ['title', 'source_branch', 'target_branch', 'web_url', 'current_sha', 'author', 'has_conflicts',
-  'is_draft', 'reviewers', 'assignees', 'upvotes', 'description', 'behind_by', 'closed_seen', 'merged_at', 'changed_paths'];
+  'is_draft', 'reviewers', 'assignees', 'upvotes', 'description', 'behind_by', 'closed_seen', 'merged_at', 'closed_at', 'changed_paths'];
 async function rafraichirMr(mrId) {
   const avant = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
   if (!avant) return null;
@@ -489,13 +499,14 @@ async function rafraichirMr(mrId) {
   if (d.etat !== 'open') {
     const mergee = d.etat === 'merged';
     if (mergee) db.prepare('UPDATE mr SET merged_at = ? WHERE id = ? AND merged_at IS NULL').run(d.merged_at || now, avant.id);
+    else db.prepare('UPDATE mr SET closed_at = ? WHERE id = ? AND closed_at IS NULL').run(d.closed_at || now, avant.id);
     if (!avant.closed_seen) {
       db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?').run(avant.id);
+      const feed = db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)');
       if (mergee) {
-        db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)')
-          .run('mr_merged', avant.iid, repo.project, avant.author || '', d.title || avant.title || '', now);
+        feed.run('mr_merged', avant.iid, repo.project, avant.author || '', d.title || avant.title || '', now);
         notify.push('mr_merged', { iid: avant.iid, project: repo.project, title: d.title || avant.title || '' });
-      }
+      } else feed.run('mr_closed', avant.iid, repo.project, avant.author || '', d.title || avant.title || '', now);
       apresMerge(repo, { ...avant, source_branch: d.source_branch || avant.source_branch }, { mergee, cfg, now });
     }
     /* LE DIFF À JOUR, TOUT DE SUITE. « Ouvrir le code » sur une MR mergée relit `base_sha..head_sha`

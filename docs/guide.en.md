@@ -115,7 +115,8 @@ No AI call, no token: the three settings live in *Settings → Merge Request →
 **And how many test files it changes.** Next to the size, the card says `14 files · 3 tests` — discreet —
 or `14 files · 0 tests`, emphasised like "stale", when the merge request changes at least N code files
 (3 by default, adjustable) without touching a single test file. Below N, or when everything is neutral
-(documentation, images, lockfiles, tooling), nothing: a two-line fix carries no badge. A file *is* a test
+(documentation, images, lockfiles, tooling — and a bumped **submodule**, which is a commit pointer, not a
+written file), nothing: a two-line fix carries no badge. A file *is* a test
 or is not, by **path patterns** (`**/*.test.*`, `**/tests/**`, `**/*_test.go`…), resolved repository →
 group(s) → global settings → shipped defaults, a filled level replacing the one above; it is computed on
 the overlaps' file lists, at display time, without AI — files counted, never a coverage nor a "tested".
@@ -231,6 +232,17 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   (`Review + explanation` / `Review without explanation`). If the explanation is missing, a
   **`Generate the explanation`** button on the report produces it on demand (a single AI call, without
   re-running the review or creating a new version).
+- **Take the reviewer with you.** **Settings → Merge Request**, **“Take the reviewer with you”** section under the form: **“Export the reviewer as a skill”** downloads a
+  **self-contained** Claude Code skill — a single `branch-review/SKILL.md`, no script and no reference to
+  Mergerie — that does **the same review** on the current branch of a cloned repository: the team's review
+  template word for word, the active review rules with their condition and scope, the score out of 10.
+  `/branch-review [target]`: the target is the branch the work is meant to land in (the repository's default
+  branch by default, read from `origin/HEAD`; the skill asks when several are plausible); the source is
+  always the current branch. The agent runs `git fetch` and `git diff origin/<target>...HEAD` itself (the
+  diff from the common ancestor, the one a merge request would show) and reads the commit messages as the
+  intent. The report is filed under `.branch-review/<branch>/<branch>-<YYYY-MM-DD-HH-mm-ss>.md` (one
+  sub-folder per branch, one file per review, the diff deleted once the report is written). Drop
+  it in `.claude/skills/` of the repository or of the machine.
 - **Review without thinking about it.** **Settings → Merge Request → “Automatically review a merge
   request when it arrives”** sends every newly discovered merge request out for review, unasked.
   **Unchecked by default**, and **capped** even when checked (**“At most N automatic reviews per MR
@@ -435,7 +447,7 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   every repository: title, branches, latest commit, conflicts, how far behind the target it is, draft,
   reviewers, assignees, 👍 (GitLab), and its state. A commit that landed since makes the report **stale** and triggers what
   discovery would have (the automatic re-review and the “on stale” verifications, when enabled); a
-  merge request merged or closed in the meantime gets its **merged** badge. The message says what the
+  merge request merged in the meantime gets its **merged** badge, one closed without merging its **closed** badge. The message says what the
   forge answered: refreshed, nothing new, new commits, merged, closed. On a **merged** merge request
   it also records the SHAs that let it be re-read (the merge-base of the time and the head, which the
   forge keeps even after the branch is deleted) and, when the repository is already cloned, fetches
@@ -532,8 +544,10 @@ overridden at launch**. A
 - **Findings become remarks in one gesture.** Eight findings meant eight trips through the viewer:
   find the file, scroll to the line, click “+”, retype the finding. Two buttons above the list —
   **`Turn into drafts`** and **`The N blocking ones`** — turn them into inline comments **as drafts**,
-  one per finding, attached to their line. Nothing is sent: you re-read, adjust, and send them as a
-  batch as usual. Four things are left aside, and the tool says so: **resolved** findings (commenting
+  one per finding, attached to their line; and each finding carries **its own draft button**, next to
+  “ask why” and “fix this”, to keep one or two out of forty. Nothing is sent: you re-read, adjust, and send them as a
+  batch as usual. On a single finding, the message says *why* nothing was created — outside the diff,
+  an identical draft already there. Four things are left aside, and the tool says so: **resolved** findings (commenting
   what was just fixed is noise), those **without a file and a line** (they would have nowhere to
   attach), those that **already** have an identical draft — clicking twice is the most natural gesture
   in the world — and above all those that fall **outside the diff**.
@@ -924,7 +938,8 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 - **How many tests the branch changes.** As soon as a session project is *committed*, its line carries
   `0 tests modified` (emphasised) or `3 tests modified` (discreet), from the branch diff and the
   repository's test patterns — before the merge request exists, when a follow-up "add the tests" costs
-  the least. Outside a repository: nothing.
+  the least. A session that only bumps a submodule touched no code: nothing. Outside a repository:
+  nothing.
 - **Which dependencies the branch adds.** On the same line, `2 dependencies added` (emphasised) or
   `1 dependency changed` (discreet), read from the manifests in the branch diff — where a follow-up
   "drop left-pad, write the function" costs the least. The detail is on the merge request's card. With the
@@ -939,7 +954,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   coding target of this same session cannot also be linked read-only. Optional — exploration has no
   use for it, it already sees all its repositories side by side.
 - **Activity — what you launched, and what finished.** The log panel exposes an **Activity** view: what ran,
-  on what, for how long, and how it ended. Each row **names its object** and takes you there in one click; a
+  on what, for how long, and how it ended — a finished **verification** is read by its **verdict** (*green ✓*,
+  *red ✗*, *base already red*, *failed*), never “ok” in front of a broken test suite, and *Failures only* keeps
+  it when it is red; the log banner and the footer button say it in red as well. Each row **names its object**
+  and takes you there in one click; a
   button reopens the **log of a past job** — the view stays on it while another job writes, and a job
   **launched afterwards** takes it back. What has finished since your last visit is marked, and the count
   appears on the button. Desktop notifications did not answer that question: they only live in the server's
@@ -1132,8 +1150,11 @@ between humans.
   report as the request.
 - **Librarian** — it reads every repository and writes the **service map** into a note page: what each
   repository does, what it exposes, what it consumes, how to run it locally, where its configuration
-  lives, and “who calls whom”. The page is **created on the first run then updated**, never duplicated.
-  With a schedule, the morning brief announces that it changed.
+  lives, and “who calls whom”. The page is **created on the first run then updated**, never duplicated —
+  nor are its sub-pages: each one keeps the title the agent gave it on the first run as a key, and that
+  is how the next run finds it. **Renaming a sub-page by hand does not break it**: it stays the same page
+  under its new name. The run also receives the existing titles, and finds them even written a little
+  differently (case, accents, quotes). With a schedule, the morning brief announces that it changed.
   **It draws**: the general page carries a “who calls whom” `flowchart` — one node per service, the
   arrow's label saying the means (REST, event, job), databases and queues being nodes too — and, when a
   flow crosses three services, a `sequenceDiagram` unrolling it. Each repository gets **its own
@@ -1164,7 +1185,9 @@ launch (an impossible permission mode, say) is refused right away rather than th
 log. A trial holds for the session you open: the next one starts clean.
 
 **Use.** *Ask* launches an exploration over its repositories, knowledge first. *Code* opens the session
-window with **its repositories pre-ticked** — you untick and confirm. Any answer may end with the list of
+window with **its repositories pre-ticked** — you untick and confirm, or, facing a long list (*all active
+repositories*), **Remove all** empties it to one blank row ready to pick, and you add them one by one.
+Any answer may end with the list of
 what the agent found to be wrong in its own map; it does not fix it itself, it **reports** it, and the
 gap counter goes up on its card.
 
@@ -1364,7 +1387,8 @@ seconds, you would go back to the sticky note. The key is ignored while the curs
 
 #### Pages
 **Flat** note pages: no folders, no hierarchy. On the left the list (**pinned first**, then most recently
-modified) with a **search covering the title AND the content** — the word you are after is often in the
+modified, each title **in full**, over several lines when needed, the date and the sub-page count below it) with a **search covering the title AND
+the content** — the word you are after is often in the
 body. On the right the editable title, then **the editor and the Markdown preview side by side** (the same
 renderer as the review reports, hence the same escaping).
 
@@ -1536,18 +1560,20 @@ sharing nothing more and with no AI or forge call. The brief stays "me, this mor
 now". It only exists when a data repository is attached (without it, one sentence leads there); with a
 single person in the repository it works and says so.
 
-**Seven lists of facts**, each hidden when empty, capped at twelve lines with `and N more`: the **pending
-decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali · awaiting for 5 d` — open merge
-requests whose latest report reaches the team threshold and that nobody has filed or merged yet, sorted by
-wait), the **unanswered questions** (*shared* sessions whose agent is waiting for an answer, the question
-in one line, `answered in takeover #207` when a takeover took it on), the **running sessions** (shared,
-marked running at the last sync — with the freshness of their author's sync, because a "running" session
-whose machine has not synced for three hours may well be over), the **takeovers** (`#123 Claire → #207 Amady
-· yesterday`), the **failing verifications** (red head, green base), the **overlaps and stacks** already
-computed, shown with both authors, and the **workstations** — one line per author of the data repository:
-their last sync, the decisions awaited from them, `quiet` past N working days (weekends do not count), and
-nothing more: they may be on leave. At the top, three numbers and the sync line; two filters, repository
-group and person — picking a person shows what is *waiting on them*, not what they did.
+**Three lists of facts**, each hidden when empty, capped at twelve lines with `and N more` — and only what
+is *waiting on someone*: the **pending decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali
+· awaiting for 5 d` — open merge requests whose latest report reaches the team threshold and that nobody has
+filed or merged yet, sorted by wait), the **unanswered questions** (*shared* sessions whose agent is waiting
+for an answer, the question in one line; a question a takeover took on waits on nobody and leaves), the
+**failing verifications** (red head, green base). At the top, two numbers, the sync line and, when there are
+any, the number of **quiet workstations** — a number, not a name — leading to Settings → Shared data: that is
+where the **team workstations** list lives, one line per author of the data repository with their last sync
+and `quiet` past N working days (weekends do not count), and nothing more: they may be on leave. A sync
+diagnostic — whose data is stale — not a presence board. Two filters, repository group and person — picking
+a person shows what is *waiting on them*, not what they did.
+
+*Running sessions*, *takeovers* and *overlaps and stacks* had their section and lost it: they told what had
+happened, not what anyone had to do, and the Reviews and AI Dev cards already say it.
 
 **Non-negotiable rule**: the page shows only facts already shared, and **nothing about a person that is not
 the state of a piece of work**. How many tokens someone burns, how many merge requests they merged, who is
@@ -1599,7 +1625,11 @@ projects if any, deactivated accounts and applications excluded; **you ticked by
   a second one. The **current sprint sits at the top of the list** and is flagged as such — it is the one
   you are after nine times out of ten, and the date alone does not tell it apart from a future sprint. Then
   come the others by **descending date**; a sprint with no known date (Jira does not always give one for a
-  future sprint) comes after those that have one. The **Assignees** and **Statuses** filters each have
+  future sprint) comes after those that have one. Above the cards, a **quick status filter**: one checkbox per
+  status **present** in the loaded tickets, with its count. Untick one and its cards leave **at once**, nothing
+  asked of Jira; **Show all** brings them back; the choice is remembered. The **Statuses** menu on the right
+  acts on the **query** instead: what you untick there is excluded by Jira, and changes what is loaded.
+  The **Assignees** and **Statuses** filters each have
   their own **search** — which **hides** rows without unticking anything — and **Check all / Uncheck all** —
   handy to empty everything then keep only one or two rows. On the assignees, **ticking nobody does not
   filter**: the list then takes **every** ticket the account can see, including those assigned to someone
@@ -1746,6 +1776,18 @@ then each lives its own life.
 - **Every number can be clicked** — a tile, or the count of a row in the tables — and opens **the list of the
   tickets it counts**: key (link to Jira), summary, status, type, assignee. Nothing is asked of Jira again:
   everything was already read to count.
+- **The time between two statuses** — “how long from *in progress* to *in production*?”. Under the counts,
+  two selectors: the start status and the arrival status (those the screen knows, workflow included),
+  remembered. Jira does not keep that figure, it keeps each ticket's **history**: Mergerie reads, for every
+  ticket that **reached the second status** — done ones included, without the status filter, with the
+  screen's other filters —, the time from the **first** entry into the first status to the **last** entry
+  into the second that follows it (a ticket picked up three times started the first time; a redone release
+  is only shipped the second time). Four tiles — tickets measured, **median** (with min and max), mean,
+  **90% in under** — then by project, by type, and the list of tickets with both dates and their time in
+  days. A ticket that arrived without going through the start, or went back to the start after its last
+  arrival, is counted apart, never measured. With the date range: the tickets that reached the second
+  status **within** the range. Cost: one more search, ten pages at most, the history travelling with each
+  page (`expand=changelog`) — nothing until both statuses are chosen.
 - **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
   most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
   (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are
@@ -1822,7 +1864,10 @@ Operations across **several repositories at once**, and branch exploration.
   is picked), which matters when the list is long — **and so is the ref**: an active repository has hundreds
   of branches and tags. A single choice goes through a selector with search; a multiple choice (checkboxes,
   the explorer's table) gets a filter that **hides rows without unticking anything** — you tick, you filter
-  something else, you tick again, then you delete in one go.
+  something else, you tick again, then you delete in one go. The ref list is read once per repository:
+  **`Refresh the list`** re-reads it from the forge — and it re-reads itself when a git operation finishes,
+  so the branches you just deleted leave the list, with the chosen repositories and the still-valid ticks
+  kept in place.
 - **Nothing runs without a preview.** The preview lists each row (project × ref) and its expected outcome:
   *will run · already exists — skipped · protected ref · default branch · not found*. “Already exists” is
   not an error: the operation is **idempotent**, you can run it again. Each actionable row also shows **the
@@ -1893,7 +1938,9 @@ Operations across **several repositories at once**, and branch exploration.
     proposal and its reason on a file that has one; clicking it selects it, like a passage on either side.
 - **Navigate** — checks out **several projects on your machine** (not the tool's clones: your own
   repositories) on the branch of your choice, in one gesture. You pick a **local directory** — a folder
-  holding one subfolder per git project, declared in *Settings → Repositories* — then, row by row, a
+  holding one subfolder per git project, declared in *Settings → Repositories*, where each directory lists
+  the projects found and is **re-read from disk** with a button: a folder deleted by hand disappears, a
+  repository cloned since appears, here as in the pickers — then, row by row, a
   **project** and its **remote branch**, both with search as you type. The **current branch** is shown next
   to the selector: without it you choose blind, not knowing whether the operation changes anything at all. A
   `git fetch` precedes the branch list and the checkout, and the local branch is then aligned
@@ -1948,10 +1995,15 @@ Operations across **several repositories at once**, and branch exploration.
   reported separately, never confused with “absent”.
 - **Tags by period** — “what did we ship these two weeks?”. Two dates (shortcuts *Last 7* and *Last 30
   days*; the last 30 are set when the sub-tab opens) and the tool lists **every tag created between those
-  two days, both included, across all active repositories**: repository, tag (link to the forge), date,
-  first line of the message. **`Copy the table`** puts it in the clipboard in two forms at once — a real
-  HTML table, which Teams, an email or Word render as a table, and tab-separated text for a spreadsheet or
-  a plain editor. A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
+  two days, both included, across all active repositories**: repository, tag (link to the forge), date **and time**
+  (two tags of the same day stay apart), first line of the message. The cross at the end of a row **hides** it — a test tag, a hotfix nobody
+  announces — and “Show all” brings it back; **`Copy the table`** puts the visible rows in the clipboard
+  in two forms at once — a real HTML table, which Teams, an email or Word render as a table, and
+  tab-separated text for a spreadsheet or a plain editor. **`Verify these tags`** asks the next question:
+  “does what we shipped still pass?” — it opens *Verify a branch* with the table's repositories ticked, each in
+  *Tag* mode on its tag, hidden rows staying out; the proposed verifier is the one covering most of those
+  repositories, the ones it does not cover are named under the selector, and a repository with several visible
+  tags gets the most recent (changeable on its row). A tag's date is its **creation** date when the forge gives it (GitLab, annotated tags),
   otherwise the date of the commit it points to; GitHub tags, which the API does not date, are read from
   the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
   unreachable repository is named.
@@ -2153,7 +2205,8 @@ the same path can exist on both; without a token for that forge, the bulk-add wi
 to the field to fill —, plus the **local directories** — a folder on your machine holding one
 subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
-tree; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
+tree, and a button **re-reads the directory from disk** — a folder deleted by hand disappears, a repository
+cloned since appears, wherever the directory is offered; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
 state of its clone**, with a **`Re-clone`** button — nothing is lost on the forge, but unpushed changes in
 the local clone are, so it asks first); a **`Sheet`** button unfolds **what is attached** to that
 repository — verifiers, Jenkins jobs, review rules limited to it, grid services, default linked projects,
@@ -2380,6 +2433,17 @@ You give a **list of commands** (`npm ci`, then `npm test`), Mergerie runs it in
 
 The **order matters** — `npm ci` before `npm test` — and is corrected in one click: each row carries its
 rank and two arrows to move it.
+
+**A line can run only once.** In front of each command, a scope: *in each repository* (the default) or
+*once* — `docker compose up -d` after the repositories are checked out has no business running three
+times. A *once* line also says **in which repository** it runs (its worktree, or its *in place* folder),
+picked with search; left empty, the first repository of the verification. The list order is kept and the
+repositories run inside it: `npm ci` in each, then `compose up` once, then `npm test` in each, then
+`compose down`. A failed *once* line **stops everything**; it is **skipped** when a command already failed
+before it (the log says so); and if it points at a repository that is not part of the verification, that is
+an error with its name, not a guessed folder. The report and the log mark the line and the repository it ran
+in, the card shows a `1×` badge, and where it runs is part of what you **approve** (see below) — the line
+travels with the shared verifier.
 
 Such a verifier can **cover several repositories**. Be careful about what “cover” means: declaring a
 repository only announces that this verifier **knows how to test it**. At run time, the list only runs in
@@ -2631,13 +2695,24 @@ extra blank line. Under the field, **“See an example comment”** shows YOUR t
 sample data — composed by the same engine as the real comment, otherwise the preview would end up
 lying. Left empty, the default template is used, and it then benefits from later improvements.
 
-### Verifying a branch, with no merge request
+### Verifying a branch — or a tag —, with no merge request
 
 Back from holiday, several merge requests have been merged: the question is no longer “what does
 this branch break?” but **“is `develop` still green?”**. The **`Verify a branch`** button lives in
 the **Git** tab and on every verifier's card. One row per covered repository, each on its **default
 branch**, picked from a searchable selector — an active repository lines up hundreds of them. The
-last branch verified is remembered.
+last branch verified is remembered. `Run` answers at once: cloning or fetching each repository,
+reading the tag and resolving the commit happen in the job, line by line in the **log** — an unknown
+ref puts the verification in error with its name and repository, in the log and the report, instead
+of holding the dialog.
+
+**A tag as well as a branch.** In front of the ref, a **Branch / Tag** selector: “does the 3.2.0
+shipped on Friday still pass with today's services?” is the same question, asked about a ref that
+does not move. The verifier checks out the **commit the tag points to** in every ticked repository
+(not the annotated tag object, which has its own SHA), and the report, the brief and the comment
+announce the target as a tag. The kind is remembered per repository, with the last tag and the last
+branch each on their own side: going back to *Branch* finds the previous branch again. A red run on
+a tag offers no `Fix`: a tag does not move, there is no branch to put a correction on.
 
 **You tick the repositories you want, not the whole coverage.** Every row carries a checkbox,
 ticked to start with: a verifier covering five repositories can therefore verify just one, without
@@ -2889,10 +2964,10 @@ otherwise) and is not merged (`branch merged (!214)`); the forge is re-read when
 missing from the forge`), and the header says when it is `N commits past the last known pass`. Out of a
 repository, explorations, free questions: nothing to take over in v1.
 
-**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say where we
-are, who is waiting for what, since when — pending decisions, unanswered questions, running sessions,
-takeovers, failing verifications, overlaps, workstation freshness — sharing nothing more. See the *Team*
-section.
+**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say who is
+waiting for what, since when — pending decisions, unanswered questions, failing verifications — sharing
+nothing more; the team's workstations and their last sync are read right here, under *Team workstations*.
+See the *Team* section.
 
 **What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
 this machine's absolute paths, tidied-away sessions, job logs. Every column of
@@ -3255,7 +3330,8 @@ without external diff or `textconv`, without the `ext::` protocol, with an allow
 **Targeted guards**:
 - **Git palette** — an **allowlist** of subcommands (`status fetch pull push log show diff branch
   checkout switch stash tag merge rebase reset restore cherry-pick remote rev-parse ls-files describe
-  blame shortlog reflog clean`); refused by prefix (git accepts abbreviations): `--ex…`, `--up…`,
+  blame shortlog reflog clean submodule` — for `submodule`, only `status init update sync summary deinit
+  set-branch add set-url`, never `foreach`, and an address over https or ssh); refused by prefix (git accepts abbreviations): `--ex…`, `--up…`,
   `--rec…`, `--out…`, `--no-index`, `--textconv`, `rebase -x/-i`; no absolute path nor `..`; a
   `remote add|set-url` only towards https or ssh. 60 s timeout, output capped while reading. The same
   filter applies when saving the palette.

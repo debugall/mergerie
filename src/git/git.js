@@ -447,10 +447,14 @@ async function diffStat(cwd, base, head) {
 //  - tag ANNOTÉ → le tagger (celui qui a créé le tag), + sa date ;
 //  - tag LÉGER  → pas de tagger, on retombe sur l'auteur du commit pointé.
 // L'API GitLab n'expose pas le tagger, d'où cette lecture git à la demande.
-async function tagAuthor(cwd, tag) {
-  // Garantit l'objet tag en local : un tag pointant un commit déjà présent n'est pas
-  // toujours rapatrié par le fetch général. Best-effort (déjà là / injoignable = on lit ce qu'on a).
+// Garantit l'objet tag en local : un tag pointant un commit déjà présent n'est pas
+// toujours rapatrié par le fetch général. Best-effort (déjà là / injoignable = on lit ce qu'on a).
+async function fetchTag(cwd, tag) {
   try { await run('git', [...gitTlsArgs(), 'fetch', 'origin', '--force', `refs/tags/${tag}:refs/tags/${tag}`], { cwd }); } catch { /* on lit l'état local */ }
+}
+
+async function tagAuthor(cwd, tag) {
+  await fetchTag(cwd, tag);
   const fmt = '%(taggername)\t%(taggerdate:iso-strict)\t%(authorname)\t%(authordate:iso-strict)';
   const { stdout } = await run('git', ['for-each-ref', `--format=${fmt}`, `refs/tags/${tag}`], { cwd });
   const line = (stdout.split('\n').find((l) => l.trim())) || '';
@@ -800,7 +804,7 @@ module.exports = {
   aheadOf, behindOf, isPushed, renommerDernierCommit, nonPousses,
   rebaseSur, rebaseContinuer, rebaseAbandonner, rebaseEnCours, fichiersEnConflit,
   resetWorktree,
-  ensureRepo, targetedDiff, diffTroisPoints, diffRange, tagAuthor, tagDates, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
+  ensureRepo, targetedDiff, diffTroisPoints, diffRange, fetchTag, tagAuthor, tagDates, branchesForCommit, branchesForCommitDetailed, cloneDirFor, authUrl, run, secretsOf, tokenFor,
   envGit, enTetesForge, sansIdentifiants, nettoyerOrigines, argsDurcis,
   defaultBranch, ensureCleanWorktree, refExists, createBranchFrom, checkoutBranch, commitAll, headSha, branchDiff, pushBranch, gitTlsArgs,
   lsTree, showFile, fileDiffFull, fileDiffRange,

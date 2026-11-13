@@ -33,6 +33,23 @@ async function chargerDataSync() {
   if (e.erreur) bouts.push(tr('datasync.state.error', { msg: e.erreur }));
   zone.textContent = bouts.join(' · ');
   rendreConflits(e.conflits || []);
+  rendrePostes();
+}
+
+/* LES POSTES DE L'ÉQUIPE : qui a commité quoi en dernier dans le dépôt de données, lu par la même route
+   que la page Équipe (`/api/equipe`, `workstations`). « Silencieux » = rien depuis N jours ouvrés : ses
+   données sont peut-être périmées, c'est tout ce que la ligne dit. Une personne n'est pas un lien. */
+async function rendrePostes() {
+  const zone = $('#dataSyncPostes');
+  if (!zone) return;
+  let d;
+  try { d = await api('/equipe'); } catch { zone.innerHTML = ''; return; }
+  const postes = d && d.attached && d.workstations ? d.workstations.items : [];
+  if (!postes.length) { zone.innerHTML = `<p class="muted">${esc(tr('datasync.postes.none'))}</p>`; return; }
+  zone.innerHTML = postes.map((w) => `<div class="datasync-poste${w.quiet ? ' quiet' : ''}">
+      <span class="datasync-poste-nom">${esc(w.name)}</span>
+      <span class="muted">${esc(w.synced_at ? tr('datasync.postes.synced', { age: depuis(w.synced_at) }) : tr('datasync.postes.never'))}${w.quiet ? ` · <i>${esc(tr('datasync.postes.quiet'))}</i>` : ''}</span>
+    </div>`).join('');
 }
 
 function rendreConflits(liste) {

@@ -184,21 +184,53 @@ $('#btnCommentTemplateDefaut') && $('#btnCommentTemplateDefaut').addEventListene
 
 /* Une commande par ligne éditable. L'ordre est PORTEUR DE SENS — `npm ci` avant `npm test` —
    donc il se corrige sans tout retaper : deux flèches par ligne, désactivées aux extrémités
-   plutôt qu'inertes, pour qu'on voie où on est dans la liste. */
+   plutôt qu'inertes, pour qu'on voie où on est dans la liste.
+
+   CHAQUE LIGNE A SA PORTÉE : « dans chaque dépôt » (le défaut, la liste rejouée dans chacun) ou
+   « une fois » — `docker compose up -d` après avoir positionné les dépôts n'a pas à tourner trois
+   fois. Une ligne globale dit AUSSI dans quel dépôt elle tourne, par un combo à recherche ; vide,
+   c'est le premier dépôt de la vérification. Une ligne est un objet `{ command, scope, repo_id }` ;
+   une chaîne (suggestion, ancien formulaire) vaut « dans chaque dépôt ». */
+const ligneCommande = (c) => (typeof c === 'string' ? { command: c, scope: 'repo', repo_id: null }
+  : { command: (c && c.command) || '', scope: c && c.scope === 'global' ? 'global' : 'repo', repo_id: (c && c.repo_id) || null });
 function renderCommandList(commands) {
   const el = $('#verifierCommandList');
   if (!el) return;
-  const liste = commands && commands.length ? commands : [''];
-  el.innerHTML = liste.map((c, i) => `<div class="vc-row">
+  const liste = (commands && commands.length ? commands : ['']).map(ligneCommande);
+  el.innerHTML = liste.map((c, i) => `<div class="vc-row" data-scope="${c.scope}">
     <span class="vc-rank muted">${i + 1}</span>
-    <input class="vc-cmd" type="text" value="${esc(c)}" placeholder="${esc(tr('settings.verifier.ph.command-line'))}" />
+    <input class="vc-cmd" type="text" value="${esc(c.command)}" placeholder="${esc(tr('settings.verifier.ph.command-line'))}" />
+    <select class="vc-scope" title="${esc(tr('settings.verifier.scope.title'))}" aria-label="${esc(tr('settings.verifier.scope.title'))}">
+      <option value="repo"${c.scope === 'repo' ? ' selected' : ''}>${esc(tr('settings.verifier.scope.repo'))}</option>
+      <option value="global"${c.scope === 'global' ? ' selected' : ''}>${esc(tr('settings.verifier.scope.global'))}</option>
+    </select>
+    <span class="vc-ou"${c.scope === 'global' ? '' : ' hidden'}><span class="muted">${esc(tr('settings.verifier.scope.in'))}</span> ${repoComboHtml(c.repo_id, { idClass: 'vc-repo', defaultFirst: false })}</span>
     <button type="button" class="btn vc-move" data-dir="-1" ${i === 0 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-up'))}">${svgIco('up')}</button>
     <button type="button" class="btn vc-move" data-dir="1" ${i === liste.length - 1 ? 'disabled' : ''} title="${esc(tr('settings.verifier.btn.move-down'))}">${svgIco('down')}</button>
     ${/* La corbeille n'apparaît qu'à partir de deux lignes : sur une commande unique, elle
           propose de vider le seul champ obligatoire du bloc. */''}
     ${liste.length > 1 ? `<button type="button" class="btn btn-danger vc-del" title="${esc(tr('ui.delete'))}">${svgIco('trash')}</button>` : ''}
   </div>`).join('');
+  wireRepoCombos(el);
+  // Un combo vide ne cherche pas « un dépôt » : il dit ce que vide veut dire.
+  $$('.vc-ou .rc-search', el).forEach((i) => { if (!i.value) i.placeholder = tr('settings.verifier.scope.first'); });
 }
+/* Les lignes telles qu'elles sont À L'ÉCRAN, vides comprises : c'est ce qu'on réordonne ou
+   complète sans perdre une commande en cours de frappe. */
+function lireLignesCommandes() {
+  return $$('#verifierCommandList .vc-row').map((row) => ({
+    command: $('.vc-cmd', row).value,
+    scope: $('.vc-scope', row).value === 'global' ? 'global' : 'repo',
+    repo_id: Number($('.vc-repo', row).value) || null,
+  }));
+}
+$('#verifierCommandList') && $('#verifierCommandList').addEventListener('change', (e) => {
+  const sel = e.target.closest && e.target.closest('.vc-scope');
+  if (!sel) return;
+  const row = sel.closest('.vc-row');
+  row.dataset.scope = sel.value;
+  $('.vc-ou', row).hidden = sel.value !== 'global';
+});
 
 /* ---------- Les commandes que les dépôts couverts savent déjà lancer ----------
    On recopiait `npm run test:integ -- --tag paiement-3x` depuis un terminal, en se trompant
@@ -228,9 +260,9 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   /* On AJOUTE à la suite, sans rien écraser : la première ligne vide d'un formulaire neuf est
      remplie, sinon on en ouvre une nouvelle. L'ordre des commandes est celui du clic. */
-  const vals = $$('#verifierCommandList .vc-cmd').map((x) => x.value);
-  const vide = vals.findIndex((v) => !v.trim());
-  if (vide >= 0) vals[vide] = b.dataset.sugg; else vals.push(b.dataset.sugg);
+  const vals = lireLignesCommandes();
+  const vide = vals.findIndex((v) => !v.command.trim());
+  if (vide >= 0) vals[vide].command = b.dataset.sugg; else vals.push(b.dataset.sugg);
   renderCommandList(vals);
   majSuggestionsCommandes();
 });
@@ -239,7 +271,7 @@ document.addEventListener('click', (e) => {
    commande en cours de frappe, pas encore enregistrée, ne doit pas être perdue par le
    réaffichage. */
 function deplacerCommande(i, dir) {
-  const vals = $$('#verifierCommandList .vc-cmd').map((x) => x.value);
+  const vals = lireLignesCommandes();
   const j = i + dir;
   if (j < 0 || j >= vals.length) return;
   [vals[i], vals[j]] = [vals[j], vals[i]];
@@ -249,7 +281,7 @@ function deplacerCommande(i, dir) {
 }
 
 function commandesDuFormulaire() {
-  return $$('#verifierCommandList .vc-cmd').map((i) => i.value.trim()).filter(Boolean);
+  return lireLignesCommandes().map((c) => ({ ...c, command: c.command.trim() })).filter((c) => c.command);
 }
 
 // Les lignes de couverture telles que l'API les attend.
@@ -303,6 +335,16 @@ $('#verifierRepoBox') && $('#verifierRepoBox').addEventListener('click', async (
   } catch (err) { info.className = 'vr-test-info err'; info.textContent = explainError(err.message); }
 });
 
+/* Le libellé d'une commande dans la carte et la boîte d'approbation : la ligne, et pour une
+   globale « [1× · dépôt] » — OÙ elle tourne fait partie de ce qu'on approuve. L'empreinte
+   approuvée garde les chaînes d'avant plus `globals: [[rang, dépôt]]` : on la relit pareil. */
+const libelleCommande = (c) => (c.scope === 'global'
+  ? `${c.command}  [${tr('verify.cmd.global')} · ${c.project || tr('verify.cmd.global-first')}]` : c.command);
+const commandesApprouveesAvant = (ab) => (ab.commands || []).map((cmd, i) => {
+  const g = (ab.globals || []).find((x) => x[0] === i);
+  return g ? libelleCommande({ command: cmd, scope: 'global', project: g[1] }) : cmd;
+});
+
 function renderVerifierList() {
   const el = $('#verifierList');
   if (!el) return;
@@ -321,13 +363,13 @@ function renderVerifierList() {
       <div class="title">${esc(v.name)}${herite ? ` <span class="tag stale">${esc(tr('verify.kind.script-removed.tag'))}</span>` : ''}${v.approval_pending ? ` <span class="tag warn">${esc(tr('approval.tag'))}</span>` : ''}</div>
       ${v.approval_pending ? blocApprobation({
     texte: tr(v.approved_before ? 'approval.verifier.changed' : 'approval.verifier.new'),
-    avant: v.approved_before ? (v.approved_before.commands || []) : null,
-    apres: v.commands || [],
+    avant: v.approved_before ? commandesApprouveesAvant(v.approved_before) : null,
+    apres: (v.commands || []).map(libelleCommande),
     bouton: `<button type="button" class="btn btn-primary btn-sm" data-vapprove="${v.id}">${esc(tr('approval.btn'))}</button>`,
   }) : ''}
       <div class="meta">${herite
     ? `<code>${esc(v.command || '')}</code>`
-    : (v.commands || []).map((c) => `<button type="button" class="code-copy" data-copy-txt="${esc(c)}" title="${esc(tr('verify.copy-command'))}"><code>${esc(c)}</code></button>`).join(' <span class="muted">→</span> ')}</div>
+    : (v.commands || []).map((c) => `<button type="button" class="code-copy" data-copy-txt="${esc(c.command)}" title="${esc(tr('verify.copy-command'))}"><code>${esc(c.command)}</code></button>${c.scope === 'global' ? ` <span class="tag vc-global-tag" title="${esc(tr('verify.cmd.global-title', { repo: c.project || tr('verify.cmd.global-first') }))}">${esc(tr('verify.cmd.global'))}</span>` : ''}`).join(' <span class="muted">→</span> ')}</div>
       <div class="meta">${(v.groups || []).map((g) => `<span class="groupe-tag">${esc(g.name)}</span>`).join(' ')}${(v.groups || []).length && (v.repos || []).length ? ' · ' : ''}${(v.repos || []).map((r) => {
     const p = (repoOptions.find((x) => x.id === r.repo_id) || {}).project || `#${r.repo_id}`;
     return `<span class="tag">${esc(p)} · ${esc(r.mode === 'in_place' ? tr('verify.mode.in-place-short') : tr('verify.mode.worktree-short'))}</span>`;
@@ -473,7 +515,8 @@ $('#verifierCommandList') && $('#verifierCommandList').addEventListener('click',
   }
   const b = e.target.closest && e.target.closest('.vc-del');
   if (!b) return;
-  renderCommandList(lignes.filter((r) => r !== b.closest('.vc-row')).map((r) => $('.vc-cmd', r).value));
+  const garde = lignes.indexOf(b.closest('.vc-row'));
+  renderCommandList(lireLignesCommandes().filter((_, i) => i !== garde));
 });
 
 /* Le formulaire reste FERMÉ tant qu'on ne demande rien. Déployé en permanence, il occupait

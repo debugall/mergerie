@@ -40,7 +40,7 @@ function gitTagsHtml(tags, repoId) {
     + `<th>${esc(tr('git.tags.col.name'))}</th><th>${esc(tr('git.tags.col.date'))}</th><th>${esc(tr('git.tags.col.branches'))}</th><th>${esc(tr('git.tags.col.author'))}</th><th>${esc(tr('git.tags.col.type'))}</th><th>${esc(tr('git.tags.col.message'))}</th>`
     + '</tr></thead><tbody>'
     + tags.map((tg) => `<tr><td><code>${esc(tg.name)}</code></td>`
-      + `<td class="muted">${tg.committed_date ? fmtDate(tg.committed_date) : '—'}</td>`
+      + `<td class="muted">${tg.committed_date ? fmtDateHour(tg.committed_date) : '—'}</td>`
       + `<td class="git-tag-branches">${tagBranchesHtml(tg.branches)}</td>`
       + `<td class="git-tag-author"><span class="muted">${tg.author ? esc(tg.author) : '—'}</span> `
         + `<button type="button" class="btn btn-sm btn-ghost" data-tagauthor="${esc(tg.name)}" data-repo="${repoId}" title="${esc(tr('git.tags.fetch-author-title'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${esc(tr('git.tags.fetch-author'))}</button></td>`
@@ -117,7 +117,7 @@ function gitRenderExplorer(d, box) {
           (b.session ? ' <button type="button" class="lien-reglage git-ex-sess" data-git-sess="' + b.session.id + '" data-git-sess-kind="' + esc(b.session.kind || 'code') + '" title="'
             + esc(tr('git.branch.session-title')) + '">' + svgIco('bot') + ' ' + esc(String(b.session.label || '').slice(0, 40)) + '</button>' : '') + '</td>' +
         '<td>' + ab + '</td><td>' + gitOriginCell(b) + '</td><td>' + merged + '</td>' +
-        '<td class="muted">' + (b.committed_date ? fmtDate(b.committed_date) : '—') + (b.author ? ' · ' + esc(b.author) : '') + '</td>' +
+        '<td class="muted">' + (b.committed_date ? fmtDateHour(b.committed_date) : '—') + (b.author ? ' · ' + esc(b.author) : '') + '</td>' +
         '<td class="git-ex-actions">' + gestes + mrBtn + '</td></tr>';
     }).join('') + '</tbody></table></div>' +
     '<p class="muted git-ex-nomatch" hidden>' + esc(tr('git.refs.no-match')) + '</p>' +
@@ -236,7 +236,7 @@ function findRefBranchesHtml(branches) {
   if (!list.length) return '<span class="muted">—</span>';
   return '<div class="findref-branches">' + list.map((b) => {
     const name = typeof b === 'string' ? b : (b && b.name) || '';
-    const date = b && b.tipDate ? fmtDate(b.tipDate) : '—';
+    const date = b && b.tipDate ? fmtDateHour(b.tipDate) : '—';
     const tip = b && b.isTip;
     return `<div class="findref-branch"><span class="tag">${esc(name)}</span>`
       + `<span class="muted" title="${esc(tr('git.findref.branch-tip-date'))}">${date}</span>`
@@ -285,7 +285,7 @@ async function findRefSearch(e) {
         + `<td>${typeBadge(m.kind)}</td>`
         + `<td>${m.url ? `<a href="${esc(safeUrl(m.url))}" target="_blank" rel="noopener noreferrer"><code>${esc(m.sha || d.name)}</code> ↗</a>` : ''}`
         + `${m.sha ? ` <button type="button" class="muted git-sha git-sha-copy" data-copy-txt="${esc(m.sha)}" title="${esc(tr('git.copy-sha'))}">${esc(m.url ? tr('ui.copy') : m.sha)}</button>` : ''}</td>`
-        + `<td class="muted">${m.date ? fmtDate(m.date) : '—'}</td>`
+        + `<td class="muted">${m.date ? fmtDateHour(m.date) : '—'}</td>`
         + `<td>${m.kind === 'tag' ? findRefBranchesHtml(m.branches) : '<span class="muted">—</span>'}</td>`
         + `<td class="muted">${esc(m.author || '—')}</td>`
         + `<td class="git-tag-author">${m.kind === 'tag'
