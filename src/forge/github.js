@@ -460,7 +460,7 @@ async function pipelineStatus(cfg, project, iid, sha) {
   const enc = encodeProject(project);
   let head = sha;
   if (!head) { const pr = await githubFetch(cfg, `/repos/${enc}/pulls/${iid}`); head = pr && pr.head && pr.head.sha; }
-  if (!head) return { state: 'none', url: null, label: '' };
+  if (!head) return { state: 'none', url: null, label: '', coverage: null };
   return pipelineDuSha(cfg, enc, head, `${webBase(cfg)}/${enc}/pull/${iid}/checks`);
 }
 
@@ -492,12 +492,13 @@ async function pipelineDuSha(cfg, enc, head, urlRepli) {
   for (const st of (combined && combined.statuses) || []) {
     items.push({ etat: st.state === 'success' ? 'success' : st.state === 'pending' ? 'running' : 'failed', url: st.target_url || null });
   }
-  if (!items.length) return { state: 'none', url: null, label: '' };
+  if (!items.length) return { state: 'none', url: null, label: '', coverage: null };
   const url = (items.find((i) => i.etat === 'failed') || items[0]).url || urlRepli;
   const state = items.some((i) => i.etat === 'failed') ? 'failed'
     : items.some((i) => i.etat === 'running') ? 'running'
       : items.every((i) => i.etat === 'success' || i.etat === 'canceled') ? (items.some((i) => i.etat === 'success') ? 'success' : 'canceled') : 'pending';
-  return { state, url, label: `${items.length}` };
+  // GitHub n'a pas de couverture native (Codecov & co. ne publient qu'un check) : jamais de chiffre ici.
+  return { state, url, label: `${items.length}`, coverage: null };
 }
 
 async function listMrDiscussions(cfg, project, iid) {

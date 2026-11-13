@@ -474,6 +474,7 @@
       "mr.ci-forge.running": "Pipeline de la forge : en cours",
       "mr.ci-forge.pending": "Pipeline de la forge : en attente",
       "mr.ci-forge.canceled": "Pipeline de la forge : annulé",
+      "mr.ci-forge.coverage": "Couverture de tests déclarée par le pipeline : {pct} % — toute la suite, pas seulement ce diff",
     },
     en: {
       "cmt.inline.line-title": "Comment on this line",
@@ -940,6 +941,7 @@
       "mr.ci-forge.running": "Forge pipeline: running",
       "mr.ci-forge.pending": "Forge pipeline: pending",
       "mr.ci-forge.canceled": "Forge pipeline: canceled",
+      "mr.ci-forge.coverage": "Test coverage declared by the pipeline: {pct}% — the whole suite, not only this diff",
     },
   };
 }));

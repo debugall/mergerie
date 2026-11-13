@@ -301,7 +301,11 @@ function badgeCIForge(m) {
   const cls = { success: 'done', failed: 'stale', running: 'to_review', pending: 'to_review', canceled: '' }[c.state] || '';
   const signe = { success: '✓', failed: '✗', running: '⋯', pending: '⋯', canceled: '–' }[c.state] || '?';
   const titre = tr(`mr.ci-forge.${c.state}`);
-  const html = `<span class="tag ${cls}" data-ci-forge="${m.id}" title="${esc(titre)}">${tr('mr.ci-forge.label')} ${signe}</span>`;
+  /* LA COUVERTURE QUE LE PIPELINE DÉCLARE, à côté — celle de toute la suite, pas du diff, et le
+     titre le dit. Sans chiffre (GitHub, pipeline en cours, pas de `coverage:`), rien. */
+  const pct = c.coverage == null ? '' : Number(c.coverage).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const couv = pct ? `<span class="tag" data-ci-coverage="${m.id}" title="${esc(tr('mr.ci-forge.coverage', { pct }))}">${pct} %</span>` : '';
+  const html = `<span class="tag ${cls}" data-ci-forge="${m.id}" title="${esc(titre)}">${tr('mr.ci-forge.label')} ${signe}</span>${couv}`;
   return c.url ? `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer" class="tag-link">${html}</a>` : html;
 }
 

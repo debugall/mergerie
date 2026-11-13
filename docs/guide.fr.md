@@ -390,7 +390,9 @@ Mergerie la lit, il ne la remplace pas.
   (GitLab : la discussion ; GitHub : le fil de review, par GraphQL — un commentaire général ne se résout
   pas là-bas, et l'outil le dit). Et chaque carte porte le **badge CI de la forge** — pipeline GitLab,
   check-runs et statuts GitHub, agrégés en un mot : vert, rouge, en cours — avec le lien vers ce qui a
-  cassé. Ce n'est pas le verdict de Mergerie, qui reste un autre badge, d'un autre mot.
+  cassé. Quand le pipeline **déclare une couverture de tests** (`coverage:` dans `.gitlab-ci.yml`), le
+  pourcentage s'affiche à côté — celui de toute la suite, pas de ce diff, et le survol le dit ; GitHub n'en
+  publie pas. Ce n'est pas le verdict de Mergerie, qui reste un autre badge, d'un autre mot.
 - **Publier le LIEN du rapport, plutôt que le rapport** — seulement quand l'équipe partage un
   **dépôt de données**. Six cents lignes recopiées en commentaire, personne ne les lit, et la passe
   suivante en repose six cents. Le rapport est déjà dans le dépôt de l'équipe, en Markdown rendu par

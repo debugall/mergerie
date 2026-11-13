@@ -40,7 +40,7 @@ describe('Menu Reviews — approuver, résoudre un fil, la CI de la forge', { sk
       id: 'disc-general', notes: [{ id: 650, body: 'Déjà relu par l’équipe produit.', system: false, resolved: false,
         author: { name: 'Claire', username: 'claire' }, position: null }],
     }];
-    app.state.pipelines['grp/app!31'] = [{ id: 77, status: 'success', web_url: 'https://gitlab.test/grp/app/-/pipelines/77' }];
+    app.state.pipelines['grp/app!31'] = [{ id: 77, status: 'success', web_url: 'https://gitlab.test/grp/app/-/pipelines/77', coverage: '83.4' }];
     await app.configure();
     await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' });
     await app.api('POST', '/api/discover');
@@ -69,6 +69,10 @@ describe('Menu Reviews — approuver, résoudre un fil, la CI de la forge', { sk
     const badge = page.locator(`#reportList .card[data-id="${mrId}"] [data-ci-forge]`);
     assert.match(await badge.textContent(), /CI\s*✓/);
     assert.equal(await badge.locator('..').getAttribute('href'), 'https://gitlab.test/grp/app/-/pipelines/77');
+    // …et la couverture que le pipeline déclare (lue sur le pipeline seul, la liste ne la porte pas).
+    const couv = page.locator(`#reportList .card[data-id="${mrId}"] [data-ci-coverage]`);
+    assert.match(await couv.textContent(), /83[.,]4\s*%/);
+    assert.match(await couv.getAttribute('title'), /toute la suite/, 'le titre dit que ce n’est pas la couverture du diff');
   });
 
   test('« Approuver » demande, dit la note et le verdict, puis passe à « Approuvé ✓ » — et se retire', async () => {

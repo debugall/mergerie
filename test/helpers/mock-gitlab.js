@@ -204,6 +204,12 @@ function handleGitlab(req, res, pathname, query, body) {
     const action = query.get('action');
     return json(res, 200, paged((state.events[project] || []).filter((e) => !action || e.action_name === action)));
   }
+  /* Un pipeline par son id : c'est lui qui porte `coverage` (la liste d'une MR ne la porte pas). */
+  m = /^\/pipelines\/(\d+)$/.exec(rest);
+  if (m && req.method === 'GET') {
+    const p = Object.values(state.pipelines).flat().find((x) => String(x.id) === m[1]);
+    return p ? json(res, 200, { coverage: null, ...p }) : json(res, 404, { message: '404 Not found' });
+  }
   if (rest === '/pipelines' && req.method === 'GET') {
     const ref = query.get('ref');
     return json(res, 200, ((state.refPipelines[project] || {})[ref] || []).slice(0, 1));

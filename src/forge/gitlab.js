@@ -436,12 +436,24 @@ function normaliserPipeline(status) {
   if (s === 'canceled' || s === 'canceling' || s === 'skipped') return 'canceled';
   return s ? 'pending' : 'none';
 }
+/* Le pourcentage que GitLab a lu sur la sortie du job (`coverage:` du .gitlab-ci.yml) : une chaîne
+   « 83.4 », ou null. Rien d'autre n'est inventé : pas de chiffre, pas de badge. */
+const lireCouverture = (v) => { const n = Number(v); return v == null || v === '' || !Number.isFinite(n) ? null : Math.round(n * 10) / 10; };
 async function pipelineStatus(cfg, project, iid) {
   const enc = encodeProject(project);
   const items = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}/pipelines?per_page=1`);
   const p = Array.isArray(items) && items[0];
-  if (!p) return { state: 'none', url: null, label: '' };
-  return { state: normaliserPipeline(p.status), url: p.web_url || null, label: `#${p.id || ''}`.trim(), raw: p.status || '' };
+  if (!p) return { state: 'none', url: null, label: '', coverage: null };
+  const state = normaliserPipeline(p.status);
+  /* LA COUVERTURE GLOBALE QUE LE PIPELINE DÉCLARE. La liste des pipelines d'une merge request ne
+     la porte pas, le pipeline seul oui : un appel de plus, pour un pipeline FINI seulement (en
+     cours, elle n'existe pas encore), et jamais une erreur — la carte se passe du chiffre. C'est
+     la couverture de toute la suite, pas celle du diff ; l'écran le dit. */
+  let coverage = null;
+  if (p.id && (state === 'success' || state === 'failed')) {
+    try { const d = await gitlabFetch(cfg, `/projects/${enc}/pipelines/${p.id}`); coverage = lireCouverture(d && d.coverage); } catch { coverage = null; }
+  }
+  return { state, url: p.web_url || null, label: `#${p.id || ''}`.trim(), raw: p.status || '', coverage };
 }
 
 /* ---------- Opérations sur les refs (onglet Git) ----------

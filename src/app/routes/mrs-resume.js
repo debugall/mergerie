@@ -381,7 +381,7 @@ app.get('/api/mrs-ci', wrap(async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map((x) => Number(x)).filter((x) => Number.isFinite(x) && x > 0).slice(0, 60);
   const out = {};
   if (demoMode.isDemo()) {
-    ids.forEach((id, i) => { out[id] = { state: ['success', 'failed', 'running', 'success'][i % 4], url: null, label: '' }; });
+    ids.forEach((id, i) => { out[id] = { state: ['success', 'failed', 'running', 'success'][i % 4], url: null, label: '', coverage: [83.4, 61, null, 92.7][i % 4] }; });
     return res.json(out);
   }
   const cfg = getConfig();

@@ -368,7 +368,9 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   re-review saw disappear (GitLab: the discussion; GitHub: the review thread, through GraphQL — a
   general comment cannot be resolved there, and the tool says so). And every card carries the
   **forge CI badge** — GitLab pipeline, GitHub check-runs and statuses, aggregated into one word:
-  green, red, running — with the link to what broke. It is not Mergerie's verdict, which stays a
+  green, red, running — with the link to what broke. When the pipeline **declares a test coverage**
+  (`coverage:` in `.gitlab-ci.yml`), the percentage shows next to it — the whole suite's, not this
+  diff's, and the hover says so; GitHub publishes none. It is not Mergerie's verdict, which stays a
   separate badge with a separate word.
 - **Publish the report LINK rather than the report** — only when the team shares a **data
   repository**. Six hundred lines copied into a comment, nobody reads them, and the next pass posts
