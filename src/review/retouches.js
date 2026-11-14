@@ -501,11 +501,14 @@ const mediane = (xs) => {
 const TRANCHES = ['8+', '7-8', '<7', 'none'];
 const trancheDe = (note) => (note == null ? 'none' : (note * 10 >= 8 ? '8+' : (note * 10 >= 7 ? '7-8' : '<7')));
 
-/* LA TABLE « NOTE CONTRE RETOUCHE » : par tranche de note, puis par dépôt, les MR mergées dont le
-   bilan est CONNU (la fenêtre écoulée — une MR mergée hier n'entre pas dans le dénominateur, son
-   bilan n'est pas encore là), combien ont été retouchées, combien qualifiées bug, le délai et les
-   lignes médians ; la liste des retouches de la période, les plus rapides d'abord. Deux planchers :
-   les corrections par ajout pur et hors MR ne sont pas toutes vues. Aucune clé d'auteur. */
+/* LA TABLE « NOTE CONTRE RETOUCHE » : par tranche de note, puis par dépôt, TOUTES les MR mergées de
+   la période au dénominateur — y compris celles dont la fenêtre court encore —, les retouchées au
+   numérateur, le délai et les lignes médians ; la liste des retouches de la période, les plus
+   rapides d'abord. Le chiffre est donc un PLANCHER qui ne peut que monter tant que des fenêtres
+   courent, et la carte dit combien (`pending`) : n'entrer les jeunes MR que lorsqu'elles sont
+   retouchées gonflerait la part (numérateur sans son dénominateur), les exclure toutes ferait
+   attendre un mois un chiffre dont la liste montre déjà les faits. Deux autres planchers : les
+   corrections par ajout pur et hors MR ne sont pas toutes vues. Aucune clé d'auteur. */
 function stats(cfg, { depuis = null, jusqua = null, projet = '' } = {}) {
   const n = fenetre(cfg);
   const vide = { enabled: actif(cfg), window: n, merged: 0, touched: 0, bug: 0, tranches: [], repos: [], links: [], pending: 0, unscanned: 0 };
@@ -542,7 +545,7 @@ function stats(cfg, { depuis = null, jusqua = null, projet = '' } = {}) {
   const parDepot = new Map();
   let pending = 0;
   for (const m of mrs) {
-    if (m.merged_at > connuAvant) { pending += 1; continue; }
+    if (m.merged_at > connuAvant) pending += 1;   // comptée quand même : fenêtre en cours, dite sur la carte
     ajouter(total, m);
     ajouter(parTranche[trancheDe(m.note_value)], m);
     if (!parDepot.has(m.project)) parDepot.set(m.project, acc());

@@ -2229,8 +2229,10 @@ Sous les filtres de l'écran (période, dépôt), une phrase d'en-tête lisible 
 mergées depuis le 1er octobre, 7 ont été retouchées dans les 30 jours (11 %), dont 4 qualifiées bug (7 %)`,
 suivie de la nature de **plancher** du chiffre (les corrections par ajout pur et hors merge request ne sont
 pas toutes vues ; une retouche n'est qualifiée bug que si un fait le dit) et du nombre de merge requests
-mergées depuis moins de N jours, qui **n'entrent pas dans le dénominateur** — leur bilan n'est pas encore
-connu, les compter ferait baisser le taux artificiellement. L'analyse se fait **par lots à chaque découverte**
+mergées depuis moins de N jours, **comptées alors que leur fenêtre court encore** : la part est un plancher
+qui ne peut que monter d'ici là. (Ne faire entrer les jeunes MR que lorsqu'elles sont retouchées gonflerait
+la part — un numérateur sans son dénominateur ; les exclure toutes ferait attendre un mois un chiffre dont la
+liste montre déjà les faits.) L'analyse se fait **par lots à chaque découverte**
 (`fix_links_max` MR mergées par tour, 10 par défaut, 0 = sans limite) : tant que des MR attendent leur tour,
 la carte le dit — `12 MR mergées attendent encore leur analyse : des retouches peuvent manquer` — car une
 MR non relue compte au dénominateur sans retouche connue. Puis la table **Note contre retouche** : une

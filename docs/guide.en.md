@@ -2132,8 +2132,10 @@ report". Under the screen's filters (period, repository), a header sentence a no
 61 merged MRs since October 1st, 7 were touched up within 30 days (11%), 4 of them qualified bug (7%)`,
 followed by the **floor** nature of the figure (fixes by pure addition and outside a merge request are not
 all seen; a follow-up is qualified bug only when a fact says so) and the number of merge requests merged
-less than N days ago, which **do not enter the denominator** — their outcome is not known yet, counting
-them would lower the rate artificially. The analysis runs **in batches at each discovery** (`fix_links_max`
+less than N days ago, **counted while their window is still open**: the share is a floor that can only rise
+until then. (Letting young MRs in only once touched up would inflate the share — a numerator without its
+denominator; keeping them all out would make a figure wait a month while the list already shows the facts.)
+The analysis runs **in batches at each discovery** (`fix_links_max`
 merged MRs per round, 10 by default, 0 = no limit): while some still wait for their turn, the card says so —
 `12 merged MRs still await their analysis: follow-ups may be missing` — because an unread MR counts in the
 denominator with no known follow-up. Then the **Score against follow-up** table: one row per band (`8

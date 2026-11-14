@@ -274,13 +274,15 @@ describe('Retouches après merge', () => {
     assert.equal(liens(A.id).filter((x) => x.fix_mr_id === b10.id && x.kind === 'manual').length, 1, 'le lien manuel survit au recalcul');
   });
 
-  test('Stats : la table par tranche, le dénominateur sans les MR de moins de N jours, aucune clé d’auteur', () => {
+  test('Stats : la table par tranche, toutes les MR mergées au dénominateur et les fenêtres en cours dites, aucune clé d’auteur', () => {
     const st = r.stats(cfg, {});
     assert.equal(st.window, 14);
     assert.deepEqual(st.tranches.map((t) => t.tranche), ['8+', '7-8', '<7', 'none']);
-    const connues = db.prepare('SELECT COUNT(*) c FROM mr WHERE merged_at IS NOT NULL AND merged_at <= ?').get(il_y_a(14)).c;
-    assert.equal(st.merged, connues, 'le dénominateur : les MR dont la fenêtre est écoulée');
-    assert.ok(st.pending > 0, 'les autres attendent leur bilan');
+    const toutes = db.prepare('SELECT COUNT(*) c FROM mr WHERE merged_at IS NOT NULL').get().c;
+    assert.equal(st.merged, toutes, 'le dénominateur : toutes les MR mergées, fenêtre écoulée ou non');
+    const jeunes = db.prepare('SELECT COUNT(*) c FROM mr WHERE merged_at IS NOT NULL AND merged_at > ?').get(il_y_a(14)).c;
+    assert.equal(st.pending, jeunes, 'et la carte dit combien ont encore leur fenêtre ouverte');
+    assert.ok(st.pending > 0);
     // Le retard du tour : les MR mergées de la rétention jamais relues sur leur SHA de merge.
     const relues = new Set(db.prepare("SELECT ref FROM mr_fix_scan WHERE kind = 'mr'").all().map((x) => Number(x.ref)));
     const attendues = db.prepare('SELECT id FROM mr WHERE merged_at IS NOT NULL AND merged_at >= ?').all(il_y_a(r.retentionJours(cfg))).map((x) => x.id);
