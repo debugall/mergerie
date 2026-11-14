@@ -302,6 +302,20 @@ const REGISTRE = [
         comment_log: ctx.enfants('comment_log', 'mr_id', r.id).map((c) => ({
           uid: c.uid, body: c.body, note_id: c.gitlab_note_id || null, sent_at: c.sent_at,
         })),
+        /* LES RETOUCHES REQUALIFIÉES À LA MAIN — et elles seules. Le lien lui-même (lignes, délai,
+           plages) se recalcule sur chaque poste depuis son clone ; ce qui ne se recalcule pas, c'est
+           « Claire a dit : pas un correctif ». La MR qui retouche est désignée par son numéro, un
+           commit direct par son SHA ; un signal par ligne, comme en base. */
+        fix_links: (() => {
+          const locaux = ctx.enfants('mr_fix_link', 'origin_mr_id', r.id)
+            .filter((l) => l.status && l.status !== 'auto')
+            .map((l) => {
+              const b = l.fix_mr_id ? ctx.mrChemin(l.fix_mr_id) : null;
+              if (l.fix_mr_id && !b) return null;
+              return { fix_iid: b ? b.iid : null, fix_commit_sha: l.fix_commit_sha || '', kind: l.kind, status: l.status, status_by: l.status_by || null, status_at: l.status_at || null };
+            }).filter(Boolean);
+          return [...locaux, ...ctx.margeInconnue('mr_fix_link', r.uid, locaux)];
+        })(),
       };
     },
     /* HYDRATER une MR ne CRÉE pas la ligne de cache : la découverte s'en charge, avec le titre et
@@ -384,8 +398,42 @@ const REGISTRE = [
           gitlab_note_id: item.note_id || null, sent_at: item.sent_at,
         } : null),
       },
+      {
+        table: 'mr_fix_link',
+        liste: 'fix_links',
+        colonneParent: 'origin_mr_id',
+        /* ON NE REMPLACE PAS, ON POSE L'ARBITRAGE : les liens `auto` de ce poste restent (ils sont
+           à lui, recalculés d'ici), et chaque requalification reçue s'écrit sur la paire — créée
+           avec le seul statut si le calcul local ne l'a pas encore vue, mise à jour sinon, sans
+           jamais écraser une décision locale PLUS RÉCENTE. La MR qui retouche inconnue ici (pas
+           encore découverte) reste en marge, réémise au prochain écrit. */
+        remplace: (db2, parent, items, ctx, signaler) => {
+          const horsPerimetre = [];
+          const up = db2.prepare(`INSERT INTO mr_fix_link (origin_mr_id, fix_mr_id, fix_commit_sha, kind, lines, files, days, large, detail, bug, computed_at, head_sha_b, status, status_by, status_at)
+            VALUES (?, ?, ?, ?, 0, 0, NULL, 0, '{}', '[]', NULL, NULL, ?, ?, ?)
+            ON CONFLICT (origin_mr_id, fix_mr_id, fix_commit_sha, kind) DO UPDATE SET
+              status = excluded.status, status_by = excluded.status_by, status_at = excluded.status_at
+            WHERE mr_fix_link.status_at IS NULL OR excluded.status_at IS NULL OR excluded.status_at >= mr_fix_link.status_at`);
+          for (const l of items) {
+            if (!l || !l.kind || !l.status || l.status === 'auto') continue;
+            let fixId = 0;
+            if (l.fix_iid) {
+              const b = db2.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(parent.repo_id, Number(l.fix_iid));
+              if (!b) { signaler(`retouche par !${l.fix_iid}, merge request inconnue sur ce poste`); horsPerimetre.push(l); continue; }
+              fixId = b.id;
+            } else if (!l.fix_commit_sha) continue;
+            up.run(parent.id, fixId, String(l.fix_commit_sha || ''), String(l.kind), String(l.status), l.status_by || null, l.status_at || null);
+          }
+          garderHorsPerimetre(db2, 'mr_fix_link', parent.uid, horsPerimetre);
+        },
+      },
     ],
   },
+  /* LE LIEN SE RECALCULE, L'ARBITRAGE VOYAGE. Lignes, fichiers, délai, plages : un fait de git que
+     chaque poste relit sur son clone. `status`, `status_by`, `status_at` : ce qu'un humain a décidé,
+     porté par le fichier de la merge request d'origine. */
+  { table: 'mr_fix_link', famille: 'P', uidPropre: false /* pas de clé primaire propre : (origine, retouche, signal) la décrit entièrement */, parent: 'mr', liste: 'fix_links', fusion: 'parent' },
+  { table: 'mr_fix_scan', famille: 'L', note: 'ce que CE poste a déjà analysé pour les retouches : une MR mergée par son SHA, une branche par sa pointe' },
   { table: 'mr_link', famille: 'P', uidPropre: true, parent: 'mr', liste: 'links', fusion: 'parent' },
   /* UN BROUILLON NE PART JAMAIS. Ces remarques-là ne sont pas encore des commentaires : elles
      se modifient jusqu'à un envoi explicite. Partagées, deux relecteurs de la même merge request
@@ -1890,6 +1938,8 @@ const REGISTRE = [
       'deps_enabled', 'manifest_patterns',
       // Les MR empilées : relever les commits des MR ouvertes — l'outil, pas la machine.
       'mr_commits_enabled',
+      // Les retouches après merge : l'interrupteur, la fenêtre, le minimum de lignes, le plafond — le chiffre qui calibre le seuil est d'équipe.
+      'fix_links_enabled', 'fix_window_days', 'fix_min_lines', 'fix_links_max',
       // Le contrôle au registre : l'interrupteur, le seuil « récent », le plafond par tour, les motifs de paquets privés — d'équipe ; les URL, elles, sont de poste.
       'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns',
       // Les postes de l'équipe : quand un poste est dit silencieux — une lecture commune.
@@ -2013,6 +2063,7 @@ const UNIQUES_SANS_CLE = {
   'repo_group_member.group_id+repo_id': 'liste fille remplacée en bloc avec son groupe',
   'agent_repo.agent_id+repo_id': 'liste fille remplacée en bloc avec son agent',
   'lot_member.lot_id+kind+ref_id': 'liste fille remplacée en bloc avec son lot',
+  'mr_fix_link.origin_mr_id+fix_mr_id+fix_commit_sha+kind': 'liste fille posée par upsert sur la paire (origine, retouche, signal) : le fichier ne porte que l’arbitrage, écrit sur la ligne qui existe ou créée avec lui',
   'agent_knowledge.agent_id': 'partielle (status = active) : `apresHydratation` renumérote et une seule version reste active',
   'agent_knowledge.agent_id+version': '`version` est posée en négatif provisoire puis renumérotée : jamais deux égales en vol',
 };

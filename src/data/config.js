@@ -55,6 +55,7 @@ const ALLOWED = [
   'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
   'deps_enabled', 'manifest_patterns',
   'mr_commits_enabled',
+  'fix_links_enabled', 'fix_window_days', 'fix_min_lines', 'fix_links_max',
   'registry_enabled', 'registry_recent_days', 'registry_max', 'private_patterns', 'registry_urls',
   'team_quiet_days',
 ];
@@ -148,6 +149,21 @@ function updateConfig(patch) {
   }
   next.deps_enabled = String(next.deps_enabled) === '0' ? '0' : '1';
   next.mr_commits_enabled = String(next.mr_commits_enabled) === '0' ? '0' : '1';
+  /* Les retouches après merge : l'interrupteur (coché d'office), la fenêtre en jours (30, de 1 à 365),
+     le minimum de lignes réécrites (3, 0 = toute ligne), le plafond de MR analysées par tour (10, 0 = sans limite). */
+  next.fix_links_enabled = String(next.fix_links_enabled) === '0' ? '0' : '1';
+  if ('fix_window_days' in patch) {
+    const fw = parseInt(patch.fix_window_days, 10);
+    next.fix_window_days = Number.isFinite(fw) && fw >= 1 ? Math.min(365, fw) : 30;
+  }
+  if ('fix_min_lines' in patch) {
+    const fl = parseInt(patch.fix_min_lines, 10);
+    next.fix_min_lines = Number.isFinite(fl) && fl >= 0 ? Math.min(100000, fl) : 3;
+  }
+  if ('fix_links_max' in patch) {
+    const fx = parseInt(patch.fix_links_max, 10);
+    next.fix_links_max = Number.isFinite(fx) && fx >= 0 ? Math.min(1000, fx) : 10;
+  }
   for (const champ of ['test_patterns', 'neutral_patterns', 'manifest_patterns', 'private_patterns']) {
     if (champ in patch) next[champ] = require('../core/glob').normaliserMotifs(patch[champ]);
   }
@@ -358,6 +374,10 @@ function updateConfig(patch) {
       neutral_patterns = @neutral_patterns,
       deps_enabled = @deps_enabled,
       mr_commits_enabled = @mr_commits_enabled,
+      fix_links_enabled = @fix_links_enabled,
+      fix_window_days = @fix_window_days,
+      fix_min_lines = @fix_min_lines,
+      fix_links_max = @fix_links_max,
       manifest_patterns = @manifest_patterns,
       registry_enabled = @registry_enabled,
       registry_recent_days = @registry_recent_days,

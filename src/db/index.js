@@ -28,6 +28,7 @@ const TRANCHES = [
   '14-identite',
   '15-local-state',
   '16-slug',
+  '16a-retouches',
   '17-store',
   '18-plugins',
   '19-periode',

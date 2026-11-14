@@ -105,15 +105,20 @@ const A_RELEVER = (cf, mr) => `(${cf}.mr_id IS NULL OR ${cf}.head_sha IS NOT ${m
    2 h`, pendant sept jours : c'est l'explication des « N commits de retard » qui viennent d'apparaître
    si elle a été mergée par squash ou rebase. Puis la liste de commits de la fermée est purgée — elle
    ne servira plus à rien. Appelé à chaque tour de découverte, idempotent. */
-function archiverFermees({ now = new Date().toISOString() } = {}) {
+function archiverFermees({ now = new Date().toISOString(), garderMergeesJours = 0 } = {}) {
   const fermees = db.prepare(`SELECT mr.id, mr.merged_at FROM mr JOIN mr_commit_fetch f ON f.mr_id = mr.id
     WHERE COALESCE(mr.closed_seen, 0) = 1 OR mr.merged_at IS NOT NULL`).all();
   let n = 0;
   if (fermees.length) {
     const ins = db.prepare('INSERT OR IGNORE INTO mr_contained_history (mr_id, other_mr_id, merged_at) VALUES (?, ?, ?)');
+    /* LES COMMITS D'UNE MR MERGÉE RESTENT `garderMergeesJours` (la fenêtre des retouches plus une
+       marge) : c'est par eux qu'un `blame` reconnaît une ligne d'une MR mergée sans squash. Une MR
+       fermée sans merge est purgée tout de suite, comme avant ; 0 = tout de suite pour toutes. */
+    const limite = new Date(Date.parse(now) - garderMergeesJours * 24 * 3600 * 1000).toISOString();
     const ecrire = db.transaction(() => {
       for (const f of fermees) {
         for (const r of inclusions({ innerId: f.id, ouvertes: false })) { ins.run(r.outer, r.inner, f.merged_at || now); n += 1; }
+        if (garderMergeesJours > 0 && f.merged_at && f.merged_at > limite) continue;
         db.prepare('DELETE FROM mr_commits WHERE mr_id = ?').run(f.id);
         db.prepare('DELETE FROM mr_commit_fetch WHERE mr_id = ?').run(f.id);
       }

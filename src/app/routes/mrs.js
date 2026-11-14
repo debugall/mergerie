@@ -23,6 +23,7 @@ const croisements = require('../../review/croisements');
 const testsTouches = require('../../review/tests-touches');
 const dependances = require('../../review/dependances');
 const empilees = require('../../review/empilees');
+const retouches = require('../../review/retouches');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const agentsession = require('../../agent/session');
@@ -142,6 +143,7 @@ app.get('/api/mrs', wrap((req, res) => {
   const deps = dependances.pourCartes(cfg);
   // LES MR EMPILÉES : « contient !214 » — l'inclusion des listes de commits, une requête, zéro réseau.
   const empiles = empilees.pourCartes(cfg);
+  const retouchees = retouches.pourCartes(cfg);
   const riskOf = (changed) => {
     if (!changed || !pathRules.length) return [];
     const paths = String(changed).split('\n').filter(Boolean);
@@ -242,6 +244,9 @@ app.get('/api/mrs', wrap((req, res) => {
       tests: testes[r.id] || null,
       deps: deps[r.id] || null,
       stack: empiles[r.id] || null,
+      /* RETOUCHES : ce qui a réécrit le code de cette MR après son merge (`touched_by`), ou ce qu'elle
+         a réécrit (`touches`) — un fait de git, jamais un verdict ; `null` sans lien. */
+      fix: retouchees[r.id] || null,
       origin_task: origineParBranche.get(`${r.repo_id}\u0001${r.source_branch}`) || null,
     };
   }));
@@ -303,6 +308,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
   const testes = testsTouches.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   const deps = dependances.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   const stack = empilees.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
+  const fix = retouches.pourCartes(getConfig(), { mrIds: [mr.id] })[mr.id] || null;
   res.json({
     mr,
     /* B3 — LES TODOS OUVERTES DE CETTE MERGE REQUEST. Le rapport proposait d'en AJOUTER une
@@ -392,6 +398,7 @@ app.get('/api/mrs/:id', wrap((req, res) => {
     tests: testes,
     deps,
     stack,
+    fix,
     // La phrase de fait que la review reçoit (« contient !214 : 12 commits et 9 fichiers déjà soumis là-bas »), telle quelle.
     stack_facts: empilees.phrasesDeFait(getConfig(), mr.id),
   });

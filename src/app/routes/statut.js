@@ -481,6 +481,9 @@ app.get('/api/stats', wrap((req, res) => {
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
     topTasks, topReviews, ratio, verifsParDepot, recurrents, recurrentsCross, gitOps,
     cycle: delaiDeCycle(projet, depuis),
+    /* RETOUCHES : la table « note contre retouche », par tranche puis par dépôt, sur la période et le
+       dépôt de l'écran — en SQL et en mémoire à l'affichage, zéro forge. */
+    fixLinks: require('../../review/retouches').stats(getConfig(), { depuis, projet }),
     agentCosts: parAgent,
     lowScores: faibles,
     commentsPosted: db.prepare('SELECT COUNT(*) c FROM comment_log').get().c,

@@ -649,6 +649,20 @@
             <label class="inline-check"><input form="configForm" name="mr_commits_enabled" type="checkbox" /> <span data-i18n="settings.lbl.mr-commits-enabled">Relever les commits des MR ouvertes</span>
                 <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.mr-commits-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
             <p class="field-note" id="mrCommitsDep" hidden data-i18n="settings.mr-commits.dep">Nécessite « Relever les fichiers des MR ouvertes » ci-dessus, dont il partage le plafond : sans relevé, aucun badge.</p>
+            <!-- LES RETOUCHES APRÈS MERGE : quand une MR mergée B réécrit des lignes qu'une MR mergée A avait
+                 introduites dans les N jours d'avant, le dire sur la carte de A — un fait de git (blame sur le
+                 clone), aucun appel d'IA ni de forge. D'équipe : c'est le chiffre qui calibre le seuil. -->
+            <label class="inline-check"><input form="configForm" name="fix_links_enabled" type="checkbox" /> <span data-i18n="settings.lbl.fix-links-enabled">Suivre les retouches après merge</span>
+                <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.fix-links-enabled" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.fix-window-days">Fenêtre en jours</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.fix-window-days" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="fix_window_days" type="number" min="1" max="365" step="1" placeholder="30" />
+            </label>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.fix-min-lines">Lignes réécrites minimales</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.fix-min-lines" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="fix_min_lines" type="number" min="0" max="100000" step="1" placeholder="3" />
+            </label>
+            <label class="sous-reglage"><span data-i18n="settings.lbl.fix-links-max">Au plus N MR analysées par tour</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.fix-links-max" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                <input form="configForm" name="fix_links_max" type="number" min="0" max="1000" step="1" placeholder="10" />
+            </label>
             <!-- LES TESTS TOUCHÉS : « 14 fichiers · 0 test » sur la carte, calculé sur les listes de
                  fichiers des croisements par des MOTIFS de chemin — un fichier est un test ou n'en est
                  pas un, sans IA, sans couverture. Sans relevé des fichiers, pas de badge : la note le dit. -->

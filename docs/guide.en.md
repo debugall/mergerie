@@ -202,6 +202,43 @@ rest; it reads in clear in the report's *Context* dialog, exactly as the AI rece
 the brief; the badge changes neither the score, nor the verdict, nor the ranking, and never blocks
 `Merge`. One setting, under *Settings → Merge Request → Discovery*.
 
+**And a month later, the tool tells you whether a green report held: `touched up by !230 · 3 d · 23
+lines`.** On the card of a **merged** merge request (*Reviewed* or *Done* stage) and in the header of its
+report, a discreet badge says that **another merge request merged within the next N days** (30 by
+default) **rewrote code it had introduced** — a git fact, never a verdict of the tool: for each hunk of
+the second one's diff, the removed lines existed in its base, `git blame` gives the commit that wrote
+them, and if it is the merge, the squash or one of the commits of the first one, it is a follow-up. Lines
+are counted. Three signals, from the most certain to the least, named as such: the **revert** (`reverted
+by !230 · 1 d`: a `This reverts commit <sha>` commit of the merge or squash, or `Reverts !214` in the
+description), the **rewritten lines** (the main signal, above an adjustable minimum, 3 by default), the
+**reference** (`!214` in the title, the description or the branch; or a Jira ticket of type *Bug* linked
+to the other one's ticket) — alone, a reference makes no follow-up, it reinforces and shows in the panel.
+A **direct commit** on the target branch that removes lines of a merged merge request, with no merge
+request of its own, is told too: `touched up by a1b2c3d · hotfix without MR · 2 d` — the most serious
+case does not vanish because it has no card. On the follow-up's card, the mirror: `touches up !214
+(8.4/10)`. What is **not** a follow-up: the same files touched without rewriting the lines, a rewrite
+after the window, a formatting or mass-rename merge request (more than 300 rewritten lines spread over
+more than 20 origin merge requests: `large rewrite`, said in the panel and out of the figure), and a pure
+addition in the middle of the other one's code (a missing check inserted without removing anything) is
+not counted: an under-estimated figure beats a disputable one. **A follow-up is not a bug**: a quick
+evolution or a refactor rewrite lines too. The tool never decides; it reads what *qualifies* the
+follow-up, without AI, and keeps two counts: **qualified bug** when a fact says so (a revert, a Jira
+ticket of type *Bug*, a `fix:` / `hotfix` commit, a human confirmation — each qualification is named,
+`qualified bug: ticket LIN-1234 (Bug)`), **undecided follow-up** otherwise — the list the team reviews.
+Clicking opens an anchored panel: the linked merge request with its score, `23 lines in 3 files` then
+each file and its **line ranges** (`src/tva.js: 41–52, 88`, exactly what `git blame -L` confirms), the
+signals, the qualification, the footer `Window: 30 d · computed on a1b2c3d` — and **the human
+call**: `Not a fix` requalifies the link as `followed by !230` (grey, out of the figure), `Mark as a fix`
+confirms it, and from the ⋯ menu of a merged merge request no signal linked, `Mark as a fix of an MR…`
+picks the one it fixes. A requalification is a recorded fact (`requalified by Claire · yesterday`), never
+a recomputation: a later round does not rewrite it, and it travels in the shared data repository with
+the origin merge request. Everything is computed **at discovery**, once per merged merge request (on its
+merge SHA), under a per-round cap, by a few `git blame` on the local clone: no AI call, no token, no extra
+forge call. Never "defect", "bug" or "report error" on a card: *touched up*, *reverted*, *followed*. The
+aggregate figure is in *Stats → Follow-up fixes*, per repository and per score band, **never per
+person**: it calibrates the threshold and the reviewer, it does not grade authors. Four team settings,
+under *Settings → Merge Request → Discovery*.
+
 **The ticket's status reaches every merge request**, not just watched tickets: discovery already reads
 the whole issue for its context, so it keeps its status too — at no extra call.
 
@@ -2079,6 +2116,20 @@ if a forge is unreachable).
 owner on its calls, and there was no way to say which one had eaten the budget. Each row opens its
 report, and the report itself says what it cost.
 
+**Follow-up fixes** — the answer, with a figure, to "how many defects get through despite a green
+report". Under the screen's filters (period, repository), a header sentence a non-developer can read: `Of
+61 merged MRs since October 1st, 7 were touched up within 30 days (11%), 4 of them qualified bug (7%)`,
+followed by the **floor** nature of the figure (fixes by pure addition and outside a merge request are not
+all seen; a follow-up is qualified bug only when a fact says so) and the number of merge requests merged
+less than N days ago, which **do not enter the denominator** — their outcome is not known yet, counting
+them would lower the rate artificially. Then the **Score against follow-up** table: one row per band (`8
+and above`, `7 to 8`, `below 7`, `no report`), columns *merged*, *touched up*, *qualified bug*, *share*,
+*median delay*, *median lines* — the table that says whether the threshold means anything; the same table
+**per repository**, folded, each repository leading to Reviews; and the period's follow-ups, **fastest
+first** (that is where the plain defects are), with each link's signal and the origin merge request as a
+door to its report. **Never** a column, a sort or a filter per author: a test forbids it. See *Reviews*,
+the `touched up by` badge.
+
 **What goes in versus what comes back**: characters sent per character received, per call family. A ratio
 that climbs points at an over-long template or a linked repository tripling every prompt — not an
 unavoidable cost. Both columns had been written since forever and read by nobody.
@@ -2215,7 +2266,7 @@ repository — verifiers, Jenkins jobs, review rules limited to it, grid service
 agents it belongs to. The row said what concerns IT; the sheet answers “what breaks if I remove it?” and
 “which verifier tests it, again?”. Every entry leads to the screen where the object is edited, and nothing
 is asked of the server until the panel is unfolded) ·
-**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked), then *Fetch the commits of open MRs* (checked; it shares the files cap, an MR fetched for its files is fetched for its commits in the same round; unchecked, no extra call and no `contains !214` badge) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, then the **registry check** — *Check added dependencies against the public registries* (**unchecked** by default: it is Mergerie's first network call that goes neither to the forge nor to Jira, and the label names the hosts: registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — only for the packages your merge requests add, and only their name), *Recent: published less than N days ago* (30), *At most N calls per round* (30; 0 = no limit, independent of the file cap), the **private package patterns** (one name glob per line, empty; also on a repository and on a group, same resolution as the manifest patterns) and, **this workstation's** and never shared, the **URL per registry** (one `ecosystem=url` line per registry to override — a mirror, a company proxy; empty after the `=`, the ecosystem is not checked) —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
+**Merge Request** (automatic refresh, convergence, how many days of silence mark a merge request as **dormant**, and under **Discovery** the three **overlap** settings — *Fetch the files of open MRs* (checked; unchecked, no extra forge call and no badge), *At most N file lists fetched per discovery* (20; 0 = no limit) and *Also overlap MRs with different target branches* (unchecked), then *Fetch the commits of open MRs* (checked; it shares the files cap, an MR fetched for its files is fetched for its commits in the same round; unchecked, no extra call and no `contains !214` badge) —, then the four of the **follow-up fixes** — *Track follow-up fixes after merge* (checked; unchecked, nothing is computed and the commits of merged MRs are no longer kept beyond the usual purge), *Window in days* (30; 14 for a team that ships every two weeks, 7 for a team that ships daily), *Minimum rewritten lines* (3; 0 = every line counts; a revert is recognised whatever the count) and *At most N MRs analysed per round* (10; 0 = no limit) —, then those of the **tests touched** — *Show the tests touched* (checked; it depends on the file fetch, and says so), *Flag the absence of tests from N code files* (3; 0 = always), and the two **pattern** lists, test and neutral, one glob per line, with `Reset to defaults` and a preview "on the open MRs, these patterns classify 41 files as tests, 12 as neutral"; an invalid glob is refused on save with its line, a list of more than 100 lines too. The same two lists can be set on a **repository** (its unfolded row in *Repositories*) and on a **group** (its form): filled, they replace the level above; empty, the level above applies; then those of the **dependencies** — *Show the dependencies* (checked; unchecked, no manifest diff is kept and no badge shows) and the **manifest patterns**, one glob per line, with `Reset to defaults` and the preview "on the open MRs, these patterns designate 3 manifests", also settable on a repository and on a group, next to the test patterns —, then the **registry check** — *Check added dependencies against the public registries* (**unchecked** by default: it is Mergerie's first network call that goes neither to the forge nor to Jira, and the label names the hosts: registry.npmjs.org, repo.packagist.org, pypi.org, crates.io, rubygems.org, proxy.golang.org, search.maven.org, api.nuget.org — only for the packages your merge requests add, and only their name), *Recent: published less than N days ago* (30), *At most N calls per round* (30; 0 = no limit, independent of the file cap), the **private package patterns** (one name glob per line, empty; also on a repository and on a group, same resolution as the manifest patterns) and, **this workstation's** and never shared, the **URL per registry** (one `ecosystem=url` line per registry to override — a mirror, a company proxy; empty after the `=`, the ecosystem is not checked) —, prompt templates — the shipped template invokes **no skill**; write yours into it if you have one. Left empty, the review prompt asks for a **structured report**: findings ranked 🔴 blocking / 🟠 important / 🟡 minor, an overall score calibrated on named anchors — a score of 7 or more excludes any remaining blocker —, a “what's good” section and a merge checklist; a prompt you customised is untouched, and an installation still on the previous default picks the new one up by itself, in its language. The **overall score**, though, is asked for by the application whatever the template, because the list filters on it) ·
 **Specific review rules** (a rule can be **limited to one repository** — without which you had to guess a
 `path_match` only that repository would satisfy; criteria added to the prompt when the branch name contains a given
 fragment **or when the diff touches a path** — a glob such as `**/migrations/**`, `*.sql`, which is more

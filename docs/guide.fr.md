@@ -221,6 +221,45 @@ en clair dans la modale *Contexte* du rapport, telle que l'IA l'a reçue. Rien d
 ne change ni la note, ni le verdict, ni le classement, et ne bloque jamais `Merger`. Un réglage, dans
 *Réglages → Merge Request → Découverte*.
 
+**Et un mois plus tard, l'outil dit si un rapport au vert a tenu : `retouchée par !230 · 3 j ·
+23 lignes`.** Sur la carte d'une merge request **mergée** (stade *Reviewées* ou *Traitées*) et en tête de
+son rapport, un badge discret dit qu'une **autre merge request mergée dans les N jours suivants** (30
+par défaut) a **réécrit du code qu'elle avait introduit** — un fait de git, jamais un verdict de l'outil :
+pour chaque bloc du diff de la seconde, les lignes retirées existaient dans sa base, `git blame` donne le
+commit qui les a écrites, et si c'est le merge, le squash ou l'un des commits de la première, c'est une
+retouche. On compte les lignes. Trois signaux, du plus certain au moins certain, nommés tels quels :
+le **revert** (`annulée par !230 · 1 j` : un commit `This reverts commit <sha>` du merge ou du squash,
+ou `Reverts !214` dans la description), les **lignes réécrites** (le signal principal, au-dessus d'un
+minimum réglable, 3 par défaut), la **référence** (`!214` dans le titre, la description ou la branche ;
+ou un ticket Jira de type *Bug* lié au ticket de l'autre) — seule, une référence ne fait pas de retouche,
+elle renforce et s'affiche dans le panneau. Un **commit direct** sur la branche cible qui retire des
+lignes d'une merge request mergée, sans merge request à lui, est dit aussi : `retouchée par a1b2c3d ·
+hotfix sans MR · 2 j` — le cas le plus grave ne disparaît pas parce qu'il n'a pas de carte. Sur la
+carte de la retouche, le miroir : `retouche !214 (8,4/10)`. Ce qui **n'est pas** une retouche : les
+mêmes fichiers touchés sans réécrire les lignes, une réécriture après la fenêtre, une merge request de
+formatage ou de renommage massif (plus de 300 lignes réécrites réparties sur plus de 20 merge requests
+d'origine : `réécriture large`, dite dans le panneau et exclue du chiffre), et un ajout pur au milieu du
+code de l'autre (une vérification manquante insérée sans rien retirer) n'est pas compté : on préfère un
+chiffre sous-estimé à un chiffre contestable. **Retouche n'est pas bug** : une évolution rapide ou un
+refactor réécrivent aussi des lignes. L'outil ne tranche jamais ; il lit ce qui *qualifie* la retouche,
+sans IA, et tient deux comptes : **qualifiée bug** quand un fait le dit (un revert, un ticket Jira de
+type *Bug*, un commit `fix:` / `hotfix`, une confirmation humaine — chaque qualification est nommée,
+`qualifiée bug : ticket LIN-1234 (Bug)`), **retouche non tranchée** sinon — la liste que l'équipe passe
+en revue. Cliquer ouvre un panneau ancré : la merge request liée avec sa note, `23 lignes dans 3
+fichiers` puis chaque fichier et ses **plages de lignes** (`src/tva.js : 41–52, 88`, exactement ce que
+`git blame -L` confirme), les signaux, la qualification, le pied `Fenêtre : 30 j · calculé sur a1b2c3d`
+— et **l'arbitrage humain** : `Pas un correctif` requalifie le lien en `évolution par !230` (gris, hors
+du chiffre), `Marquer comme correctif` le confirme, et depuis le menu ⋯ d'une merge request mergée
+qu'aucun signal n'a reliée, `Marquer comme correctif d'une MR…` choisit celle qu'elle corrige. Une
+requalification est un fait enregistré (`requalifié par Claire · hier`), jamais un recalcul : un tour
+suivant ne la réécrit pas, et elle voyage dans le dépôt de données partagé avec la merge request
+d'origine. Tout est calculé **à la découverte**, une fois par merge request mergée (sur son SHA de
+merge), sous un plafond par tour, par quelques `git blame` sur le clone local : aucun appel d'IA, aucun
+token, aucun appel de forge de plus. Jamais « défaut », « bug » ou « erreur du rapport » sur une carte :
+*retouchée*, *annulée*, *évolution*. Le chiffre agrégé est dans *Stats → Retouches*, par dépôt et par
+tranche de note, **jamais par personne** : il sert à calibrer le seuil et le reviewer, pas à noter les
+auteurs. Quatre réglages d'équipe, dans *Réglages → Merge Request → Découverte*.
+
 **Le statut du ticket arrive sur toutes les merge requests**, pas seulement sur les tickets surveillés :
 la découverte lit déjà l'issue en entier pour son contexte, elle en garde le statut — aucun appel de plus.
 
@@ -2173,6 +2212,20 @@ pas une dépense inévitable. Les deux colonnes étaient écrites depuis toujour
 **Vérifications : taux de vert par dépôt**, les moins verts en tête — « quel dépôt casse le plus ? »
 n'avait pas de réponse.
 
+**Retouches** — la réponse, avec un chiffre, à « combien de défauts passent malgré un rapport au vert ».
+Sous les filtres de l'écran (période, dépôt), une phrase d'en-tête lisible par un non-dev : `Sur 61 MR
+mergées depuis le 1er octobre, 7 ont été retouchées dans les 30 jours (11 %), dont 4 qualifiées bug (7 %)`,
+suivie de la nature de **plancher** du chiffre (les corrections par ajout pur et hors merge request ne sont
+pas toutes vues ; une retouche n'est qualifiée bug que si un fait le dit) et du nombre de merge requests
+mergées depuis moins de N jours, qui **n'entrent pas dans le dénominateur** — leur bilan n'est pas encore
+connu, les compter ferait baisser le taux artificiellement. Puis la table **Note contre retouche** : une
+ligne par tranche (`8 et plus`, `de 7 à 8`, `moins de 7`, `sans rapport`), colonnes *mergées*, *retouchées*,
+*qualifiées bug*, *part*, *délai médian*, *lignes médianes* — c'est la table qui dit si le seuil veut dire
+quelque chose ; la même table **par dépôt**, repliée, chaque dépôt menant à Reviews ; et la liste des
+retouches de la période, **les plus rapides d'abord** (c'est là que sont les défauts francs), avec le
+signal de chaque lien et la merge request d'origine en porte vers son rapport. **Jamais** de colonne, de
+tri ni de filtre par auteur : un test l'interdit. Voir *Reviews*, le badge `retouchée par`.
+
 **Les sessions les plus coûteuses.** Cinq sessions, du plus au moins cher en **tokens estimés**. Un prompt
 qui fait relire trois dépôts pour rien s'y voit immédiatement. La consommation est désormais rattachée à
 **la session qui l'a dépensée**, ce qui est aussi ce qui rend ce classement possible.
@@ -2300,6 +2353,7 @@ panneau n'est pas déplié) ·
 de Général), et sous **Découverte** les trois réglages des **croisements** — *Relever les fichiers des MR
 ouvertes* (coché ; décoché, aucun appel forge supplémentaire et aucun badge), *Au plus N listes relevées par
 découverte* (20 ; 0 = sans limite) et *Croiser aussi les MR de branches cibles différentes* (décoché), puis *Relever les commits des MR ouvertes* (coché ; il partage le plafond des fichiers, une MR relevée pour ses fichiers l'est pour ses commits dans le même tour ; décoché, aucun appel de plus et aucun badge « contient !214 ») —,
+puis les quatre des **retouches après merge** — *Suivre les retouches après merge* (coché ; décoché, rien n'est calculé et les commits des MR mergées ne sont plus gardés au-delà de la purge habituelle), *Fenêtre en jours* (30 ; 14 pour une équipe qui livre toutes les deux semaines, 7 pour une équipe qui livre tous les jours), *Lignes réécrites minimales* (3 ; 0 = toute ligne compte ; un revert est reconnu quel que soit le nombre) et *Au plus N MR analysées par tour* (10 ; 0 = sans limite) —,
 puis ceux des **tests touchés** — *Afficher les tests touchés* (coché ; il dépend du relevé des fichiers,
 et le dit), *Signaler l'absence de test à partir de N fichiers de code* (3 ; 0 = toujours), et les deux
 listes de **motifs**, de test et neutres, un glob par ligne, avec `Remettre les défauts` et un aperçu « sur

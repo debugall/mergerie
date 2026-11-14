@@ -132,6 +132,7 @@ require('./app/routes/plugins');
 require('./app/routes/programmation');
 require('./app/routes/questions');
 require('./app/routes/repos');
+require('./app/routes/retouches');
 require('./app/routes/reviewer-skill');
 require('./app/routes/rules');
 require('./app/routes/statut');

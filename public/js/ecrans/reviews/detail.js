@@ -92,6 +92,7 @@ async function openReport(id, opts = {}) {
           ${badgeTests({ id: m.id, tests: d.tests || mLigne.tests })}
           ${badgeDeps({ id: m.id, deps: d.deps || mLigne.deps })}
           ${badgeStack({ id: m.id, stack: d.stack || mLigne.stack })}
+          ${badgeRetouches({ id: m.id, fix: d.fix || mLigne.fix })}
           ${badgeCroise({ id: m.id, overlaps: d.overlaps || mLigne.overlaps, files_fetch: d.files_fetch || mLigne.files_fetch })}
           ${badgeConflit(mLigne)}
           ${pluginsHtml('mr-badge', m)}
@@ -137,6 +138,10 @@ async function openReport(id, opts = {}) {
                   menu, comme Publier : la barre garde ses trois actions. L'état (qui a déjà
                   approuvé, moi compris) arrive à part, après le rendu — c'est un appel à la forge. */''}
             <button id="aRefresh" role="menuitem" title="${esc(tr('mr.btn.refresh-title', { forge: forgeLabel(m.forge) }))}">${tr('mr.btn.refresh')}</button>
+            ${/* MARQUER COMME CORRECTIF — une merge request MERGÉE qu'aucun signal n'a reliée (le cas de
+                  l'ajout pur) se rattache à la main à celle qu'elle corrige : un fait enregistré avec
+                  son auteur, qui voyage avec la MR d'origine. */''}
+            ${m.merged_at ? `<button role="menuitem" data-fix-mark="${m.id}" title="${esc(tr('mr.fix.title-mirror'))}">${tr('mr.fix.btn.mark')}</button>` : ''}
             ${m.closed_seen ? '' : `<button id="aApprove" role="menuitem" data-mine="0" title="${esc(tr('report.btn.approve-title', { forge: forgeLabel(m.forge) }))}">${tr('report.btn.approve')}</button>`}
             ${d.review ? (() => {
               /* PUBLIER LE RAPPORT SUR LA MERGE REQUEST. Le libellé change quand c'est déjà

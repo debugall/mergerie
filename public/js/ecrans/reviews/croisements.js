@@ -151,7 +151,7 @@ document.addEventListener('click', (e) => {
   if (go) { e.stopPropagation(); allerALaMr(Number(go.dataset.croiseGo), go.dataset.croiseStatus); return; }
   if (e.target.closest && e.target.closest('[data-croise-close]')) { e.stopPropagation(); fermerPanneauAncre(); return; }
   // Un clic n'importe où ailleurs referme le panneau — sauf dedans (un chemin qu'on sélectionne).
-  if (panneauOuvert && !(e.target.closest && e.target.closest('.croise-panel, [data-tests], [data-stack]'))) fermerPanneauAncre();
+  if (panneauOuvert && !(e.target.closest && e.target.closest('.croise-panel, [data-tests], [data-stack], [data-fix]'))) fermerPanneauAncre();
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && panneauOuvert) { fermerPanneauAncre(); e.stopPropagation(); }

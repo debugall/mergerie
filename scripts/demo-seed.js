@@ -1917,6 +1917,46 @@ async function semerPlugins() {
     empilees.poserCommits(m.id, { sha: m.current_sha, target: 'main', shas: m.iid === 214 ? socle : [...socle, ...propres], source: 'forge', now: at(0.01) });
   }
   counts.mr_commits = 2;
+  /* …et LES RETOUCHES APRÈS MERGE, sur le même dépôt : trois merge requests mergées AU VERT il y a
+     sept semaines, et ce que git dit ensuite — !302 a réécrit 23 lignes de !301 trois jours après son
+     merge (« retouchée par !302 · 3 j · 23 lignes », qualifiée bug par un commit `fix:`) ; !304 est le
+     revert de !303 un jour après (« annulée par !304 · 1 j ») ; !306 a réécrit 6 lignes de !305 mais
+     Claire a dit « pas un correctif » (« évolution par !306 », gris, hors du chiffre). Posées comme le
+     tour de découverte les écrirait — un fait de git, jamais un verdict —, avec les plages de lignes
+     que `git blame -L` confirmerait sur un vrai clone. Assez vieilles pour entrer dans le dénominateur
+     de Stats (fenêtre de 30 jours écoulée). */
+  {
+    const sha40 = (texte) => sha(texte);
+    const mergee = (m, { iid, note, jours, changed, summary }) => {
+      const mr = insertMr({ project: 'groupe/tarification', title: m, branch: `feature/${iid}`, status: 'done', changed, summary }, { iid, date: at(jours + 3), author: AUTHORS[iid % AUTHORS.length] });
+      db.prepare('UPDATE mr SET closed_seen = 1, merged_at = ?, status_at = ?, head_sha = current_sha, base_sha = ?, squash_commit_sha = ? WHERE id = ?')
+        .run(at(jours), at(jours), sha40(`base-${iid}`), sha40(`squash-${iid}`), mr.id);
+      if (note != null) {
+        const dir = ensureDir(path.join(REVIEWS_DIR, slugify('groupe/tarification'), String(iid)));
+        const mdPath = path.join(dir, 'review-v1.md');
+        fs.writeFileSync(mdPath, reviewMd(mr, note, (changed || []).slice(0, 2).map((file, i) => ({ file, line: 12 * (i + 1), severity: 'minor', title: ['documenter le contrat', 'ajouter un test'][i] }))), 'utf8');
+        db.prepare('INSERT INTO review (mr_id, md_path, note_value, created_at, updated_at) VALUES (?,?,?,?,?)').run(mr.id, mdPath, note / 10, at(jours + 1), at(jours + 1));
+        db.prepare('INSERT INTO review_version (mr_id, version, md_path, note_value, reviewed_sha, kind, created_at) VALUES (?,?,?,?,?,?,?)').run(mr.id, 1, mdPath, note / 10, mr.sha, 'review', at(jours + 1));
+      }
+      return mr;
+    };
+    const a1 = mergee('Paliers de remise par volume annuel', { iid: 301, note: 8.4, jours: 50, changed: ['src/remise/paliers.js', 'src/remise/calcul.js', 'src/api/remises.js'], summary: 'introduit les paliers de remise' });
+    const b1 = mergee('Paliers : arrondi et borne haute du dernier palier', { iid: 302, note: 7.9, jours: 47, changed: ['src/remise/paliers.js', 'src/remise/calcul.js', 'src/api/remises.js'], summary: 'corrige l’arrondi des paliers' });
+    const a2 = mergee('Cache des tarifs par pays', { iid: 303, note: 7.6, jours: 49, changed: ['src/api/tarifs.js', 'src/cache/pays.js'], summary: 'met les tarifs en cache par pays' });
+    const b2 = mergee('Revert "Cache des tarifs par pays"', { iid: 304, note: null, jours: 48, changed: ['src/api/tarifs.js', 'src/cache/pays.js'], summary: 'annule le cache des tarifs' });
+    const a3 = mergee('TVA : arrondi au centime sur les lignes de facture', { iid: 305, note: 8.9, jours: 55, changed: ['src/facture/lignes.js', 'src/tva/taux.js'], summary: 'arrondit la TVA au centime' });
+    const b3 = mergee('Factures : regroupement des lignes par taux', { iid: 306, note: 8.1, jours: 51, changed: ['src/facture/lignes.js', 'src/facture/total.js'], summary: 'regroupe les lignes par taux de TVA' });
+    const lien = db.prepare(`INSERT INTO mr_fix_link (origin_mr_id, fix_mr_id, fix_commit_sha, kind, lines, files, days, large, detail, bug, computed_at, head_sha_b, status, status_by, status_at)
+      VALUES (?, ?, '', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`);
+    lien.run(a1.id, b1.id, 'rewrites', 23, 3, 3, JSON.stringify({ ranges: { 'src/remise/paliers.js': [[41, 52], [88, 88]], 'src/remise/calcul.js': [[17, 24]], 'src/api/remises.js': [[9, 10]] }, signals: [{ kind: 'reference', where: 'description' }] }),
+      JSON.stringify([{ kind: 'commit-fix' }]), at(46.9), sha40('squash-302'), 'auto', null, null);
+    lien.run(a1.id, b1.id, 'reference', 23, 3, 3, JSON.stringify({ ranges: {}, signals: [{ kind: 'reference', where: 'description' }] }), '[]', at(46.9), sha40('squash-302'), 'auto', null, null);
+    lien.run(a2.id, b2.id, 'revert', 41, 2, 1, JSON.stringify({ ranges: { 'src/api/tarifs.js': [[12, 38]], 'src/cache/pays.js': [[1, 14]] }, signals: [{ kind: 'revert', commit: sha40('squash-304'), reverts: sha40('squash-303') }] }),
+      JSON.stringify([{ kind: 'revert', ref: sha40('squash-303') }]), at(47.9), sha40('squash-304'), 'auto', null, null);
+    lien.run(a3.id, b3.id, 'rewrites', 6, 1, 4, JSON.stringify({ ranges: { 'src/facture/lignes.js': [[30, 35]] }, signals: [] }), '[]', at(50.9), sha40('squash-306'), 'dismissed', 'Claire', at(49));
+    for (const m of [a1, b1, a2, b2, a3, b3]) db.prepare("INSERT OR REPLACE INTO mr_fix_scan (kind, ref, sha, scanned_at, note) VALUES ('mr', ?, ?, ?, 'demo')").run(String(m.id), sha40(`squash-${m.iid}`), at(0.5));
+    counts.mr_fix_link = 4;
+  }
   // eslint-disable-next-line global-require
   const registreDeps = require('../src/review/registre');
   /* …et LE CONTRÔLE AU REGISTRE, coché dans la démo et SANS RÉSEAU : le cache porte déjà ce que npm

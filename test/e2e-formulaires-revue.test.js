@@ -216,6 +216,8 @@ describe('Formulaires — deuxième revue design', { skip: dispo ? false : MSG_N
       'auto_runner', 'P',
       // Les croisements : l'interrupteur, son plafond juste dessous, puis le croisement entre cibles.
       '# Découverte', 'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets', 'mr_commits_enabled', 'P',
+      // Les retouches après merge : l'interrupteur, puis ses trois nombres (fenêtre, minimum, plafond).
+      'fix_links_enabled', 'fix_window_days', 'fix_min_lines', 'fix_links_max',
       // Les tests touchés : l'interrupteur, la note de dépendance (P), le seuil, puis les deux zones de motifs.
       'tests_touched_enabled', 'P', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
       // Les dépendances ajoutées : l'interrupteur, puis la zone des motifs de manifestes.

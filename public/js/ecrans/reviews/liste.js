@@ -300,7 +300,7 @@ function renderToReview() {
       m.verification.failed_count, m.verification.detail_source].join(','),
     m.verifiable, mrSelection.has(m.id),
     // Les badges de croisement et de tests touchés font partie de ce que la carte affiche.
-    sigCroise(m), sigTests(m), sigDeps(m), sigStack(m),
+    sigCroise(m), sigTests(m), sigDeps(m), sigStack(m), sigRetouches(m),
     m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001')).join('\u0002');
   if (!renderIfChanged(el, sig, rows.map(mrCard).join(''))) { majBoutonReview(); return; }
   stagger('#toReviewList .card');
@@ -456,6 +456,7 @@ function mrCard(m) {
         ${badgeCartes(m)}
         ${badgeTicket(m)}
         ${badgeStack(m)}
+        ${badgeRetouches(m)}
         ${badgeCroise(m)}
         ${badgeConflit(m)}
         ${(m.lots || []).slice(0, 2).map((l) => `<span class="tag" title="${esc(tr('mr.lot.title', { name: l.name }))}">${svgIco('inbox')} ${esc(l.name)}</span>`).join('')}

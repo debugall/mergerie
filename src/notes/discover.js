@@ -10,6 +10,7 @@ const { t } = require('../core/i18n');
 const git = require('../git/git');
 const mrref = require('../git/mrref');
 const croisements = require('../review/croisements');
+const retouches = require('../review/retouches');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,9 +39,12 @@ async function fetchJiraContext(cfg, mrId, title, branch) {
   try {
     const issue = await jira.fetchIssue(cfg, key);
     const text = jira.issueToContext(issue);
+    /* Le TYPE du ticket et les tickets qu'il lie sont dans la même réponse : c'est ce qui qualifie
+       une retouche (« ticket Bug lié à celui de A »), rangé ici, jamais relu à l'affichage. */
     db.prepare(`UPDATE mr SET ticket_jira_text = ?, ticket_jira_key = ?, ticket_jira_at = ?,
-        ticket_jira_status = ?, ticket_jira_category = ?, ticket_jira_error = NULL WHERE id = ?`)
-      .run(text || null, issue.key, now, issue.status || null, issue.statusCategory || null, mrId);
+        ticket_jira_status = ?, ticket_jira_category = ?, ticket_jira_type = ?, ticket_jira_links = ?, ticket_jira_error = NULL WHERE id = ?`)
+      .run(text || null, issue.key, now, issue.status || null, issue.statusCategory || null, issue.type || null,
+        Array.isArray(issue.links) && issue.links.length ? JSON.stringify(issue.links) : null, mrId);
   } catch (e) {
     // On stocke l'erreur pour que l'UI dise POURQUOI le contexte est vide
     // (ticket introuvable, accès refusé…) plutôt que de laisser croire à un oubli.
@@ -271,6 +275,11 @@ async function discoverAll() {
      règles par chemin. Dans la découverte, jamais à l'affichage ; plafonné par tour ; best-effort
      par MR, le journal dit ce qui attend et ce qui a été refusé. */
   result.files = await croisements.releverTour(cfg);
+
+  /* LES RETOUCHES APRÈS MERGE (`review/retouches.js`) : chaque MR passée à `merged` est analysée une
+     fois, sur le clone — `git blame` sur les lignes que son diff retire —, sous son propre plafond.
+     Zéro appel de forge, zéro IA ; best-effort, le journal dit ce qui reste. */
+  result.fix_links = await retouches.tour(cfg);
 
   // État réel des MR issues des Dev sessions : elles peuvent avoir été mergées
   // directement sur GitLab. Vérification CIBLÉE (uniquement les tâches dont la MR n'est

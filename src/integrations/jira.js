@@ -263,7 +263,7 @@ function authHeader(cfg) {
 async function fetchIssue(cfg, key) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const base = String(cfg.jira_url).trim().replace(/\/+$/, '');
-  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,attachment`;
+  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,attachment,issuetype,issuelinks`;
   const res = await request(url, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
@@ -285,6 +285,10 @@ async function fetchIssue(cfg, key) {
     /* Les captures du ticket : « Faire coder l'IA » les propose en cases à cocher. Sans elles,
        la route les lisait ici et n'y trouvait jamais rien hors démo. */
     attachments: (fields.attachment || []).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType })),
+    /* Le type (Bug, Story…) et les clés des tickets liés : ce qui qualifie une retouche après merge
+       — « le ticket de B est un Bug lié à celui de A » —, lus ici, écrits nulle part chez Jira. */
+    type: (fields.issuetype && fields.issuetype.name) || '',
+    links: (fields.issuelinks || []).map((l) => (l && l.outwardIssue && l.outwardIssue.key) || (l && l.inwardIssue && l.inwardIssue.key) || null).filter(Boolean),
   };
 }
 

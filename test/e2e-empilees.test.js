@@ -131,7 +131,13 @@ describe('Merge requests empilées', () => {
     assert.deepEqual(iids(m[2].stack.history), [1]);
     assert.ok(m[2].stack.history[0].merged_at);
     assert.deepEqual(iids(m[3].stack.contains), [2], 'la chaîne se raccourcit');
-    assert.equal(app.db.prepare('SELECT COUNT(*) n FROM mr_commits WHERE mr_id = ?').get(ids[1]).n, 0, 'la liste de la mergée est purgée');
+    /* La liste de la mergée RESTE : les retouches après merge (`review/retouches.js`) la relisent pendant la
+       fenêtre plus sept jours — c'est par elle qu'un `blame` reconnaît une ligne mergée sans squash. */
+    assert.equal(app.db.prepare('SELECT COUNT(*) n FROM mr_commits WHERE mr_id = ?').get(ids[1]).n, 2, 'la liste de la mergée est gardée pour les retouches');
+    await app.configure({ fix_links_enabled: '0' });
+    await app.api('POST', '/api/discover');
+    assert.equal(app.db.prepare('SELECT COUNT(*) n FROM mr_commits WHERE mr_id = ?').get(ids[1]).n, 0, 'suivi décoché : la purge d’avant');
+    await app.configure({ fix_links_enabled: '1' });
     // Pour l'écran : !1 revient ouverte, et sa liste avec elle.
     app.state.mrs[GL][0].state = 'opened'; delete app.state.mrs[GL][0].merged_at;
     app.db.prepare('UPDATE mr SET merged_at = NULL WHERE id = ?').run(ids[1]);
