@@ -295,7 +295,7 @@ async function openTaskModal(kind = taskKind) {
   const bandeauEssai = $('#taskAgentEssai');
   if (bandeauEssai) bandeauEssai.hidden = true;
   const f = $('#taskForm');
-  f.reset(); resetTaskFiles();
+  f.reset(); resetTaskFiles(); oublierJetonsDepots();
   taskKind = kind;
   if (kind !== 'local' && kind !== 'ask') await loadRepoOptions();
   if (kind === 'local') { localPicks = ['']; await loadLocalRoots(); }

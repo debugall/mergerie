@@ -1,6 +1,6 @@
 'use strict';
-/* Autocomplétion « / » et « @ » dans une demande. */
-/* ---------- Autocomplétion « / » et « @ » dans une demande ----------
+/* Autocomplétion « / », « @ » et « && » dans une demande. */
+/* ---------- Autocomplétion « / », « @ » et « && » dans une demande ----------
    Retrouver le nom exact d'un skill se faisait au `ls` dans ~/.claude/skills/. Le menu
    réutilise `.combo-options` et `placerMenu` : même apparence, même comportement au clavier
    que les combos du reste de l'outil. Rien ne s'insère sans une sélection EXPLICITE — un
@@ -58,14 +58,24 @@ function acInserer(texte) {
 function acJeton(el) {
   const pos = el.selectionStart;
   const avant = el.value.slice(0, pos);
-  const m = avant.match(/(^|[\s(])([/@])([\w.-]*)$/);
+  const m = avant.match(/(^|[\s(])(&&|[/@])([\w./-]*)$/);
   if (!m) return null;
-  return { signe: m[2], debut: pos - m[3].length - 1, q: m[3].toLowerCase() };
+  return { signe: m[2], debut: pos - m[3].length - m[2].length, q: m[3].toLowerCase() };
 }
 
 function acMaj(el) {
   const j = acJeton(el);
   if (!j) return acFermer();
+  /* « &&dépôt » (sessions/jetons-depots.js) : le menu ne s'ouvre que si le nom hésite entre
+     PLUSIEURS dépôts — un seul, la ligne se pose toute seule ; moins de quatre lettres, rien. */
+  if (j.signe === '&&') {
+    const depots = el.id === 'taskPrompt' ? depotsPourJeton(j.q) : [];
+    if (depots.length < 2) return acFermer();
+    acOptions = depots.slice(0, 20).map((r) => ({ label: `&&${r.project}`, hint: '', insert: `&&${r.project} ` }));
+    acCible = el; acDebut = j.debut; acIndex = 0;
+    acRendre();
+    return;
+  }
   const items = skillsCache.items || [];
   const source = j.signe === '/'
     // `user-invocable: false` interdit le `/nom` : le proposer serait proposer une commande

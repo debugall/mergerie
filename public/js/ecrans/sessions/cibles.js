@@ -72,15 +72,16 @@ function slugBranche(texte, mots = 6) {
     .join('-').slice(0, 40);
 }
 
-/* LA BRANCHE DE TRAVAIL SE PROPOSE. C'est le seul champ obligatoire de la modale que rien ne
-   remplit, et la source est sous la main : le libellé de la session, sinon les premiers mots
-   du prompt. Proposée seulement — on n'écrase JAMAIS ce qui a été tapé, et un champ vidé
-   volontairement le reste (`data-touche`). */
+/* LA BRANCHE DE TRAVAIL SE PROPOSE DEPUIS LE LIBELLÉ — et depuis lui seul. Elle suivait aussi
+   les premiers mots de la demande : un nom de branche qui se réécrit sous les yeux à chaque mot
+   tapé, pour finir sur les quatre premiers d'une phrase qui n'était pas un titre. Sans libellé,
+   le champ reste vide, à écrire. Proposée seulement — on n'écrase JAMAIS ce qui a été tapé, et
+   un champ vidé volontairement le reste (`data-touche`). */
 function proposerBranche() {
   if (taskKind !== 'code') return;
   const f = $('#taskForm');
   if (!f) return;
-  const source = (f.label && f.label.value.trim()) || (f.prompt && f.prompt.value.trim()) || '';
+  const source = (f.label && f.label.value.trim()) || '';
   const slug = slugBranche(source);
   if (!slug) return;
   /* `.target-row` : la ligne d'EN-TÊTE porte la même classe pour s'aligner sur la colonne,
@@ -173,9 +174,7 @@ function renderTargetRows(list) {
   wireBranchPickers();
   proposerBranche();
   avertirBrancheDejaPrise();
-  $('#targetsHint').textContent = taskKind === 'code'
-    ? tr('task.hint.code')
-    : tr('task.hint.explore');
+  $('#targetsHint').textContent = `${taskKind === 'code' ? tr('task.hint.code') : tr('task.hint.explore')} ${tr('task.jeton.aide')}`;
   /* « TOUT RETIRER » n'a de sens que devant une liste : un agent sur « tous les dépôts actifs »
      ouvre la modale sur trente lignes pré-remplies, et n'en garder deux demandait vingt-huit
      croix. Une seule ligne, et le bouton n'a rien à retirer — il se cache. */

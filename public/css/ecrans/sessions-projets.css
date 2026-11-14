@@ -96,3 +96,8 @@
 .version-note { margin: var(--s-2) 0 0; padding: 7px 10px; font-size: var(--fs-sm);
   color: var(--text); background: var(--hover); border-left: 3px solid var(--amber); border-radius: var(--r-sm); }
 
+
+/* Une ligne posée par un jeton `&&dépôt` de la demande se signale une seconde : on l'a fait
+   apparaître sans la regarder, il faut pouvoir la retrouver des yeux. */
+.target-row.t-row-jeton { animation: t-row-jeton 1.5s ease-out; border-radius: var(--r-sm); }
+@keyframes t-row-jeton { 0%, 60% { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); } 100% { background: transparent; box-shadow: none; } }

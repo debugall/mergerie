@@ -127,6 +127,7 @@ function closeTaskModal() {
   // Les deux drapeaux vont de pair : un « Converger » dont le POST a échoué détournerait
   // sinon le submit suivant (session non lancée, modale de convergence à la place).
   editingTaskId = null; launchAfterCreate = false;
+  oublierJetonsDepots();   // les lignes posées par les jetons de CETTE demande ne concernent pas la suivante
   $('#taskModal').hidden = true;
   $('#taskSubmitOnly').hidden = true;
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
@@ -239,15 +240,13 @@ $('#taskSubmitOnly').addEventListener('click', () => {
 });
 fermerAuFond('#taskModal', closeTaskModal);
 
-/* La proposition de branche suit le libellé et le prompt tant qu'on n'a pas touché au champ.
-   Débouncée : recalculer à chaque touche pendant qu'on écrit un prompt de cinq lignes ferait
-   défiler un nom de branche sous les yeux. */
+/* La proposition de branche suit le libellé tant qu'on n'a pas touché au champ — le libellé
+   seul : la demande ne nomme pas la branche (voir `proposerBranche`). Débouncée. */
 (() => {
   const f = $('#taskForm');
   if (!f) return;
   const maj = debounce(() => proposerBranche(), 250);
   if (f.label) f.label.addEventListener('input', maj);
-  if (f.prompt) f.prompt.addEventListener('input', maj);
   /* CTRL/⌘ + ENTRÉE SOUMET DEPUIS LE PROMPT. Entrée y insère une ligne — c'est ce qu'on veut
      dans une zone de texte —, mais il faut alors viser le bouton à la souris pour partir. */
   if (f.prompt) {
@@ -354,6 +353,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
     } catch (err) { toast(explainError(err.message), true); }
     return;
   }
+  /* Les jetons `&&dépôt` ont fait leur travail dans les lignes : l'agent ne les lit pas. Une
+     demande qui n'en contient que des jetons n'a rien à lui dire — on le signale sous le champ. */
+  const promptEnvoye = retirerJetonsDepots(f.prompt.value);
+  if (!promptEnvoye) { signalerChamp(f.prompt, tr('task.jeton.prompt-vide')); return; }
   const targets = readTargetRows();
   if (!targets.length) { toast(tr('toast.selectionne-au-moins-un-projet'), true); return; }
   /* LA BRANCHE DE TRAVAIL EST OBLIGATOIRE EN CODAGE, et on le dit SOUS le champ concerné.
@@ -375,7 +378,7 @@ $('#taskForm').addEventListener('submit', async (e) => {
   const body = {
     kind: taskKind,
     label: f.label ? f.label.value : '',
-    prompt: f.prompt.value,
+    prompt: promptEnvoye,
     commit_message: f.commit_message ? f.commit_message.value : '',
     auto_push: f.auto_push ? f.auto_push.checked : false,
     force_push: forcePushCreation,

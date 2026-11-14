@@ -967,7 +967,15 @@ sont récupérés via l'API Jira et **ajoutés en tête du prompt** comme bloc d
 clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'exploration.
 
 - **Codage** — l'IA modifie le code. Pour chaque projet : branche de travail, et **branche de départ**
-  facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Le prompt est
+  facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Les projets se
+  choisissent dans leur combo, ou **se nomment dans la demande au fil de la frappe** : `&&tarification`
+  (quatre lettres au moins) ajoute le dépôt dont le nom contient « tarification », `&&tarification&feature/x`
+  (ou `@`) pose aussi sa branche. Un seul dépôt correspond → la ligne apparaît aussitôt ; plusieurs → le
+  menu de l'autocomplétion propose et `Entrée` tranche — jamais deux dépôts ajoutés sur un nom flou. Le
+  jeton **est** la sélection : l'effacer retire la ligne (sauf branche écrite à la main), et la soumission
+  l'enlève du texte envoyé à l'agent. Même convention en exploration. La branche de travail, elle, ne se
+  propose que depuis le **libellé** de la session (`ai/<libellé>`), jamais depuis la demande : sans
+  libellé, le champ reste vide, à écrire. Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.
   Chaque projet a ensuite ses propres actions : **Voir le diff · Pousser · Créer la MR · Merger**.
   La ligne offre aussi **`Reviewer`** dès que la merge request existe et n'a pas encore de rapport —

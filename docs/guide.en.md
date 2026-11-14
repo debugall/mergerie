@@ -930,7 +930,14 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 `feature/PROJ-1234-…`). Available for coding **and** exploration.
 
 - **Coding** — the AI modifies the code. For each project: a working branch, and an optional **starting
-  branch** (a dropdown with search; empty = the repository's default branch). The prompt is applied to each
+  branch** (a dropdown with search; empty = the repository's default branch). Projects are picked in their
+  combo, or **named in the request as you type**: `&&pricing` (four letters at least) adds the repository
+  whose name contains "pricing", `&&pricing&feature/x` (or `@`) also sets its branch. One repository
+  matches → the row appears at once; several → the autocompletion menu offers them and `Enter` decides —
+  never two repositories added on a vague name. The token **is** the selection: deleting it removes the
+  row (unless its branch was typed by hand), and the submission strips it from the text sent to the agent;
+  Same convention in exploration. The working branch, for its part, is only proposed from the session's
+  **label** (`ai/<label>`), never from the request: without a label, the field stays empty, to be written. The prompt is applied to each
   project, sequentially — **one failing project does not stop the others**. Each project then carries its
   own actions: **Diff · Push · Create MR · Merge**. The line also offers **`Review`** as soon as the merge
   request exists and has no report yet — the obvious next move, which meant going to find it in
