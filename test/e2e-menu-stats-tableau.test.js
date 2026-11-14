@@ -25,6 +25,7 @@ const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 const seed = require('./helpers/stats-seed');
+const { ouvrirSousOnglet, allerStats } = require('./helpers/stats-ecran');
 
 const { dispo } = navigateurDispo();
 
@@ -48,9 +49,8 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });
     page.on('pageerror', (e) => erreurs.push(e.message));
     await page.goto(app.base);
-    await page.locator('nav button[data-tab="dashboard"]').click();
-    // La dernière carte rendue par le rendu principal, puis les deux chargements asynchrones.
-    await page.waitForSelector('#dashboard [data-rec-rule]');
+    // La vue d'ensemble, puis ses deux chargements asynchrones (forge, activité).
+    await allerStats(page, 'apercu');
     await page.waitForSelector('#dashTop5 table tbody tr');
     await page.waitForSelector('#dashActivity .pab');
   });
@@ -71,14 +71,28 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
     assert.deepEqual(erreurs, [], 'aucune exception JavaScript pendant le rendu');
   });
 
-  test('l’entonnoir compte les merge requests par stade', async () => {
-    const tuiles = await page.$$eval('#dashboard > .stat-row .stat-tile', (ts) => ts.map((t) => [
-      t.querySelector('.stat-lbl').textContent.trim(), t.querySelector('.stat-val').textContent.trim(),
+  /* LE BANDEAU : l'entonnoir, puis un résumé de chaque sous-onglet. Chaque tuile est une porte
+     (un bouton) : un stade ouvre Reviews, un indicateur ouvre le sous-onglet qui le détaille. */
+  test('le bandeau compte les merge requests par stade, et résume la qualité et le coût', async () => {
+    await ouvrirSousOnglet(page, 'apercu');
+    const tuiles = await page.$$eval('#dashKpi .stat-tile', (ts) => ts.map((t) => [
+      t.querySelector('.stat-lbl').textContent.trim(), t.querySelector('.stat-val').textContent.replace(/\s/g, ''),
+      t.tagName, t.dataset.kpiSeg || t.dataset.statsGo,
     ]));
-    assert.deepEqual(tuiles, [['À traiter', '2'], ['Reviewées', '3'], ['Traitées', '1']]);
+    assert.deepEqual(tuiles, [
+      ['À traiter', '2', 'BUTTON', 'to_review'], ['Reviewées', '3', 'BUTTON', 'reviewed'], ['Traitées', '1', 'BUTTON', 'done'],
+      ['Note moyenne', '6.7/10', 'BUTTON', 'qualite'], ['MR retouchées', '—', 'BUTTON', 'qualite'], ['Tokens (minorant)', '20500', 'BUTTON', 'cout'],
+    ]);
+    const onglets = await page.$$eval('#dashboard [data-stats-sub]', (bs) => bs.map((b) => [b.textContent.trim(), b.classList.contains('active')]));
+    assert.deepEqual(onglets, [['Vue d’ensemble', true], ['Flux', false], ['Qualité', false], ['Coût', false]]);
+    // La tuile « Tokens » ouvre Coût ; « Note moyenne » ouvre Qualité.
+    await page.locator('#dashKpi [data-stats-go="cout"]').click();
+    await page.waitForFunction(() => (document.querySelector('#dashboard [data-stats-sub].active') || {}).dataset.statsSub === 'cout' && document.querySelector('#dashPanel .donut'));
+    await ouvrirSousOnglet(page, 'apercu');
   });
 
   test('la distribution des notes range chaque review dans sa tranche, et donne la moyenne', async () => {
+    await ouvrirSousOnglet(page, 'qualite');
     const c = carte('Distribution des notes');
     assert.match(await c.locator('h3').textContent(), /moyenne 6\.7\/10/);
     const barres = await c.locator('.hbar').evaluateAll((hs) => hs.map((h) => ({
@@ -94,6 +108,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('les reviews par semaine : huit semaines, chaque passe comptée une fois', async () => {
+    await ouvrirSousOnglet(page, 'flux');
     const c = carte('Reviews par semaine');
     assert.equal(await c.locator('.vbar').count(), 8);
     assert.equal(await c.locator('.vbars-x span').count(), 8, 'une date sous chaque barre');
@@ -106,6 +121,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('la note moyenne par semaine colore selon la note, et nomme les semaines sans review', async () => {
+    await ouvrirSousOnglet(page, 'qualite');
     const c = carte('Note moyenne par semaine');
     assert.equal(await c.locator('.vbars .vbar').count(), 8);
     const barres = await c.locator('.vbars .vbar').evaluateAll((bs) => bs.map((b) => ({
@@ -125,6 +141,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('le coût en tokens nomme toutes les familles, en clair, avec leur part', async () => {
+    await ouvrirSousOnglet(page, 'cout');
     const c = carte('Coût en tokens');
     const legende = await c.locator('.donut-leg').evaluateAll((ls) => ls.map((l) => l.textContent.replace(/\s+/g, ' ').trim()));
     // Le nom est le texte propre de la ligne (hors pastille et hors chiffres, dans un `.muted`).
@@ -146,6 +163,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('le tableau par projet : pires notes d’abord, résolution, tendance et dernier commit', async () => {
+    await ouvrirSousOnglet(page, 'flux');
     const c = carte('Par projet');
     const lignes = () => c.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent.replace(/\s+/g, ' ').trim())));
     // Le dernier commit arrive à part, de la forge : on attend qu'il ait remplacé les « … ».
@@ -173,6 +191,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('les sessions de dev : tâches, MR créées, MR mergées, commentaires postés', async () => {
+    await ouvrirSousOnglet(page, 'flux');
     const tuiles = await carte('Sessions de dev').locator('.stat-tile').evaluateAll((ts) => ts.map((t) => [
       t.querySelector('.stat-lbl').textContent.trim(), t.querySelector('.stat-val').textContent.trim(),
     ]));
@@ -180,6 +199,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('le délai de cycle : médianes en heures ou en jours, et le détail par projet', async () => {
+    await ouvrirSousOnglet(page, 'flux');
     const c = carte('Délai de cycle');
     const tuiles = await c.locator('.stat-row .stat-tile').evaluateAll((ts) => ts.map((t) => [
       t.querySelector('.stat-lbl').textContent.trim(), t.querySelector('.stat-val').textContent.trim(),
@@ -192,6 +212,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('les sessions les plus coûteuses, en tokens, chacune ouvrable', async () => {
+    await ouvrirSousOnglet(page, 'cout');
     const c = carte('Les sessions les plus coûteuses');
     const rows = await c.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => ({
       tok: tr.querySelector('.stats-top-tok').textContent.replace(/\s/g, ''),
@@ -207,6 +228,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('le coût par agent additionne ses runs', async () => {
+    await ouvrirSousOnglet(page, 'cout');
     const c = carte('Coût par agent');
     const txt = (await c.locator('tbody tr').first().textContent()).replace(/\s+/g, ' ');
     assert.match(txt, /800/);
@@ -216,6 +238,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('les reviews les plus coûteuses mènent chacune à son rapport', async () => {
+    await ouvrirSousOnglet(page, 'cout');
     const c = carte('Les reviews les plus coûteuses');
     const rows = await c.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => tr.textContent.replace(/\s+/g, ' ').trim()));
     assert.equal(rows.length, 2);
@@ -225,6 +248,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('ce qu’on envoie contre ce qu’on reçoit : un ratio par famille, les plus lourdes en tête', async () => {
+    await ouvrirSousOnglet(page, 'cout');
     const c = carte('Ce qu’on envoie contre ce qu’on reçoit');
     const rows = await c.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent.replace(/\s+/g, ' ').trim())));
     assert.equal(rows[0][0], 'Reviews');
@@ -234,12 +258,14 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('le taux de vert par dépôt met le moins vert en tête', async () => {
+    await ouvrirSousOnglet(page, 'qualite');
     const c = carte('Vérifications : taux de vert par dépôt');
     const rows = await c.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent.replace(/\s+/g, ' ').trim())));
     assert.deepEqual(rows, [['grp/alpha', '33 %', '1 verts sur 3'], ['grp/beta', '100 %', '2 verts sur 2']]);
   });
 
   test('les opérations Git : volume par action, échecs à côté', async () => {
+    await ouvrirSousOnglet(page, 'flux');
     const c = carte('Opérations Git');
     assert.equal((await c.locator('p.muted').first().textContent()).trim(), '6 opérations · 1 échec');
     const rows = await c.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((td) => td.textContent.trim())));
@@ -251,6 +277,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('les constats qui reviennent : un titre normalisé, ses fichiers, et le geste « En faire une règle »', async () => {
+    await ouvrirSousOnglet(page, 'qualite');
     const c = carte('Constats qui reviennent');
     const rows = c.locator('tbody tr');
     assert.equal(await rows.count(), 1, '« Le numéro… loggé » et « le numéro… loggé. » ne font qu’un');
@@ -269,6 +296,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
     seed.insererConstat(app.db, donnees.mr.a1, 'Le mot de passe est en clair', 'src/auth/login.js');
     seed.insererConstat(app.db, donnees.mr.a4, 'le mot de passe est en clair.', 'src/auth/session.js');
     seed.insererConstat(app.db, donnees.mr.b2, 'Le mot de passe est en clair', 'src/auth/login.js');
+    await ouvrirSousOnglet(page, 'qualite');
     await page.locator('#dashRefresh').click();
 
     const c = carte('Les mêmes constats, sur plusieurs dépôts');
@@ -289,48 +317,70 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
   });
 
   test('le Top 5 de la forge et la carte d’activité sont chargés à part', async () => {
+    await ouvrirSousOnglet(page, 'apercu');
+    await page.waitForSelector('#dashTop5 tbody tr');
+    await page.waitForSelector('#dashActivity .pab');
     const top = await page.$$eval('#dashTop5 tbody tr', (trs) => trs.map((tr) => tr.children[0].textContent.trim()));
     assert.deepEqual(top, ['grp/alpha', 'grp/beta'], 'le commit le plus récent en tête');
     assert.equal(await page.locator('#dashTop5 tbody tr').first().locator('a code').textContent(), 'c0ffee0');
     assert.equal(await page.locator('#dashActivity .pab').count(), 2, 'une barre par dépôt suivi');
   });
 
-  test('chaque carte porte sa question en légende', async () => {
-    const aides = await page.$$eval('#dashboard .dash-card', (cs) => cs
-      .filter((c) => c.querySelector('h3') && !c.querySelector('h3').textContent.includes('Coût par agent'))
-      .map((c) => [c.querySelector('h3').textContent.trim(), !!c.querySelector('.dash-help')]));
-    const sans = aides.filter(([, a]) => !a).map(([t]) => t);
-    assert.deepEqual(sans, [], `cartes sans légende : ${sans.join(', ')}`);
+  test('chaque carte porte sa question en légende, et chaque sous-onglet la sienne', async () => {
+    const vues = {};
+    for (const sub of ['apercu', 'flux', 'qualite', 'cout']) {
+      await ouvrirSousOnglet(page, sub);
+      if (sub === 'apercu') { await page.waitForSelector('#dashTop5 tbody tr'); await page.waitForSelector('#dashActivity .pab'); }
+      const aides = await page.$$eval('#dashboard .dash-card', (cs) => cs
+        .filter((c) => c.querySelector('h3') && !c.querySelector('h3').textContent.includes('Coût par agent'))
+        .map((c) => [c.querySelector('h3').textContent.trim(), !!c.querySelector('.dash-help')]));
+      vues[sub] = aides.map(([t]) => t);
+      const sans = aides.filter(([, a]) => !a).map(([t]) => t);
+      assert.deepEqual(sans, [], `${sub} : cartes sans légende : ${sans.join(', ')}`);
+    }
+    // Chaque carte vit dans UN sous-onglet, et chacun porte la question à laquelle il répond.
+    const toutes = Object.values(vues).flat();
+    assert.equal(new Set(toutes).size, toutes.length, `une carte dans deux sous-onglets : ${toutes.join(' | ')}`);
+    // Dix-sept cartes à légende (« Coût par agent », exclue plus haut, est la dix-huitième).
+    assert.equal(toutes.length, 17, toutes.join(' | '));
+    const questions = await page.$$eval('#dashboard [data-stats-sub]', (bs) => bs.map((b) => b.title));
+    assert.ok(questions.every((q) => /\?/.test(q)), JSON.stringify(questions));
   });
 
   /* « Rafraîchir » relit TOUT : une MR arrivée entre-temps doit apparaître sans recharger la
      page — et l'entonnoir la compter. */
   test('« Rafraîchir » relit les chiffres du serveur', async () => {
+    await ouvrirSousOnglet(page, 'apercu');
     seed.insererMr(app.db, donnees.repos['grp/beta'], 9, { titre: 'Arrivée après coup', statut: 'to_review' });
-    const avant = await page.locator('#dashboard > .stat-row .stat-tile').first().locator('.stat-val').textContent();
+    const avant = await page.locator('#dashKpi .stat-tile').first().locator('.stat-val').textContent();
     assert.equal(avant.trim(), '2', 'l’écran n’a pas encore relu');
     await page.locator('#dashRefresh').click();
     await page.waitForFunction(() => {
-      const t = document.querySelector('#dashboard > .stat-row .stat-tile .stat-val');
+      const t = document.querySelector('#dashKpi .stat-tile .stat-val');
       return t && t.textContent.trim() === '3';
     });
     // Et la ligne beta compte désormais deux MR en attente.
+    await ouvrirSousOnglet(page, 'flux');
     await page.waitForFunction(() => {
       const b = document.querySelector('#dashboard [data-stat-projet="grp/beta"][data-stat-seg="to_review"]');
       return b && b.textContent.trim() === '2';
     });
     app.db.prepare('DELETE FROM mr WHERE repo_id = ? AND iid = 9').run(donnees.repos['grp/beta']);
+    // « Rafraîchir » relit le sous-onglet ouvert : on y reste, et la ligne beta redescend.
     await page.locator('#dashRefresh').click();
     await page.waitForFunction(() => {
-      const t = document.querySelector('#dashboard > .stat-row .stat-tile .stat-val');
-      return t && t.textContent.trim() === '2';
+      const b = document.querySelector('#dashboard [data-stat-projet="grp/beta"][data-stat-seg="to_review"]');
+      return b && b.textContent.trim() === '1';
     });
-    await page.waitForSelector('#dashboard [data-rec-rule]');
+    assert.equal(await page.locator('#dashboard [data-stats-sub].active').getAttribute('data-stats-sub'), 'flux');
+    await ouvrirSousOnglet(page, 'apercu');
+    assert.equal((await page.locator('#dashKpi .stat-tile').first().locator('.stat-val').textContent()).trim(), '2');
   });
 
   /* L'export porte les colonnes du tableau, dans un format qu'Excel ouvre sans question sur un
      poste français : BOM, séparateur « ; », et une cellule contenant « ; » mise entre guillemets. */
   test('« Exporter (CSV) » télécharge le tableau par projet, prêt pour un tableur', async () => {
+    await ouvrirSousOnglet(page, 'flux');
     const [dl] = await Promise.all([
       page.waitForEvent('download'),
       page.locator('#statsExport').click(),
@@ -347,8 +397,8 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
     await page.evaluate(() => localStorage.setItem('aidevtools_lang', 'en'));
     try {
       await page.reload();
-      await page.locator('nav button[data-tab="dashboard"]').click();
-      await page.waitForSelector('#dashboard [data-rec-rule]');
+      await allerStats(page, 'qualite');
+      assert.deepEqual(await page.$$eval('#dashboard [data-stats-sub]', (bs) => bs.map((b) => b.textContent.trim())), ['Overview', 'Flow', 'Quality', 'Cost']);
       const titres = await page.$$eval('#dashboard .dash-card h3', (hs) => hs.map((h) => h.textContent.trim()));
       assert.ok(titres.some((t) => /^Score distribution|^Notes? distribution|distribution/i.test(t)), JSON.stringify(titres));
       assert.ok(!titres.some((t) => /Distribution des notes|Délai de cycle|Constats qui reviennent/.test(t)),

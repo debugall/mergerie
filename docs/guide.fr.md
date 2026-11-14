@@ -2193,6 +2193,18 @@ navigation. Entrée ouvre — un lien externe dans un nouvel onglet, un objet in
   fraîche. Seule la *réponse* est bornée — à douze lignes, ce qu'un menu déroulant peut montrer.
 
 ### Stats
+**Quatre sous-onglets, une question chacun**, sous une barre de période et de dépôt qui vaut pour les
+quatre (préférences de navigateur, comme le sous-onglet ouvert) : **Vue d'ensemble** (« où en est
+l'équipe ? » — un bandeau de six tuiles : à traiter, reviewées, traitées, note moyenne, part de MR
+retouchées, tokens de la période ; puis le Top 5 de la forge et l'activité des projets), **Flux**
+(« qu'est-ce qui passe, et à quelle vitesse ? » — reviews par semaine, délai de cycle, tableau par projet
+et son export, sessions de dev, opérations Git), **Qualité** (« ce qu'on dit est-il juste et utile ? » —
+distribution et tendance des notes, retouches, taux de vert, constats qui reviennent) et **Coût**
+(« combien ça coûte, et où ? » — tokens, sessions, reviews et agents les plus coûteux, envoyé contre
+reçu). Chaque tuile du bandeau est une porte : un stade ouvre Reviews à ce stade, un indicateur ouvre le
+sous-onglet qui le détaille. Le serveur ne calcule que le sous-onglet affiché (`/api/stats?section=`) ;
+« Rafraîchir » relit celui qui est ouvert. Le détail des cartes, dans l'ordre historique :
+
 Funnel des MR, distribution des notes, **évolution de la note moyenne par semaine** (« la qualité
 progresse-t-elle ? »), activité hebdomadaire, tableau par projet (avec **taux de résolution**,
 **tendance** ▲/▼ et le **dernier commit** — date, auteur, lien vers le commit sur sa forge), un **Top 5 des

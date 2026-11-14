@@ -2102,6 +2102,17 @@ link in a new tab, an internal object in its own place.
   Only the *answer* is capped — at twelve rows, which is what a dropdown can show.
 
 ### Stats
+**Four sub-tabs, one question each**, under a period and repository bar that applies to all four
+(browser preferences, like the open sub-tab): **Overview** ("where does the team stand?" — a strip of six
+tiles: to review, reviewed, done, average score, share of touched-up MRs, the period's tokens; then the
+forge's Top 5 and the projects' activity), **Flow** ("what goes through, and how fast?" — reviews per week,
+cycle time, the table per project and its export, dev sessions, Git operations), **Quality** ("is what we
+say right and useful?" — distribution and trend of the scores, follow-up fixes, green rate, findings that
+keep coming back) and **Cost** ("how much does it cost, and where?" — tokens, the most expensive sessions,
+reviews and agents, what goes in versus what comes back). Each tile of the strip is a door: a stage opens
+Reviews at that stage, an indicator opens the sub-tab that details it. The server only computes the sub-tab
+on screen (`/api/stats?section=`); "Refresh" re-reads the open one. The cards in detail, in historical order:
+
 An MR funnel, a distribution of the scores, the **weekly evolution of the average score** (“is quality
 improving?”), weekly activity, a table per project (with the **resolution rate**, a **trend** ▲/▼ and the
 **last commit** — date, author, link to the commit on its forge), a **Top 5 of the repositories with the

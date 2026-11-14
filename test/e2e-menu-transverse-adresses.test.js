@@ -118,7 +118,7 @@ describe('Transverse — les adresses des objets et l’historique du navigateur
       const avant = erreurs.length;
       await page.goto(`${app.base}/${route}`);
       await page.waitForSelector('#tab-dashboard.active');
-      await page.waitForSelector('#dashboard [data-rec-rule], #dashboard .card', { state: 'attached' });
+      await page.waitForSelector('#dashKpi, #dashboard .errbox', { state: 'attached' });
       assert.equal(erreurs.length, avant, 'aucune erreur JavaScript');
     });
   }

@@ -19,6 +19,7 @@ const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 const seed = require('./helpers/stats-seed');
+const { ouvrirSousOnglet } = require('./helpers/stats-ecran');
 
 const { dispo } = navigateurDispo();
 
@@ -64,9 +65,11 @@ describe('Menu Statistiques — période et dépôt', { skip: dispo ? false : MS
   }
   const carte = (titre) => page.locator('#dashboard .dash-card').filter({ has: page.locator('h3', { hasText: titre }) });
   const puceActive = () => page.locator('#dashboard [data-stats-jours].active').getAttribute('data-stats-jours');
-  const sessionsChères = () => carte('Les sessions les plus coûteuses').locator('[data-go-session]').allTextContents();
-  const entonnoir = () => page.$$eval('#dashboard > .stat-row .stat-tile .stat-val', (v) => v.map((x) => x.textContent.trim()));
-  const totalGit = async () => (await carte('Opérations Git').locator('p.muted').first().textContent()).trim();
+  /* Chaque lecture ouvre le sous-onglet qui porte sa carte : la période et le dépôt valent pour
+     les quatre, et c'est précisément ce qu'on vérifie en lisant tantôt l'un, tantôt l'autre. */
+  const sessionsChères = async () => { await ouvrirSousOnglet(page, 'cout'); return carte('Les sessions les plus coûteuses').locator('[data-go-session]').allTextContents(); };
+  const entonnoir = async () => { await ouvrirSousOnglet(page, 'apercu'); return page.$$eval('#dashKpi [data-kpi-seg] .stat-val', (v) => v.map((x) => x.textContent.trim())); };
+  const totalGit = async () => { await ouvrirSousOnglet(page, 'flux'); return (await carte('Opérations Git').locator('p.muted').first().textContent()).trim(); };
   const stocke = (cle) => page.evaluate((k) => localStorage.getItem(k), cle);
 
   /* Le rendu est SYNCHRONE après la réponse : on attend l'effet (la puce active change), jamais
@@ -165,6 +168,7 @@ describe('Menu Statistiques — période et dépôt', { skip: dispo ? false : MS
     assert.equal(await stocke('aidevtools_stats_projet'), 'grp/beta');
     assert.equal(await page.locator('#statsProjetBox .cb-search').inputValue(), 'grp/beta', 'le choix se voit');
     assert.deepEqual(await entonnoir(), ['1', '1', '0'], 'beta : une à traiter, une reviewée');
+    await ouvrirSousOnglet(page, 'qualite');
     assert.match(await carte('Distribution des notes').locator('h3').textContent(), /moyenne 9\/10/);
     assert.equal(await totalGit(), '1 opération');
     const cycle = carte('Délai de cycle');
@@ -190,6 +194,7 @@ describe('Menu Statistiques — période et dépôt', { skip: dispo ? false : MS
   test('choisir un dépôt ne laisse que lui dans « Par projet »', async () => {
     await choisirDepot('bet', 'grp/beta');
     try {
+      await ouvrirSousOnglet(page, 'flux');
       const projets = await carte('Par projet').locator('tbody tr td:first-child').allTextContents();
       assert.deepEqual(projets.map((p) => p.trim()), ['grp/beta']);
     } finally { await choisirDepot('', ''); }
@@ -201,6 +206,7 @@ describe('Menu Statistiques — période et dépôt', { skip: dispo ? false : MS
   test('la période s’applique au coût en tokens', async () => {
     await choisirPeriode(7);
     try {
+      await ouvrirSousOnglet(page, 'cout');
       const total = await carte('Coût en tokens').locator('.stat-tile').nth(1).locator('.stat-val').textContent();
       assert.equal(total.replace(/\s/g, ''), '20500', 'sans la session d’il y a cent jours (9 000 tokens)');
     } finally { await choisirPeriode(0); }
@@ -212,6 +218,7 @@ describe('Menu Statistiques — période et dépôt', { skip: dispo ? false : MS
   test('choisir un dépôt restreint les constats qui reviennent et le taux de vert', async () => {
     await choisirDepot('bet', 'grp/beta');
     try {
+      await ouvrirSousOnglet(page, 'qualite');
       // Les deux lectures d'abord, une seule assertion : l'échec nomme les deux blocs à la fois.
       const constats = await carte('Constats qui reviennent').locator('[data-rec-project]').evaluateAll((bs) => bs.map((b) => b.dataset.recProject));
       const verifs = await carte('Vérifications : taux de vert par dépôt').locator('tbody tr td:first-child').allTextContents();

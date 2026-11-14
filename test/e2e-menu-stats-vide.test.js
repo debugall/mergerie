@@ -21,6 +21,7 @@ const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 const seed = require('./helpers/stats-seed');
+const { ouvrirSousOnglet } = require('./helpers/stats-ecran');
 
 const { dispo } = navigateurDispo();
 
@@ -43,9 +44,10 @@ describe('Menu Statistiques — états vides et dégradés', { skip: dispo ? fal
     if (app) await app.stop();
   });
 
-  async function allerStats() {
+  async function allerStats(sub = 'apercu') {
     await page.locator('nav button[data-tab="dashboard"]').click();
     await page.waitForSelector('#tab-dashboard.active #dashboard .dash-periode');
+    await ouvrirSousOnglet(page, sub);
   }
   const carte = (titre) => page.locator('#dashboard .dash-card').filter({ has: page.locator('h3', { hasText: titre }) });
   const texte = async (loc) => (await loc.textContent()).replace(/\s+/g, ' ').trim();
@@ -55,42 +57,55 @@ describe('Menu Statistiques — états vides et dégradés', { skip: dispo ? fal
     await page.waitForFunction(() => /GitLab ou GitHub/.test((document.querySelector('#dashTop5') || {}).textContent || ''));
     await page.waitForFunction(() => /GitLab ou GitHub/.test((document.querySelector('#dashActivity') || {}).textContent || ''));
 
-    const tuiles = await page.$$eval('#dashboard > .stat-row .stat-val', (v) => v.map((x) => x.textContent.trim()));
-    assert.deepEqual(tuiles, ['0', '0', '0']);
+    // Le bandeau : l'entonnoir à zéro, et les trois résumés qui n'ont rien à dire le disent d'un tiret.
+    const tuiles = await page.$$eval('#dashKpi .stat-val', (v) => v.map((x) => x.textContent.trim()));
+    assert.deepEqual(tuiles, ['0', '0', '0', '—', '—', '—']);
+    assert.match(await texte(page.locator('#dashTop5')), /Connecte GitLab ou GitHub \(Réglages → Git\)/);
+    assert.match(await texte(page.locator('#dashActivity')), /Connecte GitLab ou GitHub/);
+
+    await ouvrirSousOnglet(page, 'qualite');
     // Aucune tranche de note ne dessine de barre : toutes portent `is-zero`.
     assert.equal(await carte('Distribution des notes').locator('.hbar-fill:not(.is-zero)').count(), 0);
     assert.doesNotMatch(await texte(carte('Distribution des notes').locator('h3')), /moyenne/);
-    assert.equal(await carte('Reviews par semaine').locator('.vbar-fill:not(.is-zero)').count(), 0);
     assert.equal(await carte('Note moyenne par semaine').locator('.vbar-empty').count(), 8, 'huit semaines sans review, dites comme telles');
-
-    assert.equal(await texte(carte('Par projet').locator('tbody')), 'Aucune donnée');
-    assert.equal(await carte('Par projet').locator('.stats-res-global').count(), 0, 'pas de taux global sans passe');
-    const vides = {
-      'Les sessions les plus coûteuses': 'Aucune session n’a encore été mesurée.',
-      'Les reviews les plus coûteuses': 'Aucune review n’a encore été mesurée.',
-      'Ce qu’on envoie contre ce qu’on reçoit': 'Aucun appel mesuré pour l’instant.',
+    const videsQualite = {
       'Vérifications : taux de vert par dépôt': 'Pas encore assez de vérifications pour comparer les dépôts.',
-      'Opérations Git': 'Aucune opération Git sur la période.',
       'Constats qui reviennent': 'Aucun constat ne revient encore sur trois merge requests d’un même dépôt.',
     };
-    for (const [titre, phrase] of Object.entries(vides)) {
+    for (const [titre, phrase] of Object.entries(videsQualite)) {
       assert.equal(await texte(carte(titre).locator('p.muted').last()), phrase, titre);
     }
-    // Les cartes qui n'ont de sens qu'avec des données ne sont pas affichées du tout.
-    for (const titre of ['Coût en tokens', 'Délai de cycle', 'Coût par agent']) {
-      assert.equal(await carte(titre).count(), 0, `« ${titre} » absente`);
-    }
+
+    await ouvrirSousOnglet(page, 'flux');
+    assert.equal(await carte('Reviews par semaine').locator('.vbar-fill:not(.is-zero)').count(), 0);
+    assert.equal(await texte(carte('Par projet').locator('tbody')), 'Aucune donnée');
+    assert.equal(await carte('Par projet').locator('.stats-res-global').count(), 0, 'pas de taux global sans passe');
+    assert.equal(await texte(carte('Opérations Git').locator('p.muted').last()), 'Aucune opération Git sur la période.');
+    assert.equal(await carte('Délai de cycle').count(), 0, '« Délai de cycle » absente');
     const dev = await page.$$eval('#dashboard .dash-card', (cs) => {
       const c = cs.find((x) => /Sessions de dev/.test(x.querySelector('h3').textContent));
       return [...c.querySelectorAll('.stat-val')].map((v) => v.textContent.trim());
     });
     assert.deepEqual(dev, ['0', '0', '0', '0']);
-    assert.match(await texte(page.locator('#dashTop5')), /Connecte GitLab ou GitHub \(Réglages → Git\)/);
-    assert.match(await texte(page.locator('#dashActivity')), /Connecte GitLab ou GitHub/);
+
+    await ouvrirSousOnglet(page, 'cout');
+    const videsCout = {
+      'Les sessions les plus coûteuses': 'Aucune session n’a encore été mesurée.',
+      'Les reviews les plus coûteuses': 'Aucune review n’a encore été mesurée.',
+      'Ce qu’on envoie contre ce qu’on reçoit': 'Aucun appel mesuré pour l’instant.',
+    };
+    for (const [titre, phrase] of Object.entries(videsCout)) {
+      assert.equal(await texte(carte(titre).locator('p.muted').last()), phrase, titre);
+    }
+    // Les cartes qui n'ont de sens qu'avec des données ne sont pas affichées du tout.
+    for (const titre of ['Coût en tokens', 'Coût par agent']) {
+      assert.equal(await carte(titre).count(), 0, `« ${titre} » absente`);
+    }
   });
 
   test('forge configurée, aucun dépôt suivi : « aucun commit », « aucun dépôt suivi »', async () => {
     await app.configure();
+    await ouvrirSousOnglet(page, 'apercu');
     await page.locator('#dashRefresh').click();
     await page.waitForFunction(() => /Aucun commit récupéré/.test((document.querySelector('#dashTop5') || {}).textContent || ''));
     await page.waitForFunction(() => /Aucun dépôt suivi/.test((document.querySelector('#dashActivity') || {}).textContent || ''));
@@ -108,14 +123,16 @@ describe('Menu Statistiques — états vides et dégradés', { skip: dispo ? fal
       await page.waitForFunction(() => /indisponible/.test((document.querySelector('#dashTop5') || {}).textContent || ''));
       await page.waitForFunction(() => /indisponible/.test((document.querySelector('#dashActivity') || {}).textContent || ''));
       assert.match(await texte(page.locator('#dashTop5')), /Activité de la forge indisponible pour le moment/);
-      // Le dernier commit du tableau ne reste pas sur « … » : il passe à « — ».
+      // Le reste de l'écran, local, ne dépend pas de la forge.
+      assert.equal((await page.locator('#dashKpi .stat-val').first().textContent()).trim(), '1');
+      // Flux : le dernier commit du tableau ne reste pas sur « … », il passe à « — ».
+      await ouvrirSousOnglet(page, 'flux');
       await page.waitForFunction(() => {
         const td = document.querySelector('.dash-lastcommit[data-project="grp/calme"]');
         return td && td.textContent.trim() === '—';
       });
-      // Le reste de l'écran, local, ne dépend pas de la forge.
-      assert.equal((await page.locator('#dashboard > .stat-row .stat-val').first().textContent()).trim(), '1');
       assert.equal(await carte('Par projet').locator('[data-stat-projet="grp/calme"]').count(), 1);
+      await ouvrirSousOnglet(page, 'apercu');
     } finally {
       await page.unroute('**/api/dashboard/commits');
       await page.unroute('**/api/dashboard/activity');
@@ -133,8 +150,25 @@ describe('Menu Statistiques — états vides et dégradés', { skip: dispo ? fal
     }
     await page.locator('#dashboard .errretry').click();
     await page.waitForSelector('#tab-dashboard.active #dashboard .dash-periode');
+    await page.waitForSelector('#dashKpi .stat-val');
     assert.equal(await page.locator('#dashboard .errbox').count(), 0);
-    assert.equal((await page.locator('#dashboard > .stat-row .stat-val').first().textContent()).trim(), '1');
+    assert.equal((await page.locator('#dashKpi .stat-val').first().textContent()).trim(), '1');
+  });
+
+  /* Un sous-onglet qui ne répond pas : l'erreur reste DANS le panneau — la barre de période et
+     les autres sous-onglets restent utilisables, et un autre sous-onglet s'ouvre normalement. */
+  test('un sous-onglet injoignable montre son erreur dans le panneau, les autres restent ouvrables', async () => {
+    await page.route('**/api/stats?*section=cout*', (route) => route.abort('connectionrefused'));
+    try {
+      await page.locator('#dashboard [data-stats-sub="cout"]').click();
+      await page.waitForSelector('#dashPanel .errbox');
+      assert.equal(await page.locator('#dashboard .dash-periode').count(), 1, 'la barre est toujours là');
+      await ouvrirSousOnglet(page, 'flux');
+      assert.equal(await page.locator('#dashboard .errbox').count(), 0);
+    } finally {
+      await page.unroute('**/api/stats?*section=cout*');
+    }
+    await ouvrirSousOnglet(page, 'apercu');
   });
 
   test('la fenêtre 12 mois d’un dépôt sans activité le dit, et se ferme d’un clic au fond', async () => {

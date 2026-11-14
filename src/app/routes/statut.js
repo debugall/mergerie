@@ -128,9 +128,23 @@ function delaiDeCycle(projet, depuis) {
  * `days` (0 = tout l'historique) et `project` s'appliquent à ce qui se DATE et à ce qui se
  * rattache à un dépôt. Les compteurs d'état (le funnel) restent globaux : « à traiter » n'a pas
  * d'âge, c'est un état courant, et le borner dans le temps ne voudrait rien dire. */
+/* UN ÉCRAN EN QUATRE SOUS-ONGLETS, UNE SECTION PAR APPEL. Dix-neuf blocs se calculaient à chaque
+ * changement de période, dont la relecture des rapports `.md` sans note en base : l'écran en
+ * montre désormais un quart à la fois, et `section` (`apercu`, `flux`, `qualite`, `cout`) ne
+ * calcule et ne renvoie que ce quart. Sans `section`, tout — la forme d'avant, que les tests et
+ * un script peuvent encore lire d'un coup. L'entonnoir et `lowScores` sont toujours là : ils
+ * coûtent une requête et le bandeau de l'écran les montre quel que soit le sous-onglet. */
+const STATS_SECTIONS = {
+  apercu: ['notes', 'tokens', 'fixLinks'],
+  flux: ['projects', 'weekly', 'tasks', 'resolution', 'gitOps', 'cycle', 'commentsPosted'],
+  qualite: ['notes', 'scoreTrend', 'verifsParDepot', 'recurrents', 'recurrentsCross', 'fixLinks'],
+  cout: ['tokens', 'topTasks', 'topReviews', 'ratio', 'agentCosts'],
+};
 app.get('/api/stats', wrap((req, res) => {
   const jours = Math.max(0, Number(req.query.days) || 0);
   const projet = String(req.query.project || '').trim();
+  const section = STATS_SECTIONS[String(req.query.section || '')] ? String(req.query.section) : '';
+  const veut = (...cles) => !section || cles.some((c) => STATS_SECTIONS[section].includes(c));
   const depuis = jours ? new Date(Date.now() - jours * 86400000).toISOString() : null;
   const dansPeriode = (iso) => !depuis || (iso && String(iso) >= depuis);
   const duProjet = (p) => !projet || p === projet;
@@ -143,7 +157,7 @@ app.get('/api/stats', wrap((req, res) => {
     .forEach((r) => { if (r.status in funnel) funnel[r.status] = r.c; });
 
   // Reviews + projet + note (note_value, sinon extraite du .md pour les anciennes)
-  const reviews = db.prepare(`
+  const reviews = !veut('notes', 'projects') ? [] : db.prepare(`
     SELECT review.md_path, review.note_value, review.created_at, repo.project AS project
     FROM review JOIN mr ON mr.id = review.mr_id JOIN repo ON repo.id = mr.repo_id`).all()
     .filter((r) => duProjet(r.project) && dansPeriode(r.created_at));
@@ -174,9 +188,11 @@ app.get('/api/stats', wrap((req, res) => {
 
   // Par projet
   const pending = {};
-  db.prepare(`SELECT repo.project p, COUNT(*) c FROM mr JOIN repo ON repo.id=mr.repo_id
+  if (veut('projects')) {
+    db.prepare(`SELECT repo.project p, COUNT(*) c FROM mr JOIN repo ON repo.id=mr.repo_id
     WHERE mr.status='to_review' AND (? = '' OR repo.project = ?) GROUP BY repo.project`).all(projet, projet)
-    .forEach((r) => { pending[r.p] = r.c; });
+      .forEach((r) => { pending[r.p] = r.c; });
+  }
   const byProj = {};
   for (const r of rows) {
     const p = byProj[r.project] || (byProj[r.project] = { project: r.project, reviewed: 0, sum: 0, n: 0, worst: null });
@@ -194,7 +210,7 @@ app.get('/api/stats', wrap((req, res) => {
      Dénominateur = résolus + persistants + disparus (tous les constats antérieurs) ;
      les « disparus » (non vérifiés) comptent au dénominateur mais jamais au
      numérateur — c'est tout l'intérêt du garde-fou. */
-  const resRows = db.prepare(`SELECT repo.project project,
+  const resRows = !veut('projects') ? [] : db.prepare(`SELECT repo.project project,
       SUM(COALESCE(rv.n_resolved,0)) resolved,
       SUM(COALESCE(rv.n_persistent,0)) persistent,
       SUM(COALESCE(rv.n_disappeared,0)) disappeared
@@ -215,7 +231,7 @@ app.get('/api/stats', wrap((req, res) => {
   const D28 = 28 * 86400000;
   const nowMs = Date.now();
   const trendAcc = {};
-  for (const r of db.prepare(`SELECT rv.note_value nv, rv.created_at ca, repo.project pr
+  for (const r of !veut('projects') ? [] : db.prepare(`SELECT rv.note_value nv, rv.created_at ca, repo.project pr
       FROM review_version rv JOIN mr ON mr.id = rv.mr_id JOIN repo ON repo.id = mr.repo_id
       WHERE rv.note_value IS NOT NULL`).all()) {
     if (!r.ca) continue;
@@ -242,7 +258,7 @@ app.get('/api/stats', wrap((req, res) => {
      travail réellement fait, et c'est la source de son voisin. */
   const weekStart = (d) => { const dt = new Date(d); const day = (dt.getDay() + 6) % 7; dt.setHours(0, 0, 0, 0); dt.setDate(dt.getDate() - day); return dt; };
   const wc = {};
-  for (const r of db.prepare(`SELECT rv.created_at FROM review_version rv
+  for (const r of !veut('weekly') ? [] : db.prepare(`SELECT rv.created_at FROM review_version rv
     JOIN mr ON mr.id = rv.mr_id JOIN repo ON repo.id = mr.repo_id
     WHERE (? = '' OR repo.project = ?)`).all(projet, projet)) {
     if (!r.created_at || !dansPeriode(r.created_at)) continue;
@@ -257,7 +273,7 @@ app.get('/api/stats', wrap((req, res) => {
      répond à « la qualité progresse-t-elle ? », plus parlante que la distribution
      statique. On garde le compte par semaine pour ne pas surinterpréter un point
      issu d'une seule review. Source : review_version (une note datée par passe). */
-  const rvNotes = db.prepare(`SELECT rv.note_value, rv.created_at FROM review_version rv
+  const rvNotes = !veut('scoreTrend') ? [] : db.prepare(`SELECT rv.note_value, rv.created_at FROM review_version rv
     JOIN mr ON mr.id = rv.mr_id JOIN repo ON repo.id = mr.repo_id
     WHERE rv.note_value IS NOT NULL AND (? = '' OR repo.project = ?)`).all(projet, projet)
     .filter((r) => dansPeriode(r.created_at));
@@ -278,13 +294,13 @@ app.get('/api/stats', wrap((req, res) => {
      l'agent reste invisible — mais la RÉPARTITION par type et l'évolution disent
      déjà où part le quota. Regroupement des kinds en libellés lisibles côté front. */
   // La période vaut ici comme ailleurs : le total d'une semaine ne compte pas la session d'il y a cent jours.
-  const byKind = db.prepare(`SELECT kind, SUM(tokens_est) tokens, COUNT(*) calls FROM usage
+  const byKind = !veut('tokens') ? [] : db.prepare(`SELECT kind, SUM(tokens_est) tokens, COUNT(*) calls FROM usage
     WHERE (? IS NULL OR created_at >= ?) GROUP BY kind`).all(depuis, depuis)
     .filter((r) => r.tokens > 0)
     .map((r) => ({ kind: r.kind, tokens: r.tokens, calls: r.calls }));
   const tokTotal = byKind.reduce((s, r) => s + r.tokens, 0);
   const twc = {};
-  for (const r of db.prepare(`SELECT tokens_est, created_at FROM usage WHERE tokens_est > 0
+  for (const r of !veut('tokens') ? [] : db.prepare(`SELECT tokens_est, created_at FROM usage WHERE tokens_est > 0
     AND (? IS NULL OR created_at >= ?)`).all(depuis, depuis)) {
     if (!r.created_at) continue;
     const k = weekStart(r.created_at).toISOString().slice(0, 10);
@@ -294,8 +310,8 @@ app.get('/api/stats', wrap((req, res) => {
   for (let i = 7; i >= 0; i -= 1) { const d = new Date(cur); d.setDate(d.getDate() - i * 7); const k = d.toISOString().slice(0, 10); tokWeekly.push({ week: k, tokens: twc[k] || 0 }); }
   // Coût moyen par MR reviewée : tokens des reviews ÷ nb de MR distinctes reviewées.
   const reviewTokens = (byKind.find((r) => r.kind === 'review') || {}).tokens || 0;
-  const reviewedCount = db.prepare("SELECT COUNT(DISTINCT mr_id) c FROM review_version WHERE kind = 'review'").get().c
-    || db.prepare("SELECT COUNT(*) c FROM mr WHERE reviewed_sha IS NOT NULL").get().c;
+  const reviewedCount = !veut('tokens') ? 0 : (db.prepare("SELECT COUNT(DISTINCT mr_id) c FROM review_version WHERE kind = 'review'").get().c
+    || db.prepare("SELECT COUNT(*) c FROM mr WHERE reviewed_sha IS NOT NULL").get().c);
   const tokens = {
     total: tokTotal,
     byKind,
@@ -306,8 +322,8 @@ app.get('/api/stats', wrap((req, res) => {
 
   // Dev sessions
   const taskByStatus = {};
-  db.prepare('SELECT status, COUNT(*) c FROM task GROUP BY status').all().forEach((r) => { taskByStatus[r.status] = r.c; });
-  const tasks = {
+  if (veut('tasks')) db.prepare('SELECT status, COUNT(*) c FROM task GROUP BY status').all().forEach((r) => { taskByStatus[r.status] = r.c; });
+  const tasks = !veut('tasks') ? null : {
     byStatus: taskByStatus,
     total: db.prepare('SELECT COUNT(*) c FROM task').get().c,
     mrCreated: db.prepare('SELECT COUNT(*) c FROM task_target WHERE mr_iid IS NOT NULL').get().c,
@@ -330,7 +346,7 @@ app.get('/api/stats', wrap((req, res) => {
   /* `cost_usd` : le coût ANNONCÉ par le backend quand il en annonce un, à côté de l'estimation
      en tokens qui, elle, existe toujours. `SUM` d'une colonne nulle vaut NULL : le classement
      reste ordonné sur les tokens, seul chiffre disponible partout. */
-  const topTasks = db.prepare(`SELECT u.owner_kind AS kind, u.owner_id AS id, SUM(u.tokens_est) AS tokens,
+  const topTasks = !veut('topTasks') ? [] : db.prepare(`SELECT u.owner_kind AS kind, u.owner_id AS id, SUM(u.tokens_est) AS tokens,
       SUM(u.cost_usd) AS cost_usd
     FROM usage u WHERE u.owner_kind IN ('task','local','ask') AND u.owner_id IS NOT NULL
       AND (? IS NULL OR u.created_at >= ?)
@@ -353,14 +369,14 @@ app.get('/api/stats', wrap((req, res) => {
      c'est la SOMME qui compte : « le documentaliste coûte trois euros par mois » est une
      phrase qu'aucune ligne de session ne donne. Vide tant qu'aucun agent n'a tourné : une
      section à zéro n'apprend rien. */
-  const parAgent = db.prepare(`SELECT t.agent_name AS name, SUM(u.tokens_est) AS tokens,
+  const parAgent = !veut('agentCosts') ? [] : db.prepare(`SELECT t.agent_name AS name, SUM(u.tokens_est) AS tokens,
       SUM(u.cost_usd) AS cost_usd, COUNT(DISTINCT t.id) AS runs
     FROM usage u JOIN task t ON t.id = u.owner_id
     WHERE u.owner_kind = 'task' AND t.agent_name IS NOT NULL
       AND (@depuis IS NULL OR u.created_at >= @depuis)
     GROUP BY t.agent_name ORDER BY tokens DESC LIMIT 10`).all({ depuis });
 
-  const topReviews = db.prepare(`SELECT u.owner_id AS id, SUM(u.tokens_est) AS tokens
+  const topReviews = !veut('topReviews') ? [] : db.prepare(`SELECT u.owner_id AS id, SUM(u.tokens_est) AS tokens
     FROM usage u WHERE u.owner_kind = 'mr' AND u.owner_id IS NOT NULL
       AND (? IS NULL OR u.created_at >= ?)
     GROUP BY u.owner_id ORDER BY tokens DESC LIMIT 5`).all(depuis, depuis)
@@ -375,7 +391,7 @@ app.get('/api/stats', wrap((req, res) => {
      écrits depuis toujours et n'étaient lus par personne. Le rapport entrée/sortie dit ce
      qu'aucun total ne dit : un gabarit obèse, ou un dépôt lié qui triple chaque prompt, se
      voient à un ratio qui s'envole — la facture, elle, ne dit que « c'est cher ». */
-  const ratio = db.prepare(`SELECT kind,
+  const ratio = !veut('ratio') ? [] : db.prepare(`SELECT kind,
       SUM(prompt_chars) AS entree, SUM(output_chars) AS sortie, COUNT(*) AS n
     FROM usage WHERE (? IS NULL OR created_at >= ?)
     GROUP BY kind HAVING SUM(output_chars) > 0 ORDER BY entree DESC`).all(depuis, depuis)
@@ -384,7 +400,7 @@ app.get('/api/stats', wrap((req, res) => {
   /* A/Stats 3 — LES VÉRIFICATIONS, PAR DÉPÔT. Un verdict rouge se lit une MR à la fois ; la
      question « quel dépôt casse le plus ? » n'avait pas de réponse. Cousin des constats
      récurrents, et lui aussi une simple lecture de ce qui est déjà écrit. */
-  const verifsParDepot = (() => {
+  const verifsParDepot = !veut('verifsParDepot') ? [] : (() => {
     /* Les cibles d'une vérification vivent en JSON (`targets_json`), pas en colonnes : une
        jointure SQL n'existe pas ici. On agrège donc en JS, comme le brief le fait pour la
        péremption — et on compte UNE FOIS par dépôt et par vérification, sinon un lot de cinq
@@ -417,7 +433,7 @@ app.get('/api/stats', wrap((req, res) => {
      dans le contexte manuel de chaque merge request. Le titre est normalisé (minuscules,
      ponctuation de fin retirée) pour que « Le numéro de carte est loggé » et « le numéro de
      carte est loggé. » comptent pour un. */
-  const recurrents = db.prepare(`SELECT repo.project AS project,
+  const recurrents = !veut('recurrents') ? [] : db.prepare(`SELECT repo.project AS project,
       LOWER(TRIM(RTRIM(f.title, '. '))) AS titre,
       COUNT(DISTINCT f.mr_id) AS n,
       GROUP_CONCAT(DISTINCT f.file) AS fichiers,
@@ -439,7 +455,7 @@ app.get('/api/stats', wrap((req, res) => {
      une vue « cross-dépôt » à un seul dépôt n'aurait plus de sens. `nDepots >= 2` est ce qui la
      distingue de la liste par dépôt : un constat qui n'atteint 3 qu'à l'intérieur d'un seul
      dépôt y est déjà, le répéter ici n'apprendrait rien. */
-  const recurrentsCross = db.prepare(`SELECT
+  const recurrentsCross = !veut('recurrentsCross') ? [] : db.prepare(`SELECT
       LOWER(TRIM(RTRIM(f.title, '. '))) AS titre,
       COUNT(DISTINCT f.mr_id) AS n,
       COUNT(DISTINCT repo.id) AS nDepots,
@@ -459,7 +475,7 @@ app.get('/api/stats', wrap((req, res) => {
      n'avait pas de réponse, alors que chaque ligne est écrite depuis toujours. Le taux d'échec
      est le chiffre qui sert : une suppression sur trois qui échoue dit qu'on s'attaque à des
      branches protégées, et c'est un réglage, pas une fatalité. */
-  const gitOps = (() => {
+  const gitOps = !veut('gitOps') ? null : (() => {
     const par = new Map();
     for (const r of db.prepare(`SELECT action, status, COUNT(*) n FROM git_op
       WHERE (? IS NULL OR created_at >= ?) AND (? = '' OR project = ?)
@@ -477,17 +493,21 @@ app.get('/api/stats', wrap((req, res) => {
     };
   })();
 
-  res.json({
+  const tout = {
     funnel, notes, projects, weekly, scoreTrend, tokens, tasks, resolution,
     topTasks, topReviews, ratio, verifsParDepot, recurrents, recurrentsCross, gitOps,
-    cycle: delaiDeCycle(projet, depuis),
+    cycle: veut('cycle') ? delaiDeCycle(projet, depuis) : null,
     /* RETOUCHES : la table « note contre retouche », par tranche puis par dépôt, sur la période et le
        dépôt de l'écran — en SQL et en mémoire à l'affichage, zéro forge. */
-    fixLinks: require('../../review/retouches').stats(getConfig(), { depuis, projet }),
+    fixLinks: veut('fixLinks') ? require('../../review/retouches').stats(getConfig(), { depuis, projet }) : null,
     agentCosts: parAgent,
     lowScores: faibles,
-    commentsPosted: db.prepare('SELECT COUNT(*) c FROM comment_log').get().c,
-  });
+    commentsPosted: veut('commentsPosted') ? db.prepare('SELECT COUNT(*) c FROM comment_log').get().c : 0,
+  };
+  if (!section) { res.json(tout); return; }
+  const reponse = { section, funnel, lowScores: faibles };
+  for (const cle of STATS_SECTIONS[section]) reponse[cle] = tout[cle];
+  res.json(reponse);
 }));
 /* Dernier commit de chaque dépôt SUIVI, toutes branches confondues. Live et best-effort :
    un dépôt injoignable est simplement omis. Endpoint SÉPARÉ de /stats (qui reste local et

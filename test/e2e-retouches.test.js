@@ -202,7 +202,7 @@ describe('Retouches après merge', () => {
     });
 
     test('Stats : la carte « Retouches », sa phrase avec la fenêtre et le plancher, la table par tranche', async () => {
-      await page.locator('nav button[data-tab="dashboard"]').click();
+      await require('./helpers/stats-ecran').allerStats(page, 'qualite');
       await page.waitForSelector('#dashFix .stats-fix-table tbody tr');
       const texte = await page.locator('#dashFix').innerText();
       assert.match(texte, /Sur 2 MR mergées.*1 ont été retouchées dans les 5 jours \(50 %\), dont 1 qualifiées bug/);

@@ -195,10 +195,11 @@ demandent de traverser des dossiers.
   liens, les MR, les tickets, les notes et les todos, classés par frécence. Un service associé à un dépôt pose
   ses boutons directement sur ses merge requests, y compris des liens **templatés** (`{env}`, `{branch}`,
   `{mr_iid}`) résolus au clic. Les favoris Chrome s'importent avec aperçu.
-- **Stats** — funnel des MR, évolution des notes, taux de résolution par projet, coût en tokens,
-  **les cinq sessions les plus coûteuses** et **les constats qui reviennent** — le même constat
-  relevé sur trois merge requests d'un même dépôt — ou, dans une seconde carte, **d'un dépôt à l'autre** —
-  se transforme en règle de review d'un clic.
+- **Stats** — quatre sous-onglets, une question chacun : **Vue d'ensemble** (un bandeau de six tuiles et
+  l'activité des dépôts), **Flux** (reviews par semaine, délai de cycle, tableau par projet), **Qualité**
+  (notes, retouches, taux de vert, **les constats qui reviennent** — le même constat relevé sur trois merge
+  requests d'un même dépôt — ou, dans une seconde carte, **d'un dépôt à l'autre** — se transforme en règle de
+  review d'un clic) et **Coût** (tokens, **les cinq sessions les plus coûteuses**, reviews et agents).
   Chaque nombre est une porte : il ouvre Reviews filtré sur ce projet, au bon stade.
 - **Réglages** — connexions GitLab / GitHub / Jira, dépôts (chacun peut cesser de fournir des MR tout en
   restant utilisable pour git et les sessions de codage), règles de review, **review automatique des merge

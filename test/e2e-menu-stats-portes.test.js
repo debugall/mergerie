@@ -20,6 +20,7 @@ const {
   startApp, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR, attendreServeur,
 } = require('./helpers/app');
 const seed = require('./helpers/stats-seed');
+const { allerStats: allerStatsSur } = require('./helpers/stats-ecran');
 
 const { dispo } = navigateurDispo();
 
@@ -48,11 +49,8 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
     if (app) await app.stop();
   });
 
-  // Retour sur Statistiques, rendu COMPLET (la dernière carte est celle des constats).
-  async function allerStats() {
-    await page.locator('nav button[data-tab="dashboard"]').click();
-    await page.waitForSelector('#tab-dashboard.active #dashboard [data-rec-rule]');
-  }
+  // Retour sur Statistiques, sur le sous-onglet qui porte la porte à éprouver.
+  const allerStats = (sub) => allerStatsSur(page, sub);
   const regles = async () => {
     const b = (await app.api('GET', '/api/rules')).body;
     return Array.isArray(b) ? b : (b.rules || b.regles || []);
@@ -60,7 +58,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
   const hash = () => page.evaluate(() => window.location.hash);
 
   test('« En attente » ouvre Reviews → À traiter, filtré sur ce projet', async () => {
-    await allerStats();
+    await allerStats('flux');
     await page.locator('#dashboard [data-stat-projet="grp/alpha"][data-stat-seg="to_review"]').click();
     await page.waitForSelector('#tab-review.active');
     await page.waitForFunction(() => document.querySelector('.segmented [data-seg="to_review"]').classList.contains('active'));
@@ -73,7 +71,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
   });
 
   test('« Pire » ouvre Reviews → Reviewées, filtré sur ce projet', async () => {
-    await allerStats();
+    await allerStats('flux');
     await page.locator('#dashboard [data-stat-projet="grp/beta"][data-stat-seg="reviewed"]').click();
     await page.waitForFunction(() => document.querySelector('.segmented [data-seg="reviewed"]').classList.contains('active'));
     assert.equal(await page.locator('#searchReview').inputValue(), 'grp/beta');
@@ -86,7 +84,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
   });
 
   test('une session de codage parmi les plus chères ouvre SA carte', async () => {
-    await allerStats();
+    await allerStats('cout');
     await page.locator(`#dashboard [data-go-session="${donnees.t.code}"][data-go-kind="code"]`).click();
     await page.waitForSelector('#tab-task.active');
     await page.waitForFunction((h) => window.location.hash === h, `#/sessions/code/${donnees.t.code}`);
@@ -95,14 +93,14 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
   });
 
   test('une session hors dépôt ouvre sa carte dans « Hors dépôt »', async () => {
-    await allerStats();
+    await allerStats('cout');
     await page.locator(`#dashboard [data-go-session="${donnees.local}"][data-go-kind="local"]`).click();
     await page.waitForFunction((h) => window.location.hash === h, `#/sessions/local/${donnees.local}`);
     assert.equal(await page.locator(`#localList .card[data-local="${donnees.local}"]`).isVisible(), true);
   });
 
   test('une question libre ouvre sa carte dans « Questions »', async () => {
-    await allerStats();
+    await allerStats('cout');
     await page.locator(`#dashboard [data-go-session="${donnees.question}"][data-go-kind="ask"]`).click();
     await page.waitForFunction((h) => window.location.hash === h, `#/sessions/ask/${donnees.question}`);
     assert.equal(await page.locator(`#askList .card[data-ask="${donnees.question}"]`).isVisible(), true);
@@ -114,7 +112,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
      pas, et `ouvrirSession` rend la main sans rien dire — on atterrit sur une liste où la
      session cliquée est introuvable. */
   test('une exploration parmi les plus chères ouvre sa carte dans « Exploration »', async () => {
-    await allerStats();
+    await allerStats('cout');
     await page.locator(`#dashboard [data-go-session="${donnees.t.explore}"]`).click();
     await page.waitForSelector('#tab-task.active');
     const attendu = `#/sessions/explore/${donnees.t.explore}`;
@@ -128,7 +126,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
   });
 
   test('un agent du « coût par agent » ouvre Dev IA filtré sur ses sessions', async () => {
-    await allerStats();
+    await allerStats('cout');
     await page.locator('#dashboard [data-go-agent="Agent des portes"]').click();
     await page.waitForSelector('#tab-task.active');
     // Le filtre se VOIT : le combo porte le nom de l'agent, et sa valeur est son identifiant.
@@ -146,7 +144,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
   });
 
   test('une review parmi les plus chères ouvre son rapport', async () => {
-    await allerStats();
+    await allerStats('cout');
     await page.locator(`#dashboard [data-stat-mr="${donnees.mr.a2}"]`).click();
     await page.waitForSelector('#tab-review.active');
     await page.waitForFunction((h) => window.location.hash === h, `#/reviews/${donnees.mr.a2}`);
@@ -157,7 +155,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
      est une proposition. Rien n'existe côté serveur tant qu'on n'a pas cliqué « Ajouter ». */
   test('« En faire une règle » pré-remplit le formulaire, sans rien enregistrer', async () => {
     const avant = (await regles()).length;
-    await allerStats();
+    await allerStats('qualite');
     await page.locator('#dashboard [data-rec-rule]').first().click();
     await page.waitForSelector('#tab-admin.active #sub-rules.active');
     const f = page.locator('#ruleForm');
@@ -185,7 +183,7 @@ describe('Menu Statistiques — les portes', { skip: dispo ? false : MSG_NAVIGAT
     seed.insererConstat(app.db, donnees.mr.a4, 'le mot de passe est en clair.', 'src/auth/session.js');
     seed.insererConstat(app.db, donnees.mr.b2, 'Le mot de passe est en clair', 'src/auth/login.js');
     const avant = (await regles()).length;
-    await allerStats();
+    await allerStats('qualite');
     await page.locator('#dashRefresh').click();
 
     const carteCross = page.locator('#dashboard .dash-card')

@@ -6,6 +6,15 @@
 .stat-tile.amber .stat-val { color: var(--amber); }
 .stat-tile.accent .stat-val { color: var(--accent); }
 .stat-tile.green .stat-val { color: var(--green); }
+/* Les quatre sous-onglets, sous la barre de période : même contrôle segmenté que Réglages. */
+.dash-subnav { margin: 0 0 var(--s-3); flex-wrap: wrap; }
+/* Une tuile-porte : un bouton habillé en tuile — même fond, même bordure, même lecture — qui
+   dit au survol qu'il mène quelque part. */
+button.stat-tile { font: inherit; color: inherit; text-align: left; cursor: pointer; width: 100%; display: block; }
+button.stat-tile .stat-val, button.stat-tile .stat-lbl { display: block; }
+button.stat-tile:hover { border-color: var(--accent); background: var(--hover); }
+button.stat-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dash-kpi { margin-top: var(--s-2); }
 .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
 @media (max-width: 800px) { .dash-grid { grid-template-columns: 1fr; } }
 .dash-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }

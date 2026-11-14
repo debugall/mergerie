@@ -1220,6 +1220,32 @@ describe('API de bout en bout', () => {
     assert.equal(body.tasks.total, 0);
   });
 
+  /* L'écran lit un sous-onglet à la fois : `section` ne calcule et ne renvoie que ce quart,
+     l'entonnoir et `lowScores` toujours en plus. Une section inconnue rend tout, comme avant. */
+  test('GET /api/stats?section= ne renvoie que la section demandée, le funnel toujours', async () => {
+    const cout = (await app.api('GET', '/api/stats?section=cout')).body;
+    assert.equal(cout.section, 'cout');
+    assert.equal(typeof cout.funnel.to_review, 'number');
+    assert.equal(typeof cout.lowScores, 'number');
+    assert.equal(cout.tokens.isFloor, true);
+    assert.ok(Array.isArray(cout.topTasks) && Array.isArray(cout.ratio) && Array.isArray(cout.agentCosts));
+    assert.deepEqual(Object.keys(cout).filter((k) => ['projects', 'weekly', 'notes', 'cycle', 'tasks', 'recurrents'].includes(k)), []);
+    const flux = (await app.api('GET', '/api/stats?section=flux')).body;
+    assert.equal(flux.weekly.length, 8);
+    assert.equal(flux.tasks.total, 0);
+    assert.equal(flux.commentsPosted, 1);
+    assert.equal('tokens' in flux, false);
+    const qualite = (await app.api('GET', '/api/stats?section=qualite')).body;
+    assert.equal(qualite.scoreTrend.length, 8);
+    assert.equal(qualite.notes.total, 0);
+    assert.equal('topTasks' in qualite, false);
+    const apercu = (await app.api('GET', '/api/stats?section=apercu')).body;
+    assert.deepEqual(Object.keys(apercu).sort(), ['fixLinks', 'funnel', 'lowScores', 'notes', 'section', 'tokens']);
+    const inconnue = (await app.api('GET', '/api/stats?section=autre')).body;
+    assert.equal('section' in inconnue, false);
+    assert.equal(inconnue.weekly.length, 8);
+  });
+
   /* Le badge orange du menu Reviews : les rapports FAIBLES qui attendent encore une décision.
      Ce que Mergerie badge, c'est du travail en attente — pas un total. Une merge request
      classée traitée ne demande plus rien, même mal notée : la compter donnerait un chiffre qui
