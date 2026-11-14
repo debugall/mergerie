@@ -337,16 +337,25 @@ const ecrireLiens = db.transaction(({ fixMrId, fixSha }, liens, { sha, now }) =>
 /* Les MR mergées pas encore analysées sur leur SHA de merge, les plus récentes d'abord, sous le
    plafond ; un fetch du clone par dépôt concerné ; puis, sur ces clones, les commits directs des
    branches cibles. Best-effort partout : une erreur de git ne retarde jamais la découverte. */
+/* Les MR mergées qui attendent leur analyse : dans la rétention, dépôt suivi, pas encore relues sur
+   leur SHA de merge. C'est la file du tour, et c'est le chiffre que la carte Stats annonce : tant
+   qu'elle n'est pas vide, des retouches peuvent manquer et la part est un plancher de plus. */
+function enAttente(cfg, { now = new Date().toISOString(), projet = '' } = {}) {
+  const limite = new Date(Date.parse(now) - retentionJours(cfg) * JOUR_MS).toISOString();
+  return db.prepare(`SELECT mr.*, repo.project, repo.forge, repo.url FROM mr JOIN repo ON repo.id = mr.repo_id
+    LEFT JOIN mr_fix_scan s ON s.kind = 'mr' AND s.ref = CAST(mr.id AS TEXT)
+    WHERE mr.merged_at IS NOT NULL AND mr.merged_at >= ? AND repo.enabled = 1 AND COALESCE(repo.fetch_mrs, 1) = 1
+      AND (? = '' OR repo.project = ?)
+      AND COALESCE(mr.squash_commit_sha, mr.merge_commit_sha, mr.head_sha) IS NOT NULL
+      AND (s.ref IS NULL OR s.sha IS NOT COALESCE(mr.squash_commit_sha, mr.merge_commit_sha, mr.head_sha))
+    ORDER BY mr.merged_at DESC`).all(limite, projet, projet);
+}
+
 async function tour(cfg, { onLog = (m) => console.log(`[retouches] ${m}`), now = new Date().toISOString() } = {}) {
   const bilan = { analysees: 0, liens: 0, restantes: 0, commits: 0, depots: 0, erreurs: 0 };
   if (!actif(cfg)) return bilan;
   const limite = new Date(Date.parse(now) - retentionJours(cfg) * JOUR_MS).toISOString();
-  const aFaire = db.prepare(`SELECT mr.*, repo.project, repo.forge, repo.url FROM mr JOIN repo ON repo.id = mr.repo_id
-    LEFT JOIN mr_fix_scan s ON s.kind = 'mr' AND s.ref = CAST(mr.id AS TEXT)
-    WHERE mr.merged_at IS NOT NULL AND mr.merged_at >= ? AND repo.enabled = 1 AND COALESCE(repo.fetch_mrs, 1) = 1
-      AND COALESCE(mr.squash_commit_sha, mr.merge_commit_sha, mr.head_sha) IS NOT NULL
-      AND (s.ref IS NULL OR s.sha IS NOT COALESCE(mr.squash_commit_sha, mr.merge_commit_sha, mr.head_sha))
-    ORDER BY mr.merged_at DESC`).all(limite);
+  const aFaire = enAttente(cfg, { now });
   const max = plafond(cfg);
   const pris = max > 0 ? aFaire.slice(0, max) : aFaire;
   bilan.restantes = aFaire.length - pris.length;
@@ -499,7 +508,7 @@ const trancheDe = (note) => (note == null ? 'none' : (note * 10 >= 8 ? '8+' : (n
    les corrections par ajout pur et hors MR ne sont pas toutes vues. Aucune clé d'auteur. */
 function stats(cfg, { depuis = null, jusqua = null, projet = '' } = {}) {
   const n = fenetre(cfg);
-  const vide = { enabled: actif(cfg), window: n, merged: 0, touched: 0, bug: 0, tranches: [], repos: [], links: [], pending: 0 };
+  const vide = { enabled: actif(cfg), window: n, merged: 0, touched: 0, bug: 0, tranches: [], repos: [], links: [], pending: 0, unscanned: 0 };
   if (!actif(cfg)) return vide;
   const fin = jusqua || new Date().toISOString();
   const connuAvant = new Date(Date.now() - n * JOUR_MS).toISOString();
@@ -543,6 +552,9 @@ function stats(cfg, { depuis = null, jusqua = null, projet = '' } = {}) {
     ...vide,
     ...finir(total),
     pending,
+    /* Le retard du tour (`fix_links_max` par découverte) : des MR mergées dont le diff n'a pas encore
+       été relu — donc des retouches qui peuvent manquer au chiffre, dit tel quel sur la carte. */
+    unscanned: enAttente(cfg, { now: fin, projet }).length,
     tranches: TRANCHES.map((k) => ({ tranche: k, ...finir(parTranche[k]) })),
     repos: [...parDepot.entries()].map(([project, a]) => ({ project, ...finir(a) })).sort((x, y) => (y.share || 0) - (x.share || 0) || x.project.localeCompare(y.project)),
     links: liens.filter((p) => !p.reference_only).sort((x, y) => (x.days ?? 1e9) - (y.days ?? 1e9)),
@@ -550,7 +562,7 @@ function stats(cfg, { depuis = null, jusqua = null, projet = '' } = {}) {
 }
 
 module.exports = {
-  actif, fenetre, minLignes, plafond, retentionJours, shaDeMerge, candidats,
+  actif, fenetre, minLignes, plafond, retentionJours, shaDeMerge, candidats, enAttente,
   plageDe, hunksRetires, blameLignes, lignesReecrites, analyserMr, analyserCommit, tourCommitsDirects, tour,
   pourCartes, regrouper, requalifier, originesPossibles, stats, trancheDe,
 };

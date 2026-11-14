@@ -1955,6 +1955,11 @@ async function semerPlugins() {
       JSON.stringify([{ kind: 'revert', ref: sha40('squash-303') }]), at(47.9), sha40('squash-304'), 'auto', null, null);
     lien.run(a3.id, b3.id, 'rewrites', 6, 1, 4, JSON.stringify({ ranges: { 'src/facture/lignes.js': [[30, 35]] }, signals: [] }), '[]', at(50.9), sha40('squash-306'), 'dismissed', 'Claire', at(49));
     for (const m of [a1, b1, a2, b2, a3, b3]) db.prepare("INSERT OR REPLACE INTO mr_fix_scan (kind, ref, sha, scanned_at, note) VALUES ('mr', ?, ?, ?, 'demo')").run(String(m.id), sha40(`squash-${m.iid}`), at(0.5));
+    /* Toute MR mergée de la démo passe pour relue : la carte Stats ne doit pas annoncer un retard
+       d'analyse qu'aucune découverte ne viendra jamais résorber ici. */
+    db.prepare(`INSERT OR REPLACE INTO mr_fix_scan (kind, ref, sha, scanned_at, note)
+      SELECT 'mr', CAST(id AS TEXT), COALESCE(squash_commit_sha, merge_commit_sha, head_sha), ?, 'demo' FROM mr
+      WHERE merged_at IS NOT NULL AND COALESCE(squash_commit_sha, merge_commit_sha, head_sha) IS NOT NULL`).run(at(0.5));
     counts.mr_fix_link = 4;
   }
   // eslint-disable-next-line global-require

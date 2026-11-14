@@ -281,6 +281,12 @@ describe('Retouches après merge', () => {
     const connues = db.prepare('SELECT COUNT(*) c FROM mr WHERE merged_at IS NOT NULL AND merged_at <= ?').get(il_y_a(14)).c;
     assert.equal(st.merged, connues, 'le dénominateur : les MR dont la fenêtre est écoulée');
     assert.ok(st.pending > 0, 'les autres attendent leur bilan');
+    // Le retard du tour : les MR mergées de la rétention jamais relues sur leur SHA de merge.
+    const relues = new Set(db.prepare("SELECT ref FROM mr_fix_scan WHERE kind = 'mr'").all().map((x) => Number(x.ref)));
+    const attendues = db.prepare('SELECT id FROM mr WHERE merged_at IS NOT NULL AND merged_at >= ?').all(il_y_a(r.retentionJours(cfg))).map((x) => x.id);
+    assert.ok(attendues.length > 0);
+    assert.equal(st.unscanned, attendues.filter((id) => !relues.has(id)).length, 'le compte des MR en attente d’analyse');
+    assert.equal(r.enAttente(cfg, { projet: 'nulle/part' }).length, 0, 'filtré par dépôt');
     assert.equal(st.tranches.reduce((s, t) => s + t.merged, 0), st.merged);
     assert.ok(st.links.every((p) => p.days != null));
     assert.ok(st.links.every((p, i) => i === 0 || st.links[i - 1].days <= p.days), 'les plus rapides d’abord');

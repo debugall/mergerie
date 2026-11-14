@@ -113,6 +113,7 @@ describe('Retouches après merge', () => {
     assert.equal(s.merged, 2, 'A et B, mergées depuis plus de 5 jours');
     assert.equal(s.touched, 1); assert.equal(s.bug, 1); assert.equal(s.share, 50);
     assert.equal(s.pending, 0);
+    assert.equal(s.unscanned, 0, 'la découverte a tout relu : rien n’attend');
     const t8 = s.tranches.find((t) => t.tranche === '8+');
     assert.equal(t8.merged, 1); assert.equal(t8.touched, 1); assert.equal(t8.median_days, 3); assert.equal(t8.median_lines, 4);
     assert.equal(s.tranches.find((t) => t.tranche === 'none').merged, 1, 'B, sans rapport');
@@ -207,6 +208,7 @@ describe('Retouches après merge', () => {
       const texte = await page.locator('#dashFix').innerText();
       assert.match(texte, /Sur 2 MR mergées.*1 ont été retouchées dans les 5 jours \(50 %\), dont 1 qualifiées bug/);
       assert.match(texte, /Chiffres planchers|Floor figures/);
+      assert.doesNotMatch(texte, /attendent encore leur analyse|await their analysis/, 'rien n’attend : la phrase ne s’affiche pas');
       const lignesT = await page.$$eval('#dashFix .stats-fix-table tbody tr', (trs) => trs.map((t) => [...t.querySelectorAll('td')].map((c) => c.textContent.trim())));
       assert.equal(lignesT.length, 4);
       assert.deepEqual(lignesT[0].slice(0, 5), ['8 et plus', '1', '1', '1', '100 %']);

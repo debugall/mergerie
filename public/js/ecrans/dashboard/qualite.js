@@ -47,7 +47,7 @@ function dashQualiteHtml(s) {
     bugShare: Number(fx.bug_share || 0).toLocaleString(I18Nrt.currentLocale(), { maximumFractionDigits: 1 }),
     period: statsJours ? tr('stats.fix.summary-period', { from: fmtDate(new Date(Date.now() - statsJours * 86400000).toISOString()) }) : tr('stats.fix.summary-all'),
   }))}</p>
-    <p class="muted dash-floor">${esc(tr('stats.fix.floor'))}${fx.pending ? ` ${esc(tr('stats.fix.pending', { n: fx.pending, count: fx.pending, window: fx.window }))}` : ''}</p>
+    <p class="muted dash-floor">${esc(tr('stats.fix.floor'))}${fx.pending ? ` ${esc(tr('stats.fix.pending', { n: fx.pending, count: fx.pending, window: fx.window }))}` : ''}${fx.unscanned ? ` ${esc(tr('stats.fix.unscanned', { n: fx.unscanned, count: fx.unscanned }))}` : ''}</p>
     <h4>${esc(tr('stats.fix.table.title'))}</h4>
     <div class="md-tablewrap"><table class="md-table stats-fix-table">${enteteFix}<tbody>${fx.tranches.map((r) => ligneFix(r, esc(tr(`stats.fix.tranche.${r.tranche}`)))).join('')}</tbody></table></div>
     ${fx.repos.length ? `<details class="stats-fix-repos"><summary>${esc(tr('stats.fix.by-repo'))}</summary>

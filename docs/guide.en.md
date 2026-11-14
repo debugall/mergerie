@@ -2133,7 +2133,10 @@ report". Under the screen's filters (period, repository), a header sentence a no
 followed by the **floor** nature of the figure (fixes by pure addition and outside a merge request are not
 all seen; a follow-up is qualified bug only when a fact says so) and the number of merge requests merged
 less than N days ago, which **do not enter the denominator** — their outcome is not known yet, counting
-them would lower the rate artificially. Then the **Score against follow-up** table: one row per band (`8
+them would lower the rate artificially. The analysis runs **in batches at each discovery** (`fix_links_max`
+merged MRs per round, 10 by default, 0 = no limit): while some still wait for their turn, the card says so —
+`12 merged MRs still await their analysis: follow-ups may be missing` — because an unread MR counts in the
+denominator with no known follow-up. Then the **Score against follow-up** table: one row per band (`8
 and above`, `7 to 8`, `below 7`, `no report`), columns *merged*, *touched up*, *qualified bug*, *share*,
 *median delay*, *median lines* — the table that says whether the threshold means anything; the same table
 **per repository**, folded, each repository leading to Reviews; and the period's follow-ups, **fastest
