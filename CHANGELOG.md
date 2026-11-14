@@ -22,6 +22,7 @@ them, and why it matters. Changes land under **Unreleased** as they are merged i
 
 ### Fixed
 
+- **Third-party plugins: a synchronous call no longer fails with "the host did not answer" after a few milliseconds.** The host answers a worker's call in three steps — post the result, raise the flag, wake the worker — and when the worker went back to waiting between the last two, the late wake-up landed on its *next* call, flag down and port empty: the worker took the host for mute and the plugin's activation failed (`db.migrate: the host did not answer`), as seen on a two-core CI runner. The worker now waits out its whole thirty seconds, in slices, before giving up.
 - **Code viewer: a pending remark's buttons stay in view.** A draft remark of a full paragraph did not wrap under its line of code, so `Edit` and `Delete`, aligned to the right, went off the panel and had to be fetched with the horizontal scroll. The text now wraps, and `Edit` opens an editor as wide as the one for a new comment instead of a twenty-column textarea to enlarge every time. The amber mark of a pending remark, and the handle to reorder todos, had left with the Jenkins plugin when it was extracted: without that plugin a draft looked like a published comment, and with it the editor shrank to a few words wide. Both are back in the core.
 - **Git → Actions: a branch or tag name wraps in the list to delete.** The list is a narrow column and a long name was cut with an ellipsis, which does not tell two sibling branches apart. It now wraps over several lines, in full.
 

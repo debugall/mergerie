@@ -20,18 +20,31 @@ const handlers = { events: new Map(), schedules: new Map(), routes: new Map(), s
 const attentesAsync = new Map();
 
 /* ---------- Appels synchrones vers l'hôte ---------- */
+/* L'hôte répond en trois temps : il poste le résultat sur le port, lève le drapeau, puis
+   réveille (`Atomics.notify`). Si ce worker entre en attente ENTRE le drapeau et le réveil,
+   `Atomics.wait` rend aussitôt « not-equal », le résultat est lu, l'appel suivant baisse le
+   drapeau — et le réveil en retard du précédent tombe sur l'attente du suivant, drapeau à 0,
+   port vide. L'ancienne version y voyait un hôte muet et levait « n'a pas répondu » en quelques
+   millisecondes ; vu sur un runner à deux cœurs, où l'hôte perd la main entre deux instructions.
+   On n'abandonne donc qu'au bout du délai, en tranches : un réveil sans message se réécoute, et
+   un drapeau resté levé par un appel passé se baisse plutôt que de tourner à vide. */
+const DELAI_RPC_MS = 30_000;
 function rpc(prim, args) {
   const id = ++seq;
   Atomics.store(int32, 0, 0);
   port.postMessage({ t: 'rpc', id, prim, args });
+  const limite = Date.now() + DELAI_RPC_MS;
   for (;;) {
-    Atomics.wait(int32, 0, 0, 30_000);
     const m = receiveMessageOnPort(port);
-    if (!m) { if (Atomics.load(int32, 0) === 0) throw new Error(`${prim} : l'hôte n'a pas répondu`); continue; }
-    const r = m.message;
-    if (r.id !== id) continue;
-    if (r.error) throw new Error(r.error);
-    return r.value;
+    if (m) {
+      const r = m.message;
+      if (r.id !== id) continue;
+      if (r.error) throw new Error(r.error);
+      return r.value;
+    }
+    const reste = limite - Date.now();
+    if (reste <= 0) throw new Error(`${prim} : l'hôte n'a pas répondu en ${DELAI_RPC_MS / 1000} s`);
+    if (Atomics.wait(int32, 0, 0, Math.min(reste, 1_000)) === 'not-equal') Atomics.store(int32, 0, 0);
   }
 }
 function rpcAsync(prim, args) {
