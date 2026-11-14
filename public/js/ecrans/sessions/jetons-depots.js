@@ -11,11 +11,18 @@
 
    LE JETON EST LA SÉLECTION, pas un déclencheur : il reste dans la demande tant qu'on rédige,
    et la soumission le retire du texte envoyé (`retirerJetonsDepots`). L'effacer retire la
-   ligne qu'il avait posée — sauf si sa branche a été touchée à la main, signe qu'on y tient. */
+   ligne qu'il avait posée — sauf si sa branche a été touchée à la main, signe qu'on y tient.
+
+   `&&&feature/x` — trois esperluettes — pose cette branche sur TOUTES les lignes : une session
+   sur quatre dépôts porte le même nom de branche quatre fois, et le taper quatre fois était la
+   corvée suivante. Une branche nommée dans le jeton d'un dépôt (`&&nom&branche`) l'emporte sur
+   la globale ; effacer `&&&…` rend aux lignes leur proposition (le libellé) ou le vide. */
 const JETON_DEPOT_MIN = 4;
 /* `(^|[\s(])` : un jeton commence une ligne ou suit une espace — `a&&b` dans du code n'en est
-   pas un. Le nom accepte ce qu'un chemin de projet accepte ; la branche s'arrête à l'espace. */
+   pas un. Le nom accepte ce qu'un chemin de projet accepte ; la branche s'arrête à l'espace.
+   `&&&x` n'est pas pris pour `&&` + nom : le nom n'accepte pas « & ». */
 const JETON_DEPOT_RE = /(^|[\s(])&&([\w./-]+)(?:[&@]([^\s,;)]+))?/g;
+const JETON_BRANCHE_RE = /(^|[\s(])&&&([^\s,;)]+)/g;
 
 function jetonsDepots(texte) {
   const out = [];
@@ -35,9 +42,17 @@ function depotsPourJeton(nom) {
   return repoOptions.filter((r) => r.project.toLowerCase().includes(q));
 }
 
+/* La branche que `&&&branche` pose sur toutes les lignes — la dernière écrite si plusieurs. */
+function brancheGlobaleJeton(texte) {
+  let b = '';
+  for (const m of String(texte || '').matchAll(JETON_BRANCHE_RE)) b = m[2];
+  return b;
+}
+
 /* Le texte envoyé à l'agent : sans les jetons, sans les doubles espaces qu'ils laissent. */
 function retirerJetonsDepots(texte) {
   return String(texte || '')
+    .replace(JETON_BRANCHE_RE, '$1')
     .replace(JETON_DEPOT_RE, '$1')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+$/gm, '')
@@ -64,7 +79,21 @@ function synchroniserJetonsDepots() {
   }
   const lignes = $$('#targetRows .target-row');
   const idDe = (row) => Number((row.querySelector('.t-repo') || {}).value || 0);
-  let aRendre = false;
+  const globale = brancheGlobaleJeton(f.prompt.value);
+  /* La globale se juge sur CE QUE MONTRENT LES CHAMPS, pas sur une mémoire : la proposition
+     de branche (`proposerBranche`, synchrone) l'a souvent déjà posée avant cette synchro
+     débouncée, et une mémoire la croirait neuve ou la croirait partie. Une ligne sans branche
+     de jeton qui ne la porte pas, ou une proposition périmée (le jeton effacé, le champ
+     montre encore sa branche) : on re-rend. */
+  const proposition = propositionBranche();
+  let aRendre = lignes.some((row) => {
+    const champ = row.querySelector('.t-branch');
+    if (!champ) return false;
+    const j = voulus.get(idDe(row));
+    if (j && j.branche) return champ.value !== j.branche;
+    if (globale) return champ.value !== globale;
+    return champ.dataset.propose === '1' && champ.value !== proposition;
+  });
   const courantes = readTargetRows();
 
   /* Les lignes qu'un jeton disparu avait posées : retirées — sauf si leur branche a été écrite
@@ -98,8 +127,9 @@ function synchroniserJetonsDepots() {
   }
   if (!aRendre) return;
   /* Le re-rendu recrée les champs : une branche seulement PROPOSÉE (`ai/…` depuis le libellé,
-     `data-propose`) repart vide pour être re-proposée telle quelle ; une branche écrite à la
-     main voyage sans changer. */
+     ou la globale `&&&…`, `data-propose`) repart vide pour être re-proposée telle quelle — ou
+     plus du tout, si le jeton qui la posait est parti ; une branche écrite à la main voyage
+     sans changer. */
   for (const row of lignes) {
     const champ = row.querySelector('.t-branch');
     const t = champ && champ.dataset.propose === '1' ? courantes.find((x) => x.repo_id === idDe(row)) : null;
@@ -113,6 +143,9 @@ function synchroniserJetonsDepots() {
     const j = jetonsPoses.get(id);
     const champ = row.querySelector('.t-branch');
     if (j && j.branche && champ) { champ.value = j.branche; champ.dataset.touche = '1'; delete champ.dataset.propose; }
+    /* La globale vaut pour TOUTE ligne sans branche de jeton, écrite à la main comprise : le
+       jeton est un ordre, pas une suggestion. Marquée proposée, elle repart avec lui. */
+    else if (globale && champ) { champ.value = globale; champ.dataset.propose = '1'; delete champ.dataset.touche; }
     if (nouveaux.includes(id)) {
       row.classList.add('t-row-jeton');
       setTimeout(() => row.classList.remove('t-row-jeton'), 1500);

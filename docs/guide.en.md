@@ -935,8 +935,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   whose name contains "pricing", `&&pricing&feature/x` (or `@`) also sets its branch. One repository
   matches → the row appears at once; several → the autocompletion menu offers them and `Enter` decides —
   never two repositories added on a vague name. The token **is** the selection: deleting it removes the
-  row (unless its branch was typed by hand), and the submission strips it from the text sent to the agent;
-  Same convention in exploration. The working branch, for its part, is only proposed from the session's
+  row (unless its branch was typed by hand), and the submission strips it from the text sent to the agent.
+  `&&&feature/x` (three ampersands) sets that branch on **every** repository of the session — those already
+  listed, those added afterwards —, a branch named in a repository's own token taking precedence; deleting
+  it gives the rows their proposal back. Same convention in exploration. The working branch, for its part, is only proposed from the session's
   **label** (`ai/<label>`), never from the request: without a label, the field stays empty, to be written. The prompt is applied to each
   project, sequentially — **one failing project does not stop the others**. Each project then carries its
   own actions: **Diff · Push · Create MR · Merge**. The line also offers **`Review`** as soon as the merge

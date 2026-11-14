@@ -973,7 +973,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   (ou `@`) pose aussi sa branche. Un seul dépôt correspond → la ligne apparaît aussitôt ; plusieurs → le
   menu de l'autocomplétion propose et `Entrée` tranche — jamais deux dépôts ajoutés sur un nom flou. Le
   jeton **est** la sélection : l'effacer retire la ligne (sauf branche écrite à la main), et la soumission
-  l'enlève du texte envoyé à l'agent. Même convention en exploration. La branche de travail, elle, ne se
+  l'enlève du texte envoyé à l'agent. `&&&feature/x` (trois esperluettes) pose cette branche sur **tous** les
+  dépôts de la session — ceux déjà en ligne, ceux ajoutés ensuite —, une branche nommée dans le jeton d'un
+  dépôt passant devant ; l'effacer rend aux lignes leur proposition. Même convention en exploration. La branche de travail, elle, ne se
   propose que depuis le **libellé** de la session (`ai/<libellé>`), jamais depuis la demande : sans
   libellé, le champ reste vide, à écrire. Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.

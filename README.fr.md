@@ -118,7 +118,7 @@ demandent de traverser des dossiers.
   (avec retour de l'IA et demande de correction), **exploration** de code en lecture seule et **questions
   libres** posées hors de tout dépôt (gardées, libellées, reprenables) ; les dépôts d'une session se
   **nomment dans la demande** (`&&tarification&feature/x` ajoute le dépôt et sa branche au fil de la frappe,
-  le jeton part avant l'envoi) ;
+  `&&&feature/x` pose la même branche sur tous, les jetons partent avant l'envoi) ;
   *du prompt à la MR convergée* en un bouton. Sur une session multi-dépôts, chaque projet se lance — et se
   fait corriger — **séparément**. La dernière itération garde **le diff de ce qu'elle a changé** — hors
   dépôt compris, où un dépôt de suivi tenu hors de ton dossier remplace la branche absente : relire

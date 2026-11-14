@@ -4,7 +4,8 @@
  * Choisir ses dépôts dans la modale, c'est un combo par ligne ; on les nomme dans la demande
  * au fil de la frappe. Couvert ici, dans un vrai navigateur : quatre lettres au moins ; un seul
  * dépôt correspond → la ligne se pose toute seule ; plusieurs → le menu, et Entrée tranche ;
- * `&&nom&branche` (ou `@`) pose la branche ; effacer le jeton retire la ligne, sauf branche
+ * `&&nom&branche` (ou `@`) pose la branche, `&&&branche` la pose sur toutes les lignes (le jeton
+ * d'un dépôt passe devant, la retirer rend la proposition) ; effacer le jeton retire la ligne, sauf branche
  * écrite à la main ; la branche de travail ne se propose pas depuis la demande ; la soumission envoie
  * la demande SANS les jetons — en codage ET en exploration (la modale est une, ses envois sont
  * deux) ; une demande faite de jetons seuls est refusée sous le champ. Un seul `startApp()`. */
@@ -161,6 +162,52 @@ describe('Dev IA — les jetons &&dépôt de la demande', { skip: dispo ? false 
     await page.waitForFunction(() => document.querySelector('#taskForm [name="label"]').value === 'Libellé');
     await page.evaluate(() => new Promise((r) => setTimeout(r, 400)));
     assert.deepEqual(await lignes(), [['grp/api-core', 'hotfix/x']]);
+    await fermer();
+  });
+
+  test('&&&branche pose la même branche sur toutes les lignes, le jeton d’un dépôt passe devant, l’effacer rend la proposition', async () => {
+    const avant = compte();
+    await ouvrir('code');
+    await page.locator('#taskForm [name="label"]').fill('Tva');
+    const prompt = page.locator('#taskPrompt');
+    await prompt.fill('Aligner la TVA &&core &&tarification&hotfix/tva &&&feature/tva-2026');
+    const branches = () => page.$$eval('#targetRows .target-row', (rows) => rows.map((r) => [r.querySelector('.t-repo-search').value, r.querySelector('.t-branch').value]));
+    await page.waitForFunction(() => {
+      const l = [...document.querySelectorAll('#targetRows .target-row')].map((r) => [r.querySelector('.t-repo-search').value, r.querySelector('.t-branch').value]);
+      return l.length >= 2 && l.some((x) => x[0] === 'grp/api-core' && x[1] === 'feature/tva-2026')
+        && l.some((x) => x[0] === 'grp/tarification' && x[1] === 'hotfix/tva')
+        && l.every((x) => x[0] === 'grp/tarification' || x[1] === 'feature/tva-2026');
+    });
+    // Une ligne ajoutée au « + » APRÈS le jeton reçoit la globale aussi (compte pris AVANT le clic).
+    const nAvant = (await branches()).length;
+    await page.locator('#addTarget').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#targetRows .target-row').length === n, nAvant + 1);
+    assert.equal((await branches()).at(-1)[1], 'feature/tva-2026', 'la ligne neuve porte la branche globale');
+    // La ligne neuve répète le premier dépôt : retirée avant l'envoi, deux lignes sur un même dépôt sont refusées.
+    await page.locator('#targetRows .target-row').nth(nAvant).locator('[data-rmrow]').click();
+    await page.waitForFunction((n) => document.querySelectorAll('#targetRows .target-row').length === n, nAvant);
+    // Le jeton d'un dépôt passe devant la globale, et une modification de la globale suit partout.
+    await prompt.fill('Aligner la TVA &&core &&tarification&hotfix/tva &&&feature/tva-2027');
+    await page.waitForFunction(() => [...document.querySelectorAll('#targetRows .target-row')]
+      .every((r) => r.querySelector('.t-branch').value === (r.querySelector('.t-repo-search').value === 'grp/tarification' ? 'hotfix/tva' : 'feature/tva-2027')));
+    // La soumission envoie les branches posées et un prompt sans AUCUN jeton.
+    await page.locator('#taskSubmitOnly').click();
+    await page.waitForSelector('#taskModal[hidden]', { state: 'attached' });
+    await attendreServeur(async () => compte() === avant + 1, 'la session est créée');
+    const t = await derniere();
+    assert.equal(t.prompt, 'Aligner la TVA');
+    const parDepot = Object.fromEntries(t.targets.map((x) => [x.repo_id, x.branch]));
+    assert.equal(parDepot[ids['grp/tarification']], 'hotfix/tva');
+    assert.equal(parDepot[ids['grp/api-core']], 'feature/tva-2027');
+    assert.ok(Object.values(parDepot).every((b) => b === 'hotfix/tva' || b === 'feature/tva-2027'));
+    // Retirer `&&&…` rend aux lignes leur proposition — ici celle du libellé.
+    await ouvrir('code');
+    await page.locator('#taskForm [name="label"]').fill('Tva');
+    await prompt.fill('Aligner la TVA &&core &&&feature/tva-2026');
+    await page.waitForFunction(() => [...document.querySelectorAll('#targetRows .target-row')].length
+      && [...document.querySelectorAll('#targetRows .target-row')].every((r) => r.querySelector('.t-branch').value === 'feature/tva-2026'));
+    await prompt.fill('Aligner la TVA &&core');
+    await page.waitForFunction(() => [...document.querySelectorAll('#targetRows .target-row')].every((r) => r.querySelector('.t-branch').value === 'ai/tva'));
     await fermer();
   });
 

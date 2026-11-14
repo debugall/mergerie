@@ -76,14 +76,19 @@ function slugBranche(texte, mots = 6) {
    les premiers mots de la demande : un nom de branche qui se réécrit sous les yeux à chaque mot
    tapé, pour finir sur les quatre premiers d'une phrase qui n'était pas un titre. Sans libellé,
    le champ reste vide, à écrire. Proposée seulement — on n'écrase JAMAIS ce qui a été tapé, et
-   un champ vidé volontairement le reste (`data-touche`). */
-function proposerBranche() {
-  if (taskKind !== 'code') return;
+   un champ vidé volontairement le reste (`data-touche`). Un jeton `&&&branche` dans la demande
+   (sessions/jetons-depots.js) passe devant le libellé : une ligne ajoutée au « + » le reçoit. */
+function propositionBranche() {
   const f = $('#taskForm');
-  if (!f) return;
-  const source = (f.label && f.label.value.trim()) || '';
-  const slug = slugBranche(source);
-  if (!slug) return;
+  if (!f || taskKind !== 'code') return '';
+  const globale = f.prompt ? brancheGlobaleJeton(f.prompt.value) : '';
+  if (globale) return globale;
+  const slug = slugBranche((f.label && f.label.value.trim()) || '');
+  return slug ? `ai/${slug}` : '';
+}
+function proposerBranche() {
+  const proposition = propositionBranche();
+  if (!proposition) return;
   /* `.target-row` : la ligne d'EN-TÊTE porte la même classe pour s'aligner sur la colonne,
      et n'est pas un champ. */
   for (const champ of $$('#targetRows .target-row .t-branch')) {
@@ -92,7 +97,7 @@ function proposerBranche() {
        quand on l'a volontairement vidée. */
     if (champ.dataset.touche === '1') continue;
     if (champ.value.trim() && champ.dataset.propose !== '1') continue;
-    champ.value = `ai/${slug}`;
+    champ.value = proposition;
     champ.dataset.propose = '1';
   }
 }
