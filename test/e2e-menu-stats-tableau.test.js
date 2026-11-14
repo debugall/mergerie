@@ -81,7 +81,7 @@ describe('Menu Statistiques — le tableau de bord', { skip: dispo ? false : MSG
     ]));
     assert.deepEqual(tuiles, [
       ['À traiter', '2', 'BUTTON', 'to_review'], ['Reviewées', '3', 'BUTTON', 'reviewed'], ['Traitées', '1', 'BUTTON', 'done'],
-      ['Note moyenne', '6.7/10', 'BUTTON', 'qualite'], ['MR retouchées', '—', 'BUTTON', 'qualite'], ['Tokens (minorant)', '20500', 'BUTTON', 'cout'],
+      ['Note moyenne', '6.7/10', 'BUTTON', 'qualite'], ['MR retouchées', '0%', 'BUTTON', 'qualite'], ['Tokens (minorant)', '20500', 'BUTTON', 'cout'],
     ]);
     const onglets = await page.$$eval('#dashboard [data-stats-sub]', (bs) => bs.map((b) => [b.textContent.trim(), b.classList.contains('active')]));
     assert.deepEqual(onglets, [['Vue d’ensemble', true], ['Flux', false], ['Qualité', false], ['Coût', false]]);
