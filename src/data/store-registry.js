@@ -1929,7 +1929,7 @@ const REGISTRE = [
       // Ce qu'on appelle « entré sans relecture » : la branche par défaut, et les protégées ou non.
       'periode_watch_protected',
       // Jira → Stats : ce qui compte comme « bug » et comme « US » — une convention d'équipe.
-      'jira_stats_bug_types', 'jira_stats_us_types',
+      'jira_stats_bug_types', 'jira_stats_us_types', 'jira_tech_marker',
       // Les croisements de MR : relever les fichiers, le plafond d'appels, croiser entre cibles — l'outil, pas la machine.
       'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
       // Les tests touchés : l'interrupteur, le seuil, et les motifs de test / neutres — un faux positif corrigé par l'un l'est pour tous.

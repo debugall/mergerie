@@ -913,7 +913,7 @@ par défaut du dépôt) → **prompt IA qui modifie les fichiers** → commit �
 le statut de la session est un **agrégat** des statuts de ses projets.
 
 **Enrichissement Jira (optionnel, à la création)** — `POST /api/jira/fetch { key }` réutilise
-`jira.fetchIssue` + `issueToContext` (ADF → Markdown) et renvoie `{ key, summary, context }`. Le front
+`jira.fetchIssue` + `issueToContext` (ADF → Markdown ; titre, description et le PREMIER commentaire qui commence par `config.jira_tech_marker`, `#tech` par défaut, venu avec le ticket par `fields=comment`) et renvoie `{ key, summary, context }`. Le front
 **préfixe le prompt** avec ce bloc de contexte (choix : injection visible/éditable plutôt qu'un champ
 stocké séparé — zéro changement de schéma). Le numéro est pré-rempli via la clé détectée dans la
 branche (`/([A-Za-z]+-\d+)/`, même règle que `jira.ticketKey`). `GET /api/status` expose

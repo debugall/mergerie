@@ -462,7 +462,9 @@ discovery. The assignment itself happens on the forge: Mergerie reads it, it doe
   time and token cost — pick them deliberately.
 - `Context` attaches to an MR anything that helps judge it — ticket content, a specification, a business
   rule, an excerpt of a conversation — as text and/or a **screenshot** (paste with Ctrl+V). If **Jira** is
-  configured (URL + email + API token, Settings → Jira), the ticket's **summary + description** are
+  configured (URL + email + API token, Settings → Jira), the ticket's **summary + description** — and its
+  **technical comment**: the first comment starting with `#tech` (marker set in Settings → Jira), that
+  one only, joins the context under a "Technical note" heading — are
   **fetched automatically at discovery** and pre-fill the context — the nominal case is **zero clicks**.
   What you type by hand stays a **separate addition** (never overwritten), and a **Refresh** button
   re-fetches the ticket on demand. All of it goes into the review prompt alongside the diff, and the button

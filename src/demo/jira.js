@@ -48,6 +48,8 @@ const ISSUES = [
     related: [{ key: 'PROJ-1421', relation: 'est lié à', direction: 'outward' }],
     comments: [
       { author: 'Product Owner', created: '2026-07-22T11:20:00.000+0000', bodyMd: 'Priorité confirmée pour le sprint prochain.' },
+      // Le commentaire « #tech » : repris dans le contexte de review, lui seul (Réglages → Jira).
+      { author: 'Alex Martin', created: '2026-07-23T09:10:00.000+0000', bodyMd: "#tech L'échéancier se calcule côté `payment-service` (endpoint `/installments/quote`), jamais dans le front ; arrondi au centime sur la DERNIÈRE échéance ; le partenaire refuse les paniers > 3 000 €." },
     ],
   },
   {

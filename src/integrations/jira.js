@@ -263,7 +263,9 @@ function authHeader(cfg) {
 async function fetchIssue(cfg, key) {
   if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const base = String(cfg.jira_url).trim().replace(/\/+$/, '');
-  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,attachment,issuetype,issuelinks`;
+  /* `comment` dans les champs : la première page des commentaires vient avec le ticket, SANS
+     appel de plus — c'est là qu'on cherche le commentaire « #tech » (cf. `commentaireTech`). */
+  const url = `${base}/rest/api/3/issue/${encodeURIComponent(key)}?fields=summary,description,status,attachment,issuetype,issuelinks,comment`;
   const res = await request(url, {
     headers: { Authorization: authHeader(cfg), Accept: 'application/json' },
   });
@@ -273,10 +275,22 @@ async function fetchIssue(cfg, key) {
   let data;
   try { data = JSON.parse(res.body); } catch { throw new Error(t('err.jira.not-json')); }
   const fields = data.fields || {};
+  /* Les commentaires : ceux venus avec le ticket ; sinon (un serveur qui ne les joint pas) une
+     lecture à part, best-effort — un ticket sans ses commentaires reste un ticket. */
+  let commentaires = fields.comment && Array.isArray(fields.comment.comments) ? fields.comment.comments : null;
+  if (!commentaires) {
+    try {
+      const c = await jiraGet(cfg, `/rest/api/3/issue/${encodeURIComponent(key)}/comment?maxResults=100&orderBy=created`);
+      commentaires = c.comments || [];
+    } catch { commentaires = []; }
+  }
+  const marqueur = marqueurTech(cfg);
   return {
     key: data.key || key,
     summary: fields.summary || '',
     descriptionMd: adfToMarkdown(fields.description),
+    techMd: commentaireTech(commentaires.map((cm) => adfToMarkdown(cm.body)), marqueur),
+    techMarker: marqueur,
     /* LE STATUT ÉTAIT DANS LA RÉPONSE ET PARTAIT À LA POUBELLE. On le garde : c'est ce qui
        permet de dire « ticket en revue » sur une merge request SANS surveiller son ticket,
        et sans un seul appel de plus — la découverte lit déjà l'issue en entier. */
@@ -292,11 +306,34 @@ async function fetchIssue(cfg, key) {
   };
 }
 
-// Bloc de contexte prêt à stocker : titre + description.
+/* LE COMMENTAIRE « #tech » : la précision technique que l'équipe pose sur le ticket en
+   commentaire — là où le PO n'écrit pas —, et qui compte autant que la description pour juger
+   une merge request. Le PREMIER commentaire qui commence par le marqueur, lui seul : les autres
+   commentaires (relances, « reproduit en préprod ») n'ont pas leur place dans un prompt.
+   Le marqueur se compare sans la casse ni les espaces — l'éditeur de Jira fait d'un « #tech »
+   tapé en début de ligne un titre « # tech » —, et il est retiré du texte retenu. */
+const MARQUEUR_TECH_DEFAUT = '#tech';
+const marqueurTech = (cfg) => String((cfg && cfg.jira_tech_marker) || '').trim() || MARQUEUR_TECH_DEFAUT;
+function commentaireTech(corps, marqueur = MARQUEUR_TECH_DEFAUT) {
+  const m = String(marqueur || MARQUEUR_TECH_DEFAUT).replace(/\s+/g, '');
+  if (!m) return '';
+  /* Frontière après le marqueur quand il finit par une lettre : « #technique » n'est pas « #tech ». */
+  const fin = /[\p{L}\p{N}_]$/u.test(m) ? '(?![\\p{L}\\p{N}_])' : '';
+  const re = new RegExp(`^\\s*${[...m].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*')}${fin}`, 'iu');
+  for (const texte of corps || []) {
+    const s = String(texte || '');
+    if (!re.test(s)) continue;
+    return s.replace(re, '').replace(/^[\s:—–-]+/, '').trim();
+  }
+  return '';
+}
+
+// Bloc de contexte prêt à stocker : titre + description + le commentaire « #tech » s'il existe.
 function issueToContext(issue) {
   const parts = [];
   if (issue.summary) parts.push(`# ${issue.summary}`);
   if (issue.descriptionMd) parts.push(issue.descriptionMd);
+  if (issue.techMd) parts.push(`## ${t('jira.tech-comment.title', { marker: issue.techMarker || MARQUEUR_TECH_DEFAUT })}\n\n${issue.techMd}`);
   return parts.join('\n\n').trim();
 }
 
@@ -1007,4 +1044,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, request, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { isConfigured, request, commentaireTech, marqueurTech, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

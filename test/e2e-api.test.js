@@ -492,6 +492,13 @@ describe('API de bout en bout', () => {
           ],
         },
       },
+      /* Trois commentaires : un bavardage, le « #tech » (l'éditeur de Jira en fait un titre « # tech »),
+         et un « #dev » — SEUL celui du marqueur configuré rejoint le contexte. */
+      comments: [
+        { id: '1', body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Reproduit en préprod.' }] }] } },
+        { id: '2', body: { type: 'doc', content: [{ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'tech' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'Arrondir au centime sur la dernière ligne.' }] }] } },
+        { id: '3', body: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: '#dev Passer par le service de taxes.' }] }] } },
+      ],
     };
 
     const nonConfig = await app.api('POST', '/api/jira/test', { key: 'PROJ-21977' });
@@ -522,11 +529,23 @@ describe('API de bout en bout', () => {
     assert.match(fetch.body.context, /^# Calculer le total/);
     assert.match(fetch.body.context, /## Besoin/);
     assert.match(fetch.body.context, /\*\*Total \*\*TTC/);
+    // Le commentaire « #tech », et lui seul, sous son titre ; le marqueur n'y est plus.
+    assert.match(fetch.body.context, /## Précision technique \(commentaire #tech\)\n\nArrondir au centime sur la dernière ligne\./);
+    assert.doesNotMatch(fetch.body.context, /Reproduit en préprod|Passer par le service|# tech/);
 
     const refresh = await app.api('POST', `/api/mrs/${mrId}/jira-refresh`);
     assert.equal(refresh.body.ok, true);
     const detail = await app.api('GET', `/api/mrs/${mrId}`);
     assert.match(detail.body.ticket.jira_text, /Calculer le total/);
+    assert.match(detail.body.ticket.jira_text, /Arrondir au centime/, 'le contexte rangé sur la MR porte le commentaire technique');
+
+    // Le marqueur se règle (Réglages → Jira) : « #dev » retient l'autre commentaire ; vidé, « #tech » revient.
+    await app.configure({ jira_tech_marker: '#dev' });
+    const dev = await app.api('POST', '/api/jira/fetch', { key: 'PROJ-21977' });
+    assert.match(dev.body.context, /## Précision technique \(commentaire #dev\)\n\nPasser par le service de taxes\./);
+    assert.doesNotMatch(dev.body.context, /Arrondir au centime/);
+    await app.configure({ jira_tech_marker: '' });
+    assert.equal((await app.api('GET', '/api/config')).body.jira_tech_marker, '#tech');
   });
 
   test('Jira (onglet) : liste des tickets affectés + détail avec métadonnées et commentaires', async () => {

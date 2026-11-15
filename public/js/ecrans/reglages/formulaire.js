@@ -18,7 +18,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'stale_mr_days', 'auto_runner', 'auto_post_review_link', 'review_link_template', 'jira_notify_template',
   'jira_notify_merge', 'jira_merge_template',
   'periode_banner_days', 'periode_hide_bots', 'periode_watch_protected',
-  'jira_stats_bug_types', 'jira_stats_us_types',
+  'jira_stats_bug_types', 'jira_stats_us_types', 'jira_tech_marker',
   'mr_files_enabled', 'mr_files_max', 'mr_files_cross_targets',
   'tests_touched_enabled', 'tests_touched_min_code', 'test_patterns', 'neutral_patterns',
   'deps_enabled', 'manifest_patterns',

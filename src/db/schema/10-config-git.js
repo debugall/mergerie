@@ -26,6 +26,10 @@ try { db.exec("ALTER TABLE config ADD COLUMN periode_watch_protected TEXT DEFAUL
 try { db.exec("ALTER TABLE config ADD COLUMN jira_stats_bug_types TEXT DEFAULT 'Bug'"); } catch { /* déjà présente */ }
 try { db.exec("ALTER TABLE config ADD COLUMN jira_stats_us_types TEXT DEFAULT 'Story, User Story'"); } catch { /* déjà présente */ }
 
+/* Le marqueur du commentaire Jira repris dans le contexte de review (« #tech ») : une convention
+   d'équipe, écrite une fois, partagée comme le reste de `config`. */
+try { db.exec("ALTER TABLE config ADD COLUMN jira_tech_marker TEXT DEFAULT '#tech'"); } catch { /* déjà présente */ }
+
 /* Consignes permanentes ajoutées à toutes les sessions de codage (dépôt et hors dépôt). */
 try { db.exec('ALTER TABLE config ADD COLUMN ai_extra_instructions TEXT'); } catch { /* déjà présente */ }
 

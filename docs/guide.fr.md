@@ -488,7 +488,9 @@ Mergerie la lit, il ne la remplace pas.
   règle métier, extrait d’échange — en texte et/ou en **capture d’écran** (collable au Ctrl+V).
   Si **Jira** est configuré (URL + email + jeton d’API, Réglages → Jira), le **summary + description**
   du ticket sont **récupérés automatiquement au discover** et pré-remplissent le contexte — cas nominal
-  **zéro clic**. Ta saisie manuelle reste un **complément distinct** (jamais écrasé), et un bouton
+  **zéro clic** —, avec le **commentaire technique** du ticket : le premier commentaire qui commence par
+  `#tech` (marqueur réglable dans Réglages → Jira), lui seul, rejoint le contexte sous un titre
+  « Précision technique ». Ta saisie manuelle reste un **complément distinct** (jamais écrasé), et un bouton
   **Rafraîchir** re-récupère le ticket à la demande. Le tout est injecté dans le prompt de review, en
   plus du diff, et le bouton porte un ✓ quand un contexte est déjà enregistré.
 - **Merger ouvre une confirmation avec ses options.** Avant de fusionner, une modale rappelle la MR et
