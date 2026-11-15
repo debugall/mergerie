@@ -361,7 +361,11 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
     await ouvrirSurveilles();
     await page.locator('#jiraWatchList .jira-item').first().click();
     await page.waitForSelector('#jiraWatchDetail .jira-detail-inner');
-    const cote = await page.locator('#jiraWatchDetail').textContent();
+    /* L'IDENTITÉ du ticket, pas le texte entier du panneau : la fiche se complète APRÈS son
+       rendu (« Dans Mergerie », la précision technique arrivent par des appels à part), et
+       deux lectures du même ticket à deux instants ne portent pas le même texte. */
+    const cote = [await page.locator('#jiraWatchDetail .jira-comment-form').getAttribute('data-key'),
+      await page.locator('#jiraWatchDetail .jira-title').textContent()];
 
     /* Aller et retour : on attend que chaque panneau soit VISIBLE — revenir avant que
        « Surveillés » ne soit rechargé lirait l'ancien contenu et le test passerait pour de
@@ -371,7 +375,8 @@ describe('Jira · Surveillés — le ticket s’ouvre à droite', { skip: dispo 
     await page.locator('#jiraSubMine').waitFor({ state: 'visible' });
     await page.locator('#tab-jira .subnav [data-jsub="watch"]').click();
     await page.waitForSelector('#jiraWatchDetail .jira-detail-inner');
-    assert.equal(await page.locator('#jiraWatchDetail').textContent(), cote,
+    assert.deepEqual([await page.locator('#jiraWatchDetail .jira-comment-form').getAttribute('data-key'),
+      await page.locator('#jiraWatchDetail .jira-title').textContent()], cote,
       'le ticket lu dans « Surveillés » est toujours là au retour');
   });
 });
