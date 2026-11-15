@@ -7,6 +7,16 @@
 
 /* ---------- Sous-onglets des Réglages ---------- */
 .subnav { margin: var(--s-4) 0 var(--s-5); flex-wrap: wrap; }
+/* LA BARRE COLLE SOUS L'EN-TÊTE (`--header-h`, mesuré en JS comme pour la barre latérale) : un
+   sous-onglet de Réglages fait plusieurs écrans de haut, et changer d'onglet obligeait à remonter
+   tout en haut. Le fond pleine largeur cache ce qui défile derrière, le trait marque le bord ;
+   z-index sous l'en-tête (10) et les menus déroulants, au-dessus du contenu. */
+.reglages-barre-onglets {
+  position: sticky; top: var(--header-h, 56px); z-index: 8;
+  margin: 0 0 var(--s-5); padding: var(--s-2) 0;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.reglages-barre-onglets .subnav { margin: 0; }
 .subtab { display: none; }
 .subtab.active { display: block; }
 .subtab > h2:first-child { margin-top: 0; }

@@ -2357,7 +2357,9 @@ vocation à voyager : c'est ce qui permettra plus tard à une équipe de partage
 le moindre secret quitte les machines.
 
 Sous-onglets, **dans l'ordre du parcours** — connecter, choisir le code, régler la review, régler
-l'outil, les intégrations optionnelles, le banc d'essai :
+l'outil, les intégrations optionnelles, le banc d'essai. La barre des sous-onglets **reste collée sous
+l'en-tête pendant le défilement** : un sous-onglet fait plusieurs écrans de haut, et l'on change
+d'onglet sans remonter.
 
 **Git** (**connexion GitLab** — URL + access token, avec *Tester la connexion* —, **connexion GitHub** — URL
 (vide = github.com, sinon GitHub Enterprise) + token, avec *Tester GitHub* —, **dossier de clonage**,

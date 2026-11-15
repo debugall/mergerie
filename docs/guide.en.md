@@ -2267,7 +2267,8 @@ only ever shows `***`, the button asks the server for the value on that click an
 straight to the clipboard.
 
 Sub-tabs, **in the order of the journey** — connect, choose the code, tune the review, tune the
-tool, the optional integrations, the test bench. Every save, on any sub-tab, now confirms with a
+tool, the optional integrations, the test bench. The sub-tab bar **stays stuck under the header while
+you scroll**: a sub-tab is several screens tall, and you switch without scrolling back up. Every save, on any sub-tab, now confirms with a
 **toast** once it lands (an error toast if the server refuses):
 
 **Git** (the **GitLab connection** — URL + access token, with

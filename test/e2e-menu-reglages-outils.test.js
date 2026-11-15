@@ -94,6 +94,23 @@ describe('Menu Réglages — apparence, langue, notifications, sauvegarde, tests
   const racine = (attr) => page.evaluate((a) => document.documentElement.getAttribute(a), attr);
   const config = async () => (await app.api('GET', '/api/config')).body;
 
+  /* LA BARRE DES SOUS-ONGLETS COLLE SOUS L'EN-TÊTE : défilé au bas de « Général » (plusieurs écrans
+     de haut), son bord haut est celui du bas de l'en-tête, et un clic y change encore d'onglet. */
+  test('la barre des sous-onglets reste sous l’en-tête quand on défile, et répond encore', async () => {
+    await ouvrir('config');
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForFunction(() => window.scrollY > 300);
+    const [barre, entete] = await page.evaluate(() => {
+      const b = document.querySelector('#tab-admin .reglages-barre-onglets').getBoundingClientRect();
+      const h = document.querySelector('body > header').getBoundingClientRect();
+      return [Math.round(b.top), Math.round(h.bottom)];
+    });
+    assert.equal(barre, entete, 'la barre est collée juste sous l’en-tête');
+    await page.locator('#tab-admin .subnav [data-sub="notif"]').click();
+    await page.waitForSelector('#sub-notif.active');
+    await page.evaluate(() => window.scrollTo(0, 0));
+  });
+
   /* ------------------------------------------------------------- Général ---- */
 
   test('Apparence : sombre et clair s’appliquent tout de suite et survivent au rechargement ; auto suit le système', async () => {

@@ -1,4 +1,7 @@
     <section id="tab-admin" class="tab">
+        <!-- LA BARRE RESTE SOUS L'EN-TÊTE PENDANT LE DÉFILEMENT : un sous-onglet de Réglages fait
+             plusieurs écrans de haut, et changer d'onglet obligeait à remonter tout en haut. -->
+        <div class="reglages-barre-onglets">
         <div class="segmented subnav" role="tablist">
             <!-- L'ORDRE SUIT LE PARCOURS, et non l'ordre dans lequel les fonctionnalités ont été
                  écrites : connecter (Git) → choisir le code (Dépôts) → régler la review (Merge
@@ -19,6 +22,7 @@
             <!--@plugins:settings-nav-->
             <button data-sub="plugins" role="tab" title="Les plugins installés : activer, désactiver, régler, installer" data-i18n-title="plugins.settings.title" data-i18n="plugins.settings.sub">Plugins</button>
             <button data-sub="aisession" role="tab" title="Vérifier qu'on peut reprendre une session d'agent (test technique)" data-i18n-title="settings.aisession.tab-title" data-i18n="settings.sub.aisession">AI sessions</button>
+        </div>
         </div>
 
         <!-- Sous-onglet : Vérificateurs (vérification objective) -->
