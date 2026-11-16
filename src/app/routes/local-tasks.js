@@ -21,7 +21,7 @@ const localgit = require('../../session/localgit');
 const pieces = require('../../agent/pieces');
 const path = require('path');
 const fs = require('fs');
-const { readFileSafe, wrap } = require('../http');
+const { parseConvergeOpts, readFileSafe, wrap } = require('../http');
 const { auteurs, basculerPartage, exigerProprietaire, passesPayload, programmations, rangement } = require('../lib/partage');
 const { piecesExposees, savePiecesEtImages } = require('../lib/pieces');
 const { applySessionId, chapeauReponse, coutParSession, diffDePasse, dureeParSession, envoyerSuivi, lireCliSession, lireLibelle, localDirsFor, localTaskById, normalizeDirIds, normalizeSessionId, poserSuivi } = require('../lib/sessions');
@@ -171,6 +171,16 @@ app.post('/api/local-tasks/:id/run', wrap((req, res) => {
   // Lancer à la main annule le lancement programmé : la session ne doit pas partir deux fois.
   jobs.programmation.programmer('local_task', lt.uid, 'run', null);
   res.json(jobs.startLocalJob(lt.id, dirIds ? { dirIds } : {}));
+}));
+/* « Converger » une session hors dépôt, depuis sa carte : ce qui reste est codé, tout est poussé sur
+   la branche de la session, puis MR et boucle de convergence par dossier — comme sur dépôt. Sans
+   branche, rien à pousser : on le dit plutôt que de lancer un job qui ne ferait rien. */
+app.post('/api/local-tasks/:id/converge', wrap((req, res) => {
+  const lt = localTaskById(Number(req.params.id));
+  if (!lt) throw new Error(t('err.session-introuvable'));
+  if (!lt.branch) throw new Error(t('err.local.converge-needs-branch'));
+  jobs.programmation.programmer('local_task', lt.uid, 'run', null);
+  res.json(jobs.startLocalJob(lt.id, { converger: parseConvergeOpts(req.body) }));
 }));
 // Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
 // la session de chacun (l'IA garde le contexte du travail qu'elle vient de produire).

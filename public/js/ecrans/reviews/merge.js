@@ -238,10 +238,13 @@ async function openConvergeModal(target) {
   /* Titre et phrase d'accroche selon la CIBLE : depuis une session, l'IA va d'abord
      coder et ouvrir la MR — annoncer « Converger la MR » y serait faux. */
   const isTask = target.type === 'task';
-  $('#convergeModalTitle').textContent = tr(isTask ? 'converge.modal.title-task' : 'converge.modal.title');
+  // Hors dépôt : une session aussi, mais par DOSSIER, et la MR suppose un remote connu de Mergerie.
+  const isLocal = target.type === 'local';
+  $('#convergeModalTitle').textContent = tr(isTask || isLocal ? 'converge.modal.title-task' : 'converge.modal.title');
   const what = $('#convergeModalWhat');
-  what.textContent = target.label ? tr(isTask ? 'converge.modal.what-task' : 'converge.modal.what', { what: target.label }) : '';
-  what.hidden = !target.label;
+  what.textContent = isLocal ? tr('converge.modal.what-local', { branch: target.branch || '' })
+    : (target.label ? tr(isTask ? 'converge.modal.what-task' : 'converge.modal.what', { what: target.label }) : '');
+  what.hidden = !isLocal && !target.label;
   // Note spécifique session : l'IA va AUSSI coder et ouvrir la MR.
   const note = $('#convSessionNote'); if (note) note.hidden = !isTask;
   $('#convergeModal').hidden = false;
@@ -254,12 +257,13 @@ $('#convStart') && $('#convStart').addEventListener('click', async () => {
   const body = { threshold: $('#convThreshold').value, maxPasses: $('#convPasses').value };
   const b = $('#convStart'); b.disabled = true;
   try {
-    const url = tgt.type === 'mr' ? `/mrs/${tgt.id}/converge` : `/tasks/${tgt.id}/converge`;
+    const url = tgt.type === 'mr' ? `/mrs/${tgt.id}/converge`
+      : tgt.type === 'local' ? `/local-tasks/${tgt.id}/converge` : `/tasks/${tgt.id}/converge`;
     await avecConfigAgent((accord) => api(url, { method: 'POST', body: { ...body, ...accord } }));
     closeConvergeModal();
     toast(tr('toast.converge-lancee'));
     refreshStatus();
-    if (tgt.type === 'task') { navTab('task'); loadTasks(); }
+    if (tgt.type === 'task' || tgt.type === 'local') { navTab('task'); loadTasks(); }
   } catch (e) { b.disabled = false; if (!e.annule) toast(explainError(e.message), true); }
 });
 

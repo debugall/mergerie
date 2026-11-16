@@ -1190,9 +1190,15 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   un **dépôt git**. Les fichiers modifiés ou non suivis déjà présents ne bloquent pas la session : ils restent en
   place et ne partent pas dans son commit, sauf si l'IA y a elle-même touché. La forge est retrouvée par le **remote `origin`** du dossier, qui doit être un dépôt
   enregistré dans Mergerie ; sinon la branche est poussée et la carte dit pourquoi la MR manque. Sans nom de branche,
-  rien ne change : l'IA écrit en place et rien n'est commité. Chaque dossier affiche sa branche, l'état de son commit
+  rien ne change : l'IA écrit en place et rien n'est commité. Les cases **`Auto-push`**, **`Créer la merge request`** et
+  **`…puis converger`** se voient sans branche : en cocher une propose `ai/<libellé>` dans le champ, modifiable ; une case
+  cochée sans branche (pas de libellé) bloque la création sous le champ. Les défauts de session des réglages (push,
+  convergence) ne s'y appliquent pas : hors dépôt, le git se décide à chaque session. Chaque dossier affiche sa branche, l'état de son commit
   et le lien de sa MR. La convergence travaille sur le clone de Mergerie : un `git pull` dans ton dossier rapporte ses
-  corrections.
+  corrections. **`Converger` depuis la carte**, dès que la session a une branche : la même modale que sur dépôt (seuil,
+  passes) ; les dossiers pas encore codés le sont, ceux qui ont été commités sans push — ou codés avant qu'on ajoute la
+  branche — sont commités et poussés, puis la MR s'ouvre et converge, dossier par dossier. Les cases de la session ne
+  changent pas : un `Relancer` ultérieur ne convergera pas de lui-même.
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout

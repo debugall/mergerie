@@ -1136,8 +1136,15 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **git repository**. Uncommitted or untracked files already there do not block the session: they stay where
   they are and are left out of its commit, unless the AI itself changed them. The forge is found through the folder's **`origin` remote**, which must be a repository registered
   in Mergerie; otherwise the branch is pushed and the card says why there is no MR. Without a branch name nothing
-  changes: the AI writes in place and nothing is committed. Each folder shows its branch, the state of its commit and
+  changes: the AI writes in place and nothing is committed. The **`Auto-push`**, **`Create the merge request`** and
+  **`…then converge`** boxes show without a branch: ticking one proposes `ai/<label>` in the field, editable; a box
+  ticked with no branch (no label) blocks creation under the field. The session defaults from Settings (push,
+  convergence) do not apply there: out of repository, git is decided session by session. Each folder shows its branch, the state of its commit and
   its MR link. Convergence works on Mergerie's clone: a `git pull` in your folder brings its fixes back.
+  **`Converge` from the card**, as soon as the session has a branch: the same dialog as for repositories (threshold,
+  passes); folders not yet coded are coded, those committed without a push — or coded before the branch was added —
+  are committed and pushed, then the MR opens and converges, folder by folder. The session's boxes do not change: a
+  later `Run again` will not converge on its own.
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI

@@ -16,6 +16,8 @@ const verifyLib = require('../verify/verify');
 const converge = require('../review/converge');
 const discover = require('../notes/discover');
 const taskrunner = require('../session/taskrunner');
+const localcoder = require('../session/localcoder');
+const localgit = require('../session/localgit');
 const { t } = require('../core/i18n');
 
 const maintenant = () => new Date().toISOString();
@@ -52,10 +54,11 @@ async function ouvrirMr(task, d, repo, onLog) {
 /**
  * Pour chaque dossier poussé : ouvre la MR (si demandée et pas déjà ouverte), puis converge (si demandé).
  * Une erreur sur un dossier est consignée sur SA ligne et n'arrête pas les autres.
+ * `converger` (seuil, passes) = « Converger » depuis la carte : MR et convergence sans les cases.
  */
-async function publier(taskId, onLog = () => {}) {
+async function publier(taskId, onLog = () => {}, converger = null) {
   const task = db.prepare('SELECT * FROM local_task WHERE id = ?').get(taskId);
-  if (!task || !task.branch || !task.create_mr) return;
+  if (!task || !task.branch || !(task.create_mr || converger)) return;
   const dossiers = db.prepare("SELECT * FROM local_task_dir WHERE task_id = ? AND git_status = 'pushed' ORDER BY id").all(taskId);
   for (const d of dossiers) {
     onLog(`──────── ${d.dir_label || '?'} · ${d.branch} ────────`);
@@ -72,7 +75,7 @@ async function publier(taskId, onLog = () => {}) {
       // L'objet complet de l'API (SHA à jour) entre dans la table `mr` : c'est ce que la convergence relit.
       const apiMr = await forge.clientFor(repo).getMergeRequest(getConfig(), repo.project, iid);
       const mrId = await discover.upsertMrFromApi(repo.id, apiMr);
-      if (task.converge_after) await converge.convergeRun(mrId, {}, onLog);
+      if (converger || task.converge_after) await converge.convergeRun(mrId, converger || {}, onLog);
     } catch (e) {
       onLog(`⚠ ${d.dir_label || '?'} : ${e.message}`);
       noter(d.id, { git_note: `mr-error: ${String(e.message).split('\n')[0].slice(0, 200)}` });
@@ -80,4 +83,32 @@ async function publier(taskId, onLog = () => {}) {
   }
 }
 
-module.exports = { publier, depotDuDossier };
+/**
+ * « Converger » depuis la carte, avant la boucle : ce qui n'a pas encore été codé l'est (et poussé),
+ * ce qui a été codé sans être poussé — auto-push décoché, ou branche ajoutée après coup — est
+ * commité sur la branche de la session et poussé. Les dossiers en attente d'une réponse restent là.
+ */
+async function preparerConvergence(taskId, onLog = () => {}) {
+  const task = db.prepare('SELECT * FROM local_task WHERE id = ?').get(taskId);
+  if (!task || !task.branch) throw new Error(t('err.local.converge-needs-branch'));
+  const aCoder = db.prepare("SELECT id FROM local_task_dir WHERE task_id = ? AND status IN ('new', 'error')").all(taskId).map((d) => d.id);
+  if (aCoder.length) await localcoder.runLocal(taskId, onLog, { dirIds: aCoder, pousser: true });
+  db.prepare("UPDATE local_task SET status = 'running', last_error = NULL, updated_at = ? WHERE id = ?").run(maintenant(), taskId);
+  const aPousser = db.prepare(`SELECT * FROM local_task_dir WHERE task_id = ? AND status = 'done'
+    AND COALESCE(git_status, '') <> 'pushed' ORDER BY id`).all(taskId);
+  for (const d of aPousser) {
+    const chemin = localdirs.cheminDe(d.dir_hash);
+    if (!chemin) { onLog(`⚠ ${t('err.local-dir-other-machine', { label: d.dir_label || '?', owner: d.owner || '?' })}`); continue; }
+    try {
+      const g = await localgit.preparer(chemin, task.branch, onLog);
+      const r = await localgit.enregistrer(chemin, { branch: task.branch, message: taskrunner.commitMessageFor(task), push: true, sales: g.sales }, onLog);
+      noter(d.id, { branch: task.branch, base_branch: g.base || d.base_branch || null, commit_sha: r.sha,
+        git_status: r.pushed ? 'pushed' : (r.committed ? 'committed' : 'unchanged'), git_note: null });
+    } catch (e) {
+      onLog(`⚠ ${d.dir_label || '?'} : ${e.message}`);
+      noter(d.id, { git_note: `mr-error: ${String(e.message).split('\n')[0].slice(0, 200)}` });
+    }
+  }
+}
+
+module.exports = { publier, depotDuDossier, preparerConvergence };

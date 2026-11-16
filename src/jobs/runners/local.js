@@ -22,7 +22,11 @@ async function runLocalJob(jobId, taskId, opts = {}) {
   let fin = 'done';
   try {
     // Le binaire choisi par la session (`local_task.cli_id`), posé sur le contexte du job.
-    await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog, () => localcoder.runLocal(taskId, onLog, opts));
+    /* `opts.converger` : « Converger » depuis la carte — coder ce qui reste, pousser, puis la MR et la
+       boucle de convergence, sans dépendre des cases cochées à la création. */
+    const converger = opts.converger || null;
+    await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog,
+      () => (converger ? apresLocal.preparerConvergence(taskId, onLog) : localcoder.runLocal(taskId, onLog, opts)));
     if (proc.isCancelled()) {
       db.prepare("UPDATE local_task SET status = 'new', updated_at = ? WHERE id = ?").run(new Date().toISOString(), taskId);
       logLine(jobId, null, t('log.job.stopped'));
@@ -42,7 +46,8 @@ async function runLocalJob(jobId, taskId, opts = {}) {
       todoQuestionLocal(taskId);
     } else {
       // La MR et la convergence d'abord : un suivi armé repartirait sur une branche encore en chantier.
-      await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog, () => apresLocal.publier(taskId, onLog));
+      await cli.avecSession(db.prepare('SELECT cli_id, cli_name FROM local_task WHERE id = ?').get(taskId), onLog, () => apresLocal.publier(taskId, onLog, converger));
+      if (converger) localcoder.syncStatus(taskId);
       if (!suiviAutomatique('local', taskId, onLog)) notify.push('session_done', { local_task_id: taskId });
     }
   } catch (e) {

@@ -202,7 +202,10 @@ async function defautsSession() {
    doit montrer ce qu'elle porte, pas ce qu'on aime cocher d'habitude. */
 async function appliquerDefautsSession(f) {
   const d = await defautsSession();
-  for (const [k, v] of Object.entries(d)) { if (f[k] && v) f[k].checked = true; }
+  /* Hors dépôt, le git se décide à chaque session : un push coché par défaut, sans branche, en
+     exigerait une avant de pouvoir créer la moindre session. */
+  const git = taskKind === 'local' ? ['auto_push', 'converge_after'] : [];
+  for (const [k, v] of Object.entries(d)) { if (f[k] && v && !git.includes(k)) f[k].checked = true; }
   majLienVerifPush();
 }
 /* HORS DÉPÔT, LE GIT EST FACULTATIF ET COMMENCE PAR UN NOM DE BRANCHE. Sans lui, le formulaire reste ce
@@ -210,6 +213,15 @@ async function appliquerDefautsSession(f) {
    on retrouve les décisions d'une session de codage — message, push, MR, convergence — en gardant leurs
    implications visibles : converger passe par la MR, la MR par le push. Les cases impliquées se
    cochent et se figent plutôt que de laisser croire qu'on peut converger sans pousser. */
+/* …mais les cases se voient AVANT la branche : « commit et push automatiques » ne se cherche pas
+   derrière un champ marqué « optionnel ». En cocher une sans branche en propose une, tirée du
+   libellé comme sur dépôt ; sans libellé, le curseur va au champ, à écrire. */
+function proposerBrancheLocale(f) {
+  if (!f.branch || f.branch.value.trim()) return;
+  const slug = slugBranche((f.label && f.label.value.trim()) || '');
+  if (slug) f.branch.value = `ai/${slug}`;
+  else f.branch.focus();
+}
 function majGitLocal(kind) {
   const f = $('#taskForm');
   const local = kind === 'local';
@@ -223,18 +235,21 @@ function majGitLocal(kind) {
   }
   const avec = !!(f.branch && f.branch.value.trim());
   checks.hidden = true;                                  // vérificateur, Jira, review : supposent un dépôt enregistré
-  $('#codeOnlyFields').hidden = !avec;
-  mr.hidden = !avec;
-  $('#taskConvergeRow').hidden = !avec;
+  $('#codeOnlyFields').hidden = false;
+  mr.hidden = false;
+  $('#taskConvergeRow').hidden = false;
   $('#taskCommitRow').hidden = !avec;
   if (f.converge_after.checked) f.create_mr.checked = true;
   f.create_mr.disabled = f.converge_after.checked;
   if (f.create_mr.checked) f.auto_push.checked = true;
   f.auto_push.disabled = f.create_mr.checked;
 }
-for (const sel of ['#taskLocalBranch', '[name=create_mr]', '[name=converge_after]']) {
+for (const sel of ['#taskLocalBranch', '[name=auto_push]', '[name=create_mr]', '[name=converge_after]']) {
   const el = $(`#taskForm ${sel}`);
-  if (el) el.addEventListener(sel === '#taskLocalBranch' ? 'input' : 'change', () => majGitLocal(taskKind));
+  if (el) el.addEventListener(sel === '#taskLocalBranch' ? 'input' : 'change', () => {
+    if (taskKind === 'local' && el.checked) proposerBrancheLocale($('#taskForm'));
+    majGitLocal(taskKind);
+  });
 }
 
 async function majLibelleConverge() {

@@ -114,6 +114,9 @@ function localCard(t) {
     canRun ? `<button class="btn" data-lrun="${t.id}" title="${esc(tr('local.run-title'))}"><svg class="ico"><use href="#i-play"/></svg>${t.status === 'new' ? tr('local.run-short') : tr('task.btn.rerun')}</button>` : '',
     /* Ne refaire QUE ce qui a cassé — le geste d'après un échec partiel. Proposé seulement
        s'il y a de quoi : un bouton qui relancerait zéro dossier n'apprend rien. */
+    /* CONVERGER, comme sur dépôt : il faut une branche — c'est elle qui part sur la forge. */
+    canRun && t.branch
+      ? `<button class="btn" data-lconverge="${t.id}" data-branch="${esc(t.branch)}" title="${esc(tr('local.title.converge'))}"><svg class="ico"><use href="#i-zap"/></svg>${tr('report.btn.converge')}</button>` : '',
     canRun && (t.dirs || []).some((d) => d.status === 'error')
       ? `<button class="btn" data-lrunfailed="${t.id}" title="${esc(tr('local.title.run-failed'))}"><svg class="ico"><use href="#i-repeat"/></svg>${tr('task.btn.rerun-failed')}</button>` : '',
     /* Le retour de l'agent au niveau de la SESSION : les boutons par dossier existent aussi,
@@ -174,6 +177,8 @@ function renderLocalTasks() {
       .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   }));
+  $$('#localList [data-lconverge]').forEach((b) => b.addEventListener('click',
+    () => openConvergeModal({ type: 'local', id: Number(b.dataset.lconverge), branch: b.dataset.branch || '' })));
   $$('#localList [data-lrunfailed]').forEach((b) => b.addEventListener('click', async () => {
     const t2 = localTasks.find((x) => String(x.id) === b.dataset.lrunfailed);
     const dirs = ((t2 && t2.dirs) || []).filter((d) => d.status === 'error').map((d) => d.id);

@@ -281,6 +281,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
        silencieusement retiré de la session. À la création c'est déjà fâcheux ; à l'édition
        ce serait une perte de données. On refuse plutôt que d'enregistrer une liste amputée. */
     if (dirs.length !== picks.length) { toast(tr('local.dirs-unresolved'), true); return; }
+    /* Une case git cochée sans branche serait ignorée par le serveur : la session partirait sans
+       commit ni push, alors qu'on les a demandés. */
+    const g = corpsGitLocal(f);
+    if (!g.branch && (g.auto_push || g.create_mr || g.converge_after)) { signalerChamp(f.branch, tr('local.git.branch-required')); return; }
     // Les captures cochées du ticket s'ajoutent aux pièces déjà choisies, comme en codage.
     let fichiers = taskNewImages;
     if (cleJiraDeLaSession) {

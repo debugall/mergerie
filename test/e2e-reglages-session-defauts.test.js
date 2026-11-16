@@ -132,10 +132,10 @@ describe('Réglages — cases d’une nouvelle session et gabarit Jira : afficha
   });
 
   /* L'EFFET : ce qu'on règle ici, la fenêtre « Nouvelle session » le coche d'office. */
-  const ouvrirNouvelleSession = async () => {
+  const ouvrirNouvelleSession = async (kind = 'code') => {
     await page.evaluate(() => document.querySelectorAll('.modal:not([hidden])').forEach((m) => { m.hidden = true; }));
     await page.locator('nav button[data-tab="task"]').click();
-    await page.locator('#tab-task .subnav [data-kind="code"]').click();
+    await page.locator(`#tab-task .subnav [data-kind="${kind}"]`).click();
     await page.locator('#btnNewTask').click();
     await page.waitForSelector('#taskModal:not([hidden])');
     const etat = {};
@@ -153,6 +153,15 @@ describe('Réglages — cases d’une nouvelle session et gabarit Jira : afficha
     const { etat, jiraVisible } = await ouvrirNouvelleSession();
     assert.deepEqual(etat, { task_default_auto_push: true, task_default_ask_questions: true, task_default_converge: true, task_default_notify_jira: true });
     assert.equal(jiraVisible, true, 'Jira est configuré : la ligne « Prévenir Jira » est offerte');
+  });
+
+  /* Hors dépôt, pousser exige une branche : cochés d'office, push et convergence bloqueraient la
+     création de toute session sans branche. Les autres défauts valent. */
+  test('effet hors dépôt : push et convergence ne se cochent pas d’office, les questions oui', async () => {
+    const { etat } = await ouvrirNouvelleSession('local');
+    assert.equal(etat.task_default_auto_push, false);
+    assert.equal(etat.task_default_converge, false);
+    assert.equal(etat.task_default_ask_questions, true);
   });
 
   test('effet : cases décochées → décochées dans la fenêtre', async () => {

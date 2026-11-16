@@ -135,7 +135,11 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskLocalWrap',
       'taskLocalWarn',
       'label',
-      'taskLocalBranchRow',            // la branche, facultative : sans elle, rien de « une fois le code écrit »
+      'taskLocalBranchRow',            // la branche, facultative : les cases git la proposent si elle manque
+      'groupe:task.group.after',
+      'taskConvergeRow',
+      'taskAutoPushRow',
+      'taskCreateMrRow',
       'taskImages',
       'taskAskQuestionsRow',
       'taskScheduleRow',

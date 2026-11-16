@@ -157,7 +157,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     //                  dépôts local  avert. codeOnly commit agent jira  avancé skills
     code: [true, false, false, true, true, true, true, true, true],
     explore: [true, false, false, false, false, true, true, true, true],
-    local: [false, true, true, false, false, false, true, true, true],
+    local: [false, true, true, true, false, false, true, true, true],
     ask: [false, false, false, false, false, false, false, false, false],
   };
   const BLOCS = ['#taskReposWrap', '#taskLocalWrap', '#taskLocalWarn', '#codeOnlyFields', '#taskCommitRow',
@@ -594,18 +594,27 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.ok(fs.existsSync(path.join(racine, 'docs', 'PROJ_LOCAL_DRYRUN.md')), 'l’agent (dry-run) a écrit dans le dossier');
   });
 
-  /* HORS DÉPÔT : LE GIT COMMENCE PAR UN NOM DE BRANCHE. Sans lui le formulaire ne montre rien de
-     plus (l'agent écrit en place, rien n'est commité) ; avec lui, les décisions d'une session de
-     codage reviennent — message, push, MR, convergence — avec leurs implications visibles. */
+  /* HORS DÉPÔT : LE GIT TIENT À UN NOM DE BRANCHE. Les cases se voient sans elle — « commit et push
+     automatiques » ne se cherche pas derrière un champ optionnel — et en cocher une la propose depuis
+     le libellé. Ensuite les décisions d'une session de codage — message, push, MR, convergence —
+     reviennent avec leurs implications visibles. */
   test('hors dépôt : la branche ouvre les décisions git, elles s’impliquent, et tout arrive en base puis se relit', async () => {
     const avant = compte('local_task');
     await ouvrir('local');
     const visible = (sel) => page.locator(sel).isVisible();
     await deplierAvance();
     assert.equal(await visible('#taskLocalBranchRow'), true, 'le champ branche est offert hors dépôt');
-    for (const sel of ['#codeOnlyFields', '#taskCommitRow', '#taskCreateMrRow', '#taskConvergeRow']) {
-      assert.equal(await visible(sel), false, `${sel} : rien de git tant qu’aucune branche n’est donnée`);
+    for (const sel of ['#codeOnlyFields', '#taskAutoPushRow', '#taskCreateMrRow', '#taskConvergeRow']) {
+      assert.equal(await visible(sel), true, `${sel} : les cases git se voient avant la branche`);
     }
+    assert.equal(await visible('#taskCommitRow'), false, 'le message de commit attend la branche');
+
+    // Cocher l'auto-push sans branche en propose une, depuis le libellé.
+    await page.locator('#taskForm [name="label"]').fill('Branche locale');
+    await page.locator('#taskForm [name="auto_push"]').check();
+    await page.waitForFunction(() => document.querySelector('#taskLocalBranch').value === 'ai/branche-locale');
+    assert.equal(await visible('#taskCommitRow'), true, 'la branche proposée ouvre le message de commit');
+    await page.locator('#taskForm [name="auto_push"]').uncheck();
 
     await page.locator('#taskLocalBranch').fill('feature/PROJ-9-rangement');
     for (const sel of ['#codeOnlyFields', '#taskCommitRow', '#taskCreateMrRow', '#taskConvergeRow', '#taskAutoPushRow']) {
@@ -657,9 +666,16 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.deepEqual(await etat('create_mr'), [true, false]);
     assert.deepEqual(await etat('auto_push'), [true, true]);
     assert.equal(await page.locator('#taskForm [name="commit_message"]').inputValue(), 'Range les outils');
-    // Vider la branche referme tout, et l'enregistrement la retire côté serveur.
+    // Vider la branche referme le message de commit ; les cases encore cochées bloquent l'envoi.
     await page.locator('#taskLocalBranch').fill('');
-    for (const sel of ['#codeOnlyFields', '#taskCommitRow']) assert.equal(await visible(sel), false, `${sel} se referme`);
+    assert.equal(await visible('#taskCommitRow'), false, 'le message de commit se referme');
+    await page.locator('#taskSubmit').click();
+    await page.waitForFunction((m) => (document.querySelector('#taskLocalBranchRow .field-error') || {}).textContent === m,
+      await tr('local.git.branch-required'));
+    assert.equal((await app.api('GET', `/api/local-tasks/${id}`)).body.task.branch, 'feature/PROJ-9-rangement', 'rien n’est parti');
+    // Décochées, la session repart sans git : l'enregistrement retire la branche côté serveur.
+    await page.locator('#taskForm [name="create_mr"]').uncheck();
+    await page.locator('#taskForm [name="auto_push"]').uncheck();
     await page.locator('#taskSubmit').click();
     await attendreServeur(async () => (await app.api('GET', `/api/local-tasks/${id}`)).body.task.branch === null,
       'la branche est retirée');
@@ -686,6 +702,35 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     await page.waitForFunction(([sel, txt]) => document.querySelector(sel)
       && document.querySelector(sel).textContent.includes(txt), [ligneDossier, await tr('local.git.note.no-repo')]);
     assert.equal(await page.locator(`${ligneDossier} a[href$="/merge_requests/12"]`).count(), 0, 'plus de MR, plus de lien');
+  });
+
+  /* « Converger » sur la carte hors dépôt : offert dès qu'une branche existe — c'est elle qui part
+     sur la forge —, la même modale que sur dépôt, et la requête porte le seuil et les passes. Le job
+     lui-même est prouvé par e2e-local-git ; ici la requête est interceptée. */
+  test('hors dépôt : « Converger » sur la carte ouvre la modale et part vers la session', async () => {
+    const dossier = path.join(racine, 'outils');
+    const avec = (await app.api('POST', '/api/local-tasks', { prompt: 'Converger ici', label: 'Avec branche', dirs: [dossier], branch: 'feature/carte-converge' })).body;
+    const sans = (await app.api('POST', '/api/local-tasks', { prompt: 'Sans branche', label: 'Sans branche', dirs: [dossier] })).body;
+    let corps = null;
+    await page.route(`**/api/local-tasks/${avec.id}/converge`, (route) => {
+      corps = route.request().postDataJSON();
+      route.fulfill({ status: 200, contentType: 'application/json', body: '{"id":0,"status":"queued"}' });
+    });
+    await aller('local');
+    const carte = (id) => `#localList .card[data-local="${id}"]`;
+    await page.waitForSelector(`${carte(avec.id)} [data-lconverge]`);
+    await page.waitForSelector(carte(sans.id));
+    assert.equal(await page.locator(`${carte(sans.id)} [data-lconverge]`).count(), 0, 'sans branche, pas de convergence');
+
+    await page.locator(`${carte(avec.id)} [data-lconverge]`).click();
+    await page.waitForSelector('#convergeModal:not([hidden])');
+    assert.equal((await page.locator('#convergeModalTitle').textContent()).trim(), await tr('converge.modal.title-task'));
+    assert.match(await page.locator('#convergeModalWhat').textContent(), /feature\/carte-converge/);
+    await page.locator('#convThreshold').fill('7');
+    await page.locator('#convStart').click();
+    await page.waitForSelector('#convergeModal', { state: 'hidden' });
+    assert.equal(String(corps && corps.threshold), '7', 'le seuil choisi part avec la demande');
+    await page.unroute(`**/api/local-tasks/${avec.id}/converge`);
   });
 
   /* ------------------------------------------------------------ question libre ---- */

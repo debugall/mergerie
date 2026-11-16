@@ -97,6 +97,49 @@ describe('Codage hors dépôt : branche, commit, push, merge request, convergenc
     retourSurMain(connu);
   });
 
+  /* « CONVERGER » DEPUIS LA CARTE : la session a été codée et commitée sans push ni MR. La convergence
+     ne recode pas ce qui est fait — elle pousse, ouvre la MR et boucle — et ne touche pas aux cases
+     de la session : un « Relancer » ultérieur ne convergera pas de lui-même. */
+  test('converger depuis la carte : une session commitée sans push est poussée, sa MR s’ouvre et converge', async () => {
+    const lt = await creer({ dirs: [connu.work], branch: 'feature/converge-carte' });
+    const codee = await lancer(lt.id);
+    assert.equal(codee.dirs[0].git_status, 'committed');
+    const passes = app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(lt.id).c;
+
+    const r = await app.api('POST', `/api/local-tasks/${lt.id}/converge`, { threshold: 7, maxPasses: 2 });
+    assert.equal(r.status, 200);
+    await waitForJobs(app.api);
+    const fin = (await app.api('GET', `/api/local-tasks/${lt.id}`)).body.task;
+    const d = fin.dirs[0];
+    assert.equal(fin.status, 'done');
+    assert.equal(d.git_status, 'pushed');
+    assert.equal(git(connu.bare, ['rev-parse', 'refs/heads/feature/converge-carte']), git(connu.work, ['rev-parse', 'HEAD']));
+    assert.ok(d.mr_iid, 'la MR est ouverte');
+    const run = app.db.prepare(`SELECT c.threshold, c.max_passes FROM convergence_run c JOIN mr ON mr.id = c.mr_id
+      WHERE mr.iid = ? ORDER BY c.id DESC`).get(d.mr_iid);
+    assert.deepEqual([run.threshold, run.max_passes], [7, 2], 'la boucle a tourné avec le seuil et les passes choisis');
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(lt.id).c, passes,
+      'le dossier déjà codé ne repasse pas par l’agent');
+    assert.deepEqual([fin.auto_push, fin.create_mr, fin.converge_after], [0, 0, 0], 'les cases de la session restent ce qu’elles étaient');
+    retourSurMain(connu);
+  });
+
+  test('converger une session neuve la code d’abord ; sans branche, la convergence est refusée', async () => {
+    const lt = await creer({ dirs: [connu.work], branch: 'feature/converge-neuve' });
+    await app.api('POST', `/api/local-tasks/${lt.id}/converge`, {});
+    await waitForJobs(app.api);
+    const d = (await app.api('GET', `/api/local-tasks/${lt.id}`)).body.task.dirs[0];
+    assert.equal(d.status, 'done');
+    assert.equal(d.git_status, 'pushed');
+    assert.ok(d.mr_iid);
+    retourSurMain(connu);
+
+    const sans = await creer({ dirs: [connu.work] });
+    const r = await app.api('POST', `/api/local-tasks/${sans.id}/converge`, {});
+    assert.equal(r.status, 400);
+    assert.equal(app.db.prepare("SELECT COUNT(*) c FROM job WHERE status IN ('queued', 'running')").get().c, 0, 'aucun job lancé');
+  });
+
   test('un remote que Mergerie ne connaît pas : la branche est poussée, la MR dit pourquoi elle manque', async () => {
     const lt = await creer({ dirs: [inconnu.work], branch: 'feature/orpheline', create_mr: true });
     const fin = await lancer(lt.id);

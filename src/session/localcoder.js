@@ -87,7 +87,8 @@ function syncStatus(taskId) {
    `opts.answersDirId` = reprise après questions : SEUL ce dossier repart, avec les réponses
    pour prompt — les autres n'ont rien demandé et n'ont pas à retravailler.
    `opts.dirIds` = relance ciblée : on ne refait QUE ces dossiers. Sur une session à cinq
-   dossiers dont un a échoué, tout relancer coûte quatre passes d'agent pour rien. */
+   dossiers dont un a échoué, tout relancer coûte quatre passes d'agent pour rien.
+   `opts.pousser` = la convergence lancée depuis la carte : pousse même sans auto-push coché. */
 async function runLocal(taskId, onLog = () => {}, opts = {}) {
   const task = db.prepare('SELECT * FROM local_task WHERE id = ?').get(taskId);
   if (!task) throw new Error(t('err.session-introuvable'));
@@ -237,7 +238,7 @@ async function runLocal(taskId, onLog = () => {}, opts = {}) {
       await mesurer();
       if (task.branch) {
         // Pousser est impliqué par la MR et par la convergence : elles lisent la forge, pas le dossier.
-        const push = !!(task.auto_push || task.create_mr || task.converge_after);
+        const push = !!(opts.pousser || task.auto_push || task.create_mr || task.converge_after);
         const r = await localgit.enregistrer(d.path, { branch: task.branch, message: commitMessageFor(task), push, sales: saleAvant }, onLog);
         setDir(d.id, { commit_sha: r.sha, git_status: r.pushed ? 'pushed' : (r.committed ? 'committed' : 'unchanged'), git_note: null });
       }
