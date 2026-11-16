@@ -128,6 +128,7 @@ function localCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-ledit="${t.id}" title="${esc(tr('local.edit-title'))}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-lcopy="${t.id}" title="${esc(tr('local.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm" data-lscript="${t.id}" title="${esc(tr('local.title.export-script'))}" aria-label="${esc(tr('local.btn.export-script'))}"><svg class="ico"><use href="#i-download"/></svg></button>`,
     shareBtn('local', t),
     hideBtn('local', t),
     estAMoi(t) ? `<button class="btn btn-icon btn-sm btn-danger" data-ldel="${t.id}" title="${esc(tr('local.remove'))}"><svg class="ico"><use href="#i-close"/></svg></button>` : '',
@@ -179,6 +180,14 @@ function renderLocalTasks() {
   }));
   $$('#localList [data-lconverge]').forEach((b) => b.addEventListener('click',
     () => openConvergeModal({ type: 'local', id: Number(b.dataset.lconverge), branch: b.dataset.branch || '' })));
+  /* Le script en téléchargement : `fetch` direct (le corps est du texte, pas du JSON) et la langue
+     de l'écran avec, pour que ses commentaires parlent celle qu'on lit. */
+  $$('#localList [data-lscript]').forEach((b) => b.addEventListener('click', () => busy(b, async () => {
+    const res = await fetch(`/api/local-tasks/${b.dataset.lscript}/script`, { cache: 'no-store', headers: { 'X-Mergerie-Lang': readLang() } });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    const nom = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || `session-${b.dataset.lscript}.sh`;
+    telecharger(await res.blob(), nom);
+  }).catch((e) => toast(explainError(e.message), true))));
   $$('#localList [data-lrunfailed]').forEach((b) => b.addEventListener('click', async () => {
     const t2 = localTasks.find((x) => String(x.id) === b.dataset.lrunfailed);
     const dirs = ((t2 && t2.dirs) || []).filter((d) => d.status === 'error').map((d) => d.id);

@@ -1145,6 +1145,16 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   passes); folders not yet coded are coded, those committed without a push — or coded before the branch was added —
   are committed and pushed, then the MR opens and converges, folder by folder. The session's boxes do not change: a
   later `Run again` will not converge on its own.
+  **Export as script** (download icon on the card): a standalone bash script, `<label>.sh`, that replays the
+  session without the tool — in each folder, the branch (the session's, otherwise `ai/<label>`), the session's
+  agent with its options and **the same prompt** (standing instructions included), then commit, push and merge
+  request towards the starting branch (GitLab or GitHub, from the `origin` remote). At the top of the file, to
+  edit freely: the **folders**, one per line, then the **request**, then branch, message, push and MR (1/0), the
+  agent (`AGENT_BIN=…` in the environment wins). Nothing secret is written in it: tokens come from
+  `GITLAB_TOKEN` / `GITHUB_TOKEN` or are asked at start, hidden, before the agent works; an HTTPS push asks for
+  its credentials through git. The script does not name the tool and carries neither its data-protection rules
+  nor the agent variables set on screen. A failing folder does not stop the others; files already modified stay
+  out of the commit. Bash 3.2 (macOS) is enough; `git` and `curl` are needed.
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI

@@ -733,6 +733,20 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     await page.unroute(`**/api/local-tasks/${avec.id}/converge`);
   });
 
+  /* « Exporter en script » : un vrai téléchargement, nommé d'après le libellé, qui porte la demande
+     (le script lui-même est exécuté et vérifié par e2e-local-script). */
+  test('hors dépôt : « Exporter en script » télécharge le script de la session', async () => {
+    const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Exporter ceci', label: 'Export script', dirs: [path.join(racine, 'docs')] })).body;
+    await aller('local');
+    const bouton = page.locator(`#localList .card[data-local="${lt.id}"] [data-lscript]`);
+    await bouton.waitFor();
+    const [dl] = await Promise.all([page.waitForEvent('download'), bouton.click()]);
+    assert.equal(dl.suggestedFilename(), 'export-script.sh');
+    const texte = fs.readFileSync(await dl.path(), 'utf8');
+    assert.ok(texte.startsWith('#!/usr/bin/env bash'));
+    assert.match(texte, /\nExporter ceci\n__PROMPT__\n/);
+  });
+
   /* ------------------------------------------------------------ question libre ---- */
 
   test('question libre : « créer sans lancer » crée la question sans la lancer', async () => {

@@ -1199,6 +1199,16 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   passes) ; les dossiers pas encore codés le sont, ceux qui ont été commités sans push — ou codés avant qu'on ajoute la
   branche — sont commités et poussés, puis la MR s'ouvre et converge, dossier par dossier. Les cases de la session ne
   changent pas : un `Relancer` ultérieur ne convergera pas de lui-même.
+  **Exporter en script** (icône de téléchargement sur la carte) : un script bash autonome, `<libellé>.sh`, qui
+  refait la session sans l'outil — dans chaque dossier, la branche (celle de la session, sinon `ai/<libellé>`),
+  l'agent de la session avec ses options et **le même prompt** (consignes permanentes comprises), puis commit,
+  push et merge request vers la branche de départ (GitLab ou GitHub, déduit du remote `origin`). En tête du
+  fichier, à modifier librement : les **dossiers**, un par ligne, puis la **demande**, puis branche, message,
+  push et MR (1/0), l'agent (`AGENT_BIN=…` dans l'environnement l'emporte). Rien de secret n'y est écrit : les
+  jetons viennent de `GITLAB_TOKEN` / `GITHUB_TOKEN` ou sont demandés au lancement, masqués, avant le travail de
+  l'agent ; un push HTTPS demande ses identifiants par git. Le script ne nomme pas l'outil et ne reprend ni ses
+  règles de protection de données ni les variables d'agent réglées à l'écran. Un dossier en échec n'arrête pas
+  les autres ; les fichiers déjà modifiés restent hors du commit. Bash 3.2 (macOS) suffit ; il faut `git` et `curl`.
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout

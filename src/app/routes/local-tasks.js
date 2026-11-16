@@ -18,6 +18,7 @@ const agentpass = require('../../agent/pass');
 const localsnapshot = require('../../session/localsnapshot');
 const localcoder = require('../../session/localcoder');
 const localgit = require('../../session/localgit');
+const localscript = require('../../session/localscript');
 const pieces = require('../../agent/pieces');
 const path = require('path');
 const fs = require('fs');
@@ -181,6 +182,13 @@ app.post('/api/local-tasks/:id/converge', wrap((req, res) => {
   if (!lt.branch) throw new Error(t('err.local.converge-needs-branch'));
   jobs.programmation.programmer('local_task', lt.uid, 'run', null);
   res.json(jobs.startLocalJob(lt.id, { converger: parseConvergeOpts(req.body) }));
+}));
+/* La session en script bash autonome : mêmes dossiers, même demande, puis commit, push, MR. */
+app.get('/api/local-tasks/:id/script', wrap((req, res) => {
+  const { script, fichier } = localscript.scriptDe(Number(req.params.id));
+  res.set('Content-Type', 'text/x-shellscript; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="${fichier}"`);
+  res.send(script);
 }));
 // Demande de correction : nouvelle passe de l'IA sur les mêmes dossiers, en REPRENANT
 // la session de chacun (l'IA garde le contexte du travail qu'elle vient de produire).
