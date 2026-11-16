@@ -51,7 +51,11 @@ async function openReport(id, opts = {}) {
      clics rapprochés) finissent dans le désordre : la plus lente rendait un rapport qu'on avait
      déjà quitté — et reposait son adresse, ce qui ajoutait une entrée à l'historique. */
   if (selectedMr !== id) return;
-  poserAdresse(`#/reviews/${id}`);   // le rapport existe : l'adresse mène quelque part
+  /* L'adresse est celle d'une OUVERTURE, pas d'un rechargement de fond (`keep`) : la découverte ou la
+     fin d'un job relisent le rapport ouvert pendant qu'on est peut-être déjà dans Notes — reposer
+     `#/reviews/<id>` ajoutait alors une entrée d'historique par-dessus, et Précédent ramenait aux
+     Notes au lieu du rapport. */
+  if (!opts.keep) poserAdresse(`#/reviews/${id}`);   // le rapport existe : l'adresse mène quelque part
   const sig = reportSig(d);
   const stamp = (d.review && d.review.updated_at) || '';
   /* Rechargement de fond (fin de job, sauvegarde d'un contexte) : si rien de ce qui est

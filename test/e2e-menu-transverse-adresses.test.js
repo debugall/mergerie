@@ -158,6 +158,27 @@ describe('Transverse — les adresses des objets et l’historique du navigateur
     await page.waitForFunction((h) => window.location.hash === h, `#/notes/${pageNote.id}`);
   });
 
+  /* UN RECHARGEMENT DE FOND NE RÉÉCRIT PAS L'ADRESSE. La découverte lancée à l'ouverture de Reviews relit le
+     rapport ouvert (`openReport(…, { keep: true })`) ; arrivée APRÈS qu'on est passé aux Notes — l'ordre d'un
+     runner chargé —, elle reposait `#/reviews/<id>` par-dessus, et Précédent ramenait aux Notes. */
+  test('la relecture de fond du rapport ouvert ne touche ni l’adresse ni l’historique', async () => {
+    const page = await nouvellePage();
+    await page.goto(app.base);
+    await page.locator('nav button[data-tab="review"]').click();
+    await page.locator('.segmented [data-seg="reviewed"]').click();
+    await page.locator(`#reportList .card[data-id="${donnees.mr.b1}"]`).click();
+    await rapportOuvert(page, donnees.mr.b1, 'Beta bien notée');
+    await page.evaluate((id) => { window.location.hash = `#/notes/${id}`; }, pageNote.id);
+    await page.waitForFunction((t) => (document.querySelector('#pageTitle') || {}).value === t, 'Page adressée');
+    const avant = await page.evaluate(() => history.length);
+    await page.evaluate(() => rafraichirApresDecouverte());     // la découverte de fond, arrivée en retard
+    assert.equal(await page.evaluate(() => window.location.hash), `#/notes/${pageNote.id}`);
+    assert.equal(await page.evaluate(() => history.length), avant, 'aucune entrée d’historique ajoutée');
+    await page.goBack();
+    await page.waitForSelector('#tab-review.active');
+    await rapportOuvert(page, donnees.mr.b1, 'Beta bien notée');
+  });
+
   test('deux ouvertures de rapport en vol : le dernier rapport demandé reste à l’écran, et son adresse', async () => {
     const page = await nouvellePage();
     await page.goto(app.base);

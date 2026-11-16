@@ -237,6 +237,11 @@ const ordonnerFile = (rows) => rows.slice().sort((a, b) => (mrsEnTete.has(b.id) 
       moiSurLesForges = d;
     }
   } catch { /* pas d'identité : pas de filtre, et rien à signaler */ }
+  /* LE RENDU ATTEND LA FIN DU CHARGEMENT. Ce fichier part AVANT `rapports.js`, qui déclare
+     `reportRows` ; le navigateur exécute les réponses réseau entre deux scripts, et sur une
+     machine chargée `/me` revenait avant que `rapports.js` soit évalué : le rendu du stade
+     « Reviewées » lisait un nom qui n'existait pas encore (« reportRows is not defined »). */
+  if (document.readyState === 'loading') await new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true }));
   renderFiltreAuteur();
 })();
 

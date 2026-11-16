@@ -259,6 +259,30 @@ describe('Menu Reviews — liste des rapports', { skip: dispo ? false : MSG_NAVI
     await attendreListe(TOUTES);
   });
 
+  /* UNE RÉPONSE RÉSEAU ARRIVÉE ENTRE DEUX SCRIPTS. `liste.js` demande `/me` dès son chargement ;
+     `rapports.js`, qui le suit dans le manifeste, déclare `reportRows`. Sur un runner chargé, `/me`
+     revenait avant que `rapports.js` soit évalué, et le rendu du filtre auteur sur le stade
+     mémorisé « Reviewées » levait « reportRows is not defined ». On force cet ordre : le script
+     est retenu jusqu'à ce que `/me` ait répondu. */
+  test('le filtre auteur ne lit pas les rapports avant que leur script soit chargé', async () => {
+    const contexte = await navigateur.newContext({ viewport: { width: 1500, height: 950 } });
+    const p = await contexte.newPage();
+    const erreursP = [];
+    p.on('pageerror', (e) => erreursP.push(e.message));
+    await p.addInitScript(() => { try { localStorage.setItem('aidevtools_seg', 'reviewed'); } catch { /* ignore */ } });
+    let meRepondu; const me = new Promise((r) => { meRepondu = r; });
+    p.on('requestfinished', (r) => { if (r.url().endsWith('/api/me')) meRepondu(); });
+    await p.route('**/js/ecrans/reviews/rapports.js', async (route) => {
+      await Promise.race([me, new Promise((r) => { setTimeout(r, 5000); })]);
+      await new Promise((r) => { setTimeout(r, 200); });   // la réponse de /me a eu le temps d'être traitée
+      await route.continue();
+    });
+    await p.goto(app.base);
+    await p.waitForFunction(() => document.querySelectorAll('#mrAuteurFiltre [data-mr-auteur]').length >= 3);
+    assert.deepEqual(erreursP, []);
+    await contexte.close();
+  });
+
   test('aucune erreur de page sur tout le parcours', () => {
     assert.deepEqual(erreurs, []);
   });
