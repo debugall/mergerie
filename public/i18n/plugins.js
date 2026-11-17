@@ -78,6 +78,7 @@
       "plugins.perm.demo": "semer le mode démo",
       "plugins.perm.env": "lire ses variables d’environnement",
       "plugins.perm.services": "exposer et appeler des services nommés",
+      "plugins.perm.agent": "poser des questions à l’agent IA (lecture seule, compte dans le budget)",
     },
     en: {
       "plugins.settings.sub": "Plugins",
@@ -149,6 +150,7 @@
       "plugins.perm.demo": "seed the demo mode",
       "plugins.perm.env": "read its environment variables",
       "plugins.perm.services": "expose and call named services",
+      "plugins.perm.agent": "ask the AI agent questions (read-only, counts in the budget)",
     },
   };
 }));

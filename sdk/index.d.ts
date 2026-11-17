@@ -2,7 +2,7 @@
 // Types du ctx d'un plugin Mergerie, de son manifeste et des payloads d'événements.
 
 export type ApiVersion = '1';
-export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services' | 'jobs' | 'storage';
+export type Permission = 'events' | 'settings' | 'secrets' | 'db' | 'http' | 'sse' | 'schedule' | 'exec' | 'net' | 'repos' | 'ui.tab' | 'ui.actions' | 'ui.palette' | 'notify' | 'demo' | 'env' | 'services' | 'jobs' | 'agent' | 'storage';
 export type Target = 'mr' | 'mr-badge' | 'session-target' | 'session-target-badge' | 'branch' | 'branch-badge' | 'verification' | 'repo-sheet' | 'repo-row' | 'verify-launch' | 'mr-detail' | 'jira-ticket';
 export type EventName = 'app.ready' | 'app.shutdown' | 'repo.deleted' | 'session.started' | 'session.finished' | 'mr.created' | 'review.completed' | 'converge.finished' | 'verify.finished' | 'jenkins.job.started' | 'jenkins.job.finished' | (string & {});
 
@@ -268,6 +268,12 @@ export interface PluginContext {
   env: {
     /** une variable <NAME>_* de l’environnement du serveur — permission `env` */
     get: (name: string) => string | undefined;
+  };
+  agent: {
+    /** une question à l’agent IA réglé (claude, copilot…), en lecture seule, dans un dossier vide ; `data` est balisé comme donnée NON FIABLE (des logs, un texte collé) ; `simulated` : pas d’agent sur ce poste, la réponse est factice ; compte dans le budget et la télémétrie ; peut durer des minutes — à lancer hors d’une requête HTTP — permission `agent` */
+    ask: (prompt: string, options?: { data?: { label: string, text: string }[] }) => Promise<{ text: string, simulated: boolean }>;
+    /** un vrai agent est-il réglé et trouvé sur ce poste ? — permission `agent` */
+    available: () => boolean;
   };
   services: {
     /** expose un service nommé <plugin>.<nom> — permission `services` */

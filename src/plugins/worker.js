@@ -147,6 +147,7 @@ if (permissions.has('jobs')) {
     start: (kind, payload, options) => rpc('jobs.start', [kind, payload === undefined ? null : payload, options || {}]),
   };
 }
+if (permissions.has('agent')) ctx.agent = { ask: (prompt, opts) => rpcAsync('agent.ask', [prompt, opts]), available: () => rpc('agent.available', []) };
 if (permissions.has('net')) ctx.net = { request: (url, opts) => rpcAsync('net.request', [url, opts]) };
 if (permissions.has('repos')) {
   ctx.repos = {

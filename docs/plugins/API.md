@@ -30,6 +30,7 @@ Déclarées dans `plugin.json` → `permissions`. Réglages → Plugins les affi
 | `env` | lire les variables d’environnement préfixées par son nom (ctx.env) |
 | `services` | exposer et appeler des services nommés entre plugins et cœur (ctx.services) |
 | `jobs` | des jobs dans la file du cœur : journal en direct, progression, arrêt, écran des jobs (ctx.jobs) |
+| `agent` | poser une question à l’agent IA réglé dans Mergerie, en lecture seule et hors de tout dépôt (ctx.agent) |
 | `storage` | un dossier privé où écrire des fichiers — un profil de navigateur, un cache — qui survit aux mises à jour du plugin (ctx.dataDir) |
 
 ## Primitives
@@ -80,6 +81,8 @@ Déclarées dans `plugin.json` → `permissions`. Réglages → Plugins les affi
 | `ctx.demo.seed` | `demo` | `(fn: (ctx) => void) => void` | ce que le plugin sème dans une base de démo |
 | `ctx.dataDir` | `storage` | `string` | le dossier privé du plugin (<dataDir>/plugin-data/<name>/), créé à l’activation ; ni son code, ni celui d’un autre plugin — supprimé avec ses données à la désinstallation si on le demande |
 | `ctx.env.get` | `env` | `(name: string) => string \| undefined` | une variable <NAME>_* de l’environnement du serveur |
+| `ctx.agent.ask` | `agent` | `(prompt: string, options?: { data?: { label: string, text: string }[] }) => Promise<{ text: string, simulated: boolean }>` | une question à l’agent IA réglé (claude, copilot…), en lecture seule, dans un dossier vide ; `data` est balisé comme donnée NON FIABLE (des logs, un texte collé) ; `simulated` : pas d’agent sur ce poste, la réponse est factice ; compte dans le budget et la télémétrie ; peut durer des minutes — à lancer hors d’une requête HTTP |
+| `ctx.agent.available` | `agent` | `() => boolean` | un vrai agent est-il réglé et trouvé sur ce poste ? |
 | `ctx.services.register` | `services` | `(name: string, fn: (payload) => unknown) => void` | expose un service nommé <plugin>.<nom> |
 | `ctx.services.call` | `services` | `(name: string, payload?) => Promise<unknown>` | appelle un service du cœur ou d’un autre plugin |
 | `ctx.services.has` | `services` | `(name: string) => boolean` | le service existe-t-il ? |

@@ -21,7 +21,7 @@ const NOM_ENV = (nom) => String(nom).toUpperCase().replace(/-/g, '_');
  * @param {object} f les fournisseurs :
  *   log(message) · bus (sdk/lib/bus) · i18n { dict, t, getLang } · registre (sdk/lib/registre) · horloge (sdk/lib/horloge)
  *   db() → connexion better-sqlite3 (paresseux) · net { request, makeAgentFactory } · notify { push }
- *   exec { options, tuer } · env (objet) · isDemo() · repos { list(), byId(id) } (sinon lus dans db)
+ *   exec { options, tuer } · agent { ask({ plugin, prompt, data }), available() } · env (objet) · isDemo() · repos { list(), byId(id) } (sinon lus dans db)
  *   sortie : un objet où le ctx dépose ce qu'il a enregistré (routes, sse, seeds, settingsListeners, classements)
  */
 function creerContexte(manifeste, f) {
@@ -206,6 +206,23 @@ function creerContexte(manifeste, f) {
         if (!/^https?:$/.test(u.protocol)) return Promise.reject(new Error(`${nom} : net.request — http(s) seulement`));
         return f.net.request(u.toString(), { method, headers, body, agent: tlsAgent() });
       },
+    };
+  }
+
+  /* L'AGENT IA : une question, une réponse. Le prompt est du plugin ; ce qu'il cite d'ailleurs (des logs collés, un
+     texte saisi) passe par `data` et sera balisé comme donnée non fiable par le cœur — c'est lui qui connaît le nonce. */
+  if (permissions.has('agent')) {
+    if (!f.agent) throw new Error(`${nom} : la permission agent demande un fournisseur agent`);
+    const MAX = 200_000;
+    ctx.agent = {
+      ask: (prompt, { data = [] } = {}) => {
+        if (typeof prompt !== 'string' || !prompt.trim()) return Promise.reject(new Error(`${nom} : agent.ask — prompt requis`));
+        if (!Array.isArray(data) || data.length > 20) return Promise.reject(new Error(`${nom} : agent.ask — data : 20 morceaux au plus`));
+        const morceaux = data.map((d) => ({ label: String((d && d.label) || 'donnée').slice(0, 80), text: String((d && d.text) == null ? '' : d.text) }));
+        if (prompt.length + morceaux.reduce((n, d) => n + d.text.length, 0) > MAX) return Promise.reject(new Error(`${nom} : agent.ask — ${MAX} caractères au plus`));
+        return Promise.resolve(f.agent.ask({ plugin: nom, prompt, data: morceaux }));
+      },
+      available: () => !!f.agent.available(),
     };
   }
 

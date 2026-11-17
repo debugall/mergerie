@@ -156,6 +156,7 @@ function creerJobs() {
  * @param {object} [options.env] l'environnement que `ctx.env` lit
  * @param {boolean} [options.demo] ce que `ctx.demo.isDemo()` rend
  * @param {(m: string) => void} [options.log]
+ * @param {(prompt: string, data: { label: string, text: string }[]) => string | Promise<string>} [options.ask] la réponse de `ctx.agent.ask`
  */
 function createTestContext(options = {}) {
   let m = options.manifest;
@@ -185,6 +186,11 @@ function createTestContext(options = {}) {
     net: { request: options.request || requestNode, makeAgentFactory },
     notify: { push: (type, data) => notifications.push({ type, data, at: new Date().toISOString() }) },
     exec: {},
+    /* L'agent d'un test : `options.ask(prompt, data)` rend le texte de la réponse ; sans lui, pas d'agent (réponse simulée vide). */
+    agent: {
+      ask: async ({ prompt, data }) => (options.ask ? { text: String(await options.ask(prompt, data)), simulated: false } : { text: '', simulated: true }),
+      available: () => !!options.ask,
+    },
     jobs,
     // Les autres plugins que le test veut CONNUS (pour que le garde SQL départage deux préfixes qui se chevauchent).
     autresPlugins: () => options.otherPlugins || [],

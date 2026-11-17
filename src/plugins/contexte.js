@@ -46,6 +46,7 @@ function creerContexte(manifeste, options = {}) {
     /* `suivre` : tout processus est suivi pour ne laisser aucun groupe orphelin à l'arrêt ; `suivreJob` : le processus d'un `job.exec` devient l'enfant ACTIF du job courant (contexte d'annulation du cœur), donc « Stop » le tue. */
     exec: { options: (o) => require('../core/proc').options(o), tuer: (child, signal) => require('../core/proc').tuerGroupe(child, signal), suivre: (child) => require('../core/proc').suivre(child), suivreJob: (child) => require('../core/proc').setActive(child) },
     jobs: { register: jobsPlugins.inscrire, start: jobsPlugins.demarrer },
+    agent: { ask: (q) => require('./agent').ask(q), available: () => require('./agent').available() },
     localRoots: () => (options.db || require('../db')).prepare('SELECT id, path, label FROM local_root ORDER BY path').all(),
     dataDir: (n) => require('./donnees').dossierDe(n),
     autresPlugins: () => nomsConnus(),
