@@ -328,6 +328,7 @@ $('#verifierRepoBox') && $('#verifierRepoBox').addEventListener('click', async (
     info.className = 'vr-test-info ok';
     const reserves = [
       r.dirty ? tr('verify.test.dirty') : '',
+      r.sousModules && r.sousModules.length ? tr('verify.test.submodules', { n: r.sousModules.length, count: r.sousModules.length, paths: r.sousModules.join(', ') }) : '',
       r.untracked ? tr('verify.test.untracked', { n: r.untracked, count: r.untracked }) : '',
     ].filter(Boolean);
     info.textContent = tr('verify.test.ok', { branch: r.branche || '?' })

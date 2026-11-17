@@ -319,4 +319,92 @@ describe('Vérification objective — mode in place', () => {
     assert.equal(d.restore_error, null);
     await app.api('DELETE', `/api/verifiers/${r.body.id}`);
   });
+
+  /* Un sous-module sur un autre commit que celui enregistré : `git status` dit « modifié », mais
+     aucun travail ne se perd à le remettre — son commit reste dans son dépôt. Le run le repointe
+     sur le commit enregistré, va au bout, puis le remet où il était. Un fichier modifié DANS le
+     sous-module, lui, reste un refus. */
+  describe('sous-module décalé', () => {
+    const gitF = (cwd, ...a) => git(cwd, '-c', 'protocol.file.allow=always', ...a);
+    let supId; let supMrId; let supWd; let lib; let c1; let c2; let trace;
+
+    before(async () => {
+      const libRemote = fs.mkdtempSync(path.join(os.tmpdir(), 'ip-lib-'));
+      git(libRemote, 'init', '-q', '-b', 'main'); poserIdentiteGit(libRemote);
+      fs.writeFileSync(path.join(libRemote, 'l.txt'), '1\n');
+      git(libRemote, 'add', '-A'); git(libRemote, 'commit', '-qm', 'c1'); c1 = git(libRemote, 'rev-parse', 'HEAD');
+      fs.writeFileSync(path.join(libRemote, 'l.txt'), '2\n');
+      git(libRemote, 'add', '-A'); git(libRemote, 'commit', '-qm', 'c2'); c2 = git(libRemote, 'rev-parse', 'HEAD');
+
+      const supRemote = fs.mkdtempSync(path.join(os.tmpdir(), 'ip-sup-'));
+      git(supRemote, 'init', '-q', '-b', 'main'); poserIdentiteGit(supRemote);
+      fs.writeFileSync(path.join(supRemote, 's.txt'), 'base\n');
+      gitF(supRemote, 'submodule', 'add', '-q', libRemote, 'lib');
+      git(path.join(supRemote, 'lib'), 'checkout', '-q', c1);
+      git(supRemote, 'add', '-A'); git(supRemote, 'commit', '-qm', 'base, lib en c1');
+      git(supRemote, 'checkout', '-q', '-b', 'feature/s');
+      fs.writeFileSync(path.join(supRemote, 's.txt'), 'tête\n');
+      git(supRemote, 'add', '-A'); git(supRemote, 'commit', '-qm', 'tête');
+      const tete = git(supRemote, 'rev-parse', 'HEAD');
+      git(supRemote, 'checkout', '-q', 'main');
+
+      supWd = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ip-sup-wd-')), 'sup');
+      execFileSync('git', ['-c', 'protocol.file.allow=always', 'clone', '-q', '--recurse-submodules', supRemote, supWd], { stdio: 'pipe' });
+      poserIdentiteGit(supWd);
+      lib = path.join(supWd, 'lib');
+      // L'utilisateur a avancé le sous-module sur sa branche, sans commiter le pointeur.
+      git(lib, 'checkout', '-q', 'main');
+      assert.equal(git(lib, 'rev-parse', 'HEAD'), c2);
+      assert.match(git(supWd, 'status', '--porcelain'), /^M lib$/m);
+
+      supId = (await app.api('POST', '/api/repos', { project: 'grp/sup', url: supRemote })).body.id;
+      app.state.projects.push({ id: 2, path_with_namespace: 'grp/sup', http_url_to_repo: supRemote });
+      app.state.mrs['grp/sup'] = [{
+        iid: 3, title: 'Sup', state: 'opened', source_branch: 'feature/s', target_branch: 'main',
+        web_url: 'https://gitlab.test/grp/sup/-/merge_requests/3',
+        sha: tete, created_at: new Date().toISOString(), author: { name: 'A' },
+      }];
+      await app.api('POST', '/api/discover');
+      supMrId = (await app.api('GET', '/api/mrs')).body.find((m) => m.iid === 3).id;
+      trace = path.join(bin, 'sous-module.trace');
+    });
+
+    const poser = async (nom) => (await app.api('POST', '/api/verifiers', {
+      name: nom, kind: 'commands', run_base: false, timeout_s: 60,
+      // Le commit que le sous-module montre PENDANT le run.
+      commands: [script(`git -C '${lib}' rev-parse HEAD > '${trace}'`, nom)],
+      repos: [{ repo_id: supId, mode: 'in_place', workdir: supWd, checkout_allowed: true }],
+    })).body;
+
+    test('repointé sur le commit enregistré pendant le run, puis remis sur sa branche', async () => {
+      const t = await app.api('POST', '/api/verifiers/test-workdir', { repo_id: supId, workdir: supWd });
+      assert.equal(t.body.dirty, false, 'un pointeur seul ne bloque pas');
+      assert.deepEqual(t.body.sousModules, ['lib']);
+
+      const v = await poser('ip-sm');
+      const d = await attendre((await app.api('POST', `/api/mrs/${supMrId}/verify`, { verifier_id: v.id })).body.verification.id);
+      assert.equal(d.verdict, 'verified_pass', d.log_excerpt || '');
+      assert.equal(fs.readFileSync(trace, 'utf8').trim(), c1, 'le run a lu le commit enregistré');
+      assert.match(d.log_excerpt || '', /sous-module lib repointé/);
+      assert.equal(d.restore_error, null);
+      assert.equal(git(supWd, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+      assert.equal(git(lib, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main', 'le sous-module retrouve sa branche');
+      assert.equal(git(lib, 'rev-parse', 'HEAD'), c2);
+      await app.api('DELETE', `/api/verifiers/${v.id}`);
+    });
+
+    test('un fichier modifié DANS le sous-module fait toujours refuser, sans rien toucher', async () => {
+      fs.writeFileSync(path.join(lib, 'l.txt'), 'travail\n');
+      fs.rmSync(trace, { force: true });
+      const v = await poser('ip-sm-sale');
+      const d = await attendre((await app.api('POST', `/api/mrs/${supMrId}/verify`, { verifier_id: v.id })).body.verification.id);
+      assert.equal(d.verdict, 'verify_error');
+      assert.match(d.log_excerpt || '', /non commitées/);
+      assert.equal(fs.existsSync(trace), false, 'aucune commande lancée');
+      assert.equal(fs.readFileSync(path.join(lib, 'l.txt'), 'utf8'), 'travail\n');
+      assert.equal(git(lib, 'rev-parse', 'HEAD'), c2);
+      git(lib, 'checkout', '--', 'l.txt');
+      await app.api('DELETE', `/api/verifiers/${v.id}`);
+    });
+  });
 });

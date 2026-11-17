@@ -2750,7 +2750,11 @@ doit pas passer inaperçu.
   dossier d'artefacts, c'est-à-dire à presque tous. Ils sont comptés et **notés au journal du run** :
   ils restent là pendant les tests et peuvent peser sur le résultat. (Si l'un d'eux porte le nom d'un
   fichier de la branche à tester, git refuse le checkout de lui-même : la vérification échoue au lieu
-  d'écraser ton fichier.) Pendant le run, ton répertoire est sur un **commit détaché** : ne
+  d'écraser ton fichier.) Un **sous-module** dont seul le commit a bougé — tu l'as avancé sans commiter
+  le pointeur — ne bloque pas non plus : rien ne se perd à le remettre, son commit reste dans son dépôt.
+  Le run le **repointe sur le commit enregistré**, le note au journal, puis le remet où il était (sa
+  branche, ou son commit). Un fichier modifié *dans* le sous-module, ou un pointeur déjà indexé, fait
+  toujours refuser le run. Pendant le run, ton répertoire est sur un **commit détaché** : ne
   développe pas dessus. Il est **remis sur sa ref d'origine dans tous les cas**, y compris sur timeout
   ou plantage du job ; si la restauration échoue, le rapport porte un bandeau **« Restauration manuelle
   requise »** — ça ne se noie jamais dans un journal.
@@ -2763,7 +2767,8 @@ découvre qu'au premier run, et qui coûte le run.
 
 Le bouton **« Tester le répertoire »** répond pendant que le formulaire est encore sous tes yeux :
 répertoire reconnu, branche courante, et les deux réserves possibles — des modifications suivies (qui
-feraient refuser le run) et des fichiers non suivis (qui ne bloquent pas, mais seront là pendant les tests).
+feraient refuser le run), les sous-modules qui seront repointés, et des fichiers non suivis (qui ne
+bloquent pas, mais seront là pendant les tests).
 
 ### `node_modules`, et pourquoi la base est parfois rouge
 

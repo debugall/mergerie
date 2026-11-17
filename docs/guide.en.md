@@ -2627,7 +2627,11 @@ modified): a green obtained thanks to a neighbour left on an old branch must not
   directory carrying a `.env.local` or an artefacts folder, that is to say to almost all of them. They are
   counted and **noted in the run's log**: they stay there during the tests and may weigh on the result. (If
   one of them bears the name of a file of the branch under test, git refuses the checkout by itself: the
-  verification fails instead of overwriting your file.) During the run, your directory is on a **detached
+  verification fails instead of overwriting your file.) A **submodule** whose commit alone has moved — you
+  moved it forward without committing the pointer — does not block either: nothing is lost by putting it
+  back, its commit stays in its repository. The run **repoints it to the recorded commit**, notes it in the
+  log, then returns it to where it was (its branch, or its commit). A file modified *inside* the submodule,
+  or a pointer already staged, still gets the run refused. During the run, your directory is on a **detached
   commit**: do not develop on it. It is **put back on its original ref in every case**, including on a
   timeout or a job crash; if the restore fails, the report carries a **“Manual restore required”** banner —
   that never drowns in a log.
@@ -2639,7 +2643,8 @@ any declared root, but it is a typo you only discover on the first run, and that
 
 The **“Test the directory”** button answers while the form is still in front of you: directory recognised,
 current branch, and the two possible reservations — tracked modifications (which would get the run refused)
-and untracked files (which do not block, but will be there during the tests).
+the submodules that will be repointed, and untracked files (which do not block, but will be there during
+the tests).
 
 ### `node_modules`, and why the base is sometimes red
 

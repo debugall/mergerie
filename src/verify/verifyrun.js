@@ -345,12 +345,55 @@ async function inspecterWorkdir(repo, workdir) {
      une note de travail — c'est-à-dire à presque tous.
      (Si un non-suivi porte le nom d'un fichier de la ref visée, git refuse le checkout de
      lui-même, avec sa propre explication : on n'écrase rien en douce.) */
-  const lignes = (await gitTexte(workdir, ['status', '--porcelain'])).split('\n').filter(Boolean);
-  const untracked = lignes.filter((l) => l.startsWith('??')).length;
-  const dirty = lignes.length - untracked > 0;
+  const { suivis, untracked, sousModules } = lireStatut(await gitTexteBrut(workdir, ['status', '--porcelain=v2', '-z']));
+  const dirty = suivis > sousModules.length;
   const branche = await gitTexte(workdir, ['rev-parse', '--abbrev-ref', 'HEAD']);
   const sha = await gitTexte(workdir, ['rev-parse', 'HEAD']);
-  return { ok: true, remote, dirty, untracked, branche, sha };
+  return { ok: true, remote, dirty, untracked, sousModules, branche, sha };
+}
+
+// Sans `trim` : en `-z`, un chemin peut finir par une espace.
+const gitTexteBrut = async (cwd, args) => {
+  const r = await git.run('git', args, { cwd });
+  return String(r && r.stdout != null ? r.stdout : '');
+};
+
+/* `status --porcelain=v2 -z`. Un sous-module dont SEUL le commit a bougé (`.M SC..`, ou `SC.U`
+   avec des non-suivis dedans) ne porte aucun travail perdable : le commit vers lequel il
+   pointait reste dans son dépôt. On le compte à part, pour le repointer au lieu de refuser. Le
+   moindre fichier suivi modifié DANS le sous-module (`m`), ou un pointeur déjà indexé, reste un
+   refus. */
+function lireStatut(sortie) {
+  const champs = sortie.split('\0');
+  let suivis = 0; let untracked = 0; const sousModules = [];
+  for (let i = 0; i < champs.length; i += 1) {
+    const l = champs[i];
+    if (!l) continue;
+    if (l.startsWith('? ')) { untracked += 1; continue; }
+    if (l.startsWith('! ') || l.startsWith('# ')) continue;
+    suivis += 1;
+    if (l.startsWith('2 ')) { i += 1; continue; }   // renommage : le chemin d'origine suit
+    const m = /^1 \.M SC\.[.U] (?:\S+ ){5}(.+)$/.exec(l);
+    if (m) sousModules.push(m[1]);
+  }
+  return { suivis, untracked, sousModules };
+}
+
+/* Remet chaque sous-module sur le commit que le dépôt enregistre, et rend de quoi le remettre
+   où on l'a trouvé — sa branche s'il en suivait une, sinon le commit détaché. `--checkout` :
+   un `submodule.<nom>.update = rebase|merge` configuré ne s'applique pas ici. */
+async function repointerSousModules(workdir, chemins, noter) {
+  const origines = [];
+  for (const chemin of chemins) {
+    const dir = path.join(workdir, chemin);
+    const branche = await gitTexte(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const sha = await gitTexte(dir, ['rev-parse', 'HEAD']);
+    origines.push({ dir, chemin, ref: branche && branche !== 'HEAD' ? branche : sha });
+    await git.run('git', ['submodule', 'update', '--checkout', '--', chemin], { cwd: workdir });
+    const enregistre = await gitTexte(dir, ['rev-parse', 'HEAD']);
+    noter(`  sous-module ${chemin} repointé : ${sha.slice(0, 8)} → ${enregistre.slice(0, 8)} (commit enregistré)`);
+  }
+  return origines;
 }
 
 /* Prépare un dépôt en place et rend de quoi le remettre comme on l'a trouvé.
@@ -361,6 +404,7 @@ async function preparerInPlace(repo, ligne, sha, noter) {
   const etat = await inspecterWorkdir(repo, ligne.workdir);
   if (!etat.ok) throw new Error(etat.raison);
   if (etat.dirty) throw new Error(t('err.verify.dirty', { workdir: ligne.workdir }));
+  const sousModules = await repointerSousModules(ligne.workdir, etat.sousModules, noter);
 
   // La ref d'origine : une branche si on est dessus, sinon le SHA détaché.
   const refOrigine = etat.branche && etat.branche !== 'HEAD' ? etat.branche : etat.sha;
@@ -371,11 +415,18 @@ async function preparerInPlace(repo, ligne, sha, noter) {
   if (etat.untracked) noter(`  ${etat.untracked} fichier(s) non suivi(s) laissés en place`);
   /* La branche vient d'être poussée depuis le clone du dataDir : le répertoire de
      l'utilisateur ne la connaît pas encore. */
-  try { await git.run('git', ['fetch', 'origin', sha], { cwd: ligne.workdir }); }
-  catch { await git.run('git', ['fetch', 'origin'], { cwd: ligne.workdir }); }
-  // Checkout DÉTACHÉ par SHA : aucune branche locale créée dans le dépôt de l'utilisateur.
-  await git.run('git', ['checkout', '--detach', sha], { cwd: ligne.workdir });
-  return { workdir: ligne.workdir, refOrigine };
+  try {
+    try { await git.run('git', ['fetch', 'origin', sha], { cwd: ligne.workdir }); }
+    catch { await git.run('git', ['fetch', 'origin'], { cwd: ligne.workdir }); }
+    // Checkout DÉTACHÉ par SHA : aucune branche locale créée dans le dépôt de l'utilisateur.
+    await git.run('git', ['checkout', '--detach', sha], { cwd: ligne.workdir });
+  } catch (e) {
+    // Le run n'aura pas lieu : les sous-modules repointés reviennent tout de suite.
+    const err = await restaurerInPlace({ workdir: ligne.workdir, refOrigine, sousModules }, noter);
+    if (err) noter(`⚠ ${err}`);
+    throw e;
+  }
+  return { workdir: ligne.workdir, refOrigine, sousModules };
 }
 
 /* Branche par défaut TELLE QUE LE DÉPÔT LA DÉCLARE (`origin/HEAD`), pas une liste devinée de
@@ -404,10 +455,11 @@ async function lireContexte(verifier, reposCibles) {
     const defaut = await brancheParDefaut(l.workdir);
     contexte.push({
       repo_id: repo.id, project: repo.project, workdir: l.workdir,
-      branche: etat.branche, sha: etat.sha, dirty: etat.dirty, untracked: etat.untracked,
+      // Un sous-module décalé change le code lu : pour le contexte, c'est une modification.
+      branche: etat.branche, sha: etat.sha, dirty: etat.dirty || etat.sousModules.length > 0, untracked: etat.untracked,
       /* Les non-suivis n'alertent pas : ils n'empêchent pas de savoir QUEL code a été lu,
          qui est la question à laquelle le contexte répond. Ils restent affichés. */
-      warn: !!etat.dirty || (!!defaut && etat.branche !== defaut),
+      warn: !!etat.dirty || etat.sousModules.length > 0 || (!!defaut && etat.branche !== defaut),
     });
   }
   return contexte;
@@ -417,12 +469,20 @@ async function restaurerInPlace(etat, noter) {
   try {
     await git.run('git', ['checkout', etat.refOrigine], { cwd: etat.workdir });
     noter(`in place ${etat.workdir} : remis sur ${etat.refOrigine}`);
-    return null;
   } catch (e) {
     // On ne masque JAMAIS un échec de restauration : le répertoire de l'utilisateur est
     // resté sur un commit détaché, et lui seul peut décider quoi en faire.
     return `Restauration manuelle requise sur ${etat.workdir} (attendu : ${etat.refOrigine}) — ${e.message}`;
   }
+  for (const sm of etat.sousModules || []) {
+    try {
+      await git.run('git', ['checkout', sm.ref], { cwd: sm.dir });
+      noter(`  sous-module ${sm.chemin} remis sur ${sm.ref}`);
+    } catch (e) {
+      return `Restauration manuelle requise sur ${sm.dir} (attendu : ${sm.ref}) — ${e.message}`;
+    }
+  }
+  return null;
 }
 
 /* ---------------------------------------------------------------- orchestration (§5) */
