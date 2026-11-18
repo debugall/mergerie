@@ -2771,7 +2771,10 @@ doit pas passer inaperçu.
   le pointeur — ne bloque pas non plus : rien ne se perd à le remettre, son commit reste dans son dépôt.
   Le run le **repointe sur le commit enregistré**, le note au journal, puis le remet où il était (sa
   branche, ou son commit). Un fichier modifié *dans* le sous-module, ou un pointeur déjà indexé, fait
-  toujours refuser le run. Pendant le run, ton répertoire est sur un **commit détaché** : ne
+  toujours refuser le run. Un fichier **commité puis ajouté au `.gitignore`** reste suivi par git, mais
+  sa version locale est une conf de poste, pas du travail en cours : il ne bloque pas. Le run le met de
+  côté (copie dans le dossier de données), passe sur la ref, y **repose ta version locale** pendant les
+  tests, puis la remet après la restauration. Pendant le run, ton répertoire est sur un **commit détaché** : ne
   développe pas dessus. Il est **remis sur sa ref d'origine dans tous les cas**, y compris sur timeout
   ou plantage du job ; si la restauration échoue, le rapport porte un bandeau **« Restauration manuelle
   requise »** — ça ne se noie jamais dans un journal.
@@ -2784,7 +2787,7 @@ découvre qu'au premier run, et qui coûte le run.
 
 Le bouton **« Tester le répertoire »** répond pendant que le formulaire est encore sous tes yeux :
 répertoire reconnu, branche courante, et les deux réserves possibles — des modifications suivies (qui
-feraient refuser le run), les sous-modules qui seront repointés, et des fichiers non suivis (qui ne
+feraient refuser le run), les sous-modules qui seront repointés, les fichiers suivis mais ignorés, et des fichiers non suivis (qui ne
 bloquent pas, mais seront là pendant les tests).
 
 ### `node_modules`, et pourquoi la base est parfois rouge

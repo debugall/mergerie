@@ -2645,7 +2645,10 @@ modified): a green obtained thanks to a neighbour left on an old branch must not
   moved it forward without committing the pointer — does not block either: nothing is lost by putting it
   back, its commit stays in its repository. The run **repoints it to the recorded commit**, notes it in the
   log, then returns it to where it was (its branch, or its commit). A file modified *inside* the submodule,
-  or a pointer already staged, still gets the run refused. During the run, your directory is on a **detached
+  or a pointer already staged, still gets the run refused. A file **committed then added to `.gitignore`**
+  is still tracked by git, but its local version is a machine setting, not work in progress: it does not
+  block. The run sets it aside (a copy in the data folder), moves to the ref, **puts your local version
+  back** for the tests, then again after the restore. During the run, your directory is on a **detached
   commit**: do not develop on it. It is **put back on its original ref in every case**, including on a
   timeout or a job crash; if the restore fails, the report carries a **“Manual restore required”** banner —
   that never drowns in a log.
@@ -2657,7 +2660,7 @@ any declared root, but it is a typo you only discover on the first run, and that
 
 The **“Test the directory”** button answers while the form is still in front of you: directory recognised,
 current branch, and the two possible reservations — tracked modifications (which would get the run refused)
-the submodules that will be repointed, and untracked files (which do not block, but will be there during
+the submodules that will be repointed, tracked-but-ignored files, and untracked files (which do not block, but will be there during
 the tests).
 
 ### `node_modules`, and why the base is sometimes red

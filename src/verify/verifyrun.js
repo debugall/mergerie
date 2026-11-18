@@ -29,6 +29,8 @@ const { stripAnsi } = require('../../public/runtime/ansi-runtime.js');
 const { t } = require('../core/i18n');
 
 const WORKTREES_DIR = path.join(DATA_DIR, 'worktrees');
+// Copie de secours des fichiers suivis-mais-ignorés mis de côté le temps d'un run in place.
+const IGNORES_DIR = path.join(DATA_DIR, 'inplace-ignores');
 const GRACE_KILL_MS = 10_000;   // délai entre SIGTERM et SIGKILL
 
 /* ---------------------------------------------------------------- appel du script */
@@ -345,11 +347,20 @@ async function inspecterWorkdir(repo, workdir) {
      une note de travail — c'est-à-dire à presque tous.
      (Si un non-suivi porte le nom d'un fichier de la ref visée, git refuse le checkout de
      lui-même, avec sa propre explication : on n'écrase rien en douce.) */
-  const { suivis, untracked, sousModules } = lireStatut(await gitTexteBrut(workdir, ['status', '--porcelain=v2', '-z']));
-  const dirty = suivis > sousModules.length;
+  const { suivis, untracked, sousModules, modifies } = lireStatut(await gitTexteBrut(workdir, ['status', '--porcelain=v2', '-z']));
+  /* Un fichier commité AVANT d'entrer dans le `.gitignore` reste suivi : sa version locale
+     (une conf de poste, typiquement) est voulue, pas du travail en cours. Il ne bloque pas :
+     il est mis de côté et reposé (`preparerInPlace`). Seulement une modification non indexée
+     d'un fichier ordinaire — le reste se rejoue mal à l'identique. */
+  let ignores = [];
+  if (modifies.length) {
+    const ign = new Set((await gitTexteBrut(workdir, ['ls-files', '-z', '-c', '-i', '--exclude-standard'])).split('\0'));
+    ignores = modifies.filter((f) => ign.has(f) && fichierOuAbsent(path.join(workdir, f)));
+  }
+  const dirty = suivis > sousModules.length + ignores.length;
   const branche = await gitTexte(workdir, ['rev-parse', '--abbrev-ref', 'HEAD']);
   const sha = await gitTexte(workdir, ['rev-parse', 'HEAD']);
-  return { ok: true, remote, dirty, untracked, sousModules, branche, sha };
+  return { ok: true, remote, dirty, untracked, sousModules, ignores, branche, sha };
 }
 
 // Sans `trim` : en `-z`, un chemin peut finir par une espace.
@@ -365,7 +376,7 @@ const gitTexteBrut = async (cwd, args) => {
    refus. */
 function lireStatut(sortie) {
   const champs = sortie.split('\0');
-  let suivis = 0; let untracked = 0; const sousModules = [];
+  let suivis = 0; let untracked = 0; const sousModules = []; const modifies = [];
   for (let i = 0; i < champs.length; i += 1) {
     const l = champs[i];
     if (!l) continue;
@@ -374,9 +385,52 @@ function lireStatut(sortie) {
     suivis += 1;
     if (l.startsWith('2 ')) { i += 1; continue; }   // renommage : le chemin d'origine suit
     const m = /^1 \.M SC\.[.U] (?:\S+ ){5}(.+)$/.exec(l);
-    if (m) sousModules.push(m[1]);
+    if (m) { sousModules.push(m[1]); continue; }
+    // Modifié ou supprimé dans l'arbre, rien d'indexé, pas un sous-module.
+    const f = /^1 \.[MD] N\.\.\. (?:\S+ ){5}(.+)$/.exec(l);
+    if (f) modifies.push(f[1]);
   }
-  return { suivis, untracked, sousModules };
+  return { suivis, untracked, sousModules, modifies };
+}
+
+function fichierOuAbsent(p) {
+  try { return fs.lstatSync(p).isFile(); } catch { return true; }
+}
+
+/* Met de côté les fichiers suivis-mais-ignorés modifiés : copie sur disque (survit à un arrêt
+   brutal du serveur), puis version commitée remise pour que le checkout passe. */
+async function mettreDeCoteIgnores(workdir, fichiers, noter) {
+  if (!fichiers.length) return null;
+  const dir = ensureDir(path.join(IGNORES_DIR, `${Date.now()}-${path.basename(workdir)}`));
+  const locaux = fichiers.map((chemin) => {
+    const p = path.join(workdir, chemin);
+    if (!fs.existsSync(p)) return { chemin, existe: false, mode: 0 };
+    ensureDir(path.dirname(path.join(dir, chemin)));
+    fs.copyFileSync(p, path.join(dir, chemin));
+    return { chemin, existe: true, mode: fs.statSync(p).mode };
+  });
+  await git.run('git', ['checkout', 'HEAD', '--', ...fichiers], { cwd: workdir });
+  noter(`  ${fichiers.length} fichier(s) suivi(s) mais ignoré(s) par .gitignore, version locale gardée (copie : ${dir}) : ${fichiers.join(', ')}`);
+  return { dir, locaux };
+}
+
+// Repose la version locale — pendant le run comme après la restauration.
+function reposerIgnores(workdir, cote) {
+  for (const l of cote.locaux) {
+    const p = path.join(workdir, l.chemin);
+    if (!l.existe) { fs.rmSync(p, { force: true }); continue; }
+    ensureDir(path.dirname(p));
+    fs.copyFileSync(path.join(cote.dir, l.chemin), p);
+    fs.chmodSync(p, l.mode);
+  }
+}
+
+// Rend aux fichiers la version du commit courant, pour qu'un checkout ne bute pas dessus.
+async function oterIgnores(workdir, cote) {
+  for (const l of cote.locaux) {
+    try { await git.run('git', ['checkout', 'HEAD', '--', l.chemin], { cwd: workdir }); }
+    catch { fs.rmSync(path.join(workdir, l.chemin), { force: true }); }   // absent du commit visé
+  }
 }
 
 /* Remet chaque sous-module sur le commit que le dépôt enregistre, et rend de quoi le remettre
@@ -405,6 +459,7 @@ async function preparerInPlace(repo, ligne, sha, noter) {
   if (!etat.ok) throw new Error(etat.raison);
   if (etat.dirty) throw new Error(t('err.verify.dirty', { workdir: ligne.workdir }));
   const sousModules = await repointerSousModules(ligne.workdir, etat.sousModules, noter);
+  const ignores = await mettreDeCoteIgnores(ligne.workdir, etat.ignores, noter);
 
   // La ref d'origine : une branche si on est dessus, sinon le SHA détaché.
   const refOrigine = etat.branche && etat.branche !== 'HEAD' ? etat.branche : etat.sha;
@@ -420,13 +475,14 @@ async function preparerInPlace(repo, ligne, sha, noter) {
     catch { await git.run('git', ['fetch', 'origin'], { cwd: ligne.workdir }); }
     // Checkout DÉTACHÉ par SHA : aucune branche locale créée dans le dépôt de l'utilisateur.
     await git.run('git', ['checkout', '--detach', sha], { cwd: ligne.workdir });
+    if (ignores) reposerIgnores(ligne.workdir, ignores);
   } catch (e) {
-    // Le run n'aura pas lieu : les sous-modules repointés reviennent tout de suite.
-    const err = await restaurerInPlace({ workdir: ligne.workdir, refOrigine, sousModules }, noter);
+    // Le run n'aura pas lieu : sous-modules et fichiers mis de côté reviennent tout de suite.
+    const err = await restaurerInPlace({ workdir: ligne.workdir, refOrigine, sousModules, ignores }, noter);
     if (err) noter(`⚠ ${err}`);
     throw e;
   }
-  return { workdir: ligne.workdir, refOrigine, sousModules };
+  return { workdir: ligne.workdir, refOrigine, sousModules, ignores };
 }
 
 /* Branche par défaut TELLE QUE LE DÉPÔT LA DÉCLARE (`origin/HEAD`), pas une liste devinée de
@@ -467,12 +523,19 @@ async function lireContexte(verifier, reposCibles) {
 
 async function restaurerInPlace(etat, noter) {
   try {
+    if (etat.ignores) await oterIgnores(etat.workdir, etat.ignores);
     await git.run('git', ['checkout', etat.refOrigine], { cwd: etat.workdir });
     noter(`in place ${etat.workdir} : remis sur ${etat.refOrigine}`);
+    if (etat.ignores) {
+      reposerIgnores(etat.workdir, etat.ignores);
+      fs.rmSync(etat.ignores.dir, { recursive: true, force: true });
+      noter(`  version locale reposée : ${etat.ignores.locaux.map((l) => l.chemin).join(', ')}`);
+    }
   } catch (e) {
     // On ne masque JAMAIS un échec de restauration : le répertoire de l'utilisateur est
     // resté sur un commit détaché, et lui seul peut décider quoi en faire.
-    return `Restauration manuelle requise sur ${etat.workdir} (attendu : ${etat.refOrigine}) — ${e.message}`;
+    const copie = etat.ignores ? ` ; version locale des fichiers ignorés dans ${etat.ignores.dir}` : '';
+    return `Restauration manuelle requise sur ${etat.workdir} (attendu : ${etat.refOrigine})${copie} — ${e.message}`;
   }
   for (const sm of etat.sousModules || []) {
     try {

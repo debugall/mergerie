@@ -198,6 +198,38 @@ describe('Vérification objective — mode in place', () => {
     await app.api('DELETE', `/api/verifiers/${v.id}`);
   });
 
+  /* Commité avant d'entrer dans le `.gitignore`, un fichier reste suivi : sa version locale est
+     une conf de poste, pas du travail en cours. Ici il n'existe même pas sur la ref visée — le
+     cas où le checkout buterait dessus. */
+  test('un fichier suivi mais ignoré par .gitignore ne bloque pas : sa version locale traverse le run', async () => {
+    const conf = path.join(workdir, 'conf.local');
+    fs.writeFileSync(conf, 'commitée\n');
+    git(workdir, 'add', 'conf.local');
+    fs.writeFileSync(path.join(workdir, '.gitignore'), 'conf.local\n');
+    git(workdir, 'add', '.gitignore'); git(workdir, 'commit', '-qm', 'conf commitée puis ignorée');
+    fs.writeFileSync(conf, 'à moi\n');
+    const statutAvant = git(workdir, 'status', '--porcelain');
+    assert.match(statutAvant, /conf\.local/, 'toujours vu comme modifié par git');
+
+    const t = await app.api('POST', '/api/verifiers/test-workdir', { repo_id: repoId, workdir });
+    assert.equal(t.body.dirty, false);
+    assert.deepEqual(t.body.ignores, ['conf.local']);
+
+    const trace = path.join(bin, 'ignore.trace');
+    const v = await poserVerifier('ip-ignore', `cat '${conf}' > '${trace}'`);
+    const d = await attendre((await app.api('POST', `/api/mrs/${mrId}/verify`, { verifier_id: v.id })).body.verification.id);
+    assert.equal(d.verdict, 'verified_pass', d.log_excerpt || '');
+    assert.equal(fs.readFileSync(trace, 'utf8'), 'à moi\n', 'le run a lu la version locale');
+    assert.match(d.log_excerpt || '', /ignoré\(s\) par \.gitignore/);
+    assert.equal(d.restore_error, null);
+    assert.equal(git(workdir, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+    assert.equal(fs.readFileSync(conf, 'utf8'), 'à moi\n', 'reposée après la restauration');
+    assert.equal(git(workdir, 'status', '--porcelain'), statutAvant);
+
+    git(workdir, 'reset', '-q', '--hard', 'origin/main');
+    await app.api('DELETE', `/api/verifiers/${v.id}`);
+  });
+
   /* Un non-suivi qui porte le nom d'un fichier de la ref visée est le seul cas gênant : git
      refuse alors le checkout de lui-même. On vérifie qu'on ne l'écrase pas en douce, et que
      l'échec reste lisible. */
