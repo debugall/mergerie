@@ -2081,7 +2081,8 @@ Operations across **several repositories at once**, and branch exploration.
   **`Create`**: the preparation joins the list. **`Run`** runs the verifiers **one after the other, in the
   background** — each one is an ordinary verification, visible in the log, with its report — and the card
   shows each verdict as it lands. **A red or an error stops the rest**: the remaining verifiers are marked
-  *not run*, each with its own **`Run`** button to run it alone. A verifier runs on the repositories **it
+  *not run*, each with its own **`Run`** button to run it alone; the one that failed carries **`Run again`** (once the
+  code is fixed, say) — it runs alone, and its new verification takes its place on the card. A verifier runs on the repositories **it
   covers**; the **preparation's other repositories** are put on their ref **in your local clone** (found in
   the declared local directories, Settings → Repositories, by its `origin` remote) for its run, then put back
   where they were — the same guard rails as *in place* mode: a clone with tracked changes, or none found,

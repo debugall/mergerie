@@ -42,8 +42,10 @@ function planVerifEtapeHtml(run, s, i) {
   if ((s.etat === 'queued' || s.etat === 'running') && s.verification) {
     etat += ` <button type="button" class="btn btn-sm" data-vreport="${s.verification.id}">${esc(tr('git.verif.see-report'))}</button>`;
   }
-  const lancer = s.etat === 'not_run' || s.etat === 'error'
-    ? ` <button type="button" class="btn btn-sm" data-pvstep="${run.id}:${i}">${svgIco('play')} ${esc(tr('git.verif.run-step'))}</button>` : '';
+  // Non lancée, refusée, ou échouée : elle se (re)lance seule. Une étape verte, non.
+  const echouee = s.etat === 'done' && (!s.verification || s.verification.verdict !== 'verified_pass');
+  const lancer = s.etat === 'not_run' || s.etat === 'error' || echouee
+    ? ` <button type="button" class="btn btn-sm" data-pvstep="${run.id}:${i}">${svgIco(echouee ? 'refresh' : 'play')} ${esc(tr(echouee ? 'git.verif.rerun-step' : 'git.verif.run-step'))}</button>` : '';
   return `<li class="pv-step" data-etat="${esc(s.etat)}"><span class="pv-vname">${esc(s.verifier_name || '?')}</span> ${etat}${lancer}</li>`;
 }
 

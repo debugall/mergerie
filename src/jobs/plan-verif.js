@@ -196,13 +196,16 @@ async function lancerPlan(planId) {
   return lancerEtape(info.lastInsertRowid, 0, { chaine: true });
 }
 
-/* Une étape « non lancée » (ou refusée au lancement), lancée à la main : SEULE — elle n'enchaîne pas
-   sur les suivantes, la séquence s'est arrêtée et c'est l'utilisateur qui reprend la main. */
+/* Une étape « non lancée », refusée au lancement, ou ÉCHOUÉE (rouge, erreur, base cassée), lancée à la
+   main : SEULE — elle n'enchaîne pas sur les suivantes, la séquence s'est arrêtée et c'est l'utilisateur
+   qui reprend la main. Relancer une étape échouée remplace sa vérification sur la carte ; l'ancienne
+   reste un rapport comme un autre. Une étape verte ne se relance pas : « Lancer » refait la séquence. */
 async function lancerEtapeSeule(runId, index) {
   const run = runParId(runId);
   if (!run) throw new Error(t('err.plan.step-not-found'));
-  const etat = (etatEtapes(run)[Number(index)] || {}).etat;
-  if (etat !== 'not_run' && etat !== 'error') throw new Error(t('err.plan.step-not-launchable'));
+  const { etat, verdict } = etatEtapes(run)[Number(index)] || {};
+  const echouee = etat === 'done' && verdict !== 'verified_pass';
+  if (etat !== 'not_run' && etat !== 'error' && !echouee) throw new Error(t('err.plan.step-not-launchable'));
   return lancerEtape(run.id, Number(index), { chaine: false });
 }
 

@@ -2174,7 +2174,8 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   tourner les vérificateurs **l'un après l'autre, en arrière-plan** — chacun est une vérification ordinaire,
   visible dans le journal, avec son rapport — et la carte montre le verdict de chacun au fil de l'eau. **Un
   rouge ou une erreur arrête la suite** : les vérificateurs restants sont marqués *non lancé*, chacun avec son
-  bouton **`Lancer`** pour le faire tourner seul. Un vérificateur tourne sur les dépôts **qu'il couvre** ; les
+  bouton **`Lancer`** pour le faire tourner seul ; celui qui a échoué porte **`Relancer`** (une fois le
+  code corrigé, par exemple) — il retourne seul, et sa nouvelle vérification prend sa place sur la carte. Un vérificateur tourne sur les dépôts **qu'il couvre** ; les
   **autres dépôts de la préparation** sont mis sur leur ref **dans ton clone local** (trouvé dans les
   répertoires locaux déclarés, Réglages → Dépôts, par son remote `origin`) le temps de son run, puis remis où
   ils étaient — mêmes garde-fous que le mode *in place* : un clone avec des modifications suivies, ou

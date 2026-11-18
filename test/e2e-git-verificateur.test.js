@@ -139,8 +139,16 @@ describe('Git → Vérificateur', () => {
     fin = await attendreFin(plan.id);
     assert.equal(fin.runs.length, 1, 'la même exécution, pas un nouveau lancement');
     assert.equal(fin.runs[0].steps[1].verification.verdict, 'verified_pass');
-    // Une étape déjà rendue ne se relance pas à la main : c'est « Lancer » qui refait la séquence.
+    // Une étape VERTE ne se relance pas à la main : c'est « Lancer » qui refait la séquence.
     assert.equal((await app.api('POST', `/api/verif-plan-runs/${fin.runs[0].id}/steps/1/run`)).status, 400);
+    // Une étape ROUGE, si : une nouvelle vérification prend sa place, la suivante n'est pas touchée.
+    const avantRouge = fin.runs[0].steps[0].verification.id;
+    const relance = await app.api('POST', `/api/verif-plan-runs/${fin.runs[0].id}/steps/0/run`);
+    assert.equal(relance.status, 200, JSON.stringify(relance.body));
+    fin = await attendreFin(plan.id);
+    assert.ok(fin.runs[0].steps[0].verification.id > avantRouge, 'une nouvelle vérification');
+    assert.equal(fin.runs[0].steps[0].verification.verdict, 'verified_fail');
+    assert.equal(fin.runs[0].steps[1].verification.verdict, 'verified_pass', 'la suivante garde son verdict');
 
     // Relancer : un second lancement, le premier passe à l'historique.
     await app.api('POST', `/api/verif-plans/${plan.id}/run`);
@@ -243,6 +251,16 @@ describe('Git → Vérificateur', () => {
       await carte.locator('[data-pvrun]').click();
       // Le verdict arrive sur la carte, sans recharger : l'écran relit tant que ça tourne.
       await carte.locator('.pv-step .tag.verify.ok').waitFor();
+      assert.equal(await carte.locator('[data-pvstep]').count(), 0, 'une étape verte n’a pas de bouton');
+
+      // Une étape rouge porte « Relancer » ; le clic lance une nouvelle vérification de cette étape.
+      const rouge = (await app.api('GET', '/api/verif-plans')).body.find((x) => x.name === 'Rouge puis vert');
+      const etape = page.locator(`#planVerifList .pv-card[data-plan="${rouge.id}"] .pv-run`).first().locator('.pv-step').first();
+      const idRouge = rouge.runs[0].steps[0].verification.id;
+      await etape.locator('[data-pvstep]', { hasText: 'Relancer' }).click();
+      await attendreFin(rouge.id);
+      const apres = (await app.api('GET', '/api/verif-plans')).body.find((x) => x.id === rouge.id).runs[0].steps[0].verification.id;
+      assert.ok(apres > idRouge, 'relancée depuis l’écran');
       assert.equal(erreurs.length, 0, `aucune erreur JS : ${erreurs.join(' | ')}`);
     } finally { await nav.close(); }
   });
