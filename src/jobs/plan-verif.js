@@ -181,19 +181,23 @@ async function lancerEtape(runId, index, { chaine }) {
   return runParId(runId);
 }
 
-async function lancerPlan(planId) {
+/* `seul` (rang d'un vérificateur) : un lancement où seul celui-là part, hors séquence — les autres
+   étapes restent « non lancées », chacune avec son bouton. */
+async function lancerPlan(planId, { seul = null } = {}) {
   const plan = planParId(planId);
   if (!plan) throw new Error(t('err.plan.not-found'));
   const dernier = lancementsDe(planId)[0];
   if (dernier && runActif(dernier)) throw new Error(t('err.plan.running'));
+  const index = seul == null ? 0 : Number(seul);
+  if (!Number.isInteger(index) || index < 0 || index >= plan.verifier_ids.length) throw new Error(t('err.plan.step-not-found'));
   const steps = plan.verifier_ids.map((id) => ({
     verifier_id: id,
     verifier_name: (db.prepare('SELECT name FROM verifier WHERE id = ?').get(id) || {}).name || `#${id}`,
-    verification_id: null, chaine: true, erreur: null,
+    verification_id: null, chaine: seul == null, erreur: null,
   }));
   const info = db.prepare('INSERT INTO verif_plan_run (plan_id, steps_json, created_at) VALUES (?,?,?)')
     .run(plan.id, JSON.stringify(steps), maintenant());
-  return lancerEtape(info.lastInsertRowid, 0, { chaine: true });
+  return lancerEtape(info.lastInsertRowid, index, { chaine: seul == null });
 }
 
 /* Une étape « non lancée », refusée au lancement, ou ÉCHOUÉE (rouge, erreur, base cassée), lancée à la

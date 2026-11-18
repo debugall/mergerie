@@ -8,7 +8,8 @@
 .pv-ref { white-space: nowrap; }
 .pv-ref code { font-size: 12px; }
 .pv-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.pv-verifiers { font-size: 13px; }
+.pv-verifiers { font-size: 13px; margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.pv-verifier > span { margin-right: 6px; }
 .pv-run-head { font-size: 12px; margin-bottom: 4px; }
 .pv-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
 .pv-step { display: list-item; }

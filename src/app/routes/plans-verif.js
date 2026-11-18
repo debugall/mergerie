@@ -50,7 +50,8 @@ app.delete('/api/verif-plans/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 app.post('/api/verif-plans/:id/run', wrap(async (req, res) => {
-  await planVerif.lancerPlan(req.params.id);
+  // `index` : un seul vérificateur de la préparation, hors séquence.
+  await planVerif.lancerPlan(req.params.id, { seul: req.body && req.body.index != null ? req.body.index : null });
   res.json(vuePlan(planVerif.planParId(req.params.id)));
 }));
 app.post('/api/verif-plan-runs/:id/steps/:index/run', wrap(async (req, res) => {

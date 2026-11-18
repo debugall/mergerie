@@ -2170,7 +2170,9 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   qu'on la retrouve, la liste est rangée par nom), on coche des dépôts (liste filtrable), chacun sur une **branche ou un
   tag** (sélecteur à recherche, branche par défaut proposée), puis un ou plusieurs **vérificateurs** — l'ordre
   où on les coche est l'ordre où ils tourneront ; un vérificateur qui ne couvre aucun dépôt coché est grisé,
-  et la ligne dit combien il en couvre. **`Créer`** : la préparation rejoint la liste. **`Lancer`** fait
+  et la ligne dit combien il en couvre. **`Créer`** : la préparation rejoint la liste. Sur la carte, chaque
+  vérificateur a son bouton **`Lancer`** pour le faire tourner **seul**, hors séquence (un nouveau lancement
+  où les autres restent *non lancés*). **`Tout lancer`** fait
   tourner les vérificateurs **l'un après l'autre, en arrière-plan** — chacun est une vérification ordinaire,
   visible dans le journal, avec son rapport — et la carte montre le verdict de chacun au fil de l'eau. **Un
   rouge ou une erreur arrête la suite** : les vérificateurs restants sont marqués *non lancé*, chacun avec son

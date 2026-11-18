@@ -2078,7 +2078,8 @@ Operations across **several repositories at once**, and branch exploration.
   give it a **name** (“Friday acceptance” — that is how you find it again, the list is sorted by name), tick repositories (filterable list), each on a **branch or a tag** (search selector, default branch
   proposed), then one or more **verifiers** — the order you tick them in is the order they run in; a
   verifier that covers no ticked repository is greyed out, and the row says how many it covers.
-  **`Create`**: the preparation joins the list. **`Run`** runs the verifiers **one after the other, in the
+  **`Create`**: the preparation joins the list. On the card, each verifier has its own **`Run`** button to
+  run it **alone**, outside the sequence (a new run where the others stay *not run*). **`Run all`** runs the verifiers **one after the other, in the
   background** — each one is an ordinary verification, visible in the log, with its report — and the card
   shows each verdict as it lands. **A red or an error stops the rest**: the remaining verifiers are marked
   *not run*, each with its own **`Run`** button to run it alone; the one that failed carries **`Run again`** (once the

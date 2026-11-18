@@ -157,6 +157,22 @@ describe('Git → Vérificateur', () => {
     assert.equal(fin.runs[1].steps[1].verification.verdict, 'verified_pass', 'l’historique garde le lancement précédent');
   });
 
+  test('un vérificateur se lance seul : un nouveau lancement où lui seul part, hors séquence', async () => {
+    const premier = await verificateur('pv-premier', `echo x >> '${trace}.premier'`, [aId]);
+    const second = await verificateur('pv-second', 'exit 0', [aId]);
+    const troisieme = await verificateur('pv-troisieme', `echo x >> '${trace}.premier'`, [aId]);
+    const plan = (await app.api('POST', '/api/verif-plans', {
+      name: 'Un par un', targets: [{ repo_id: aId, branch: 'develop' }], verifier_ids: [premier.id, second.id, troisieme.id],
+    })).body;
+    const r = await app.api('POST', `/api/verif-plans/${plan.id}/run`, { index: 1 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const fin = await attendreFin(plan.id);
+    assert.deepEqual(fin.runs[0].steps.map((s) => s.etat), ['not_run', 'done', 'not_run'], 'ni avant, ni après');
+    assert.equal(fin.runs[0].steps[1].verification.verdict, 'verified_pass');
+    assert.equal(fs.existsSync(`${trace}.premier`), false, 'ni le premier ni le troisième n’ont tourné');
+    assert.equal((await app.api('POST', `/api/verif-plans/${plan.id}/run`, { index: 3 })).status, 400, 'hors de la liste');
+  });
+
   test('une préparation se refuse sans dépôt, sans vérificateur, ou avec un vérificateur qui n’en couvre aucun', async () => {
     const seulB = await verificateur('pv-seul-b', 'exit 0', [bId]);
     const tente = (corps) => app.api('POST', '/api/verif-plans', { name: 'refusée', ...corps });
@@ -252,6 +268,11 @@ describe('Git → Vérificateur', () => {
       // Le verdict arrive sur la carte, sans recharger : l'écran relit tant que ça tourne.
       await carte.locator('.pv-step .tag.verify.ok').waitFor();
       assert.equal(await carte.locator('[data-pvstep]').count(), 0, 'une étape verte n’a pas de bouton');
+      // Chaque vérificateur de la préparation a son propre « Lancer » : un nouveau lancement.
+      await carte.locator('[data-pvone]').waitFor({ state: 'visible' });
+      await page.waitForFunction((id) => !document.querySelector(`.pv-card[data-plan="${id}"] [data-pvone]`).disabled, plan.id);
+      await carte.locator('[data-pvone]').click();
+      assert.equal((await attendreFin(plan.id)).runs.length, 2, 'lancé seul depuis l’écran');
 
       // Une étape rouge porte « Relancer » ; le clic lance une nouvelle vérification de cette étape.
       const rouge = (await app.api('GET', '/api/verif-plans')).body.find((x) => x.name === 'Rouge puis vert');

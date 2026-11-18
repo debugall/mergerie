@@ -54,7 +54,9 @@ const planVerifRunHtml = (run, titre) => `<div class="pv-run"><div class="pv-run
 
 function planVerifCarteHtml(p, ouverts) {
   const [dernier, ...hist] = p.runs;
-  const verifs = p.verifiers.map((v, i) => `${i + 1}. ${esc(v.name || tr('git.verif.verifier-gone'))}`).join(' → ');
+  // Chaque vérificateur se lance aussi seul, hors séquence : un nouveau lancement où lui seul part.
+  const verifs = p.verifiers.map((v, i) => `<li class="pv-verifier"><span>${esc(v.name || tr('git.verif.verifier-gone'))}</span>
+    <button type="button" class="btn btn-sm" data-pvone="${p.id}:${i}" title="${esc(tr('git.verif.run-one-title'))}"${p.running || !v.name ? ' disabled' : ''}>${svgIco('play')} ${esc(tr('git.verif.run-step'))}</button></li>`).join('');
   return `<div class="card pv-card" data-plan="${p.id}">
     <div class="pv-head">
       <div class="pv-titre"><h4 class="pv-name">${esc(p.name || tr('git.verif.unnamed'))}</h4>
@@ -65,7 +67,7 @@ function planVerifCarteHtml(p, ouverts) {
         <button type="button" class="btn btn-icon btn-sm btn-danger" data-pvdel="${p.id}" title="${esc(tr('git.verif.delete'))}" aria-label="${esc(tr('git.verif.delete'))}">${svgIco('trash')}</button>
       </div>
     </div>
-    <div class="pv-verifiers muted">${verifs}</div>
+    <ol class="pv-verifiers">${verifs}</ol>
     ${dernier ? planVerifRunHtml(dernier, tr('git.verif.last-run', { date: fmtDateHour(dernier.created_at) })) : `<p class="muted pv-never">${esc(tr('git.verif.never-run'))}</p>`}
     ${hist.length ? `<details class="pv-hist"${ouverts.has(p.id) ? ' open' : ''}><summary>${esc(tr('git.verif.history', { n: hist.length, count: hist.length }))}</summary>
       ${hist.map((r) => planVerifRunHtml(r, fmtDateHour(r.created_at))).join('')}</details>` : ''}
@@ -235,7 +237,7 @@ $('#planVerifSave') && $('#planVerifSave').addEventListener('click', async (e) =
 
 $('#planVerifNew') && $('#planVerifNew').addEventListener('click', () => planVerifOuvrir());
 $('#planVerifList') && $('#planVerifList').addEventListener('click', async (e) => {
-  const b = e.target.closest && e.target.closest('[data-pvrun],[data-pvstep],[data-pvedit],[data-pvdel]');
+  const b = e.target.closest && e.target.closest('[data-pvrun],[data-pvone],[data-pvstep],[data-pvedit],[data-pvdel]');
   if (!b) return;
   try {
     if (b.dataset.pvedit) { planVerifOuvrir(planVerifPlans.find((p) => p.id === Number(b.dataset.pvedit))); return; }
@@ -244,6 +246,10 @@ $('#planVerifList') && $('#planVerifList').addEventListener('click', async (e) =
       await api(`/verif-plans/${b.dataset.pvdel}`, { method: 'DELETE' });
     } else if (b.dataset.pvrun) {
       await busy(b, () => api(`/verif-plans/${b.dataset.pvrun}/run`, { method: 'POST' }));
+      toast(tr('git.verif.started'));
+    } else if (b.dataset.pvone) {
+      const [plan, i] = b.dataset.pvone.split(':');
+      await busy(b, () => api(`/verif-plans/${plan}/run`, { method: 'POST', body: { index: Number(i) } }));
       toast(tr('git.verif.started'));
     } else {
       const [run, i] = b.dataset.pvstep.split(':');
