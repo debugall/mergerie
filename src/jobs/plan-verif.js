@@ -44,6 +44,8 @@ const ecrireEtapes = (runId, steps) => db.prepare('UPDATE verif_plan_run SET ste
    couvrent CHACUN au moins un dépôt du lot — un vérificateur qui n'en couvre aucun n'aurait rien à
    vérifier. */
 function normaliser(body) {
+  const name = String((body && body.name) || '').trim().slice(0, 120);
+  if (!name) throw new Error(t('err.plan.name-required'));
   const targets = [];
   const vus = new Set();
   for (const e of (body && body.targets) || []) {
@@ -66,28 +68,29 @@ function normaliser(body) {
     const couverts = groupes.couvertureVerifier(id);
     if (!targets.some((c) => couverts.has(c.repo_id))) throw new Error(t('err.plan.verifier-covers-none', { name: v.name }));
   }
-  return { targets, verifier_ids: ids };
+  return { name, targets, verifier_ids: ids };
 }
 
 function creerPlan(body) {
-  const { targets, verifier_ids } = normaliser(body);
+  const { name, targets, verifier_ids } = normaliser(body);
   const now = maintenant();
-  const info = db.prepare('INSERT INTO verif_plan (targets_json, verifier_ids_json, created_at, updated_at) VALUES (?,?,?,?)')
-    .run(JSON.stringify(targets), JSON.stringify(verifier_ids), now, now);
+  const info = db.prepare('INSERT INTO verif_plan (name, targets_json, verifier_ids_json, created_at, updated_at) VALUES (?,?,?,?,?)')
+    .run(name, JSON.stringify(targets), JSON.stringify(verifier_ids), now, now);
   return planParId(info.lastInsertRowid);
 }
 function modifierPlan(id, body) {
   if (!planParId(id)) throw new Error(t('err.plan.not-found'));
-  const { targets, verifier_ids } = normaliser(body);
-  db.prepare('UPDATE verif_plan SET targets_json = ?, verifier_ids_json = ?, updated_at = ? WHERE id = ?')
-    .run(JSON.stringify(targets), JSON.stringify(verifier_ids), maintenant(), Number(id));
+  const { name, targets, verifier_ids } = normaliser(body);
+  db.prepare('UPDATE verif_plan SET name = ?, targets_json = ?, verifier_ids_json = ?, updated_at = ? WHERE id = ?')
+    .run(name, JSON.stringify(targets), JSON.stringify(verifier_ids), maintenant(), Number(id));
   return planParId(id);
 }
 function supprimerPlan(id) {
   db.prepare('DELETE FROM verif_plan WHERE id = ?').run(Number(id));
 }
 function plans() {
-  return db.prepare('SELECT id FROM verif_plan ORDER BY id DESC').all().map((p) => planParId(p.id));
+  // Par nom : on vient y chercher « la recette du vendredi », pas la dernière créée.
+  return db.prepare('SELECT id FROM verif_plan ORDER BY name COLLATE NOCASE, id DESC').all().map((p) => planParId(p.id));
 }
 function lancementsDe(planId) {
   return db.prepare('SELECT id FROM verif_plan_run WHERE plan_id = ? ORDER BY id DESC').all(Number(planId)).map((r) => runParId(r.id));

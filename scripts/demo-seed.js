@@ -1299,8 +1299,8 @@ mrsP3x.forEach((mr) => {
     { repo_id: repoIds['groupe/webapp-front'], branch: 'main', tag: null },
     { repo_id: repoIds['groupe/batch-jobs'], branch: null, tag: 'v2.4.0' },
   ];
-  const planId = db.prepare('INSERT INTO verif_plan (targets_json, verifier_ids_json, created_at, updated_at) VALUES (?,?,?,?)')
-    .run(JSON.stringify(cibles), JSON.stringify([verifierId, cmdId, p3xVerifId]), at(3), at(3)).lastInsertRowid;
+  const planId = db.prepare('INSERT INTO verif_plan (name, targets_json, verifier_ids_json, created_at, updated_at) VALUES (?,?,?,?,?)')
+    .run('Recette du vendredi', JSON.stringify(cibles), JSON.stringify([verifierId, cmdId, p3xVerifId]), at(3), at(3)).lastInsertRowid;
   const sha = () => require('crypto').randomBytes(20).toString('hex');
   const cible = (c) => ({ repo_id: c.repo_id, mr_id: null, head_sha: sha(), base_sha: null, branch: c.tag || c.branch, tag: c.tag, mode: 'worktree' });
   const verif = (runId, vid, nom, verdict, siennes, quand, echecs = []) => db.prepare(`INSERT INTO verification

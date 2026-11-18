@@ -2,6 +2,8 @@
    qui les compose. Couleurs du thème uniquement : les deux modes suivent sans règle en double. */
 .pv-card { display: flex; flex-direction: column; gap: 8px; }
 .pv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pv-titre { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pv-name { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
 .pv-refs { display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; }
 .pv-ref { white-space: nowrap; }
 .pv-ref code { font-size: 12px; }

@@ -27,5 +27,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS verif_plan_run (
   created_at TEXT NOT NULL
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_verif_plan_run_plan ON verif_plan_run(plan_id, id)');
+// Son nom : une préparation se relance, et c'est par lui qu'on la retrouve dans la liste.
+try { db.exec("ALTER TABLE verif_plan ADD COLUMN name TEXT NOT NULL DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE verification ADD COLUMN plan_run_id INTEGER'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE verification ADD COLUMN positions_json TEXT'); } catch { /* déjà présente */ }

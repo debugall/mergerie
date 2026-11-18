@@ -28,7 +28,7 @@ function vueRun(run) {
 function vuePlan(p) {
   const runs = planVerif.lancementsDe(p.id).slice(0, HISTORIQUE);
   return {
-    id: p.id, created_at: p.created_at, updated_at: p.updated_at,
+    id: p.id, name: p.name, created_at: p.created_at, updated_at: p.updated_at,
     targets: p.targets.map((c) => ({ ...c, project: (db.prepare('SELECT project FROM repo WHERE id = ?').get(c.repo_id) || {}).project || `#${c.repo_id}` })),
     verifiers: p.verifier_ids.map((id) => ({ id, name: (db.prepare('SELECT name FROM verifier WHERE id = ?').get(id) || {}).name || null })),
     running: !!runs[0] && planVerif.runActif(runs[0]),

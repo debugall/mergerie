@@ -94,11 +94,13 @@ describe('Git → Vérificateur', () => {
     const v1 = await verificateur('pv-v1', `git -C '${cloneB}' rev-parse HEAD > '${trace}'`, [aId]);
     const v2 = await verificateur('pv-v2', `date +%s%N >> '${trace}.v2'`, [aId, bId]);
     const cree = await app.api('POST', '/api/verif-plans', {
+      name: 'Recette A + B',
       targets: [{ repo_id: aId, branch: 'develop' }, { repo_id: bId, branch: 'feature/b' }],
       verifier_ids: [v1.id, v2.id],
     });
     assert.equal(cree.status, 200, JSON.stringify(cree.body));
     assert.deepEqual(cree.body.verifiers.map((v) => v.name), ['pv-v1', 'pv-v2']);
+    assert.equal(cree.body.name, 'Recette A + B');
 
     const lance = await app.api('POST', `/api/verif-plans/${cree.body.id}/run`);
     assert.equal(lance.status, 200, JSON.stringify(lance.body));
@@ -124,7 +126,7 @@ describe('Git → Vérificateur', () => {
     const rouge = await verificateur('pv-rouge', 'exit 1', [aId]);
     const apres = await verificateur('pv-apres', 'exit 0', [aId]);
     const plan = (await app.api('POST', '/api/verif-plans', {
-      targets: [{ repo_id: aId, branch: 'develop' }], verifier_ids: [rouge.id, apres.id],
+      name: 'Rouge puis vert', targets: [{ repo_id: aId, branch: 'develop' }], verifier_ids: [rouge.id, apres.id],
     })).body;
     await app.api('POST', `/api/verif-plans/${plan.id}/run`);
     let fin = await attendreFin(plan.id);
@@ -149,7 +151,10 @@ describe('Git → Vérificateur', () => {
 
   test('une préparation se refuse sans dépôt, sans vérificateur, ou avec un vérificateur qui n’en couvre aucun', async () => {
     const seulB = await verificateur('pv-seul-b', 'exit 0', [bId]);
-    const tente = (corps) => app.api('POST', '/api/verif-plans', corps);
+    const tente = (corps) => app.api('POST', '/api/verif-plans', { name: 'refusée', ...corps });
+    const sansNom = await tente({ name: '  ', targets: [{ repo_id: bId, branch: 'main' }], verifier_ids: [seulB.id] });
+    assert.equal(sansNom.status, 400, 'un nom est exigé');
+    assert.match(sansNom.body.error, /nom/);
     assert.equal((await tente({ targets: [], verifier_ids: [seulB.id] })).status, 400);
     assert.equal((await tente({ targets: [{ repo_id: aId, branch: 'develop' }], verifier_ids: [] })).status, 400);
     const r = await tente({ targets: [{ repo_id: aId, branch: 'develop' }], verifier_ids: [seulB.id] });
@@ -158,12 +163,24 @@ describe('Git → Vérificateur', () => {
     assert.equal((await tente({ targets: [{ repo_id: aId, branch: '--upload-pack=x' }], verifier_ids: [seulB.id] })).status, 400, 'une ref qui serait une option');
   });
 
+  test('le nom se change, et la liste est rangée par nom', async () => {
+    const v = await verificateur('pv-nom', 'exit 0', [aId]);
+    const corps = { targets: [{ repo_id: aId, branch: 'develop' }], verifier_ids: [v.id] };
+    const p = (await app.api('POST', '/api/verif-plans', { ...corps, name: 'zz provisoire' })).body;
+    const renomme = await app.api('PUT', `/api/verif-plans/${p.id}`, { ...corps, name: 'Aaa nocturne' });
+    assert.equal(renomme.status, 200, JSON.stringify(renomme.body));
+    assert.equal(renomme.body.name, 'Aaa nocturne');
+    const noms = (await app.api('GET', '/api/verif-plans')).body.map((x) => x.name);
+    assert.deepEqual(noms, [...noms].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })));
+    assert.equal(noms[0], 'Aaa nocturne');
+  });
+
   test('un dépôt non couvert sans clone local arrête le run en le disant', async () => {
     const c = depot('pv-c', 'dev');
     const cId = (await app.api('POST', '/api/repos', { project: 'grp/c', url: c.dir })).body.id;
     const v = await verificateur('pv-sans-clone', 'exit 0', [aId]);
     const plan = (await app.api('POST', '/api/verif-plans', {
-      targets: [{ repo_id: aId, branch: 'develop' }, { repo_id: cId, branch: 'dev' }], verifier_ids: [v.id],
+      name: 'Sans clone', targets: [{ repo_id: aId, branch: 'develop' }, { repo_id: cId, branch: 'dev' }], verifier_ids: [v.id],
     })).body;
     await app.api('POST', `/api/verif-plans/${plan.id}/run`);
     const fin = await attendreFin(plan.id);
@@ -194,6 +211,7 @@ describe('Git → Vérificateur', () => {
 
       await page.locator('#planVerifNew').click();
       await page.waitForSelector('#planVerifModal:not([hidden]) .pv-repo-row');
+      await page.locator('#planVerifName').fill('Recette écran');
       // Le filtre masque sans décocher ; on coche grp/a, sa branche par défaut arrive d'elle-même.
       await page.locator('#planVerifRepos .pv-search').fill('grp/a');
       assert.equal(await page.locator('#planVerifRepos .pv-repo-row[data-repo="' + bId + '"]').isHidden(), true);
@@ -212,11 +230,16 @@ describe('Git → Vérificateur', () => {
       await page.locator('#planVerifSave').click();
       await page.waitForFunction((n) => document.querySelectorAll('#planVerifList .pv-card').length === n + 1, avant);
 
-      const plan = (await app.api('GET', '/api/verif-plans')).body[0];
+      const plan = (await app.api('GET', '/api/verif-plans')).body.find((x) => x.name === 'Recette écran');
       assert.deepEqual(plan.targets.map((c) => [c.repo_id, c.branch]), [[aId, 'develop']]);
       assert.deepEqual(plan.verifiers.map((x) => x.id), [v.id]);
 
       const carte = page.locator(`#planVerifList .pv-card[data-plan="${plan.id}"]`);
+      assert.equal((await carte.locator('.pv-name').textContent()).trim(), 'Recette écran', 'la carte porte le nom');
+      // Modifier rouvre la modale sur ce nom.
+      await carte.locator('[data-pvedit]').click();
+      await page.waitForFunction(() => document.querySelector('#planVerifName').value === 'Recette écran');
+      await page.locator('#planVerifCancel').click();
       await carte.locator('[data-pvrun]').click();
       // Le verdict arrive sur la carte, sans recharger : l'écran relit tant que ça tourne.
       await carte.locator('.pv-step .tag.verify.ok').waitFor();

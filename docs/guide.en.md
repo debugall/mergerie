@@ -2075,7 +2075,7 @@ Operations across **several repositories at once**, and branch exploration.
   the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
   unreachable repository is named.
 - **Verifier** — **verification preparations** you run again whenever you want. **`Prepare a verification`**:
-  tick repositories (filterable list), each on a **branch or a tag** (search selector, default branch
+  give it a **name** (“Friday acceptance” — that is how you find it again, the list is sorted by name), tick repositories (filterable list), each on a **branch or a tag** (search selector, default branch
   proposed), then one or more **verifiers** — the order you tick them in is the order they run in; a
   verifier that covers no ticked repository is greyed out, and the row says how many it covers.
   **`Create`**: the preparation joins the list. **`Run`** runs the verifiers **one after the other, in the

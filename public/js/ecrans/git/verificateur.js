@@ -55,7 +55,8 @@ function planVerifCarteHtml(p, ouverts) {
   const verifs = p.verifiers.map((v, i) => `${i + 1}. ${esc(v.name || tr('git.verif.verifier-gone'))}`).join(' → ');
   return `<div class="card pv-card" data-plan="${p.id}">
     <div class="pv-head">
-      <div class="pv-refs">${p.targets.map(planVerifRefHtml).join('')}</div>
+      <div class="pv-titre"><h4 class="pv-name">${esc(p.name || tr('git.verif.unnamed'))}</h4>
+        <div class="pv-refs">${p.targets.map(planVerifRefHtml).join('')}</div></div>
       <div class="pv-actions">
         <button type="button" class="btn btn-primary btn-sm" data-pvrun="${p.id}"${p.running ? ' disabled' : ''}>${svgIco('play')} ${esc(tr(p.running ? 'git.verif.running' : 'git.verif.run'))}</button>
         <button type="button" class="btn btn-icon btn-sm" data-pvedit="${p.id}" title="${esc(tr('git.verif.edit'))}" aria-label="${esc(tr('git.verif.edit'))}">${svgIco('edit')}</button>
@@ -89,6 +90,7 @@ async function planVerifOuvrir(plan = null) {
   planVerifEdite = plan ? plan.id : null;
   planVerifOrdre = plan ? plan.verifiers.map((v) => v.id) : [];
   $('#planVerifTitle').textContent = tr(plan ? 'git.verif.modal.edit-title' : 'git.verif.modal.title');
+  $('#planVerifName').value = plan ? plan.name || '' : '';
   $('#planVerifSave span').textContent = tr(plan ? 'git.verif.modal.save' : 'git.verif.modal.create');
   $('#planVerifRepos').innerHTML = skeleton(3);
   $('#planVerifVerifiers').innerHTML = '';
@@ -209,6 +211,8 @@ $('#planVerifVerifiers') && $('#planVerifVerifiers').addEventListener('change', 
 
 $('#planVerifCancel') && $('#planVerifCancel').addEventListener('click', () => { $('#planVerifModal').hidden = true; });
 $('#planVerifSave') && $('#planVerifSave').addEventListener('click', async (e) => {
+  const name = $('#planVerifName').value.trim();
+  if (!name) { toast(tr('err.plan.name-required'), true); $('#planVerifName').focus(); return; }
   const targets = [];
   for (const row of $$('#planVerifRepos .pv-repo-row').filter((r) => $('.pv-pick', r).checked)) {
     // Une ref tapée sans passer par la liste compte aussi : le champ visible fait foi s'il est seul.
@@ -216,7 +220,7 @@ $('#planVerifSave') && $('#planVerifSave').addEventListener('click', async (e) =
     if (!ref) { toast(tr('git.verif.modal.ref-missing', { project: $('.repo-multi-item span', row).textContent }), true); return; }
     targets.push(planVerifGenre(row) === 'tag' ? { repo_id: Number(row.dataset.repo), tag: ref } : { repo_id: Number(row.dataset.repo), branch: ref });
   }
-  const body = { targets, verifier_ids: planVerifOrdre };
+  const body = { name, targets, verifier_ids: planVerifOrdre };
   try {
     await busy(e.currentTarget, () => api(planVerifEdite ? `/verif-plans/${planVerifEdite}` : '/verif-plans', { method: planVerifEdite ? 'PUT' : 'POST', body }));
   } catch (err) { toast(explainError(err.message), true); return; }

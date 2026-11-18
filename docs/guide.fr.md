@@ -2166,7 +2166,8 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
   hasard ; un dépôt injoignable est nommé.
 - **Vérificateur** — des **préparations de vérification** qu'on relance quand on veut.
-  **`Préparer une vérification`** : on coche des dépôts (liste filtrable), chacun sur une **branche ou un
+  **`Préparer une vérification`** : on lui donne un **nom** (« Recette du vendredi » — c'est par lui
+  qu'on la retrouve, la liste est rangée par nom), on coche des dépôts (liste filtrable), chacun sur une **branche ou un
   tag** (sélecteur à recherche, branche par défaut proposée), puis un ou plusieurs **vérificateurs** — l'ordre
   où on les coche est l'ordre où ils tourneront ; un vérificateur qui ne couvre aucun dépôt coché est grisé,
   et la ligne dit combien il en couvre. **`Créer`** : la préparation rejoint la liste. **`Lancer`** fait
