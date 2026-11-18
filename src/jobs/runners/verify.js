@@ -8,6 +8,7 @@ const verifyrun = require('../../verify/verifyrun');
 const { getConfig, updateConfig } = require('../../data/config');
 const { t } = require('../../core/i18n');
 const { enregistrer, logLine, setJob } = require('../file');
+const planVerif = require('../plan-verif');
 
 async function runVerifyJob(jobId, verificationId) {
   /* Comme tout job qui démarre : sans ce passage en `running`, la ligne reste « en file »
@@ -36,6 +37,7 @@ async function runVerifyJob(jobId, verificationId) {
     logLine(jobId, null, t('log.job.verify-end', { verdict }));
     notify.push('verify_done', { verification_id: verificationId, verdict });
     events.emit('verify.finished', { verification_id: verificationId, verdict }).catch(() => {});
+    enchainer(jobId, verificationId, verdict);
   } catch (e) {
     logLine(jobId, null, t('log.job.verify-error', { message: e.message }));
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
@@ -43,7 +45,15 @@ async function runVerifyJob(jobId, verificationId) {
       .run(new Date().toISOString(), verificationId);
     notify.push('verify_done', { verification_id: verificationId, verdict: 'verify_error' });
     events.emit('verify.finished', { verification_id: verificationId, verdict: 'verify_error' }).catch(() => {});
+    enchainer(jobId, verificationId, 'verify_error');
   }
+}
+
+/* Git → Vérificateur : la vérification suivante d'une séquence part quand celle-ci finit verte. Son
+   propre job la porte ; un échec à la lancer s'écrit sur l'étape et se dit ici. */
+function enchainer(jobId, verificationId, verdict) {
+  planVerif.apresVerification(verificationId, verdict)
+    .catch((e) => logLine(jobId, null, t('log.plan.next-failed', { message: e.message })));
 }
 
 enregistrer('verify', runVerifyJob);

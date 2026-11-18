@@ -217,6 +217,7 @@ function showGitSub(name) {
   if (name === 'commands') loadGitCommands();
   if (name === 'compare') renderCompareCotes();
   if (name === 'merge') mergeLoad();
+  if (name === 'verif') planVerifCharger();
 }
 
 // Le compte de dépôts cochés, comme partout ailleurs où l'on coche dans une longue liste

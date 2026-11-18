@@ -11,6 +11,8 @@
 const { startVerifyJob, startJob, startTaskJob, startGitJob, startConvergeJob, startConvergeSessionJob, startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startPeriodeJob, startPeriodeResumeJob, startNow, stopJob, isRunning, retryJob, attendreFin, jobEnCoursPour } = require('./ordonnanceur');
 const { verifyBloquePar, currentJob, activeJob, runningJobs, queuedJobs, queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, canRetry, jobTargets, runningTargets } = require('./file');
 const { preparerVerificationApres } = require('./apres-session');
+const { verifierPour, appliquerModes, creerVerification, ciblesDepuisBranches } = require('./verifications');
+const planVerif = require('./plan-verif');
 /* Lancer plus tard : la date d'une session ou d'un suivi, et le tick qui l'honore. */
 const programmation = require('./programmation');
 require('./runners/review');
@@ -28,6 +30,7 @@ require('./runners/periode');
 
 module.exports = {
   startVerifyJob, verifyBloquePar, preparerVerificationApres,
+  verifierPour, appliquerModes, creerVerification, ciblesDepuisBranches, planVerif,
   startJob, startTaskJob, startGitJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startPeriodeJob, startPeriodeResumeJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,

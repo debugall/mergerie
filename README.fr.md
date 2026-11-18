@@ -173,7 +173,9 @@ demandent de traverser des dossiers.
   écran** met les versions côte à côte et saute de conflit en conflit ; puis commit et push, chacun derrière
   sa confirmation),
   explorateur de branches, recherche de refs, **tags par période** (tous les tags posés entre deux dates,
-  tous dépôts confondus, copiés en tableau prêt pour Teams) et **comparaison de deux dépôts** (sans histoire
+  tous dépôts confondus, copiés en tableau prêt pour Teams), **préparations de vérification** (des dépôts sur
+  une branche ou un tag, des vérificateurs lancés l'un après l'autre en arrière-plan, arrêt au premier rouge,
+  chaque verdict sur la carte) et **comparaison de deux dépôts** (sans histoire
   commune nécessaire), suppressions **restaurables**, tout **avec aperçu**.
 - **Docker** *(un plugin : [docker-mergerie](https://gitlab.com/amady/docker-mergerie), à installer depuis Réglages → Plugins)* — état des projets compose (drift `.env`, santé), actions par lot, **logs live** multi-containers,
   badges d'erreur dans le menu.

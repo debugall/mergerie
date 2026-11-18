@@ -2,8 +2,6 @@
 /* Une vérification vue par la couche HTTP : ses cibles, la créer, la détailler, la résumer, et la dernière connue de chaque MR (mémorisée le temps d’une requête).
    Extrait de server.js (réorganisation de src/ par couches) : les corps sont ceux du serveur, au mot près. */
 const db = require('../../db');
-const store = require('../../data/store');
-const approbation = require('../../data/approbation');
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jobs = require('../../jobs');
@@ -11,7 +9,8 @@ const verifyLib = require('../../verify/verify');
 const verifyrun = require('../../verify/verifyrun');
 const { mrById } = require('../http');
 const memo = require('../middleware/memo-requete');
-const groupes = require('../../data/groupes');
+// Créer une vérification se fait dans `jobs/` : un enchaînement de vérificateurs (Git → Vérificateur) en lance aussi.
+const { verifierPour, appliquerModes, creerVerification } = jobs;
 
 /* L'état APPROUVÉ est celui que l'écran a montré : sa signature revient avec le clic, et un objet
    changé entre-temps par la synchro est refusé (409) — l'écran recharge et le montre. */
@@ -38,83 +37,6 @@ function ciblesDepuisMrs(mrIds) {
     });
   }
   return cibles;
-}
-/* Le vérificateur doit couvrir TOUS les dépôts visés. Un run partiel donnerait un vert qui
-   ne dit rien de la moitié du lot — pire qu'une absence de verdict. */
-function verifierPour(cibles, verifierId) {
-  const ids = cibles.map((c) => c.repo_id);
-  const candidats = db.prepare('SELECT * FROM verifier ORDER BY name').all().filter((v) => {
-    const couverts = groupes.couvertureVerifier(v.id);   // dépôts directs ET dépôts des groupes
-    return ids.every((id) => couverts.has(id));
-  });
-  if (!candidats.length) throw new Error(t('err.verify.no-verifier'));
-  if (!verifierId) return candidats[0];
-  const choisi = candidats.find((v) => v.id === Number(verifierId));
-  if (!choisi) throw new Error(t('err.verify.verifier-not-covering'));
-  return choisi;
-}
-/* Mode de chaque cible : déclaré par le vérificateur, dépôt par dépôt. Le mode voyage avec la
-   cible pour que le rapport puisse dire « (in place) » longtemps après le run. */
-function appliquerModes(verifier, cibles) {
-  const par = groupes.couvertureVerifier(verifier.id);   // une ligne directe l'emporte, un groupe = worktree
-  return cibles.map((c) => {
-    const l = par.get(c.repo_id);
-    return { ...c, mode: (l && l.mode) || 'worktree', workdir: (l && l.workdir) || null };
-  });
-}
-/* `enFile` : accepter la mise en attente au lieu de refuser. Réservé au déclenchement
-   AUTOMATIQUE — et c'est la différence de nature entre les deux appelants :
-
-   Un humain qui clique « Vérifier » sur un dépôt déjà en cours de vérification s'est trompé de
-   bouton : lui répondre tout de suite vaut mieux que d'empiler un travail qu'il n'attend pas.
-   La découverte, elle, ne se trompe pas — elle vient de trouver douze merge requests, et les
-   refuser reviendrait à n'en vérifier qu'une : les onze autres ne seront plus jamais
-   « nouvelles », donc plus jamais vérifiées automatiquement.
-
-   Les mettre en file est SÛR : la file de jobs sérialise déjà par dépôt (`keysClash` sur
-   `repo:<id>`), donc deux vérifications d'un même dépôt ne tourneront jamais ensemble — le
-   refus ci-dessous n'est qu'un garde-fou d'ergonomie, pas la protection du clone. */
-function creerVerification({ verifier, cibles, lotId = null, enFile = false, automatique = false, homeJetable = null }) {
-  /* UN VÉRIFICATEUR HÉRITÉ DE LA FAMILLE « SCRIPT » NE TOURNE PLUS. Sa ligne est conservée
-     — on ne supprime pas la configuration de quelqu'un sans le lui demander — mais le lancer
-     n'aurait aucun sens : plus rien ne sait exécuter son contrat. On refuse ici, une fois pour
-     toutes les portes d'entrée (MR, lot, branche, session, déclenchement automatique), avec le
-     geste à faire. Le laisser partir pour échouer dix minutes plus tard serait pire. */
-  if (verifier && verifier.kind !== 'commands') throw new Error(t('err.verify.script-removed', { name: verifier.name }));
-  /* DES COMMANDES VENUES D'AILLEURS NE S'EXÉCUTENT PAS AVANT D'AVOIR ÉTÉ VUES ICI. Une porte
-     pour toutes les entrées — MR, lot, branche, session, déclenchement automatique. Le code
-     `APPROBATION` permet à l'écran d'offrir l'approbation plutôt qu'un toast rouge. */
-  if (verifier && !approbation.verificateurApprouve(verifier.id)) {
-    const e = new Error(t('err.verify.not-approved', { name: verifier.name }));
-    e.code = 'APPROBATION';
-    e.status = 409;
-    throw e;
-  }
-  /* §10 : une vérification MULTI-DÉPÔTS monte un environnement complet et ne se partage pas ;
-     une MONO-DÉPÔT n'a qu'à ne pas viser le même dépôt qu'une autre. Le message dit laquelle
-     des deux raisons s'applique — elles ne se corrigent pas de la même façon. */
-  const bloque = enFile ? null : jobs.verifyBloquePar(cibles.map((c) => c.repo_id));
-  if (bloque) {
-    throw new Error(t(bloque === 'integration' ? 'err.verify.integration-running' : 'err.verify.already-running'));
-  }
-  const lot = lotId ? db.prepare('SELECT name FROM lot WHERE id = ?').get(lotId) : null;
-  /* On recopie les noms : le rapport doit rester lisible après suppression du vérificateur
-     ou du lot, et sa suppression ne doit jamais être bloquée par un vieux verdict. */
-  /* LE `HOME` DE CE RUN : jetable d'office pour un run automatique ; pour un run à la main, la case
-     de la fenêtre de lancement (mémorisée sur le vérificateur) — absente du corps, le réglage du
-     vérificateur. Un choix fait au clic est retenu pour la prochaine fois : c'est ce qu'on entend
-     par « mémorisée par vérificateur ». */
-  const jetable = automatique ? 1 : (homeJetable == null ? (verifier.isolated_home ? 1 : 0) : (homeJetable ? 1 : 0));
-  if (!automatique && homeJetable != null && jetable !== (verifier.isolated_home ? 1 : 0)) {
-    store.ecrire('verifier', () => { db.prepare('UPDATE verifier SET isolated_home = ? WHERE id = ?').run(jetable, verifier.id); return verifier.id; });
-  }
-  const info = db.prepare(`INSERT INTO verification
-    (verifier_id, verifier_name, lot_id, lot_name, status, targets_json, created_at, automatic, isolated_home)
-    VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)`).run(verifier.id, verifier.name, lotId,
-    lot ? lot.name : null, JSON.stringify(cibles), new Date().toISOString(), automatique ? 1 : 0, jetable);
-  const id = info.lastInsertRowid;
-  const job = jobs.startVerifyJob(id);
-  return { verification: db.prepare('SELECT * FROM verification WHERE id = ?').get(id), job };
 }
 /* Dernière vérification par MR : ce qui alimente les badges de la liste. On la calcule ici
    plutôt qu'en base pour que la PÉREMPTION suive le SHA courant sans écriture. */

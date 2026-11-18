@@ -1289,6 +1289,45 @@ mrsP3x.forEach((mr) => {
       || `https://gitlab.demo/${mr.project}/-/merge_requests/${mr.iid}`, at(0.5));
 });
 
+/* ---------- Git → Vérificateur : une préparation et son dernier lancement ----------
+   Trois dépôts sur leur ref (deux branches, un tag livré), trois vérificateurs en séquence. Le
+   premier est vert, le deuxième rouge — la suite s'arrête là : le troisième est « non lancé », avec
+   son bouton pour le lancer seul. Un lancement précédent, tout vert, garnit l'historique. */
+{
+  const cibles = [
+    { repo_id: repoIds['groupe/api-core'], branch: 'main', tag: null },
+    { repo_id: repoIds['groupe/webapp-front'], branch: 'main', tag: null },
+    { repo_id: repoIds['groupe/batch-jobs'], branch: null, tag: 'v2.4.0' },
+  ];
+  const planId = db.prepare('INSERT INTO verif_plan (targets_json, verifier_ids_json, created_at, updated_at) VALUES (?,?,?,?)')
+    .run(JSON.stringify(cibles), JSON.stringify([verifierId, cmdId, p3xVerifId]), at(3), at(3)).lastInsertRowid;
+  const sha = () => require('crypto').randomBytes(20).toString('hex');
+  const cible = (c) => ({ repo_id: c.repo_id, mr_id: null, head_sha: sha(), base_sha: null, branch: c.tag || c.branch, tag: c.tag, mode: 'worktree' });
+  const verif = (runId, vid, nom, verdict, siennes, quand, echecs = []) => db.prepare(`INSERT INTO verification
+    (verifier_id, verifier_name, status, verdict, targets_json, head_run_json, imputable_json, started_at, finished_at, created_at, plan_run_id)
+    VALUES (?,?,'done',?,?,?,?,?,?,?,?)`).run(vid, nom, verdict, JSON.stringify(siennes.map(cible)),
+    JSON.stringify({ version: 1, status: verdict === 'verified_pass' ? 'pass' : 'fail', total: 120, duration_ms: 60000, failed: echecs, detail_source: 'tap' }),
+    JSON.stringify(echecs), quand, quand, quand, runId).lastInsertRowid;
+  const lancement = (quand, etapes) => {
+    const runId = db.prepare('INSERT INTO verif_plan_run (plan_id, steps_json, created_at) VALUES (?,?,?)').run(planId, '[]', quand).lastInsertRowid;
+    const steps = etapes.map((e) => ({ verifier_id: e.vid, verifier_name: e.nom, chaine: true, erreur: null,
+      verification_id: e.verdict ? verif(runId, e.vid, e.nom, e.verdict, e.cibles, quand, e.echecs) : null }));
+    db.prepare('UPDATE verif_plan_run SET steps_json = ? WHERE id = ?').run(JSON.stringify(steps), runId);
+  };
+  const [api, front, batch] = cibles;
+  lancement(at(2), [
+    { vid: verifierId, nom: 'integ (démo)', verdict: 'verified_pass', cibles: [api, front] },
+    { vid: cmdId, nom: 'tests front (démo)', verdict: 'verified_pass', cibles: [front, batch] },
+    { vid: p3xVerifId, nom: 'intégration paiement (démo)', verdict: 'verified_pass', cibles: [api, front, batch] },
+  ]);
+  lancement(at(0.2), [
+    { vid: verifierId, nom: 'integ (démo)', verdict: 'verified_pass', cibles: [api, front] },
+    { vid: cmdId, nom: 'tests front (démo)', verdict: 'verified_fail', cibles: [front, batch],
+      echecs: [{ test: 'panier › total avec remise', message: 'attendu 90, reçu 100' }] },
+    { vid: p3xVerifId, nom: 'intégration paiement (démo)' },
+  ]);
+}
+
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------
    La démo doit montrer l'onglet VIVANT, brief compris : une page avec des références
    autolinkées vers de vraies MR et un vrai ticket, des todos de toutes les formes (haute

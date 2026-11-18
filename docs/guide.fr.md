@@ -2165,6 +2165,21 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   (GitLab, tag annoté), sinon celle du commit pointé ; les tags GitHub, que l'API ne date pas, sont lus
   dans le clone local. Un tag que l'outil n'arrive pas à dater est **compté à part**, jamais placé au
   hasard ; un dépôt injoignable est nommé.
+- **Vérificateur** — des **préparations de vérification** qu'on relance quand on veut.
+  **`Préparer une vérification`** : on coche des dépôts (liste filtrable), chacun sur une **branche ou un
+  tag** (sélecteur à recherche, branche par défaut proposée), puis un ou plusieurs **vérificateurs** — l'ordre
+  où on les coche est l'ordre où ils tourneront ; un vérificateur qui ne couvre aucun dépôt coché est grisé,
+  et la ligne dit combien il en couvre. **`Créer`** : la préparation rejoint la liste. **`Lancer`** fait
+  tourner les vérificateurs **l'un après l'autre, en arrière-plan** — chacun est une vérification ordinaire,
+  visible dans le journal, avec son rapport — et la carte montre le verdict de chacun au fil de l'eau. **Un
+  rouge ou une erreur arrête la suite** : les vérificateurs restants sont marqués *non lancé*, chacun avec son
+  bouton **`Lancer`** pour le faire tourner seul. Un vérificateur tourne sur les dépôts **qu'il couvre** ; les
+  **autres dépôts de la préparation** sont mis sur leur ref **dans ton clone local** (trouvé dans les
+  répertoires locaux déclarés, Réglages → Dépôts, par son remote `origin`) le temps de son run, puis remis où
+  ils étaient — mêmes garde-fous que le mode *in place* : un clone avec des modifications suivies, ou
+  introuvable, arrête le run en le disant. Le dernier lancement est sur la carte, les précédents dans
+  l'historique dépliable. Les préparations sont **personnelles** : elles ne partent pas dans le dépôt de
+  données partagé (les rapports de vérification, eux, oui).
 
 > ⚠️ **L'origine d'une branche est une inférence, pas une donnée.** Git n'enregistre nulle part de
 > quelle branche une branche a été créée. L'outil la déduit (`merge-base`), sauf quand une merge

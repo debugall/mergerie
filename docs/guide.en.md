@@ -2074,6 +2074,19 @@ Operations across **several repositories at once**, and branch exploration.
   otherwise the date of the commit it points to; GitHub tags, which the API does not date, are read from
   the local clone. A tag the tool cannot date is **counted separately**, never placed at random; an
   unreachable repository is named.
+- **Verifier** — **verification preparations** you run again whenever you want. **`Prepare a verification`**:
+  tick repositories (filterable list), each on a **branch or a tag** (search selector, default branch
+  proposed), then one or more **verifiers** — the order you tick them in is the order they run in; a
+  verifier that covers no ticked repository is greyed out, and the row says how many it covers.
+  **`Create`**: the preparation joins the list. **`Run`** runs the verifiers **one after the other, in the
+  background** — each one is an ordinary verification, visible in the log, with its report — and the card
+  shows each verdict as it lands. **A red or an error stops the rest**: the remaining verifiers are marked
+  *not run*, each with its own **`Run`** button to run it alone. A verifier runs on the repositories **it
+  covers**; the **preparation's other repositories** are put on their ref **in your local clone** (found in
+  the declared local directories, Settings → Repositories, by its `origin` remote) for its run, then put back
+  where they were — the same guard rails as *in place* mode: a clone with tracked changes, or none found,
+  stops the run and says so. The last run is on the card, the previous ones in a collapsible history.
+  Preparations are **personal**: they do not go to the shared data repository (verification reports do).
 
 > ⚠️ **A branch's origin is an inference, not a fact.** Git records nowhere which branch a branch was
 > created from. The tool infers it (`merge-base`), except when a merge request attests to it — the only

@@ -9,6 +9,7 @@
             <button data-gsub="compare" role="tab"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="git.sub.compare">Comparer</span></button>
             <button data-gsub="findref" role="tab"><svg class="ico"><use href="#i-branch"/></svg><span data-i18n="git.sub.findref">Trouver une ref</span></button>
             <button data-gsub="tags" role="tab"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="git.sub.tags">Tags par période</span></button>
+            <button data-gsub="verif" role="tab"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="git.sub.verif">Vérificateur</span></button>
             <button data-gsub="history" role="tab"><svg class="ico"><use href="#i-clock"/></svg><span data-i18n="git.sub.history">Historique</span></button>
         </div>
 
@@ -226,6 +227,16 @@
                 <span id="tagsPeriodInfo" class="muted"></span>
             </form>
             <div id="tagsPeriodBox"></div>
+        </div>
+
+        <!-- Sous-onglet : préparations de vérification — des dépôts sur une branche ou un tag, des
+             vérificateurs lancés l'un après l'autre sur ces refs. -->
+        <div id="gsub-verif" class="subtab">
+            <p class="muted" style="max-width:760px" data-i18n="git.verif.intro">Prépare une vérification : des dépôts, chacun sur une branche ou un tag, et un ou plusieurs vérificateurs. « Lancer » les fait tourner l'un après l'autre, en arrière-plan ; un échec arrête la suite. Un vérificateur tourne sur les dépôts qu'il couvre ; les autres dépôts du lot sont mis sur leur branche dans ton clone local le temps du run, puis remis.</p>
+            <div class="toolbar">
+                <button id="planVerifNew" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="git.verif.new">Préparer une vérification</span></button>
+            </div>
+            <div id="planVerifList" class="list"></div>
         </div>
 
         <!-- Sous-onglet : historique -->

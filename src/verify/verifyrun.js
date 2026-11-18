@@ -611,6 +611,19 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
             noter(`⚠ contexte ${c.project} : ${c.raison || `${c.branche}${c.dirty ? ', modifications non commitées' : ''}`}`);
           }
         }
+        /* LES DÉPÔTS DU PLAN QUE CE VÉRIFICATEUR NE COUVRE PAS (Git → Vérificateur) : mis sur leur
+           ref dans le clone local de l'utilisateur, avec les mêmes garde-fous et la même restauration
+           qu'un dépôt in place — les commandes peuvent lire un voisin, et ce voisin doit être sur la
+           branche choisie pour le lot, pas sur celle où on l'a laissé. */
+        for (const p of JSON.parse(v.positions_json || '[]')) {
+          const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(p.repo_id);
+          if (!repo) throw new Error(t('err.verify.repo-gone', { id: p.repo_id }));
+          if (!p.workdir) throw new Error(t('err.verify.no-local-clone', { project: repo.project }));
+          if (aRestaurer.some((r) => r.workdir === p.workdir)) continue;
+          const sha = await resoudre(repo, p.tag ? `refs/tags/${p.tag}^{commit}` : `origin/${p.branch}`, p);
+          noter(t('log.verify.position', { project: repo.project, ref: p.tag || p.branch, workdir: p.workdir }));
+          aRestaurer.push(await preparerInPlace(repo, { workdir: p.workdir, checkout_allowed: 1 }, sha, noter));
+        }
       }
       for (const c of ciblesResolues) {
         const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(c.repo_id);

@@ -13,6 +13,7 @@ const verifyrun = require('../../verify/verifyrun');
 const path = require('path');
 const fs = require('fs');
 const { mrById, wrap } = require('../http');
+const { ciblesDepuisBranches } = require('../../jobs');
 const { auteurs } = require('../lib/partage');
 const { insertTargets, normalizeTargets, taskById, taskTargets } = require('../lib/sessions');
 const { appliquerModes, ciblesDepuisMrs, creerVerification, detailVerification, lotAvecMembres, messageCorrectionVerif, promptCorrectionVerif, verifierPour } = require('../lib/verifications');
@@ -329,39 +330,6 @@ app.post('/api/verify/mrs', wrap((req, res) => {
      `develop` à `develop` ;
    · l'imputabilité disparaît : rien n'est « cassé par cette branche », ce qui est rouge est
      rouge. L'affichage et le commentaire le disent autrement (voir `blocsCommentaire`). */
-/* Une ref telle que git l'admet — et surtout pas une option : elle sera passée à `rev-parse` dans
-   le job. Pas de tiret en tête, pas de `..`, ni blanc ni caractère que git refuse de toute façon. */
-const REF_SURE = /^(?!-)(?!.*\.\.)(?!.*[\s~^:?*[\\])[^\0]{1,200}$/;
-function ciblesDepuisBranches(entrees) {
-  const cibles = [];
-  const vus = new Set();
-  for (const e of entrees) {
-    const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(Number(e.repo_id));
-    if (!repo) throw new Error(t('err.depot-introuvable'));
-    if (vus.has(repo.id)) throw new Error(t('err.verify.repo-twice'));
-    vus.add(repo.id);
-    const tag = String(e.tag || '').trim();
-    const branche = String(e.branch || '').trim();
-    if (!tag && !branche) throw new Error(t('err.verify.branch-required', { project: repo.project }));
-    if (!REF_SURE.test(tag || branche)) throw new Error(t('err.verify.invalid-ref', { ref: tag || branche, project: repo.project }));
-    /* LE SHA N'EST PLUS RÉSOLU ICI MAIS DANS LE JOB. Cloner ou rapatrier chaque dépôt avant de
-       répondre tenait la fenêtre de lancement ouverte, bouton en attente, pendant une dizaine de
-       secondes par dépôt — sans rien dire. La cible part avec sa ref (`origin/<branche>` ou le
-       commit pointé par le tag, `^{commit}` : l'objet d'un tag annoté a son propre SHA, qu'aucun
-       checkout ne veut), et `executerVerification` la résout en SHA au premier usage, clone et
-       fetch compris, sous les yeux du journal — comme il le fait déjà pour la base d'une MR. Une
-       ref inconnue met la vérification en erreur, avec son nom, au lieu de bloquer la fenêtre.
-       Le verdict reste attaché à des commits : la cible est réécrite résolue avant de tourner. */
-    const ref = tag ? `refs/tags/${tag}^{commit}` : `origin/${branche}`;
-    /* `branch` porte le nom du tag aussi : c'est le champ que le rapport, le brief et le
-       commentaire écrivent déjà ; `tag` dit qu'il s'agit d'un tag, pour l'annoncer comme tel. */
-    cibles.push({
-      repo_id: repo.id, mr_id: null, head_sha: ref,
-      base_sha: null, branch: tag || branche, tag: tag || null, mode: 'worktree',
-    });
-  }
-  return cibles;
-}
 app.post('/api/verify/branches', wrap(async (req, res) => {
   const entrees = (req.body && req.body.targets) || [];
   if (!entrees.length) throw new Error(t('err.verify.branch-required', { project: '' }));

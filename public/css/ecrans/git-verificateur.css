@@ -1,0 +1,33 @@
+/* Git → Vérificateur : les préparations (dépôts sur une ref, vérificateurs en séquence) et la modale
+   qui les compose. Couleurs du thème uniquement : les deux modes suivent sans règle en double. */
+.pv-card { display: flex; flex-direction: column; gap: 8px; }
+.pv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pv-refs { display: flex; flex-wrap: wrap; gap: 6px 14px; min-width: 0; }
+.pv-ref { white-space: nowrap; }
+.pv-ref code { font-size: 12px; }
+.pv-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.pv-verifiers { font-size: 13px; }
+.pv-run-head { font-size: 12px; margin-bottom: 4px; }
+.pv-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.pv-step { display: list-item; }
+.pv-step .pv-vname { font-weight: 600; margin-right: 4px; }
+.pv-etat.pv-queued, .pv-etat.pv-pending, .pv-etat.pv-not_run { color: var(--muted); border-color: var(--line); }
+.pv-etat.pv-running { color: var(--accent); border-color: var(--accent); }
+.pv-etat.pv-error { color: var(--red); border-color: var(--red); }
+.pv-err { color: var(--red); font-size: 12px; }
+.pv-hist summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.pv-hist .pv-run { margin-top: 8px; padding-left: 8px; border-left: 2px solid var(--line); }
+
+/* La modale : une ligne par dépôt (case, puis genre et ref en retrait), puis les vérificateurs. */
+.pv-repo-list .pv-repo-row { padding: 4px 2px 8px; border-bottom: 1px solid var(--line); }
+.pv-repo-list .pv-repo-row:last-child { border-bottom: 0; }
+.pv-repo-list .pv-repo-row.is-off { opacity: .55; }
+.pv-repo-row .pv-ref-pick { display: flex; align-items: center; gap: 6px; margin-left: 26px; }
+.pv-repo-row .pv-ref-pick .combo { flex: 1 1 auto; min-width: 0; }
+.pv-verif-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; flex-wrap: wrap; }
+.pv-verif-row.is-off { opacity: .55; }
+.pv-verif-row .pv-rang { min-width: 1.5em; font-weight: 600; color: var(--accent); }
+.pv-verif-row .pv-couv { font-size: 12px; }
+@media (max-width: 640px) {
+  .pv-repo-row .pv-ref-pick { margin-left: 0; flex-wrap: wrap; }
+}
