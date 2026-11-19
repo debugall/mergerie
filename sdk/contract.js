@@ -87,7 +87,7 @@ const CTX = {
   'ui.registerBriefSection': { permission: 'ui.actions', signature: '(section: { id: string, label: string }) => void', description: 'une section du brief « Aujourd’hui », rendue côté navigateur' },
   'ui.registerLinkKind': { permission: 'ui.actions', signature: '(kind: { kind: string, label: string }) => void', description: 'un genre de lien de todo (ouvert côté navigateur)' },
   'ui.registerPaletteProvider': { permission: 'ui.palette', signature: '(provider: (query: string, limit: number) => PaletteEntry[]) => void', description: 'des entrées de la palette Ctrl+K, calculées sans réseau' },
-  'notify.registerKind': { permission: 'notify', signature: '(kind: { type: string, label: string, default: boolean }) => void', description: 'un genre de notification, avec sa case dans Réglages → Notifications' },
+  'notify.registerKind': { permission: 'notify', signature: '(kind: { type: string, label: string, default: boolean, own?: boolean }) => void', description: 'un genre de notification, avec sa case dans Réglages → Notifications (`own: true` : le plugin la pose dans ses propres réglages)' },
   'notify.push': { permission: 'notify', signature: '(type: string, data: object) => void', description: 'un fait, que le navigateur affiche selon les préférences' },
   'demo.isDemo': { permission: 'demo', signature: '() => boolean', description: 'MERGERIE_DEMO=1 ?' },
   'demo.seed': { permission: 'demo', signature: '(fn: (ctx) => void) => void', description: 'ce que le plugin sème dans une base de démo' },

@@ -75,7 +75,7 @@ Declared in `plugin.json` → `permissions`. Settings → Plugins shows them bef
 | `ctx.ui.registerBriefSection` | `ui.actions` | `(section: { id: string, label: string }) => void` | une section du brief « Aujourd’hui », rendue côté navigateur |
 | `ctx.ui.registerLinkKind` | `ui.actions` | `(kind: { kind: string, label: string }) => void` | un genre de lien de todo (ouvert côté navigateur) |
 | `ctx.ui.registerPaletteProvider` | `ui.palette` | `(provider: (query: string, limit: number) => PaletteEntry[]) => void` | des entrées de la palette Ctrl+K, calculées sans réseau |
-| `ctx.notify.registerKind` | `notify` | `(kind: { type: string, label: string, default: boolean }) => void` | un genre de notification, avec sa case dans Réglages → Notifications |
+| `ctx.notify.registerKind` | `notify` | `(kind: { type: string, label: string, default: boolean, own?: boolean }) => void` | un genre de notification, avec sa case dans Réglages → Notifications (`own: true` : le plugin la pose dans ses propres réglages) |
 | `ctx.notify.push` | `notify` | `(type: string, data: object) => void` | un fait, que le navigateur affiche selon les préférences |
 | `ctx.demo.isDemo` | `demo` | `() => boolean` | MERGERIE_DEMO=1 ? |
 | `ctx.demo.seed` | `demo` | `(fn: (ctx) => void) => void` | ce que le plugin sème dans une base de démo |

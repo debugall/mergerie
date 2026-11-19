@@ -18,6 +18,7 @@ module.exports = {
     ctx.ui.registerLinkKind({ kind: 'hello', label: 'Hello' });
     ctx.ui.registerPaletteProvider((q) => (q.includes('hello') ? [{ label: 'Hello : ouvrir', ref: 'x', nav: { open: 1 } }] : []));
     ctx.notify.registerKind({ type: 'hello_rang', label: 'Hello a sonné', default: true });
+    ctx.notify.registerKind({ type: 'hello_prive', label: 'Hello en privé', default: false, own: true });
     ctx.events.on('session.finished', (p) => { vus.push(p); });
     ctx.repos.onRemoved((r) => { vus.push({ removed: r.id }); });
     ctx.schedule(1000, () => { compteur += 1; }, { inDemo: true });

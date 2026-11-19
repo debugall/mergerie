@@ -61,7 +61,7 @@ list is in `public/js/transverse/kit.js` (one key per line); it is covered by th
 | `ui.onBriefSection(id, render(brief))` | the body of a section of the "Today" brief (empty = no section) |
 | `ui.onLinkKind(kind, { render(todo), open(ref) })` | a todo link of a kind declared by `registerLinkKind` — the `todo` table does not constrain `link_kind`: the kind is accepted on write while the plugin is active |
 | `ui.onKey(tabId, (event) => boolean)` | the keyboard of the OPEN tab: it runs before the global keys (`j`/`k`, `Enter`…); returning `true` consumes the key |
-| `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | a notification of a kind declared by `notify.registerKind` |
+| `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | a notification of a kind declared by `notify.registerKind`; an `own: true` kind has no box in Settings → Notifications: the plugin puts its own in its settings and reads / writes the same local preference with `notifPrefs()` / `setNotifPrefs(p)` (key = the `type`) |
 | `ui.onPaletteResult(plugin, (nav, result) => …)` | opening a result returned by the plugin's palette provider |
 | `ui.registerPaletteAction({ label, tab, run })` | a palette action ("Go to …") |
 | `ui.setBadge(tabId, { count, failed, warn, countTip, failedTip, warnTip })` | the tab's badges |

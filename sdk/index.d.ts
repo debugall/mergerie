@@ -252,8 +252,8 @@ export interface PluginContext {
     registerPaletteProvider: (provider: (query: string, limit: number) => PaletteEntry[]) => void;
   };
   notify: {
-    /** un genre de notification, avec sa case dans Réglages → Notifications — permission `notify` */
-    registerKind: (kind: { type: string, label: string, default: boolean }) => void;
+    /** un genre de notification, avec sa case dans Réglages → Notifications (`own: true` : le plugin la pose dans ses propres réglages) — permission `notify` */
+    registerKind: (kind: { type: string, label: string, default: boolean, own?: boolean }) => void;
     /** un fait, que le navigateur affiche selon les préférences — permission `notify` */
     push: (type: string, data: object) => void;
   };

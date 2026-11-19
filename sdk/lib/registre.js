@@ -79,7 +79,7 @@ function creer() {
   function registerNotifKind(plugin, k) {
     exiger(k && /^[a-z][a-z0-9_]*$/.test(String(k.type || '')), `${plugin} : registerNotifKind — type en snake_case requis`);
     exiger(k.label && typeof k.label === 'string', `${plugin} : registerNotifKind — label requis`);
-    de(plugin).notifKinds.push({ type: String(k.type), label: String(k.label), default: k.default !== false, i18n: k.i18n || null });
+    de(plugin).notifKinds.push({ type: String(k.type), label: String(k.label), default: k.default !== false, i18n: k.i18n || null, own: k.own === true });
   }
   const notifKindDeclare = (plugin, type) => de(plugin).notifKinds.some((k) => k.type === type);
 

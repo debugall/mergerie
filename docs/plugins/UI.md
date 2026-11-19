@@ -61,7 +61,7 @@ dans le front d'un plugin embarqué, tout nom déclaré par le cœur hors du kit
 | `ui.onBriefSection(id, render(brief))` | le corps d'une section du brief « Aujourd'hui » (vide = pas de section) |
 | `ui.onLinkKind(kind, { render(todo), open(ref) })` | un lien de todo d'un genre déclaré par `registerLinkKind` — la table `todo` ne contraint pas `link_kind` : le genre est accepté à l'écriture tant que le plugin est actif |
 | `ui.onKey(tabId, (evenement) => boolean)` | le clavier de l'onglet OUVERT : il passe avant les touches globales (`j`/`k`, `Entrée`…) ; rendre `true` consomme la touche |
-| `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | une notification d'un genre déclaré par `notify.registerKind` |
+| `ui.onNotif(type, (evt, prefs) => ({ title, body, onClick }))` | une notification d'un genre déclaré par `notify.registerKind` ; un genre `own: true` n'a pas de case dans Réglages → Notifications : le plugin pose la sienne dans ses réglages et lit / écrit la même préférence locale avec `notifPrefs()` / `setNotifPrefs(p)` (clé = le `type`) |
 | `ui.onPaletteResult(plugin, (nav, resultat) => …)` | l'ouverture d'un résultat rendu par le fournisseur de palette du plugin |
 | `ui.registerPaletteAction({ label, tab, run })` | une action de palette (« Aller à … ») |
 | `ui.setBadge(tabId, { count, failed, warn, countTip, failedTip, warnTip })` | les pastilles de l'onglet |

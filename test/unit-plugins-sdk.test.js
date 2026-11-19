@@ -209,7 +209,7 @@ describe('SDK — createTestContext', () => {
     assert.deepEqual(ui.tabs.map((x) => x.id), ['hello']);
     assert.deepEqual(ui.settingsTabs.map((x) => x.id), ['hellocfg']);
     assert.deepEqual(ui.actions.map((x) => `${x.target}:${x.id}`), ['mr:hello-say']);
-    assert.deepEqual(ui.notifKinds.map((x) => x.type), ['hello_rang']);
+    assert.deepEqual(ui.notifKinds.map((x) => [x.type, x.default, x.own]), [['hello_rang', true, false], ['hello_prive', false, true]], '`own` : réglé par le plugin, pas dans Réglages → Notifications');
     assert.equal(t.i18n.t('hello-fixture.tab'), 'Hello', 'le dictionnaire du plugin est enregistré');
     const palette = await t.registre.palette('hello');
     assert.equal(palette[0].nav.plugin, 'hello-fixture');
