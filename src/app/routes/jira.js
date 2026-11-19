@@ -19,7 +19,7 @@ const tasks = require('../../agent/tasks');
 const { servirFichierNonFiable } = require('../fichiers');
 const { mrById, wrap } = require('../http');
 const { exigerJetonFrais, noterTest } = require('../lib/connexions');
-const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, teamFieldId, statutsDesProjets, personnesAssignables, watchRows } = require('../lib/jira');
+const { checkJiraWatch, engagementsSurTicket, lireJiraBadge, lireNote, marquerVu, prevenirJira, refreshJiraBadge, sprintFieldId, teamFieldId, statutsDesProjets, catalogueDe, personnesAssignables, watchRows } = require('../lib/jira');
 const { targetById } = require('../lib/sessions');
 
 // Test de la connexion Jira : récupère un ticket témoin pour valider URL/email/token.
@@ -56,6 +56,17 @@ app.get('/api/jira/statuses', wrap(async (req, res) => {
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) return res.json({ configured: false, statuses: [] });
   res.json({ configured: true, statuses: await statutsDesProjets(cfg, cles) });
+}));
+/* Les valeurs que les filtres proposent, lues dans les catalogues de Jira (et non dans un extrait de
+   tickets) — par projet pour les types, composants, versions, sprints et epics. Mémorisé trente minutes. */
+app.get('/api/jira/catalogue', wrap(async (req, res) => {
+  const cles = [...new Set(String(req.query.projects || '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 10);
+  const parts = String(req.query.parts || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const garder = (o) => (parts.length ? Object.fromEntries(Object.entries(o).filter(([k]) => parts.includes(k))) : o);
+  if (demoMode.isDemo()) return res.json({ configured: true, ...garder(demoJira.catalogue(cles)) });
+  const cfg = getConfig();
+  if (!jira.isConfigured(cfg)) return res.json({ configured: false });
+  res.json({ configured: true, ...(parts.length ? await catalogueDe(cfg, cles, parts) : await catalogueDe(cfg, cles)) });
 }));
 app.get('/api/jira/tickets', wrap(async (req, res) => {
   const accountIds = String(req.query.assignees || '').split(',').map((s) => s.trim()).filter(Boolean);

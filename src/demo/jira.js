@@ -279,6 +279,28 @@ function delaiIssues(c = {}, filtres = {}, plage = {}, vers = '') {
     .filter((i) => i.changelog.histories.some((h) => h.items.some((it) => bas(it.toString) === bas(vers)) && dedans(h.created)));
 }
 
+/* LE CATALOGUE DES FILTRES, comme le rendrait Jira : ce que portent les tickets du décor, PLUS ce
+   qu'aucun ne porte — un sprint clos, un composant, une version, un label, une priorité —, pour que la
+   démo montre ce que le vrai catalogue apporte : des valeurs cochables que l'échantillon ignorait. */
+function catalogue(cles = []) {
+  const tous = [...ISSUES, ...DONE].map(meta).filter((m) => !cles.length || cles.includes(m.projectKey));
+  const nommes = (vals) => [...new Set(vals.filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((v) => ({ v, l: v }));
+  const sprints = new Map();
+  for (const m of tous) for (const s of m.sprints || []) sprints.set(s.v, s);
+  sprints.set('40', { v: '40', l: 'Sprint 40', d: '2026-06-22T08:00:00.000Z', etat: 'closed' });
+  const epics = new Map(tous.filter((m) => m.epic).map((m) => [m.epic.key, { v: m.epic.key, l: `${m.epic.key} — ${m.epic.summary}` }]));
+  return {
+    project: [...new Map([...ISSUES, ...DONE].map(meta).map((m) => [m.projectKey, { v: m.projectKey, l: m.project || m.projectKey }])).values()],
+    priority: nommes(['Bloquante', 'Haute', 'Moyenne', 'Basse', ...tous.map((m) => m.priority)]),
+    labels: nommes(['dette-technique', ...tous.flatMap((m) => m.labels || [])]),
+    type: nommes(['Epic', ...tous.map((m) => m.type)]),
+    components: nommes(['mobile', ...tous.flatMap((m) => m.components || [])]),
+    fixVersions: nommes(['2.5.0', ...tous.flatMap((m) => m.fixVersions || [])]),
+    sprint: [...sprints.values()],
+    epic: [...epics.values()],
+  };
+}
+
 const issueUrl = (key) => `https://jira.demo/browse/${key}`;
 
-module.exports = { assignees, tickets, statsIssues, delaiIssues, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };
+module.exports = { assignees, catalogue, tickets, statsIssues, delaiIssues, issue, attachmentFile, inProgressMine, applyTransition, issueUrl, projectStatuses };

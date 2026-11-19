@@ -8,6 +8,7 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jira = require('../../integrations/jira');
+const catalogue = require('../../integrations/jiracatalogue');
 const notify = require('../../core/notify');
 const notes = require('../../notes/notes');
 const demoMode = require('../../demo/mode');
@@ -36,6 +37,47 @@ async function personnesAssignables(cfg, projects) {
   return val;
 }
 const oublierAssignes = () => assignesMemo.clear();
+/* LE CATALOGUE DES FILTRES (Jira → Stats) : ce que Jira déclare — projets, priorités, labels, et par
+   projet ses types, composants, versions, sprints et epics. Chaque morceau est mémorisé trente minutes,
+   à part : ajouter un projet au filtre ne relit que lui. Un morceau qui échoue rend une liste vide et
+   n'est PAS mémorisé — on retentera au prochain chargement. Vidé avec les assignés. */
+const catalogueMemo = new Map();
+async function morceau(cle, lire) {
+  const m = catalogueMemo.get(cle);
+  if (m && Date.now() - m.at < TTL_ASSIGNES_MS) return m.val;
+  try {
+    const val = await lire();
+    catalogueMemo.set(cle, { at: Date.now(), val });
+    return val;
+  } catch { return []; }
+}
+const PARTS_CATALOGUE = ['project', 'priority', 'labels', 'epic', 'type', 'components', 'fixVersions', 'sprint'];
+/* `parts` : les morceaux voulus (tous par défaut) — « Mes tickets » ne demande que sprints et projets. */
+async function catalogueDe(cfg, cles, parts = PARTS_CATALOGUE) {
+  const veut = new Set(parts.filter((x) => PARTS_CATALOGUE.includes(x)));
+  const projetsVus = [...new Set((cles || []).map(String).filter(Boolean))].slice(0, 10);
+  const union = (listes, tri = true) => {
+    const par = new Map();
+    for (const l of listes) for (const x of l || []) if (!par.has(x.v)) par.set(x.v, x);
+    const out = [...par.values()];
+    return tri ? out.sort((a, b) => a.l.localeCompare(b.l, undefined, { numeric: true })) : out;
+  };
+  const out = {};
+  if (veut.has('project')) out.project = await morceau('projets', () => catalogue.projets(cfg));
+  if (veut.has('priority')) out.priority = await morceau('priorites', () => catalogue.priorites(cfg));
+  if (veut.has('labels')) out.labels = await morceau('labels', () => catalogue.labels(cfg));
+  if (veut.has('epic')) out.epic = projetsVus.length ? await morceau(`epics:${[...projetsVus].sort().join(',')}`, () => catalogue.epics(cfg, projetsVus)) : [];
+  const metas = []; const sprints = [];
+  const veutMeta = ['type', 'components', 'fixVersions'].some((c) => veut.has(c));
+  for (const p of projetsVus) {
+    if (veutMeta) metas.push(await morceau(`meta:${p}`, () => catalogue.metaProjet(cfg, p)));
+    if (veut.has('sprint')) sprints.push(await morceau(`sprints:${p}`, () => catalogue.sprintsProjet(cfg, p)));
+  }
+  for (const champ of ['type', 'components', 'fixVersions']) if (veut.has(champ)) out[champ] = union(metas.map((m) => (m && m[champ]) || []));
+  if (veut.has('sprint')) out.sprint = union(sprints, false);
+  return out;
+}
+const oublierCatalogue = () => catalogueMemo.clear();
 /* Les statuts du workflow de plusieurs projets, dédoublonnés par nom, dans l'ordre où Jira les
    donne. Un projet inaccessible ne prive pas des statuts des autres, et l'échec n'est PAS
    mémorisé : une panne passagère aurait vidé le filtre jusqu'au redémarrage. */
@@ -287,5 +329,5 @@ function lireJiraBadge() { return jiraBadge; }
 function arreterJiraWatch() { if (jiraWatchTimer) { clearInterval(jiraWatchTimer); jiraWatchTimer = null; } }
 
 module.exports = {
-  texteJira, statutsParProjet, statutsDesProjets, personnesAssignables, oublierAssignes, champSprint, sprintFieldId, teamFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
+  texteJira, catalogueDe, oublierCatalogue, statutsParProjet, statutsDesProjets, personnesAssignables, oublierAssignes, champSprint, sprintFieldId, teamFieldId, watchRows, marquerVu, jiraBadge, MAX_NOTE_WATCH, lireNote, checkEnCours, checkJiraWatch, faireCheckJiraWatch, engagementsSurTicket, refreshJiraBadge, jiraWatchTimer, jiraWatchBusy, restartJiraWatch, prevenirJira, oublierChampSprint, lireJiraBadge, arreterJiraWatch,
 };

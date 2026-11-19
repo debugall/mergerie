@@ -255,6 +255,46 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.equal(await page.locator('#jiraStatsDepuis').inputValue(), '');
   });
 
+  /* LES CHOIX DES FILTRES VIENNENT DES CATALOGUES DE JIRA, pas des cent tickets de l'échantillon : un
+     sprint clos, un composant, une version ou un label qu'aucun ticket ne porte restent cochables. */
+  test('les filtres proposent ce que Jira déclare, même sans ticket qui le porte', async () => {
+    app.state.jiraCatalogue = {
+      projects: [{ key: 'PROJ', name: 'Boutique' }, { key: 'AUTRE', name: 'Un autre projet' }],
+      priorities: ['Haute', 'Basse'],
+      labels: ['facturation', 'jamais-pose'],
+      meta: { PROJ: { issueTypes: [{ name: 'Bug' }, { name: 'Story' }, { name: 'Epic' }], components: [{ name: 'mobile' }], versions: [{ name: '3.0' }, { name: '0.1', archived: true }] } },
+      boards: { PROJ: [{ id: 7 }] },
+      sprints: { 7: [
+        { id: 10, name: 'Sprint 10', state: 'active', startDate: '2026-09-01T08:00:00.000Z' },
+        { id: 11, name: 'Sprint 11', state: 'future' },
+        ...[1, 2, 3, 4, 5].map((n) => ({ id: n, name: `Sprint ${n}`, state: 'closed', startDate: `2026-0${n}-01T08:00:00.000Z` })),
+      ] },
+    };
+    await ouvrirStats();
+    await page.waitForSelector('#jiraStatsSprintFilter:not([hidden])');
+    // Le panneau est replié : on lit le texte, pas ce qui est affiché.
+    const sprints = await page.locator('#jiraStatsSprintFilterBody .jira-sf-item span:first-of-type').evaluateAll((els) => els.map((e) => e.textContent));
+    assert.deepEqual(sprints, ['Sprint 10', 'Sprint 11', 'Sprint 5', 'Sprint 4', 'Sprint 3', 'Sprint 2', 'Sprint 1'],
+      'le sprint en cours, l’à-venir, puis tous les clos (lus sur trois pages) du plus récent au plus ancien');
+    assert.ok(app.state.calls.some((c) => /\/rest\/agile\/1\.0\/board\/7\/sprint\?state=closed&startAt=4/.test(c.path)), 'la pagination des sprints clos est suivie');
+
+    await page.locator('#jiraStatsFieldFilter > summary').click();
+    const critere = async (cle) => {
+      await page.locator('#jiraStatsFieldFilterPick .cb-search').click();
+      await page.locator(`#jiraStatsFieldFilterPick .combo-opt[data-v="${cle}"]`).click();
+      await page.waitForSelector(`#jiraStatsFieldFilterBody [data-jscrit="${cle}"]`);
+      return page.locator(`#jiraStatsFieldFilterBody [data-jsval="${cle}"]`).evaluateAll((els) => els.map((e) => e.value));
+    };
+    assert.ok((await critere('components')).includes('mobile'), 'un composant qu’aucun ticket ne porte');
+    const versions = await critere('fixVersions');
+    assert.ok(versions.includes('3.0') && !versions.includes('0.1'), 'les versions, sans les archivées');
+    assert.ok((await critere('labels')).includes('jamais-pose'));
+    assert.ok((await critere('project')).includes('AUTRE'), 'un projet sans ticket chez moi');
+    for (const cle of ['components', 'fixVersions', 'labels', 'project']) await page.locator(`#jiraStatsFieldFilterBody [data-jsdel="${cle}"]`).click();
+    await page.locator('#jiraStatsFieldFilter > summary').click();
+    app.state.jiraCatalogue = null;
+  });
+
   /* LE DÉLAI ENTRE DEUX STATUTS. Deux combos sous les comptes ; rien n'est demandé à Jira tant
      que les deux ne sont pas choisis, puis UNE recherche de plus — les tickets arrivés dans le
      second statut, terminés compris, avec leur historique (`expand=changelog`). */

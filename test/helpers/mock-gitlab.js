@@ -35,6 +35,10 @@ function freshState() {
     jiraFail: null,          // { status, body } pour forcer un refus Jira
     jiraFields: [],          // /rest/api/3/field : champs de l'instance (dont le sprint)
     jiraProjectStatuses: {}, // clé projet -> [{ id, name, statuses:[…] }] (par type de ticket)
+    /* Les catalogues que lisent les filtres (Jira → Stats) ; null = Jira n'en sert aucun (404).
+       { projects: [{ key, name }], priorities: [nom], labels: [nom],
+         meta: { CLE: { issueTypes, components, versions } }, boards: { CLE: [{ id }] }, sprints: { idTableau: [sprint] } } */
+    jiraCatalogue: null,
     jiraCommentDenied: false, // vrai = Jira refuse la mise à jour d'un commentaire (403), comme pour celui d'un collègue
     confluencePages: {},     // id de page -> { title, storage } servis sous /wiki/api/v2/pages/:id
     calls: [],               // journal { method, path, body } pour les assertions
@@ -304,6 +308,27 @@ function handleJira(req, res, pathname, body = {}) {
     if (!state.jiraProjectStatuses[cle]) return json(res, 404, { errorMessages: ['No project could be found'] });
     return json(res, 200, state.jiraProjectStatuses[cle]);
   }
+  /* Les catalogues des filtres. Les sprints clos sont servis par pages de deux, pour éprouver la pagination. */
+  const cat = state.jiraCatalogue;
+  const q = new URL(req.url, 'http://localhost').searchParams;
+  if (pathname === '/rest/api/3/project/search') return cat ? json(res, 200, { values: cat.projects || [], isLast: true }) : json(res, 404, {});
+  if (pathname === '/rest/api/3/priority') return cat ? json(res, 200, (cat.priorities || []).map((name) => ({ name }))) : json(res, 404, {});
+  if (pathname === '/rest/api/3/label') return cat ? json(res, 200, { values: cat.labels || [], isLast: true }) : json(res, 404, {});
+  const pm = /^\/rest\/api\/3\/project\/([^/]+)$/.exec(pathname);
+  if (pm) { const m = cat && cat.meta && cat.meta[decodeURIComponent(pm[1])]; return m ? json(res, 200, m) : json(res, 404, {}); }
+  if (pathname === '/rest/agile/1.0/board') {
+    const b = cat && cat.boards && cat.boards[q.get('projectKeyOrId')];
+    return b ? json(res, 200, { values: b, isLast: true }) : json(res, 404, {});
+  }
+  const sp = /^\/rest\/agile\/1\.0\/board\/([^/]+)\/sprint$/.exec(pathname);
+  if (sp) {
+    const tous = (cat && cat.sprints && cat.sprints[sp[1]]) || [];
+    const etats = String(q.get('state') || '').split(',');
+    const choisis = tous.filter((s) => etats.includes(s.state));
+    if (!etats.includes('closed')) return json(res, 200, { values: choisis, isLast: true });
+    const debut = Number(q.get('startAt') || 0);
+    return json(res, 200, { values: choisis.slice(debut, debut + 2), isLast: debut + 2 >= choisis.length });
+  }
   if (pathname === '/rest/api/3/myself') return json(res, 200, { accountId: 'me-test', displayName: 'Testeur courant', avatarUrls: {} });
   // Qui peut être assigné dans des projets (`jiraAssignable`, tableau d'utilisateurs Jira bruts).
   /* Recherche. Le mock ne parle pas JQL, mais il en comprend les DEUX formes que le produit
@@ -312,6 +337,7 @@ function handleJira(req, res, pathname, body = {}) {
   if (/^\/rest\/api\/3\/search/.test(pathname)) {
     let jql = String(new URL(req.url, 'http://localhost').searchParams.get('jql') || '');
     let issues = Object.values(state.jiraIssues);
+    if (/issuetype = Epic/i.test(jql)) issues = issues.filter((i) => i.fields && i.fields.issuetype && i.fields.issuetype.name === 'Epic');
     /* Notes → Période : « les miens ou ces clés », les changements d'état et les affectations
        DANS une fenêtre (`CHANGED … DURING`), lus dans `jiraStatusChanged` / `jiraAssignedAt`. */
     const borne = (x) => Date.parse(String(x).trim().replace(/^"|"$/g, '').replace(' ', 'T'));
@@ -500,7 +526,7 @@ function start() {
       state.calls.push({ method: req.method, path: u.pathname + u.search, body });
       try {
         if (u.pathname.startsWith('/api/v4')) return handleGitlab(req, res, u.pathname, u.searchParams, body);
-        if (u.pathname.startsWith('/rest/api')) return handleJira(req, res, u.pathname, body);
+        if (u.pathname.startsWith('/rest/api') || u.pathname.startsWith('/rest/agile')) return handleJira(req, res, u.pathname, body);
         if (u.pathname.startsWith('/wiki/')) return handleConfluence(req, res, u.pathname);
         return json(res, 404, { message: 'no route' });
       } catch (e) {

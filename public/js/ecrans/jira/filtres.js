@@ -77,8 +77,9 @@ function jiraSprintsDistincts() {
   return jiraUnionValeurs('sprint', [...par.values()]).sort((a, b) => {
     /* Le sprint EN COURS d'abord : c'est celui qu'on cherche neuf fois sur dix, et la date
        seule ne le distingue pas — un sprint futur commence plus tard que lui. */
-    const enCours = (x) => (x.etat === 'active' ? 0 : 1);
-    if (enCours(a) !== enCours(b)) return enCours(a) - enCours(b);
+    // En cours, puis à venir (souvent sans date), puis clos — chaque groupe du plus récent au plus ancien.
+    const rang = (x) => ({ active: 0, future: 1 }[x.etat] ?? 2);
+    if (rang(a) !== rang(b)) return rang(a) - rang(b);
     if (a.d && b.d && a.d !== b.d) return a.d < b.d ? 1 : -1;
     if (a.d && !b.d) return -1;
     if (!a.d && b.d) return 1;

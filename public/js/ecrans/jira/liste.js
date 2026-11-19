@@ -44,6 +44,23 @@ async function chargerStatutsDuWorkflow() {
   } catch { /* filtre : jamais bloquant */ }
 }
 
+/* Les sprints et les projets proposés viennent aussi du catalogue de Jira : un sprint clos ou à venir
+   qu'aucun ticket chargé ne porte reste cochable (la contrainte part dans la requête). */
+let jiraCatalogueDemande = null;
+async function chargerCatalogueJira() {
+  const choisis = jiraFiltres().project || [];
+  const signature = [...new Set(choisis.length ? choisis : JIRA.issues.map((i) => i.projectKey).filter(Boolean))].sort().join(',');
+  if (signature === jiraCatalogueDemande) return;
+  jiraCatalogueDemande = signature;
+  try {
+    const c = await api(`/jira/catalogue?projects=${encodeURIComponent(signature)}&parts=sprint,project`);
+    if (Array.isArray(c.sprint)) jiraMemoriseValeurs('sprint', c.sprint);
+    if (Array.isArray(c.project)) jiraMemoriseValeurs('project', c.project);
+    renderJiraSprintFilter();
+    renderJiraFieldFilter();
+  } catch { /* filtre : jamais bloquant */ }
+}
+
 function jiraDistinctStatuses() {
   const seen = new Map();
   for (const it of JIRA.issues) if (it.status && !seen.has(it.status)) seen.set(it.status, it.statusCategory);

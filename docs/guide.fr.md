@@ -1940,8 +1940,16 @@ vit sa vie.
   l'historique voyageant avec chaque page (`expand=changelog`) — rien tant que les deux statuts ne sont pas
   choisis.
 - **Ce que ça coûte en appels Jira** : une page de cent tickets = un appel. La liste et les stats en font
-  donc au plus dix chacune (plafond de 1 000) ; les valeurs des filtres de Stats viennent d'une seule page ;
-  la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les
+  donc au plus dix chacune (plafond de 1 000) ; les **valeurs proposées par les filtres** de Stats viennent
+  des **catalogues de Jira**, pas d'un extrait de tickets — un sprint clos, un composant, une version, un
+  label qu'aucun ticket récent ne porte restent cochables : la liste des projets, des priorités et des
+  labels (un appel chacun), puis par projet filtré (ou, sans filtre, par projet des tickets affichés, dix au
+  plus) son détail (types, composants, versions non archivées : un appel), ses tableaux scrum et leurs
+  sprints (un appel par tableau pour les sprints en cours et à venir, une page de cinquante par tranche de
+  sprints clos — les deux cents plus récents gardés) et ses epics (une page) ; chaque morceau est
+  **mémorisé trente minutes**, un échec n'étant pas mémorisé. Rapporteur et assigné proposent les personnes
+  assignables, l'équipe reste lue dans une page de tickets (Jira n'en tient pas de catalogue simple), et
+  « Mes tickets » ne demande que les sprints et les projets ; la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les
   statuts d'un workflow le sont jusqu'au prochain enregistrement des réglages. Et le **quota** de Jira est
   respecté tel qu'il le dit : au plus quatre requêtes en vol, et sur une réponse 429 (ou 503 avec délai)
   Mergerie attend le délai demandé (`Retry-After`, 30 s au plus) et rejoue, trois fois ; au-delà, l'écran dit

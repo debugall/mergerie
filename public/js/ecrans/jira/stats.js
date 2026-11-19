@@ -120,6 +120,18 @@ async function jsEchantillon() {
       jsMemorise('status', (d.statuses || []).map((st) => ({ v: st.name, l: st.name, cat: st.cat })));
     } catch { /* filtre : jamais bloquant */ }
   }
+  /* LES VALEURS DES FILTRES VIENNENT DES CATALOGUES DE JIRA, pas de l'échantillon : un sprint clos, un
+     composant ou une version qu'aucun des cent tickets ne porte restent cochables. L'échantillon ne
+     fait plus que compléter (et chiffrer) ce que le catalogue déclare. Mémorisé côté serveur. */
+  try {
+    const c = await api(`/jira/catalogue?projects=${encodeURIComponent(cles)}`);
+    for (const cle of ['sprint', 'project', 'type', 'priority', 'labels', 'components', 'fixVersions', 'epic']) {
+      if (Array.isArray(c[cle])) jsMemorise(cle, c[cle]);
+    }
+  } catch { /* les valeurs de l'échantillon restent */ }
+  // Rapporteur et assigné : les personnes assignables des projets, déjà lues pour le filtre « Assignés ».
+  const personnes = JSTATS.people.filter((p) => p && p.name).map((p) => ({ v: p.name, l: p.name }));
+  for (const cle of ['assignee', 'reporter']) jsMemorise(cle, personnes);
 }
 async function jsCompter(seq = JSTATS.seq) {
   const corps = $('#jiraStatsCorps'); const err = $('#jiraStatsError');
@@ -331,8 +343,9 @@ function jsRenderSprints() {
   const choisis = jsSprints();
   // Le sprint EN COURS d'abord, puis les plus récents par date, puis par identifiant (croît avec le temps).
   const vals = jsUnion('sprint', []).sort((a, b) => {
-    const enCours = (x) => (x.etat === 'active' ? 0 : 1);
-    if (enCours(a) !== enCours(b)) return enCours(a) - enCours(b);
+    // En cours, puis à venir (souvent sans date), puis clos — chaque groupe du plus récent au plus ancien.
+    const rang = (x) => ({ active: 0, future: 1 }[x.etat] ?? 2);
+    if (rang(a) !== rang(b)) return rang(a) - rang(b);
     if (a.d && b.d && a.d !== b.d) return a.d < b.d ? 1 : -1;
     if (a.d && !b.d) return -1;
     if (!a.d && b.d) return 1;

@@ -9,7 +9,7 @@ const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { wrap } = require('../http');
-const { oublierAssignes, oublierChampSprint, restartJiraWatch, statutsParProjet } = require('../lib/jira');
+const { oublierAssignes, oublierCatalogue, oublierChampSprint, restartJiraWatch, statutsParProjet } = require('../lib/jira');
 const { restartAutoRefresh } = require('../planification');
 
 // Télémétrie du footer : tokens, activité perso, paliers, et activité de l'équipe
@@ -232,5 +232,6 @@ app.put('/api/config', wrap((req, res) => {
   oublierChampSprint(); // l'instance Jira visée a pu changer : on re-cherchera le champ sprint
   statutsParProjet.clear();
   oublierAssignes();
+  oublierCatalogue();
   res.json(sansSecrets(c));
 }));

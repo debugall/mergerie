@@ -1862,7 +1862,15 @@ then each lives its own life.
   status **within** the range. Cost: one more search, ten pages at most, the history travelling with each
   page (`expand=changelog`) — nothing until both statuses are chosen.
 - **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
-  most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
+  most ten each (cap of 1,000); the **values the Stats filters offer** come from **Jira's catalogues**, not
+  from a sample of tickets — a closed sprint, a component, a version, a label no recent ticket carries stay
+  selectable: the list of projects, priorities and labels (one call each), then for each filtered project
+  (or, with no filter, each project of the tickets shown, ten at most) its details (types, components,
+  unarchived versions: one call), its scrum boards and their sprints (one call per board for active and
+  future sprints, one page of fifty per batch of closed sprints — the two hundred most recent kept) and its
+  epics (one page); each piece is **cached for thirty minutes**, a failure is not cached. Reporter and
+  assignee offer the assignable people, the team is still read from a page of tickets (Jira keeps no simple
+  catalogue of it), and “My tickets” only asks for sprints and projects; the assignee list
   (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are
   cached until the settings are next saved. And Jira's **quota** is honoured as Jira states it: at most four
   requests in flight, and on a 429 (or a 503 with a delay) Mergerie waits the requested delay (`Retry-After`,

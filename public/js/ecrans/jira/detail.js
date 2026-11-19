@@ -389,6 +389,7 @@ async function loadJiraTickets() {
   renderJiraList();
   const vis = jiraVisibleIssues();
   chargerStatutsDuWorkflow();   // complète la liste des statuts, sans bloquer l'affichage
+  chargerCatalogueJira();       // et celle des sprints et projets
   const cible = JIRA.cible; JIRA.cible = null;
   if (cible) selectJiraIssue(cible, 'mine');
   else if (vis.length) selectJiraIssue(vis[0].key);
