@@ -153,6 +153,11 @@ pre.code { margin: 0; padding: 12px 14px; font-family: ui-monospace, SFMono-Regu
 .tree-file { padding: 3px 6px; border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .tree-file:hover { background: var(--panel2); }
 .tree-file.active { background: var(--accent); }
+/* Le rapport mène au code : `fichier:ligne` cliquable, et la puce du constat entière. */
+#splitMd .md-ref { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+#splitMd .md-ref:hover { color: var(--accent); }
+#splitMd .md-ref-item { cursor: pointer; border-radius: 4px; }
+#splitMd .md-ref-item:hover { background: var(--panel2); }
 .tree-file .tf-name { overflow: hidden; text-overflow: ellipsis; }
 .tree-file.changed .tf-name { color: var(--amber); }
 .tree-file.active .tf-name, .tree-file.active .dot { color: var(--on-accent); }

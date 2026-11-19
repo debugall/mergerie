@@ -50,8 +50,85 @@ function parseDiffByFile(diff) {
 function setSplitPane(which) {
   $$('#splitView .split-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.split === which));
   $('#splitMd').innerHTML = mdToHtml(which === 'review' ? split.md : split.explanation, IA);
+  lierRefsCode($('#splitMd'));
   $('#splitMd').scrollTop = 0;
 }
+
+/* Un chemin cité par le rapport → le fichier de la vue. L'IA écrit tantôt le chemin entier,
+   tantôt un suffixe (`importCsv.js`) : on accepte un suffixe s'il ne désigne qu'UN fichier. */
+function cheminDansVue(chemin) {
+  const c = String(chemin || '').replace(/^\.?\//, '');
+  if (!c) return null;
+  const tous = [...new Set([...(split.files || []).map((f) => f.path), ...Object.keys(split.diffByFile || {})])];
+  if (tous.includes(c)) return c;
+  const suffixes = tous.filter((f) => f.endsWith(`/${c}`));
+  return suffixes.length === 1 ? suffixes[0] : null;
+}
+
+/* LE RAPPORT MÈNE AU CODE. Chaque `fichier:ligne` du rapport qui désigne un fichier de la vue
+   devient un lien, et la puce du constat qui le porte aussi : un clic ouvre le fichier à droite,
+   le sélectionne dans l'arbre, et centre la ligne. Un chemin inconnu reste du texte. */
+const REF_CODE = /^(\S+?\.[\w-]+)(?::(\d+)(?:[-–]\d+)?)?$/;
+function lierRefsCode(el) {
+  if (!el || !split.mrId) return;
+  for (const c of $$('code', el)) {
+    if (c.closest('pre')) continue;
+    const m = REF_CODE.exec(c.textContent.trim());
+    const chemin = m && cheminDansVue(m[1]);
+    if (!chemin) continue;
+    c.classList.add('md-ref');
+    c.dataset.refPath = chemin;
+    c.dataset.refLine = m[2] || '';
+    c.title = tr('viewer.ref.open');
+    const li = c.closest('li');
+    if (li && !li.classList.contains('md-ref-item')) li.classList.add('md-ref-item');
+  }
+}
+
+async function allerAuCode(chemin, ligne) {
+  await selectFile(chemin);
+  if (split.path !== chemin) return;                   // un autre clic est passé devant
+  // L'arbre : les dossiers du fichier dépliés (et retenus), sa ligne au milieu.
+  const rangee = $$('#treeList .tree-file').find((x) => x.dataset.path === chemin);
+  if (rangee) {
+    for (let d = rangee.parentElement.closest('details.tree-folder'); d; d = d.parentElement.closest('details.tree-folder')) {
+      d.open = true;
+      memoDossiers()[d.dataset.dir] = true;
+    }
+    rangee.scrollIntoView({ block: 'center' });
+  }
+  if (!ligne) return;
+  const el = $('#fileContent');
+  if (split.diffByFile[chemin]) {
+    /* Les lignes peuvent se repeindre (brouillons arrivés après coup) : on re-résout la ligne à
+       chaque essai, la plus proche à défaut — un constat sur une ligne supprimée n'en a pas. */
+    for (let essai = 0; essai < 40 && split.path === chemin; essai += 1) {
+      const rows = $$('.dl-row', el).filter((r) => Number(r.dataset.new));
+      if (rows.length) {
+        const cible = rows.reduce((a, r) => (Math.abs(Number(r.dataset.new) - ligne) < Math.abs(Number(a.dataset.new) - ligne) ? r : a));
+        cible.scrollIntoView({ block: 'center' });
+        cible.classList.add('flash');
+        setTimeout(() => cible.classList.remove('flash'), 1200);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return;
+  }
+  // Fichier inchangé : un seul bloc de code, on calcule la position de la ligne.
+  const pre = $('pre.code', el);
+  if (!pre) return;
+  const hauteur = parseFloat(getComputedStyle(pre).lineHeight) || 18;
+  el.scrollTop = Math.max(0, pre.offsetTop + (ligne - 1) * hauteur - el.clientHeight / 2);
+}
+
+$('#splitMd').addEventListener('click', (e) => {
+  if (e.target.closest('a')) return;
+  const item = e.target.closest('.md-ref-item');
+  const ref = e.target.closest('.md-ref') || (item && $('.md-ref', item));
+  if (!ref) return;
+  allerAuCode(ref.dataset.refPath, Number(ref.dataset.refLine) || 0);
+});
 
 // ---- arbre de fichiers ----
 function buildTree(files) {

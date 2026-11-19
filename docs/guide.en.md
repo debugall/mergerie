@@ -634,6 +634,12 @@ blocks), of discussion threads, of remarks in draft, and of changed lines. On a 
 request, knowing which ones to open meant opening them one by one. The badges stay silent when there
 is nothing — a tree studded with zeros would be harder to read than the bare tree it replaces.
 
+**The report leads to the code.** Every `file:line` in the report that names a file of the merge
+request is a link — and so is the bullet of the finding carrying it: a click opens the file on the
+right, **selects it in the tree** (its folders unfolded, its row in the middle) and **centres the
+line** it cites. A bare file name (`importCsv.js`) is enough when it names only one file; a path that
+is not in the merge request stays plain text.
+
 **The whole screen speaks of the REVIEWED version**, not of the branch head: tree, file content and
 line numbers all come from the commit the report describes. That is what makes a “`src/foo.js` line
 137” read in the report land on the right line on the right-hand side, even if the branch has moved

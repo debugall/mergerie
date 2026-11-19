@@ -664,6 +664,12 @@ request de quarante fichiers, savoir lesquels ouvrir se lisait jusque-là fichie
 pastilles restent muettes quand il n'y a rien — un arbre constellé de zéros serait plus difficile à
 lire que l'arbre nu qu'il remplace.
 
+**Le rapport mène au code.** Chaque `fichier:ligne` du rapport qui désigne un fichier de la merge
+request est un lien — et la puce du constat qui le porte aussi : un clic ouvre le fichier à droite,
+le **sélectionne dans l'arbre** (ses dossiers dépliés, sa ligne au milieu) et **centre la ligne**
+citée. Un nom de fichier seul (`importCsv.js`) suffit s'il n'en désigne qu'un ; un chemin absent de
+la merge request reste du texte.
+
 **Tout l'écran parle de la version REVIEWÉE**, pas de la tête de branche : arbre, contenu du
 fichier et numéros de ligne viennent du commit que le rapport décrit. C'est ce qui fait qu'un
 « `src/foo.js` ligne 137 » lu dans le rapport tombe sur la bonne ligne à droite, même si la

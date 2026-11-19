@@ -48,13 +48,7 @@ document.addEventListener('click', async (e) => {
   if ($('#splitView').hidden || split.mrId !== id) await openSplit(id);
   /* Le constat peut nommer un fichier ABSENT du diff (l'IA cite parfois un chemin voisin) :
      on le dit plutôt que d'ouvrir un fichier au hasard. */
-  const dansArbre = (split.files || []).find((f) => f.path === chemin)
-    || (split.files || []).find((f) => f.path.endsWith(`/${chemin}`));
-  /* L'ARBRE PEUT MANQUER sans que le diff manque : `/tree` est un appel séparé, et il peut
-     échouer (clone occupé) là où le diff, lui, est déjà chargé. Un constat qui porte sur un
-     fichier du diff doit s'ouvrir quand même — c'est le fichier qu'on vient lire. */
-  const dansDiff = Object.keys(split.diffByFile || {}).find((f) => f === chemin || f.endsWith(`/${chemin}`));
-  const chemAffiche = (dansArbre && dansArbre.path) || dansDiff;
+  const chemAffiche = cheminDansVue(chemin);
   if (!chemAffiche) { toast(tr('report.finding.no-file', { file: chemin }), true); return; }
   await selectFile(chemAffiche);
   await ouvrirCommentaireSurLigne(ligne, texte);
