@@ -209,32 +209,7 @@ function resumeJours(vals) {
     p90: dixieme(v[Math.min(v.length - 1, Math.ceil(0.9 * v.length) - 1)]), min: dixieme(v[0]), max: dixieme(v[v.length - 1]),
   };
 }
-/* LA SEMAINE, pour la courbe : le lundi (UTC) de la semaine où le ticket est ARRIVÉ — c'est la
-   livraison qu'on date, pas le départ. Les semaines vides de la plage sont rendues, n à 0 et
-   valeurs nulles, sinon la courbe relierait deux points séparés d'un mois comme s'ils se suivaient.
-   Sans plage, de la première arrivée à la dernière ; au plus deux ans, les plus récents. */
-const SEMAINE = 7 * 86400000;
-const MAX_SEMAINES = 104;
-function lundiDe(ms) {
-  const d = new Date(ms); const j = (d.getUTCDay() + 6) % 7;
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - j);
-}
-function parSemaineDe(tickets, { depuis = '', jusqua = '' } = {}) {
-  if (!tickets.length) return [];
-  const fins = tickets.map((x) => Date.parse(x.fin));
-  const deb = lundiDe(JOUR.test(String(depuis || '')) ? Date.parse(`${depuis}T00:00:00Z`) : Math.min(...fins));
-  let fin = lundiDe(JOUR.test(String(jusqua || '')) ? Date.parse(`${jusqua}T00:00:00Z`) : Math.max(...fins));
-  if (fin < deb) fin = deb;
-  const premier = Math.max(deb, fin - (MAX_SEMAINES - 1) * SEMAINE);
-  const par = new Map();
-  for (let w = premier; w <= fin; w += SEMAINE) par.set(w, []);
-  tickets.forEach((x, i) => { const l = par.get(lundiDe(fins[i])); if (l) l.push(x.jours); });
-  return [...par].map(([w, vals]) => {
-    const r = resumeJours(vals);
-    return { semaine: new Date(w).toISOString().slice(0, 10), n: r.n, mediane: r.mediane, moyenne: r.moyenne, p90: r.p90 };
-  });
-}
-function delaisDe(issues, { de, vers, depuis = '', jusqua = '' }) {
+function delaisDe(issues, { de, vers }) {
   const tickets = []; let sansDepart = 0; let sansArrivee = 0;
   for (const i of issues || []) {
     const { debut, fin } = bornesDelai(i, de, vers);
@@ -255,7 +230,7 @@ function delaisDe(issues, { de, vers, depuis = '', jusqua = '' }) {
     for (const x of tickets) { const k = x[cle] || ''; if (!par.has(k)) par.set(k, []); par.get(k).push(x.jours); }
     return [...par].map(([name, vals]) => ({ name, ...resumeJours(vals) })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   };
-  return { ...resumeJours(tickets.map((x) => x.jours)), sansDepart, sansArrivee, parProjet: groupe('project'), parType: groupe('type'), parSemaine: parSemaineDe(tickets, { depuis, jusqua }), tickets };
+  return { ...resumeJours(tickets.map((x) => x.jours)), sansDepart, sansArrivee, parProjet: groupe('project'), parType: groupe('type'), tickets };
 }
 /* La requête : les contraintes de l'écran SAUF le filtre de statut et « terminés » — un ticket en
    prod est terminé, et c'est justement lui qu'on mesure — plus l'arrivée dans le second statut
@@ -270,7 +245,7 @@ async function delais(cfg, { accountIds, projects, sprints, filtres, people, de,
   const pendant = (a || b) ? ` DURING ("${jira.dateJql(`${a || '1970-01-01'}T00:00:00`, tz)}", "${jira.dateJql(`${b || '2999-12-31'}T23:59:00`, tz)}")` : '';
   const jql = `${[...clauses, ...cf, `status CHANGED TO "${v}"${pendant}`].join(' AND ')} ORDER BY updated DESC`;
   const lu = await jira.searchAll(cfg, jql, CHAMPS_DELAI, PLAFOND, { expand: 'changelog' });
-  return { ...delaisDe(lu.issues, { de, vers, depuis: a || '', jusqua: b || '' }), lus: lu.issues.length, total: lu.total, tronque: lu.tronque, plafond: PLAFOND, ignores, jql };
+  return { ...delaisDe(lu.issues, { de, vers }), lus: lu.issues.length, total: lu.total, tronque: lu.tronque, plafond: PLAFOND, ignores, jql };
 }
 
-module.exports = { PLAFOND, CHAMPS, typesDe, clausesFiltres, clauseMouvement, searchAll: jira.searchAll, statsDe, stats, bornesDelai, resumeJours, parSemaineDe, delaisDe, delais };
+module.exports = { PLAFOND, CHAMPS, typesDe, clausesFiltres, clauseMouvement, searchAll: jira.searchAll, statsDe, stats, bornesDelai, resumeJours, delaisDe, delais };

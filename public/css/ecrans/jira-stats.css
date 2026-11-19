@@ -48,22 +48,3 @@
 .jira-stats-delai-combo .combo input { padding: 6px 10px; font-size: 13px; }
 .jira-stats-delai-tickets td.num { white-space: nowrap; }
 .jira-stats-delai-sum { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* La courbe par semaine : médiane pleine, 90e centile en pointillés, arrivées en barres au pied. */
-.jira-stats-courbe { margin: 4px 0 8px; }
-.jira-stats-courbe svg { display: block; width: 100%; height: auto; overflow: visible; }
-.jira-stats-courbe .js-courbe-grille { stroke: var(--line); stroke-width: 1; }
-.jira-stats-courbe .js-courbe-axe { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-.jira-stats-courbe polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.jira-stats-courbe polyline.js-courbe-mediane { stroke: var(--accent); }
-.jira-stats-courbe polyline.js-courbe-p90 { stroke: var(--amber); stroke-dasharray: 5 4; stroke-width: 1.5; }
-.jira-stats-courbe circle.js-courbe-mediane { fill: var(--accent); }
-.jira-stats-courbe circle.js-courbe-p90 { fill: var(--amber); }
-.jira-stats-courbe .js-courbe-barre { fill: var(--muted); opacity: .35; }
-.jira-stats-courbe .js-courbe-zone { fill: transparent; }
-.jira-stats-courbe g[data-semaine]:hover .js-courbe-zone { fill: var(--text); opacity: .06; }
-.jira-stats-courbe-legende { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 4px; }
-.jira-stats-courbe-legende span { display: inline-flex; align-items: center; gap: 6px; }
-.jira-stats-courbe-legende i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--accent); }
-.jira-stats-courbe-legende i.js-leg-p90 { border-top: 2px dashed var(--amber); }
-.jira-stats-courbe-legende i.js-leg-barre { height: 8px; border: 0; background: var(--muted); opacity: .35; border-radius: 2px; }

@@ -260,15 +260,12 @@ function statsIssues(c = {}, filtres = {}, plage = {}) {
 
 /* L'HISTORIQUE des transitions (`changelog`), pour le délai entre deux statuts : fixe, comme le reste.
    Le bug 1375 a mis neuf jours de « En cours » à « Terminé » ; 1421 est reparti en cours sans être
-   terminé ; 1408 et 1390 sont en revue ; 1402, passé en revue, a été renvoyé à faire. Leurs
-   arrivées en revue tombent sur des semaines voisines et sur une isolée : de quoi tracer la courbe
-   par semaine, trait et trou. */
+   terminé ; 1408 et 1390 sont en revue. */
 const transition = (created, de, vers) => ({ created, items: [{ field: 'status', fromString: de, toString: vers }] });
 const HISTORIQUES = {
   'PROJ-1375': [transition('2026-06-22T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-06-28T17:30:00.000+0000', 'En cours', 'En revue'), transition('2026-07-01T15:30:00.000+0000', 'En revue', 'Terminé')],
   'PROJ-1421': [transition('2026-07-19T09:00:00.000+0000', 'À faire', 'En cours')],
   'PROJ-1408': [transition('2026-07-10T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-07-22T11:00:00.000+0000', 'En cours', 'En revue')],
-  'PROJ-1402': [transition('2026-07-06T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-07-15T09:00:00.000+0000', 'En cours', 'En revue'), transition('2026-07-16T14:00:00.000+0000', 'En revue', 'À faire')],
   'PROJ-1390': [transition('2026-07-02T09:00:00.000+0000', 'À faire', 'En cours'), transition('2026-07-15T11:00:00.000+0000', 'En cours', 'En revue')],
 };
 /* Les tickets ARRIVÉS dans `vers` (dans la plage, si elle est posée), avec leur historique — ce

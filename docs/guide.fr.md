@@ -1939,12 +1939,6 @@ vit sa vie.
   arrivés dans le second statut **pendant** la plage. Coût : une recherche de plus, dix pages au plus,
   l'historique voyageant avec chaque page (`expand=changelog`) — rien tant que les deux statuts ne sont pas
   choisis.
-  **Évolution par semaine** : sous les tuiles, une courbe — la médiane en trait plein, le 90e centile en
-  pointillés, le nombre d'arrivées en barres au pied — par semaine (du lundi) d'**arrivée** dans le second
-  statut, sur la plage de dates choisie (sans plage : de la première arrivée à la dernière, deux ans au plus)
-  et sous les mêmes filtres. Une semaine sans arrivée n'a pas de point et coupe le trait ; le survol d'une
-  semaine donne son nombre de tickets, sa médiane et son 90e centile. Aucun appel de plus : la courbe se
-  calcule sur les tickets déjà lus.
 - **Ce que ça coûte en appels Jira** : une page de cent tickets = un appel. La liste et les stats en font
   donc au plus dix chacune (plafond de 1 000) ; les valeurs des filtres de Stats viennent d'une seule page ;
   la liste des assignés (six mois d'activité, dix pages au plus) est **mémorisée trente minutes** ; les

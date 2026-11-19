@@ -198,7 +198,6 @@ function jsRendreDelai(d) {
       ${tuile('', j(d.moyenne), tr('jira.stats.delai.mean'), '', 'moyenne')}
       ${tuile('amber', j(d.p90), tr('jira.stats.delai.p90'), '', 'p90')}
     </div>
-    ${jsCourbeDelai(d)}
     ${(d.parProjet || []).length > 1 ? tableau(tr('jira.stats.delai.by-project'), d.parProjet, tr('jira.stats.delai.col.project'), 'data-delai-project') : ''}
     ${(d.parType || []).length > 1 ? tableau(tr('jira.stats.delai.by-type'), d.parType, tr('jira.stats.col.type'), 'data-delai-type') : ''}
     <h3 class="jira-stats-h">${esc(tr('jira.stats.delai.tickets'))}</h3>
@@ -211,57 +210,6 @@ function jsRendreDelai(d) {
           <td class="num muted">${esc(fmtDateHour(x.debut))}</td><td class="num muted">${esc(fmtDateHour(x.fin))}</td>
           <td class="num"><b>${esc(j(x.jours))}</b></td></tr>`).join('')}</tbody>
     </table>`;
-}
-
-/* LA COURBE PAR SEMAINE : médiane (trait plein) et 90e centile (pointillés) des tickets arrivés
-   chaque semaine, le nombre d'arrivées en barres au pied. SVG à la main, aucune bibliothèque : une
-   semaine vide coupe le trait au lieu de relier ses voisines. Moins de deux semaines : pas de courbe. */
-function jsCourbeDelai(d) {
-  const sem = d.parSemaine || [];
-  if (sem.length < 2) return '';
-  const W = 720; const H = 220; const g = 40; const dr = 12; const haut = 12; const bas = 24;
-  const hBarres = 34; const yBase = H - bas; const yCourbe = yBase - hBarres - 8;
-  const maxJ = Math.max(1, ...sem.map((x) => x.p90 || 0));
-  const pas = [1, 2, 5, 10, 20, 50, 100, 200, 500].find((p) => maxJ / p <= 4) || Math.ceil(maxJ / 4);
-  const plafond = Math.ceil(maxJ / pas) * pas;
-  const maxN = Math.max(1, ...sem.map((x) => x.n));
-  const col = (W - g - dr) / sem.length;   // chaque semaine a sa colonne, le point en son milieu
-  const x = (i) => g + (i + 0.5) * col;
-  const y = (v) => yCourbe - (v / plafond) * (yCourbe - haut);
-  const trace = (cle) => {
-    const segs = []; let cur = [];
-    sem.forEach((s, i) => { if (s[cle] == null) { if (cur.length) segs.push(cur); cur = []; } else cur.push(`${x(i).toFixed(1)},${y(s[cle]).toFixed(1)}`); });
-    if (cur.length) segs.push(cur);
-    return segs.map((pts) => (pts.length > 1 ? `<polyline class="js-courbe-${cle}" points="${pts.join(' ')}"/>` : '')).join('');
-  };
-  const grille = [];
-  for (let v = 0; v <= plafond; v += pas) grille.push(`<line class="js-courbe-grille" x1="${g}" x2="${W - dr}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="js-courbe-axe" x="${g - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${esc(tr('jira.stats.delai.days', { n: String(v) }))}</text>`);
-  const larg = Math.max(2, Math.min(18, col * 0.6));
-  const tous = Math.ceil(sem.length / 8);
-  const jourMois = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
-  const colonnes = sem.map((s, i) => {
-    const date = fmtDate(`${s.semaine}T12:00:00`);   // midi : un jour seul lu en UTC reculerait d’un jour à l’ouest
-    const titre = s.n ? tr('jira.stats.delai.week-tip', { n: s.n, count: s.n, date, med: s.mediane, p90: s.p90 }) : tr('jira.stats.delai.week-none', { date });
-    const hb = (s.n / maxN) * hBarres;
-    return `<g data-semaine="${esc(s.semaine)}" data-n="${s.n}"${s.n ? ` data-mediane="${s.mediane}"` : ''}><title>${esc(titre)}</title>
-      <rect class="js-courbe-zone" x="${(x(i) - col / 2).toFixed(1)}" y="${haut}" width="${col.toFixed(1)}" height="${yBase - haut}"/>
-      ${s.n ? `<rect class="js-courbe-barre" x="${(x(i) - larg / 2).toFixed(1)}" y="${(yBase - hb).toFixed(1)}" width="${larg.toFixed(1)}" height="${hb.toFixed(1)}" rx="2"/>
-      <circle class="js-courbe-p90" cx="${x(i).toFixed(1)}" cy="${y(s.p90).toFixed(1)}" r="2.5"/><circle class="js-courbe-mediane" cx="${x(i).toFixed(1)}" cy="${y(s.mediane).toFixed(1)}" r="3.5"/>` : ''}
-      ${i % tous === 0 ? `<text class="js-courbe-axe" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="middle">${esc(jourMois(s.semaine))}</text>` : ''}</g>`;
-  }).join('');
-  return `<h3 class="jira-stats-h">${esc(tr('jira.stats.delai.weekly'))}</h3>
-    <p class="jira-stats-delai-hint muted">${esc(tr('jira.stats.delai.weekly-hint', { vers: d.vers }))}</p>
-    <div class="jira-stats-courbe" data-semaines="${sem.length}">
-      <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(tr('jira.stats.delai.weekly'))}">
-        ${grille.join('')}<line class="js-courbe-grille" x1="${g}" x2="${W - dr}" y1="${yBase}" y2="${yBase}"/>
-        ${trace('p90')}${trace('mediane')}${colonnes}
-      </svg>
-      <div class="jira-stats-courbe-legende muted">
-        <span><i class="js-leg-mediane"></i>${esc(tr('jira.stats.delai.median'))}</span>
-        <span><i class="js-leg-p90"></i>${esc(tr('jira.stats.delai.p90'))}</span>
-        <span><i class="js-leg-barre"></i>${esc(tr('jira.stats.delai.week-n'))}</span>
-      </div>
-    </div>`;
 }
 
 /* ---------- Le rendu des comptes ---------- */

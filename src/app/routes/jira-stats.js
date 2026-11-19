@@ -67,7 +67,7 @@ app.get('/api/jira/stats/delai', wrap(async (req, res) => {
   const cfg = getConfig();
   if (demoMode.isDemo()) {
     const lus = demoJira.delaiIssues(contraintes, filtres, plage, vers);
-    const r = jirastats.delaisDe(lus, { de, vers, ...plage });
+    const r = jirastats.delaisDe(lus, { de, vers });
     r.tickets = r.tickets.map((x) => ({ ...x, url: demoJira.issueUrl(x.key) }));
     return res.json({ configured: true, de, vers, ...r, lus: lus.length, total: lus.length, tronque: false, plafond: jirastats.PLAFOND, ignores: [] });
   }
