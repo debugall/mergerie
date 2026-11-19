@@ -57,6 +57,23 @@ describe('delaisDe : le délai entre deux statuts, lu dans l’historique', () =
     assert.deepEqual(r.parType.map((p) => [p.name, p.n]), [['Bug', 4], ['Story', 1]]);
     assert.deepEqual(r.tickets.map((x) => x.key), ['B-5', 'A-4', 'A-3', 'A-2', 'A-1'], 'les dernières arrivées d’abord');
   });
+  /* La courbe : semaine du lundi de l'ARRIVÉE ; les semaines vides de la plage existent, à zéro. */
+  test('par semaine d’arrivée : lundi UTC, semaines vides comprises, bornées par la plage', () => {
+    const t = (key, debut, fin) => tk(key, [h(debut, 'En cours'), h(fin, 'En prod')]);
+    const issues = [
+      t('A-1', '2026-08-01T10:00:00.000Z', '2026-08-03T10:00:00.000Z'),   // lundi 3 : 2 j
+      t('A-2', '2026-08-01T10:00:00.000Z', '2026-08-09T22:00:00.000Z'),   // dimanche 9, même semaine : 8,5 j
+      t('A-3', '2026-08-20T10:00:00.000Z', '2026-08-24T10:00:00.000Z'),   // lundi 24 : 4 j
+    ];
+    const r = jirastats.delaisDe(issues, { de: 'En cours', vers: 'En prod' });
+    assert.deepEqual(r.parSemaine.map((s) => [s.semaine, s.n, s.mediane]),
+      [['2026-08-03', 2, 5.3], ['2026-08-10', 0, null], ['2026-08-17', 0, null], ['2026-08-24', 1, 4]]);
+    const p = jirastats.delaisDe(issues, { de: 'En cours', vers: 'En prod', depuis: '2026-07-29', jusqua: '2026-09-02' }).parSemaine;
+    assert.equal(p[0].semaine, '2026-07-27', 'la plage commence la semaine de son premier jour');
+    assert.equal(p.at(-1).semaine, '2026-08-31');
+    assert.equal(p.length, 6);
+    assert.deepEqual(jirastats.delaisDe([], { de: 'a', vers: 'b' }).parSemaine, []);
+  });
   test('la médiane de deux valeurs est leur milieu ; sans ticket, tout est nul', () => {
     assert.equal(jirastats.resumeJours([1, 4]).mediane, 2.5);
     assert.deepEqual(jirastats.resumeJours([]), { n: 0, mediane: null, moyenne: null, p90: null, min: null, max: null });

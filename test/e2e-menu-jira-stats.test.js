@@ -291,11 +291,24 @@ describe('Menu Jira — Stats : comptes et filtres', { skip: dispo ? false : MSG
     assert.match(await page.locator('#jiraStatsDelaiCorps').innerText(), /1 ticket passé par « En cours » APRÈS/, 'PROJ-5, repris après sa livraison, est compté à part');
     assert.match(await page.locator('#jiraStatsDelaiCorps tr[data-delai-key="PROJ-6"]').innerText(), /PROJ-6\s+Un bug terminé\s+Bug\s+01\/08\/2026 \d\d:\d\d\s+11\/08\/2026 \d\d:\d\d\s+10 j/);
 
+    // Une seule semaine d'arrivée : pas de courbe.
+    assert.equal(await page.locator('#jiraStatsDelaiCorps .jira-stats-courbe').count(), 0);
+
     // Tout le monde : le ticket de Bob entre, et la médiane devient le milieu de 2,5 et 10.
     await page.locator('#jiraStatsAssigneeFilter summary').click();   // le panneau est replié : on l'ouvre
     await page.locator('#jiraSubStats [data-jsall="assignee"]').click();
     await page.waitForFunction(() => (document.querySelector('#jiraStatsDelaiCorps [data-delai-n]') || {}).dataset?.delaiN === '2');
     assert.equal(await val('mediane'), '6.3 j');
+    /* Deux arrivées, le 11 août et le 3 septembre : la courbe par semaine, du lundi 10 août au
+       lundi 31 août, les semaines vides comprises (sans point), une infobulle par semaine. */
+    const courbe = page.locator('#jiraStatsDelaiCorps .jira-stats-courbe');
+    await courbe.waitFor();
+    assert.equal(await courbe.getAttribute('data-semaines'), '4');
+    const semaines = await courbe.locator('g[data-semaine]').evaluateAll((gs) => gs.map((g) => [g.dataset.semaine, g.dataset.n, g.dataset.mediane || '']));
+    assert.deepEqual(semaines, [['2026-08-10', '1', '10'], ['2026-08-17', '0', ''], ['2026-08-24', '0', ''], ['2026-08-31', '1', '2.5']]);
+    assert.match(await courbe.locator('g[data-semaine="2026-08-10"] title').textContent(), /Semaine du 10\/08\/2026 : 1 ticket — médiane 10 j/);
+    assert.equal(await courbe.locator('circle.js-courbe-mediane').count(), 2);
+    assert.equal(await courbe.locator('polyline').count(), 0, 'des semaines vides entre les deux : aucun trait ne les relie');
 
     // Le choix survit à un rechargement de l'onglet.
     await page.reload();

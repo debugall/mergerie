@@ -1861,6 +1861,11 @@ then each lives its own life.
   arrival, is counted apart, never measured. With the date range: the tickets that reached the second
   status **within** the range. Cost: one more search, ten pages at most, the history travelling with each
   page (`expand=changelog`) — nothing until both statuses are chosen.
+  **Weekly trend**: under the tiles, a chart — the median as a solid line, the 90th percentile dashed, the
+  number of arrivals as bars at the bottom — per week (from Monday) of **arrival** in the second status, over
+  the chosen date range (no range: from the first arrival to the last, two years at most) and under the same
+  filters. A week with no arrival has no point and breaks the line; hovering a week gives its ticket count,
+  median and 90th percentile. No extra call: the chart is computed from the tickets already read.
 - **What it costs in Jira calls**: a page of a hundred tickets is one call. The list and the stats make at
   most ten each (cap of 1,000); the values of the Stats filters come from a single page; the assignee list
   (six months of activity, ten pages at most) is **cached for thirty minutes**; a workflow's statuses are
