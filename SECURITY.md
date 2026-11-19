@@ -15,6 +15,11 @@ under a CLI-level sandbox — verified by a real test call before it is ever rel
 else a command allowlist; it never sees the forge token. Text from elsewhere reaches it framed as data, and
 every protocol block the agent emits (findings, questions, the repository it names, the agent it proposes)
 carries the nonce of the run that asked for it, so a crafted piece of text can't forge one.
+Tokens are stored on the machine only and never returned to the browser; with the optional **vault**
+(Settings → Security) they are encrypted by a master password — AES-256-GCM, scrypt-derived key kept in
+memory only — with optional TOTP two-factor authentication, and Mergerie serves nothing but a sign-in page
+until it is entered. It protects copies of the data folder (backups, stolen disk), not a session already
+compromised under the same account.
 
 The full trust model — access, approval, agent permissions and their limits, prompt injection, verifiers,
 secrets, no-shell execution, targeted guards, served files, destructive operations — is documented in the

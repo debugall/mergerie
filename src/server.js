@@ -80,6 +80,7 @@ const agentschedule = require('./agent/schedule');
 const jobs = require('./jobs');
 const events = require('./core/events');
 const plugins = require('./plugins');
+const coffre = require('./data/coffre');
 
 /* L'ORDRE DE MONTAGE EST LA SÉCURITÉ DU SERVEUR (réorganisation de src/ par couches). Chaque fichier de
    `app/middleware/` s'accroche à l'application quand on le charge : la ligne où il est chargé
@@ -92,6 +93,7 @@ const { JETON_ACCES } = require('./app/middleware/origine');
 require('./app/middleware/jeton-local');
 require('./app/middleware/memo-requete');
 require('./app/middleware/langue');
+require('./app/middleware/coffre');
 require('./app/middleware/ecriture-depot');
 require('./app/middleware/corps');
 
@@ -104,6 +106,7 @@ require('./app/routes/activite');
 require('./app/routes/agent-clis');
 require('./app/routes/agent-passes');
 require('./app/routes/agents');
+require('./app/routes/coffre');
 require('./app/routes/config');
 require('./app/routes/croisements');
 require('./app/routes/tests-touches');
@@ -205,14 +208,9 @@ const server = app.listen(PORT, HOST, () => {
       console.warn(`  ⚠ les arguments de l'agent portent un mode large — ignoré sauf agent_write_mode=large (Réglages → Session IA) ; réglage actuel : ${mode}.`);
     }
   }
-  restartAutoRefresh();
-  restartJiraWatch();
   /* Les agents livrés, semés une fois. Jamais réécrits ensuite : le rôle a pu être affiné au
      fil des runs, et un semis qui écrase serait une perte silencieuse à chaque redémarrage. */
   try { agentprofile.seedBuiltins(); } catch (e) { console.log(`[agents] ${e.message}`); }
-  agentschedule.demarrer((m) => console.log(`[agents] ${m}`));
-  // Les sessions et suivis programmés à une date : même cadence, même forme.
-  jobs.programmation.demarrer((m) => console.log(`[programmation] ${m}`));
   /* LA SYNCHRONISATION DU DÉPÔT DE DONNÉES. Sans URL configurée, `demarrer()` rend `false` et
      rien ne tourne : le mode mono-poste est exactement ce cas, et il ne coûte pas un timer. */
   /* EN DÉMO, LE DÉPÔT DE DONNÉES EXISTE VRAIMENT. Sans lui, la section « Données partagées »
@@ -233,11 +231,6 @@ const server = app.listen(PORT, HOST, () => {
       console.log(`  données partagées : ${retard.ecrits} fichier(s) réécrit(s), ${retard.supprimes} retiré(s) après l’arrêt`);
     }
   } catch (e) { console.log(`[store] ${e.message}`); }
-  /* LES CLONES D'AVANT portaient le jeton de la forge dans `origin` : on le retire de ceux qui
-     dorment, sans attendre leur prochain fetch. */
-  git.nettoyerOrigines(getConfig())
-    .then((n) => { if (n) console.log(`  clones : jeton retiré de ${n} adresse(s) d'origin`); })
-    .catch((e) => console.log(`[git] nettoyage des origines : ${e.message}`));
   /* L'EXISTANT EST APPROUVÉ UNE FOIS, avant que la synchro n'apporte quoi que ce soit : sans ça,
      la montée de version bloquerait d'un coup tous les vérificateurs et agents de l'utilisateur. */
   try {
@@ -254,11 +247,6 @@ const server = app.listen(PORT, HOST, () => {
       console.log(`  données partagées : format relu après montée de version — ${rattrapage.ecrits} ligne(s) reprise(s)`);
     }
   } catch (e) { console.log(`[store] rattrapage de format : ${e.message}`); }
-  if (datasync.demarrer()) {
-    console.log(`  données partagées : ${getConfig().data_repo_url} (${getConfig().data_sync_seconds}s)`);
-    if (!identite.identite().ok) console.log('  ⚠ git n’a pas de `user.name` — rien ne sera commité tant qu’il manque');
-    datasync.tour().catch(() => {});
-  }
   verifyrun.gcWorktrees((m) => console.log(`[verify] ${m}`));
   // Ménage de l'historique : au démarrage, puis une fois par jour.
   retentionTimer = retention.demarrer(
@@ -269,13 +257,53 @@ const server = app.listen(PORT, HOST, () => {
   // Les todos faites depuis plus de sept jours quittent la liste — sans jamais être supprimées.
   archiveTimer = notes.demarrerArchivage((m) => console.log(`[notes] ${m}`));
   // Santé des liens : opt-in, par environnement, et seulement si un client regarde.
+  /* COFFRE VERROUILLÉ : ce qui parle à la forge, à Jira ou aux plugins attend le mot de passe maître —
+     sans jetons, chaque tour échouerait, et un plugin démarrerait sans ses secrets. */
+  if (coffre.verrouille()) console.log('  coffre : verrouillé — le mot de passe maître se saisit dans le navigateur');
+  else demarrerFond();
+});
+
+/* CE QUI TOURNE EN FOND AVEC LES JETONS : rafraîchissements, surveillance Jira, agents et sessions
+   programmés, synchro du dépôt partagé, plugins. Démarré au lancement — ou au déverrouillage du coffre —,
+   arrêté quand on le verrouille. */
+let fondDemarre = false;
+function demarrerFond() {
+  if (fondDemarre) return;
+  fondDemarre = true;
+  restartAutoRefresh();
+  restartJiraWatch();
+  agentschedule.demarrer((m) => console.log(`[agents] ${m}`));
+  // Les sessions et suivis programmés à une date : même cadence, même forme.
+  jobs.programmation.demarrer((m) => console.log(`[programmation] ${m}`));
+  /* LES CLONES D'AVANT portaient le jeton de la forge dans `origin` : on le retire de ceux qui
+     dorment, sans attendre leur prochain fetch. */
+  git.nettoyerOrigines(getConfig())
+    .then((n) => { if (n) console.log(`  clones : jeton retiré de ${n} adresse(s) d'origin`); })
+    .catch((e) => console.log(`[git] nettoyage des origines : ${e.message}`));
+  if (datasync.demarrer()) {
+    console.log(`  données partagées : ${getConfig().data_repo_url} (${getConfig().data_sync_seconds}s)`);
+    if (!identite.identite().ok) console.log('  ⚠ git n’a pas de `user.name` — rien ne sera commité tant qu’il manque');
+    datasync.tour().catch(() => {});
+  }
   /* LES PLUGINS, puis le bus : `app.ready` part quand tout — cœur et plugins — est en place.
      Un plugin qui lève à l'activation est marqué en erreur et le serveur continue. */
   plugins.demarrer({ log: (m) => console.log(m) })
     .then((liste) => { const actifs = liste.filter((p) => p.active).map((p) => p.name); if (actifs.length) console.log(`  plugins : ${actifs.join(', ')}`); })
     .catch((e) => console.log(`[plugins] ${e.message}`))
     .then(() => events.emit('app.ready', { port: server.address().port, host: HOST, demo: demoMode.isDemo() }).catch(() => {}));
-});
+}
+async function arreterFond() {
+  if (!fondDemarre) return;
+  fondDemarre = false;
+  planification.arreterAutoRefresh();
+  arreterJiraWatch();
+  agentschedule.arreter();
+  jobs.programmation.arreter();
+  datasync.arreter();
+  await plugins.arreter().catch(() => {});
+}
+coffre.surDeverrouillage(demarrerFond);
+coffre.surVerrouillage(() => { arreterFond().catch(() => {}); });
 
 /* Exporté pour les tests de bout en bout : ils lancent le serveur EN PROCESSUS
    (PORT=0 → port libre attribué par l'OS) et l'arrêtent proprement à la fin.

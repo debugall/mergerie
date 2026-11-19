@@ -326,7 +326,7 @@ async function desinstaller(nom, { garderDonnees = true } = {}) {
       if (dbplugin.proprietaire(t.name, connus) === nom) d.exec(`DROP TABLE IF EXISTS "${t.name.replace(/"/g, '""')}"`);
     }
     d.prepare('DELETE FROM plugin_setting WHERE plugin = ?').run(nom);
-    d.prepare('DELETE FROM plugin_secret WHERE plugin = ?').run(nom);
+    try { require('../data/coffre').magasinPlugins.delPlugin(nom); } catch { /* coffre verrouillé : ses secrets restent chiffrés */ }
     d.prepare('DELETE FROM plugin_migration WHERE plugin = ?').run(nom);
     require('./donnees').effacer(nom);
   }
@@ -404,7 +404,7 @@ function reglagesPourEcran(nom) {
     if (!Object.prototype.hasOwnProperty.call(s.properties, r.key) || secrets.has(r.key)) continue;
     try { d[r.key] = JSON.parse(r.value); } catch { d[r.key] = r.value; }
   }
-  for (const k of secrets) d[k] = base.prepare('SELECT 1 FROM plugin_secret WHERE plugin = ? AND key = ?').get(nom, k) ? '***' : '';
+  for (const k of secrets) d[k] = require('../data/coffre').magasinPlugins.has(nom, k) ? '***' : '';
   return d;
 }
 /** La valeur d'un secret de plugin, pour le bouton « copier » — et seulement si le schéma du plugin le déclare `x-secret`. */
@@ -413,8 +413,7 @@ function lireSecretPourCopie(nom, cle) {
   if (!f || !f.manifeste) throw Object.assign(new Error(`plugin inconnu : ${nom}`), { status: 404 });
   const schema = require(path.join(__dirname, '..', '..', 'sdk', 'lib', 'schema.js'));
   if (!schema.secrets(f.manifeste.settingsSchema || { properties: {} }).includes(String(cle))) throw Object.assign(new Error(`« ${cle} » n'est pas un secret de ce plugin`), { status: 400 });
-  const r = db().prepare('SELECT value FROM plugin_secret WHERE plugin = ? AND key = ?').get(nom, String(cle));
-  return r ? String(r.value) : '';
+  return require('../data/coffre').magasinPlugins.get(nom, String(cle));
 }
 function ecrireReglages(nom, patch) {
   const f = fiches.get(nom);

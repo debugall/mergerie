@@ -41,6 +41,8 @@ function creerContexte(manifeste, options = {}) {
     registre,
     horloge,
     db: () => options.db || require('../db'),
+    // Les secrets passent par le coffre des jetons : en clair dans `plugin_secret` ou chiffrés (Réglages → Sécurité).
+    secrets: options.db ? undefined : require('../data/coffre').magasinPlugins,
     net: require('../core/httpreq'),
     notify: { push: (type, data) => require('../core/notify').push(type, data) },
     /* `suivre` : tout processus est suivi pour ne laisser aucun groupe orphelin à l'arrêt ; `suivreJob` : le processus d'un `job.exec` devient l'enfant ACTIF du job courant (contexte d'annulation du cœur), donc « Stop » le tue. */

@@ -2357,6 +2357,19 @@ reset) ·
 **Notifications** (a dedicated sub-tab, see below) ·
 **Shared data** (the git repository a team uses to share its accumulated settings, templates and
 rules — see *Sharing with a team* below) ·
+**Security** (the **token vault**: “Protect the tokens in a vault” asks for a master password, typed twice —
+eight characters at least —, then encrypts the GitLab, GitHub, Jira, Confluence tokens **and** the plugin
+secrets, and removes them from the database in plain text, down to the bytes of the file. From then on,
+Mergerie opens on a **sign-in page** at every start: the API stays closed and nothing runs in the
+background — refreshes, Jira watch, scheduled agents and sessions, shared-data sync, plugins — until the
+password is entered. **“Turn on 2FA”** (vault on) adds a six-digit code from an authenticator app — Google
+Authenticator, Authy, 1Password…: a QR code and its key in text, confirmed by a first code; unticking it
+asks for the password. The same tab **changes the master password**, **locks now** (back to the sign-in
+page, without stopping Mergerie) and **turns the vault off** — the tokens become readable in plain text
+again, where they were, and 2FA goes with it. **Password forgotten or phone lost**: the sign-in page offers
+to **enter all the tokens again**, after typing “I confirm” (or “je confirme”) — the encrypted tokens are
+destroyed, the vault and 2FA turned off, and Mergerie opens on Settings → Git to enter them again; the rest
+of the data stays as it is. Five failures in a row impose a wait that doubles, from 30 s to 15 min) ·
 **Jira** (the **Jira connection** —
 URL + email + API token, with a *Test Jira* button —, and **“Tell Jira when the merge request is
 created”** — ticked by default in a new session's window — with an editable **comment
@@ -3447,7 +3460,14 @@ machine-only table that never travels, under a data folder created as `0700`. Th
 return them in clear (`***`), and sending `***` **does not overwrite** them. A **“Test”** button whose
 address changed requires **retyping** the token: the saved token is only ever sent to its own address.
 The **backup** carries the database, hence **your tokens**: its README says so, keep it like a password.
-At startup, a warning flags a `.env` in the current folder that picks the agent binary (`AGENT_BIN`,
+**The vault** (Settings → Security) encrypts them with AES-256-GCM under a key that scrypt derives from the
+master password (N = 2¹⁷), never written: it lives in the process memory, from the moment it is typed until
+the server stops or is locked; the database, its journal included, is compacted on activation so that no
+former plain-text value survives in it. The 2FA secret (TOTP, RFC 6238) sits inside the encrypted content,
+and a code works only once. What the vault protects: a **copy** of the file — a backup, a data folder
+shared for debugging, a stolen disk. What it does not protect: a program running under your account while
+Mergerie is unlocked — it can read the process memory or modify its code; 2FA closes the door on someone
+who knows the password without the phone, it adds nothing to the encryption of a copy. At startup, a warning flags a `.env` in the current folder that picks the agent binary (`AGENT_BIN`,
 `AGENT_ARGS`, or their old `COPILOT_*` names).
 
 **No shell, and hardened git.** git, Docker and the agent are launched via `spawn` with an **argument

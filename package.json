@@ -65,7 +65,8 @@
   "dependencies": {
     "better-sqlite3": "^11.8.1",
     "express": "^4.21.2",
-    "gpt-tokenizer": "^3.4.0"
+    "gpt-tokenizer": "^3.4.0",
+    "qrcode-generator": "^2.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",

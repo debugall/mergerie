@@ -1852,6 +1852,7 @@ const REGISTRE = [
   { table: 'plugin_state', famille: 'L', note: 'quel plugin est activé sur CE poste, sa version, son erreur' },
   { table: 'plugin_setting', famille: 'L', note: 'les réglages des plugins de CE poste' },
   { table: 'plugin_secret', famille: 'L', note: 'les secrets des plugins de CE poste' },
+  { table: 'coffre', famille: 'L', note: 'les jetons chiffrés par le mot de passe maître de CE poste (Réglages → Sécurité)' },
   { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },

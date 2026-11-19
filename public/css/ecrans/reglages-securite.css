@@ -1,0 +1,12 @@
+/* Réglages → Sécurité : le coffre des jetons et la 2FA, un bloc chacun, un petit formulaire par action. */
+.reglages-secu-intro { max-width: 680px; }
+.reglages-secu-bloc { max-width: 560px; margin-bottom: 22px; }
+.reglages-secu-bloc h3 { margin: 6px 0 8px; font-size: 15px; }
+.reglages-secu-etat { margin: 0 0 10px; color: var(--muted); }
+.reglages-secu-etat.on { color: var(--green); font-weight: 600; }
+.reglages-secu-form { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
+.reglages-secu-form p { margin: 0 0 8px; }
+/* Le QR code reste noir sur blanc dans les deux thèmes : c'est ce qu'un appareil photo lit le mieux. */
+.reglages-secu-qr { width: 180px; padding: 8px; background: #fff; border-radius: 8px; margin: 6px 0 8px; }
+.reglages-secu-qr svg { display: block; width: 100%; height: auto; }
+.reglages-secu-cle { display: inline-block; font-family: var(--ff-mono); font-size: 13px; letter-spacing: .5px; padding: 4px 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); user-select: all; word-break: break-all; }

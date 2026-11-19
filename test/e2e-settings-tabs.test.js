@@ -62,9 +62,10 @@ describe('Réglages : ordre des sous-onglets', { skip: dispo ? false : MSG_NAVIG
        qu'un simple réglage — on y vient pour éprouver une installation, pas pour cocher une
        case en passant. */
     /* « Données partagées » suit « Général » : les deux règlent L'OUTIL, l'un pour soi, l'autre
-       à plusieurs. Elle passe avant Jira (et les plugins), qui branchent des services du dehors. */
+       à plusieurs. Elle passe avant Jira (et les plugins), qui branchent des services du dehors.
+       « Sécurité » la suit : le coffre des jetons protège l'outil lui-même, pas un service. */
     assert.deepEqual(ordre, ['gitcfg', 'repos', 'mr', 'rules', 'verifiers',
-      'config', 'notif', 'datasync', 'jiracfg', 'plugins', 'aisession']);
+      'config', 'notif', 'datasync', 'security', 'jiracfg', 'plugins', 'aisession']);
   });
 
   /* On revient dans Réglages pour finir ce qu'on y faisait : le dernier onglet consulté gagne

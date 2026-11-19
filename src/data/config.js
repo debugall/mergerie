@@ -6,6 +6,7 @@ const registre = require('./store-registry');
 const { t } = require('../core/i18n');
 const { adresseAdmise, origineDe } = require('../core/garde');
 const approbation = require('./approbation');
+const coffre = require('./coffre');
 
 /* DEUX TABLES, UN SEUL OBJET. Les réglages vivent désormais dans `config` (ce que l'ÉQUIPE a
    décidé : gabarits de prompt, seuils, politiques, URL de la forge) et dans `local_config` (ce
@@ -23,6 +24,9 @@ function getConfig() {
   const row = { ...db.prepare('SELECT * FROM config WHERE id = 1').get() };
   const local = db.prepare('SELECT * FROM local_config WHERE id = 1').get() || {};
   for (const champ of CHAMPS_POSTE) row[champ] = local[champ];
+  // Coffre actif : les jetons viennent de lui (vides tant qu'il est verrouillé), pas de `local_config`.
+  const jetons = coffre.jetonsCoeur();
+  if (jetons) Object.assign(row, jetons);
   if (!row.clone_path) row.clone_path = DEFAULT_CLONE_DIR;
   return row;
 }
@@ -388,6 +392,17 @@ function updateConfig(patch) {
       private_patterns = @private_patterns,
       team_quiet_days = @team_quiet_days
     WHERE id = 1`).run(next);
+  /* COFFRE ACTIF : les jetons partent chiffrés dans le coffre, et `local_config` reste vide. Verrouillé,
+     on ne touche pas au coffre — ses jetons lus ici sont vides, les y réécrire les effacerait — et un
+     jeton FOURNI est refusé plutôt que perdu. */
+  if (coffre.actif()) {
+    if (coffre.verrouille()) {
+      if (coffre.SECRETS_COEUR.some((k) => k in patch && patch[k] != null && patch[k] !== '***' && String(patch[k]) !== '')) {
+        throw Object.assign(new Error(t('err.vault.locked')), { status: 423 });
+      }
+    } else coffre.ecrireJetonsCoeur(Object.fromEntries(coffre.SECRETS_COEUR.map((k) => [k, next[k]])));
+    for (const k of coffre.SECRETS_COEUR) next[k] = '';
+  }
   /* CE QUI APPARTIENT À CE POSTE. Les six jetons sont ici, et nulle part ailleurs : les
      colonnes de même nom dans `config` sont vidées et gelées au démarrage (`src/db.js`). */
   db.prepare(`UPDATE local_config SET

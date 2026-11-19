@@ -2474,6 +2474,20 @@ ajouter d'un clic) ·
 conservation des données, sauvegarde, et une **zone dangereuse** pour la remise à zéro) ·
 **Données partagées** (le dépôt git où l'équipe partage son travail accumulé, voir *Partager avec une
 équipe* plus bas) ·
+**Sécurité** (le **coffre des jetons** : « Protéger les tokens en coffre » demande un mot de passe maître,
+tapé deux fois — huit caractères au moins —, puis chiffre les jetons GitLab, GitHub, Jira, Confluence **et**
+les secrets des plugins, et les retire de la base en clair, jusque dans les octets du fichier. Dès lors,
+Mergerie s'ouvre sur une **page de connexion** à chaque lancement : l'API reste fermée et rien ne tourne en
+fond — rafraîchissements, surveillance Jira, agents et sessions programmés, synchro du dépôt partagé,
+plugins — tant que le mot de passe n'a pas été saisi. **« Activer la 2FA »** (coffre activé) ajoute un code à
+six chiffres d'une application d'authentification — Google Authenticator, Authy, 1Password… : un QR code
+et sa clé en texte, validés par un premier code ; la décocher demande le mot de passe. Le même onglet
+**change le mot de passe maître**, **verrouille maintenant** (retour à la page de connexion, sans arrêter
+Mergerie) et **désactive le coffre** — les jetons redeviennent lisibles en clair, là où ils étaient, et la
+2FA s'éteint avec. **Mot de passe oublié ou téléphone perdu** : la page de connexion propose de **ressaisir
+tous les tokens**, après avoir tapé « je confirme » — les jetons chiffrés sont détruits, le coffre et la 2FA
+désactivés, et Mergerie s'ouvre sur Réglages → Git pour les ressaisir ; le reste des données ne bouge pas.
+Cinq échecs de suite imposent une attente qui double, de 30 s à 15 min) ·
 **Jira** (**connexion Jira** — URL + email + jeton d'API, avec un bouton *Tester Jira* — ; alimente l'onglet
 *Jira* et l'enrichissement d'une session depuis un ticket ; et la case **« Prévenir Jira » à la création
 d'une merge request**, cochée d'office, avec son propre **gabarit de commentaire** — `{url}` obligatoire,
@@ -3603,7 +3617,15 @@ table de poste qui ne voyage jamais, sous un dossier de données créé en `0700
 renvoient **jamais en clair** (`***`), et envoyer `***` **ne les écrase pas**. Un bouton **« Tester »**
 dont l'adresse a changé exige de **retaper** le jeton : le jeton enregistré n'est jamais envoyé qu'à son
 adresse. La **sauvegarde** emporte la base, donc **tes jetons** : son LISEZ-MOI le dit, garde-la comme un
-mot de passe. Au démarrage, un avertissement signale un `.env` du dossier courant qui choisit le binaire de
+mot de passe. **Le coffre** (Réglages → Sécurité) les chiffre en AES-256-GCM par une clé que scrypt dérive
+du mot de passe maître (N = 2¹⁷), jamais écrite : elle vit dans la mémoire du processus, de la saisie à
+l'arrêt ou au verrouillage ; la base, son journal compris, est compactée à l'activation pour qu'aucune
+ancienne valeur en clair n'y survive. Le secret de la 2FA (TOTP, RFC 6238) est dans le contenu chiffré, et
+un code ne sert qu'une fois. Ce que le coffre protège : une **copie** du fichier — sauvegarde, dossier de
+données partagé pour un débogage, disque volé. Ce qu'il ne protège pas : un programme qui tourne sous ton
+compte pendant que Mergerie est déverrouillé — il peut lire la mémoire du processus ou modifier son code ;
+la 2FA ferme la porte à qui connaît le mot de passe sans avoir le téléphone, elle n'ajoute rien au
+chiffrement d'une copie. Au démarrage, un avertissement signale un `.env` du dossier courant qui choisit le binaire de
 l'agent (`AGENT_BIN`, `AGENT_ARGS`, ou leurs anciens noms `COPILOT_*`).
 
 **Exécution sans shell, et git durci.** git, Docker et l'agent sont lancés via `spawn` avec un **tableau

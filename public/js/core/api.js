@@ -19,6 +19,9 @@ async function api(path, opts = {}) {
        aucun jeton présenté par l'utilisateur ne peut réparer celui-ci. */
     /* UNE SEULE FOIS par onglet et par minute : si le rechargement ne répare rien (cookie qu'un
        autre onglet ou une autre instance écrase), boucler à chaque appel ne ferait que saturer. */
+    /* LE COFFRE DES JETONS A ÉTÉ VERROUILLÉ (Réglages → Sécurité, ou un autre onglet) : recharger
+       sert la page de connexion. */
+    if (data.code === 'COFFRE_VERROUILLE') location.reload();
     if (data.code === 'JETON_LOCAL') {
       let dernier = 0;
       try { dernier = Number(sessionStorage.getItem('mergerie_rechargement_jeton')) || 0; } catch { /* stockage indisponible */ }

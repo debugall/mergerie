@@ -72,6 +72,14 @@ function creerContexte(manifeste, f) {
   /* ---------- Réglages et secrets : une table commune, le schéma du plugin ---------- */
   const schemaReglages = manifeste.settingsSchema || { type: 'object', properties: {} };
   const clesSecretes = new Set(schema.secrets(schemaReglages));
+  /* LE MAGASIN DES SECRETS : fourni par le cœur (`f.secrets`, qui sait le coffre des jetons), sinon la
+     table `plugin_secret` — c'est ce que voit le SDK de test. */
+  const magasin = f.secrets || {
+    get: (n, k) => { const r = base().prepare('SELECT value FROM plugin_secret WHERE plugin = ? AND key = ?').get(n, String(k)); return r ? r.value : ''; },
+    has: (n, k) => !!base().prepare('SELECT 1 FROM plugin_secret WHERE plugin = ? AND key = ?').get(n, String(k)),
+    set: (n, k, v) => base().prepare('INSERT OR REPLACE INTO plugin_secret (plugin, key, value, updated_at) VALUES (?, ?, ?, ?)').run(n, String(k), String(v), new Date().toISOString()),
+    del: (n, k) => base().prepare('DELETE FROM plugin_secret WHERE plugin = ? AND key = ?').run(n, String(k)),
+  };
   const liaisons = schema.liaisons(schemaReglages);
   function lireReglages() {
     const d = schema.defauts(schemaReglages);
@@ -89,20 +97,18 @@ function creerContexte(manifeste, f) {
     const maintenant = new Date().toISOString();
     const db = base();
     const poser = db.prepare('INSERT OR REPLACE INTO plugin_setting (plugin, key, value, updated_at) VALUES (?, ?, ?, ?)');
-    const poserSecret = db.prepare('INSERT OR REPLACE INTO plugin_secret (plugin, key, value, updated_at) VALUES (?, ?, ?, ?)');
-    const effacerSecret = db.prepare('DELETE FROM plugin_secret WHERE plugin = ? AND key = ?');
     db.transaction(() => {
       for (const [k, v] of Object.entries(valeurs)) {
         if (clesSecretes.has(k)) {
           if (v === '***') continue;                    // inchangé
-          if (v === '') effacerSecret.run(nom, k); else poserSecret.run(nom, k, String(v), maintenant);
+          if (v === '') magasin.del(nom, k); else magasin.set(nom, k, String(v));
         } else poser.run(nom, k, JSON.stringify(v), maintenant);
       }
       /* UN SECRET LIÉ À UNE ADRESSE s'efface quand l'origine de l'adresse change sans qu'il soit
          refourni : le jeton saisi pour un hôte ne part pas vers un autre. */
       for (const [secret, cle] of Object.entries(liaisons)) {
         if (!(cle in valeurs) || secret in valeurs) continue;
-        if (schema.origineDe(valeurs[cle]) !== schema.origineDe(avant[cle])) effacerSecret.run(nom, secret);
+        if (schema.origineDe(valeurs[cle]) !== schema.origineDe(avant[cle])) magasin.del(nom, secret);
       }
     })();
     const apres = lireReglages();
@@ -119,14 +125,14 @@ function creerContexte(manifeste, f) {
   }
   if (permissions.has('secrets')) {
     ctx.secrets = {
-      get: (key) => { const r = base().prepare('SELECT value FROM plugin_secret WHERE plugin = ? AND key = ?').get(nom, String(key)); return r ? r.value : ''; },
-      has: (key) => !!base().prepare('SELECT 1 FROM plugin_secret WHERE plugin = ? AND key = ?').get(nom, String(key)),
+      get: (key) => magasin.get(nom, String(key)),
+      has: (key) => magasin.has(nom, String(key)),
       set: (key, value) => {
         const k = String(key);
         if (!/^[a-z][a-z0-9_]*$/.test(k)) throw new Error(`${nom} : secrets.set — clé en snake_case`);
         if (value === '***') return;
-        if (value === '' || value == null) base().prepare('DELETE FROM plugin_secret WHERE plugin = ? AND key = ?').run(nom, k);
-        else base().prepare('INSERT OR REPLACE INTO plugin_secret (plugin, key, value, updated_at) VALUES (?, ?, ?, ?)').run(nom, k, String(value), new Date().toISOString());
+        if (value === '' || value == null) magasin.del(nom, k);
+        else magasin.set(nom, k, String(value));
       },
       /* Le refus commun à tous les tests de connexion : le jeton en base ne part pas vers une
          autre origine que celle pour laquelle il a été saisi. */

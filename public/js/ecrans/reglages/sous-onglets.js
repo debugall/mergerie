@@ -11,7 +11,7 @@
 // donc loadConfig les peuple et le submit les enregistre — un seul /config pour les deux onglets.
 /* Le panneau Dépôts porte aussi les GROUPES de dépôts : deux listes, un écran. */
 function loadReposEtGroupes() { loadRepos(); loadGroupes(); }
-const ADMIN_SUBS = { rules: loadRules, repos: loadReposEtGroupes, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, datasync: loadConfig, plugins: loadPlugins };
+const ADMIN_SUBS = { rules: loadRules, repos: loadReposEtGroupes, notif: renderNotifSettings, config: loadGeneralSettings, mr: loadConfig, gitcfg: loadGitConfig, jiracfg: loadConfig, verifiers: loadVerifiersEtPlafond, aisession: loadAiSessionSettings, datasync: loadConfig, security: loadSecurite, plugins: loadPlugins };
 /* Ce panneau porte à la fois un réglage du formulaire global (les consignes permanentes) et un
    banc d'essai. Il lui faut donc `loadConfig` comme aux autres, sinon le champ s'affiche vide
    quoi qu'il y ait en base — et le premier « Enregistrer » l'efface sans rien demander. */

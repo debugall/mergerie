@@ -121,6 +121,8 @@ function modeDEmploi(maintenant, contenu) {
     'CETTE ARCHIVE CONTIENT VOS JETONS',
     '  La base qu’elle emporte garde les jetons de ce poste (forge, Jira, plugins) :',
     '  gardez-la comme un mot de passe — pas dans un dossier partagé, pas en pièce jointe.',
+    '  Avec le coffre (Réglages → Sécurité), ils y sont chiffrés par le mot de passe maître :',
+    '  restaurée, l’archive le redemandera au lancement.',
     '',
     'SI VOUS PARTAGEZ VOS DONNÉES AVEC UNE ÉQUIPE',
     '  Le travail accumulé — reviews, règles, vérificateurs, agents, notes, todos — vit alors',
