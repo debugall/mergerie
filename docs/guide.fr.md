@@ -2169,7 +2169,8 @@ Opérations sur **plusieurs dépôts à la fois** et exploration des branches.
   derniers jours* ; les 30 derniers sont posés à l'ouverture) et l'outil liste **tous les tags créés entre
   ces deux jours, bornes incluses, dans tous les dépôts actifs** : dépôt, tag (lien vers la forge), date **et heure**
   (deux tags du même jour se distinguent), première ligne du message. La croix au bout d'une ligne la **masque** — un tag de test, une rustine
-  qu'on n'annonce pas — et « Tout réafficher » la rend ; **`Copier le tableau`** pose les lignes visibles
+  qu'on n'annonce pas ; l'œil barré d'un en-tête **masque la colonne** (le message, l'heure… inutiles dans Teams), un choix
+  qui survit à une nouvelle recherche ; « Tout réafficher » rend lignes et colonnes ; **`Copier le tableau`** pose les lignes et colonnes visibles
   dans le presse-papiers sous deux formes à la fois — un vrai tableau HTML, que Teams, un mail ou Word
   rendent en tableau, et du texte tabulé pour un tableur ou un éditeur brut. **`Vérifier ces tags`** pose la question d'après :
   « ce qu'on a livré passe-t-il encore ? » — il ouvre *Vérifier une branche* avec les dépôts du tableau cochés,

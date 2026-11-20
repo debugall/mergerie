@@ -1,6 +1,6 @@
 'use strict';
 /* Tags par période : « qu'a-t-on livré ces deux semaines ? ». Deux dates, tous les dépôts actifs,
-   un tableau Dépôt · Tag · Date (et heure) · Message — et un bouton qui le COPIE pour Teams.
+   un tableau Dépôt · Tag · Date (et heure) · Message — lignes et colonnes masquables — et un bouton qui le COPIE pour Teams.
 
    La copie pose DEUX représentations dans le presse-papiers : du HTML (un vrai <table>, que
    Teams, un mail ou Word rendent en tableau) et du texte tabulé (ce qu'un tableur ou un éditeur
@@ -35,6 +35,14 @@ let tagsPeriodeLignes = [];
 let tagsPeriodeMasquees = new Set();   // index dans tagsPeriodeLignes
 const tagsPeriodeVisibles = () => tagsPeriodeLignes.filter((_, i) => !tagsPeriodeMasquees.has(i));
 
+/* Les COLONNES se masquent aussi (l'œil barré de l'en-tête) : un tableau pour Teams n'a pas
+   toujours besoin du message ni de l'heure. Contrairement aux lignes, le choix SURVIT à une
+   nouvelle recherche — c'est une mise en forme, pas une sélection. La dernière colonne visible
+   ne se masque pas : il resterait un tableau vide à copier. */
+const TAGS_PERIODE_COLONNES = ['repo', 'tag', 'date', 'message'];
+let tagsPeriodeColsMasquees = new Set();
+const tagsPeriodeColsVisibles = () => TAGS_PERIODE_COLONNES.filter((c) => !tagsPeriodeColsMasquees.has(c));
+
 async function tagsPeriodeChercher(e) {
   if (e) e.preventDefault();
   const from = $('#tagsPeriodFrom').value;
@@ -62,11 +70,13 @@ async function tagsPeriodeChercher(e) {
       + `<button type="button" class="btn" id="tagsPeriodVerify" title="${esc(tr('git.tags.period.verify-title'))}">${svgIco('check')}${esc(tr('git.tags.period.verify'))}</button>`
       + `<span id="tagsPeriodHidden" class="muted" hidden></span></p>`
       + '<div class="md-tablewrap"><table class="md-table git-tags-table"><thead><tr>'
-      + `<th>${esc(tr('git.tags.period.col.repo'))}</th><th>${esc(tr('git.tags.period.col.tag'))}</th><th>${esc(tr('git.tags.period.col.date'))}</th><th>${esc(tr('git.tags.period.col.message'))}</th><th></th></tr></thead><tbody>`
-      + tagsPeriodeLignes.map((l, i) => `<tr data-tags-row="${i}"><td>${esc(l.project)}</td>`
-        + `<td>${l.url ? `<a href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer"><code>${esc(l.name)}</code> ↗</a>` : `<code>${esc(l.name)}</code>`}</td>`
-        + `<td class="muted">${fmtDateHour(l.date)}</td>`
-        + `<td class="git-tags-msg" title="${esc(l.message)}">${esc(l.message) || '<span class="muted">—</span>'}</td>`
+      + TAGS_PERIODE_COLONNES.map((c) => `<th data-tags-col="${c}">${esc(tr(`git.tags.period.col.${c}`))}`
+        + ` <button type="button" class="btn btn-icon btn-sm git-tags-colhide" data-tags-hide-col="${c}" title="${esc(tr('git.tags.period.hide-col-title'))}" aria-label="${esc(tr('git.tags.period.hide-col-title'))}">${svgIco('eye-off')}</button></th>`).join('')
+      + '<th></th></tr></thead><tbody>'
+      + tagsPeriodeLignes.map((l, i) => `<tr data-tags-row="${i}"><td data-tags-col="repo">${esc(l.project)}</td>`
+        + `<td data-tags-col="tag">${l.url ? `<a href="${esc(safeUrl(l.url))}" target="_blank" rel="noopener noreferrer"><code>${esc(l.name)}</code> ↗</a>` : `<code>${esc(l.name)}</code>`}</td>`
+        + `<td data-tags-col="date" class="muted">${fmtDateHour(l.date)}</td>`
+        + `<td data-tags-col="message" class="git-tags-msg" title="${esc(l.message)}">${esc(l.message) || '<span class="muted">—</span>'}</td>`
         + `<td class="git-tags-hide"><button type="button" class="btn btn-icon btn-sm" data-tags-hide="${i}" title="${esc(tr('git.tags.period.hide-title'))}" aria-label="${esc(tr('git.tags.period.hide-title'))}">${svgIco('eye-off')}</button></td></tr>`).join('')
       + '</tbody></table></div>'
     : emptyState({ icon: 'tag', title: tr('git.tags.period.none.title', bornes), text: tr('git.tags.period.none.text') });
@@ -75,6 +85,7 @@ async function tagsPeriodeChercher(e) {
     html += `<p class="muted" style="margin-top:8px">${svgIco('alert')} ${esc(tr('git.tags.period.errors', { n: errored.length, count: errored.length }))} : ${errored.map((r) => esc(r.project)).join(', ')}</p>`;
   }
   box.innerHTML = html;
+  tagsPeriodeMajMasquees();
   const copier = $('#tagsPeriodCopy');
   if (copier) copier.addEventListener('click', () => tagsPeriodeCopier(copier));
   const verifier = $('#tagsPeriodVerify');
@@ -102,38 +113,51 @@ function tagsPeriodeVerifier() {
   ouvrirVerifBranche(null, { cibles });
 }
 
-/* Masquer, c'est cacher la ligne (pas la reconstruire : le tableau reste où il est) et le dire au-dessus. */
+/* Masquer, c'est cacher la ligne ou la colonne (pas la reconstruire : le tableau reste où il est) et le dire au-dessus. */
 function tagsPeriodeMajMasquees() {
   const n = tagsPeriodeMasquees.size;
+  const nc = tagsPeriodeColsMasquees.size;
   $$('#tagsPeriodBox tbody tr[data-tags-row]').forEach((tr_) => { tr_.hidden = tagsPeriodeMasquees.has(Number(tr_.dataset.tagsRow)); });
+  $$('#tagsPeriodBox [data-tags-col]').forEach((c) => { c.hidden = tagsPeriodeColsMasquees.has(c.dataset.tagsCol); });
+  const derniere = tagsPeriodeColsVisibles().length <= 1;
+  $$('#tagsPeriodBox [data-tags-hide-col]').forEach((b) => { b.disabled = derniere; });
   const zone = $('#tagsPeriodHidden');
   if (!zone) return;
-  zone.hidden = !n;
-  zone.innerHTML = n ? `${esc(tr('git.tags.period.hidden', { n, count: n }))} <button type="button" class="croise-go" id="tagsPeriodShowAll">${esc(tr('git.tags.period.show-all'))}</button>` : '';
+  const parts = [];
+  if (n) parts.push(esc(tr('git.tags.period.hidden', { n, count: n })));
+  if (nc) parts.push(esc(tr('git.tags.period.hidden-cols', { n: nc, count: nc, cols: TAGS_PERIODE_COLONNES.filter((c) => tagsPeriodeColsMasquees.has(c)).map((c) => tr(`git.tags.period.col.${c}`)).join(', ') })));
+  zone.hidden = !parts.length;
+  zone.innerHTML = parts.length ? `${parts.join(' · ')} <button type="button" class="croise-go" id="tagsPeriodShowAll">${esc(tr('git.tags.period.show-all'))}</button>` : '';
 }
 $('#tagsPeriodBox') && $('#tagsPeriodBox').addEventListener('click', (e) => {
   const h = e.target.closest('[data-tags-hide]');
   if (h) { tagsPeriodeMasquees.add(Number(h.dataset.tagsHide)); tagsPeriodeMajMasquees(); return; }
-  if (e.target.closest('#tagsPeriodShowAll')) { tagsPeriodeMasquees = new Set(); tagsPeriodeMajMasquees(); }
+  const hc = e.target.closest('[data-tags-hide-col]');
+  if (hc) { if (tagsPeriodeColsVisibles().length > 1) tagsPeriodeColsMasquees.add(hc.dataset.tagsHideCol); tagsPeriodeMajMasquees(); return; }
+  if (e.target.closest('#tagsPeriodShowAll')) { tagsPeriodeMasquees = new Set(); tagsPeriodeColsMasquees = new Set(); tagsPeriodeMajMasquees(); }
 });
 
-/* Les deux formes du tableau — les lignes visibles seulement. Le HTML est volontairement nu (bordures en ligne, pas de classe) :
+/* Les deux formes du tableau — les lignes et colonnes visibles seulement. Le HTML est volontairement nu (bordures en ligne, pas de classe) :
    c'est ce que Teams conserve d'un collage ; le texte est tabulé, une ligne par tag, en-tête
    compris. Le libellé du tag porte son lien quand la forge en donne un. */
 function tagsPeriodeExport() {
-  const colonnes = ['repo', 'tag', 'date', 'message'].map((c) => tr(`git.tags.period.col.${c}`));
+  const cols = tagsPeriodeColsVisibles();
+  const colonnes = cols.map((c) => tr(`git.tags.period.col.${c}`));
   const cell = (s) => `<td style="border:1px solid #999;padding:4px 8px">${s}</td>`;
+  const propre = (s) => String(s || '').replace(/[\t\r\n]+/g, ' ');
+  const enHtml = {
+    repo: (l) => esc(l.project),
+    tag: (l) => (l.url ? `<a href="${esc(safeUrl(l.url))}">${esc(l.name)}</a>` : esc(l.name)),
+    date: (l) => esc(fmtDateHour(l.date)),
+    message: (l) => esc(l.message),
+  };
+  const enTexte = { repo: (l) => l.project, tag: (l) => l.name, date: (l) => fmtDateHour(l.date), message: (l) => propre(l.message) };
   const html = '<table style="border-collapse:collapse"><thead><tr>'
     + colonnes.map((c) => `<th style="border:1px solid #999;padding:4px 8px;text-align:left">${esc(c)}</th>`).join('')
     + '</tr></thead><tbody>'
-    + tagsPeriodeVisibles().map((l) => '<tr>'
-      + cell(esc(l.project))
-      + cell(l.url ? `<a href="${esc(safeUrl(l.url))}">${esc(l.name)}</a>` : esc(l.name))
-      + cell(esc(fmtDateHour(l.date)))
-      + cell(esc(l.message)) + '</tr>').join('')
+    + tagsPeriodeVisibles().map((l) => '<tr>' + cols.map((c) => cell(enHtml[c](l))).join('') + '</tr>').join('')
     + '</tbody></table>';
-  const propre = (s) => String(s || '').replace(/[\t\r\n]+/g, ' ');
-  const text = [colonnes.join('\t'), ...tagsPeriodeVisibles().map((l) => [l.project, l.name, fmtDateHour(l.date), propre(l.message)].join('\t'))].join('\n');
+  const text = [colonnes.join('\t'), ...tagsPeriodeVisibles().map((l) => cols.map((c) => enTexte[c](l)).join('\t'))].join('\n');
   return { html, text };
 }
 

@@ -166,3 +166,6 @@
 .git-tags-table td.git-tags-hide { width: 1%; white-space: nowrap; text-align: right; }
 .git-tags-table td.git-tags-hide .btn { opacity: .55; }
 .git-tags-table tr:hover td.git-tags-hide .btn { opacity: 1; }
+.git-tags-table th .git-tags-colhide { opacity: .4; margin-left: 4px; vertical-align: middle; }
+.git-tags-table th:hover .git-tags-colhide:not([disabled]) { opacity: 1; }
+.git-tags-table th .git-tags-colhide[disabled] { visibility: hidden; }

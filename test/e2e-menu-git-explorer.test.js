@@ -319,6 +319,46 @@ describe('Menu Git : Explorateur de branches et Trouver une ref', { skip: dispo 
       assert.ok(!/rc1/.test(copie.html) && !/rc1/.test(copie.text), 'la ligne masquée n’est dans aucune des deux formes');
     });
 
+    /* Les COLONNES se masquent par l'œil de leur en-tête : hors de l'écran ET de la copie. Le choix
+       survit à une nouvelle recherche (c'est une mise en forme) ; la dernière colonne visible ne se
+       masque pas ; « Tout réafficher » rend lignes et colonnes. */
+    test('masquer des colonnes les sort de l’écran et de la copie ; le choix survit à une recherche', async () => {
+      const copier = async () => {
+        await page.evaluate(() => { window.__copieItems = []; });
+        await page.locator('#tagsPeriodCopy').click();
+        await page.waitForFunction(() => window.__copieItems.length === 1);
+        return page.evaluate(async () => {
+          const item = window.__copieItems[0];
+          return { html: await (await item.getType('text/html')).text(), text: await (await item.getType('text/plain')).text() };
+        });
+      };
+      await page.locator('[data-tags-hide-col="message"]').click();
+      await page.locator('#tagsPeriodBox th[data-tags-col="message"]').waitFor({ state: 'hidden' });
+      await page.locator('[data-tags-hide-col="date"]').click();
+      await page.locator('#tagsPeriodBox th[data-tags-col="date"]').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#tagsPeriodBox td[data-tags-col="message"]:not([hidden])').count(), 0, 'les cellules suivent l’en-tête');
+      assert.match(await page.locator('#tagsPeriodHidden').innerText(), /1 ligne masquée, hors de la copie · 2 colonnes masquées : Date, Message/);
+
+      const copie = await copier();
+      assert.match(copie.text, /^Dépôt\tTag\ngrp\/alpha\tv1\.0\.0$/);
+      assert.match(copie.html, /<th[^>]*>Dépôt<\/th><th[^>]*>Tag<\/th><\/tr>/);
+      assert.ok(!/Message|Première livraison|01\/08\/2026/.test(copie.html), 'ni la colonne ni ses valeurs dans le HTML');
+
+      await page.locator('[data-tags-hide-col="repo"]').click();
+      await page.locator('#tagsPeriodBox th[data-tags-col="repo"]').waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('[data-tags-hide-col="tag"]').isDisabled(), true, 'la dernière colonne ne se masque pas');
+
+      await chercher('2026-07-01', '2026-08-31');
+      assert.equal(await page.locator('#tagsPeriodBox th[data-tags-col="message"]').isHidden(), true, 'une nouvelle recherche garde les colonnes masquées');
+      assert.equal(await page.locator('#tagsPeriodBox tbody tr:not([hidden])').count(), 2, '… mais pas les lignes');
+      assert.match((await copier()).text, /^Tag\nv1\.0\.0\nv1\.0\.0-rc1$/);
+
+      await page.locator('#tagsPeriodShowAll').click();
+      await page.locator('#tagsPeriodBox th[data-tags-col="message"]').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#tagsPeriodBox th[data-tags-col]:not([hidden])').count(), 4);
+      assert.equal(await page.locator('#tagsPeriodHidden').isHidden(), true);
+    });
+
     /* « VÉRIFIER CES TAGS » : la modale « Vérifier une branche » s'ouvre sur les dépôts du tableau,
        chacun en genre TAG sur son tag — les lignes MASQUÉES restent dehors, comme pour la copie ; avec
        deux tags visibles sur un même dépôt, le plus récent est posé et la note le dit ; un dépôt du
