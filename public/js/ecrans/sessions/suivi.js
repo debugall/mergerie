@@ -182,11 +182,12 @@ async function loadTasks() {
      décident sans attendre s'il faut proposer « partager » et « supprimer » ou « ranger ». */
   await partageActif();
   try {
-    const [tasks, locals, asks] = await Promise.all([
+    const [tasks, locals, asks, recs] = await Promise.all([
       api('/tasks'), api('/local-tasks').catch(() => []), api('/questions').catch(() => []),
+      api('/recurrences').catch(() => ({ items: [] })),
     ]);
     if (seq !== tasksSeq) return;          // un chargement plus récent a déjà répondu
-    allTasks = tasks; localTasks = locals; questions = asks;
+    allTasks = tasks; localTasks = locals; questions = asks; recurrencesListe = recs.items || [];
   } catch (e) { if (seq === tasksSeq) $('#taskList').innerHTML = errorBox(e.message); return; }
   listeChargee = true;
   renderTasks();

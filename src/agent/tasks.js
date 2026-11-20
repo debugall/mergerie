@@ -135,6 +135,21 @@ function creerTask(champs) {
   return taskId;
 }
 
+/* Supprimer une session et ce qui ne la suit pas tout seul : ses projets, ses passes et ses pièces
+   (pas de clé étrangère, une seule table pour deux familles), son dossier sur disque. La route
+   DELETE et la rétention des sessions récurrentes passent toutes deux par ici. */
+function supprimerTask(id) {
+  const n = Number(id);
+  const path = require('path');
+  const fs = require('fs');
+  const { TASKS_DIR } = require('../core/paths');
+  db.prepare('DELETE FROM task_target WHERE task_id = ?').run(n);
+  require('./pass').removeTask('task', n);
+  require('./pieces').removeOwner('task', n);
+  db.prepare('DELETE FROM task WHERE id = ?').run(n);
+  try { fs.rmSync(path.join(TASKS_DIR, String(n)), { recursive: true, force: true }); } catch { /* rien */ }
+}
+
 module.exports = {
-  creerTask, normalizeTargets, insertTargets, normalizeContextRepos, insertContextRepos, assertValidBranch, repoById,
+  creerTask, supprimerTask, normalizeTargets, insertTargets, normalizeContextRepos, insertContextRepos, assertValidBranch, repoById,
 };

@@ -119,6 +119,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskAskQuestionsRow',           // COMMENT : l'IA peut demander, hors de l'accordéon
       'taskPlanFirstRow',              // …et planifier d'abord : même famille, codage seulement
       'taskScheduleRow',               // QUAND : lancer plus tard, juste au-dessus du bouton qu'elle renomme
+      'taskRepeatRow',                 // …ou répéter : l'autre façon de dire quand, elle aussi renomme le bouton
       'taskAdvanced',                  // message de commit, session d'agent, skills — replié
     ]);
     assert.equal(await page.evaluate(() => document.querySelector('#taskAdvanced').open), false, 'l’avancé démarre replié');
@@ -161,6 +162,7 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       'taskImages',
       'taskAskQuestionsRow',
       'taskScheduleRow',
+      'taskRepeatRow',
       'taskAdvanced',
     ]);
     assert.ok(!ordre.includes('groupe:task.group.after'),

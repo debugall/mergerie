@@ -3,7 +3,11 @@
    la lire, l'écrire sous forme canonique, dire quand elle est passée et quand elle repasse, la
    dire en toutes lettres. Rien d'autre : ce module ne connaît ni la base ni les agents, et
    c'est ce qui permet au profil d'un agent de valider son horaire sans dépendre du ticker qui
-   le lance (`schedule.js`), lequel dépend du profil. */
+   le lance (`schedule.js`), lequel dépend du profil.
+
+   PLUSIEURS JOURS PAR SEMAINE : `weekly mon,thu 07:00`. Les sessions récurrentes
+   (`jobs/recurrences.js`) en ont besoin — « les jours ouvrés à 7:00 » —, et un agent en profite.
+   `spec.dows` porte la liste triée (à partir de deux jours) ; `spec.dow` reste le premier. */
 const { t } = require('../core/i18n');
 
 const JOURS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -13,8 +17,12 @@ function parse(text) {
   if (!s) return null;
   let m = s.match(/^daily\s+(\d{1,2}):(\d{2})$/);
   if (m) return heure({ kind: 'daily' }, m[1], m[2]);
-  m = s.match(/^weekly\s+(sun|mon|tue|wed|thu|fri|sat)\s+(\d{1,2}):(\d{2})$/);
-  if (m) return heure({ kind: 'weekly', dow: JOURS.indexOf(m[1]) }, m[2], m[3]);
+  m = s.match(/^weekly\s+((?:sun|mon|tue|wed|thu|fri|sat)(?:\s*,\s*(?:sun|mon|tue|wed|thu|fri|sat))*)\s+(\d{1,2}):(\d{2})$/);
+  if (m) {
+    const dows = [...new Set(m[1].split(',').map((j) => JOURS.indexOf(j.trim())))].sort((a, b) => ordreSemaine(a) - ordreSemaine(b));
+    // Un seul jour garde la forme d'avant (`{ dow }`) : ce qui la lisait n'a pas à changer.
+    return heure(dows.length > 1 ? { kind: 'weekly', dow: dows[0], dows } : { kind: 'weekly', dow: dows[0] }, m[2], m[3]);
+  }
   m = s.match(/^monthly\s+(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
   if (m) {
     const dom = Number(m[1]);
@@ -23,6 +31,10 @@ function parse(text) {
   }
   return null;
 }
+
+// Lundi d'abord : c'est l'ordre dans lequel on lit une semaine, et celui de la forme canonique.
+const ordreSemaine = (d) => (d + 6) % 7;
+const joursDe = (spec) => spec.dows || [spec.dow];
 
 function heure(base, hh, mm) {
   const h = Number(hh); const mi = Number(mm);
@@ -35,7 +47,7 @@ function canonique(spec) {
   if (!spec) return null;
   const hhmm = `${String(spec.hh).padStart(2, '0')}:${String(spec.mm).padStart(2, '0')}`;
   if (spec.kind === 'daily') return `daily ${hhmm}`;
-  if (spec.kind === 'weekly') return `weekly ${JOURS[spec.dow]} ${hhmm}`;
+  if (spec.kind === 'weekly') return `weekly ${joursDe(spec).map((d) => JOURS[d]).join(',')} ${hhmm}`;
   return `monthly ${spec.dom} ${hhmm}`;
 }
 
@@ -58,7 +70,7 @@ function prochainCreneau(spec, now = new Date()) {
     // Recule jour par jour jusqu'au bon jour de semaine, à l'heure dite, sans dépasser `now`.
     for (let i = 0; i < 8; i += 1) {
       const c = new Date(cible.getTime() - i * 86400000);
-      if (c.getDay() === spec.dow && c <= d) return c;
+      if (joursDe(spec).includes(c.getDay()) && c <= d) return c;
     }
     return null;
   }
@@ -86,7 +98,7 @@ function creneauSuivant(spec, now = new Date()) {
     const cible = poser(d);
     for (let i = 0; i < 8; i += 1) {
       const c = new Date(cible.getTime() + i * 86400000);
-      if (c.getDay() === spec.dow && c > d) return c;
+      if (joursDe(spec).includes(c.getDay()) && c > d) return c;
     }
     return null;
   }
@@ -101,7 +113,14 @@ function phrase(text) {
   if (!spec) return '';
   const hhmm = `${String(spec.hh).padStart(2, '0')}:${String(spec.mm).padStart(2, '0')}`;
   if (spec.kind === 'daily') return t('agents.schedule.said-daily', { time: hhmm });
-  if (spec.kind === 'weekly') return t('agents.schedule.said-weekly', { day: t(`agents.schedule.dow.${JOURS[spec.dow]}`), time: hhmm });
+  if (spec.kind === 'weekly') {
+    const jours = joursDe(spec);
+    // Du lundi au vendredi : la forme qu'on dit, pas « lundi, mardi, mercredi, jeudi et vendredi ».
+    if (jours.length === 5 && [1, 2, 3, 4, 5].every((j) => jours.includes(j))) return t('agents.schedule.said-weekdays', { time: hhmm });
+    const noms = jours.map((j) => t(`agents.schedule.dow.${JOURS[j]}`));
+    const day = noms.length > 1 ? `${noms.slice(0, -1).join(', ')} ${t('agents.schedule.and')} ${noms[noms.length - 1]}` : noms[0];
+    return t('agents.schedule.said-weekly', { day, time: hhmm });
+  }
   return t('agents.schedule.said-monthly', { day: spec.dom, time: hhmm });
 }
 

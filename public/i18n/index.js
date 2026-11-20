@@ -20,6 +20,7 @@ const FAMILLES = {
   task: 'sessions.js',
   local: 'sessions.js',
   ask: 'sessions.js',
+  recur: 'sessions.js',
   converge: 'sessions.js',
   session: 'sessions.js',
   prompt: 'sessions.js',

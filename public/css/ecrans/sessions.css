@@ -150,3 +150,34 @@ input[type="checkbox"], input[type="radio"] { vertical-align: middle; }
 .task-landed { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 12px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
 .task-landed-text { display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; flex-wrap: wrap; }
 .task-landed-text .ico { color: var(--accent); }
+
+/* RÉPÉTER (modale de session) : la fréquence en segments, les jours en pastilles qu'on allume,
+   le jour du mois et l'heure à côté, la phrase et la prochaine échéance dessous. Les champs
+   numériques et horaires gardent leur largeur naturelle : `.form input` les étirerait à 100 %. */
+.task-repeat { display: flex; flex-direction: column; gap: 6px; }
+.task-repeat-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.task-repeat-freq { margin: 0; }
+.task-repeat-detail { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); }
+.task-repeat-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.task-repeat-days { display: inline-flex; gap: 4px; }
+.task-repeat-days[hidden] { display: none; }
+.task-repeat-day { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font: inherit; font-weight: var(--fw-med); cursor: pointer; }
+.task-repeat-day:hover { border-color: var(--accent); color: var(--text); }
+.task-repeat-day.active { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
+.task-repeat-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* `.form label` pose ses champs en pleine largeur sous le libellé (infobulle.css) : ici, le libellé
+   et son champ tiennent sur une ligne — « à [07:00] », « Garder les [10] dernières sessions ». */
+.form .task-repeat .task-repeat-inline { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 6px; }
+.form .task-repeat .task-repeat-inline[hidden] { display: none; }
+.form .task-repeat .task-repeat-inline > input:not([type="checkbox"]):not([type="radio"]) { width: auto; flex: 0 0 auto; }
+.form .task-repeat .task-repeat-inline > input[type="number"] { width: 64px; }
+.task-repeat-presets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.task-repeat-said { margin: 0; color: var(--accent); font-weight: var(--fw-med); }
+.task-repeat-said.is-error { color: var(--danger); }
+
+/* Dev IA → Récurrentes : la carte d'un modèle. En pause, elle s'efface sans disparaître. */
+.task-recur.is-paused { opacity: .7; }
+.task-recur .task-label { display: flex; align-items: center; gap: 6px; }
+.task-recur-when { color: var(--text); }
+.task-recur-skip { color: var(--amber-text); display: flex; align-items: center; gap: 4px; }
+.task-recur-badge { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; color: var(--accent); border-color: var(--accent); background: none; font: inherit; }

@@ -15,6 +15,8 @@ const { verifierPour, appliquerModes, creerVerification, ciblesDepuisBranches } 
 const planVerif = require('./plan-verif');
 /* Lancer plus tard : la date d'une session ou d'un suivi, et le tick qui l'honore. */
 const programmation = require('./programmation');
+/* Les sessions récurrentes : un modèle, un horaire, une session neuve à chaque échéance. */
+const recurrences = require('./recurrences');
 require('./runners/review');
 require('./runners/task');
 require('./runners/converge');
@@ -34,5 +36,5 @@ module.exports = {
   startJob, startTaskJob, startGitJob, startConvergeJob, startConvergeSessionJob,
   startLocalJob, startAskJob, startReconcileJob, startMergeAiJob, startPeriodeJob, startPeriodeResumeJob, startNow, stopJob, currentJob, activeJob, runningJobs, queuedJobs, isRunning,
   queueCount, parallelBusy, runningCount, MAX_RUNNING, jobKeys, keysClash, retryJob, canRetry,
-  jobTargets, runningTargets, programmation, attendreFin, jobEnCoursPour,
+  jobTargets, runningTargets, programmation, recurrences, attendreFin, jobEnCoursPour,
 };

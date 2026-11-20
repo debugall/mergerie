@@ -149,6 +149,48 @@
                     <input type="time" name="scheduled_at_time" id="taskScheduleTime" step="60" data-i18n-aria="task.lbl.schedule-time" aria-label="Lancer plus tard, le — heure" />
                 </span>
             </label>
+            <!-- RÉPÉTER : la session devient un MODÈLE, et une session neuve en naît à chaque
+                 échéance (Dev IA → Récurrentes). Des jours qu'on coche, une heure, trois raccourcis,
+                 et la phrase + la prochaine échéance en direct — c'est le serveur qui lancera, c'est
+                 lui qui les calcule. Codage et exploration seulement ; masqué à l'édition d'une
+                 session ordinaire. -->
+            <div id="taskRepeatRow" class="task-repeat" hidden>
+                <div class="task-repeat-head">
+                    <span data-i18n="recur.lbl.repeat">Répéter</span> <button type="button" class="hint" tabindex="-1" aria-label="" data-tip="" data-i18n-tip="recur.tip.repeat"><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div class="segmented task-repeat-freq" role="radiogroup" data-i18n-aria="recur.lbl.repeat" aria-label="Répéter">
+                        <button type="button" data-repeat="" class="active" data-i18n="recur.freq.none">Jamais</button>
+                        <button type="button" data-repeat="daily" data-i18n="recur.freq.daily">Chaque jour</button>
+                        <button type="button" data-repeat="weekly" data-i18n="recur.freq.weekly">Chaque semaine</button>
+                        <button type="button" data-repeat="monthly" data-i18n="recur.freq.monthly">Chaque mois</button>
+                    </div>
+                </div>
+                <div id="taskRepeatDetail" class="task-repeat-detail" hidden>
+                    <div class="task-repeat-line">
+                        <span id="taskRepeatDays" class="task-repeat-days" role="group" data-i18n-aria="recur.lbl.days" aria-label="Jours">
+                            <button type="button" class="task-repeat-day" data-dow="mon" aria-pressed="false" data-i18n="recur.dow.mon">L</button>
+                            <button type="button" class="task-repeat-day" data-dow="tue" aria-pressed="false" data-i18n="recur.dow.tue">M</button>
+                            <button type="button" class="task-repeat-day" data-dow="wed" aria-pressed="false" data-i18n="recur.dow.wed">M</button>
+                            <button type="button" class="task-repeat-day" data-dow="thu" aria-pressed="false" data-i18n="recur.dow.thu">J</button>
+                            <button type="button" class="task-repeat-day" data-dow="fri" aria-pressed="false" data-i18n="recur.dow.fri">V</button>
+                            <button type="button" class="task-repeat-day" data-dow="sat" aria-pressed="false" data-i18n="recur.dow.sat">S</button>
+                            <button type="button" class="task-repeat-day" data-dow="sun" aria-pressed="false" data-i18n="recur.dow.sun">D</button>
+                        </span>
+                        <label id="taskRepeatDomRow" class="task-repeat-inline" hidden><span data-i18n="recur.lbl.dom">le</span> <input type="number" id="taskRepeatDom" min="1" max="28" value="1" /></label>
+                        <label class="task-repeat-inline"><span data-i18n="recur.lbl.time">à</span> <input type="time" id="taskRepeatTime" step="60" value="07:00" /></label>
+                    </div>
+                    <div class="task-repeat-presets">
+                        <span class="muted" data-i18n="recur.presets">Raccourcis :</span>
+                        <button type="button" class="btn btn-sm" data-repeat-preset="weekdays" data-i18n="recur.preset.weekdays">Jours ouvrés, 7 h</button>
+                        <button type="button" class="btn btn-sm" data-repeat-preset="monday" data-i18n="recur.preset.monday">Le lundi, 9 h</button>
+                        <button type="button" class="btn btn-sm" data-repeat-preset="first" data-i18n="recur.preset.first">Le 1er du mois, 7 h</button>
+                    </div>
+                    <p id="taskRepeatSaid" class="task-repeat-said" aria-live="polite"></p>
+                    <p id="taskRepeatBranch" class="field-note" hidden></p>
+                    <label class="inline-check"><input type="checkbox" name="repeat_skip_unchanged" /> <span data-i18n="recur.lbl.skip-unchanged">Seulement s’il y a eu des commits depuis la dernière fois</span> <button type="button" class="hint" tabindex="-1" aria-label="" data-tip="" data-i18n-tip="recur.tip.skip-unchanged"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                    <label class="task-repeat-inline"><span data-i18n="recur.lbl.keep">Garder les</span> <input type="number" name="repeat_keep_last" min="1" max="100" value="10" /> <span data-i18n="recur.lbl.keep-after">dernières sessions</span> <button type="button" class="hint" tabindex="-1" aria-label="" data-tip="" data-i18n-tip="recur.tip.keep"><svg class="ico"><use href="#i-info"/></svg></button></label>
+                    <label id="taskRepeatRunNowRow" class="inline-check"><input type="checkbox" name="repeat_run_now" /> <span data-i18n="recur.lbl.run-now">Lancer la première tout de suite</span></label>
+                </div>
+            </div>
             <!-- PARTAGER CETTE SESSION-LÀ. Une session est un processus, pas un produit : le
                  prompt tel qu'on l'a tapé, les trois relances, la capture collée qui montre un
                  autre onglet. Le résultat, lui, part déjà par la forge ou la carte du code. La

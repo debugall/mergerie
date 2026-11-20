@@ -1144,7 +1144,7 @@ const REGISTRE = [
        ESSAIE — l'endroit même où l'on tente un prompt sans engager l'équipe. */
     /* `auto_push` NE VOYAGE PAS (plan_secure.md, lot C, S5) : une session reçue du dépôt
        partagé avec `auto_push: 1` poussait, lue brute à l'exécution. */
-    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push', 'cli_id'],
+    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push', 'cli_id', 'recurrence_uid'],
     /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT : comme `fromFile` ci-dessous, le
        balayage lit le dépôt de la PREMIÈRE cible — c'est elle qui décide si cette session
        s'hydrate ici. Une session sans cible connue n'a rien à juger. */
@@ -1853,6 +1853,7 @@ const REGISTRE = [
   { table: 'plugin_setting', famille: 'L', note: 'les réglages des plugins de CE poste' },
   { table: 'plugin_secret', famille: 'L', note: 'les secrets des plugins de CE poste' },
   { table: 'coffre', famille: 'L', note: 'les jetons chiffrés par le mot de passe maître de CE poste (Réglages → Sécurité)' },
+  { table: 'recurrence', famille: 'L', note: 'les modèles de sessions récurrentes de CE poste : partagés, trois instances les lanceraient trois fois' },
   { table: 'plugin_migration', famille: 'L', note: 'les migrations de plugin jouées sur CETTE base' },
   { table: 'git_command', famille: 'L', uidPropre: true, note: 'la palette de commandes git de CE poste' },
   { table: 'git_op', famille: 'L', uidPropre: true, note: 'le journal des refs créées/supprimées depuis CE poste' },

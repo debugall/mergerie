@@ -900,6 +900,34 @@ session by hand cancels its date, a date already past is refused, and the date b
 that set it**: that one launches, and catches up at the next minute if it was switched off at the time. Free
 questions are not schedulable.
 
+**Repeat: recurring sessions.** In coding and exploration, under “Launch later”, the **`Repeat`** block
+offers *Never*, *Every day*, *Every week* or *Every month*. Weekly, you light up the days you want (M T W T F
+S S); monthly, you pick the day (1 to 28: a “31” would silently skip February); in every case a time. Three
+shortcuts — *Weekdays, 7 am*, *Mondays, 9 am*, *1st of the month, 7 am* — and, below, the sentence and the
+next due time computed by the server (“Monday to Friday at 07:00 — next: 11/23/26 07:00”). With a
+frequency, the form no longer saves a session but a **template**: the button reads **`Create the
+recurrence`**, “Launch later” and “then converge” step aside, and a **`Start the first one right away`**
+box launches the first without waiting. At each due time, a **fresh session** is created from the template
+and starts: in coding, its own **dated** branch (`ai/deps` becomes `ai/deps-2026-11-23`, `-2` if run twice
+the same day; `{date}` puts the date elsewhere in the name), hence its own merge request; in exploration,
+its own report — the answers read week after week. A recurring coding session **pushes**: without
+“Auto-push” it is refused under the box. No attachments and no agent session to resume: they would belong
+to the first due time only.
+
+Templates live in **AI Dev → Recurring**: the schedule in plain words and the next due time, the projects,
+the last session (its state, its MRs, a link to its card) or why the last due time was skipped, and
+**`▶ Now`**, **`Pause`**/**`Resume`**, edit (the session form, branch with its `{date}`), delete (sessions
+already created stay). Sessions created by a template carry a **↻** badge leading back to it, and the
+**↻** button of any coding or exploration card **makes it recurring**: the copy opens, branch without its
+suffix, Repeat open on the week. Three safeguards: a due time is **skipped** while the previous session is
+still running, waiting for an answer or a plan — the card says so, and “Now” refuses; **`Only if there
+were commits since last time`** (optional) reads the head of each project's base branch (one forge call
+per project) and skips with no AI call when nothing moved; **`Keep the last N sessions`** deletes the
+oldest, never a session that is running, shared, or whose merge request is open. Like “Launch later”, the
+template belongs to **the workstation**: it does not go to the shared data repository, this workstation
+launches, and catches up **one** due time on waking if it was off — never all the ones it missed. A pause
+does not catch up either. Local repo coding does not repeat (yet).
+
 **Verify afterwards, without thinking about it.** An optional **`Verify afterwards`** field when
 creating a coding session: the chosen verifier runs **by itself, once, at the end** — after
 convergence if you converge, after the coding run otherwise. You launch the session in the morning
@@ -976,7 +1004,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   repository. The button also shows up on a project that **stopped without coding**, as long as its AI session
   is still alive — an AI that pauses to ask “should I continue?” in plain text has committed nothing, and that
   button is the one that answers it. Its label carries the **count of follow-ups already sent** — “Send a
-  follow-up (2)” — on every session, question and off-repo card.
+  follow-up (2)” — on every session, question and local repo card.
   When coding ends, **`AI output`** shows what the agent says it did (like an exploration's answer) — useful
   to understand its work, or **when nothing changed**: if the prompt was incomplete and the AI **answered
   instead of coding** (e.g. “give me the file name”), its answer is **surfaced directly** in the project's

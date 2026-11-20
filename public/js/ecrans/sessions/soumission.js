@@ -131,6 +131,7 @@ function closeTaskModal() {
   $('#taskModal').hidden = true;
   $('#taskSubmitOnly').hidden = true;
   $('#taskSubmit').innerHTML = `<svg class="ico"><use href="#i-save"/></svg>${tr('ui.save')}`;
+  retourOngletRecurrence();
 }
 
 // Détecte une clé de ticket (PROJ-1234) dans un nom de branche — même logique que côté serveur.
@@ -221,7 +222,8 @@ $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () =>
     f.prompt.focus();
   } catch (e) { $('#taskJiraStatus').textContent = ''; toast(explainError(e.message), true); }
 });
-$('#btnNewTask').addEventListener('click', () => openTaskModal(taskKind).catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true)));
+$('#btnNewTask').addEventListener('click', () => (taskKind === 'recur' ? nouvelleRecurrence('code') : openTaskModal(taskKind))
+  .catch((e) => toast(tr('toast.ouverture-impossible', { message: e.message }), true)));
 /* Le champ « reprendre une session » : la mise en garde s'affiche dès qu'on saisit quelque
    chose. Elle vit sinon dans une info-bulle, qui ne s'ouvre pas toute seule — or c'est
    précisément au moment de coller un identifiant qu'il faut savoir qu'une session est liée à
@@ -415,6 +417,9 @@ $('#taskForm').addEventListener('submit', async (e) => {
     // Projets liés en lecture seule : codage seulement — une exploration n'en a pas l'usage.
     context_repos: taskKind === 'code' ? readCtxRepoRows() : undefined,
   };
+  /* RÉPÉTER : un modèle, pas une session — son propre envoi. Les captures et la session d'agent
+     ne le suivent pas, elles n'appartiendraient qu'à la première échéance. */
+  if (repetitionActive()) { await soumettreRecurrence(f, body); return; }
   // B10 : les captures du ticket cochées viennent s'ajouter aux pièces déjà choisies.
   if (cleJiraDeLaSession) {
     const pieces = await piecesJiraCochees();

@@ -108,7 +108,7 @@ function taskHead(t) {
       ${t.cli_name ? `<span class="tag task-cli" title="${esc(tr('task.card.cli'))}">${svgIco('bot')} ${esc(t.cli_name)}</span>` : ''}
       ${t.spec_key ? `<button type="button" class="tag task-spec" data-spec-open="${esc(t.spec_key)}" title="${esc(tr('task.card.spec-title', { key: t.spec_key }))}">${svgIco('tag')} ${esc(tr('task.card.spec', { key: t.spec_key }))}</button>` : ''}
       ${t.triggered_by === 'schedule' ? `<span class="tag" title="${esc(tr('agents.card.by-schedule'))}">${svgIco('clock')}</span>` : ''}
-      ${badgeProgrammation(t, '')}
+      ${badgeProgrammation(t, '')}${badgeRecurrence(t)}
       ${/* Chez tout le monde, ou à soi : la question se pose d'un coup d'œil, comme pour une
             page de notes. Le pictogramme est le même — c'est le même geste. */''}
       ${shareMark(t)}${tagReprise(t)}
@@ -255,6 +255,7 @@ function codeCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm" data-trecur="${t.id}" title="${esc(tr('recur.title.make'))}"><svg class="ico"><use href="#i-repeat"/></svg></button>`,
     shareBtn('task', t),
     hideBtn('task', t),
     // La session d'un collègue ne se supprime pas : on la range, et le bouton disparaît.

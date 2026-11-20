@@ -801,6 +801,48 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   .run(t4.lastInsertRowid, repoIds['groupe/api-core'], 'ai/orders-schema', 'main', 'pushed', 244,
     'https://gitlab.demo/groupe/api-core/-/merge_requests/244', at(9));
 
+// ---------- sessions récurrentes (Dev IA → Récurrentes) ----------
+/* DEUX MODÈLES, deux états qu'on veut voir : un codage hebdomadaire dont la dernière session a
+   ouvert sa merge request (badge ↻ sur la carte de cette session), et une exploration mensuelle
+   « seulement si ça a bougé » dont la dernière échéance a été SAUTÉE faute de commit. Le mode démo
+   ne lance rien tout seul (`jobs/recurrences.js`) : les modèles se montrent, ils ne tournent pas. */
+{
+  const { ulid } = require('../src/core/ulid');
+  const jourDe = (iso) => iso.slice(0, 10);
+  const insRec = db.prepare(`INSERT INTO recurrence (uid, label, kind, spec, payload_json, skip_unchanged, keep_last, paused,
+      last_fired_at, last_run_at, last_task_uid, last_skip, last_skip_at, last_shas_json, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?,?,?,?)`);
+  const recCode = ulid();
+  const quandCode = at(3);
+  const tR1 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, auto_push, label, triggered_by, recurrence_uid, created_at, updated_at) VALUES (?,?,?,?,?,?,1,?,?,?,?,?)')
+    .run(repoIds['groupe/api-core'], 'Mets à jour les dépendances mineures et correctives, lance les tests, et résume les changements notables dans la description de la MR.',
+      `ai/deps-${jourDe(quandCode)}`, 'main', 'pushed', 'code', `Dépendances à jour — ${jourDe(quandCode)}`, 'recurrence', recCode, quandCode, quandCode);
+  db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, mr_iid, mr_url, mr_merged, updated_at) VALUES (?,?,?,?,?,?,?,0,?)')
+    .run(tR1.lastInsertRowid, repoIds['groupe/api-core'], `ai/deps-${jourDe(quandCode)}`, 'main', 'pushed', 261,
+      'https://gitlab.demo/groupe/api-core/-/merge_requests/261', quandCode);
+  insRec.run(recCode, 'Dépendances à jour', 'code', 'weekly mon 07:00', JSON.stringify({
+    kind: 'code', prompt: 'Mets à jour les dépendances mineures et correctives, lance les tests, et résume les changements notables dans la description de la MR.',
+    commitMessage: 'chore: dépendances à jour', autoPush: 1, askQuestions: 0, verifierId: null, notifyJira: 0, reviewAfter: 1,
+    targets: [{ repo_id: repoIds['groupe/api-core'], branch: 'ai/deps-{date}', base_branch: 'main' }], contextRepos: [], shared: 0, planFirst: 0,
+  }), 0, 8, at(0), quandCode, db.prepare('SELECT uid FROM task WHERE id = ?').get(tR1.lastInsertRowid).uid, null, null, null, at(40), at(3));
+
+  const recExplo = ulid();
+  const quandExplo = at(20);
+  const tR2 = db.prepare('INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, label, triggered_by, recurrence_uid, created_at, updated_at, md_path) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+    .run(repoIds['groupe/batch-jobs'], 'Fais l’inventaire des TODO et FIXME du code, classés par ancienneté et par risque.', '', '', 'done', 'explore',
+      `Audit des TODO — ${jourDe(quandExplo)}`, 'recurrence', recExplo, quandExplo, quandExplo, path.join(TASKS_DIR, 'demo-recurrence-todo.md'));
+  db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
+    .run(tR2.lastInsertRowid, repoIds['groupe/batch-jobs'], '', '', 'done', quandExplo);
+  ensureDir(TASKS_DIR);
+  fs.writeFileSync(path.join(TASKS_DIR, 'demo-recurrence-todo.md'), '# TODO et FIXME — inventaire\n\nDouze marqueurs, dont trois de plus d’un an dans la reprise des lots échoués…\n', 'utf8');
+  insRec.run(recExplo, 'Audit des TODO', 'explore', 'monthly 1 07:00', JSON.stringify({
+    kind: 'explore', prompt: 'Fais l’inventaire des TODO et FIXME du code, classés par ancienneté et par risque.',
+    commitMessage: null, autoPush: 0, askQuestions: 0, verifierId: null, notifyJira: 0, reviewAfter: 0,
+    targets: [{ repo_id: repoIds['groupe/batch-jobs'], branch: '', base_branch: null }], contextRepos: [], shared: 0, planFirst: 0,
+  }), 1, 12, at(0), quandExplo, db.prepare('SELECT uid FROM task WHERE id = ?').get(tR2.lastInsertRowid).uid,
+  'unchanged', at(1), JSON.stringify({ [repoIds['groupe/batch-jobs']]: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2' }), at(60), at(1));
+}
+
 // ---------- codage hors dépôt (« Codage personnalisé ») ----------
 // Session de codage IA dans des dossiers locaux, SANS git : remplit l'onglet dédié.
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)

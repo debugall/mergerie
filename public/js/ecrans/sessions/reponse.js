@@ -292,6 +292,7 @@ function exploreCard(t) {
   ], [
     `<button class="btn btn-icon btn-sm" data-tedit="${t.id}" title="${tr('task.title.edit')}"><svg class="ico"><use href="#i-edit"/></svg></button>`,
     `<button class="btn btn-icon btn-sm" data-tcopy="${t.id}" title="${esc(tr('task.title.duplicate'))}"><svg class="ico"><use href="#i-copy"/></svg></button>`,
+    `<button class="btn btn-icon btn-sm" data-trecur="${t.id}" title="${esc(tr('recur.title.make'))}"><svg class="ico"><use href="#i-repeat"/></svg></button>`,
     shareBtn('task', t),
     hideBtn('task', t),
     // La session d'un collègue ne se supprime pas : on la range, et le bouton disparaît.

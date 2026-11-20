@@ -5,9 +5,11 @@
             <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title"><span data-i18n="task.kind.local">Codage sur dépôt local</span><span class="seg-count" id="kindCountLocal">0</span></button>
             <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une"><span data-i18n="task.kind.explore">Exploration</span><span class="seg-count" id="kindCountExplore">0</span></button>
             <button data-kind="ask" role="tab" title="Poser une question à l'IA sans lien avec un dépôt, et garder la réponse" data-i18n-title="ask.tab-title"><span data-i18n="task.kind.ask">Question libre</span><span class="seg-count" id="kindCountAsk">0</span></button>
+            <button data-kind="recur" role="tab" title="Des sessions de codage ou d'exploration qui reviennent seules, à l'horaire choisi" data-i18n-title="recur.tab-title"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="recur.tab">Récurrentes</span><span class="seg-count" id="kindCountRecur">0</span></button>
         </div>
         <div id="taskToolbar" class="toolbar">
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>
+            <button id="btnNewRecurExplore" class="btn" type="button" hidden><svg class="ico"><use href="#i-search"/></svg><span data-i18n="recur.new-explore">Exploration récurrente</span></button>
             <span id="taskKindHint" class="muted"></span>
         </div>
         <!-- ON EST ARRIVÉ ICI DEPUIS AILLEURS : laquelle des cartes, et d'où. Rempli par
@@ -35,6 +37,11 @@
         <!-- Codage hors dépôt : liste des sessions (le formulaire vit dans la modale de codage) -->
         <div id="localPanel" hidden>
             <div id="localList" class="list"></div>
+        </div>
+
+        <!-- Récurrentes : les modèles de ce poste — une session neuve naît de chacun à son horaire. -->
+        <div id="recurPanel" hidden>
+            <div id="recurList" class="list"></div>
         </div>
 
         <!-- Question libre : ni dépôt ni dossier. Le formulaire vit dans la modale commune. -->

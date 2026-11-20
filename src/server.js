@@ -134,6 +134,7 @@ require('./app/routes/plans-verif');
 require('./app/routes/pieces');
 require('./app/routes/plugins');
 require('./app/routes/programmation');
+require('./app/routes/recurrences');
 require('./app/routes/questions');
 require('./app/routes/repos');
 require('./app/routes/retouches');
@@ -275,6 +276,8 @@ function demarrerFond() {
   agentschedule.demarrer((m) => console.log(`[agents] ${m}`));
   // Les sessions et suivis programmés à une date : même cadence, même forme.
   jobs.programmation.demarrer((m) => console.log(`[programmation] ${m}`));
+  // Les sessions récurrentes : un modèle, une session neuve à chaque échéance.
+  jobs.recurrences.demarrer((m) => console.log(`[récurrences] ${m}`));
   /* LES CLONES D'AVANT portaient le jeton de la forge dans `origin` : on le retire de ceux qui
      dorment, sans attendre leur prochain fetch. */
   git.nettoyerOrigines(getConfig())
@@ -299,6 +302,7 @@ async function arreterFond() {
   arreterJiraWatch();
   agentschedule.arreter();
   jobs.programmation.arreter();
+  jobs.recurrences.arreter();
   datasync.arreter();
   await plugins.arreter().catch(() => {});
 }
@@ -327,6 +331,7 @@ module.exports = {
     // Même raison pour le tic des horaires d'agents.
     agentschedule.arreter();
     jobs.programmation.arreter();
+    jobs.recurrences.arreter();
     return new Promise((resolve) => server.close(resolve));
   },
 };

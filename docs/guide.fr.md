@@ -936,6 +936,36 @@ soit cochée ou non — un suivi a un déclencheur, jamais deux. Lancer à la ma
 déjà passée est refusée, et la date est celle du **poste** qui l'a posée : c'est lui qui lance, et il
 rattrape à la minute suivante s'il était éteint à l'heure dite. Les questions libres ne se programment pas.
 
+**Répéter : les sessions récurrentes.** En codage et en exploration, sous « Lancer plus tard », le bloc
+**`Répéter`** propose *Jamais*, *Chaque jour*, *Chaque semaine* ou *Chaque mois*. En semaine, on allume les
+jours voulus (L M M J V S D) ; au mois, on choisit le jour (1 à 28 : un « 31 » sauterait février sans
+rien dire) ; dans tous les cas une heure. Trois raccourcis — *Jours ouvrés, 7 h*, *Le lundi, 9 h*, *Le 1er
+du mois, 7 h* — et, dessous, la phrase et la prochaine échéance calculées par le serveur (« du lundi au
+vendredi à 07:00 — prochaine : 23/11/26 07:00 »). Avec une fréquence, le formulaire n'enregistre plus une
+session mais un **modèle** : le bouton devient **`Créer la récurrence`**, « Lancer plus tard » et « puis
+converger » s'effacent, et une case **`Lancer la première tout de suite`** fait partir la première sans
+attendre. À chaque échéance, une **session neuve** naît du modèle et part : en codage, sa propre branche
+**datée** (`ai/deps` devient `ai/deps-2026-11-23`, `-2` si on relance le même jour ; `{date}` place la
+date ailleurs dans le nom), donc sa propre merge request ; en exploration, son propre rapport — l'historique
+des réponses se lit d'une semaine sur l'autre. Un codage récurrent **pousse** : sans « Auto-push », il est
+refusé sous la case. Ni pièces jointes ni session d'agent à reprendre : elles n'appartiendraient qu'à la
+première échéance.
+
+Les modèles vivent dans **Dev IA → Récurrentes** : l'horaire en toutes lettres et la prochaine échéance, les
+projets, la dernière session (son état, ses MR, un lien vers sa carte) ou la raison du dernier saut, et
+**`▶ Maintenant`**, **`Pause`**/**`Reprendre`**, modifier (le formulaire de session, branche avec son
+`{date}`), supprimer (les sessions déjà nées restent). Les sessions nées d'un modèle portent un badge **↻**
+qui y ramène, et le bouton **↻** de toute carte de codage ou d'exploration la **rend récurrente** : la
+copie s'ouvre, branche sans son suffixe, Répéter ouvert sur la semaine. Trois garde-fous : une échéance
+est **sautée** tant que la session précédente tourne, attend une réponse ou un plan — la carte le dit, et
+« Maintenant » refuse ; **`Seulement s'il y a eu des commits depuis la dernière fois`** (facultatif) lit la
+tête de la branche de départ de chaque projet (un appel à la forge par projet) et saute sans appel IA si
+rien n'a bougé ; **`Garder les N dernières sessions`** efface les plus anciennes, jamais une session qui
+tourne, partagée, ou dont une merge request est ouverte. Comme « Lancer plus tard », le modèle est **de
+poste** : il ne part pas dans le dépôt partagé, ce poste lance, et rattrape **une** échéance au réveil s'il
+était éteint — jamais toutes celles qu'il a manquées. Une pause ne rattrape pas non plus. Le codage sur
+dépôt local ne se répète pas (encore).
+
 **Vérifier après, sans y penser.** Un champ facultatif **`Vérifier après`** à la création d'une
 session de codage : le vérificateur choisi part **tout seul, une fois, à la fin** — après la
 convergence si tu converges, après le codage sinon. On lance la session le matin, on trouve un

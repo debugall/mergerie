@@ -13,90 +13,15 @@ const { t } = i18n;
 const jobs = require('../../jobs');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
-const agentpass = require('../../agent/pass');
-const pieces = require('../../agent/pieces');
-const skillscan = require('../../agent/skillscan');
 const tasks = require('../../agent/tasks');
-const agentprofile = require('../../agent/profile');
-const path = require('path');
-const fs = require('fs');
 const { gardeConfigAgent, parseConvergeOpts, readFileSafe, wrap } = require('../http');
 const { basculerPartage, exigerProprietaire, passesPayload } = require('../lib/partage');
 const { savePiecesEtImages } = require('../lib/pieces');
-const { applySessionId, demoMrDe, insertTargets, insertContextRepos, lireCliSession, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, normalizeContextRepos, reposPourScan, targetById, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
+const { applySessionId, champsDeSession, demoMrDe, insertTargets, insertContextRepos, lireCliSession, lireLibelle, lireVerifierSession, normalizeSessionId, normalizeTargetIds, normalizeTargets, normalizeContextRepos, targetById, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 const { targetCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 app.post('/api/tasks', wrap((req, res) => {
-  const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label, force_push } = req.body || {};
-  const k = kind === 'explore' ? 'explore' : 'code';
-  if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
-  // Le binaire choisi pour cette session (`agent_cli`) ; vide = le défaut, sans rien écrire.
-  const cliChoisi = lireCliSession(req.body);
-  const sessionId = normalizeSessionId(session_id, cliChoisi.cliId);
-  const list = normalizeTargets(targets, k);
-  /* Projets liés en lecture seule : seule la session de CODAGE en a l'usage — l'IA modifie
-     un projet et peut avoir besoin d'en LIRE un autre pour respecter son API. Une exploration
-     lit déjà tous ses dépôts côte à côte (§ runExploration), et n'a rien à distinguer. */
-  const contextRepos = k === 'code' ? normalizeContextRepos(context_repos, list.map((x) => x.repo_id)) : [];
-  const now = new Date().toISOString();
-  /* « L'IA peut poser des questions » : opt-in, en codage COMME en exploration. Une exploration
-     hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
-     synthèse à côté du sujet. Le codage hors dépôt a sa propre table, et sa propre route. */
-  const ask = ask_questions ? 1 : 0;
-  /* LES SKILLS COCHÉS OUVRENT LA DEMANDE. `/mon-skill` est ce que le CLI attend pour en
-     invoquer un ; le nom seul, pour ceux qui refusent le `/`. La ligne est écrite DANS le
-     prompt (et non gardée à part) : c'est elle que l'agent lit, et c'est elle qu'on relit
-     en rouvrant la session pour comprendre ce qui a été demandé. */
-  const enTeteSkills = skillscan.ligneSkills(req.body && req.body.skills, {
-    repos: reposPourScan(list.map((x) => x.repo_id).join(',')), cfg: getConfig(),
-  });
-  const promptFinal = (enTeteSkills ? `${enTeteSkills}\n\n` : '') + prompt.trim();
-  /* UN RUN D'AGENT EST UNE SESSION : la route accepte `agent_id`, recopie le nom du profil et
-     compose sa demande. `auto_push` est alors forcé à 0 — un agent ne pousse jamais de
-     lui-même (spec agents, règle 1), quoi qu'ait coché le formulaire. */
-  const profil = req.body && req.body.agent_id ? agentprofile.lire(Number(req.body.agent_id)) : null;
-  /* A18 — LE BROUILLON D'UN PROFIL QU'ON ESSAIE. « Essai » n'ouvrait qu'une session pré-remplie
-     du gabarit : modèle, outils, sous-agents et prompt système restaient à quai, donc on
-     essayait tout sauf ce qu'on venait de régler. Le brouillon voyage avec la session et sert
-     d'options ; aucun agent n'est créé — essayer ne doit rien laisser derrière. On VALIDE ici
-     ce qui échouerait au lancement, comme à la sauvegarde d'un vrai profil. */
-  const brouillon = (!profil && req.body && req.body.agent_draft) ? agentprofile.brouillonValide(req.body.agent_draft) : null;
-  const compose = profil ? agentprofile.composer(profil, { question: promptFinal, targets: list, kind: k }) : null;
-  const taskId = tasks.creerTask({
-    kind: k,
-    prompt: compose ? compose.prompt : promptFinal,
-    // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
-    // la colonne est NOT NULL : en exploration la branche est facultative, on y range
-    // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
-    branch: list[0].branch || '',
-    commitMessage: (commit_message || '').trim() || null,
-    autoPush: profil ? 0 : (auto_push ? 1 : 0),
-    /* UNE SESSION QUI VA RÉÉCRIRE L'HISTORIQUE (mettre à jour la branche d'une merge request en
-       conflit : rebase par-dessus la cible) le dit à la création : « Pousser » forcera avec
-       `--force-with-lease` au lieu de buter sur le refus d'un push normal. Codage seulement. */
-    forcePush: k === 'code' && !!force_push,
-    askQuestions: ask,
-    verifierId: lireVerifierSession(k, profil ? 0 : auto_push, verifier_id),
-    label: lireLibelle(label) || (profil ? profil.name : null),
-    // B5 : décoché par défaut — écrire chez les autres se décide, session par session.
-    notifyJira: req.body && req.body.notify_jira ? 1 : 0,
-    // B9 : idem — une review coûte un appel IA, elle se demande.
-    reviewAfter: req.body && req.body.review_after ? 1 : 0,
-    targets: list,
-    contextRepos,
-    sessionId,
-    agentId: profil ? profil.id : null,
-    agentName: profil ? profil.name : (brouillon ? brouillon.name : null),
-    triggeredBy: 'manual',
-    agentQuestion: profil ? promptFinal : null,
-    agentDraft: brouillon,
-    // Partager cette session-là : décoché par défaut, et la case n'apparaît qu'en mode partagé.
-    shared: req.body && req.body.shared ? 1 : 0,
-    /* « Planifier d'abord » : une passe de lecture rend un plan, la carte attend « Approuver
-       et coder ». Pas pour un agent programmé : personne n'est là pour approuver. */
-    planFirst: !profil && req.body && req.body.plan_first ? 1 : 0,
-    ...cliChoisi,
-  });
+  const taskId = tasks.creerTask(champsDeSession(req.body || {}));
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
 }));
@@ -175,11 +100,7 @@ app.delete('/api/tasks/:id', wrap((req, res) => {
      dépôt, et la ligne disparaîtrait chez son auteur au `pull` suivant. On la range. */
   const aSupprimer = taskById(Number(req.params.id));
   if (aSupprimer) exigerProprietaire('task', aSupprimer);
-  db.prepare('DELETE FROM task_target WHERE task_id = ?').run(Number(req.params.id));
-  agentpass.removeTask('task', Number(req.params.id));   // pas de FK : nettoyage explicite
-  pieces.removeOwner('task', Number(req.params.id));     // idem pour les pièces jointes
-  db.prepare('DELETE FROM task WHERE id = ?').run(Number(req.params.id));
-  try { fs.rmSync(path.join(TASKS_DIR, String(Number(req.params.id))), { recursive: true, force: true }); } catch { /* rien */ }
+  tasks.supprimerTask(req.params.id);
   res.json({ ok: true });
 }));
 /* Ranger / ressortir une session. Volontairement séparé de PUT /tasks/:id : c'est un geste

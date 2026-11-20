@@ -14,6 +14,7 @@ let showHiddenTasks = (() => { try { return localStorage.getItem('aidevtools_sho
 let allTasks = [];             // dernier chargement (sessions code/explore)
 let localTasks = [];           // sessions « Codage hors dépôt »
 let questions = [];            // « Question libre » : ni dépôt ni dossier
+let recurrencesListe = [];     // « Récurrentes » : les modèles de ce poste (jobs/recurrences.js)
 let localRootId = '';          // répertoire local choisi dans le formulaire local
 let localPicks = [''];         // projets choisis dans ce répertoire (noms de dossier)
 const KIND_LABEL = {
@@ -21,6 +22,7 @@ const KIND_LABEL = {
   local: { title: tr('task.kind.local.title'), btn: tr('task.kind.local.btn'), hint: tr('task.kind.local.hint') },
   explore: { title: tr('task.kind.explore.title'), btn: tr('task.kind.explore.btn'), hint: tr('task.kind.explore.hint') },
   ask: { title: tr('task.kind.ask.title'), btn: tr('task.kind.ask.btn'), hint: tr('task.kind.ask.hint') },
+  recur: { title: tr('recur.title.new-code'), btn: tr('recur.new-code'), hint: tr('recur.hint') },
 };
 
 /* ---- Sous-onglets Codage / Exploration ---- */
@@ -253,14 +255,21 @@ function renderTasks() {
   renderFiltreSpec();
   const isLocal = taskKind === 'local';
   const isAsk = taskKind === 'ask';
+  const isRecur = taskKind === 'recur';
   const el = $('#taskList');
-  const openForms = (isLocal || isAsk) ? {} : captureTaskForms();
+  const openForms = (isLocal || isAsk || isRecur) ? {} : captureTaskForms();
   $$('#tab-task .subnav [data-kind]').forEach((b) => b.classList.toggle('active', b.dataset.kind === taskKind));
   // La barre d'outils (bouton « Nouvelle session ») reste visible pour tous les kinds —
   // en local elle ouvre la MÊME modale que le codage. Seule la liste change.
-  el.hidden = isLocal || isAsk;
+  el.hidden = isLocal || isAsk || isRecur;
   $('#localPanel').hidden = !isLocal;
   $('#askPanel').hidden = !isAsk;
+  $('#recurPanel').hidden = !isRecur;
+  $('#btnNewRecurExplore').hidden = !isRecur;
+  // Rangement et filtres d'auteur ou de spec : des gestes de SESSION, sans objet sur un modèle.
+  $('#tab-task .list-head').hidden = isRecur;
+  const filtreAgent = $('#taskAgentFilterBox'); if (filtreAgent) filtreAgent.hidden = isRecur;
+  if (isRecur) for (const sel of ['#taskOwnerFiltre', '#taskSpecFiltre']) { const x = $(sel); if (x) x.hidden = true; }
   // Un lot regroupe des merge requests : il n'a rien à faire sous le codage hors dépôt
   // ni sous l'exploration, qui ne produisent pas de MR.
   $('#lotPanel').hidden = taskKind !== 'code';
@@ -277,6 +286,7 @@ function renderTasks() {
   $('#kindCountCode').textContent = counts.code;
   $('#kindCountExplore').textContent = counts.explore;
   $('#kindCountLocal').textContent = localTasks.length;
+  $('#kindCountRecur').textContent = recurrencesListe.length;
   // Le badge du menu signale le TRAVAIL EN ATTENTE (sessions jamais lancées, tous types),
   // comme celui de « Reviews » qui compte les MR à traiter — pas un total.
   const nav = $('#navCountTask');
@@ -292,6 +302,7 @@ function renderTasks() {
 
   if (isLocal) { renderLocalTasks(); return; }
   if (isAsk) { renderQuestions(); return; }
+  if (isRecur) { renderRecurrences(); return; }
 
   rendreComboFiltreAgent();
   const q = taskQuery();

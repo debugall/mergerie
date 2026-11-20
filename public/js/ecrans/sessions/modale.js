@@ -38,6 +38,7 @@ function applyKindToModal(kind) {
   const cm = $('#taskCommitRow'); if (cm) cm.hidden = kind !== 'code';
   // Lancer plus tard : les trois saveurs qui travaillent dans des fichiers. Pas la question libre.
   const sr = $('#taskScheduleRow'); if (sr) sr.hidden = isAsk;
+  majVisibiliteRepetition();   // Répéter : codage et exploration, à la création
   /* L'accordéon « Avancé » ne s'affiche que s'il lui reste quelque chose : une question libre
      n'a ni session d'agent, ni message de commit, ni question à poser. */
   const av = $('#taskAdvanced'); if (av) { av.hidden = isAsk; av.open = false; }   // replié à chaque ouverture
@@ -341,6 +342,7 @@ function showTaskModal() {
   const hint = $('#taskSessionHint');
   if (hint && !hint.dataset.keep) { hint.textContent = ''; hint.hidden = true; }
   if (hint) delete hint.dataset.keep;
+  majVisibiliteRepetition();   // l'édition d'une session ordinaire n'a pas de « Répéter »
   $('#taskModal').hidden = false;
   majCroisementsSession();   // ce que les dépôts cochés portent comme MR ouvertes
 }

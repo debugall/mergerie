@@ -13,6 +13,7 @@ const agentpass = require('../../agent/pass');
 const tasks = require('../../agent/tasks');
 const agentprofile = require('../../agent/profile');
 const cli = require('../../agent/cli');
+const skillscan = require('../../agent/skillscan');
 const path = require('path');
 const { readFileSafe } = require('../http');
 const { avecRangement, unitesAvecRetour } = require('./partage');
@@ -419,6 +420,81 @@ function normalizeDirIds(taskId, brut) {
   return ids;
 }
 
+/* UNE DEMANDE DE SESSION (le corps de `POST /api/tasks`) → les champs de `creerTask`, validés.
+   La route de création et celle des sessions récurrentes passent par ici : un modèle récurrent
+   se valide comme une session, et une règle ajoutée à l'une vaut pour l'autre. */
+function champsDeSession(body) {
+  const { kind, prompt, commit_message, auto_push, images, targets, context_repos, ask_questions, session_id, verifier_id, label, force_push } = body || {};
+  const k = kind === 'explore' ? 'explore' : 'code';
+  if (!(prompt || '').trim()) throw new Error(t('err.prompt-requis'));
+  // Le binaire choisi pour cette session (`agent_cli`) ; vide = le défaut, sans rien écrire.
+  const cliChoisi = lireCliSession(body);
+  const sessionId = normalizeSessionId(session_id, cliChoisi.cliId);
+  const list = normalizeTargets(targets, k);
+  /* Projets liés en lecture seule : seule la session de CODAGE en a l'usage — l'IA modifie
+     un projet et peut avoir besoin d'en LIRE un autre pour respecter son API. Une exploration
+     lit déjà tous ses dépôts côte à côte (§ runExploration), et n'a rien à distinguer. */
+  const contextRepos = k === 'code' ? normalizeContextRepos(context_repos, list.map((x) => x.repo_id)) : [];
+  /* « L'IA peut poser des questions » : opt-in, en codage COMME en exploration. Une exploration
+     hésite de la même façon — « de quel des trois services parles-tu ? » vaut mieux qu'une
+     synthèse à côté du sujet. Le codage hors dépôt a sa propre table, et sa propre route. */
+  const ask = ask_questions ? 1 : 0;
+  /* LES SKILLS COCHÉS OUVRENT LA DEMANDE. `/mon-skill` est ce que le CLI attend pour en
+     invoquer un ; le nom seul, pour ceux qui refusent le `/`. La ligne est écrite DANS le
+     prompt (et non gardée à part) : c'est elle que l'agent lit, et c'est elle qu'on relit
+     en rouvrant la session pour comprendre ce qui a été demandé. */
+  const enTeteSkills = skillscan.ligneSkills(body && body.skills, {
+    repos: reposPourScan(list.map((x) => x.repo_id).join(',')), cfg: getConfig(),
+  });
+  const promptFinal = (enTeteSkills ? `${enTeteSkills}\n\n` : '') + prompt.trim();
+  /* UN RUN D'AGENT EST UNE SESSION : la route accepte `agent_id`, recopie le nom du profil et
+     compose sa demande. `auto_push` est alors forcé à 0 — un agent ne pousse jamais de
+     lui-même (spec agents, règle 1), quoi qu'ait coché le formulaire. */
+  const profil = body && body.agent_id ? agentprofile.lire(Number(body.agent_id)) : null;
+  /* A18 — LE BROUILLON D'UN PROFIL QU'ON ESSAIE. « Essai » n'ouvrait qu'une session pré-remplie
+     du gabarit : modèle, outils, sous-agents et prompt système restaient à quai, donc on
+     essayait tout sauf ce qu'on venait de régler. Le brouillon voyage avec la session et sert
+     d'options ; aucun agent n'est créé — essayer ne doit rien laisser derrière. On VALIDE ici
+     ce qui échouerait au lancement, comme à la sauvegarde d'un vrai profil. */
+  const brouillon = (!profil && body && body.agent_draft) ? agentprofile.brouillonValide(body.agent_draft) : null;
+  const compose = profil ? agentprofile.composer(profil, { question: promptFinal, targets: list, kind: k }) : null;
+  return {
+    kind: k,
+    prompt: compose ? compose.prompt : promptFinal,
+    // `task.branch` est un héritage mono-projet (la vérité est dans task_target) et
+    // la colonne est NOT NULL : en exploration la branche est facultative, on y range
+    // donc '' plutôt que NULL — sinon la création échoue sur une erreur SQL brute.
+    branch: list[0].branch || '',
+    commitMessage: (commit_message || '').trim() || null,
+    autoPush: profil ? 0 : (auto_push ? 1 : 0),
+    /* UNE SESSION QUI VA RÉÉCRIRE L'HISTORIQUE (mettre à jour la branche d'une merge request en
+       conflit : rebase par-dessus la cible) le dit à la création : « Pousser » forcera avec
+       `--force-with-lease` au lieu de buter sur le refus d'un push normal. Codage seulement. */
+    forcePush: k === 'code' && !!force_push,
+    askQuestions: ask,
+    verifierId: lireVerifierSession(k, profil ? 0 : auto_push, verifier_id),
+    label: lireLibelle(label) || (profil ? profil.name : null),
+    // B5 : décoché par défaut — écrire chez les autres se décide, session par session.
+    notifyJira: body && body.notify_jira ? 1 : 0,
+    // B9 : idem — une review coûte un appel IA, elle se demande.
+    reviewAfter: body && body.review_after ? 1 : 0,
+    targets: list,
+    contextRepos,
+    sessionId,
+    agentId: profil ? profil.id : null,
+    agentName: profil ? profil.name : (brouillon ? brouillon.name : null),
+    triggeredBy: 'manual',
+    agentQuestion: profil ? promptFinal : null,
+    agentDraft: brouillon,
+    // Partager cette session-là : décoché par défaut, et la case n'apparaît qu'en mode partagé.
+    shared: body && body.shared ? 1 : 0,
+    /* « Planifier d'abord » : une passe de lecture rend un plan, la carte attend « Approuver
+       et coder ». Pas pour un agent programmé : personne n'est là pour approuver. */
+    planFirst: !profil && body && body.plan_first ? 1 : 0,
+    ...cliChoisi,
+  };
+}
+
 module.exports = {
-  taskById, taskTargets, effectiveMr, targetById, normalizeTargets, insertTargets, taskContextRepos, normalizeContextRepos, insertContextRepos, applySessionId, normalizeSessionId, assertValidBranch, sansMarquage, chapeauReponse, coutParSession, dureeParSession, lireLibelle, lireCliSession, lireSuivi, poserSuivi, lireVerifierSession, reposPourScan, demoMrDe, diffDePasse, normalizeTargetIds, localDirsFor, localTaskById, envoyerSuivi, normalizeDirIds,
+  champsDeSession, taskById, taskTargets, effectiveMr, targetById, normalizeTargets, insertTargets, taskContextRepos, normalizeContextRepos, insertContextRepos, applySessionId, normalizeSessionId, assertValidBranch, sansMarquage, chapeauReponse, coutParSession, dureeParSession, lireLibelle, lireCliSession, lireSuivi, poserSuivi, lireVerifierSession, reposPourScan, demoMrDe, diffDePasse, normalizeTargetIds, localDirsFor, localTaskById, envoyerSuivi, normalizeDirIds,
 };
