@@ -58,8 +58,8 @@ and what the shell exports wins over both, as everywhere with Node.
 no token required. On the **Agents** side it carries the three shipped agents, two **domain agents** with
 their versioned knowledge — one version awaiting validation, one unverified path, one reported gap — and a
 run triggered by a **schedule** that rewrote a note page. One coding session carries **three iterations, the
-last one with its diff**, and the out-of-repo session likewise, so the per-follow-up diff is
-visible on both sides without an agent. A second out-of-repo session shows the optional git flow — its
+last one with its diff**, and the local repo session likewise, so the per-follow-up diff is
+visible on both sides without an agent. A second local repo session shows the optional git flow — its
 branch, pushed commit and open merge request on the folder's line.
 
 ```bash

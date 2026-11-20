@@ -339,7 +339,7 @@ describe('Menu Jira — le ticket ouvert', { skip: dispo ? false : MSG_NAVIGATEU
     try {
       assert.equal(await page.locator('#taskLocalWrap').isVisible(), true, 'la saveur hors dépôt : des dossiers, pas de dépôt');
       assert.equal(await page.locator('#taskReposWrap').isVisible(), false);
-      assert.equal(await page.locator('#taskModalTitle').textContent(), 'Coder hors dépôt — PROJ-10');
+      assert.equal(await page.locator('#taskModalTitle').textContent(), 'Coder sur dépôt local — PROJ-10');
       const prompt = await page.locator('#taskPrompt').inputValue();
       assert.match(prompt, /Contexte du ticket Jira PROJ-10/);
       assert.doesNotMatch(prompt, /Précision technique du ticket/, 'rien d’enregistré, rien d’ajouté');

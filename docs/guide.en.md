@@ -690,7 +690,7 @@ branches — which matters when the list of repositories is long.
 
 **Tidying finished sessions.** A finished session can be **hidden** without being deleted; a
 **“Show hidden sessions”** checkbox (whose state is remembered) brings them back, and a counter reminds you
-how many are filtered out. This applies to coding, out-of-repo coding and exploration alike. In the list, a
+how many are filtered out. This applies to coding, local repo coding and exploration alike. In the list, a
 long prompt is **folded to three lines** with a **“Show more”** that unrolls it.
 
 **“Plan first”: read, approve, then code.** Ticked in the session modal (repository coding only), the
@@ -721,7 +721,7 @@ delays a session on repository B; two jobs on the same repository keep their ord
 scope is unknown waits for everything, and jobs launched by hand pass before automatic ones.
 
 **“The AI may ask me questions” applies to all three flavours.** Coding in a repository,
-**out-of-repo coding** and **exploration**: ticked, the option lets the agent stop in front of a
+**local repo coding** and **exploration**: ticked, the option lets the agent stop in front of a
 decision it cannot settle instead of guessing. An exploration hesitates just like a coding session —
 “which of the three services do you mean?” beats a summary about the wrong one — and out of a
 repository it matters most: the agent works **in place**, with no branch and no commit to re-read.
@@ -765,7 +765,7 @@ other four. It stays an **ordinary** todo — you can tick, edit or delete it: t
 and closes it, it does not take over what you did with it.
 
 **Duplicate a session.** On the card, next to *Edit*, a button opens the form **pre-filled** from
-that session — **coding, exploration and out-of-repo coding**. There is no identifier behind it:
+that session — **coding, exploration and local repo coding**. There is no identifier behind it:
 **saving creates a new session** instead of overwriting the one you copied. This is the gesture of
 running the same instruction on another repository, or starting from a past session with two words
 changed. Everything is copied — prompt, label, commit message, repositories or folders, base
@@ -792,13 +792,13 @@ works** (questions, the binary, when to launch) and finally **once the code is w
 message, auto-push, verifier) — last because it is chronologically last, and it disappears whole as
 soon as there is nothing to commit. Two discreet captions separate the last three groups; a **free
 question** shows none of them, it only has the request. **“The AI may ask me questions when unsure” stays in
-plain sight**, above “Launch later, on”, in the coding, exploration and out-of-repo forms alike: whether the AI
+plain sight**, above “Launch later, on”, in the coding, exploration and local repo forms alike: whether the AI
 may stop and ask is a decision you take for each session, not a setting to go looking for. The **Advanced**
 accordion (commit message, agent session to resume, skills, read-only linked projects) opens **folded** so the
 form fits the screen; one click unfolds it, and editing a session unfolds it by itself when one of its fields
 holds a value.
 
-**A label, optional.** A short title when creating a session — coding, out-of-repo or exploration.
+**A label, optional.** A short title when creating a session — coding, local repo or exploration.
 A list is otherwise read through its prompt, three folded lines whose first words look alike from one
 session to the next; the label says **what it is about** where the prompt says **what to do**. It
 shows at the top of the card, takes part in the search, and can be changed later. Left empty, the
@@ -831,13 +831,13 @@ agent is doing — not twenty minutes later, once the session is over and your m
 running session, **`Prepare a follow-up`** opens the same form as **`Send a follow-up`**, with **`Save the
 follow-up`** instead of `Send`: the text stays **on the card**, under your eyes, for as long as it has
 not gone out. You can **reword** it, **delete** it (clearing the text is enough), and **`Send the
-follow-up`** fires it in one click once the session is over. Applies to coding, out-of-repo and
+follow-up`** fires it in one click once the session is over. Applies to coding, local repo and
 exploration sessions.
 
 **An attachment can be pasted or picked, in a follow-up as at creation time.** The
 **`Attach a file`** button, or **Ctrl+V** for a screenshot. An image shows a thumbnail, a document
 shows a **named chip** — and that is the only difference between them: to the agent, a screenshot
-and a PDF are the same thing, a file to open. Works for **all four flavours**: coding, out-of-repo
+and a PDF are the same thing, a file to open. Works for **all four flavours**: coding, local repo
 coding, exploration **and** the free question.
 Accepted: **images**, **PDF**, **text** (`.txt`, `.md`, `.log`), **data** (`.csv`, `.tsv`, `.json`,
 `.yml`, `.xml`, `.html`) and **Office documents** (`.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`,
@@ -884,12 +884,12 @@ The button sits next to the ones you use all the time, and one click too many co
 The **very first** run stays a single click: there is nothing to protect. The same applies to the
 `Run again` of one particular project.
 
-**Create now, run later.** All **four** session flavours — coding, out-of-repo coding, exploration,
+**Create now, run later.** All **four** session flavours — coding, local repo coding, exploration,
 free question — and sessions opened from a merge request carry the same two buttons:
 **`Create and run`** (the main gesture, one click) and **`Create without running`** next to it, to
 prepare the prompt and the targets and launch when you want.
 
-**Or at a date and time.** The same modal — coding, exploration and out-of-repo alike — carries a **“Launch
+**Or at a date and time.** The same modal — coding, exploration and local repo alike — carries a **“Launch
 later, on”** field: a date and a time side by side, each with its native picker (a calendar, a clock), both
 typeable by hand; filling only one of the two is signalled under the missing one, like a passed date. Filled,
 the primary button reads **`Create and schedule`**: the session is created and waits, its card shows the date
@@ -919,7 +919,7 @@ to start the verification **does not fail the session**: the code is written and
 an error would misrepresent what happened.
 
 **Resume an existing agent session.** An **optional “session identifier”** field at creation time (coding,
-out-of-repo, exploration) makes the AI work **inside that session** instead of opening a new one — so it
+local repo, exploration) makes the AI work **inside that session** instead of opening a new one — so it
 keeps all the context it has already built. Filled in, it also enables the **“Resume in terminal”** button.
 The field can be edited afterwards too.
 
@@ -1025,7 +1025,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 - **The project list opens folded.** Past a few repositories, a session filled the whole screen and hid the
   others — which are exactly what you came to look at. A “Show the N projects” unfolds it, and the state is
   **remembered per session**: otherwise the automatic refresh would close it again every second and a half
-  during a job. Applies to all three families (coding, out-of-repo coding, exploration).
+  during a job. Applies to all three families (coding, local repo coding, exploration).
 - **Push all · Create all MRs.** Two grouped actions, which only appear when they have something to do (the
   number concerned is in the label). **Push all** pushes, in a single job, every branch that is committed
   but not yet pushed. **Create all MRs** opens a merge request for each pushed project that has none: the
@@ -1061,7 +1061,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   of the column therefore searches those requests and **hides** the iterations that do not match, losing
   none of them — and the filter survives switching iterations. Re-reading an answer without knowing which
   request it answered teaches nothing: the two are therefore shown together. A single iteration shows no
-  column — there is nothing to pick. Applies to **out-of-repo coding** too, folder by folder. Each iteration shows its **token count**, and the
+  column — there is nothing to pick. Applies to **local repo coding** too, folder by folder. Each iteration shows its **token count**, and the
   column's heading adds up the tokens of every iteration listed below it. A follow-up can be **written and sent
   right there**, from inside *AI output* — no need to close the view, find the card again and reopen its form.
   **Pin and name.** Past a few passes, neither the number nor the date says what happened in
@@ -1104,7 +1104,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   leaves some behind, so does a database restored from a backup — and **compacts** the rest. Those
   still referenced are never removed: an iteration gets re-read months later, and keeping it is
   the whole point.
-- **⌨️ Resume the session in a terminal.** Every project of a coding session (repository **or** out-of-repo),
+- **⌨️ Resume the session in a terminal.** Every project of a coding session (remote repository **or** local repo),
   and the reviews too, exposes a **“Resume in terminal”** button that copies the **ready-to-paste command**:
   a `cd` to the right folder plus the agent launched with the **session identifier** (claude
   `--resume <id>`, copilot `COPILOT_HOME=… --continue`). You pick the AI's conversation up yourself, with
@@ -1127,7 +1127,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **Multi-project**: each project gives its MR, converged in turn, in series (one failure does not stop the
   others). **Idempotent**: a session already coded is not coded again, an MR already open is converged
   directly. Same guard rails as “Converge” on an MR — and **never an automatic merge**.
-- **Out-of-repo coding** — the AI carries out the prompt **directly in local folders**, **in place** and
+- **Local repo coding** — the AI carries out the prompt **directly in local folders**, **in place** and
   **without git**: no branch, no commit, no push. Handy for folders that are not repositories of a forge
   (scripts, experiments, a local mono-repo…). The working folder is no longer **typed in**: you pick a
   **local directory** (declared in *Settings → Repositories*) then **the project or projects** it contains —
@@ -1164,7 +1164,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI
-  keeps all the context of what it has just produced. An out-of-repo session is **editable** afterwards
+  keeps all the context of what it has just produced. A local repo session is **editable** afterwards
   (prompt, folders, session identifier), like a repository session.
   **Re-runs can be targeted**: every folder has its own **`Run again`**, and the card offers
   **`Re-run the failed folders`** when there are any — on five folders where one broke, re-running
@@ -1765,7 +1765,7 @@ projects if any, deactivated accounts and applications excluded; **you ticked by
   The **repository proposed** is the last one used for that Jira project, and the ticket's **screenshots**
   are offered as checkboxes (the first three ticked): the images you keep are attached to the session,
   without a round trip through the Downloads folder.
-- **`Code outside a repo` from the ticket.** Next to it, opens an **out-of-repo coding session** (local folders, no repository or branch) pre-filled with the ticket and — if you wrote one — its **technical brief**. With or without a brief; nothing is launched until you do.
+- **`Code on a local repo` from the ticket.** Next to it, opens a **local repo coding session** (no registered repository, no branch) pre-filled with the ticket and — if you wrote one — its **technical brief**. With or without a brief; nothing is launched until you do.
 - **Change the ticket's state**: a selector in the header lists the **allowed transitions** (what Jira lets
   *you* do on this ticket); picking one **applies the transition** and refreshes the status (detail + list).
   Nothing is offered if you do not have the rights.
@@ -2330,7 +2330,7 @@ that opens on a fresh install: without a token no other setting is worth anythin
 in it lands on the right side; each repository carries a forge badge, and
 the same path can exist on both; without a token for that forge, the bulk-add window says so and points
 to the field to fill —, plus the **local directories** — a folder on your machine holding one
-subfolder per git project, which feeds the *Git → Navigate* tab and *Out-of-repo coding*; the displayed
+subfolder per git project, which feeds the *Git → Navigate* tab and *Local repo coding*; the displayed
 count “n git projects out of m folders” confirms at a glance that you pointed at the right level of the
 tree, and a button **re-reads the directory from disk** — a folder deleted by hand disappears, a repository
 cloned since appears, wherever the directory is offered; each repository also shows **its open merge requests**, **the date of the last discovery** and **the
@@ -2536,10 +2536,10 @@ data**: a skeleton while it loads, never a “0” that would read as “nothing
   from anywhere. The identifiers Mergerie offers (“Resume in terminal”, the session a branch came from) are
   always in the right directory.
 
-- An **out-of-repo coding** session carries the **“AI output” button at session level**, not only on each
+- A **local repo coding** session carries the **“AI output” button at session level**, not only on each
   folder: “what did the AI do?” is what you ask while looking at the card. When the session covers several
   folders, the view offers a selector to move from one to the next without closing.
-- A session covering **several projects** (coding, exploration, or out-of-repo coding) shows its list
+- A session covering **several projects** (coding, exploration, or local repo coding) shows its list
   **folded**, with a “Show the N projects” to unfold it. Past a few repositories, a single session otherwise
   filled the whole screen and hid the others — which are exactly what you came to look at. The folded state
   is remembered per session: it survives the automatic refreshes.
@@ -3258,7 +3258,7 @@ times — and the team would pay three times. So the agent form offers a *Runner
 person's instance honours the schedule. With no runner the agent only runs by hand, and that is
 the default.
 
-**Out-of-repo coding travels halfway, on purpose.** The session is shared — its passes can be read
+**Local repo coding travels halfway, on purpose.** The session is shared — its passes can be read
 back — but `/Users/me/projects/api` means nothing on a colleague's Linux. Its card therefore shows
 the folder name and its owner, and “Run again” is refused rather than setting the agent to work in
 a namesake folder.
@@ -3406,7 +3406,7 @@ made on screen:
   working folder, repository settings ignored), or failing that `--permission-mode default` and a read
   list (`Read`, `Glob`, `Grep`, `git log/show/diff/blame`). The report comes back as the agent's answer: it
   has nothing to write; an unrecognised flavour is treated as reading, never as writing;
-- **writing** — coding, fixing, convergence, out-of-repo — three modes (Settings → AI session): **sandbox**
+- **writing** — coding, fixing, convergence, local repo — three modes (Settings → AI session): **sandbox**
   (the default) confines the CLI's own filesystem and network access through its own mechanism (Seatbelt on
   macOS, bubblewrap on Linux/WSL2); **allowlist** removes the commands that leak (WebFetch, `curl`, `wget`,
   `ssh`, `git push`, `git remote`, `git config`) without relying on the CLI's sandbox; **broad** restores

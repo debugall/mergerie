@@ -239,7 +239,7 @@
             <!-- Répertoires LOCAUX : un dossier de la machine, un sous-dossier par projet git.
                  Sert à l'onglet Git → Navigation et au choix du dossier du codage hors dépôt. -->
             <h2 data-i18n="settings.localroot.title">Répertoires locaux</h2>
-            <p class="muted" style="max-width:760px" data-i18n="settings.localroot.intro">Un répertoire local contient un dossier par projet git déjà cloné sur ta machine. Il alimente l'onglet Git → Navigation et le codage hors dépôt.</p>
+            <p class="muted" style="max-width:760px" data-i18n="settings.localroot.intro">Un répertoire local contient un dossier par projet git déjà cloné sur ta machine. Il alimente l'onglet Git → Navigation et le codage sur dépôt local.</p>
             <form id="localRootForm" class="form inline">
                 <input name="path" placeholder="/chemin/vers/mes-projets" data-i18n-placeholder="settings.localroot.ph.path" required style="flex:2" /><button type="button" class="hint" tabindex="0" data-i18n-tip="settings.localroot.tip.path" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                 <input name="label" placeholder="nom affiché (optionnel)" data-i18n-placeholder="settings.localroot.ph.label" /><button type="button" class="hint" tabindex="0" data-i18n-tip="settings.localroot.tip.label" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
@@ -876,7 +876,7 @@
                  qu'il s'applique aux sessions de codage — dépôt ET hors dépôt —, au même endroit
                  que ce qui concerne les sessions d'agent. -->
             <h2 data-i18n="settings.extra.title">Consignes permanentes</h2>
-            <p class="muted" data-i18n="settings.extra.intro">Ajoutées à la fin du prompt de TOUTES les sessions de codage et de codage hors dépôt — au premier lancement comme à chaque suivi. Ce qu'on redit à chaque fois : la langue des commentaires, une commande à lancer avant de committer, une interdiction. Laissé vide, rien n'est ajouté.</p>
+            <p class="muted" data-i18n="settings.extra.intro">Ajoutées à la fin du prompt de TOUTES les sessions de codage et de codage sur dépôt local — au premier lancement comme à chaque suivi. Ce qu'on redit à chaque fois : la langue des commentaires, une commande à lancer avant de committer, une interdiction. Laissé vide, rien n'est ajouté.</p>
             <div class="form">
                 <label><span data-i18n="settings.extra.lbl">Consignes ajoutées à chaque session</span>
                     <textarea form="configForm" name="ai_extra_instructions" rows="5" placeholder="Ex. : commente en français ; lance `npm run check` avant de committer." data-i18n-placeholder="settings.extra.ph"></textarea></label>

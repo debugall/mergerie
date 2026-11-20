@@ -722,7 +722,7 @@ sa propre branche, et sa date de création est affichée. Le **choix du dépôt 
 
 **Ranger les sessions terminées.** Une session finie se **masque** sans être supprimée ; une case
 **« afficher les sessions masquées »** (dont l'état est mémorisé) les fait revenir, et un compteur
-rappelle combien sont filtrées. Vaut pour le codage, le codage hors dépôt et l'exploration. Dans la
+rappelle combien sont filtrées. Vaut pour le codage, le codage sur dépôt local et l'exploration. Dans la
 liste, un prompt long est **replié sur trois lignes** avec un **« Voir plus »** qui le déroule entier.
 
 **« Planifier d'abord » : lire, approuver, puis coder.** Cochée dans la modale de session (codage sur
@@ -755,9 +755,9 @@ même dépôt gardent leur ordre, un job au périmètre inconnu attend tout le m
 à la main passent avant les automatiques.
 
 **« L'IA peut me poser des questions » vaut pour les trois saveurs.** Codage sur dépôt, **codage
-hors dépôt** et **exploration** : cochée, l'option autorise l'agent à s'arrêter devant une décision
+sur dépôt local** et **exploration** : cochée, l'option autorise l'agent à s'arrêter devant une décision
 qu'il ne peut pas trancher, au lieu de deviner. Une exploration hésite comme un codage — « de quel
-des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet —, et hors dépôt c'est
+des trois services parles-tu ? » vaut mieux qu'une synthèse à côté du sujet —, et sur dépôt local c'est
 là que ça compte le plus : l'agent travaille **en place**, sans branche ni commit à relire.
 
 Ce qui se passe alors, dans les trois cas : la session passe **en attente** (ni finie, ni en échec),
@@ -799,7 +799,7 @@ autres. Elle reste une todo **ordinaire** — on peut la cocher, l'éditer, la s
 pose et la referme, il ne reprend pas la main sur ce qu'on en a fait.
 
 **Dupliquer une session.** Sur la carte, à côté de *Modifier*, un bouton ouvre le formulaire
-**pré-rempli** de la session — **codage, exploration et codage hors dépôt**. Il n'y a pas
+**pré-rempli** de la session — **codage, exploration et codage sur dépôt local**. Il n'y a pas
 d'identifiant derrière : **enregistrer crée une nouvelle session** au lieu d'écraser celle qu'on
 copiait. C'est le geste de qui relance la même consigne sur un autre dépôt, ou repart d'une session
 passée en changeant deux mots. Tout se recopie — consigne, libellé, message de commit, dépôts ou
@@ -828,7 +828,7 @@ chronologiquement le dernier, et il disparaît entier dès qu'il n'y a rien à c
 intertitres discrets séparent les trois derniers groupes ; une **question libre** n'en montre aucun,
 elle n'a que la demande.
 
-**Un libellé, facultatif.** Un titre court à la création d'une session — codage, hors dépôt ou
+**Un libellé, facultatif.** Un titre court à la création d'une session — codage, sur dépôt local ou
 exploration. Une liste se lit sinon par son prompt, trois lignes repliées dont les premiers mots se
 ressemblent d'une session à l'autre ; le libellé dit **de quoi il s'agit** quand le prompt dit **ce
 qu'il faut faire**. Il s'affiche en tête de carte, entre dans la recherche, et se modifie après coup.
@@ -861,14 +861,14 @@ ce que l'agent fait — pas vingt minutes plus tard, une fois la session finie e
 une session en cours, **`Préparer un suivi`** ouvre le même formulaire que **`Envoyer un suivi`**,
 avec **`Enregistrer le suivi`** au lieu d'`Envoyer` : le texte reste **sur la carte**, sous les yeux,
 tant qu'il n'est pas parti. On le **corrige**, on le **supprime** (l'effacer suffit), et **`Envoyer le
-suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage hors dépôt
+suivi`** le lance en un geste une fois la session terminée. Vaut pour le codage, le codage sur dépôt local
 et l'exploration.
 
 **Une pièce jointe se colle ou se choisit, dans le suivi comme à la création.** Bouton
 **`Joindre un fichier`** ou **Ctrl+V** pour une capture. Une image montre sa vignette, un document
 sa **puce nommée** — et c'est la seule différence entre les deux : pour l'agent, une capture et un
-PDF sont la même chose, un fichier à ouvrir. Vaut pour les **quatre saveurs** : codage, codage hors
-dépôt, exploration **et** question libre.
+PDF sont la même chose, un fichier à ouvrir. Vaut pour les **quatre saveurs** : codage, codage sur dépôt
+local, exploration **et** question libre.
 Sont acceptés les **images**, **PDF**, **texte** (`.txt`, `.md`, `.log`), **données** (`.csv`,
 `.tsv`, `.json`, `.yml`, `.xml`, `.html`) et **documents Office** (`.docx`, `.xlsx`, `.pptx`,
 `.odt`, `.ods`, `.odp`, `.rtf`), jusqu'à **10 Mo** pièce. Le reste est refusé **avec sa raison**,
@@ -916,17 +916,17 @@ le `Relancer` d'un projet en particulier.
 
 **La case est en vue, « Avancé » est replié.** « L'IA peut me poser des questions » a quitté
 l'accordéon Avancé : c'est une décision prise pour chaque session, pas un réglage à aller chercher — elle
-est au-dessus de « Lancer plus tard », dans les formulaires de codage, d'exploration et hors dépôt. L'accordéon
+est au-dessus de « Lancer plus tard », dans les formulaires de codage, d'exploration et sur dépôt local. L'accordéon
 (message de commit, session d'agent à reprendre, skills) s'ouvre replié pour que le formulaire tienne à
 l'écran ; un clic le déplie, et l'édition d'une session le déplie d'elle-même quand un de ses champs
 porte une valeur.
 
-**Créer maintenant, lancer plus tard.** Les **quatre** saveurs de session — codage, codage hors
-dépôt, exploration, question libre — et les sessions ouvertes depuis une merge request portent les
+**Créer maintenant, lancer plus tard.** Les **quatre** saveurs de session — codage, codage sur dépôt
+local, exploration, question libre — et les sessions ouvertes depuis une merge request portent les
 deux mêmes boutons : **`Créer et lancer`** (le geste principal, en un clic) et **`Créer sans
 lancer`** à côté, pour préparer le prompt et les cibles et lancer quand on veut.
 
-**Lancer plus tard, le.** La même modale — codage, exploration, hors dépôt — porte un champ **date** et un
+**Lancer plus tard, le.** La même modale — codage, exploration, sur dépôt local — porte un champ **date** et un
 champ **heure** côte à côte, chacun avec son sélecteur natif (calendrier, horloge) et toujours saisissables
 à la main ; n'en remplir qu'un est signalé sous celui qui manque. Remplis, le bouton principal devient
 **`Créer et programmer`** : la session est créée et attend, sa carte montre la date avec une croix pour
@@ -956,7 +956,7 @@ Et un échec au lancement de la vérification **ne fait pas échouer la session*
 poussé, annoncer une erreur mentirait sur ce qui s'est passé.
 
 **Reprendre une session d'agent existante.** Un champ **facultatif « identifiant de session »** à la
-création (codage, hors dépôt, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
+création (codage, sur dépôt local, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
 ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible
 le bouton **« Reprendre au terminal »**. Le champ est également modifiable après coup.
 
@@ -1069,7 +1069,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   l'écran et masquait les autres — qui sont pourtant ce qu'on est venu regarder. Un « Voir les N
   projets » la déplie, et l'état est **mémorisé par session** : sinon le rafraîchissement automatique
   la refermerait toutes les secondes et demie pendant un job. Vaut pour les trois familles (codage,
-  codage hors dépôt, exploration).
+  codage sur dépôt local, exploration).
 - **Pousser tous · Créer toutes les MR.** Deux actions groupées, qui n'apparaissent que lorsqu'elles
   ont quelque chose à faire (le nombre concerné est dans le libellé). **Pousser tous** pousse en un
   seul job toutes les branches commitées mais pas encore poussées. **Créer toutes les MR** ouvre une
@@ -1109,8 +1109,8 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   cherche donc dans ces demandes et **masque** les itérations qui ne correspondent pas, sans en perdre
   aucune — et le filtre survit au passage d'une itération à l'autre. Relire une réponse sans savoir à
   quelle demande elle répondait n'apprend rien : les deux sont donc affichés ensemble. Une seule
-  itération n'affiche aucune colonne — il n'y a rien à choisir. Vaut aussi pour le **codage hors
-  dépôt**, dossier par dossier.
+  itération n'affiche aucune colonne — il n'y a rien à choisir. Vaut aussi pour le **codage sur dépôt
+  local**, dossier par dossier.
   **Combien d'itérations déjà ?** Le bouton `Envoyer un suivi` porte son **compte** dans son libellé —
   « Envoyer un suivi (2) » — sur chaque carte de session, de question et de dossier hors dépôt. Dans
   `Retour de l'IA`, chaque itération affiche ses **tokens**, l'en-tête de la colonne les additionne, et un
@@ -1157,7 +1157,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   dossiers d'une session en laisse derrière, une base restaurée d'une sauvegarde aussi — et
   **compacte** les autres. Ceux qui sont encore référencés ne sont jamais supprimés : une
   itération se relit des mois plus tard, et c'est tout l'intérêt de la garder.
-- **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** hors dépôt),
+- **⌨️ Reprendre la session au terminal.** Chaque projet d'une session de codage (dépôt **ou** sur dépôt local),
   ainsi que les reviews, expose un bouton **« Reprendre au terminal »** qui copie la **commande prête à
   coller** : `cd` vers le bon dossier + lancement de l'agent avec l'**identifiant de session** (claude
   `--resume <id>`, copilot `COPILOT_HOME=… --continue`). Tu reprends toi-même la conversation de l'IA,
@@ -1180,7 +1180,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   série (un échec n'arrête pas les autres). **Idempotent** : une session déjà codée n'est pas recodée,
   une MR déjà ouverte est convergée directement. Mêmes garde-fous que « Converger » sur une MR — et
   **jamais de merge automatique**.
-- **Codage hors dépôt** — l'IA réalise le prompt **directement dans des dossiers locaux**, **en place**
+- **Codage sur dépôt local** — l'IA réalise le prompt **directement dans des dossiers locaux**, **en place**
   et **sans git** : ni branche, ni commit, ni push. Pratique pour des dossiers qui ne sont pas des
   dépôts d'une forge (scripts, expériences, mono-repo local…). Le dossier de travail ne se **saisit** plus :
   on choisit un **répertoire local** (déclaré dans *Réglages → Dépôts*) puis **le ou les projets** qu'il
@@ -1218,7 +1218,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
-  le contexte de ce qu'elle vient de produire. Une session hors dépôt est **modifiable** après coup
+  le contexte de ce qu'elle vient de produire. Une session sur dépôt local est **modifiable** après coup
   (prompt, dossiers, identifiant de session), comme une session sur dépôt.
   **La relance est ciblable** : chaque dossier a son propre **`Relancer`**, et la carte propose
   **`Relancer les dossiers en échec`** quand il y en a — sur cinq dossiers dont un a cassé, tout
@@ -1844,7 +1844,7 @@ bougé sur la fenêtre, dans les projets du filtre s'il y en a, comptes désacti
   Le **dépôt proposé** est le dernier utilisé pour ce projet Jira, et les **captures d'écran du ticket**
   sont offertes en cases à cocher (les trois premières cochées) : les images retenues partent en pièces
   jointes de la session, sans détour par le dossier des téléchargements.
-- **`Coder hors dépôt` depuis le ticket.** À côté, ouvre une **session de codage hors dépôt** (dossiers locaux, ni dépôt ni branche) pré-remplie avec le ticket et, si vous en avez écrit une, sa **précision technique**. Avec ou sans précision ; rien ne part tant que vous ne lancez pas.
+- **`Coder sur dépôt local` depuis le ticket.** À côté, ouvre une **session de codage sur dépôt local** (ni dépôt enregistré ni branche) pré-remplie avec le ticket et, si vous en avez écrit une, sa **précision technique**. Avec ou sans précision ; rien ne part tant que vous ne lancez pas.
 - **Changer l'état du ticket** : un sélecteur dans l'en-tête liste les **transitions autorisées** (ce que Jira
   permet pour toi sur ce ticket) ; en choisir une **applique la transition** et rafraîchit le statut (détail
   + liste). Rien n'est proposé si tu n'as pas les droits.
@@ -2421,7 +2421,7 @@ première fois : sans jeton, aucun autre réglage ne sert à rien ·
 de forge, et un même chemin peut exister sur les deux ; une adresse collée est rangée dans sa forge
 d'après son **hôte**, comparé d'abord à ceux configurés dans Réglages → Git — un GitHub Enterprise sur
 `git.entreprise.com` n'est plus pris pour un GitLab ; sans jeton pour cette forge, la fenêtre
-d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage hors dépôt* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence, et un bouton **relit le répertoire sur le disque** — un dossier supprimé à la main disparaît, un dépôt cloné depuis apparaît, partout où le répertoire est proposé) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
+d'ajout en masse le dit et renvoie vers le champ à remplir —, plus les **répertoires locaux** — un dossier de ta machine contenant un sous-dossier par projet git, qui alimente l'onglet *Git → Navigation* et le *Codage sur dépôt local* ; le décompte affiché « n projets git sur m dossiers » confirme d'un coup d'œil qu'on a désigné le bon niveau d'arborescence, et un bouton **relit le répertoire sur le disque** — un dossier supprimé à la main disparaît, un dépôt cloné depuis apparaît, partout où le répertoire est proposé) ; chaque dépôt affiche aussi **ses merge requests ouvertes**, **la date de la dernière
 recherche** et **l'état de son clone**, avec un bouton **`Re-cloner`** — rien n'est perdu côté forge, mais
 les modifications non poussées du clone local le sont, d'où la confirmation) ; un bouton **`Fiche`**
 déplie **ce qui est rattaché** à ce dépôt — vérificateurs, jobs Jenkins, règles de review limitées à lui,
@@ -2660,10 +2660,10 @@ donnée** : squelette pendant le chargement, jamais un « 0 » qui voudrait dire
   isolé : il se reprend depuis n'importe où. Les identifiants proposés par Mergerie (« Reprendre au
   terminal », session d'origine d'une branche) sont toujours dans le bon répertoire.
 
-- Un **codage hors dépôt** porte le bouton **« Retour de l'IA » au niveau de la session**, pas seulement
+- Un **codage sur dépôt local** porte le bouton **« Retour de l'IA » au niveau de la session**, pas seulement
   sur chaque dossier : c'est « qu'a fait l'IA ? » qu'on se demande en regardant la carte. Quand la session
   couvre plusieurs dossiers, la vue offre un sélecteur pour passer de l'un à l'autre sans se refermer.
-- Une session portant sur **plusieurs projets** (codage, exploration, ou codage hors dépôt) affiche sa
+- Une session portant sur **plusieurs projets** (codage, exploration, ou codage sur dépôt local) affiche sa
   liste **repliée**, avec un « Voir les N projets » pour la déplier. Au-delà de quelques dépôts, une seule
   session occupait sinon tout l'écran et masquait les autres — qui sont pourtant ce qu'on est venu
   regarder. Le repli est mémorisé par session : il survit aux rafraîchissements automatiques.
@@ -3126,7 +3126,7 @@ introuvable) et se **teste**, se **modifie** par le même formulaire (nom, binai
 d'environnement ; délai et backend sous « Avancé »). Un profil est **complet** : il ne complète pas le défaut
 (ses variables remplacent celles du défaut, ses arguments vides restent vides). Un Claude Code branché sur un
 Ollama local à côté de ton Claude Max, un Copilot pour comparer.
-Dans la modale d'une session (codage, exploration, hors dépôt), un sélecteur **« Binaire »** apparaît dès
+Dans la modale d'une session (codage, exploration, sur dépôt local), un sélecteur **« Binaire »** apparaît dès
 qu'il y en a un autre que le défaut ; le choix vaut pour **toutes les passes** de la session — suivi,
 réponses, plan approuvé, convergence — et sa carte l'affiche. **« Utiliser par défaut »** échange une ligne
 avec le défaut : l'ancien défaut prend sa place dans la liste, les sessions qui l'avaient choisi le gardent
@@ -3405,7 +3405,7 @@ agent — et l'équipe paierait trois fois. Le formulaire d'agent propose donc u
 seule l'instance de cette personne honore l'horaire. Sans exécutant, l'agent ne tourne qu'à la
 main, et c'est le défaut.
 
-**Le codage hors dépôt voyage à moitié, et c'est voulu.** La session se partage — ses passes se
+**Le codage sur dépôt local voyage à moitié, et c'est voulu.** La session se partage — ses passes se
 relisent —, mais `/Users/moi/projets/api` ne désigne rien sur le Linux du collègue. Sa carte
 affiche donc le nom du dossier et son propriétaire, et « Relancer » est refusé plutôt que de faire
 travailler l'agent dans un homonyme.
@@ -3559,7 +3559,7 @@ choix fait dans l'écran :
   liste de lecture (`Read`, `Glob`, `Grep`, `git log/show/diff/blame`). Le rapport revient par la réponse de
   l'agent, qui n'a rien à écrire ; une saveur inconnue est traitée comme une lecture, jamais comme une
   écriture ;
-- **en écriture** — codage, correction, convergence, hors dépôt — trois modes (Réglages → Session IA) :
+- **en écriture** — codage, correction, convergence, sur dépôt local — trois modes (Réglages → Session IA) :
   **sandbox** (le défaut du mode sécurisé) confine le système de fichiers et le réseau du CLI lui-même via son propre
   mécanisme (Seatbelt sur macOS, bubblewrap sur Linux/WSL2) ; **liste blanche** retire les commandes qui
   fuient (WebFetch, `curl`, `wget`, `ssh`, `git push`, `git remote`, `git config`) sans s'appuyer sur le
