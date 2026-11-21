@@ -23,6 +23,7 @@ function pluginCarteHtml(p) {
       <div class="meta">${esc(p.description)}${p.author ? ` · ${esc(p.author)}` : ''}${p.homepage ? ` · <a href="${esc(safeUrl(p.homepage))}" target="_blank" rel="noopener noreferrer">${esc(tr('plugins.homepage'))}</a>` : ''}${p.license ? ` · ${esc(p.license)}` : ''}</div>
     </div>
     ${p.error ? `<p class="err plugin-error">${esc(p.error)}</p>` : ''}
+    ${(p.clearSecrets || []).length ? `<p class="plugin-warn plugin-clear-secrets">${svgIco('alert')} ${esc(tr('plugins.clear-secrets', { fields: p.clearSecrets.join(', ') }))}</p>` : ''}
     ${execTiers ? `<p class="plugin-warn">${svgIco('alert')} ${esc(tr('plugins.exec-warning'))}</p>` : ''}
     <dl class="plugin-details">
       <dt>${esc(tr('plugins.permissions'))}</dt><dd>${perms || '<span class="muted">—</span>'}</dd>

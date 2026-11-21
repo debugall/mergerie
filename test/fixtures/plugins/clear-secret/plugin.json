@@ -1,0 +1,19 @@
+{
+  "name": "clear-secret",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "displayName": "Clear secret",
+  "description": "Un réglage au nom de secret sans x-secret (api_key), un vrai secret (token), un non-secret assumé (password_hint, x-secret false) et un identifiant (user) : seul le premier doit être signalé.",
+  "license": "AGPL-3.0-only",
+  "main": "index.js",
+  "permissions": ["settings", "secrets"],
+  "settingsSchema": {
+    "type": "object",
+    "properties": {
+      "user": { "type": "string", "title": "User", "default": "" },
+      "api_key": { "type": "string", "title": "API key", "default": "" },
+      "token": { "type": "string", "title": "Token", "x-secret": true },
+      "password_hint": { "type": "string", "title": "Password hint", "x-secret": false }
+    }
+  }
+}

@@ -59,3 +59,12 @@
 .jira-plan-prompt { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.5; }
 .jira-plan-changes { flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .jira-plan-changes ul { margin: 0; padding-left: 18px; }
+
+/* L'en-tête d'un plan : son nom, puis les trois étapes en onglets — un seul panneau visible à la fois. */
+.jira-plan-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.jira-plan-title { margin: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jira-plan-steps { margin: 0; }
+.jira-plan-steps button { display: inline-flex; align-items: center; gap: 6px; }
+.jira-plan-steps button:disabled { opacity: .45; cursor: default; }
+.jira-plan-step-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber-text); display: inline-block; }
+[data-plan-panel][hidden] { display: none; }

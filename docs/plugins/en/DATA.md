@@ -51,7 +51,10 @@ the secret being provided again — a token typed for one host does not leave fo
 `"x-hidden": true` hides a setting from the generated form (state the plugin keeps itself).
 
 Both tables are local to the machine. A secret must never be copied into a plugin table or a file:
-`ctx.secrets` is the only place meant for it.
+`ctx.secrets` is the only place meant for it. It is also the only one the **vault** (Settings → Security)
+encrypts: a setting whose name suggests a secret (`token`, `password`, `api_key`, `private_key`,
+`client_secret`…) without `x-secret` stays in clear — the loader flags it on the plugin's card and
+`npm run check:plugins` refuses it for a built-in plugin. `"x-secret": false` declares it not a secret.
 
 ## Retention and uninstall
 

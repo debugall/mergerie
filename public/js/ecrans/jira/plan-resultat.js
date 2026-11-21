@@ -115,7 +115,7 @@ function rendreResultatPlan() {
   if (!v) { box.innerHTML = ''; return; }
   const etat = etatAnalyseHtml(v);
   if (!v.version) {
-    box.innerHTML = etat ? `<section class="jira-plan-section"><h4>${esc(tr('jira.plan.step.result'))}</h4>${etat}</section>` : '';
+    box.innerHTML = etat ? `<section class="jira-plan-section">${etat}</section>` : '';
     return;
   }
   const vue = planVersionVue && planVersionVue.version !== v.version ? planVersionVue : { version: v.version, result: v.result, markdown: v.markdown };
@@ -125,7 +125,6 @@ function rendreResultatPlan() {
   const choix = (v.versions || []).slice().reverse().map((x) => `<option value="${x.version}"${x.version === vue.version ? ' selected' : ''}>${esc(tr('jira.plan.version-opt', { n: x.version, origin: tr(`jira.plan.origin.${x.origin}`), when: fmtDateTime(x.created_at) }))}</option>`).join('');
   box.innerHTML = `<section class="jira-plan-section jira-plan-resultat">
       <div class="jira-plan-result-head">
-        <h4>${esc(tr('jira.plan.step.result'))}</h4>
         ${(v.versions || []).length > 1 ? `<select id="jiraPlanVersion" aria-label="${esc(tr('jira.plan.versions'))}">${choix}</select>` : `<span class="jira-chip">${esc(tr('jira.spec.version', { n: vue.version }))}</span>`}
         ${ancienne ? '' : boutonRelireHtml(v, enCours)}
         <span class="spacer"></span>

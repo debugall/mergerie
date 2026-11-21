@@ -1972,6 +1972,11 @@ the batch's **functional specification**, what each one is **missing** to be del
 forth, and the **tickets to create** nobody wrote (a technical prerequisite, a migration, tests). A plan belongs to **the workstation**: neither its inputs
 nor its prompt go to the shared data repository.
 
+The three steps are three **tabs** at the top of the plan — *1. Inputs*, *2. Final prompt*, *3. Result* —, one
+visible at a time: opening a plan already analysed shows its result straight away, `Prepare the prompt` leads to
+the prompt, `Run the analysis` to the result. The result tab carries the analysis state (running, questions,
+ready, error), the prompt tab a dot when Jira changed since.
+
 1. **Inputs.** A name; the tickets — **`Load its tickets`** from an epic key (the children arrive ticked, a filter
    hides without unticking) and/or keys typed by hand; **Confluence pages**; the **repositories** to read, each on
    **its branch** (searchable list, empty = the default branch); a **documentation complement**; **attachments**
@@ -3548,7 +3553,9 @@ former plain-text value survives in it. The 2FA secret (TOTP, RFC 6238) sits ins
 and a code works only once. What the vault protects: a **copy** of the file — a backup, a data folder
 shared for debugging, a stolen disk. What it does not protect: a program running under your account while
 Mergerie is unlocked — it can read the process memory or modify its code; 2FA closes the door on someone
-who knows the password without the phone, it adds nothing to the encryption of a copy. At startup, a warning flags a `.env` in the current folder that picks the agent binary (`AGENT_BIN`,
+who knows the password without the phone, it adds nothing to the encryption of a copy. For a plugin, the vault encrypts what it stores as a secret (`ctx.secrets`, settings
+marked `x-secret`), third-party ones included; a setting named like a secret that it does not mark stays in
+clear, and its card in Settings → Plugins says so. At startup, a warning flags a `.env` in the current folder that picks the agent binary (`AGENT_BIN`,
 `AGENT_ARGS`, or their old `COPILOT_*` names).
 
 **No shell, and hardened git.** git, Docker and the agent are launched via `spawn` with an **argument

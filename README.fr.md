@@ -251,7 +251,7 @@ jeton de la forge n'est plus dans le clone. Le texte venu
 d'ailleurs (description de MR, ticket) lui est présenté **comme une donnée**, et chaque bloc que l'agent
 émet (constats, questions, dépôt trouvé, agent proposé) porte le nonce de son propre run. Les **secrets**
 sont stockés en local et **jamais renvoyés en clair** — et, si tu le veux, **chiffrés dans un coffre** par un
-mot de passe maître demandé à chaque lancement, avec double authentification (Réglages → Sécurité). Exécution **sans shell**, git durci (ni hooks ni
+mot de passe maître demandé à chaque lancement, avec double authentification (Réglages → Sécurité), secrets des plugins compris ; un réglage de plugin au nom de secret non déclaré comme tel est signalé. Exécution **sans shell**, git durci (ni hooks ni
 fsmonitor), palette git en **liste blanche**, rendu **anti-XSS**, opérations destructrices **restaurables**
 et **jamais de merge automatique**.
 

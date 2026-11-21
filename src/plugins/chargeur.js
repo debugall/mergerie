@@ -89,6 +89,9 @@ function decouvrir() {
     const existante = fiches.get(nom);
     const fiche = existante || { nom, actif: false, instance: null, ctx: null, sortie: null, hote: null, error: null };
     fiche.manifeste = t.manifeste; fiche.dir = t.dir; fiche.origin = t.origin; fiche.erreurs = t.erreurs; fiche.valide = t.ok;
+    const enClair = (t.secretsEnClair || []).join(', ');
+    if (enClair && enClair !== fiche.secretsSignales) journal(`[${nom}] réglage(s) ${enClair} : nom de secret sans "x-secret" — rangé en clair, hors du coffre`);
+    fiche.secretsSignales = enClair; fiche.secretsEnClair = t.secretsEnClair || [];
     const etat = lireEtat(nom);
     if (!etat) {
       // Un embarqué est activé d'office SEULEMENT s'il le dit (`enabledByDefault: true`) ; sinon, comme un tiers, il attend qu'on l'active.
@@ -349,6 +352,7 @@ function liste() {
       state: f.actif ? 'active' : (!f.valide ? 'incompatible' : (f.error ? 'error' : (f.enabled ? 'error' : 'inactive'))),
       error: f.error || (f.valide ? null : f.erreurs.join(' ; ')),
       errors: f.erreurs || [],
+      clearSecrets: f.secretsEnClair || [],
       requires: Array.isArray(m.requires) ? m.requires : [],
       missing: f.valide ? dependancesManquantes(f) : [],
       permissions: manifesteMod.permissionsDe(m),

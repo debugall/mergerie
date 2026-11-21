@@ -14,7 +14,9 @@
    6. Son dictionnaire est en parité fr/en, et toutes ses clés portent son préfixe.
    7. `docs/plugins/EVENTS.md` est bien ce que le contrat génère ; `docs/plugins/API.md` nomme
       chaque primitive du contrat ; les types du SDK sont à jour.
-   8. Les exemples de la documentation (`docs/plugins/examples/*.js`) parsent. */
+   8. Les exemples de la documentation (`docs/plugins/examples/*.js`) parsent.
+   9. Aucun réglage au nom de secret (token, password, api_key…) sans `x-secret` : il resterait en
+      clair, hors du coffre. `"x-secret": false` explicite le déclare non secret. */
 const fs = require('fs');
 const path = require('path');
 
@@ -190,6 +192,13 @@ const plugins = pageplugins.embarques();
     if (!docs.includes(`examples/${f}`)) soucis.push(`docs/plugins/examples/${f}  n'est cité par aucune page de docs/plugins/`);
   }
   soucis.length ? fail('Exemples de la documentation', soucis) : ok(`Exemples de la documentation : ${exemples.length} fichier(s), tous cités et exécutés par test/unit-plugins-docs.test.js`);
+}
+
+/* 9. Les réglages au nom de secret sont marqués `x-secret` (le chargeur avertit pareil pour un tiers). */
+{
+  const soucis = plugins.filter((p) => p.ok).flatMap((p) => manifeste.secretsEnClair(p.manifeste)
+    .map((k) => `plugins/${path.basename(p.dir)}/plugin.json  settingsSchema.properties.${k} : nom de secret sans "x-secret" (true, ou false s'il n'en est pas un)`));
+  soucis.length ? fail('Secrets hors du coffre', soucis) : ok('Réglages au nom de secret : tous marqués x-secret');
 }
 
 console.log('');

@@ -278,4 +278,15 @@ describe('SDK — jobs, flux de processus, répertoires locaux', () => {
     assert.deepEqual(t.ctx.repos.localRoots().map((r) => [r.path, r.label]), [['/tmp/a', 'A'], ['/tmp/b', '']]);
     assert.equal(sdk.createTestContext({ manifest: m([]) }).ctx.repos, undefined);
   });
+  test('secretsEnClair : un réglage chaîne au nom de secret sans `x-secret` est signalé, `x-secret: false` le tait', () => {
+    const { secretsEnClair } = require('../sdk/lib/manifeste');
+    const props = {
+      jenkins_user: { type: 'string' }, api_key: { type: 'string' }, apikey: { type: 'string' }, db_password: { type: 'string' },
+      private_key: { type: 'string' }, client_secret: { type: 'string' }, token: { type: 'string', 'x-secret': true },
+      password_hint: { type: 'string', 'x-secret': false }, token_ttl: { type: 'integer' }, tokenizer: { type: 'string' },
+    };
+    assert.deepEqual(secretsEnClair({ settingsSchema: { type: 'object', properties: props } }), ['api_key', 'apikey', 'db_password', 'private_key', 'client_secret']);
+    assert.deepEqual(secretsEnClair({}), []);
+    assert.deepEqual(secretsEnClair(null), []);
+  });
 });

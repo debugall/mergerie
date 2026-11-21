@@ -139,7 +139,7 @@ you with the tab closed.
   default, a token when exposed, and a second local-only token closing the API to any process on the
   machine that isn't your browser; code that arrives through the shared repository waits for your approval
   on this machine; tokens optionally encrypted in a vault by a master password, with two-factor
-  authentication (Settings → Security); one switch per machine for the agent itself — **secured** (reviews and explorations
+  authentication (Settings → Security), plugin secrets included, a plugin setting named like a secret but not declared one being flagged; one switch per machine for the agent itself — **secured** (reviews and explorations
   run it read-only, coding runs it under a CLI sandbox verified by a real test call, or a command
   allowlist) or **yolo** (no restriction of the agent, the default) — with, either way, a filtered
   environment, the forge token out of the clone, and every agent output block tied to the nonce of its

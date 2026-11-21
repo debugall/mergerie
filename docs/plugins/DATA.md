@@ -52,7 +52,10 @@ adresse change sans qu'il soit refourni — un jeton saisi pour un hôte ne part
 `"x-hidden": true` cache un réglage du formulaire généré (un état que le plugin tient lui-même).
 
 Ces deux tables sont de poste. Un secret ne doit jamais être recopié dans une table du plugin ni
-dans un fichier : `ctx.secrets` est le seul endroit prévu pour lui.
+dans un fichier : `ctx.secrets` est le seul endroit prévu pour lui. C'est aussi le seul que le **coffre**
+(Réglages → Sécurité) chiffre : un réglage dont le nom évoque un secret (`token`, `password`, `api_key`,
+`private_key`, `client_secret`…) sans `x-secret` reste en clair — le chargeur le signale sur la carte du
+plugin et `npm run check:plugins` le refuse pour un embarqué. `"x-secret": false` le déclare non secret.
 
 ## Rétention et désinstallation
 

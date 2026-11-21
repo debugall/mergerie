@@ -63,7 +63,18 @@ function valider(m) {
   return erreurs;
 }
 
-/** Lit `plugin.json` d'un dossier. Rend { ok, manifeste, erreurs, dir }. */
+/* Un nom de réglage qui dit « secret » : jeton, mot de passe, clé d'API ou privée, passphrase. Le coffre
+   (Réglages → Sécurité) ne chiffre que ce que le schéma marque `x-secret` : un tel champ sans la marque
+   reste en clair dans `plugin_setting`. `"x-secret": false` explicite dit « je sais, ce n'en est pas un ». */
+const NOM_SECRET = /(^|_)(token|password|passwd|pwd|secret|passphrase|credentials?|api_?key|private_?key|access_?key|client_?secret)(_|$)/;
+
+/** Les réglages chaîne dont le nom évoque un secret et que le schéma ne marque pas `x-secret`. */
+function secretsEnClair(m) {
+  const props = (m && m.settingsSchema && typeof m.settingsSchema.properties === 'object' && m.settingsSchema.properties) || {};
+  return Object.entries(props).filter(([k, p]) => p && p.type === 'string' && p['x-secret'] === undefined && NOM_SECRET.test(k)).map(([k]) => k);
+}
+
+/** Lit `plugin.json` d'un dossier. Rend { ok, manifeste, erreurs, dir, secretsEnClair }. */
 function lire(dir) {
   const f = path.join(dir, 'plugin.json');
   if (!fs.existsSync(f)) return { ok: false, dir, manifeste: null, erreurs: ['plugin.json absent'] };
@@ -72,7 +83,7 @@ function lire(dir) {
   const erreurs = valider(m);
   if (m && typeof m === 'object' && m.main && !fs.existsSync(path.join(dir, String(m.main)))) erreurs.push(`main « ${m.main} » introuvable`);
   for (const f2 of fichiersUi(m)) if (!fs.existsSync(path.join(dir, f2))) erreurs.push(`ui : « ${f2} » introuvable`);
-  return { ok: !erreurs.length, dir, manifeste: m, erreurs };
+  return { ok: !erreurs.length, dir, manifeste: m, erreurs, secretsEnClair: secretsEnClair(m) };
 }
 
 /** Tous les fichiers de `ui` cités par un manifeste, à plat. */
@@ -87,4 +98,4 @@ function fichiersUi(m) {
 /** Les permissions effectives : celles déclarées, dédoublonnées. */
 const permissionsDe = (m) => [...new Set(Array.isArray(m && m.permissions) ? m.permissions.map(String) : [])];
 
-module.exports = { lire, valider, fichiersUi, permissionsDe, CHEMIN_REL };
+module.exports = { lire, valider, fichiersUi, permissionsDe, secretsEnClair, CHEMIN_REL };

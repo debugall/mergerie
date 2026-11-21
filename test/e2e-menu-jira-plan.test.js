@@ -103,6 +103,10 @@ describe('Menu Jira — Plans : ordonnancer un lot de tickets', { skip: dispo ? 
     const avant = appels(/\/rest\/api\/3\/search/).length;
     await page.locator('#jiraPlanPrepare').click();
     await page.waitForSelector('#jiraPlanPrompt');
+    // Préparer mène à l'onglet du prompt : le formulaire s'efface, le texte est en haut, sans défiler.
+    assert.equal(await page.locator('[data-plan-step="prompt"]').getAttribute('aria-selected'), 'true');
+    assert.equal(await page.locator('#jiraPlanForm').isVisible(), false);
+    assert.ok((await page.locator('#jiraPlanPrompt').boundingBox()).y < 400, 'le prompt est en haut de l’écran');
     const prompt = await page.locator('#jiraPlanPrompt').inputValue();
     assert.match(prompt, /PROJ-20 — Paiement en trois fois/);
     assert.match(prompt, /PROJ-22 — Export comptable/);
@@ -194,6 +198,30 @@ describe('Menu Jira — Plans : ordonnancer un lot de tickets', { skip: dispo ? 
     assert.equal(await page.locator('#jiraPlanResult [data-plan-post]').count(), 0, 'une version passée ne se publie pas');
     await page.locator('#jiraPlanVersion').selectOption('2');
     await page.waitForSelector('#jiraPlanResult [data-plan-post="PROJ-20"]');
+    assert.equal(await page.locator('[data-plan-step="result"]').getAttribute('aria-selected'), 'true', 'lancer mène au résultat');
+  });
+
+  test('rouvrir un plan analysé montre son résultat d’emblée ; les onglets ramènent aux entrées et au prompt', async () => {
+    // Le panneau d'avant était déjà sur le résultat : on attend la vue RELUE du serveur, puis l'ordre affiché en haut.
+    await Promise.all([
+      page.waitForResponse((r) => new RegExp(`/api/jira/plans/${planDb().id}$`).test(r.url()) && r.request().method() === 'GET'),
+      page.locator(`[data-plan-open="${planDb().id}"]`).click(),
+    ]);
+    await page.waitForFunction(() => {
+      const ordre = document.querySelector('#jiraPlanResult .jira-plan-order');
+      const r = ordre && ordre.getBoundingClientRect();
+      return document.querySelector('[data-plan-step="result"]')?.getAttribute('aria-selected') === 'true' && r && r.height > 0 && r.top < 500;
+    }, null, { timeout: 15000 });
+    assert.equal(await page.locator('#jiraPlanForm').isVisible(), false);
+    assert.equal(await page.locator('#jiraPlanPrompt').isVisible(), false);
+    await page.locator('[data-plan-step="inputs"]').click();
+    await page.waitForSelector('#jiraPlanForm', { state: 'visible' });
+    assert.equal(await page.locator('#jiraPlanLabel').inputValue(), 'Facturation T4');
+    await page.locator('[data-plan-step="prompt"]').click();
+    await page.waitForSelector('#jiraPlanPrompt', { state: 'visible' });
+    assert.match(await page.locator('#jiraPlanPrompt').inputValue(), /CONSIGNE-RETOUCHEE-42/);
+    await page.locator('[data-plan-step="result"]').click();
+    await page.waitForSelector('#jiraPlanResult [data-plan-refresh]', { state: 'visible' });
   });
 
   test('relire Jira et Confluence : rien n’a changé, pas d’IA ; un ticket livré, une description et une page revues font une v3', async () => {
@@ -235,6 +263,7 @@ describe('Menu Jira — Plans : ordonnancer un lot de tickets', { skip: dispo ? 
   });
 
   test('repréparer un prompt retouché demande confirmation ; refuser le garde', async () => {
+    await page.locator('[data-plan-step="inputs"]').click();
     await page.locator('#jiraPlanPrepare').click();
     await page.waitForSelector('#confirmModal:not([hidden])');
     await page.locator('#confirmCancel').click();
@@ -244,6 +273,7 @@ describe('Menu Jira — Plans : ordonnancer un lot de tickets', { skip: dispo ? 
   });
 
   test('exporter : Markdown et Word se téléchargent, le PDF passe par l’impression', async () => {
+    await page.locator('[data-plan-step="result"]').click();
     const [md] = await Promise.all([page.waitForEvent('download'), page.locator('[data-plan-export="md"]').click()]);
     /* SANS LOCALE UTF-8 (un conteneur `node:22` nu, la recette de rejeu de la CI), Chromium ne sait pas
        écrire un nom non ASCII — « — » ici, un accent ailleurs — et le remplace par « download » : c'est

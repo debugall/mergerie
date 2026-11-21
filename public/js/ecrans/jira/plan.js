@@ -7,6 +7,11 @@
  * c'est ce texte-là qui part avec « Lancer l'analyse ». Le résultat (ordre, compléments, tickets à
  * créer) vit dans `plan-resultat.js`.
  *
+ * TROIS ÉTAPES, TROIS ONGLETS : entrées, prompt, résultat. Un seul se voit à la fois — sans quoi le
+ * résultat attendait sous le formulaire et le prompt, au bout d'un long défilement. Ouvrir un plan
+ * déjà analysé montre son résultat ; préparer mène au prompt, lancer au résultat. Les trois panneaux
+ * restent dans le DOM (masqués) : ce qu'on a tapé dans l'un survit au passage à l'autre.
+ *
  * Le formulaire n'est JAMAIS redessiné par le sondage d'une analyse en cours : seule la zone du
  * résultat l'est. Sans ça, ce qu'on tape dans le complément ou le prompt disparaîtrait toutes les
  * trois secondes. */
@@ -17,6 +22,7 @@ const PLAN = {
   brouillon: null,    // l'état du formulaire, lu du DOM avant chaque geste
   timer: null,
   ouvert: false,      // le panneau principal montre-t-il un plan (neuf ou existant) ?
+  etape: 'inputs',    // l'onglet visible : inputs | prompt | result
 };
 
 const brouillonVide = () => ({
@@ -87,7 +93,6 @@ const PJ_ACCEPT_PLAN = 'image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yml,.yaml,.xml,.h
 
 function entreesHtml(b, v) {
   return `<form class="jira-plan-section jira-plan-form" id="jiraPlanForm" autocomplete="off">
-      <h4>${esc(tr('jira.plan.step.inputs'))}</h4>
       <label class="jira-spec-field"><span class="jira-spec-lbl">${esc(tr('jira.plan.lbl.label'))}</span>
         <input type="text" id="jiraPlanLabel" maxlength="120" value="${esc(b.label)}" placeholder="${esc(tr('jira.plan.label-ph'))}" /></label>
       <div class="jira-spec-field">
@@ -144,7 +149,7 @@ function promptHtml(v) {
   const enCours = v.status === 'running' || v.status === 'needs_input';
   const lues = (v.pages || []).filter((p) => p.title || p.error);
   return `<section class="jira-plan-section" id="jiraPlanPromptBox">
-      <h4>${esc(tr('jira.plan.step.prompt'))} ${v.prompt_edited ? `<span class="jira-chip">${esc(tr('jira.plan.prompt-edited'))}</span>` : ''}</h4>
+      ${v.prompt_edited ? `<p><span class="jira-chip">${esc(tr('jira.plan.prompt-edited'))}</span></p>` : ''}
       ${v.prompt_stale ? `<p class="jira-spec-hint is-warn">${esc(tr('jira.plan.prompt-stale'))}</p>` : ''}
       ${(v.missing || []).length ? `<p class="jira-spec-hint is-warn">${esc(tr('jira.plan.missing', { keys: v.missing.join(', ') }))}</p>` : ''}
       ${lues.length ? `<ul class="jira-spec-lues muted">${lues.map((p) => `<li>${esc(p.title || p.url)}${p.truncated ? ` (${esc(tr('jira.spec.page-truncated-ui'))})` : ''}${p.error ? ` — ${esc(p.error)}` : ''}</li>`).join('')}</ul>` : ''}
@@ -159,17 +164,49 @@ function promptHtml(v) {
 }
 
 /* ---------- Le panneau ---------- */
+const ETAPES = ['inputs', 'prompt', 'result'];
+const aUnResultat = (v) => !!(v && (v.version || ['running', 'needs_input', 'error'].includes(v.status)));
+/** L'onglet qu'ouvre un plan : son résultat s'il en a un (ou une analyse en cours), sinon son prompt, sinon ses entrées. */
+const etapeDe = (v) => (aUnResultat(v) ? 'result' : (v && v.prompt ? 'prompt' : 'inputs'));
+function etapeOuverte(e) {
+  const v = PLAN.courant;
+  return e === 'inputs' || (e === 'prompt' && !!(v && v.prompt)) || (e === 'result' && aUnResultat(v));
+}
+function etapesHtml() {
+  const v = PLAN.courant;
+  const pastille = (e) => {
+    if (e === 'prompt' && v && v.prompt_stale) return ` <span class="jira-plan-step-dot" title="${esc(tr('jira.plan.prompt-stale'))}"></span>`;
+    if (e === 'result' && v && v.status !== 'draft' && aUnResultat(v)) return ` ${statutPlan(v.status)}`;
+    return '';
+  };
+  return `<div class="jira-plan-head">
+      <h3 class="jira-plan-title">${esc((v && v.label) || tr('jira.plan.new'))}</h3>
+      <div class="segmented jira-plan-steps" role="tablist">${ETAPES.map((e) => `<button type="button" role="tab" data-plan-step="${e}"
+        class="${PLAN.etape === e ? 'active' : ''}" aria-selected="${PLAN.etape === e}"${etapeOuverte(e) ? '' : ' disabled'}>${esc(tr(`jira.plan.step.${e}`))}${pastille(e)}</button>`).join('')}</div>
+    </div>`;
+}
+function montrerEtape(e) {
+  PLAN.etape = etapeOuverte(e) ? e : 'inputs';
+  const zone = $('#jiraPlanSteps');
+  if (zone) zone.innerHTML = etapesHtml();
+  for (const el of $$('#jiraPlanMain [data-plan-panel]')) el.hidden = el.dataset.planPanel !== PLAN.etape;
+}
 function rendrePlan() {
   const v = PLAN.courant;
   const b = PLAN.brouillon;
-  $('#jiraPlanMain').innerHTML = `${entreesHtml(b, v)}<div id="jiraPlanPromptZone">${promptHtml(v)}</div><div id="jiraPlanResult"></div>`;
+  $('#jiraPlanMain').innerHTML = `<div id="jiraPlanSteps"></div>
+    <div data-plan-panel="inputs">${entreesHtml(b, v)}</div>
+    <div data-plan-panel="prompt" id="jiraPlanPromptZone">${promptHtml(v)}</div>
+    <div data-plan-panel="result" id="jiraPlanResult"></div>`;
   brancherCombosBranche($('#jiraPlanRepos'));
   rendreResultatPlan();
+  montrerEtape(PLAN.etape);
   sonderPlan();
 }
 function rendrePrompt() {
   const zone = $('#jiraPlanPromptZone');
   if (zone) zone.innerHTML = promptHtml(PLAN.courant);
+  montrerEtape(PLAN.etape);
 }
 
 /* TANT QU'UNE ANALYSE TOURNE : on relit le plan, et on ne redessine que le résultat et la liste. */
@@ -187,6 +224,7 @@ function sonderPlan() {
          est en train d'y taper. Il sera redessiné quand l'état changera. */
       if (!(etait === 'needs_input' && d.status === 'needs_input')) rendreResultatPlan();
       if (etait !== d.status) {
+        montrerEtape(PLAN.etape);   // la pastille d'état de l'onglet « Résultat »
         // Le bouton « Lancer » se réactive quand l'analyse s'arrête ; le texte du prompt, lui, n'est pas touché.
         const run = $('[data-plan-run]'); if (run) run.disabled = d.status === 'running' || d.status === 'needs_input';
         chargerPlans();
@@ -200,13 +238,13 @@ async function ouvrirPlan(id) {
   await reposOptions();
   try {
     const v = await api(`/jira/plans/${id}`);
-    PLAN.courant = v; PLAN.brouillon = brouillonDe(v); PLAN.ouvert = true;
+    PLAN.courant = v; PLAN.brouillon = brouillonDe(v); PLAN.ouvert = true; PLAN.etape = etapeDe(v);
     rendreListePlans(); rendrePlan();
   } catch (e) { toast(explainError(e.message), true); }
 }
 async function nouveauPlan() {
   await reposOptions();
-  PLAN.courant = null; PLAN.brouillon = brouillonVide(); PLAN.ouvert = true;
+  PLAN.courant = null; PLAN.brouillon = brouillonVide(); PLAN.ouvert = true; PLAN.etape = 'inputs';
   rendreListePlans(); rendrePlan();
   const champ = $('#jiraPlanLabel'); if (champ) champ.focus();
 }
@@ -264,8 +302,8 @@ async function preparerPlan(btn) {
       }
       PLAN.courant = d; PLAN.brouillon = { ...brouillonDe(d), filtreTickets: b.filtreTickets, filtreRepos: b.filtreRepos };
       toast(tr('jira.plan.prepared'));
+      PLAN.etape = 'prompt';
       rendrePlan(); chargerPlans();
-      const zone = $('#jiraPlanPromptBox'); if (zone) zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   } catch (e) { toast(explainError(e.message), true); }
 }
@@ -283,6 +321,7 @@ async function lancerPlan(btn) {
       PLAN.courant = d;
       if (d.job) refreshStatus();
       toast(tr(d.job ? 'jira.plan.launched' : 'jira.plan.done-demo'));
+      PLAN.etape = 'result';
       rendrePrompt(); rendreResultatPlan(); sonderPlan(); chargerPlans();
     });
   } catch (e) { toast(explainError(e.message), true); }
@@ -337,6 +376,7 @@ document.addEventListener('click', async (e) => {
   try {
     if (b.id === 'jiraPlanNew') { await nouveauPlan(); return; }
     if (d.planOpen) { await ouvrirPlan(Number(d.planOpen)); return; }
+    if (d.planStep) { lireFormPlan(); montrerEtape(d.planStep); return; }
     if (d.planEpicLoad !== undefined) {
       lireFormPlan();
       const cle = PLAN.brouillon.epic;

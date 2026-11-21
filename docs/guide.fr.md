@@ -2056,6 +2056,11 @@ L'onglet **Plans** prend un **lot de tickets** et rend quatre choses : l'**ordre
 **tickets à créer** que personne n'a écrits (un préalable technique, une migration, des tests). Un plan est **propre au poste** : ni ses entrées ni son prompt ne
 partent dans le dépôt partagé.
 
+Les trois étapes sont trois **onglets** en tête du plan — *1. Les entrées*, *2. Le prompt final*, *3. Le résultat* —,
+un seul visible à la fois : ouvrir un plan déjà analysé montre directement son résultat, `Préparer le prompt`
+mène au prompt, `Lancer l'analyse` au résultat. L'onglet du résultat porte l'état de l'analyse (en cours,
+questions, prêt, erreur), celui du prompt une pastille quand Jira a changé depuis.
+
 1. **Les entrées.** Un nom ; les tickets — **`Charger ses tickets`** depuis la clé d'une epic (les enfants arrivent
    cochés, un filtre masque sans décocher) et/ou des clés tapées à la main ; des **pages Confluence** ; les
    **dépôts** à lire, chacun sur **sa branche** (liste avec recherche, vide = la branche par défaut) ; un
@@ -3712,7 +3717,9 @@ un code ne sert qu'une fois. Ce que le coffre protège : une **copie** du fichie
 données partagé pour un débogage, disque volé. Ce qu'il ne protège pas : un programme qui tourne sous ton
 compte pendant que Mergerie est déverrouillé — il peut lire la mémoire du processus ou modifier son code ;
 la 2FA ferme la porte à qui connaît le mot de passe sans avoir le téléphone, elle n'ajoute rien au
-chiffrement d'une copie. Au démarrage, un avertissement signale un `.env` du dossier courant qui choisit le binaire de
+chiffrement d'une copie. Pour un plugin, le coffre chiffre ce qu'il range comme secret (`ctx.secrets`, réglages
+marqués `x-secret`), tiers compris ; un réglage au nom de secret qu'il ne marque pas reste en clair, et sa carte
+dans Réglages → Plugins le dit. Au démarrage, un avertissement signale un `.env` du dossier courant qui choisit le binaire de
 l'agent (`AGENT_BIN`, `AGENT_ARGS`, ou leurs anciens noms `COPILOT_*`).
 
 **Exécution sans shell, et git durci.** git, Docker et l'agent sont lancés via `spawn` avec un **tableau
