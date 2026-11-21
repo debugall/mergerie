@@ -45,6 +45,9 @@ describe('Menu Jira — Plans : ordonnancer un lot de tickets', { skip: dispo ? 
     app.state.confluencePages['4242'] = { title: 'Règles TVA', storage: '<p>Le taux <strong>réduit</strong>.</p>' };
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'moi@example.com', jira_token: 'jetonjira', jira_watch_minutes: '0' });
     idRepo = (await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' })).body.id;
+    // Un dépôt classé AVANT lui (« aaa/… ») : une fois « grp/app » coché, il doit passer derrière.
+    const autre = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'planui-autre-')));
+    await app.api('POST', '/api/repos', { url: autre.url, project: 'aaa/outils' });
 
     navigateur = await lancerNavigateur();
     page = await navigateur.newPage({ viewport: { width: 1500, height: 1000 } });
@@ -217,6 +220,8 @@ describe('Menu Jira — Plans : ordonnancer un lot de tickets', { skip: dispo ? 
     await page.locator('[data-plan-step="inputs"]').click();
     await page.waitForSelector('#jiraPlanForm', { state: 'visible' });
     assert.equal(await page.locator('#jiraPlanLabel').inputValue(), 'Facturation T4');
+    assert.deepEqual(await page.locator('#jiraPlanRepos .jira-spec-repo').evaluateAll((l) => l.map((x) => x.textContent.trim().split(/\s+/)[0])),
+      ['grp/app', 'aaa/outils'], 'le dépôt coché est en tête, devant celui que l’ordre alphabétique plaçait avant');
     await page.locator('[data-plan-step="prompt"]').click();
     await page.waitForSelector('#jiraPlanPrompt', { state: 'visible' });
     assert.match(await page.locator('#jiraPlanPrompt').inputValue(), /CONSIGNE-RETOUCHEE-42/);

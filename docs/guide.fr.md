@@ -2063,7 +2063,7 @@ questions, prêt, erreur), celui du prompt une pastille quand Jira a changé dep
 
 1. **Les entrées.** Un nom ; les tickets — **`Charger ses tickets`** depuis la clé d'une epic (les enfants arrivent
    cochés, un filtre masque sans décocher) et/ou des clés tapées à la main ; des **pages Confluence** ; les
-   **dépôts** à lire, chacun sur **sa branche** (liste avec recherche, vide = la branche par défaut) ; un
+   **dépôts** à lire, chacun sur **sa branche** (liste avec recherche, les cochés en tête, vide = la branche par défaut) ; un
    **complément documentaire** ; des **pièces jointes** (gardées sur le plan, recopiées dans chaque analyse) ; la case
    **`Inclure les commentaires des tickets`**, **décochée** par défaut ; **`L'IA peut poser des questions`**. Le
    budget de la préparation est dit avant : *1 appel Jira par tranche de cent tickets* (une recherche `key IN`), *+ 1

@@ -1979,7 +1979,7 @@ ready, error), the prompt tab a dot when Jira changed since.
 
 1. **Inputs.** A name; the tickets — **`Load its tickets`** from an epic key (the children arrive ticked, a filter
    hides without unticking) and/or keys typed by hand; **Confluence pages**; the **repositories** to read, each on
-   **its branch** (searchable list, empty = the default branch); a **documentation complement**; **attachments**
+   **its branch** (searchable list, ticked ones first, empty = the default branch); a **documentation complement**; **attachments**
    (kept on the plan, copied into each analysis); the **`Include the tickets’ comments`** box, **unticked** by
    default; **`The AI may ask questions`**. The cost of preparing is shown first: *1 Jira call per hundred
    tickets* (one `key IN` search), *+ 1 per ticket* if comments are included, *1 per Confluence page*.

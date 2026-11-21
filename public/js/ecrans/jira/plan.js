@@ -76,7 +76,10 @@ function reposHtml(b) {
   const q = b.filtreRepos.trim().toLowerCase();
   const repos = SPEC.repos || [];
   if (!repos.length) return `<span class="muted">${esc(tr('jira.spec.repos-none'))}</span>`;
-  return repos.map((r) => `<div class="jira-spec-repo" data-row data-spec-row="${r.id}"${q && !r.project.toLowerCase().includes(q) ? ' hidden' : ''}>
+  /* Les dépôts cochés en tête (dans leur ordre d'origine), le reste après : sur une longue liste, ce qui
+     est choisi se voit sans chercher. Le tri se fait au dessin, pas au clic — une ligne ne saute pas sous le curseur. */
+  const coches = repos.filter((r) => b.repos.includes(r.id));
+  return [...coches, ...repos.filter((r) => !b.repos.includes(r.id))].map((r) => `<div class="jira-spec-repo" data-row data-spec-row="${r.id}"${q && !r.project.toLowerCase().includes(q) ? ' hidden' : ''}>
       <label class="inline-check"><input type="checkbox" data-plan-repo="${r.id}"${b.repos.includes(r.id) ? ' checked' : ''} /> <span>${esc(r.project)}</span></label>
       ${b.repos.includes(r.id) ? brancheComboHtml(b.branches[r.id] || '') : ''}</div>`).join('');
 }
