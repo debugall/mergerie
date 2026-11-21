@@ -15,6 +15,8 @@ const { nonFiable, nonceRun } = require('../core/nonfiable');
 const agentsession = require('../agent/session');
 const questions = require('../agent/questions');
 const specTicket = require('./spec');
+const planJira = require('./plan');
+const jiraplan = require('../integrations/jiraplan');
 const jiraspec = require('../integrations/jiraspec');
 const { avecConsignes } = require('../core/prompts');
 const agentpass = require('../agent/pass');
@@ -904,6 +906,14 @@ async function runExploration(task, { question, previous, onLog, apresReponses =
       const sp = specTicket.specDeTache(task.id);
       onLog('$ (DRY-RUN — proposition de spec simulée)');
       stdout = jiraspec.sortieDryRun(sp.nonce, sp.ticket_key);
+      fs.writeFileSync(outAbs, stdout, 'utf8');
+      copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
+    } else if (copilot.isDryRun() && planJira.planDeTache(task.id) && (apresReponses || previous || !task.ask_questions)) {
+      /* DRY-RUN + PLAN DE TICKETS : des blocs ORDRE · COMPLEMENT · NOUVEAU · SYNTHESE complets au
+         nonce du plan — la chaîne entière (job → extraction → version → publication) sans IA. */
+      const pl = planJira.planDeTache(task.id);
+      onLog('$ (DRY-RUN — plan de tickets simulé)');
+      stdout = jiraplan.sortieDryRun(pl.nonce, planJira.clesAOrdonner(pl));
       fs.writeFileSync(outAbs, stdout, 'utf8');
       copilot.recordUsage('explore', prompt, stdout, null, { kind: 'task', id: task.id });
     } else if (copilot.isDryRun() && task.ask_questions && !apresReponses) {

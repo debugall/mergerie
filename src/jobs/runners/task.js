@@ -5,6 +5,7 @@ const db = require('../../db');
 const taskrunner = require('../../session/taskrunner');
 const { apresRun } = require('../../agent/profile/apres');
 const spec = require('../../session/spec');
+const planJira = require('../../session/plan');
 const { exigerApprobation } = require('../../agent/profile/modele');
 const proc = require('../../core/proc');
 const notify = require('../../core/notify');
@@ -64,6 +65,9 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
        échouer le job, le Markdown reste lisible dans Dev IA. */
     try { spec.apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
     catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
+    // LE PLAN D'UN LOT DE TICKETS : même règle — ses blocs extraits, ou ses questions en attente.
+    try { planJira.apresRun(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog); }
+    catch (e) { onLog(t('agents.log.output-failed', { message: e.message })); }
     // La session peut s'être mise EN ATTENTE (l'agent a posé des questions) : notif dédiée,
     // pas « prête à push ». Sinon, codage terminé → prêt à push/MR.
     const after = db.prepare('SELECT status FROM task WHERE id = ?').get(task.id);
@@ -102,6 +106,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     const full = (e && e.stack) ? `${e.message}\n\n${e.stack}` : String(e && e.message || e);
     db.prepare("UPDATE task SET status='error', last_error=?, updated_at=? WHERE id=?").run(full, new Date().toISOString(), task.id);
     try { spec.marquerErreur(task.id, e.message); } catch { /* la spec ne doit pas masquer l'erreur de la session */ }
+    try { planJira.marquerErreur(task.id, e.message); } catch { /* le plan non plus */ }
     logLine(jobId, null, `❌ Task ERREUR : ${e.message}`);
     setJob(jobId, { status: 'error', finished_at: new Date().toISOString(), message: e.message });
     notify.push('job_failed', { task_id: task.id, message: String(e.message).slice(0, 200) });

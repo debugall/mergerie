@@ -974,6 +974,30 @@ async function epicChildren(cfg, epicKey) {
   }));
 }
 
+/* ---------- Plusieurs tickets, en une recherche ----------
+   Le plan d'un lot de tickets (Jira → Plans) les lit TOUS : une recherche `key IN (…)` par
+   tranche de cent — une page, un appel — plutôt qu'un détail par ticket. Description en
+   Markdown, liens et sous-tâches (les dépendances que l'ordonnancement doit voir). Un ticket
+   absent de la réponse (supprimé, pas le droit de le voir) n'est simplement pas rendu : c'est à
+   l'appelant de le dire. */
+async function issuesByKeys(cfg, keys) {
+  if (!isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
+  const cles = [...new Set((keys || []).map((k) => String(k || '').trim().toUpperCase()).filter((k) => /^[A-Z][A-Z0-9]+-\d+$/.test(k)))];
+  const out = [];
+  for (let i = 0; i < cles.length; i += PAGE) {
+    const tranche = cles.slice(i, i + PAGE);
+    const data = await runSearch(cfg, `key IN (${tranche.join(', ')}) ORDER BY key ASC`, `${TICKET_FIELDS},description,issuelinks,subtasks`, PAGE);
+    for (const issue of data.issues || []) {
+      out.push({
+        ...withUrls(cfg, issueMeta(issue)),
+        descriptionMd: adfToMarkdown((issue.fields || {}).description),
+        related: relatedOf(cfg, issue.fields || {}),
+      });
+    }
+  }
+  return out;
+}
+
 // Transitions POSSIBLES du ticket (= les changements d'état autorisés pour l'utilisateur) :
 // chaque transition a un id, un nom (l'action) et l'état cible.
 async function transitions(cfg, key) {
@@ -1044,4 +1068,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { isConfigured, request, commentaireTech, marqueurTech, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { issuesByKeys, isConfigured, request, commentaireTech, marqueurTech, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

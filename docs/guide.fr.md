@@ -1761,7 +1761,7 @@ d'équipe, dans *Réglages → Données partagées → Page Équipe* : le nombre
 (2) et la fenêtre des reprises terminées (7 jours) ; le seuil de décision est celui du brief.
 
 ### Jira
-Quatre sous-onglets : **Mes tickets**, **Surveillés**, **Analysés** et **Stats**. Le menu porte une **pastille** = le nombre de
+Cinq sous-onglets : **Mes tickets**, **Surveillés**, **Analysés**, **Stats** et **Plans**. Le menu porte une **pastille** = le nombre de
 tickets **en cours qui te sont affectés** (catégorie de statut *In Progress*, la seule définition qui
 traverse les workflows, les noms d'états étant libres d'un projet à l'autre). Elle est alimentée par un
 compteur **mis en cache côté serveur** et rafraîchi par la surveillance : l'afficher ne coûte pas un appel
@@ -2047,6 +2047,54 @@ et le propose en commentaire.
   commentaire, et des **consignes d'équipe** ajoutées à chaque analyse (« nos endpoints suivent
   `/v2/<ressource>` », « jamais de migration destructive ») — de la consigne, pas du protocole : le format
   de la proposition, lui, n'est pas éditable.
+
+
+#### Plans : ordonnancer un lot de tickets
+
+L'onglet **Plans** prend un **lot de tickets** et rend quatre choses : l'**ordre** dans lequel les réaliser, la
+**spécification fonctionnelle** du lot, ce qui **manque** à chacun pour être réalisable sans aller-retour, et les
+**tickets à créer** que personne n'a écrits (un préalable technique, une migration, des tests). Un plan est **propre au poste** : ni ses entrées ni son prompt ne
+partent dans le dépôt partagé.
+
+1. **Les entrées.** Un nom ; les tickets — **`Charger ses tickets`** depuis la clé d'une epic (les enfants arrivent
+   cochés, un filtre masque sans décocher) et/ou des clés tapées à la main ; des **pages Confluence** ; les
+   **dépôts** à lire, chacun sur **sa branche** (liste avec recherche, vide = la branche par défaut) ; un
+   **complément documentaire** ; des **pièces jointes** (gardées sur le plan, recopiées dans chaque analyse) ; la case
+   **`Inclure les commentaires des tickets`**, **décochée** par défaut ; **`L'IA peut poser des questions`**. Le
+   budget de la préparation est dit avant : *1 appel Jira par tranche de cent tickets* (une recherche `key IN`), *+ 1
+   par ticket* si les commentaires sont inclus, *1 par page* Confluence.
+2. **Le prompt final.** **`Préparer le prompt`** enregistre les entrées, lit Jira et Confluence et montre le texte
+   composé, **modifiable** : c'est **ce texte-là qui part**, tel quel — Mergerie n'y ajoute que ses règles
+   d'exploration (dépôts et branches, lecture seule, fichier de réponse, questions). Un prompt retouché est marqué
+   *modifié à la main* ; le repréparer demande confirmation, et changer les entrées le signale comme périmé.
+3. **L'analyse** tourne en **arrière-plan**, comme une exploration (le journal la suit, `Voir la session` l'ouvre dans
+   Dev IA). Si l'IA a des **questions**, le formulaire de réponse s'affiche **sur le plan** ; elle reprend dès qu'on a
+   répondu.
+4. **Le résultat.** L'**ordre de réalisation** en tableau — *#*, *ticket* (lien), *libellé*, *état* (les deux
+   **viennent de Jira**, pas de l'IA) et *pourquoi à cette place* —, les tickets à créer glissés à leur place (*nouveau*,
+   *à créer*), et les tickets que l'IA n'aurait pas placés signalés dessous. Sous l'ordre, la **spécification
+   fonctionnelle** : ce que fait le produit, pour qui et selon quelles règles, rédigée à partir de tout ce qui a été
+   fourni (tickets, pages, complément, pièces jointes, code) — objectif et périmètre, acteurs, parcours pas à pas,
+   règles de gestion numérotées (*RG-1*…) rattachées à leurs tickets, états et transitions, données, cas limites,
+   critères d'acceptation par ticket, et points ouverts ; ce que l'IA déduit y est marqué *hypothèse*. Elle part
+   avec l'export, et un suivi la réécrit avec le reste. L'**avancement compte** : un ticket
+   **terminé** dans Jira est dit à l'IA comme acquis — ses dépendances sont satisfaites, il **sort de l'ordre** et se
+   liste dessous (*Déjà terminés, hors de l'ordre*) — ; un ticket **en cours** passe en tête sauf blocage, et son
+   complément ne porte que sur ce qui reste. Puis les **compléments par ticket** :
+   **`Publier en commentaire`** ouvre le **texte exact** qui partira (ligne repère comprise, en lecture seule) et
+   valider le publie **tel quel** ; republier **met à jour le même commentaire** (*publié (v2)*) — jamais un second.
+   Ce commentaire est **distinct** de la précision technique du ticket, qui n'est jamais touchée. Les **tickets à
+   créer** se copient (titre + description). Enfin la **synthèse** (chemin critique, risques, parallélisme).
+5. **Modifier et rejouer.** Les entrées se modifient et le prompt se prépare à nouveau ; **`Relancer l'analyse`** produit une
+   **nouvelle version**, un **suivi** (« place PROJ-14 avant PROJ-9 ») réécrit le plan dans la même session. Les
+   tickets ou les pages ont bougé ? **`Relire Jira`** (**`Relire Jira et Confluence`** quand le plan a des pages)
+   relit les tickets du plan et ses pages Confluence (même budget qu'à la préparation) et les compare à ce que le
+   plan avait lu : état, libellé, description ou commentaires d'un ticket ; texte ou titre d'une page ; ticket ou
+   page devenu illisible. Rien n'a changé : le plan reste tel quel, **sans appel à l'IA**. Sinon, la session du plan reprend avec
+   les changements et les tickets et pages touchés tels qu'ils sont maintenant, et rend une nouvelle version (*relecture
+   Jira*) qui liste ce qui a changé — les suivis précédents ne sont pas perdus. Le prompt de lancement est alors dit
+   périmé : il ne sert qu'à **relancer** de zéro. Les **versions** se relisent (une version passée ne se publie pas). **`Exporter`** : **Markdown**, **Word** ou **PDF**
+   (par la boîte d'impression).
 
 ### Git
 Opérations sur **plusieurs dépôts à la fois** et exploration des branches.

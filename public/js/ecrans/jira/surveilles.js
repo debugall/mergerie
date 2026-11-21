@@ -206,6 +206,8 @@ function showJiraSub(sub) {
   $('#jiraSubWatch').hidden = sub !== 'watch';
   $('#jiraSubAnalysed').hidden = sub !== 'analysed';
   $('#jiraSubStats').hidden = sub !== 'stats';
+  $('#jiraSubPlan').hidden = sub !== 'plan';
+  if (sub === 'plan') chargerPlans();
   if (sub === 'watch') loadJiraWatch();
   if (sub === 'analysed') chargerAnalyses();
   if (sub === 'stats') chargerJiraStats();

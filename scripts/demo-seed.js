@@ -843,6 +843,70 @@ db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, stat
   'unchanged', at(1), JSON.stringify({ [repoIds['groupe/batch-jobs']]: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2' }), at(60), at(1));
 }
 
+// ---------- Jira → Plans : un lot de tickets ordonnancé ----------
+/* UN PLAN PRÊT, de quoi tout voir sans IA : l'ordre (un ticket à créer glissé en deuxième place), deux
+   compléments dont un déjà publié, un ticket à créer, une synthèse — et le prompt qui l'a produit,
+   tel qu'il a été préparé. Les tickets sont ceux du Jira fictif ; PROJ-1375, déjà terminé, reste hors de l'ordre. */
+{
+  const planDemo = require('../src/session/plan');
+  const jiraplanDemo = require('../src/integrations/jiraplan');
+  const demoJiraSeed = require('../src/demo/jira');
+  const cles = ['PROJ-1421', 'PROJ-1408', 'PROJ-1402', 'PROJ-1375'];
+  const p = planDemo.creer({
+    label: 'Paiement et panier', epic_key: 'PROJ-1100', ticket_keys: cles,
+    repo_ids: [repoIds['groupe/api-core'], repoIds['groupe/webapp-front']], repo_branches: { [repoIds['groupe/api-core']]: 'main' },
+    complement: 'Le paiement en 3× doit sortir avant la fin du sprint ; l’équipe front est réduite de moitié cette semaine.',
+    include_comments: false, ask_questions: true,
+  }, { verifierOrigine: false });
+  const tickets = cles.map((k) => demoJiraSeed.issue(k));
+  const nonce = jiraplanDemo.nonceRun();
+  planDemo.poser(p.id, {
+    prompt: jiraplanDemo.composerPrompt({ tickets, manquants: [], pages: [], complement: p.complement, nonce }),
+    // Préparé APRÈS la dernière saisie des entrées : sinon l'écran l'annoncerait périmé.
+    prompt_at: new Date(Date.now() + 1000).toISOString(), nonce, tickets_json: JSON.stringify(tickets.map(jiraplanDemo.photoTicket)), pages_json: '[]', missing_json: '[]',
+  });
+  const resultat = {
+    ordre: [
+      { key: 'PROJ-1421', raison: 'le paiement fractionné relit le panier restauré : sans ce correctif, il calcule sur un panier vide', nouveau: false },
+      { key: 'NOUVEAU-1', raison: 'le contrat de l’API de paiement fractionné doit exister avant que front et back s’y branchent', nouveau: true },
+      { key: 'PROJ-1408', raison: 'dépend du panier corrigé et du contrat d’API', nouveau: false },
+      { key: 'PROJ-1402', raison: 'indépendant : peut avancer en parallèle, côté journal structuré', nouveau: false },
+    ],
+    complements: {
+      'PROJ-1421': '**À préciser** :\n- la durée de vie attendue du panier d’un visiteur non connecté (le code la fixe à 30 min dans `cart/session.ts`) ;\n- le comportement quand un article du panier n’est plus en stock à la reconnexion.',
+      'PROJ-1408': '**À préciser** :\n- qui paie les frais du paiement fractionné quand l’offre est « sans frais » (marge ou partenaire) ;\n- le montant minimum et maximum éligibles ;\n- le remboursement partiel d’une commande payée en 3×.',
+    },
+    nouveaux: [{ ref: 'NOUVEAU-1', titre: 'Définir le contrat de l’API de paiement fractionné', markdown: 'Décrire les routes, les états d’un paiement en plusieurs fois et les erreurs, avant que `api-core` et `webapp-front` ne s’y branchent.\n\n**Critères d’acceptation** : un schéma OpenAPI relu par le front et le back.' }],
+    fonctionnel: [
+      '### Objectif et périmètre',
+      'Fiabiliser le tunnel de commande : le panier survit à la reconnexion, et le client peut payer en 3× sans frais. **Hors périmètre** : le paiement en 4×, les cartes cadeaux.',
+      '', '### Acteurs', '- le client, connecté ou non ;', '- le partenaire de paiement fractionné ;', '- le service client, qui rembourse.',
+      '', '### Parcours',
+      '1. Le client remplit son panier sans être connecté, puis se connecte : il retrouve ses articles, fusionnés avec ceux de son compte (PROJ-1421).',
+      '2. À la caisse, l’option « 3× sans frais » s’affiche quand le montant est éligible (PROJ-1408).',
+      '3. Il valide : la première échéance est prélevée, les deux suivantes à 30 et 60 jours.',
+      '', '### Règles de gestion',
+      '- **RG-1** : un panier anonyme vit 30 min sans activité (PROJ-1421 — valeur lue dans `cart/session.ts`).',
+      '- **RG-2** : à la reconnexion, un article présent des deux côtés garde la plus grande quantité (PROJ-1421).',
+      '- **RG-3** : le 3× n’est proposé qu’entre un montant minimum et un maximum (PROJ-1408 — bornes à fixer).',
+      '- **RG-4** : chaque étape du paiement écrit un événement au journal structuré (PROJ-1402).',
+      '', '### États et transitions', 'Paiement fractionné : `créé → 1re échéance payée → soldé`, ou `→ en défaut` sur un rejet d’échéance.',
+      '', '### Cas limites et erreurs', '- un article du panier n’est plus en stock à la reconnexion ;', '- le partenaire refuse le dossier : retour au paiement comptant, panier intact.',
+      '', '### Critères d’acceptation',
+      '- **PROJ-1421** : après reconnexion, le panier contient les articles des deux sessions.',
+      '- **PROJ-1408** : une commande éligible se paie en 3×, une non éligible ne voit pas l’option.',
+      '- **PROJ-1402** : chaque transition du paiement laisse un événement au journal.',
+      '', '### Points ouverts et hypothèses', '- qui paie les frais du 3× « sans frais » ;', '- **hypothèse** : le remboursement partiel suit l’échéancier restant.',
+    ].join('\n'),
+    synthese: 'Chemin critique : **PROJ-1421 → contrat d’API → PROJ-1408**. PROJ-1402 avance en parallèle. Risque principal : la règle des frais du paiement en 3×, à trancher avec le PO avant de coder.',
+  };
+  planDemo.ajouterVersion(planDemo.planById(p.id), resultat, 'ai');
+  planDemo.poser(p.id, { status: 'done' });
+  const v = planDemo.versionCourante(p.id);
+  planDemo.noterPost(p.id, 'PROJ-1421', { commentId: 'demo-plan-1', version: v.version,
+    text: jiraplanDemo.corpsCommentaire({ marker: '📋 Complément de plan — Mergerie', label: p.label, uid: p.uid, version: v.version, markdown: resultat.complements['PROJ-1421'] }) });
+}
+
 // ---------- codage hors dépôt (« Codage personnalisé ») ----------
 // Session de codage IA dans des dossiers locaux, SANS git : remplit l'onglet dédié.
 // (Une réussie sur deux dossiers, une en erreur, pour montrer les deux états agrégés.)

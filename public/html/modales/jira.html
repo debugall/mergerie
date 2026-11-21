@@ -18,3 +18,18 @@
         </div>
     </div>
 </div>
+
+<!-- Jira → Plans : publier le complément d'un ticket. Le texte EXACT qui partira, en lecture seule ;
+     valider le publie tel quel, ou met à jour le commentaire déjà publié par ce plan. -->
+<div id="jiraPlanPostModal" class="modal" hidden>
+    <div class="modal-box jira-plan-post-box">
+        <h3 id="jiraPlanPostTitle"></h3>
+        <p id="jiraPlanPostNote" class="muted"></p>
+        <pre id="jiraPlanPostText" class="jira-plan-post-text"></pre>
+        <div class="modal-actions">
+            <span class="spacer"></span>
+            <button type="button" class="btn" id="jiraPlanPostCancel" data-i18n="ui.cancel">Annuler</button>
+            <button type="button" class="btn btn-primary" id="jiraPlanPostOk"><svg class="ico"><use href="#i-upload"/></svg><span id="jiraPlanPostOkLbl"></span></button>
+        </div>
+    </div>
+</div>

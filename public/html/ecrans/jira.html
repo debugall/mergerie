@@ -5,6 +5,7 @@
             <button data-jsub="watch" role="tab" data-i18n-title="jira.sub.watch-title"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="jira.sub.watch">Surveillés</span><span class="nav-count" id="jiraWatchCount" hidden>0</span></button>
             <button data-jsub="analysed" role="tab" data-i18n-title="jira.sub.analysed-title"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="jira.sub.analysed">Analysés</span><span class="nav-count" id="jiraAnalysedCount" hidden>0</span></button>
             <button data-jsub="stats" role="tab" data-i18n-title="jira.sub.stats-title"><svg class="ico"><use href="#i-chart"/></svg><span data-i18n="jira.sub.stats">Stats</span></button>
+            <button data-jsub="plan" role="tab" data-i18n-title="jira.sub.plan-title"><svg class="ico"><use href="#i-grid"/></svg><span data-i18n="jira.sub.plan">Plans</span><span class="nav-count" id="jiraPlanCount" hidden>0</span></button>
         </div>
         <div id="jiraSubMine">
         <div class="toolbar">
@@ -121,6 +122,21 @@
              Les mêmes filtres que « Mes tickets », mais À PART : ce qu'on filtre ici ne touche pas la
              liste, et inversement. Les comptes portent sur l'ensemble ENTIER (le serveur pagine), pas
              sur les cent tickets qu'une liste affiche. -->
+        <!-- Plans : un lot de tickets (une epic, une liste), des pages, des dépôts sur leur branche,
+             un complément et des pièces → l'ordre de réalisation, les compléments par ticket (publiables
+             en commentaire), les tickets à créer. De poste : rien ne part dans le dépôt partagé. -->
+        <div id="jiraSubPlan" hidden>
+            <p class="muted" style="max-width:760px" data-i18n="jira.plan.intro">Choisis des tickets — une epic ou une liste —, des pages Confluence et des dépôts sur leur branche : l’IA lit le tout et rend l’ordre dans lequel réaliser les tickets, ce qui manque à chacun, et les tickets à créer. Tu relis le prompt avant qu’il parte.</p>
+            <div class="jira-plan-layout">
+                <aside class="jira-plan-side">
+                    <button type="button" id="jiraPlanNew" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="jira.plan.new">Nouveau plan</span></button>
+                    <input id="jiraPlanSearch" type="search" class="search" placeholder="Rechercher un plan…" data-i18n-placeholder="jira.plan.search-ph" />
+                    <div id="jiraPlanList" class="jira-plan-list"></div>
+                </aside>
+                <div id="jiraPlanMain" class="jira-plan-main"></div>
+            </div>
+        </div>
+
         <div id="jiraSubStats" hidden>
             <div class="toolbar">
                 <button id="jiraStatsRefresh" class="btn" data-i18n-title="jira.refresh-title"><svg class="ico"><use href="#i-refresh"/></svg><span data-i18n="jira.refresh">Rafraîchir</span></button>

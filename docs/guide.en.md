@@ -1689,7 +1689,7 @@ page*: the working days before "quiet" (2) and the window of finished takeovers 
 threshold is the brief's.
 
 ### Jira
-Four sub-tabs: **My tickets**, **Watched**, **Analysed** and **Stats**. The menu carries a **badge** = the number of tickets
+Five sub-tabs: **My tickets**, **Watched**, **Analysed**, **Stats** and **Plans**. The menu carries a **badge** = the number of tickets
 **in progress that are assigned to you** (status category *In Progress*, the only definition that survives
 across workflows, since state names are free from one project to the next). It is fed by a counter
 **cached server-side** and refreshed by the watcher: showing it does not cost a Jira call every time you
@@ -1963,6 +1963,50 @@ comment.
 - **Settings → Jira**: address and token of a Confluence Server / Data Center, the comment's marker line,
   and **team guidelines** added to every analysis ("our endpoints follow `/v2/<resource>`", "never a
   destructive migration") — guidance, not protocol: the proposal's format itself is not editable.
+
+
+#### Plans: ordering a batch of tickets
+
+The **Plans** tab takes a **batch of tickets** and returns four things: the **order** in which to deliver them,
+the batch's **functional specification**, what each one is **missing** to be deliverable without going back and
+forth, and the **tickets to create** nobody wrote (a technical prerequisite, a migration, tests). A plan belongs to **the workstation**: neither its inputs
+nor its prompt go to the shared data repository.
+
+1. **Inputs.** A name; the tickets — **`Load its tickets`** from an epic key (the children arrive ticked, a filter
+   hides without unticking) and/or keys typed by hand; **Confluence pages**; the **repositories** to read, each on
+   **its branch** (searchable list, empty = the default branch); a **documentation complement**; **attachments**
+   (kept on the plan, copied into each analysis); the **`Include the tickets’ comments`** box, **unticked** by
+   default; **`The AI may ask questions`**. The cost of preparing is shown first: *1 Jira call per hundred
+   tickets* (one `key IN` search), *+ 1 per ticket* if comments are included, *1 per Confluence page*.
+2. **The final prompt.** **`Prepare the prompt`** saves the inputs, reads Jira and Confluence and shows the composed
+   text, **editable**: **this text is what goes**, as is — Mergerie only adds its exploration rules (repositories and
+   branches, read-only, answer file, questions). An edited prompt is marked *edited by hand*; preparing it again
+   asks for confirmation, and changing the inputs flags it as out of date.
+3. **The analysis** runs **in the background**, like an exploration (the journal follows it, `Open the session`
+   shows it in AI Dev). If the AI has **questions**, the answer form shows **on the plan**; it resumes once answered.
+4. **The result.** The **order of work** as a table — *#*, *ticket* (link), *summary*, *status* (both **come from
+   Jira**, not from the AI) and *why at this place* —, the tickets to create slotted in (*new*, *to create*), and any
+   ticket the AI left out flagged below. Under the order, the **functional specification**: what the product does,
+   for whom and under which rules, written from everything provided (tickets, pages, complement, attachments, code)
+   — goal and scope, actors, step-by-step journeys, numbered business rules (*RG-1*…) tied to their tickets, states
+   and transitions, data, edge cases, acceptance criteria per ticket, and open points; what the AI infers is marked
+   *assumption*. It goes with the export, and a follow-up rewrites it with the rest. **Progress counts**: a ticket **done** in Jira is given to the AI as
+   delivered — its dependencies are satisfied, it **leaves the order** and is listed below (*Already done, out of the
+   order*) —; a ticket **in progress** comes first unless blocked, and its complement covers only what remains. Then the **complements per ticket**: **`Publish as a comment`** opens the
+   **exact text** that will go (marker line included, read-only) and confirming publishes it **as is**; publishing
+   again **updates the same comment** (*published (v2)*) — never a second one. This comment is **separate** from the
+   ticket's technical brief, which is never touched. **Tickets to create** can be copied (title + description).
+   Finally the **summary** (critical path, risks, parallel work).
+5. **Edit and replay.** Inputs can be edited and the prompt prepared again; **`Run the analysis again`** produces a
+   **new version**, a **follow-up** (“put PROJ-14 before PROJ-9”) rewrites the plan in the same session. Tickets moved
+   or pages moved? **`Re-read Jira`** (**`Re-read Jira and Confluence`** when the plan has pages) re-reads the plan's
+   tickets and its Confluence pages (same budget as preparing) and compares them with what the plan had read: a
+   ticket's status, summary, description or comments; a page's text or title; a ticket or page no longer readable. Nothing
+   changed: the plan stays as it is, **with no AI call**. Otherwise the plan's session resumes with the changes and
+   the affected tickets and pages as they are now, and returns a new version (*Jira re-read*) listing what changed — earlier
+   follow-ups are not lost. The launch prompt is then flagged out of date: it only serves to **run again** from
+   scratch. **Versions** can be re-read (a past version cannot be published). **`Export`**: **Markdown**, **Word** or **PDF** (through the
+   print dialog).
 
 ### Git
 Operations across **several repositories at once**, and branch exploration.

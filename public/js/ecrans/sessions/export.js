@@ -1,6 +1,6 @@
 'use strict';
 /* Export d'une réponse d'agent (HTML · Word · PDF). */
-// @expose telecharger
+// @expose exporterMarkdown, telecharger
 /* ---------- Export d'une réponse d'agent (HTML · Word · PDF) ----------
    Une réponse d'IA se relit souvent ailleurs que dans Mergerie : dans un ticket, dans un
    compte rendu, envoyée à quelqu'un qui n'a pas l'outil. Copier le Markdown ne suffit pas
@@ -35,12 +35,11 @@ const CSS_EXPORT = `
 
 /* Le document autonome. Le titre et la date sont dans le corps, pas seulement dans le nom du
    fichier : un document imprimé ou transféré perd son nom de fichier bien avant son contenu. */
-function documentExport(titre) {
-  const corps = $('#taskMdBody');
+function documentExport(titre, corpsHtml) {
   return `<!doctype html><html lang="${I18Nrt.currentLocale().slice(0, 2)}"><head><meta charset="utf-8" />`
     + `<title>${esc(titre)}</title><style>${CSS_EXPORT}</style></head><body>`
     + `<h1>${esc(titre)}</h1><p class="meta">Mergerie — ${esc(fmtDateTime(new Date().toISOString()))}</p>`
-    + (corps ? corps.innerHTML : '') + '</body></html>';
+    + (corpsHtml || '') + '</body></html>';
 }
 
 // Nom de fichier lisible : on écarte ce qui casse un chemin, on garde les accents.
@@ -56,12 +55,19 @@ function telecharger(blob, nom) {
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-async function exporterReponse(format) {
-  const titre = $('#taskMdTitle').textContent || 'Mergerie';
-  if (!currentMd.trim()) { toast(tr('export.empty'), true); return; }
+/* EXPORTER UN MARKDOWN, quel que soit l'écran qui le porte : `md` le fichier tel quel, `html` et
+   `pdf` le rendu (`corpsHtml`, celui de l'écran), `docx` assemblé par le serveur. La réponse d'un
+   agent et le plan d'un lot de tickets (Jira → Plans) passent par ici. */
+async function exporterMarkdown(format, titre, markdown, corpsHtml) {
+  if (!String(markdown || '').trim()) { toast(tr('export.empty'), true); return; }
   try {
+    if (format === 'md') {
+      telecharger(new Blob([markdown], { type: 'text/markdown;charset=utf-8' }), `${nomExport(titre)}.md`);
+      toast(tr('export.done', { format: 'Markdown' }));
+      return;
+    }
     if (format === 'html') {
-      telecharger(new Blob([documentExport(titre)], { type: 'text/html;charset=utf-8' }), `${nomExport(titre)}.html`);
+      telecharger(new Blob([documentExport(titre, corpsHtml)], { type: 'text/html;charset=utf-8' }), `${nomExport(titre)}.html`);
       toast(tr('export.done', { format: 'HTML' }));
       return;
     }
@@ -72,7 +78,7 @@ async function exporterReponse(format) {
       const res = await fetch('/api/export/docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: titre, markdown: currentMd }),
+        body: JSON.stringify({ title: titre, markdown }),
       });
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || res.statusText);
       telecharger(await res.blob(), `${nomExport(titre)}.docx`);
@@ -88,7 +94,7 @@ async function exporterReponse(format) {
     cadre.setAttribute('aria-hidden', 'true');
     cadre.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
     document.body.appendChild(cadre);
-    cadre.srcdoc = documentExport(titre);
+    cadre.srcdoc = documentExport(titre, corpsHtml);
     await new Promise((r) => { cadre.onload = r; });
     toast(tr('export.pdf-hint'));
     cadre.contentWindow.focus();
@@ -97,6 +103,11 @@ async function exporterReponse(format) {
     // l'impression annulerait le rendu sur certains navigateurs.
     setTimeout(() => cadre.remove(), 60_000);
   } catch (e) { toast(explainError(e.message), true); }
+}
+
+async function exporterReponse(format) {
+  const corps = $('#taskMdBody');
+  await exporterMarkdown(format, $('#taskMdTitle').textContent || 'Mergerie', currentMd, corps ? corps.innerHTML : '');
 }
 
 $('#taskMdExport') && $('#taskMdExport').addEventListener('click', (e) => {

@@ -87,7 +87,7 @@ app.get('/api/jira/spec/epic/:key/children', wrap(async (req, res) => {
   const cle = jiraspec.normaliserCle(req.params.key);
   if (!jiraspec.cleValide(cle)) throw new Error(t('err.jira.invalid-key'));
   const enfants = demoMode.isDemo()
-    ? demoJira.tickets([], true).filter((i) => i.epic && i.epic.key === cle).map((i) => ({ key: i.key, summary: i.summary, status: i.status, statusCategory: i.statusCategory, type: i.type, isSubtask: false }))
+    ? demoJira.tickets([], true).issues.filter((i) => i.epic && i.epic.key === cle).map((i) => ({ key: i.key, summary: i.summary, status: i.status, statusCategory: i.statusCategory, type: i.type, isSubtask: false }))
     : (await jira.epicChildren(getConfig(), cle)).map((e) => ({ key: e.key, summary: e.summary, status: e.status, statusCategory: e.statusCategory, type: e.type, isSubtask: e.isSubtask }));
   const existantes = {};
   for (const e of enfants) { const s = spec.specByKey(e.key); if (s) existantes[e.key] = { id: s.id, status: s.status }; }

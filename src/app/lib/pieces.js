@@ -25,7 +25,8 @@ const PJ_EXTENSIONS = new Set([
   'pdf', 'txt', 'md', 'csv', 'tsv', 'json', 'yml', 'yaml', 'xml', 'html', 'log',
   'docx', 'xlsx', 'pptx', 'odt', 'ods', 'odp', 'rtf',
 ]);
-const PJ_SCOPES = { task: (id) => path.join(TASKS_DIR, String(id)), local: (id) => path.join(TASKS_DIR, 'local', String(id)), ask: (id) => path.join(TASKS_DIR, 'ask', String(id)) };
+/* `plan` : les pièces d'un plan de tickets (Jira → Plans) — recopiées dans la session à chaque lancement, elles survivent aux relances. */
+const PJ_SCOPES = { task: (id) => path.join(TASKS_DIR, String(id)), local: (id) => path.join(TASKS_DIR, 'local', String(id)), ask: (id) => path.join(TASKS_DIR, 'ask', String(id)), plan: (id) => path.join(TASKS_DIR, 'plan', String(id)) };
 function decodeDataUrlImage(dataUrl) {
   const m = /^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i.exec(dataUrl || '');
   if (!m) throw new Error(t('err.image-invalide-data-url-image'));
@@ -94,7 +95,7 @@ const piecesExposees = (scope, ownerId) => piecesDe(scope, ownerId)
 /* SERVIR ET RETIRER une pièce jointe, quelle que soit la saveur de session. Une seule paire de
    routes pour les quatre : c'est la même table, le même disque et le même geste à l'écran — trois
    variantes finiraient par diverger, et l'une des trois par ne pas supprimer le fichier. */
-const PJ_SCOPES_LUS = new Set(['task', 'local', 'ask']);
+const PJ_SCOPES_LUS = new Set(['task', 'local', 'ask', 'plan']);
 const pieceDemandee = (req) => (PJ_SCOPES_LUS.has(req.params.scope)
   ? db.prepare('SELECT * FROM piece_jointe WHERE id = ? AND scope = ?').get(Number(req.params.id), req.params.scope)
   : null);

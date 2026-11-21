@@ -1,0 +1,61 @@
+/* ===== Onglet Jira → Plans : un lot de tickets → l'ordre de réalisation, les compléments, les tickets à créer ===== */
+.jira-plan-layout { display: flex; gap: 18px; align-items: flex-start; }
+.jira-plan-side { flex: 0 0 280px; width: 280px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.jira-plan-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.jira-plan-list { display: flex; flex-direction: column; gap: 6px; }
+.jira-plan-item { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; width: 100%;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+.jira-plan-item:hover { border-color: var(--accent); }
+.jira-plan-item.active { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.jira-plan-item[hidden] { display: none; }
+.jira-plan-item-label { font-weight: var(--fw-med); }
+.jira-plan-item-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-xs); }
+
+.jira-plan-status { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--line); color: var(--muted); background: var(--panel2); }
+.jira-plan-status.is-running { color: var(--accent); border-color: var(--accent); }
+.jira-plan-status.is-needs_input { color: var(--amber-text); border-color: var(--amber-text); }
+.jira-plan-status.is-done { color: var(--ok); border-color: var(--ok); }
+.jira-plan-status.is-error { color: var(--danger); border-color: var(--danger); }
+
+.jira-plan-section { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+.jira-plan-section h4 { margin: 0; display: flex; align-items: center; gap: 8px; }
+.jira-plan-section h5 { margin: 8px 0 0; font-size: var(--fs-sm, 14px); }
+.jira-plan-tickets { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow: auto; padding: 4px 0; }
+.jira-plan-ticket { display: flex; align-items: center; gap: 6px; }
+.jira-plan-ticket[hidden] { display: none; }
+.jira-plan-file { cursor: pointer; align-self: flex-start; }
+.jira-plan-prompt { width: 100%; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace); font-size: 12px; line-height: 1.5; }
+
+.jira-plan-result-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.jira-plan-result-head select { width: auto; }
+.jira-plan-order td.jira-plan-rank { width: 1%; font-weight: var(--fw-med); text-align: right; }
+.jira-plan-order td.jira-plan-key { white-space: nowrap; }
+.jira-plan-order td.jira-plan-why { color: var(--muted); }
+/* L'état d'un ticket, tel que Jira le classe : à faire, en cours, terminé — et « à créer » pour une proposition. */
+.jira-plan-state { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+.jira-plan-state.is-indeterminate { color: var(--accent); border-color: var(--accent); }
+.jira-plan-state.is-done { color: var(--ok); border-color: var(--ok); }
+.jira-plan-new { color: var(--amber-text); border-color: var(--amber-text); }
+.jira-plan-posted { color: var(--ok); border-color: var(--ok); }
+.jira-plan-compl, .jira-plan-nouveau { display: flex; flex-direction: column; gap: 6px; }
+.jira-plan-compl-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.jira-plan-post-box { width: min(820px, 94vw); }
+.jira-plan-post-text { max-height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-word; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 12px; font-size: 13px; margin: 0; }
+
+@media (max-width: 900px) {
+  .jira-plan-layout { flex-direction: column; }
+  .jira-plan-side { width: 100%; flex-basis: auto; }
+}
+
+/* Les champs du formulaire : le dessin des champs de la précision technique (`.jira-spec-add input`),
+   que le nom du plan et le complément n'avaient pas — ils ne vivent pas dans une ligne d'ajout. */
+.jira-plan-form input[type="text"], .jira-plan-form textarea, .jira-plan-prompt, .jira-plan-section textarea {
+  width: 100%; font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+.jira-plan-form textarea, .jira-plan-section textarea { resize: vertical; }
+.jira-plan-form .jira-spec-add input[type="text"] { width: auto; }
+.jira-plan-prompt { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; line-height: 1.5; }
+.jira-plan-changes { flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.jira-plan-changes ul { margin: 0; padding-left: 18px; }

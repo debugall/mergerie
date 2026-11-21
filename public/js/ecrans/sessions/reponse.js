@@ -1,6 +1,6 @@
 'use strict';
 /* Ce qu'une session a répondu et ce qu'elle a coûté, une todo t'attend, la MR devenue, répondre aux questions. */
-// @expose fmtMilliers
+// @expose fmtMilliers, questionsForm
 /* ---------- Ce qu'une session a répondu, et ce qu'elle a coûté ----------
    Les deux premières lignes de la réponse sur la carte : on retrouve celle qu'on cherche sans
    ouvrir « Voir la réponse » l'une après l'autre. Repliées par défaut sur une ligne — la carte

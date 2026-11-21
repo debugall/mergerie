@@ -42,6 +42,7 @@ const TRANCHES = [
   '27-plans-verif',
   '28-coffre',
   '29-recurrences',
+  '30-jira-plan',
 ];
 for (const nom of TRANCHES) require(`./schema/${nom}`);
 const { DEFAULT_PROMPT_REVIEW, DEFAULT_PROMPT_EXPLAIN, DEFAULT_PROMPT_MODIFY } = require('./schema/10-config-git');
