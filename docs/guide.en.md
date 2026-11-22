@@ -1217,7 +1217,11 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   `JIRA_TECH_MARKER`, `#tech` by default); the token is asked at start (or `JIRA_TOKEN`), and the title, description
   and first comment opening with the marker go before the request in the coding prompt (as in a session opened from
   the ticket) and are added to the context of every review. An unreadable ticket (token refused, not found, Jira
-  unreachable, no token) blocks nothing: the script goes on without it. The reports stay in the folder's `.git/converge/`. No AI questions and no session resume: each call
+  unreachable, no token) blocks nothing: the script goes on without it. The review instructions
+  (`REVIEW_PROMPT`) and the fix instructions (`FIX_PROMPT`) come right after the request, editable. Each pass leaves its
+  report (`review-0.md`, `review-1.md`…) in a folder of its own run, the folder's `.git/converge/<branch>-<date>/` —
+  or `REPORTS_DIR/<folder>/<branch>-<date>/` when `REPORTS_DIR` is set; a new run overwrites nothing. Each report's
+  path is printed as it comes out, and the end lists the reports with their scores. No AI questions and no session resume: each call
   starts fresh.
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers

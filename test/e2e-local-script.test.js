@@ -382,9 +382,14 @@ esac
       assert.ok(p[2].includes('Un défaut & un {source} à corriger'), 'le rapport tel quel : ni « & » ni variable remplacés (bash 5.2 compris)');
       assert.match(p[2], /<<<DONNEE [0-9a-f]{16} rapport de revue>>>/, 'balisé comme une donnée');
       assert.match(p[3], /<<<DONNEE [0-9a-f]{16} rapport précédent>>>[\s\S]*Note globale : 5\/10/, 'la relecture suivante voit le rapport d’avant');
-      const rapports = path.join(depot.work, '.git', 'converge');
-      assert.deepEqual(fs.readdirSync(rapports).filter((f) => f.startsWith('review-')).sort(), ['review-0.md', 'review-1.md', 'review-2.md']);
-      assert.match(fs.readFileSync(path.join(rapports, 'diff.patch'), 'utf8'), /\+passe/, 'le diff complet depuis la base, corrections comprises');
+      const travail = path.join(depot.work, '.git', 'converge');
+      const executions = fs.readdirSync(travail).filter((f) => f.startsWith('ai-convergence-nominale-'));
+      assert.equal(executions.length, 1, 'un dossier par exécution, nommé par la branche et la date');
+      const rapports = path.join(travail, executions[0]);
+      assert.deepEqual(fs.readdirSync(rapports).sort(), ['review-0.md', 'review-1.md', 'review-2.md']);
+      for (const n of [0, 1, 2]) assert.ok(r.stderr.includes(`Rapport : ${fs.realpathSync(path.join(rapports, `review-${n}.md`))}`), `le chemin du rapport ${n} affiché`);
+      assert.match(r.stderr, /review-0\.md — 5\/10\n\s+review-1\.md — 7\/10\n\s+review-2\.md — 9\/10/, 'le récapitulatif des notes');
+      assert.match(fs.readFileSync(path.join(travail, 'diff.patch'), 'utf8'), /\+passe/, 'le diff complet depuis la base, corrections comprises');
       assert.equal(git(depot.work, ['status', '--porcelain']), '', 'rien de la boucle ne traîne dans le dossier');
       finir();
     });
@@ -474,6 +479,29 @@ esac
       finir();
       r = await lancer(await preparer('Convergence sans effet', sansForge), { AGENT_BIN: agentConv, SCORES: '3|9', NOFIX: '1' });
       assert.match(r.stderr, /la correction n’a rien modifié/);
+      finir();
+    });
+
+    test('REPORTS_DIR : les rapports ailleurs, un dossier par exécution, jamais écrasés ; la consigne de relecture modifiée est celle envoyée', async () => {
+      const ailleurs = path.join(app.dataDir, 'rapports-ailleurs');
+      const retouche = (x) => sansForge(x).replace(/^REPORTS_DIR=''$/m, `REPORTS_DIR='${ailleurs}'`)
+        .replace(/(REVIEW_PROMPT <<'__REVIEW__'[^\n]*\n)/, '$1Consigne maison : regarde les migrations.\n');
+      const fichier = await preparer('Rapports ailleurs', retouche);
+      const texte = fs.readFileSync(fichier, 'utf8');
+      assert.ok(texte.indexOf('REVIEW_PROMPT <<') < texte.indexOf('BASE_BRANCH='), 'la consigne de relecture juste sous la demande');
+      for (const scores of ['5|9', '9']) {
+        const r = await lancer(fichier, { AGENT_BIN: agentConv, SCORES: scores });
+        assert.equal(r.status, 0, r.stderr);
+        git(depot.work, ['checkout', '-q', 'main']);
+        git(depot.work, ['branch', '-q', '-D', 'ai/rapports-ailleurs']);
+        fs.rmSync(path.join(prompts, '.reviews'), { force: true });
+      }
+      assert.match(recus()[1], /Consigne maison : regarde les migrations\./);
+      const base = path.join(ailleurs, path.basename(depot.work));
+      const executions = fs.readdirSync(base).sort();
+      assert.equal(executions.length, 2, 'la seconde exécution n’écrase pas la première');
+      assert.deepEqual(executions.map((e) => fs.readdirSync(path.join(base, e)).sort()), [['review-0.md', 'review-1.md'], ['review-0.md']]);
+      assert.equal(git(depot.work, ['status', '--porcelain']), '');
       finir();
     });
 

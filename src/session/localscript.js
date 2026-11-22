@@ -174,6 +174,8 @@ MAX_PASSES=${conv.maxPasses}
 ${v('VERIFY_CMDS')}
 VERIFY_CMDS=(
 )
+${v('REPORTS_DIR')}
+REPORTS_DIR=''
 
 ${c('review-prompt', { delim: revue.delim })}
 ${revue.code}
@@ -202,7 +204,7 @@ REVIEW_ARGS=(${agent.relecture.map(sq).join(' ')})
 ` : ''}
 ${c('prompt', { delim: demande.delim })}
 ${demande.code}
-
+${blocConvergence}
 ${c('git')}
 ${v('BASE_BRANCH')}
 BASE_BRANCH=${sq(vierge ? '' : depart)}
@@ -230,7 +232,6 @@ ${v('JIRA_EMAIL')}
 ${envOu('JIRA_EMAIL', cfg.jira_email || '')}
 ${v('JIRA_TECH_MARKER')}
 JIRA_TECH_MARKER=${sq(String(cfg.jira_tech_marker || '').trim() || '#tech')}
-${blocConvergence}
 
 ${c('forge')}
 ${v('GITLAB_URL')}
@@ -375,14 +376,15 @@ run_review() {
   git diff "$REF...HEAD" > "$WORK/diff.patch"
   for a in \${REVIEW_ARGS[@]+"\${REVIEW_ARGS[@]}"}; do args+=("\${a//${DOSSIER}/$PWD}"); done
   prompt=$(fill "$REVIEW_PROMPT"$'\\n\\n'"$REVIEW_RULES")
-  if [ "$n" -gt 0 ] && [ -f "$WORK/review-$((n - 1)).md" ]; then
-    prompt="$prompt"$'\\n\\n'"$PREVIOUS_INTRO"$'\\n'"$(data_block ${sq(t('local.script.data.previous'))} "$(cat "$WORK/review-$((n - 1)).md")")"
+  if [ "$n" -gt 0 ] && [ -f "$RUN/review-$((n - 1)).md" ]; then
+    prompt="$prompt"$'\\n\\n'"$PREVIOUS_INTRO"$'\\n'"$(data_block ${sq(t('local.script.data.previous'))} "$(cat "$RUN/review-$((n - 1)).md")")"
   fi
   if [ -n "$JIRA_CONTEXT" ]; then
     prompt="$prompt"$'\\n\\n'"$(printf ${sq(t('local.script.ticket-intro'))} "$JIRA_TICKET")"$'\\n'"$(data_block "$(printf ${sq(t('local.script.data.ticket'))} "$JIRA_TICKET")" "$JIRA_CONTEXT")"
   fi
   say "$(printf ${sq(m('conv-review'))} "$n")"
-  "$AGENT_BIN" \${args[@]+"\${args[@]}"} \${AGENT_PROMPT_FORM[@]+"\${AGENT_PROMPT_FORM[@]}"} "$PREAMBLE"$'\\n\\n'"$prompt" < /dev/null > "$WORK/review-$n.md"
+  "$AGENT_BIN" \${args[@]+"\${args[@]}"} \${AGENT_PROMPT_FORM[@]+"\${AGENT_PROMPT_FORM[@]}"} "$PREAMBLE"$'\\n\\n'"$prompt" < /dev/null > "$RUN/review-$n.md"
+  say "$(printf ${sq(m('conv-report'))} "$RUN/review-$n.md")"
 }
 
 run_verify() {
@@ -396,12 +398,17 @@ run_verify() {
 converge_folder() {
   local score new pass=0 status a args=()
   REF=$1
-  WORK="$(git rev-parse --git-dir)/converge"
-  mkdir -p "$WORK"
+  WORK="$(git rev-parse --absolute-git-dir)/converge"
+  # One folder per run, so a second run never overwrites the reports of the first.
+  if [ -n "$REPORTS_DIR" ]; then RUN="$REPORTS_ROOT/$(basename "$PWD")"; else RUN=$WORK; fi
+  RUN="$RUN/\${BRANCH//\//-}-$(date +%Y%m%d-%H%M%S)"; a=$RUN
+  while [ -e "$RUN" ]; do pass=$((pass + 1)); RUN="$a-$((pass + 1))"; done
+  pass=0
+  mkdir -p "$WORK" "$RUN"
   DIFF_REL="$WORK/diff.patch"
   say "$(printf ${sq(m('conv-start'))} "$THRESHOLD" "$MAX_PASSES" "$REF")"
   run_review 0
-  score=$(score_of "$WORK/review-0.md")
+  score=$(score_of "$RUN/review-0.md")
   while :; do
     if [ -z "$score" ]; then status=${sq(m('conv-no-score'))}; break; fi
     say "$(printf ${sq(m('conv-score'))} "$score")"
@@ -409,7 +416,7 @@ converge_folder() {
     if [ "$pass" -ge "$MAX_PASSES" ]; then status="$(printf ${sq(m('conv-capped'))} "$MAX_PASSES" "$score")"; break; fi
     pass=$((pass + 1))
     say "$(printf ${sq(m('conv-fix'))} "$pass" "$MAX_PASSES")"
-    CUR_REPORT=$(cat "$WORK/review-$((pass - 1)).md")
+    CUR_REPORT=$(cat "$RUN/review-$((pass - 1)).md")
     args=()
     for a in \${AGENT_ARGS[@]+"\${AGENT_ARGS[@]}"}; do args+=("\${a//${DOSSIER}/$PWD}"); done
     AGENT_START=$(git rev-parse HEAD)
@@ -418,14 +425,15 @@ converge_folder() {
     if [ "$PUSH" = 1 ] || [ "$CREATE_MR" = 1 ]; then git push -q origin "$BRANCH"; fi
     run_verify
     run_review "$pass"
-    new=$(score_of "$WORK/review-$pass.md")
+    new=$(score_of "$RUN/review-$pass.md")
     if [ -n "$new" ] && ! at_least "$new" "$THRESHOLD" && at_least "$score" "$new"; then
       status="$(printf ${sq(m('conv-regressed'))} "$new" "$score")"; break
     fi
     score=$new
   done
   say "$status"
-  say "$(printf ${sq(m('conv-reports'))} "$WORK")"
+  say "$(printf ${sq(m('conv-reports'))} "$RUN")"
+  for a in "$RUN"/review-*.md; do new=$(score_of "$a"); say "  $(basename "$a") — \${new:-?}/10"; done
 }
 ` : ''}
 # $1 = folder: its changes in progress, one per line, minus what .gitignore names — even a file committed in the past.
@@ -550,7 +558,11 @@ fi
 if [ -n "$JIRA_CONTEXT" ]; then
   JIRA_PREFIX="$(printf ${sq(t('local.script.ticket-coding'))} "$JIRA_TICKET")"$'\n\n'"$JIRA_CONTEXT"$'\n\n---\n\n'
 fi
-
+${conv ? `
+# REPORTS_DIR: ~ and a relative path resolved from where the script is launched, before any cd.
+REPORTS_ROOT=\${REPORTS_DIR/#\~/$HOME}
+case $REPORTS_ROOT in ''|/*) ;; *) REPORTS_ROOT="$PWD/$REPORTS_ROOT" ;; esac
+` : ''}
 failed=0
 for dir in "\${FOLDERS[@]}"; do
   say "──────── $dir ────────"

@@ -1272,8 +1272,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   `JIRA_TECH_MARKER`, `#tech` par défaut) ; le jeton est demandé au lancement (ou `JIRA_TOKEN`), et le titre, la
   description et le premier commentaire qui commence par le marqueur passent devant la demande dans le prompt de
   codage (comme une session ouverte depuis le ticket) et s'ajoutent au contexte de chaque relecture. Un ticket
-  illisible (jeton refusé, introuvable, Jira injoignable, pas de jeton) ne bloque rien : le script continue sans lui. Les rapports restent dans
-  `.git/converge/` du dossier. Pas de questions de l'IA ni de reprise de session : chaque appel repart à neuf.
+  illisible (jeton refusé, introuvable, Jira injoignable, pas de jeton) ne bloque rien : le script continue sans lui. La consigne de relecture
+  (`REVIEW_PROMPT`) et celle de correction (`FIX_PROMPT`) suivent directement la demande, modifiables. Chaque passe
+  laisse son rapport (`review-0.md`, `review-1.md`…) dans un dossier propre à l'exécution,
+  `.git/converge/<branche>-<date>/` du dossier — ou `REPORTS_DIR/<dossier>/<branche>-<date>/` si `REPORTS_DIR` est
+  renseigné ; une nouvelle exécution n'écrase rien. Le chemin de chaque rapport s'affiche à sa sortie, et la fin
+  récapitule les rapports avec leur note. Pas de questions de l'IA ni de reprise de session : chaque appel repart à neuf.
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout
