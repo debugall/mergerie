@@ -1179,16 +1179,46 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   passes); folders not yet coded are coded, those committed without a push — or coded before the branch was added —
   are committed and pushed, then the MR opens and converges, folder by folder. The session's boxes do not change: a
   later `Run again` will not converge on its own.
-  **Export as script** (download icon on the card): a standalone bash script, `<label>.sh`, that replays the
+  **Export as script** (download icon on the card, which opens a modal with three boxes: **with convergence**,
+  **blank script** and **yolo mode** — ticked by default when the machine runs in yolo; unticked, the script carries the
+  secure mode's options, the agent edits the working folder's files without asking but without `--dangerously-skip-permissions`,
+  and the prompt no longer tells it it may write elsewhere. The machine's setting is left unchanged): a standalone bash script, `<label>.sh`, that replays the
   session without the tool — in each folder, the branch (the session's, otherwise `ai/<label>`), the session's
   agent with its options and **the same prompt** (standing instructions included), then commit, push and merge
   request towards the starting branch (GitLab or GitHub, from the `origin` remote). At the top of the file, to
-  edit freely: the **folders**, one per line, then the **request**, then branch, message, push and MR (1/0), the
-  agent (`AGENT_BIN=…` in the environment wins). Nothing secret is written in it: tokens come from
+  edit freely: the **folders**, one per line, the **agent command and its arguments** (`AGENT_BIN`,
+  `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude or another), then the **request**, then the **starting branch** (`BASE_BRANCH`: the branch starts from it and the MR targets it; prefilled with
+  the one a run recorded, empty = each folder's current branch), the branch to create, commit message, the **merge request title** (`MR_TITLE`, empty = the commit message), push and MR (1/0), the
+  agent (`AGENT_BIN=…` in the environment wins) — each variable carries its comment. Nothing secret is written in it: tokens come from
   `GITLAB_TOKEN` / `GITHUB_TOKEN` or are asked at start, hidden, before the agent works; an HTTPS push asks for
   its credentials through git. The script does not name the tool and carries neither its data-protection rules
-  nor the agent variables set on screen. A failing folder does not stop the others; files already modified stay
-  out of the commit. Bash 3.2 (macOS) is enough; `git` and `curl` are needed.
+  nor the agent variables set on screen. A failing folder does not stop the others. **A folder with changes in progress**
+  (a tracked file modified or staged — a file never committed does not count, nor what `.gitignore` names,
+  even a file committed in the past: they stay where they are, out of the commit) **stops the script at once**, before any
+  branch or agent, listing the files. At the end, success or failure, each folder goes back to the branch it was
+  on before the script (`RESTORE_BRANCH=0` leaves it on the working branch). `COMMIT=0` only makes the changes:
+  they stay uncommitted on the working branch, with no push, merge request or convergence. Each variable's comment
+  says what 1 or 0 implies. The commit message is always `COMMIT_MESSAGE`: when the agent commits by itself, its
+  commits are folded into one under that message. A folder with no working commit over the starting branch is
+  neither pushed nor offered as a merge request. Bash 3.2 (macOS) is enough; `git` and `curl` are needed.
+  **Blank script**, with or without convergence: the same scripts as templates, with the
+  request, `BASE_BRANCH`, `BRANCH`, `COMMIT_MESSAGE` and `MR_TITLE` left empty (folders, agent and instructions kept);
+  while the request, the commit message or the MR title is empty, the script stops at once naming them, before any
+  branch or agent. Both branches may stay empty: they keep their usual meaning.
+  **With convergence**: the same script, followed by the **convergence loop**
+  in each folder — the agent reviews **read-only** the full diff since the starting branch and scores it out of 10
+  (“Overall score: X/10”, the line the tool reads); below the threshold, a fixing pass applies the report, commit,
+  push (the MR updates itself), then a new review, the previous report as context. Stops at the threshold, on a
+  score that drops or stalls, at the fix cap, on a report without a score or a fix that changes nothing. At the
+  top, in addition: `THRESHOLD` and `MAX_PASSES` (the settings' values at export), `VERIFY_CMDS` (commands run after
+  each fix, for information, never a stop condition), and the review and fix instructions (your templates from the
+  settings). In both scripts, optional: **a Jira ticket**
+  (`JIRA_TICKET`, with `JIRA_URL`, `JIRA_EMAIL` — empty for a Data Center personal access token — and
+  `JIRA_TECH_MARKER`, `#tech` by default); the token is asked at start (or `JIRA_TOKEN`), and the title, description
+  and first comment opening with the marker go before the request in the coding prompt (as in a session opened from
+  the ticket) and are added to the context of every review. An unreadable ticket (token refused, not found, Jira
+  unreachable, no token) blocks nothing: the script goes on without it. The reports stay in the folder's `.git/converge/`. No AI questions and no session resume: each call
+  starts fresh.
   coding, each folder exposes **`AI output`** — what the agent says it did, useful when the folder has not
   moved (incomplete prompt, the AI answered instead of coding) — and the session offers
   **`Send a follow-up`**: a fresh pass over the same folders that **resumes each one's session**, so the AI

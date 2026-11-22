@@ -1,0 +1,22 @@
+<!-- Modale : exporter une session hors dépôt en script bash -->
+<div id="scriptExportModal" class="modal" hidden>
+    <div class="modal-box">
+        <h3 data-i18n="local.export.title">Exporter en script</h3>
+        <p class="muted" data-i18n="local.export.intro">Un script bash autonome qui refait cette session : dossiers, agent et demande en tête du fichier, puis commit, push et merge request.</p>
+        <div class="modal-fields script-export-fields">
+            <label class="inline-check"><input id="scriptExpConverge" type="checkbox" />
+                <span><strong data-i18n="local.export.converge">Avec convergence</strong>
+                <span class="muted" data-i18n="local.export.converge-hint">Après le codage, l’agent relit le diff complet et le note, puis corrige, commite, pousse et relit jusqu’au seuil.</span></span></label>
+            <label class="inline-check"><input id="scriptExpBlank" type="checkbox" />
+                <span><strong data-i18n="local.export.blank">Script vierge</strong>
+                <span class="muted" data-i18n="local.export.blank-hint">Demande, branches, message de commit et titre de MR laissés vides ; le script refuse de partir sans la demande, le message ni le titre.</span></span></label>
+            <label class="inline-check"><input id="scriptExpYolo" type="checkbox" />
+                <span><strong data-i18n="local.export.yolo">Mode yolo</strong>
+                <span class="muted" data-i18n="local.export.yolo-hint">Coché : l’agent sans aucune restriction (--dangerously-skip-permissions pour Claude). Décoché : mode sécurisé, l’agent modifie les fichiers du dossier de travail sans rien demander, mais rien de plus.</span></span></label>
+        </div>
+        <div class="modal-actions">
+            <button id="scriptExpCancel" type="button" class="btn" data-i18n="task.btn.annuler">Annuler</button>
+            <button id="scriptExpGo" type="button" class="btn btn-primary"><svg class="ico"><use href="#i-download"/></svg><span data-i18n="local.export.go">Télécharger le script</span></button>
+        </div>
+    </div>
+</div>

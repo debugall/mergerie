@@ -299,6 +299,7 @@ function handleJira(req, res, pathname, body = {}) {
   if (state.jiraFail) return json(res, state.jiraFail.status || 500, state.jiraFail.body || {});
   const auth = req.headers.authorization || '';
   if (!auth.startsWith('Basic ')) return json(res, 401, { errorMessages: ['unauthorized'] });
+  state.jiraAuth = auth;
   // Utilisateur courant (pour cocher « moi » par défaut).
   if (pathname === '/rest/api/3/field') return json(res, 200, state.jiraFields || []);
   // Statuts du workflow d'un projet, groupés par type de ticket — comme le vrai Jira.
@@ -493,7 +494,8 @@ function handleJira(req, res, pathname, body = {}) {
     }
     return json(res, 200, { transitions: TRANSITIONS_MOCK });
   }
-  const m = /^\/rest\/api\/3\/issue\/([^/?]+)/.exec(pathname);
+  // v3 pour l'outil ; v2 pour le script exporté (description et commentaires en texte).
+  const m = /^\/rest\/api\/[23]\/issue\/([^/?]+)/.exec(pathname);
   if (!m) return json(res, 404, { errorMessages: ['not found'] });
   const key = decodeURIComponent(m[1]);
   const issue = state.jiraIssues[key];

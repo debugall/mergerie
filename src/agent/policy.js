@@ -40,7 +40,17 @@ const { sansModeLarge } = require('./modelarge');
    les limites du SERVEUR (jeton local sur /api/, Host, nonce, approbation, env en liste blanche —
    `envAgent` ne dépend pas du mode). Requis à l'appel : `config` ouvre la base. */
 function modeSecurise() {
+  if (modeForce) return modeForce === 'secure';
   try { const { getConfig } = require('../data/config'); return getConfig().agent_mode === 'secure'; } catch { return true; }
+}
+
+/* LE MODE IMPOSÉ LE TEMPS D'UN APPEL SYNCHRONE — l'export d'un script choisit yolo ou sécurisé pour
+   SON agent, sans toucher au réglage du poste ni aux agents lancés au même moment. */
+let modeForce = null;
+function avecMode(mode, fn) {
+  const avant = modeForce;
+  modeForce = mode;
+  try { return fn(); } finally { modeForce = avant; }
 }
 
 const LECTURE = new Set(['review', 'explain', 'question', 'modify', 'explore', 'ask', 'test']);
@@ -593,7 +603,7 @@ function envAgent(backend, source = process.env) {
 }
 
 module.exports = {
-  LECTURE, ECRITURE, modeSecurise, backendDe, oublierBackend, niveauDe, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
+  LECTURE, ECRITURE, modeSecurise, avecMode, backendDe, oublierBackend, niveauDe, saveurDe, sortieSurStdout, bornes, depenseDuJour, exigerBudget, argsMaxTurns, sansModeLarge, argvPermissions, capacites, oublierCapacites, envAgent,
   OUTILS_LECTURE, INTERDITS_LECTURE, INTERDITS_ECRITURE, interditsDonnees,
   allowlistEcriture, sandboxSettings, BARE_KINDS,
 };

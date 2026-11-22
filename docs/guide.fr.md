@@ -1235,16 +1235,45 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   passes) ; les dossiers pas encore codés le sont, ceux qui ont été commités sans push — ou codés avant qu'on ajoute la
   branche — sont commités et poussés, puis la MR s'ouvre et converge, dossier par dossier. Les cases de la session ne
   changent pas : un `Relancer` ultérieur ne convergera pas de lui-même.
-  **Exporter en script** (icône de téléchargement sur la carte) : un script bash autonome, `<libellé>.sh`, qui
+  **Exporter en script** (icône de téléchargement sur la carte, qui ouvre une modale à trois cases : **avec convergence**,
+  **script vierge** et **mode yolo** — cochée par défaut si le poste est en yolo ; décochée, le script porte les options du
+  mode sécurisé, l'agent modifie les fichiers du dossier de travail sans rien demander mais sans `--dangerously-skip-permissions`,
+  et le prompt ne lui dit plus qu'il peut écrire à côté. Le réglage du poste n'est pas modifié) : un script bash autonome, `<libellé>.sh`, qui
   refait la session sans l'outil — dans chaque dossier, la branche (celle de la session, sinon `ai/<libellé>`),
   l'agent de la session avec ses options et **le même prompt** (consignes permanentes comprises), puis commit,
   push et merge request vers la branche de départ (GitLab ou GitHub, déduit du remote `origin`). En tête du
-  fichier, à modifier librement : les **dossiers**, un par ligne, puis la **demande**, puis branche, message,
-  push et MR (1/0), l'agent (`AGENT_BIN=…` dans l'environnement l'emporte). Rien de secret n'y est écrit : les
+  fichier, à modifier librement : les **dossiers**, un par ligne, la **commande de l'agent et ses arguments** (`AGENT_BIN`,
+  `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude ou autre), puis la **demande**, puis **branche de départ** (`BASE_BRANCH` : la branche part d'elle et la MR la vise ; préremplie avec celle
+  qu'a relevée une exécution, vide = la branche courante de chaque dossier), branche à créer, message de commit,
+  **titre de la merge request** (`MR_TITLE`, vide = le message de commit), push et MR (1/0), l'agent (`AGENT_BIN=…` dans l'environnement l'emporte) — chaque variable a son commentaire. Rien de secret n'y est écrit : les
   jetons viennent de `GITLAB_TOKEN` / `GITHUB_TOKEN` ou sont demandés au lancement, masqués, avant le travail de
   l'agent ; un push HTTPS demande ses identifiants par git. Le script ne nomme pas l'outil et ne reprend ni ses
   règles de protection de données ni les variables d'agent réglées à l'écran. Un dossier en échec n'arrête pas
-  les autres ; les fichiers déjà modifiés restent hors du commit. Bash 3.2 (macOS) suffit ; il faut `git` et `curl`.
+  les autres. **Un dossier avec des modifications en cours** (un fichier suivi modifié ou indexé — un fichier jamais commité ne compte pas,
+  ni ce que `.gitignore` nomme, même un fichier commité par le passé : ils restent en place, hors du commit) **arrête le script d'emblée**, avant toute branche ou agent, en listant les fichiers. À la fin, réussite ou échec,
+  chaque dossier revient sur la branche où il était avant le script (`RESTORE_BRANCH=0` le laisse sur la
+  branche de travail). `COMMIT=0` se contente des modifications : elles restent non commitées sur la branche de
+  travail, sans push, merge request ni convergence. Le message de commit est toujours `COMMIT_MESSAGE` : si l'agent commite
+  lui-même, ses commits sont repliés en un seul sous ce message. Un dossier sans aucun commit de travail par rapport à la
+  branche de départ n'est ni poussé ni proposé en merge request. Chaque variable dit en commentaire ce qu'implique 1 ou 0. Bash 3.2 (macOS) suffit ; il faut `git` et `curl`.
+  **Script vierge**, avec ou sans convergence : les mêmes scripts en modèle, la
+  demande, `BASE_BRANCH`, `BRANCH`, `COMMIT_MESSAGE` et `MR_TITLE` laissés vides (dossiers, agent et consignes gardés) ;
+  tant que la demande, le message de commit ou le titre de MR est vide, le script s'arrête d'emblée en les nommant, avant
+  toute branche ou agent. Les deux branches peuvent rester vides : elles gardent leur sens habituel.
+  **Avec convergence** : le même script, suivi de la **boucle de convergence**
+  dans chaque dossier — l'agent relit **en lecture seule** le diff complet depuis la branche de départ et le note sur
+  10 (« Note globale : X/10 », la ligne que lit l'outil) ; sous le seuil, une passe de correction applique le
+  rapport, commit, push (la MR se met à jour), puis nouvelle relecture, le rapport précédent en contexte. Arrêt au
+  seuil, sur une note qui baisse ou stagne, au plafond de corrections, sur un rapport sans note ou une correction
+  qui ne change rien. En tête, en plus : `THRESHOLD` et `MAX_PASSES` (ceux des réglages à l'export),
+  `VERIFY_CMDS` (des commandes lancées après chaque correction, pour information, jamais une condition d'arrêt), et
+  les consignes de relecture et de correction (tes gabarits des réglages). Dans les deux scripts, facultatif : **un ticket Jira**
+  (`JIRA_TICKET`, avec `JIRA_URL`, `JIRA_EMAIL` — vide pour un jeton d'accès personnel Data Center — et
+  `JIRA_TECH_MARKER`, `#tech` par défaut) ; le jeton est demandé au lancement (ou `JIRA_TOKEN`), et le titre, la
+  description et le premier commentaire qui commence par le marqueur passent devant la demande dans le prompt de
+  codage (comme une session ouverte depuis le ticket) et s'ajoutent au contexte de chaque relecture. Un ticket
+  illisible (jeton refusé, introuvable, Jira injoignable, pas de jeton) ne bloque rien : le script continue sans lui. Les rapports restent dans
+  `.git/converge/` du dossier. Pas de questions de l'IA ni de reprise de session : chaque appel repart à neuf.
   **`Retour de l'IA`** — ce que l'agent dit avoir fait, utile quand le dossier n'a pas bougé (prompt
   incomplet, l'IA a répondu au lieu de coder) —, et la session propose **`Envoyer un suivi`** :
   une nouvelle passe sur les mêmes dossiers qui **reprend la session de chacun**, donc l'IA garde tout

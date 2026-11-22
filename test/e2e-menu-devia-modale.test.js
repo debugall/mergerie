@@ -735,16 +735,60 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
 
   /* « Exporter en script » : un vrai téléchargement, nommé d'après le libellé, qui porte la demande
      (le script lui-même est exécuté et vérifié par e2e-local-script). */
-  test('hors dépôt : « Exporter en script » télécharge le script de la session', async () => {
+  test('hors dépôt : « Exporter en script » ouvre une modale — convergence, vierge et yolo au choix', async () => {
+    /* Les options d'agent dépendent du CLI : on fixe Claude, sans dépendre de ce que la machine a d'installé. */
+    const avantAgent = (await app.api('GET', '/api/config')).body;
+    await app.api('PUT', '/api/config', { agent_bin: 'claude', agent_backend: 'claude' });
     const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Exporter ceci', label: 'Export script', dirs: [path.join(racine, 'docs')] })).body;
     await aller('local');
     const bouton = page.locator(`#localList .card[data-local="${lt.id}"] [data-lscript]`);
     await bouton.waitFor();
-    const [dl] = await Promise.all([page.waitForEvent('download'), bouton.click()]);
-    assert.equal(dl.suggestedFilename(), 'export-script.sh');
-    const texte = fs.readFileSync(await dl.path(), 'utf8');
-    assert.ok(texte.startsWith('#!/usr/bin/env bash'));
-    assert.match(texte, /\nExporter ceci\n__PROMPT__\n/);
+    assert.equal(await bouton.count(), 1, 'une seule icône sur la carte');
+    /* Une modale, trois cases ; yolo part du réglage du poste — sécurisé dans les tests. */
+    const exporter = async ({ converge = false, blank = false, yolo = false } = {}) => {
+      await bouton.click();
+      await page.waitForSelector('#scriptExportModal:not([hidden])');
+      assert.equal(await page.locator('#scriptExpConverge').isChecked(), false, 'chaque ouverture repart de zéro');
+      assert.equal(await page.locator('#scriptExpBlank').isChecked(), false);
+      await page.waitForFunction(() => document.querySelector('#scriptExpYolo').checked === false);
+      if (converge) await page.locator('#scriptExpConverge').click();
+      if (blank) await page.locator('#scriptExpBlank').click();
+      if (yolo) await page.locator('#scriptExpYolo').click();
+      const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#scriptExpGo').click()]);
+      await page.waitForSelector('#scriptExportModal', { state: 'hidden' });
+      return { nom: dl.suggestedFilename(), texte: fs.readFileSync(await dl.path(), 'utf8') };
+    };
+
+    const simple = await exporter();
+    assert.equal(simple.nom, 'export-script.sh');
+    assert.ok(simple.texte.startsWith('#!/usr/bin/env bash'));
+    assert.match(simple.texte, /\nExporter ceci\n__PROMPT__\n/);
+    assert.doesNotMatch(simple.texte, /^CONVERGE=/m);
+    assert.doesNotMatch(simple.texte, /dangerously-skip-permissions/, 'yolo décoché : le mode sécurisé');
+    assert.match(simple.texte, /^AGENT_ARGS=\(.*'--permission-mode' 'acceptEdits'/m, 'l’agent écrit dans son dossier sans rien demander');
+
+    const conv = await exporter({ converge: true, yolo: true });
+    assert.equal(conv.nom, 'export-script-converge.sh');
+    assert.match(conv.texte, /^CONVERGE=1$/m);
+    assert.match(conv.texte, /^AGENT_ARGS=\(.*'--dangerously-skip-permissions'/m, 'yolo coché : sans restriction');
+    assert.doesNotMatch(conv.texte, /^AGENT_ARGS=\(.*acceptEdits/m);
+    assert.match(conv.texte, /rien ne te l’interdit/, 'et le prompt le dit, comme une session en yolo');
+    assert.doesNotMatch(simple.texte, /rien ne te l’interdit/);
+
+    const vierge = await exporter({ blank: true });
+    assert.equal(vierge.nom, 'export-script-vierge.sh');
+    assert.doesNotMatch(vierge.texte, /Exporter ceci/);
+    assert.match(vierge.texte, /^COMMIT_MESSAGE=''$/m);
+    assert.doesNotMatch(vierge.texte, /^CONVERGE=1$/m);
+
+    // Annuler ferme sans rien télécharger.
+    await bouton.click();
+    await page.waitForSelector('#scriptExportModal:not([hidden])');
+    await page.locator('#scriptExpCancel').click();
+    await page.waitForSelector('#scriptExportModal', { state: 'hidden' });
+    const cfg = (await app.api('GET', '/api/config')).body;
+    assert.equal(cfg.agent_mode, 'secure', 'le choix de la modale ne touche pas au réglage du poste');
+    await app.api('PUT', '/api/config', { agent_bin: avantAgent.agent_bin || '', agent_backend: avantAgent.agent_backend || '' });
   });
 
   /* ------------------------------------------------------------ question libre ---- */

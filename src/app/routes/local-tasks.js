@@ -183,9 +183,15 @@ app.post('/api/local-tasks/:id/converge', wrap((req, res) => {
   jobs.programmation.programmer('local_task', lt.uid, 'run', null);
   res.json(jobs.startLocalJob(lt.id, { converger: parseConvergeOpts(req.body) }));
 }));
-/* La session en script bash autonome : mêmes dossiers, même demande, puis commit, push, MR. */
+/* La session en script bash autonome : mêmes dossiers, même demande, puis commit, push, MR —
+   et, `?converge=1`, la boucle de convergence (relecture, correction, relecture… jusqu'au seuil) ;
+   `?blank=1`, un modèle vierge : demande, branches, message de commit et titre de MR à remplir ;
+   `?yolo=1|0`, l'agent sans restriction ou en mode sécurisé (absent : le réglage du poste). */
 app.get('/api/local-tasks/:id/script', wrap((req, res) => {
-  const { script, fichier } = localscript.scriptDe(Number(req.params.id));
+  const { script, fichier } = localscript.scriptDe(Number(req.params.id), {
+    converge: req.query.converge === '1', vierge: req.query.blank === '1',
+    yolo: req.query.yolo === undefined ? undefined : req.query.yolo === '1',
+  });
   res.set('Content-Type', 'text/x-shellscript; charset=utf-8');
   res.set('Content-Disposition', `attachment; filename="${fichier}"`);
   res.send(script);
