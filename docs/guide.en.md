@@ -1205,7 +1205,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   agent with its options and **the same prompt** (standing instructions included), then commit, push and merge
   request towards the starting branch (GitLab or GitHub, from the `origin` remote). At the top of the file, to
   edit freely: the **folders**, one per line, written from their common parent folder `WORKSPACE_DIR`
-  (by name, `'optim'`) — no path of the exporting machine is baked in, the agent sandbox's temporary
+  (by name, `'optim'`); a folder can carry **its own branches**, with a session's token syntax —
+  `'optim:feature/x<develop'` (working and starting branch), `'optim:feature/x'` or `'optim<develop'` —, which win
+  over `BRANCH` and `BASE_BRANCH`, valid for the other folders; likewise with `-d 'optim:feature/x<develop'`, and
+  the recap shows each folder's branch — no path of the exporting machine is baked in, the agent sandbox's temporary
   folder included (the launching machine's `TMPDIR`), nor an approved check command's absolute path
   (`/Users/…/bin/npm ci` becomes `npm ci`, found through the `PATH`); the **agent command and its arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude or another), then the **request**, then the **starting branch** (`BASE_BRANCH`: the branch starts from it and the MR targets it; prefilled with

@@ -1262,7 +1262,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   l'agent de la session avec ses options et **le même prompt** (consignes permanentes comprises), puis commit,
   push et merge request vers la branche de départ (GitLab ou GitHub, déduit du remote `origin`). En tête du
   fichier, à modifier librement : les **dossiers**, un par ligne, écrits à partir de leur dossier parent commun
-  `WORKSPACE_DIR` (par leur nom, `'optim'`) — aucun chemin de la machine qui exporte n'y est figé, le dossier
+  `WORKSPACE_DIR` (par leur nom, `'optim'`) ; un dossier peut porter **ses propres branches**, avec la syntaxe
+  des jetons d'une session — `'optim:feature/x<develop'` (branche de travail et de départ), `'optim:feature/x'`
+  ou `'optim<develop'` —, qui passent devant `BRANCH` et `BASE_BRANCH`, valables pour les autres dossiers ; de
+  même avec `-d 'optim:feature/x<develop'`, et le récapitulatif affiche la branche de chacun — aucun chemin de la machine qui exporte n'y est figé, le dossier
   temporaire du bac à sable de l'agent compris (celui de `TMPDIR` au lancement), ni le chemin absolu d'une
   commande de vérificateur approuvée (`/Users/…/bin/npm ci` devient `npm ci`, résolu par le `PATH`) ; la **commande de l'agent et ses arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude ou autre), puis la **demande**, puis **branche de départ** (`BASE_BRANCH` : la branche part d'elle et la MR la vise ; préremplie avec celle

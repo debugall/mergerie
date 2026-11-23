@@ -100,9 +100,12 @@ ${conv ? '' : `      --converge|--no-converge${optionsConv}) fail ${sq(m('opt-no
 }
 
 # The request from PROMPT_FILE ("-" = standard input); every folder made absolute, a relative one
-# under WORKSPACE_DIR (otherwise under the launch folder), ~ expanded.
+# under WORKSPACE_DIR (otherwise under the launch folder), ~ expanded. A folder may carry its own
+# branches, as in a session's request: "name:branch<base", "name:branch", "name<base" — kept in
+# FOLDER_BRANCH / FOLDER_BASE, same index; empty = BRANCH / BASE_BRANCH.
+FOLDER_BRANCH=(); FOLDER_BASE=(); DEFAULT_BRANCH=''; DEFAULT_BASE=''
 resolve_inputs() {
-  local d list=() ws=${D}{WORKSPACE_DIR:-}
+  local d spec rest fb fs list=() ws=${D}{WORKSPACE_DIR:-}
   if [ -n "${D}{PROMPT_FILE:-}" ]; then
     if [ "$PROMPT_FILE" = - ]; then PROMPT=$(cat)
     else
@@ -114,7 +117,13 @@ resolve_inputs() {
   [ ${D}{#OPT_FOLDERS[@]} -eq 0 ] || FOLDERS=("${D}{OPT_FOLDERS[@]}")
   [ ${D}{#FOLDERS[@]} -gt 0 ] || fail ${sq(m('no-folders'))}
   ws=${D}{ws/#\~/$HOME}
-  for d in "${D}{FOLDERS[@]}"; do
+  for spec in "${D}{FOLDERS[@]}"; do
+    d=${D}{spec%%[:<]*}; rest=${D}{spec#"$d"}; fb=''; fs=''
+    case $rest in
+      :*) rest=${D}{rest#:}; fb=${D}{rest%%<*}; case $rest in *'<'*) fs=${D}{rest#*<} ;; esac ;;
+      '<'*) fs=${D}{rest#<} ;;
+    esac
+    FOLDER_BRANCH+=("$fb"); FOLDER_BASE+=("$fs")
     d=${D}{d/#\~/$HOME}
     case $d in /*) ;; *) [ -z "$ws" ] || d="${D}{ws%/}/$d" ;; esac
     case $d in /*) ;; *) d="$PWD/$d" ;; esac
@@ -122,6 +131,20 @@ resolve_inputs() {
     list+=("$d")
   done
   FOLDERS=("${D}{list[@]}")
+  DEFAULT_BRANCH=$BRANCH; DEFAULT_BASE=$BASE_BRANCH
+}
+# BRANCH and BASE_BRANCH for folder n (0-based): its own, otherwise the defaults; no argument = the defaults.
+folder_branches() {
+  BRANCH=$DEFAULT_BRANCH; BASE_BRANCH=$DEFAULT_BASE
+  [ $# -gt 0 ] || return 0
+  BRANCH=${D}{FOLDER_BRANCH[$1]:-$DEFAULT_BRANCH}; BASE_BRANCH=${D}{FOLDER_BASE[$1]:-$DEFAULT_BASE}
+}
+# 0 when at least one folder gets a working branch.
+any_branch() {
+  local b
+  [ -z "$DEFAULT_BRANCH" ] || return 0
+  for b in ${D}{FOLDER_BRANCH[@]+"${D}{FOLDER_BRANCH[@]}"}; do [ -z "$b" ] || return 0; done
+  return 1
 }
 
 agent_mode() {
@@ -134,17 +157,23 @@ yes_no() { if [ "$1" = 1 ]; then printf '%s' ${sq(m('yes'))}; else printf '%s' $
 
 # What is about to happen, before anything happens.
 recap() {
-  local d first lines
+  local n first lines
   say ""
   say "${D}{C_B}${m('recap-title')}${D}{C_OFF}"
-  for d in "${D}{FOLDERS[@]}"; do say "  $(printf ${sq(m('recap-folder'))} "$d")"; done
+  for n in "${D}{!FOLDERS[@]}"; do
+    folder_branches "$n"
+    if [ -n "${D}{FOLDER_BRANCH[$n]:-}${D}{FOLDER_BASE[$n]:-}" ] && [ -n "$BRANCH" ]; then
+      say "  $(printf ${sq(m('recap-folder-branch'))} "${D}{FOLDERS[$n]}" "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"
+    else say "  $(printf ${sq(m('recap-folder'))} "${D}{FOLDERS[$n]}")"; fi
+  done
+  folder_branches
   first=${D}{PROMPT%%$'\n'*}
   [ ${D}{#first} -le 100 ] || first="${D}{first:0:100}…"
   lines=$(printf '%s\n' "$PROMPT" | wc -l | tr -d ' ')
   say "  $(printf ${sq(m('recap-prompt'))} "$first" "$lines")"
-  if [ -z "$BRANCH" ]; then say "  ${m('recap-no-branch')}"
+  if ! any_branch; then say "  ${m('recap-no-branch')}"
   else
-    say "  $(printf ${sq(m('recap-branch'))} "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"
+    [ -z "$BRANCH" ] || say "  $(printf ${sq(m('recap-branch'))} "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"
     if [ "$COMMIT" = 1 ]; then
       say "  $(printf ${sq(m('recap-commit'))} "$COMMIT_MESSAGE" "$(yes_no "$PUSH")")"
       if [ "$CREATE_MR" = 1 ]; then say "  $(printf ${sq(m('recap-mr'))} "${D}{MR_TITLE:-$COMMIT_MESSAGE}")"; fi
@@ -159,16 +188,17 @@ ${conv ? `  if [ "$CONVERGE" = 1 ]; then say "  $(printf ${sq(m('recap-converge'
 # Fails now rather than after the agent's work: missing agent, git or curl, a folder with changes
 # in progress. A missing folder, a base branch or a remote out of reach: a warning, the other folders go on.
 preflight() {
-  local d url errs=0 dirty=0 changes
+  local n d url errs=0 dirty=0 changes
   say ""
   say "${D}{C_B}${m('checks-title')}${D}{C_OFF}"
   if command -v "$AGENT_BIN" >/dev/null 2>&1; then ok "$(printf ${sq(m('check-agent'))} "$AGENT_BIN")"
   else bad "$(printf ${sq(m('check-no-agent'))} "$AGENT_BIN")"; errs=$((errs + 1)); fi
   if command -v git >/dev/null 2>&1; then ok git; else bad ${sq(m('check-no-git'))}; errs=$((errs + 1)); fi
-  if { [ -n "$BRANCH" ] && [ "$COMMIT" = 1 ] && [ "$CREATE_MR" = 1 ]; } || [ -n "$JIRA_TICKET" ]; then
+  if { any_branch && [ "$COMMIT" = 1 ] && [ "$CREATE_MR" = 1 ]; } || [ -n "$JIRA_TICKET" ]; then
     if command -v curl >/dev/null 2>&1; then ok curl; else bad ${sq(m('check-no-curl'))}; errs=$((errs + 1)); fi
   fi
-  for d in "${D}{FOLDERS[@]}"; do
+  for n in "${D}{!FOLDERS[@]}"; do
+    d=${D}{FOLDERS[$n]}; folder_branches "$n"
     if [ ! -d "$d" ]; then warn "$(printf ${sq(m('no-folder'))} "$d")"; continue; fi
     if ! git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       [ -z "$BRANCH" ] || warn "$(printf ${sq(m('not-git'))} "$d")"
@@ -193,6 +223,7 @@ preflight() {
       else warn "$(printf ${sq(m('check-remote-unreachable'))} "$d")"; fi
     else ok "$d"; fi
   done
+  folder_branches
   [ "$dirty" = 0 ] || fail ${sq(m('dirty-stop'))}
   [ "$errs" = 0 ] || fail ${sq(m('checks-failed'))}
 }
@@ -212,10 +243,11 @@ forge_api() {
 # Each forge token present, tried once per API: refused stops here, out of reach is only a warning.
 # The token reaches curl on its standard input, never on its command line.
 check_tokens() {
-  local d code tok head seen=' '
-  [ -n "$BRANCH" ] && [ "$COMMIT" = 1 ] && [ "$CREATE_MR" = 1 ] || return 0
-  for d in "${D}{FOLDERS[@]}"; do
-    [ -d "$d" ] && forge_api "$d" || continue
+  local n d code tok head seen=' '
+  any_branch && [ "$COMMIT" = 1 ] && [ "$CREATE_MR" = 1 ] || return 0
+  for n in "${D}{!FOLDERS[@]}"; do
+    d=${D}{FOLDERS[$n]}
+    [ -n "${D}{FOLDER_BRANCH[$n]:-$DEFAULT_BRANCH}" ] && [ -d "$d" ] && forge_api "$d" || continue
     case $seen in *" $F_API "*) continue ;; esac
     seen="$seen$F_API "
     if [ "$F_KIND" = github ]; then tok=${D}{GITHUB_TOKEN:-}; head='Authorization: Bearer'; else tok=${D}{GITLAB_TOKEN:-}; head='PRIVATE-TOKEN:'; fi

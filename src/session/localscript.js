@@ -519,9 +519,10 @@ fi
 confirm_run
 
 ${c('tokens')}
-if [ -n "$BRANCH" ] && [ "$COMMIT" = 1 ] && [ "$CREATE_MR" = 1 ]; then
-  for dir in "\${FOLDERS[@]}"; do
-    [ -d "$dir" ] || continue
+if any_branch && [ "$COMMIT" = 1 ] && [ "$CREATE_MR" = 1 ]; then
+  for i in "\${!FOLDERS[@]}"; do
+    dir=\${FOLDERS[$i]}
+    [ -n "\${FOLDER_BRANCH[$i]:-$DEFAULT_BRANCH}" ] && [ -d "$dir" ] || continue
     case "$(forge_of "$dir")" in
       github) ask_secret GITHUB_TOKEN ${sq(m('ask-github'))} ;;
       gitlab) ask_secret GITLAB_TOKEN ${sq(m('ask-gitlab'))} ;;
@@ -559,6 +560,7 @@ for dir in "\${FOLDERS[@]}"; do
     origin=$(git -C "$dir" symbolic-ref -q --short HEAD || git -C "$dir" rev-parse -q --verify HEAD || true)
   fi
   CURRENT_DIR=$dir; CURRENT_ORIGIN=$origin; T0=$SECONDS
+  folder_branches $((i - 1))   # its own branches, otherwise BRANCH / BASE_BRANCH
   set +e
   ( set -e; process_folder "$dir" )
   rc=$?
@@ -573,6 +575,7 @@ for dir in "\${FOLDERS[@]}"; do
   fi
   CURRENT_DIR=''
 done
+folder_branches
 summary
 say ""
 say "$(printf ${sq(m('done'))} "$(( \${#FOLDERS[@]} - failed ))" "\${#FOLDERS[@]}")"

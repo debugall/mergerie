@@ -535,6 +535,33 @@ describe('Codage hors dépôt : export en script bash', () => {
       git(depot.work, ['checkout', '-q', 'main']);
     });
 
+    test('chaque dossier sa branche et son départ : « nom:branche<départ » et « nom<départ » passent devant BRANCH et BASE_BRANCH', async () => {
+      // Deux dépôts aux branches de départ différentes, chacune avec son propre commit.
+      git(depot.work, ['checkout', '-q', '-b', 'rel/1']);
+      fs.writeFileSync(path.join(depot.work, 'REL.md'), 'rel\n');
+      git(depot.work, ['add', 'REL.md']); git(depot.work, ['commit', '-q', '-m', 'rel']);
+      const rel = git(depot.work, ['rev-parse', 'HEAD']);
+      git(depot.work, ['checkout', '-q', 'main']);
+      const autre = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'second-')));
+      git(autre.work, ['checkout', '-q', '-b', 'develop']);
+      fs.writeFileSync(path.join(autre.work, 'DEV.md'), 'dev\n');
+      git(autre.work, ['add', 'DEV.md']); git(autre.work, ['commit', '-q', '-m', 'dev']);
+      const dev = git(autre.work, ['rev-parse', 'HEAD']);
+      const departAutre = git(autre.work, ['rev-parse', '--abbrev-ref', 'HEAD']);
+
+      const r = await lancerAvec(fichier, ['-d', `${depot.work}:feature/un<rel/1`, '-d', `${autre.work}<develop`,
+        '-b', 'feature/defaut', '--base', 'inexistante', '--no-push', '--no-log'], {});
+      assert.equal(r.status, 0, r.stderr);
+      assert.ok(r.stderr.includes(`${depot.work} — branche feature/un, depuis rel/1`), r.stderr);
+      assert.ok(r.stderr.includes(`${autre.work} — branche feature/defaut, depuis develop`), 'la branche par défaut, son départ à lui');
+      assert.equal(git(depot.work, ['rev-parse', 'feature/un~1']), rel, 'partie de sa branche de départ');
+      assert.equal(git(depot.work, ['branch', '--list', 'feature/defaut']), '', 'la branche par défaut ne le concerne pas');
+      assert.equal(git(autre.work, ['rev-parse', 'feature/defaut~1']), dev, 'le second, de develop');
+      assert.match(r.stderr, /✓ work — feature\/un · 1 commit/, 'le bilan dit la branche de chacun');
+      assert.equal(git(autre.work, ['rev-parse', '--abbrev-ref', 'HEAD']), departAutre, 'chacun revient sur la sienne');
+      git(depot.work, ['checkout', '-q', 'main']);
+    });
+
     test('Ctrl-C pendant l’agent : le dossier revient sur sa branche, le bilan dit où on en était', async () => {
       const marque = path.join(app.dataDir, 'agent-lent.started');
       const lent = path.join(app.dataDir, 'agent-lent.sh');
