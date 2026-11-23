@@ -28,7 +28,7 @@ describe('Codage hors dépôt : export en script bash', () => {
   const lancer = (fichier, env = {}) => new Promise((resolve) => {
     const p = spawn('bash', [fichier], {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENT_BIN: agent, ...env },
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENT_BIN: agent, LOG_DIR: path.join(app.dataDir, 'journaux'), ...env },
     });
     let stderr = '';
     p.stdout.resume();
@@ -36,8 +36,29 @@ describe('Codage hors dépôt : export en script bash', () => {
     p.on('close', (status) => resolve({ status, stderr }));
   });
 
-  // Les dossiers s'écrivent à partir de leur parent commun, WORKSPACE_DIR.
-  const ligneDossier = () => `  "$WORKSPACE_DIR"/'${path.basename(depot.work)}'\n`;
+  // Les dossiers s'écrivent par leur nom, sous leur parent commun WORKSPACE_DIR.
+  const ligneDossier = () => `  '${path.basename(depot.work)}'\n`;
+
+  // Le script avec des options, et une entrée standard au besoin.
+  const lancerAvec = (fichier, args, env = {}, entree = null) => new Promise((resolve) => {
+    const p = spawn('bash', [fichier, ...args], {
+      stdio: [entree === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENT_BIN: agent, LOG_DIR: path.join(app.dataDir, 'journaux'), ...env },
+    });
+    let stderr = '';
+    if (entree !== null) p.stdin.end(entree);
+    p.stdout.resume();
+    p.stderr.on('data', (d) => { stderr += d; });
+    p.on('close', (status) => resolve({ status, stderr }));
+  });
+  // Un fichier écrit par un autre processus : on attend qu'il existe (et, au besoin, qu'il dise quelque chose).
+  const attendreFichier = async (f, motif = null) => {
+    for (let i = 0; i < 300; i++) {
+      if (fs.existsSync(f) && (!motif || motif.test(fs.readFileSync(f, 'utf8')))) return;
+      await new Promise((r) => { setTimeout(r, 50); });
+    }
+    throw new Error(`fichier attendu : ${f}`);
+  };
 
   before(async () => {
     app = await startApp(); await app.configure();
@@ -64,7 +85,10 @@ describe('Codage hors dépôt : export en script bash', () => {
     assert.doesNotMatch(texte, /reviewer\.db/, 'ni les règles qui ne protègent que ses données');
     const premiere = (motif) => texte.indexOf(motif);
     assert.ok(premiere('FOLDERS=(') > 0 && premiere('FOLDERS=(') < premiere('PROMPT <<'), 'les dossiers d’abord');
-    assert.ok(premiere('FOLDERS=(') < premiere('AGENT_BIN=') && premiere('AGENT_PROMPT_FORM=(') < premiere('PROMPT <<'), 'puis la commande de l’agent et ses arguments');
+    assert.ok(premiere('FOLDERS=(') < premiere('AGENT_BIN=') && premiere('AGENT_BIN=') < premiere('PROMPT <<'), 'puis la commande de l’agent');
+    assert.ok(premiere('JIRA_TICKET=') < premiere('AGENT_ARGS=(') && premiere('AGENT_ARGS=(') < premiere('GITLAB_URL='),
+      'ses arguments avec les réglages avancés, après tout ce qui change d’une exécution à l’autre');
+    assert.ok(premiere('Utilisation : ./rangement-des-imports.sh [options]') > 0 && premiere('Utilisation') < premiere('FOLDERS=('), 'le mode d’emploi en tête');
     assert.ok(premiere('PROMPT <<') < premiere('BRANCH='), 'puis la demande');
     assert.ok(premiere('BRANCH=') < premiere("MR_TITLE='Range les imports'\n"), 'le titre de la MR, à éditer en tête avec le reste de git');
     assert.ok(premiere('MR_TITLE=') < premiere('json_str()'));
@@ -411,6 +435,128 @@ describe('Codage hors dépôt : export en script bash', () => {
   /* AVEC CONVERGENCE. Le faux agent distingue la relecture (consigne « LECTURE SEULE ») du codage :
      relu, il rend un rapport dont la note est la suivante de SCORES (« - » = pas de note) ;
      appelé pour coder ou corriger, il ajoute une ligne (sauf NOFIX=1, qui ne laisse que le codage). Chaque prompt reçu est gardé, numéroté. */
+  /* LE SCRIPT AU QUOTIDIEN : options sur la ligne de commande, aide, .env d'exemple, essai à blanc,
+     vérifications avant l'agent, journal, bilan, Ctrl-C. */
+  describe('options, récapitulatif, vérifications, journal et bilan', () => {
+    let fichier;
+    const branche = (nom) => spawnSync('git', ['branch', '-q', '-D', nom], { cwd: depot.work, stdio: 'ignore' });
+    before(async () => {
+      const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Demande écrite', label: 'Au quotidien', branch: 'feature/quotidien', dirs: [depot.work] })).body;
+      fichier = path.join(app.dataDir, 'quotidien.sh');
+      fs.writeFileSync(fichier, (await exporter(lt.id)).texte);
+    });
+
+    test('--help liste les options et les valeurs actuelles ; --env-example rend un .env relisible ; une option inconnue arrête', async () => {
+      let r = spawnSync('bash', [fichier, '--help'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME } });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^Utilisation : .*quotidien\.sh \[options\]/m);
+      for (const o of ['--prompt-file', '--branch', '--dry-run', '--yes', '--no-mr', '--env-example']) assert.ok(r.stdout.includes(o), o);
+      assert.match(r.stdout, /^ {2}BRANCH +feature\/quotidien$/m, 'avec la valeur écrite en tête');
+      assert.doesNotMatch(r.stdout, /--threshold/, 'pas d’option de convergence dans un script sans elle');
+
+      r = spawnSync('bash', [fichier, '--env-example'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENT_BIN: 'mon agent' } });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^WORKSPACE_DIR=/m);
+      assert.match(r.stdout, /^AGENT_BIN=mon\\ agent$/m, 'la valeur courante, relisible par le .env');
+      assert.match(r.stdout, /^# GITLAB_TOKEN=$/m, 'les jetons laissés en commentaire');
+
+      r = await new Promise((resolve) => {
+        const p = spawn('bash', [fichier, '--nimporte'], { stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH, HOME: process.env.HOME } });
+        let e = ''; p.stderr.on('data', (d) => { e += d; }); p.on('close', (status) => resolve({ status, stderr: e }));
+      });
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /Option inconnue : --nimporte/);
+      r = spawnSync('bash', [fichier, '--threshold', '9'], { encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME } });
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /exporté sans convergence/);
+      git(depot.work, ['checkout', '-q', 'main']); branche('feature/quotidien');
+    });
+
+    test('--dry-run : le récapitulatif et les vérifications, sans agent ni branche ; un agent absent arrête avant tout', async () => {
+      fs.writeFileSync(journal, '');
+      let r = await lancerAvec(fichier, ['--dry-run', '-b', 'feature/essai', '-m', 'Message essai'], { GITLAB_TOKEN: app.state.token });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stderr, /Ce qui va se passer/);
+      assert.match(r.stderr, /Branche +: feature\/essai, depuis la branche courante/);
+      assert.match(r.stderr, /Commit +: « Message essai » · push : oui/);
+      assert.match(r.stderr, /Vérifications\n✓ agent/);
+      assert.match(r.stderr, /✓ jeton accepté par/, 'le jeton essayé sur la forge');
+      assert.match(r.stderr, /Essai à blanc : rien n’a été lancé/);
+      assert.equal(fs.readFileSync(journal, 'utf8'), '', 'l’agent n’a pas tourné');
+      assert.equal(spawnSync('git', ['rev-parse', '-q', '--verify', 'refs/heads/feature/essai'], { cwd: depot.work }).status, 1, 'ni branche créée');
+
+      r = await lancerAvec(fichier, [], { AGENT_BIN: '/nulle/part/agent' });
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /Agent introuvable : \/nulle\/part\/agent/);
+      assert.equal(fs.readFileSync(journal, 'utf8'), '');
+    });
+
+    test('un jeton refusé par la forge arrête avant le travail de l’agent', async () => {
+      fs.writeFileSync(journal, '');
+      const r = await lancerAvec(fichier, [], { GITLAB_TOKEN: 'mauvais-jeton' });
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /Jeton refusé par .* \(HTTP 401\)/);
+      assert.equal(fs.readFileSync(journal, 'utf8'), '', 'l’agent n’a pas tourné');
+      assert.equal(git(depot.work, ['rev-parse', '--abbrev-ref', 'HEAD']), 'main');
+    });
+
+    test('les options l’emportent : demande d’un fichier ou de l’entrée standard, dossier par son nom, branche, message, titre ; journal et bilan', async () => {
+      const demande = path.join(app.dataDir, 'demande.md');
+      fs.writeFileSync(demande, 'Demande lue dans un fichier\n');
+      const journaux = path.join(app.dataDir, 'journaux-options');
+      let r = await lancerAvec(fichier, ['--prompt-file', demande, '--workspace', path.dirname(depot.work), '--folder', path.basename(depot.work),
+        '--branch=feature/par-options', '-m', 'Message des options', '-t', 'Titre des options', '--log-dir', journaux], { GITLAB_TOKEN: app.state.token });
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(fs.readFileSync(journal, 'utf8'), localcoder.promptPremierePasse('Demande lue dans un fichier'));
+      assert.equal(git(depot.work, ['log', '-1', '--format=%s', 'feature/par-options']), 'Message des options');
+      const mr = (app.state.mrs['grp/local-script'] || []).find((m) => m.source_branch === 'feature/par-options');
+      assert.equal(mr && mr.title, 'Titre des options');
+      assert.match(r.stderr, /\[1\/1\] work/, 'l’étape, dossier par dossier');
+      assert.match(r.stderr, /▸ Agent au travail/);
+      assert.match(r.stderr, /✓ agent terminé en \d+:\d\d/);
+      assert.match(r.stderr, /Bilan\n {2}✓ work — feature\/par-options · 1 commit\(s\) · MR http\S+\/merge_requests\/\d+ · \d+:\d\d/, 'le bilan, MR comprise');
+      const log = fs.readdirSync(journaux).map((f) => path.join(journaux, f));
+      assert.equal(log.length, 1, 'un journal par exécution');
+      assert.ok(r.stderr.includes(`Journal : ${log[0]}`), 'son chemin dans le bilan');
+      await attendreFichier(log[0], /Bilan/);
+      const contenu = fs.readFileSync(log[0], 'utf8');
+      assert.match(contenu, /Ce qui va se passer[\s\S]*Vérifications[\s\S]*Bilan/, 'toute la sortie');
+      assert.doesNotMatch(contenu, /\x1b\[/, 'sans codes de couleur');
+      assert.doesNotMatch(contenu, new RegExp(app.state.token), 'ni le jeton');
+      git(depot.work, ['checkout', '-q', 'main']);
+
+      // La demande sur l'entrée standard, sans MR ni journal.
+      r = await lancerAvec(fichier, ['-f', '-', '-b', 'feature/stdin', '--no-mr', '--no-log'], {}, 'Demande sur l’entrée standard');
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(fs.readFileSync(journal, 'utf8'), localcoder.promptPremierePasse('Demande sur l’entrée standard'));
+      assert.equal(git(depot.bare, ['rev-parse', 'refs/heads/feature/stdin']), git(depot.work, ['rev-parse', 'feature/stdin']), '--no-mr pousse quand même');
+      assert.ok(!(app.state.mrs['grp/local-script'] || []).some((m) => m.source_branch === 'feature/stdin'), 'sans merge request');
+      assert.doesNotMatch(r.stderr, /Journal :/);
+      git(depot.work, ['checkout', '-q', 'main']);
+    });
+
+    test('Ctrl-C pendant l’agent : le dossier revient sur sa branche, le bilan dit où on en était', async () => {
+      const marque = path.join(app.dataDir, 'agent-lent.started');
+      const lent = path.join(app.dataDir, 'agent-lent.sh');
+      fs.writeFileSync(lent, `#!/bin/sh\ntouch '${marque}'\nexec sleep 30\n`); fs.chmodSync(lent, 0o755);
+      fs.rmSync(marque, { force: true });
+      const p = spawn('bash', [fichier, '-b', 'feature/interrompue', '--no-log'], {
+        detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { PATH: process.env.PATH, HOME: process.env.HOME, AGENT_BIN: lent, GITLAB_TOKEN: app.state.token },
+      });
+      let stderr = ''; p.stderr.on('data', (d) => { stderr += d; }); p.stdout.resume();
+      const fin = new Promise((resolve) => p.on('close', (status, signal) => resolve({ status, signal })));
+      await attendreFichier(marque);
+      process.kill(-p.pid, 'SIGINT');
+      const { status } = await fin;
+      assert.equal(status, 130, stderr);
+      assert.match(stderr, /Interrompu pendant .*work \(étape « agent »\)/);
+      assert.equal(git(depot.work, ['rev-parse', '--abbrev-ref', 'HEAD']), 'main', 'rien en cours : le dossier revient sur sa branche');
+      assert.match(stderr, /Bilan\n {2}✖ work — interrompu à l’étape « agent »/);
+      branche('feature/interrompue');
+    });
+  });
+
   describe('avec la boucle de convergence', () => {
     let agentConv; let prompts;
     const recus = () => fs.readdirSync(prompts).filter((f) => f.endsWith('.txt')).sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
@@ -497,6 +643,9 @@ esac
       assert.deepEqual(fs.readdirSync(rapports).sort(), ['review-0.md', 'review-1.md', 'review-2.md']);
       for (const n of [0, 1, 2]) assert.ok(r.stderr.includes(`Rapport : ${fs.realpathSync(path.join(rapports, `review-${n}.md`))}`), `le chemin du rapport ${n} affiché`);
       assert.match(r.stderr, /review-0\.md — 5\/10\n\s+review-1\.md — 7\/10\n\s+review-2\.md — 9\/10/, 'le récapitulatif des notes');
+      assert.match(r.stderr, /Convergence +: jusqu’à 8\/10, 3 correction\(s\) au plus/, 'annoncée dans le récapitulatif');
+      assert.match(r.stderr, /✓ work — ai\/convergence-nominale · 3 commit\(s\) · MR http\S+ · note 9\/10 · \d+:\d\d\n\s+rapports : \S+ai-convergence-nominale-/,
+        'le bilan : commits, MR, note finale, dossier des rapports');
       assert.match(fs.readFileSync(path.join(travail, 'diff.patch'), 'utf8'), /\+passe/, 'le diff complet depuis la base, corrections comprises');
       assert.equal(git(depot.work, ['status', '--porcelain']), '', 'rien de la boucle ne traîne dans le dossier');
       finir();
@@ -616,6 +765,19 @@ esac
     test('le seuil modifié en tête est celui qui arrête', async () => {
       const r = await lancer(await preparer('Convergence seuil', (x) => sansForge(x).replace(/^THRESHOLD=8$/m, 'THRESHOLD=6,5')), { AGENT_BIN: agentConv, SCORES: '6.5' });
       assert.match(r.stderr, /Convergé : 6\.5\/10 après 0 correction\(s\)/);
+      finir();
+      // Les options de convergence, dans un script qui l'a.
+      const fichier = await preparer('Convergence options', sansForge);
+      assert.match(spawnSync('bash', [fichier, '--help'], { encoding: 'utf8' }).stdout, /--threshold[\s\S]*--no-converge/);
+      let o = await lancerAvec(fichier, ['--threshold', '6', '--max-passes=1'], { AGENT_BIN: agentConv, SCORES: '5|6' });
+      assert.equal(o.status, 0, o.stderr);
+      assert.match(o.stderr, /Convergé : 6\/10 après 1 correction\(s\)/, '--threshold et --max-passes l’emportent');
+      finir();
+      fs.rmSync(prompts, { recursive: true, force: true }); fs.mkdirSync(prompts);
+      git(depot.work, ['branch', '-q', '-D', 'ai/convergence-options']);
+      o = await lancerAvec(fichier, ['--no-converge'], { AGENT_BIN: agentConv, SCORES: '5' });
+      assert.equal(o.status, 0, o.stderr);
+      assert.equal(recus().length, 1, '--no-converge : le codage seul, aucune relecture');
       finir();
     });
   });

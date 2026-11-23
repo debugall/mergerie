@@ -1187,7 +1187,7 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   agent with its options and **the same prompt** (standing instructions included), then commit, push and merge
   request towards the starting branch (GitLab or GitHub, from the `origin` remote). At the top of the file, to
   edit freely: the **folders**, one per line, written from their common parent folder `WORKSPACE_DIR`
-  (`"$WORKSPACE_DIR"/'optim'`) — no path of the exporting machine is baked in, the agent sandbox's temporary
+  (by name, `'optim'`) — no path of the exporting machine is baked in, the agent sandbox's temporary
   folder included (the launching machine's `TMPDIR`), nor an approved check command's absolute path
   (`/Users/…/bin/npm ci` becomes `npm ci`, found through the `PATH`); the **agent command and its arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude or another), then the **request**, then the **starting branch** (`BASE_BRANCH`: the branch starts from it and the MR targets it; prefilled with
@@ -1199,7 +1199,25 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   token from the `.env` is never passed to it. **Behind a corporate proxy**, the script turns at start the
   `*.domain` entries of `no_proxy` / `NO_PROXY` — which curl ignores — into `.domain`, leaving the others alone;
   `NO_PROXY_GITLAB=1` adds the `GITLAB_URL` host, for an internal GitLab the company did not list (never for
-  gitlab.com, which must go through the proxy). Nothing secret is written in it: tokens come from
+  gitlab.com, which must go through the proxy).
+
+  **The script day to day.** The header separates what changes from one run to the next (**To fill in**:
+  folders, agent, request, convergence, git, ticket) from the **advanced settings** (agent arguments, Jira,
+  forge, log), and opens with usage notes. **Options win over the variables**, without editing the file:
+  `-f request.md` (or `-f -` for standard input, or `PROMPT_FILE`), `-p`, `-b`, `--base`, `-m`, `-t`, `-j`,
+  `-d folder` (repeatable), `-w`, `-a`, `--no-commit`, `--no-push`, `--no-mr`, `--no-restore`, and with
+  convergence `--threshold`, `--max-passes`, `--verify`, `--reports-dir`, `--no-converge`; `--help` lists them
+  with the current values, `--env-example > .env` writes a `.env` ready to fill. Before any work, the script
+  **recaps** what is about to happen (folders, request, branches, commit, MR, agent and mode, ticket,
+  convergence) then **checks**: agent, git and curl present, no folder with changes in progress, starting branch
+  and reachable remote (warnings), forge token tried on the API (refused = stop before the agent). `--dry-run`
+  stops there; at a terminal, it asks for confirmation (`--yes` to skip it). The run reads as steps (`[1/2]
+  optim`, how long the agent and each review took), coloured at a terminal only (`NO_COLOR`, `--no-color`), and
+  all the output also goes to a dated **log** (`LOG_DIR`, by default a `<script>-logs` folder in the temporary
+  folder; `--no-log`). At the end, a **summary** per folder: status, branch, commits, MR link, final score,
+  reports folder, duration, and the log's path. **Ctrl-C** puts the folder in progress back on its branch when
+  nothing of the agent's would follow it there (otherwise it leaves it and says how to go back), prints the
+  summary and exits with 130. Nothing secret is written in it: tokens come from
   `GITLAB_TOKEN` / `GITHUB_TOKEN` or are asked at start, hidden, before the agent works; an HTTPS push asks for
   its credentials through git. The script does not name the tool and carries neither its data-protection rules
   nor the agent variables set on screen. A failing folder does not stop the others. **A folder with changes in progress**

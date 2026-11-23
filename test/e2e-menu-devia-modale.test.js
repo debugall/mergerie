@@ -764,7 +764,7 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
     assert.ok(simple.texte.startsWith('#!/usr/bin/env bash'));
     assert.match(simple.texte, /\nExporter ceci\n__PROMPT__\n/);
     assert.doesNotMatch(simple.texte, /^CONVERGE=/m);
-    assert.doesNotMatch(simple.texte, /dangerously-skip-permissions/, 'yolo décoché : le mode sécurisé');
+    assert.doesNotMatch(simple.texte.match(/^AGENT_ARGS=.*$/m)[0], /dangerously-skip-permissions/, 'yolo décoché : le mode sécurisé');
     assert.match(simple.texte, /^AGENT_ARGS=\(.*'--permission-mode' 'acceptEdits'/m, 'l’agent écrit dans son dossier sans rien demander');
 
     const conv = await exporter({ converge: true, yolo: true });

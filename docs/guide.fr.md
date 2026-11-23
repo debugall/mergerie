@@ -1243,7 +1243,7 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   l'agent de la session avec ses options et **le même prompt** (consignes permanentes comprises), puis commit,
   push et merge request vers la branche de départ (GitLab ou GitHub, déduit du remote `origin`). En tête du
   fichier, à modifier librement : les **dossiers**, un par ligne, écrits à partir de leur dossier parent commun
-  `WORKSPACE_DIR` (`"$WORKSPACE_DIR"/'optim'`) — aucun chemin de la machine qui exporte n'y est figé, le dossier
+  `WORKSPACE_DIR` (par leur nom, `'optim'`) — aucun chemin de la machine qui exporte n'y est figé, le dossier
   temporaire du bac à sable de l'agent compris (celui de `TMPDIR` au lancement), ni le chemin absolu d'une
   commande de vérificateur approuvée (`/Users/…/bin/npm ci` devient `npm ci`, résolu par le `PATH`) ; la **commande de l'agent et ses arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude ou autre), puis la **demande**, puis **branche de départ** (`BASE_BRANCH` : la branche part d'elle et la MR la vise ; préremplie avec celle
@@ -1255,7 +1255,25 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   `TMPDIR`), un jeton du `.env` ne lui est jamais transmis. **Derrière un proxy d'entreprise**, le script convertit au
   démarrage les entrées `*.domaine` de `no_proxy` / `NO_PROXY` — que curl ignore — en `.domaine`, sans toucher
   aux autres ; `NO_PROXY_GITLAB=1` y ajoute l'hôte de `GITLAB_URL`, pour un GitLab interne que l'entreprise n'a
-  pas listé (jamais pour gitlab.com, qui doit passer par le proxy). Rien de secret n'y est écrit : les
+  pas listé (jamais pour gitlab.com, qui doit passer par le proxy).
+
+  **Le script au quotidien.** L'en-tête sépare ce qui change d'une exécution à l'autre (**À renseigner** :
+  dossiers, agent, demande, convergence, git, ticket) des **réglages avancés** (arguments de l'agent, Jira, forge,
+  journal), et commence par un mode d'emploi. **Des options l'emportent sur les variables**, sans éditer le
+  fichier : `-f demande.md` (ou `-f -` pour l'entrée standard, ou `PROMPT_FILE`), `-p`, `-b`, `--base`, `-m`, `-t`,
+  `-j`, `-d dossier` (répétable), `-w`, `-a`, `--no-commit`, `--no-push`, `--no-mr`, `--no-restore`, et avec la
+  convergence `--threshold`, `--max-passes`, `--verify`, `--reports-dir`, `--no-converge` ; `--help` les liste avec
+  les valeurs actuelles, `--env-example > .env` écrit un `.env` prêt à remplir. Avant tout travail, le script
+  **récapitule** ce qui va se passer (dossiers, demande, branches, commit, MR, agent et mode, ticket, convergence)
+  puis **vérifie** : agent, git et curl présents, aucun dossier avec des modifications en cours, branche de
+  départ et remote joignable (avertissements), jeton de forge essayé sur l'API (refusé = arrêt avant l'agent).
+  `--dry-run` s'arrête là ; au terminal, il demande confirmation (`--yes` pour s'en passer). Le déroulé est en
+  étapes (`[1/2] optim`, durée de l'agent et de chaque relecture), en couleur au terminal seulement
+  (`NO_COLOR`, `--no-color`), et toute la sortie part aussi dans un **journal** daté (`LOG_DIR`, par défaut un
+  dossier `<script>-logs` du dossier temporaire ; `--no-log`). À la fin, un **bilan** par dossier : statut,
+  branche, commits, lien de la MR, note finale, dossier des rapports, durée, et le chemin du journal. **Ctrl-C**
+  remet le dossier en cours sur sa branche quand rien de l'agent ne le suivrait (sinon il le laisse et dit
+  comment revenir), affiche le bilan et sort en 130. Rien de secret n'y est écrit : les
   jetons viennent de `GITLAB_TOKEN` / `GITHUB_TOKEN` ou sont demandés au lancement, masqués, avant le travail de
   l'agent ; un push HTTPS demande ses identifiants par git. Le script ne nomme pas l'outil et ne reprend ni ses
   règles de protection de données ni les variables d'agent réglées à l'écran. Un dossier en échec n'arrête pas
