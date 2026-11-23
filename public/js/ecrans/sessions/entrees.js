@@ -195,7 +195,8 @@ async function openLocalTaskForJira(key) {
   const blocs = [];
   if (issue) blocs.push(`${tr('task.jira.context-header', { key })}\n\n${(issue.context || '').trim()}`);
   if (md) blocs.push(`${tr('task.jira.spec-header', { key })}\n\n${md}`);
-  f.prompt.value = blocs.length ? `${blocs.join('\n\n---\n\n')}\n\n---\n\n` : '';
+  const demande = String((issue && issue.demande) || '').trim();   // `&&> …` du ticket, comme en codage
+  f.prompt.value = blocs.length ? `${blocs.join('\n\n---\n\n')}\n\n---\n\n${demande ? `${demande}\n` : ''}` : demande;
   if (f.label) f.label.value = `${key} ${(issue && issue.summary) || ''}`.trim();
   $('#taskModalTitle').textContent = tr('jira.local-modal-title', { key });
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key, summary: issue.summary || '' }) : '';
@@ -206,7 +207,7 @@ async function openLocalTaskForJira(key) {
 
 async function openTaskForJira(key) {
   const f = $('#taskForm');
-  f.reset(); resetTaskFiles();
+  f.reset(); resetTaskFiles(); oublierJetonsDepots();
   editingTaskId = null; taskKind = 'code';
   launchAfterCreate = false;   // on prépare, l'utilisateur lance
   await loadRepoOptions();
@@ -225,12 +226,21 @@ async function openTaskForJira(key) {
   const projetJira = String(key).split('-')[0].toUpperCase();
   const memo = memoDepotJira()[projetJira];
   const connu = memo && repoOptions.some((r) => r.id === Number(memo));
-  renderTargetRows([connu ? { branch, repo_id: Number(memo) } : { branch }]);
+  /* LES DÉPÔTS NOMMÉS DANS LE TICKET passent devant le souvenir : `&&dépôt:branche` dans sa
+     description ou son commentaire « #tech », et la session se prépare sans rien choisir. Les
+     lignes partent sur la branche du ticket ; celle d'un jeton (ou `&&*:branche`) est posée par
+     `synchroniserJetonsDepots`, une fois la modale ouverte. */
+  const nommes = [...JETONSRT.resoudreJetonsDepots(issue ? `${issue.context || ''}\n${issue.demande || ''}` : '', repoOptions).voulus.keys()];
+  if (nommes.length) renderTargetRows(nommes.map((id) => ({ branch, repo_id: id })));
+  else renderTargetRows([connu ? { branch, repo_id: Number(memo) } : { branch }]);
   renderCtxRepoRows([]);
   setupTaskJira(branch);
 
   if (issue) {
-    f.prompt.value = `${tr('task.jira.context-header', { key: issue.key })}\n\n${(issue.context || '').trim()}\n\n---\n\n`;
+    /* La demande écrite dans le ticket (`&&> …`) prend la place de ce qu'on tapait après le
+       séparateur : elle reste à relire et à corriger avant de lancer. */
+    const demande = String(issue.demande || '').trim();
+    f.prompt.value = `${tr('task.jira.context-header', { key: issue.key })}\n\n${(issue.context || '').trim()}\n\n---\n\n${demande ? `${demande}\n` : ''}`;
     if (f.commit_message) f.commit_message.value = `${key} ${issue.summary || ''}`.trim();
   }
   cleJiraDeLaSession = key;
@@ -246,6 +256,7 @@ async function openTaskForJira(key) {
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
   boutonsCreation();
   showTaskModal();
+  synchroniserJetonsDepots();   // les branches des jetons, et ce qui n'a rien posé, signalé
   f.prompt.focus();
   // Curseur après le bloc de contexte : on écrit SA demande, pas au milieu du ticket.
   const end = f.prompt.value.length;

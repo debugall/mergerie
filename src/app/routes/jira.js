@@ -163,15 +163,17 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
   const pieces = (liste) => (liste || []).map((a) => ({ id: a.id, filename: a.filename, mimeType: a.mimeType }));
   if (demoMode.isDemo()) {
     const d = demoJira.issue(key);
-    const tech = jira.commentaireTech((d.comments || []).map((c) => c.bodyMd), jira.marqueurTech(getConfig()));
-    const body = [`# ${d.summary}`, '', d.descriptionMd || '', ...(tech ? ['', `## ${t('jira.tech-comment.title', { marker: jira.marqueurTech(getConfig()) })}`, '', tech] : [])].join('\n');
-    return res.json({ key: d.key, summary: d.summary, context: body, attachments: pieces(d.attachments) });
+    const marqueur = jira.marqueurTech(getConfig());
+    const tech = jira.commentaireTech((d.comments || []).map((c) => c.bodyMd), marqueur);
+    const { demande, context } = jira.demandeTicket({ summary: d.summary, descriptionMd: d.descriptionMd || '', techMd: tech, techMarker: marqueur });
+    return res.json({ key: d.key, summary: d.summary, context, demande, attachments: pieces(d.attachments) });
   }
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const issue = await jira.fetchIssue(cfg, key);
+  const { demande, context } = jira.demandeTicket(issue);
   res.json({
-    key: issue.key, summary: issue.summary, context: jira.issueToContext(issue),
+    key: issue.key, summary: issue.summary, context, demande,
     attachments: pieces(issue.attachments),
   });
 }));

@@ -10,6 +10,7 @@
 const https = require('https');
 const http = require('http');
 const { t } = require('../core/i18n');
+const JETONSRT = require('../../public/runtime/jetons-runtime.js');
 
 // Client HTTP autonome (Jira Cloud est en TLS public : pas d'agent CA self-signed).
 /* LE QUOTA D'APPELS DE JIRA, RESPECTÉ PLUTÔT QUE DEVINÉ. Jira Cloud ne publie pas de budget : il
@@ -335,6 +336,21 @@ function issueToContext(issue) {
   if (issue.descriptionMd) parts.push(issue.descriptionMd);
   if (issue.techMd) parts.push(`## ${t('jira.tech-comment.title', { marker: issue.techMarker || MARQUEUR_TECH_DEFAUT })}\n\n${issue.techMd}`);
   return parts.join('\n\n').trim();
+}
+
+/* LA DEMANDE ÉCRITE DANS LE TICKET (`&&> …`, cf. runtime/jetons-runtime.js) et le contexte qui reste
+   sans elle — ce que « Faire coder l'IA » et « Récupérer » mettent dans la modale. Celle du
+   commentaire « #tech » l'emporte, entière, sur celle de la description : on ne coud pas deux
+   consignes ensemble. Les lignes `&&>` quittent le contexte des deux côtés : l'agent ne lit pas la
+   consigne deux fois, ni une consigne écartée. */
+function demandeTicket(issue) {
+  const demande = JETONSRT.demandeDe(issue.techMd) || JETONSRT.demandeDe(issue.descriptionMd);
+  const context = issueToContext({
+    ...issue,
+    descriptionMd: JETONSRT.retirerDemande(issue.descriptionMd),
+    techMd: JETONSRT.retirerDemande(issue.techMd),
+  });
+  return { demande, context };
 }
 
 /* ---------- Onglet Jira : tickets qui me sont affectés ---------- */
@@ -1068,4 +1084,4 @@ async function downloadAttachment(cfg, id) {
   return { filename: meta.filename || `piece-${id}`, mimeType: meta.mimeType || bin.contentType, buffer: bin.buffer };
 }
 
-module.exports = { issuesByKeys, isConfigured, request, commentaireTech, marqueurTech, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };
+module.exports = { issuesByKeys, isConfigured, request, commentaireTech, marqueurTech, detectTeamField, teamDe, CHAMP_SPRINT, jiraGet, jiraPost, searchAll, PLAFOND_PAGES, jqlDe, valeursJql, changedDuring, dateJql, epicChildren, updateComment, listComments, mdToAdf, statusOfKeys, projectStatuses, allFields, detectSprintField, sprintsDe, countMineInProgress, cleValide, fetchIssue, issueToContext, demandeTicket, adfToMarkdown, ticketKey, listAssignees, searchByAssignees, myself, issueDetail, issueUrl, downloadAttachment, transitions, transitionIssue, addComment };

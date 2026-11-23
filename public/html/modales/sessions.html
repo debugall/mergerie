@@ -45,13 +45,15 @@
             </label>
             <div id="taskReposWrap" class="targets-editor">
                 <div class="targets-head">
-                    <span id="targetsLabel" data-i18n="task.span.projets-et-branches">Projets et branches</span>
+                    <span id="targetsLabel" data-i18n="task.span.projets-et-branches">Projets et branches</span> <button type="button" class="hint hint-code" id="taskJetonsTip" tabindex="-1" data-i18n-tip="task.tip.jetons" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                     <span id="taskGroupChips"></span>
                     <button type="button" id="clearTargets" class="btn btn-sm" hidden title="Retirer tous les projets pour les choisir un par un" data-i18n-title="task.title.tout-retirer"><svg class="ico ico-sm"><use href="#i-close"/></svg><span data-i18n="task.btn.tout-retirer">Tout retirer</span></button>
                     <button type="button" id="addTarget" class="btn btn-sm" title="Ajouter un projet à cette session" data-i18n-title="task.title.ajouter-un-projet-a-cette"><svg class="ico ico-sm"><use href="#i-plus"/></svg><span data-i18n="task.btn.ajouter-un-projet">Ajouter un projet</span></button>
                 </div>
                 <div id="targetRows"></div>
                 <p class="muted" id="targetsHint" style="margin:6px 0 0"></p>
+                <!-- Les jetons &&dépôt de la demande qui ne posent aucune ligne : inconnus, ambigus, trop courts. -->
+                <p class="field-note task-jetons-note" id="taskJetonsNote" hidden></p>
                 <!-- LES MR OUVERTES DU DÉPÔT COCHÉ, et celles qui touchent un chemin écrit dans le prompt :
                      une ligne grise, information seulement — rien n'est bloqué, aucun bouton de plus. -->
                 <p class="field-note" id="taskCroisements" hidden></p>

@@ -76,7 +76,7 @@ function slugBranche(texte, mots = 6) {
    les premiers mots de la demande : un nom de branche qui se réécrit sous les yeux à chaque mot
    tapé, pour finir sur les quatre premiers d'une phrase qui n'était pas un titre. Sans libellé,
    le champ reste vide, à écrire. Proposée seulement — on n'écrase JAMAIS ce qui a été tapé, et
-   un champ vidé volontairement le reste (`data-touche`). Un jeton `&&&branche` dans la demande
+   un champ vidé volontairement le reste (`data-touche`). Un jeton `&&*:branche` dans la demande
    (sessions/jetons-depots.js) passe devant le libellé : une ligne ajoutée au « + » le reçoit. */
 function propositionBranche() {
   const f = $('#taskForm');

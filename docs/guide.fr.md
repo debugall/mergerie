@@ -1007,13 +1007,32 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
 - **Codage** — l'IA modifie le code. Pour chaque projet : branche de travail, et **branche de départ**
   facultative (liste déroulante avec recherche ; vide = branche par défaut du dépôt). Les projets se
   choisissent dans leur combo, ou **se nomment dans la demande au fil de la frappe** : `&&tarification`
-  (quatre lettres au moins) ajoute le dépôt dont le nom contient « tarification », `&&tarification&feature/x`
-  (ou `@`) pose aussi sa branche. Un seul dépôt correspond → la ligne apparaît aussitôt ; plusieurs → le
+  (quatre lettres au moins) ajoute le dépôt dont le nom contient « tarification », `&&tarification:feature/x`
+  pose aussi sa branche de travail (« : »), `&&tarification:feature/x<develop` la crée depuis `develop`
+  (« < », la **branche de départ**), `&&tarification<develop` pose le départ seul. Un seul dépôt correspond → la ligne apparaît aussitôt ; plusieurs → le
   menu de l'autocomplétion propose et `Entrée` tranche — jamais deux dépôts ajoutés sur un nom flou. Le
   jeton **est** la sélection : l'effacer retire la ligne (sauf branche écrite à la main), et la soumission
-  l'enlève du texte envoyé à l'agent. `&&&feature/x` (trois esperluettes) pose cette branche sur **tous** les
+  l'enlève du texte envoyé à l'agent. `&&*:feature/x` (« * » = tous) pose cette branche sur **tous** les
   dépôts de la session — ceux déjà en ligne, ceux ajoutés ensuite —, une branche nommée dans le jeton d'un
-  dépôt passant devant ; l'effacer rend aux lignes leur proposition. Même convention en exploration. La branche de travail, elle, ne se
+  dépôt passant devant ; l'effacer rend aux lignes leur proposition. `&&*:feature/x<develop` y ajoute le même
+  départ partout, `&&*<develop` le départ seul (un départ de jeton passe devant ; effacé, le champ revient à
+  sa proposition). La bulle ⓘ de « Projets et branches » rappelle toute la syntaxe. Même convention en
+  exploration, sans branche de départ.
+  **Depuis un ticket Jira** (« Faire coder l'IA », ou « Récupérer » dans la modale), les jetons de sa
+  description et de son commentaire `#tech` posent les dépôts de la même façon — la session se prépare
+  sans rien choisir, sur la branche du ticket (`feature/PROJ-1234-…`) sauf branche nommée dans le jeton.
+  Le ticket peut aussi **écrire la demande** : chaque ligne qui commence par `&&>` en est une ligne (une
+  liste passe : `&&> - …`). Réunies dans l'ordre, sans le préfixe, elles remplissent la demande après le
+  séparateur `---` du contexte, et quittent ce contexte — l'agent ne lit pas la consigne deux fois. Celles
+  du `#tech` l'emportent, entières, sur celles de la description ; avec « Récupérer », une demande déjà
+  écrite dans la modale passe devant. Ticket typique :
+  `&&api-core:feature/PROJ-12<develop` puis `&&> Ajouter l'endpoint /installments/quote` — il ne reste
+  qu'à relire et lancer. Vaut aussi pour le codage hors dépôt ouvert depuis un ticket.
+  Un même dépôt cité deux fois garde la dernière branche écrite : la demande se lit description, puis
+  `#tech`, puis ce qu'on tape — la précision technique passe devant la description, et soi-même devant les
+  deux. Un jeton peut s'écrire en code (`` `&&api-core:feature/x<develop` ``), pour que l'éditeur de Jira n'y touche
+  pas. Un jeton qui ne pose rien — aucun dépôt, plusieurs, moins de quatre caractères — est signalé en
+  orange sous les lignes plutôt que deviné ; un point de fin de phrase n'en fait pas partie. La branche de travail, elle, ne se
   propose que depuis le **libellé** de la session (`ai/<libellé>`), jamais depuis la demande : sans
   libellé, le champ reste vide, à écrire. Le prompt est
   appliqué à chaque projet, séquentiellement — **un projet en échec n'interrompt pas les autres**.

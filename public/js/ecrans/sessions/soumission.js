@@ -208,7 +208,10 @@ $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () =>
     const header = tr('task.jira.context-header', { key: d.key });
     const block = `${header}\n\n${(d.context || '').trim()}\n\n---`;
     const f = $('#taskForm');
-    f.prompt.value = block + (f.prompt.value.trim() ? `\n\n${f.prompt.value}` : '\n\n');
+    /* La demande écrite dans le ticket (`&&> …`) remplit la suite — sauf si on avait déjà écrit la
+       sienne : ce qu'on tape passe devant le ticket. */
+    const demande = String(d.demande || '').trim();
+    f.prompt.value = block + (f.prompt.value.trim() ? `\n\n${f.prompt.value}` : `\n\n${demande ? `${demande}\n` : ''}`);
     /* LE MÊME GESTE QUE « FAIRE CODER » DEPUIS UN TICKET. Ce bouton ne remplissait que la
        demande : le libellé de la session et le message de commit restaient vides, alors que le
        ticket vient de donner son titre et sa clé. On ne remplace jamais ce qui est déjà écrit —
@@ -219,6 +222,7 @@ $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () =>
     cleJiraDeLaSession = d.key;
     await proposerPiecesJira(d);   // ses captures, à cocher, comme depuis « Faire coder l'IA »
     $('#taskJiraStatus').textContent = tr('task.jira.added', { key: d.key });
+    synchroniserJetonsDepots();   // les dépôts que le ticket nomme (`&&dépôt:branche`) rejoignent les lignes
     f.prompt.focus();
   } catch (e) { $('#taskJiraStatus').textContent = ''; toast(explainError(e.message), true); }
 });

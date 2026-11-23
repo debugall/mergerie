@@ -968,13 +968,31 @@ launch. The number is **pre-filled** if the working branch already contains a ke
 - **Coding** — the AI modifies the code. For each project: a working branch, and an optional **starting
   branch** (a dropdown with search; empty = the repository's default branch). Projects are picked in their
   combo, or **named in the request as you type**: `&&pricing` (four letters at least) adds the repository
-  whose name contains "pricing", `&&pricing&feature/x` (or `@`) also sets its branch. One repository
+  whose name contains "pricing", `&&pricing:feature/x` also sets its working branch (“:”),
+  `&&pricing:feature/x<develop` creates it from `develop` (“<”, the **starting branch**), `&&pricing<develop`
+  sets the start alone. One repository
   matches → the row appears at once; several → the autocompletion menu offers them and `Enter` decides —
   never two repositories added on a vague name. The token **is** the selection: deleting it removes the
   row (unless its branch was typed by hand), and the submission strips it from the text sent to the agent.
-  `&&&feature/x` (three ampersands) sets that branch on **every** repository of the session — those already
+  `&&*:feature/x` (“*” = all) sets that branch on **every** repository of the session — those already
   listed, those added afterwards —, a branch named in a repository's own token taking precedence; deleting
-  it gives the rows their proposal back. Same convention in exploration. The working branch, for its part, is only proposed from the session's
+  it gives the rows their proposal back. `&&*:feature/x<develop` adds the same start everywhere, `&&*<develop`
+  the start alone (a token's own start wins; deleted, the field goes back to its proposal). The ⓘ bubble of
+  “Projects and branches” recalls the whole syntax. Same convention in exploration, without a starting branch. **From a Jira ticket** (“Have the
+  AI code”, or “Fetch” in the dialog), the tokens in its description and its `#tech` comment set the
+  repositories the same way — the session is prepared without picking anything, on the ticket's branch
+  (`feature/PROJ-1234-…`) unless the token names one. The ticket can also **write the request**: each line
+  starting with `&&>` is one of its lines (a list works: `&&> - …`). Gathered in order, without the prefix,
+  they fill the request after the context's `---` separator, and leave that context — the agent does not
+  read the instruction twice. The `#tech` comment's lines win, whole, over the description's; with “Fetch”,
+  a request already written in the dialog wins. A typical ticket: `&&api-core:feature/PROJ-12<develop` then
+  `&&> Add the /installments/quote endpoint` — all that is left is to read it over and launch. Local repo
+  coding opened from a ticket gets it too. A repository named twice keeps the last branch
+  written: the request reads description, then `#tech`, then what you type — the technical note wins over
+  the description, and you over both. A token can be written as code (`` `&&api-core:feature/x<develop` ``) so
+  Jira's editor leaves it alone. A token that sets nothing — no repository, several, under four characters
+  — is flagged in orange under the rows rather than guessed; a sentence's final full stop is not part of
+  it. The working branch, for its part, is only proposed from the session's
   **label** (`ai/<label>`), never from the request: without a label, the field stays empty, to be written. The prompt is applied to each
   project, sequentially — **one failing project does not stop the others**. Each project then carries its
   own actions: **Diff · Push · Create MR · Merge**. The line also offers **`Review`** as soon as the merge

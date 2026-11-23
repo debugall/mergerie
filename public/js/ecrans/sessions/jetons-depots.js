@@ -3,8 +3,8 @@
 /* ---------- Les jetons « &&dépôt » ----------
    Choisir ses dépôts dans la modale, c'est un combo par ligne, quarante noms, trois fois par
    jour. On les nomme donc DANS la demande, au fil de la frappe : `&&tarification` ajoute le
-   dépôt dont le nom contient « tarification », `&&tarification&feature/x` pose aussi sa branche
-   (« @ » accepté à la place de « & »). Quatre caractères au moins avant d'agir — à deux lettres,
+   dépôt dont le nom contient « tarification », `&&tarification:feature/x` pose aussi sa branche,
+   `&&tarification:feature/x<develop` la crée depuis `develop` (codage). Quatre caractères au moins avant d'agir — à deux lettres,
    tout correspond. Un seul dépôt correspond → la ligne apparaît tout de suite ; plusieurs → le
    menu de l'autocomplétion propose, et c'est Entrée qui tranche : jamais deux dépôts ajoutés
    d'un coup pour un jeton flou, l'agent part sur ce qu'on a vu.
@@ -13,56 +13,43 @@
    et la soumission le retire du texte envoyé (`retirerJetonsDepots`). L'effacer retire la
    ligne qu'il avait posée — sauf si sa branche a été touchée à la main, signe qu'on y tient.
 
-   `&&&feature/x` — trois esperluettes — pose cette branche sur TOUTES les lignes : une session
-   sur quatre dépôts porte le même nom de branche quatre fois, et le taper quatre fois était la
-   corvée suivante. Une branche nommée dans le jeton d'un dépôt (`&&nom&branche`) l'emporte sur
-   la globale ; effacer `&&&…` rend aux lignes leur proposition (le libellé) ou le vide. */
-const JETON_DEPOT_MIN = 4;
-/* `(^|[\s(])` : un jeton commence une ligne ou suit une espace — `a&&b` dans du code n'en est
-   pas un. Le nom accepte ce qu'un chemin de projet accepte ; la branche s'arrête à l'espace.
-   `&&&x` n'est pas pris pour `&&` + nom : le nom n'accepte pas « & ». */
-const JETON_DEPOT_RE = /(^|[\s(])&&([\w./-]+)(?:[&@]([^\s,;)]+))?/g;
-const JETON_BRANCHE_RE = /(^|[\s(])&&&([^\s,;)]+)/g;
+   `&&*:feature/x` — « * », tous — pose cette branche sur TOUTES les lignes : une session sur
+   quatre dépôts porte le même nom de branche quatre fois, et le taper quatre fois était la
+   corvée suivante. Une branche nommée dans le jeton d'un dépôt (`&&nom:branche`) l'emporte sur
+   la globale ; effacer `&&*…` rend aux lignes leur proposition (le libellé) ou le vide. */
+/* L'analyse du texte (expressions, résolution, retrait) vit dans `runtime/jetons-runtime.js`,
+   partagée avec Node ; ici, ce qui pose les lignes de la modale. */
+const depotsPourJeton = (nom) => JETONSRT.depotsPourJeton(nom, repoOptions);
+const brancheGlobaleJeton = (texte) => JETONSRT.brancheGlobaleJeton(texte);
+const retirerJetonsDepots = (texte) => JETONSRT.retirerJetonsDepots(texte);
 
-function jetonsDepots(texte) {
-  const out = [];
-  for (const m of String(texte || '').matchAll(JETON_DEPOT_RE)) {
-    out.push({ nom: m[2], branche: m[3] || '', debut: m.index + m[1].length, fin: m.index + m[0].length });
-  }
-  return out;
-}
-
-/* Les dépôts qu'un nom désigne : le nom exact (complet ou dernier segment) l'emporte sur les
-   contenances, sinon `&&api` hésiterait entre `grp/api` et `grp/api-core` pour toujours. */
-function depotsPourJeton(nom) {
-  const q = String(nom || '').toLowerCase();
-  if (q.length < JETON_DEPOT_MIN) return [];
-  const exacts = repoOptions.filter((r) => { const p = r.project.toLowerCase(); return p === q || p.slice(p.lastIndexOf('/') + 1) === q; });
-  if (exacts.length === 1) return exacts;
-  return repoOptions.filter((r) => r.project.toLowerCase().includes(q));
-}
-
-/* La branche que `&&&branche` pose sur toutes les lignes — la dernière écrite si plusieurs. */
-function brancheGlobaleJeton(texte) {
-  let b = '';
-  for (const m of String(texte || '').matchAll(JETON_BRANCHE_RE)) b = m[2];
-  return b;
-}
-
-/* Le texte envoyé à l'agent : sans les jetons, sans les doubles espaces qu'ils laissent. */
-function retirerJetonsDepots(texte) {
-  return String(texte || '')
-    .replace(JETON_BRANCHE_RE, '$1')
-    .replace(JETON_DEPOT_RE, '$1')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+$/gm, '')
-    .trim();
+/* LES JETONS QUI NE POSENT RIEN SE DISENT. Taper `&&tari` ouvre le menu ; mais un jeton venu
+   d'un ticket Jira (sa description, son commentaire « #tech ») n'a jamais été tapé : ambigu ou
+   inconnu, il était ignoré sans un mot, et la session partait sur un dépôt de moins. Le jeton
+   sous le curseur n'est pas jugé — on est en train de l'écrire, le menu s'en charge. */
+function noterJetonsDepots(r) {
+  const note = $('#taskJetonsNote');
+  if (!note) return;
+  const lignes = [
+    ...r.inconnus.map((nom) => tr('task.jeton.inconnu', { nom })),
+    ...r.ambigus.map((a) => tr('task.jeton.ambigu', { nom: a.nom, n: a.projets.length, projets: a.projets.slice(0, 5).join(', ') })),
+    ...r.court.map((nom) => tr('task.jeton.court', { nom })),
+  ];
+  note.textContent = lignes.join(' ');
+  note.hidden = !lignes.length;
 }
 
 /* Ce que les jetons ont posé : dépôt → { nom du jeton, branche posée }. Mémoire du script et non
    du DOM : les lignes se reconstruisent à chaque ajout, un attribut n'y survivrait pas. */
 let jetonsPoses = new Map();
-function oublierJetonsDepots() { jetonsPoses = new Map(); }
+/* Les branches de DÉPART posées par un jeton (`&&nom:branche<depart`, `&&*<depart`) : dépôt → valeur.
+   Le jeton parti ou changé, le champ qui la montre encore repart à sa proposition (le dernier départ
+   retenu pour ce dépôt) ; un départ réécrit à la main ne bouge pas. */
+let departsPoses = new Map();
+function oublierJetonsDepots() {
+  jetonsPoses = new Map(); departsPoses = new Map();
+  const note = $('#taskJetonsNote'); if (note) { note.hidden = true; note.textContent = ''; }
+}
 const synchroniserJetonsDepotsDebounce = debounce(() => synchroniserJetonsDepots(), 300);
 
 function synchroniserJetonsDepots() {
@@ -71,12 +58,12 @@ function synchroniserJetonsDepots() {
   if (!f || !f.prompt || !modale || modale.hidden) return;
   if (taskKind !== 'code' && taskKind !== 'explore') return;
   if (!repoOptions.length) return;
-  const voulus = new Map();   // repo_id → { nom, branche }
-  for (const j of jetonsDepots(f.prompt.value)) {
-    const cibles = depotsPourJeton(j.nom);
-    if (cibles.length !== 1) continue;   // ambigu : le menu, pas une devinette
-    voulus.set(cibles[0].id, { nom: j.nom, branche: j.branche });
-  }
+  // repo_id → { nom, branche } ; un jeton ambigu reste au menu, pas à une devinette.
+  const enCours = document.activeElement === f.prompt ? f.prompt.selectionStart : -1;
+  const r = JETONSRT.resoudreJetonsDepots(f.prompt.value, repoOptions, (j) => j.fin === enCours);
+  noterJetonsDepots(r);
+  const tous = JETONSRT.resoudreJetonsDepots(f.prompt.value, repoOptions);
+  const voulus = tous.voulus;
   const lignes = $$('#targetRows .target-row');
   const idDe = (row) => Number((row.querySelector('.t-repo') || {}).value || 0);
   const globale = brancheGlobaleJeton(f.prompt.value);
@@ -125,9 +112,24 @@ function synchroniserJetonsDepots() {
     }
     jetonsPoses.set(id, { nom: j.nom, branche: j.branche });
   }
+  // La branche de départ n'existe qu'en codage : une exploration lit la branche de sa ligne.
+  if (taskKind === 'code') {
+    for (const t of courantes) {
+      const j = voulus.get(t.repo_id);
+      const voulu = (j && j.depart) || tous.globaleDepart;
+      const pose = departsPoses.get(t.repo_id);
+      if (voulu) {
+        if (t.base_branch !== voulu) { t.base_branch = voulu; aRendre = true; }
+        departsPoses.set(t.repo_id, voulu);
+      } else if (pose) {
+        departsPoses.delete(t.repo_id);
+        if (t.base_branch === pose) { t.base_branch = ''; aRendre = true; }
+      }
+    }
+  }
   if (!aRendre) return;
   /* Le re-rendu recrée les champs : une branche seulement PROPOSÉE (`ai/…` depuis le libellé,
-     ou la globale `&&&…`, `data-propose`) repart vide pour être re-proposée telle quelle — ou
+     ou la globale `&&*…`, `data-propose`) repart vide pour être re-proposée telle quelle — ou
      plus du tout, si le jeton qui la posait est parti ; une branche écrite à la main voyage
      sans changer. */
   for (const row of lignes) {

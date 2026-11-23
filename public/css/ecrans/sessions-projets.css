@@ -101,3 +101,7 @@
    apparaître sans la regarder, il faut pouvoir la retrouver des yeux. */
 .target-row.t-row-jeton { animation: t-row-jeton 1.5s ease-out; border-radius: var(--r-sm); }
 @keyframes t-row-jeton { 0%, 60% { background: var(--hover); box-shadow: inset 3px 0 0 var(--accent); } 100% { background: transparent; box-shadow: none; } }
+
+/* Un jeton `&&dépôt` qui ne pose aucune ligne (inconnu, ambigu, trop court) : dit en orange sous
+   les lignes, sans bloquer — on corrige la demande ou on ajoute le dépôt à la main. */
+.task-jetons-note { margin: 4px 0 0; color: var(--amber-text, var(--amber)); }
