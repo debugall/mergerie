@@ -1188,14 +1188,18 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   request towards the starting branch (GitLab or GitHub, from the `origin` remote). At the top of the file, to
   edit freely: the **folders**, one per line, written from their common parent folder `WORKSPACE_DIR`
   (`"$WORKSPACE_DIR"/'optim'`) — no path of the exporting machine is baked in, the agent sandbox's temporary
-  folder included (the launching machine's `TMPDIR`); the **agent command and its arguments** (`AGENT_BIN`,
+  folder included (the launching machine's `TMPDIR`), nor an approved check command's absolute path
+  (`/Users/…/bin/npm ci` becomes `npm ci`, found through the `PATH`); the **agent command and its arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude or another), then the **request**, then the **starting branch** (`BASE_BRANCH`: the branch starts from it and the MR targets it; prefilled with
   the one a run recorded, empty = each folder's current branch), the branch to create, commit message, the **merge request title** (`MR_TITLE`, empty = the commit message), push and MR (1/0), the
   agent (`AGENT_BIN=…` in the environment wins) — each variable carries its comment. **A `.env` file next to the
   script** (or `ENV_FILE=…`) is read at start, one `NAME=value` line per variable: `WORKSPACE_DIR`, `AGENT_BIN`,
   `TMPDIR`, the Jira and forge URLs, the tokens; the environment wins over the `.env`, which wins over the value
   written in the script. These values stay with the script: the agent does not get them (`TMPDIR` aside), a
-  token from the `.env` is never passed to it. Nothing secret is written in it: tokens come from
+  token from the `.env` is never passed to it. **Behind a corporate proxy**, the script turns at start the
+  `*.domain` entries of `no_proxy` / `NO_PROXY` — which curl ignores — into `.domain`, leaving the others alone;
+  `NO_PROXY_GITLAB=1` adds the `GITLAB_URL` host, for an internal GitLab the company did not list (never for
+  gitlab.com, which must go through the proxy). Nothing secret is written in it: tokens come from
   `GITLAB_TOKEN` / `GITHUB_TOKEN` or are asked at start, hidden, before the agent works; an HTTPS push asks for
   its credentials through git. The script does not name the tool and carries neither its data-protection rules
   nor the agent variables set on screen. A failing folder does not stop the others. **A folder with changes in progress**

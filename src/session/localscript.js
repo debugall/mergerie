@@ -91,6 +91,17 @@ function heredoc(nom, texte, delim) {
   return { code: `IFS= read -r -d '' ${nom} <<'${d}' || true\n${texte}\n${d}\n${nom}="\${${nom}%$'\\n'}"`, delim: d };
 }
 
+/* AUCUN CHEMIN DU POSTE QUI EXPORTE dans les options : le dossier temporaire devient un jeton que le
+   script remplace par le TMPDIR du lancement, et une commande permise par son chemin absolu
+   (`shell(/Users/x/.nvm/…/bin/npm  ci)`, un vérificateur approuvé) par son seul nom, que le PATH de
+   la machine qui lance résout. */
+function sansCheminsDuPoste(a) {
+  const tmp = os.tmpdir();
+  let v = tmp.length > 1 ? String(a).split(tmp).join(TEMPORAIRE) : String(a);
+  v = v.replace(/\b(shell|Bash)\(\/[^\s)]*\/([^\s/)]+)([^)]*)\)/g, (_, outil, bin, reste) => `${outil}(${bin}${reste.replace(/\s+/g, ' ')})`);
+  return v;
+}
+
 /* L'agent de la session, tel qu'il serait lancé : binaire, options, forme de la demande. `relecture` :
    les options d'une review, EN LECTURE SEULE (kind `review` de agent/policy.js). */
 function agentDe(task) {
@@ -101,8 +112,7 @@ function agentDe(task) {
       const pol = agentpolicy.argvPermissions({ backend, bin, extra: copilot.argsActuels(), kind, cwd: DOSSIER });
       const flags = [...pol.extra, ...pol.args];
       flags.push(...agentpolicy.argsMaxTurns(backend, flags));
-      const tmp = os.tmpdir();
-      return nettoyerArgs(flags).map((a) => (tmp.length > 1 ? String(a).split(tmp).join(TEMPORAIRE) : a));
+      return nettoyerArgs(flags).map(sansCheminsDuPoste);
     };
     const marque = '\u0000';
     const forme = require('../agent/backends').pour(backend).promptArgs(marque).filter((x) => x !== marque);
@@ -270,6 +280,8 @@ ${v('GITLAB_URL')}
 ${envOu('GITLAB_URL', String(cfg.gitlab_url || '').replace(/\/+$/, ''))}
 ${v('GITHUB_URL')}
 ${envOu('GITHUB_URL', String(cfg.github_url || '').replace(/\/+$/, ''))}
+${v('NO_PROXY_GITLAB')}
+NO_PROXY_GITLAB=0
 
 # ────────────────────────────────────────────────────────────────────────────
 ${c('framing')}
@@ -280,6 +292,15 @@ ${heredoc('REVIEW_RULES', conv.regles, '__RULES__').code}
 ${heredoc('PREVIOUS_INTRO', t('local.script.previous-report'), '__PREVIOUS__').code}
 ` : ''}
 AGENT_TMP=\${TMPDIR:-/tmp}; AGENT_TMP=\${AGENT_TMP%/}
+
+# curl ignores the "*.domain" wildcards of no_proxy: turned into ".domain" so internal hosts bypass the proxy.
+# Whichever of no_proxy / NO_PROXY is set; other entries (localhost, IPs, ".domain") as they are; nothing set = nothing exported.
+no_proxy=$(printf '%s' "\${no_proxy:-\${NO_PROXY:-}}" | sed -E 's/(^|,)[[:space:]]*\\*\\./\\1./g; s/[[:space:]]+//g')
+if [ "$NO_PROXY_GITLAB" = 1 ]; then
+  gl_host=\${GITLAB_URL#*://}; gl_host=\${gl_host%%[/:]*}
+  [ -z "$gl_host" ] || no_proxy="\${no_proxy:+$no_proxy,}$gl_host"
+fi
+if [ -n "$no_proxy" ]; then export no_proxy NO_PROXY=$no_proxy; else unset no_proxy; fi
 say() { printf '%s\\n' "$*" >&2; }
 fail() { say "✖ $*"; exit 1; }
 
@@ -622,4 +643,4 @@ say "$(printf ${sq(m('done'))} "$(( \${#FOLDERS[@]} - failed ))" "\${#FOLDERS[@]
   return { script, fichier: `${nom}${converge ? '-converge' : ''}${vierge ? '-vierge' : ''}.sh` };
 }
 
-module.exports = { scriptDe, nettoyerArgs };
+module.exports = { scriptDe, nettoyerArgs, sansCheminsDuPoste };

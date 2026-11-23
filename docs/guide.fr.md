@@ -1244,14 +1244,18 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   push et merge request vers la branche de départ (GitLab ou GitHub, déduit du remote `origin`). En tête du
   fichier, à modifier librement : les **dossiers**, un par ligne, écrits à partir de leur dossier parent commun
   `WORKSPACE_DIR` (`"$WORKSPACE_DIR"/'optim'`) — aucun chemin de la machine qui exporte n'y est figé, le dossier
-  temporaire du bac à sable de l'agent compris (celui de `TMPDIR` au lancement) ; la **commande de l'agent et ses arguments** (`AGENT_BIN`,
+  temporaire du bac à sable de l'agent compris (celui de `TMPDIR` au lancement), ni le chemin absolu d'une
+  commande de vérificateur approuvée (`/Users/…/bin/npm ci` devient `npm ci`, résolu par le `PATH`) ; la **commande de l'agent et ses arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude ou autre), puis la **demande**, puis **branche de départ** (`BASE_BRANCH` : la branche part d'elle et la MR la vise ; préremplie avec celle
   qu'a relevée une exécution, vide = la branche courante de chaque dossier), branche à créer, message de commit,
   **titre de la merge request** (`MR_TITLE`, vide = le message de commit), push et MR (1/0), l'agent (`AGENT_BIN=…` dans l'environnement l'emporte) — chaque variable a son commentaire. **Un fichier `.env` à côté
   du script** (ou `ENV_FILE=…`) est lu au démarrage, une ligne `NOM=valeur` par variable : `WORKSPACE_DIR`,
   `AGENT_BIN`, `TMPDIR`, les URL Jira et de forge, les jetons ; l'environnement l'emporte sur le `.env`, qui
   l'emporte sur la valeur écrite dans le script. Ces valeurs restent au script : l'agent ne les reçoit pas (sauf
-  `TMPDIR`), un jeton du `.env` ne lui est jamais transmis. Rien de secret n'y est écrit : les
+  `TMPDIR`), un jeton du `.env` ne lui est jamais transmis. **Derrière un proxy d'entreprise**, le script convertit au
+  démarrage les entrées `*.domaine` de `no_proxy` / `NO_PROXY` — que curl ignore — en `.domaine`, sans toucher
+  aux autres ; `NO_PROXY_GITLAB=1` y ajoute l'hôte de `GITLAB_URL`, pour un GitLab interne que l'entreprise n'a
+  pas listé (jamais pour gitlab.com, qui doit passer par le proxy). Rien de secret n'y est écrit : les
   jetons viennent de `GITLAB_TOKEN` / `GITHUB_TOKEN` ou sont demandés au lancement, masqués, avant le travail de
   l'agent ; un push HTTPS demande ses identifiants par git. Le script ne nomme pas l'outil et ne reprend ni ses
   règles de protection de données ni les variables d'agent réglées à l'écran. Un dossier en échec n'arrête pas

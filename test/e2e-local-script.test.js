@@ -265,10 +265,12 @@ describe('Codage hors dépôt : export en script bash', () => {
     const espion = path.join(dossier, 'agent-espion.sh');
     fs.writeFileSync(espion, `#!/bin/sh\nprintf '%s\\n' "$@" > '${traces}/args'\nenv > '${traces}/env'\necho fait > AGENT_DONE.md\n`);
     fs.chmodSync(espion, 0o755);
+    // Un vrai dossier : le script y crée ses fichiers temporaires (mktemp suit TMPDIR sous Linux).
+    const tmpEnv = path.join(dossier, 'tmp-du-env'); fs.mkdirSync(tmpEnv);
     fs.writeFileSync(path.join(dossier, '.env'), [
       '# le .env du poste',
       'WORKSPACE_DIR=/nulle/part',
-      '  export TMPDIR=/tmp/tmp-du-env/',
+      `  export TMPDIR=${tmpEnv}/`,
       "GITLAB_TOKEN='jeton-du-env'",
       'pas une affectation',
     ].join('\n'));
@@ -281,13 +283,54 @@ describe('Codage hors dépôt : export en script bash', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.equal(git(depot.work, ['log', '-1', '--format=%s', 'feature/avec-env']), 'Demande env', 'l’environnement l’emporte sur le .env');
     const args = fs.readFileSync(path.join(traces, 'args'), 'utf8');
-    assert.ok(args.includes('"/tmp/tmp-du-env"'), 'le TMPDIR du .env dans le bac à sable, sans « / » final');
+    assert.ok(args.includes(`"${tmpEnv}"`), 'le TMPDIR du .env dans le bac à sable, sans « / » final');
     assert.ok(args.includes(`"${depot.work}"`) || args.includes(`"${fs.realpathSync(depot.work)}"`), 'le dossier de travail aussi');
     assert.ok(!args.includes('@TMPDIR@') && !args.includes('@FOLDER@'));
     const env = fs.readFileSync(path.join(traces, 'env'), 'utf8');
     assert.doesNotMatch(env, /jeton-du-env|^WORKSPACE_DIR=\/nulle/m, 'ce que porte le .env reste au script');
-    assert.match(env, /^TMPDIR=\/tmp\/tmp-du-env\/$/m, 'sauf TMPDIR, que le bac à sable suit');
+    assert.ok(env.split('\n').includes(`TMPDIR=${tmpEnv}/`), 'sauf TMPDIR, que le bac à sable suit');
     git(depot.work, ['checkout', '-q', 'main']);
+  });
+
+  /* no_proxy : curl ne comprend pas « *.domaine », la forme que la plupart des entreprises écrivent.
+     Le script la convertit au démarrage, sans rien savoir du domaine, et ajoute sur demande l'hôte du GitLab. */
+  test('no_proxy : « *.domaine » converti en « .domaine », l’hôte de GITLAB_URL ajouté avec NO_PROXY_GITLAB=1', async () => {
+    const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Demande proxy', label: 'Proxy', branch: 'feature/proxy', dirs: [depot.work] })).body;
+    const texte = (await exporter(lt.id)).texte;
+    assert.match(texte, /^NO_PROXY_GITLAB=0$/m, 'désactivé par défaut : un gitlab.com doit passer par le proxy');
+    const traces = path.join(app.dataDir, 'proxy-traces'); fs.mkdirSync(traces, { recursive: true });
+    const espion = path.join(app.dataDir, 'agent-proxy.sh');
+    fs.writeFileSync(espion, `#!/bin/sh\nenv > '${traces}/env'\necho fait > AGENT_DONE.md\n`); fs.chmodSync(espion, 0o755);
+    const lancerAvec = async (retouche, env) => {
+      const fichier = path.join(app.dataDir, 'proxy.sh');
+      fs.writeFileSync(fichier, retouche(texte.replace(/^PUSH=1$/m, 'PUSH=0').replace(/^CREATE_MR=1$/m, 'CREATE_MR=0')));
+      fs.rmSync(path.join(traces, 'env'), { force: true });
+      const r = await lancer(fichier, { AGENT_BIN: espion, ...env });
+      assert.equal(r.status, 0, r.stderr);
+      git(depot.work, ['checkout', '-q', 'main']); git(depot.work, ['branch', '-q', '-D', 'feature/proxy']);
+      return fs.readFileSync(path.join(traces, 'env'), 'utf8').split('\n');
+    };
+
+    let env = await lancerAvec((x) => x, { NO_PROXY: ' *.corp.local, localhost,10.0.0.1 ,.deja.ok,*.autre.fr' });
+    assert.ok(env.includes('no_proxy=.corp.local,localhost,10.0.0.1,.deja.ok,.autre.fr'), env.filter((l) => /proxy/i.test(l)).join(' | '));
+    assert.ok(env.includes('NO_PROXY=.corp.local,localhost,10.0.0.1,.deja.ok,.autre.fr'), 'les deux graphies');
+
+    env = await lancerAvec((x) => x.replace(/^NO_PROXY_GITLAB=0$/m, 'NO_PROXY_GITLAB=1').replace(/^GITLAB_URL=.*$/m, "GITLAB_URL='https://gitlab.interne.corp:8443/'"),
+      { no_proxy: '*.corp.local' });
+    assert.ok(env.includes('no_proxy=.corp.local,gitlab.interne.corp'), 'l’hôte seul, sans schéma, port ni chemin');
+
+    env = await lancerAvec((x) => x, {});
+    assert.ok(!env.some((l) => /^no_proxy=|^NO_PROXY=/i.test(l)), 'rien de défini : rien d’exporté');
+  });
+
+  test('une commande permise par son chemin absolu (vérificateur approuvé) part sous son seul nom', () => {
+    const { sansCheminsDuPoste } = require('../src/session/localscript');
+    assert.equal(sansCheminsDuPoste('shell(/Users/x/.nvm/versions/node/v22.20.0/bin/npm  ci)'), 'shell(npm ci)');
+    assert.equal(sansCheminsDuPoste('Read,Bash(git status:*),Bash(/usr/local/bin/make test),Bash(/opt/n/bin/npm run lint)'),
+      'Read,Bash(git status:*),Bash(make test),Bash(npm run lint)', 'dans une liste --allowedTools aussi');
+    for (const tel of ['shell(git push*)', 'shell(composer install)', 'shell(./scripts/test.sh)', 'write'])
+      assert.equal(sansCheminsDuPoste(tel), tel, 'le reste tel quel');
+    assert.equal(sansCheminsDuPoste(JSON.stringify({ allowWrite: ['@FOLDER@', os.tmpdir()] })), JSON.stringify({ allowWrite: ['@FOLDER@', '@TMPDIR@'] }));
   });
 
   test('modèle vierge : demande, branches, message et titre vides, et le script refuse de partir sans eux', async () => {
