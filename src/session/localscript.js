@@ -21,6 +21,7 @@
    neuf, le rapport précédent en contexte.
 
    Bash 3.2 compris (celui de macOS) : ni tableau associatif, ni `${x,,}`, ni heredoc dans `$( )`. */
+const os = require('node:os');
 const path = require('node:path');
 const db = require('../db');
 const localdirs = require('../data/localdirs');
@@ -39,6 +40,7 @@ const { convergeDefaults } = require('../review/converge');
 const { jiraBash } = require('./localscript-jira');
 
 const DOSSIER = '@FOLDER@';   // le dossier de travail dans les options d'agent, posé par le script
+const TEMPORAIRE = '@TMPDIR@'; // le dossier temporaire de la machine qui LANCE le script, pas de celle qui l'exporte
 
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 /* Une variable que l'environnement peut fixer, sinon la valeur exportée — entre apostrophes : une
@@ -99,7 +101,8 @@ function agentDe(task) {
       const pol = agentpolicy.argvPermissions({ backend, bin, extra: copilot.argsActuels(), kind, cwd: DOSSIER });
       const flags = [...pol.extra, ...pol.args];
       flags.push(...agentpolicy.argsMaxTurns(backend, flags));
-      return nettoyerArgs(flags);
+      const tmp = os.tmpdir();
+      return nettoyerArgs(flags).map((a) => (tmp.length > 1 ? String(a).split(tmp).join(TEMPORAIRE) : a));
     };
     const marque = '\u0000';
     const forme = require('../agent/backends').pour(backend).promptArgs(marque).filter((x) => x !== marque);
@@ -124,6 +127,15 @@ function gabaritsDeConvergence() {
   return { review, fix, regles, preambule: t('prompt.untrusted.preamble') };
 }
 
+/* Le dossier parent commun des dossiers de travail ('' s'il n'y a que la racine du disque) : il devient
+   WORKSPACE_DIR, surchargeable par l'environnement ou le .env, et chaque dossier s'écrit à partir de lui. */
+function racineCommune(dossiers) {
+  if (!dossiers.length) return '';
+  let r = path.dirname(dossiers[0]);
+  while (!dossiers.every((d) => d.startsWith(r.endsWith(path.sep) ? r : r + path.sep))) r = path.dirname(r);
+  return r === path.parse(r).root ? '' : r;
+}
+
 /** Le script d'une session hors dépôt, et le nom de fichier proposé. */
 /* `yolo` : true = l'agent sans restriction (`--dangerously-skip-permissions` pour Claude), false = le
    mode sécurisé (droits d'écriture dans le dossier de travail), absent = le réglage du poste. Le
@@ -144,6 +156,7 @@ function construireScript(taskId, { converge, vierge }) {
   const depart = bases.length === 1 ? bases[0] : '';
   const nom = slug(task.label || String(task.prompt || '').split('\n')[0]) || `session-${task.id}`;
   const branche = task.branch || `ai/${nom}`;
+  const racine = racineCommune(dossiers);
 
   /* Le cadre AUTOUR de la demande, découpé sur la demande elle-même : modifier la demande en tête
      du script garde exactement les consignes que l'agent aurait reçues. */
@@ -187,9 +200,28 @@ ${correction.code}
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 
-${c('folders')}
+${c('env')}
+load_env() {
+  local line key
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=\${line%$'\\r'}; line=\${line#"\${line%%[![:space:]]*}"}; line=\${line#export }
+    case $line in '#'*|[!A-Za-z_]*) continue ;; *=*) ;; *) continue ;; esac
+    key=\${line%%=*}
+    case $key in ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;; esac
+    [ -z "\${!key+x}" ] || continue
+    # Set for the script, not exported: the agent never sees the tokens. TMPDIR alone is, the agent's sandbox follows it.
+    eval "$line"
+    [ "$key" != TMPDIR ] || export TMPDIR
+  done < "$1"
+}
+ENV_FILE=\${ENV_FILE:-"$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)/.env"}
+[ ! -f "$ENV_FILE" ] || load_env "$ENV_FILE"
+
+${racine ? `${v('WORKSPACE_DIR')}
+${envOu('WORKSPACE_DIR', racine)}
+` : ''}${c('folders')}
 FOLDERS=(
-${dossiers.map((d) => `  ${sq(d)}`).join('\n')}
+${dossiers.map((d) => `  ${racine ? `"$WORKSPACE_DIR"/${sq(path.relative(racine, d))}` : sq(d)}`).join('\n')}
 )
 
 ${c('agent')}
@@ -247,6 +279,7 @@ ${conv ? `${heredoc('PREAMBLE', conv.preambule, '__PREAMBLE__').code}
 ${heredoc('REVIEW_RULES', conv.regles, '__RULES__').code}
 ${heredoc('PREVIOUS_INTRO', t('local.script.previous-report'), '__PREVIOUS__').code}
 ` : ''}
+AGENT_TMP=\${TMPDIR:-/tmp}; AGENT_TMP=\${AGENT_TMP%/}
 say() { printf '%s\\n' "$*" >&2; }
 fail() { say "✖ $*"; exit 1; }
 
@@ -374,7 +407,7 @@ at_least() { awk -v a="$1" -v b="$(printf '%s' "$2" | tr , .)" 'BEGIN { exit !(a
 run_review() {
   local n=$1 a prompt args=()
   git diff "$REF...HEAD" > "$WORK/diff.patch"
-  for a in \${REVIEW_ARGS[@]+"\${REVIEW_ARGS[@]}"}; do args+=("\${a//${DOSSIER}/$PWD}"); done
+  for a in \${REVIEW_ARGS[@]+"\${REVIEW_ARGS[@]}"}; do a=\${a//${DOSSIER}/$PWD}; args+=("\${a//${TEMPORAIRE}/$AGENT_TMP}"); done
   prompt=$(fill "$REVIEW_PROMPT"$'\\n\\n'"$REVIEW_RULES")
   if [ "$n" -gt 0 ] && [ -f "$RUN/review-$((n - 1)).md" ]; then
     prompt="$prompt"$'\\n\\n'"$PREVIOUS_INTRO"$'\\n'"$(data_block ${sq(t('local.script.data.previous'))} "$(cat "$RUN/review-$((n - 1)).md")")"
@@ -418,7 +451,7 @@ converge_folder() {
     say "$(printf ${sq(m('conv-fix'))} "$pass" "$MAX_PASSES")"
     CUR_REPORT=$(cat "$RUN/review-$((pass - 1)).md")
     args=()
-    for a in \${AGENT_ARGS[@]+"\${AGENT_ARGS[@]}"}; do args+=("\${a//${DOSSIER}/$PWD}"); done
+    for a in \${AGENT_ARGS[@]+"\${AGENT_ARGS[@]}"}; do a=\${a//${DOSSIER}/$PWD}; args+=("\${a//${TEMPORAIRE}/$AGENT_TMP}"); done
     AGENT_START=$(git rev-parse HEAD)
     "$AGENT_BIN" \${args[@]+"\${args[@]}"} \${AGENT_PROMPT_FORM[@]+"\${AGENT_PROMPT_FORM[@]}"} "$PREAMBLE"$'\\n\\n'"$(fill "$FIX_PROMPT")" < /dev/null
     if ! commit_work; then status=${sq(m('conv-no-change'))}; break; fi
@@ -488,7 +521,7 @@ process_folder() {
   fi
 
   if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git ls-files -z --others --exclude-standard > "$UNTRACKED_BEFORE"; fi
-  for a in \${AGENT_ARGS[@]+"\${AGENT_ARGS[@]}"}; do args+=("\${a//${DOSSIER}/$dir}"); done
+  for a in \${AGENT_ARGS[@]+"\${AGENT_ARGS[@]}"}; do a=\${a//${DOSSIER}/$PWD}; args+=("\${a//${TEMPORAIRE}/$AGENT_TMP}"); done
   say "$ $AGENT_BIN \${args[*]+\${args[*]}} \${AGENT_PROMPT_FORM[*]+\${AGENT_PROMPT_FORM[*]}} …"
   AGENT_START=$(git rev-parse -q --verify HEAD 2>/dev/null || true)
   "$AGENT_BIN" \${args[@]+"\${args[@]}"} \${AGENT_PROMPT_FORM[@]+"\${AGENT_PROMPT_FORM[@]}"} "$PROMPT_BEFORE$JIRA_PREFIX$PROMPT$PROMPT_AFTER" < /dev/null

@@ -1242,10 +1242,16 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   refait la session sans l'outil — dans chaque dossier, la branche (celle de la session, sinon `ai/<libellé>`),
   l'agent de la session avec ses options et **le même prompt** (consignes permanentes comprises), puis commit,
   push et merge request vers la branche de départ (GitLab ou GitHub, déduit du remote `origin`). En tête du
-  fichier, à modifier librement : les **dossiers**, un par ligne, la **commande de l'agent et ses arguments** (`AGENT_BIN`,
+  fichier, à modifier librement : les **dossiers**, un par ligne, écrits à partir de leur dossier parent commun
+  `WORKSPACE_DIR` (`"$WORKSPACE_DIR"/'optim'`) — aucun chemin de la machine qui exporte n'y est figé, le dossier
+  temporaire du bac à sable de l'agent compris (celui de `TMPDIR` au lancement) ; la **commande de l'agent et ses arguments** (`AGENT_BIN`,
   `AGENT_ARGS`, `AGENT_PROMPT_FORM` — Copilot, Claude ou autre), puis la **demande**, puis **branche de départ** (`BASE_BRANCH` : la branche part d'elle et la MR la vise ; préremplie avec celle
   qu'a relevée une exécution, vide = la branche courante de chaque dossier), branche à créer, message de commit,
-  **titre de la merge request** (`MR_TITLE`, vide = le message de commit), push et MR (1/0), l'agent (`AGENT_BIN=…` dans l'environnement l'emporte) — chaque variable a son commentaire. Rien de secret n'y est écrit : les
+  **titre de la merge request** (`MR_TITLE`, vide = le message de commit), push et MR (1/0), l'agent (`AGENT_BIN=…` dans l'environnement l'emporte) — chaque variable a son commentaire. **Un fichier `.env` à côté
+  du script** (ou `ENV_FILE=…`) est lu au démarrage, une ligne `NOM=valeur` par variable : `WORKSPACE_DIR`,
+  `AGENT_BIN`, `TMPDIR`, les URL Jira et de forge, les jetons ; l'environnement l'emporte sur le `.env`, qui
+  l'emporte sur la valeur écrite dans le script. Ces valeurs restent au script : l'agent ne les reçoit pas (sauf
+  `TMPDIR`), un jeton du `.env` ne lui est jamais transmis. Rien de secret n'y est écrit : les
   jetons viennent de `GITLAB_TOKEN` / `GITHUB_TOKEN` ou sont demandés au lancement, masqués, avant le travail de
   l'agent ; un push HTTPS demande ses identifiants par git. Le script ne nomme pas l'outil et ne reprend ni ses
   règles de protection de données ni les variables d'agent réglées à l'écran. Un dossier en échec n'arrête pas

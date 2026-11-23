@@ -8,6 +8,7 @@
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { execFileSync, spawn, spawnSync } = require('node:child_process');
 const { startApp, makeRemoteRepo } = require('./helpers/app');
@@ -34,6 +35,9 @@ describe('Codage hors dépôt : export en script bash', () => {
     p.stderr.on('data', (d) => { stderr += d; });
     p.on('close', (status) => resolve({ status, stderr }));
   });
+
+  // Les dossiers s'écrivent à partir de leur parent commun, WORKSPACE_DIR.
+  const ligneDossier = () => `  "$WORKSPACE_DIR"/'${path.basename(depot.work)}'\n`;
 
   before(async () => {
     app = await startApp(); await app.configure();
@@ -65,7 +69,11 @@ describe('Codage hors dépôt : export en script bash', () => {
     assert.ok(premiere('BRANCH=') < premiere("MR_TITLE='Range les imports'\n"), 'le titre de la MR, à éditer en tête avec le reste de git');
     assert.ok(premiere('MR_TITLE=') < premiere('json_str()'));
     assert.ok(premiere('BRANCH=') < premiere('json_str()'), 'le code vient après tout ce qui se modifie');
-    assert.ok(texte.includes(`  '${depot.work}'\n`));
+    assert.ok(texte.includes(`\nWORKSPACE_DIR=\${WORKSPACE_DIR:-'${path.dirname(depot.work)}'}\n`), 'le dossier parent en variable, surchargeable');
+    assert.ok(premiere('WORKSPACE_DIR=') < premiere('FOLDERS=('));
+    assert.ok(texte.includes(ligneDossier()), 'chaque dossier à partir de lui');
+    assert.ok(!texte.includes(`'${depot.work}'`), 'aucun chemin de dossier en dur');
+    assert.ok(premiere('load_env "$ENV_FILE"') < premiere('WORKSPACE_DIR='), 'le .env est lu avant');
     assert.equal(spawnSync('bash', ['-n', '-c', texte]).status, 0, 'syntaxe bash valide');
   });
 
@@ -127,7 +135,7 @@ describe('Codage hors dépôt : export en script bash', () => {
     const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Ancienne demande', label: 'Modifiable', branch: 'feature/edite', dirs: [depot.work] })).body;
     const texte = (await exporter(lt.id)).texte
       .replace("Ancienne demande\n__PROMPT__", 'Nouvelle demande, écrite à la main\n__PROMPT__')
-      .replace(`  '${depot.work}'\n`, `  '${depot.work}'\n  '/nulle/part'\n`)
+      .replace(ligneDossier(), `${ligneDossier()}  '/nulle/part'\n`)
       .replace(/^MR_TITLE=.*$/m, "MR_TITLE='Titre de MR écrit à la main'");
     const fichier = path.join(app.dataDir, 'edite.sh');
     fs.writeFileSync(fichier, texte);
@@ -225,6 +233,63 @@ describe('Codage hors dépôt : export en script bash', () => {
     git(depot.work, ['checkout', '-q', 'main']);
   });
 
+  /* Aucun chemin de la machine qui exporte : le parent des dossiers est WORKSPACE_DIR, le dossier
+     temporaire du bac à sable celui de la machine qui lance. Un .env à côté du script les fixe,
+     l'environnement l'emporte sur lui, et ce qu'il porte n'est pas transmis à l'agent. */
+  test('WORKSPACE_DIR et TMPDIR : surchargés par le .env, l’environnement l’emporte, l’agent ne reçoit pas les jetons', async () => {
+    /* Le bac à sable (et son dossier temporaire) n'existe qu'en mode sécurisé, sur un poste dont le
+       sandbox est vérifié, avec un claude qui connaît `--settings` : un faux qui l'annonce. */
+    const faux = path.join(app.dataDir, 'faux-claude', 'claude');
+    fs.mkdirSync(path.dirname(faux), { recursive: true });
+    fs.writeFileSync(faux, '#!/bin/sh\necho "--settings --permission-prompts"\n'); fs.chmodSync(faux, 0o755);
+    const avant = (await app.api('GET', '/api/config')).body;
+    const db = require('../src/db');
+    await app.api('PUT', '/api/config', { agent_bin: faux, agent_backend: 'claude' });
+    db.prepare('UPDATE local_config SET agent_sandbox_verified = 1 WHERE id = 1').run();
+    let texte;
+    try {
+      const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Demande env', label: 'Avec env', branch: 'feature/avec-env', dirs: [depot.work] })).body;
+      texte = (await exporter(lt.id, '?yolo=0')).texte;
+    } finally {
+      db.prepare('UPDATE local_config SET agent_sandbox_verified = 0 WHERE id = 1').run();
+      await app.api('PUT', '/api/config', { agent_bin: avant.agent_bin || '', agent_backend: avant.agent_backend || '' });
+    }
+    const options = texte.match(/^AGENT_ARGS=\(.*\)$/m)[0];
+    assert.ok(options.includes('@TMPDIR@'), 'le dossier temporaire du bac à sable, posé au lancement');
+    assert.ok(!options.includes(os.tmpdir()), 'pas celui de la machine qui exporte');
+
+    const dossier = fs.mkdtempSync(path.join(app.dataDir, 'avec-env-'));
+    const fichier = path.join(dossier, 'avec-env.sh');
+    fs.writeFileSync(fichier, texte.replace(/^PUSH=1$/m, 'PUSH=0').replace(/^CREATE_MR=1$/m, 'CREATE_MR=0'));
+    const traces = path.join(app.dataDir, 'avec-env-traces'); fs.mkdirSync(traces, { recursive: true });
+    const espion = path.join(dossier, 'agent-espion.sh');
+    fs.writeFileSync(espion, `#!/bin/sh\nprintf '%s\\n' "$@" > '${traces}/args'\nenv > '${traces}/env'\necho fait > AGENT_DONE.md\n`);
+    fs.chmodSync(espion, 0o755);
+    fs.writeFileSync(path.join(dossier, '.env'), [
+      '# le .env du poste',
+      'WORKSPACE_DIR=/nulle/part',
+      '  export TMPDIR=/tmp/tmp-du-env/',
+      "GITLAB_TOKEN='jeton-du-env'",
+      'pas une affectation',
+    ].join('\n'));
+
+    let r = await lancer(fichier, { AGENT_BIN: espion });
+    assert.notEqual(r.status, 0, 'le .env a déplacé les dossiers');
+    assert.ok(r.stderr.includes(`/nulle/part/${path.basename(depot.work)}`), r.stderr);
+
+    r = await lancer(fichier, { AGENT_BIN: espion, WORKSPACE_DIR: path.dirname(depot.work) });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(git(depot.work, ['log', '-1', '--format=%s', 'feature/avec-env']), 'Demande env', 'l’environnement l’emporte sur le .env');
+    const args = fs.readFileSync(path.join(traces, 'args'), 'utf8');
+    assert.ok(args.includes('"/tmp/tmp-du-env"'), 'le TMPDIR du .env dans le bac à sable, sans « / » final');
+    assert.ok(args.includes(`"${depot.work}"`) || args.includes(`"${fs.realpathSync(depot.work)}"`), 'le dossier de travail aussi');
+    assert.ok(!args.includes('@TMPDIR@') && !args.includes('@FOLDER@'));
+    const env = fs.readFileSync(path.join(traces, 'env'), 'utf8');
+    assert.doesNotMatch(env, /jeton-du-env|^WORKSPACE_DIR=\/nulle/m, 'ce que porte le .env reste au script');
+    assert.match(env, /^TMPDIR=\/tmp\/tmp-du-env\/$/m, 'sauf TMPDIR, que le bac à sable suit');
+    git(depot.work, ['checkout', '-q', 'main']);
+  });
+
   test('modèle vierge : demande, branches, message et titre vides, et le script refuse de partir sans eux', async () => {
     const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Demande de la session', label: 'Gabarit', branch: 'feature/gabarit', dirs: [depot.work] })).body;
     const { disposition, texte } = await exporter(lt.id, '?blank=1');
@@ -232,7 +297,7 @@ describe('Codage hors dépôt : export en script bash', () => {
     for (const nom of ['BASE_BRANCH', 'BRANCH', 'COMMIT_MESSAGE', 'MR_TITLE']) assert.match(texte, new RegExp(`^${nom}=''$`, 'm'), `${nom} vide`);
     assert.match(texte, /PROMPT <<'__PROMPT__' \|\| true\n\n__PROMPT__\n/, 'la demande vide');
     assert.doesNotMatch(texte, /Demande de la session/);
-    assert.ok(texte.includes(`  '${depot.work}'\n`), 'les dossiers de la session, eux, restent');
+    assert.ok(texte.includes(ligneDossier()), 'les dossiers de la session, eux, restent');
     assert.ok(texte.startsWith('#!/usr/bin/env bash\nset -euo pipefail\n'), 'ni session, ni date, ni note de modèle en tête');
     assert.equal(spawnSync('bash', ['-n', '-c', texte]).status, 0);
     const conv = await exporter(lt.id, '?converge=1&blank=1');
