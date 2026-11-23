@@ -64,7 +64,10 @@
 #ageBody { max-height: 60vh; overflow: auto; }
 /* Le nom du dépôt prend la place, le rôle en prend juste assez : sans ces largeurs, le
    `<select>` s'étalait et un `groupe/webapp-front` passait à la ligne. */
-#agentRepos, #domainRepos { columns: 1; overflow-x: hidden; }
+/* `columns: auto`, pas `columns: 1` : une colonne unique reste une mise en colonnes, et sous le
+   `max-height` de `.check-list` le surplus part dans des colonnes à DROITE, masquées par
+   `overflow-x` — trois dépôts visibles, rien à faire défiler. */
+#agentRepos, #domainRepos { columns: auto; overflow-x: hidden; }
 .agent-repo-row { display: flex; gap: 8px; align-items: center; padding: 3px 0; break-inside: avoid; }
 .agent-repo-row > label { flex: 1 1 auto; min-width: 0; }
 .agent-repo-row > label > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

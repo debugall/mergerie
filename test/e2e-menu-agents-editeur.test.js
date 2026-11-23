@@ -368,6 +368,36 @@ describe('Menu Agents : l’éditeur d’agent', { skip: dispo ? false : MSG_NAV
     assert.equal((await agentsApi()).length, avant, 'essayer ne laisse aucun agent');
   });
 
+  /* Beaucoup de dépôts : la liste défile VERS LE BAS. Avec `columns: 1` sous un `max-height`, le
+     surplus partait dans des colonnes à droite, masquées — trois dépôts visibles, rien à faire défiler. */
+  test('beaucoup de dépôts : la liste des dépôts défile, dans l’éditeur comme dans « Nouvel agent de domaine »', async () => {
+    for (let i = 0; i < 14; i++) await app.api('POST', '/api/repos', { url: `https://gitlab.test/grp/lot-${i}`, project: `grp/lot-${i}` });
+    const defile = async (liste) => {
+      await page.waitForFunction((sel) => document.querySelectorAll(`${sel} .agent-repo-row`).length >= 16, liste);
+      await page.locator(liste).hover();
+      await page.mouse.wheel(0, 2000);
+      await page.waitForFunction((sel) => { const l = document.querySelector(sel); return l.scrollTop > 0 && l.scrollTop + l.clientHeight >= l.scrollHeight - 1; }, liste);
+      const { haut, bas, gauche } = await page.evaluate((sel) => {
+        const l = document.querySelector(sel); const r = l.getBoundingClientRect();
+        const lignes = l.querySelectorAll('.agent-repo-row'); const d = lignes[lignes.length - 1].getBoundingClientRect();
+        return { haut: d.top >= r.top - 1, bas: d.bottom <= r.bottom + 1, gauche: d.left - lignes[0].getBoundingClientRect().left };
+      }, liste);
+      assert.ok(haut && bas, `${liste} : le dernier dépôt est visible une fois en bas`);
+      assert.equal(gauche, 0, `${liste} : une seule colonne, aucun dépôt rejeté à droite`);
+    };
+    await ouvrirNouveau();
+    await page.locator('#agentForm input[name="scope_kind"][value="repos"]').click();
+    await page.waitForSelector('#agentReposBox', { state: 'visible' });
+    await defile('#agentRepos');
+
+    await allerListe();
+    await page.locator('#btnNewDomainAgent').click();
+    await page.waitForSelector('#domainModal:not([hidden])');
+    await defile('#domainRepos');
+    await page.locator('#domainCancel').click();
+    await page.waitForSelector('#domainModal', { state: 'hidden' });
+  });
+
   test('aucune erreur JavaScript pendant tout ce parcours', () => {
     assert.deepEqual(erreurs, []);
   });
