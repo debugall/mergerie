@@ -107,11 +107,13 @@ FOLDER_BRANCH=(); FOLDER_BASE=(); DEFAULT_BRANCH=''; DEFAULT_BASE=''
 resolve_inputs() {
   local d spec rest fb fs list=() ws=${D}{WORKSPACE_DIR:-}
   if [ -n "${D}{PROMPT_FILE:-}" ]; then
-    if [ "$PROMPT_FILE" = - ]; then PROMPT=$(cat)
+    # A file saved on Windows ends its lines in CRLF: the \r would reach the agent, and in the recap
+    # send the cursor back to the start of the line, over the label.
+    if [ "$PROMPT_FILE" = - ]; then PROMPT=$(tr -d '\r')
     else
       PROMPT_FILE=${D}{PROMPT_FILE/#\~/$HOME}
       [ -r "$PROMPT_FILE" ] || fail "$(printf ${sq(m('prompt-file-missing'))} "$PROMPT_FILE")"
-      PROMPT=$(cat "$PROMPT_FILE")
+      PROMPT=$(tr -d '\r' < "$PROMPT_FILE")
     fi
   fi
   [ ${D}{#OPT_FOLDERS[@]} -eq 0 ] || FOLDERS=("${D}{OPT_FOLDERS[@]}")
@@ -157,14 +159,15 @@ yes_no() { if [ "$1" = 1 ]; then printf '%s' ${sq(m('yes'))}; else printf '%s' $
 
 # What is about to happen, before anything happens.
 recap() {
-  local n first lines
+  local n first lines own=0 plain=0
   say ""
   say "${D}{C_B}${m('recap-title')}${D}{C_OFF}"
   for n in "${D}{!FOLDERS[@]}"; do
     folder_branches "$n"
     if [ -n "${D}{FOLDER_BRANCH[$n]:-}${D}{FOLDER_BASE[$n]:-}" ] && [ -n "$BRANCH" ]; then
+      own=1
       say "  $(printf ${sq(m('recap-folder-branch'))} "${D}{FOLDERS[$n]}" "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"
-    else say "  $(printf ${sq(m('recap-folder'))} "${D}{FOLDERS[$n]}")"; fi
+    else plain=1; say "  $(printf ${sq(m('recap-folder'))} "${D}{FOLDERS[$n]}")"; fi
   done
   folder_branches
   first=${D}{PROMPT%%$'\n'*}
@@ -173,7 +176,11 @@ recap() {
   say "  $(printf ${sq(m('recap-prompt'))} "$first" "$lines")"
   if ! any_branch; then say "  ${m('recap-no-branch')}"
   else
-    [ -z "$BRANCH" ] || say "  $(printf ${sq(m('recap-branch'))} "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"
+    # BRANCH / BASE_BRANCH said only for the folders that use them: none, the line would contradict theirs.
+    if [ -n "$BRANCH" ] && [ "$plain" = 1 ]; then
+      if [ "$own" = 1 ]; then say "  $(printf ${sq(m('recap-branch-others'))} "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"
+      else say "  $(printf ${sq(m('recap-branch'))} "$BRANCH" "${D}{BASE_BRANCH:-${m('recap-current')}}")"; fi
+    fi
     if [ "$COMMIT" = 1 ]; then
       say "  $(printf ${sq(m('recap-commit'))} "$COMMIT_MESSAGE" "$(yes_no "$PUSH")")"
       if [ "$CREATE_MR" = 1 ]; then say "  $(printf ${sq(m('recap-mr'))} "${D}{MR_TITLE:-$COMMIT_MESSAGE}")"; fi

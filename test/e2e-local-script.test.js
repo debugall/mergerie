@@ -549,17 +549,33 @@ describe('Codage hors dépôt : export en script bash', () => {
       const dev = git(autre.work, ['rev-parse', 'HEAD']);
       const departAutre = git(autre.work, ['rev-parse', '--abbrev-ref', 'HEAD']);
 
-      const r = await lancerAvec(fichier, ['-d', `${depot.work}:feature/un<rel/1`, '-d', `${autre.work}<develop`,
+      let r = await lancerAvec(fichier, ['-d', `${depot.work}:feature/un<rel/1`, '-d', `${autre.work}<develop`,
         '-b', 'feature/defaut', '--base', 'inexistante', '--no-push', '--no-log'], {});
       assert.equal(r.status, 0, r.stderr);
       assert.ok(r.stderr.includes(`${depot.work} — branche feature/un, depuis rel/1`), r.stderr);
       assert.ok(r.stderr.includes(`${autre.work} — branche feature/defaut, depuis develop`), 'la branche par défaut, son départ à lui');
+      assert.doesNotMatch(r.stderr, /^ {2}(Branche|Autres) +:/m, 'tous les dossiers ont la leur : pas de ligne par défaut qui les contredirait');
       assert.equal(git(depot.work, ['rev-parse', 'feature/un~1']), rel, 'partie de sa branche de départ');
       assert.equal(git(depot.work, ['branch', '--list', 'feature/defaut']), '', 'la branche par défaut ne le concerne pas');
       assert.equal(git(autre.work, ['rev-parse', 'feature/defaut~1']), dev, 'le second, de develop');
       assert.match(r.stderr, /✓ work — feature\/un · 1 commit/, 'le bilan dit la branche de chacun');
       assert.equal(git(autre.work, ['rev-parse', '--abbrev-ref', 'HEAD']), departAutre, 'chacun revient sur la sienne');
       git(depot.work, ['checkout', '-q', 'main']);
+
+      // Un dossier sans branche à lui, à côté d'un autre qui en a : la ligne par défaut dit « Autres » ; et une
+      // demande enregistrée sous Windows (CRLF) n'écrase pas son libellé — ni n'arrive à l'agent avec ses \r.
+      const crlf = path.join(app.dataDir, 'demande-crlf.md');
+      fs.writeFileSync(crlf, 'Ligne un\r\nLigne deux\r\n');
+      const d = await lancerAvec(fichier, ['-f', crlf, '-d', `${depot.work}:feature/deux<rel/1`, '-d', autre.work,
+        '-b', 'feature/defaut2', '--dry-run'], {});
+      assert.equal(d.status, 0, d.stderr);
+      assert.match(d.stderr, /^ {2}Autres +: branche feature\/defaut2, depuis la branche courante$/m);
+      assert.match(d.stderr, /^ {2}Demande +: Ligne un \(2 ligne\(s\)\)$/m);
+      assert.doesNotMatch(d.stderr, /\r/);
+      r = await lancerAvec(fichier, ['-f', crlf, '-d', autre.work, '-b', 'feature/crlf', '--no-push', '--no-log'], {});
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(fs.readFileSync(journal, 'utf8'), localcoder.promptPremierePasse('Ligne un\nLigne deux'));
+      git(autre.work, ['checkout', '-q', departAutre]);
     });
 
     test('Ctrl-C pendant l’agent : le dossier revient sur sa branche, le bilan dit où on en était', async () => {
