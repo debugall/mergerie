@@ -338,44 +338,62 @@ function apresMerge(repo, mr, { mergee = true, cfg = getConfig(), now = new Date
   return notes.fermerTodosDeMr(mr.id, t('notes.todo.closed-by-merge', { iid: mr.iid }));
 }
 
-/* PRÉVENIR JIRA QUE LA MERGE REQUEST EST MERGÉE (Réglages → Jira). Le ticket est lu par la QA, le
-   support, le chef de projet — ceux qui demandent « c'est livré ? » sans ouvrir la forge. Opt-in
-   d'équipe (`jira_notify_merge`), décoché par défaut : écrire chez les autres se décide. UN
-   commentaire par TICKET : la première fusion le poste, chaque suivante le RÉÉCRIT avec la liste
-   complète des merge requests mergées (une entrée du gabarit par MR) — cinq merge requests d'un
-   même ticket ne font pas cinq commentaires. `jira_merge_notified_at` est posé AVANT l'appel, par
-   une mise à jour conditionnelle, pour que deux chemins qui voient le même merge (découverte puis
-   « Mettre à jour depuis la forge ») n'écrivent pas deux fois ; un échec de Jira libère le marqueur,
-   le tour suivant réessaiera. Le texte : le gabarit de l'équipe (`jira_merge_template`), ou le
-   message livré ; les variables sont celles du commentaire « à la création », une inconnue reste telle quelle. */
-/* LES COMMENTAIRES JIRA DE FUSION PARTENT UN PAR UN : deux merge requests du même ticket vues dans le
-   même tour de découverte liraient toutes deux « pas encore de commentaire » et en posteraient deux. */
+/* LE LIEN DES MERGE REQUESTS SUR LEUR TICKET JIRA — UN COMMENTAIRE PAR TICKET, jamais de transition :
+   le statut du ticket appartient à l'équipe. Deux portes : « Publier le lien sur le ticket » (carte de
+   la MR, case de la modale de merge), et la fusion vue par Mergerie quand l'équipe l'a demandé
+   (Réglages → Jira, `jira_notify_merge`, décoché par défaut : écrire chez la QA se décide). La première
+   publication d'un ticket poste le commentaire ; chaque suivante — une autre MR du même ticket, ou la
+   même qui vient d'être mergée — le RÉÉCRIT avec la liste complète, une entrée de gabarit par MR :
+   « à la fusion » (`jira_merge_template`) si elle est mergée, « à la création » (`jira_notify_template`)
+   sinon. `jira_merge_notified_at` (publiée), `jira_merge_key` (sur quel ticket) et `jira_link_state`
+   (l'état que son entrée dit) sont posés AVANT l'appel, par une mise à jour conditionnelle, pour que
+   deux chemins qui voient le même merge (découverte puis « Mettre à jour depuis la forge ») n'écrivent
+   pas deux fois ; un échec de Jira les remet comme avant, le tour suivant réessaiera. */
+/* LES COMMENTAIRES PARTENT UN PAR UN : deux merge requests du même ticket publiées dans le même tour
+   liraient toutes deux « pas encore de commentaire » et en posteraient deux. */
 let fileJiraMerge = Promise.resolve();
-function texteJiraMerge(cfg, v) {
-  const gabarit = String((cfg && cfg.jira_merge_template) || '').trim();
-  if (!gabarit) return t('jira.merged.body', { iid: v.iid, project: v.project, url: v.url });
+function texteGabarit(gabarit, defaut, v) {
+  if (!gabarit) return t(defaut, { iid: v.iid, project: v.project, url: v.url });
   const valeurs = { url: v.url, iid: v.iid, project: v.project, title: v.title || '', branch: v.branch || '', target: v.target || '', key: v.key || '' };
   return gabarit.replace(/\{(\w+)\}/g, (brut, cle) => (cle in valeurs ? String(valeurs[cle]) : brut));
 }
-/* Le corps du commentaire d'un ticket : TOUTES ses merge requests mergées (celles déjà annoncées,
-   dans l'ordre de leur fusion), une entrée du gabarit par merge request. */
+function texteJiraMerge(cfg, v) {
+  return texteGabarit(String((cfg && cfg.jira_merge_template) || '').trim(), 'jira.merged.body', v);
+}
+function texteJiraOuverte(cfg, v) {
+  return texteGabarit(String((cfg && cfg.jira_notify_template) || '').trim(), 'jira.notify.body', v);
+}
+/* Le corps du commentaire d'un ticket : TOUTES ses merge requests publiées, dans l'ordre de leur
+   fusion (ou de leur publication pour une MR encore ouverte). */
 function corpsJiraMerge(cfg, cle) {
   const lignes = db.prepare(`SELECT mr.*, repo.project AS project FROM mr JOIN repo ON repo.id = mr.repo_id
     WHERE mr.jira_merge_key = ? AND mr.jira_merge_notified_at IS NOT NULL
     ORDER BY COALESCE(mr.merged_at, mr.jira_merge_notified_at), mr.id`).all(cle);
-  return lignes.map((m) => texteJiraMerge(cfg, {
+  return lignes.map((m) => (m.merged_at ? texteJiraMerge : texteJiraOuverte)(cfg, {
     iid: m.iid, project: m.project, url: m.web_url || '', title: m.title || '',
     branch: m.source_branch || '', target: m.target_branch || '', key: cle,
   })).join('\n\n');
 }
-function prevenirJiraDuMerge(repo, mrId, cfg, now = new Date().toISOString()) {
-  if (String((cfg && cfg.jira_notify_merge) || '') !== '1' || isDemo() || !jira.isConfigured(cfg)) return Promise.resolve(null);
+/* PUBLIER LE LIEN D'UNE MERGE REQUEST SUR SON TICKET. `explicite` : un clic — on republie même si
+   l'entrée est déjà à jour, et on dit pourquoi on ne peut pas (pas de clé, pas de Jira) au lieu de se
+   taire. Sinon (la fusion) : rien si l'entrée dit déjà « mergée ». Rend `{ key }`, ou null. */
+function publierLienMr(mrId, { cfg = getConfig(), now = new Date().toISOString(), explicite = false } = {}) {
   const mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
-  if (!mr) return Promise.resolve(null);
+  if (!mr) return explicite ? Promise.reject(new Error(t('err.mr-introuvable'))) : Promise.resolve(null);
   const cle = mr.ticket_jira_key || jira.ticketKey(mr.title, mr.source_branch);
-  if (!cle) return Promise.resolve(null);
-  const pris = db.prepare('UPDATE mr SET jira_merge_notified_at = ?, jira_merge_key = ? WHERE id = ? AND jira_merge_notified_at IS NULL').run(now, cle, mrId);
-  if (!pris.changes) return Promise.resolve(null); // déjà prévenu (ou en cours) par un autre chemin
+  if (!cle) return explicite ? Promise.reject(new Error(t('err.jira.no-key-in-branch'))) : Promise.resolve(null);
+  const etatLien = mr.merged_at ? 'merged' : 'open';
+  if (isDemo()) {
+    // La démo n'écrit chez personne : la MR est marquée publiée, l'écran se comporte comme en vrai.
+    if (!explicite) return Promise.resolve(null);
+    db.prepare('UPDATE mr SET jira_merge_notified_at = COALESCE(jira_merge_notified_at, ?), jira_merge_key = ?, jira_link_state = ? WHERE id = ?').run(now, cle, etatLien, mrId);
+    return Promise.resolve({ key: cle, demo: true });
+  }
+  if (!jira.isConfigured(cfg)) return explicite ? Promise.reject(new Error(t('err.jira.not-configured'))) : Promise.resolve(null);
+  const pris = db.prepare(`UPDATE mr SET jira_merge_notified_at = COALESCE(jira_merge_notified_at, @now), jira_merge_key = @cle, jira_link_state = @etat
+    WHERE id = @id${explicite ? '' : " AND (jira_merge_notified_at IS NULL OR COALESCE(jira_link_state, '') <> @etat)"}`)
+    .run({ now, cle, etat: etatLien, id: mrId });
+  if (!pris.changes) return Promise.resolve(null); // déjà publiée dans cet état (ou en cours) par un autre chemin
   const envoyer = async () => {
     const texte = corpsJiraMerge(cfg, cle);
     const connu = db.prepare('SELECT comment_id FROM jira_merge_comment WHERE cle = ?').get(cle);
@@ -390,15 +408,24 @@ function prevenirJiraDuMerge(repo, mrId, cfg, now = new Date().toISOString()) {
       db.prepare(`INSERT INTO jira_merge_comment (cle, comment_id, updated_at) VALUES (?, ?, ?)
         ON CONFLICT(cle) DO UPDATE SET comment_id = excluded.comment_id, updated_at = excluded.updated_at`).run(cle, String(poste.id), now);
     }
-    return cle;
+    return { key: cle };
   };
   const tour = fileJiraMerge.then(envoyer, envoyer).catch((e) => {
-    db.prepare('UPDATE mr SET jira_merge_notified_at = NULL, jira_merge_key = NULL WHERE id = ? AND jira_merge_notified_at = ?').run(mrId, now);
-    console.error(t('jira.merged.failed', { iid: mr.iid, project: repo.project, key: cle, message: e.message }));
+    db.prepare('UPDATE mr SET jira_merge_notified_at = ?, jira_merge_key = ?, jira_link_state = ? WHERE id = ?')
+      .run(mr.jira_merge_notified_at, mr.jira_merge_key, mr.jira_link_state, mrId);
+    console.error(t('jira.merged.failed', { iid: mr.iid, project: (db.prepare('SELECT project FROM repo WHERE id = ?').get(mr.repo_id) || {}).project || '', key: cle, message: e.message }));
     throw e;
   });
   fileJiraMerge = tour.catch(() => {});
   return tour;
+}
+/* LA FUSION : une MR dont le lien est déjà sur le ticket y passe « mergée » (la liste ne ment pas,
+   case cochée ou non) ; les autres n'y vont que si l'équipe l'a demandé. */
+function prevenirJiraDuMerge(repo, mrId, cfg, now = new Date().toISOString()) {
+  const mr = db.prepare('SELECT jira_merge_notified_at FROM mr WHERE id = ?').get(mrId);
+  if (!mr) return Promise.resolve(null);
+  if (!mr.jira_merge_notified_at && String((cfg && cfg.jira_notify_merge) || '') !== '1') return Promise.resolve(null);
+  return publierLienMr(mrId, { cfg, now });
 }
 
 /* Upsert CIBLÉ d'une seule MR (objet API GitLab) dans la table `mr`, sans balayer
@@ -557,4 +584,4 @@ async function rafraichirMr(mrId) {
   return { id: avant.id, etat: etatDe(apres), stale, changed };
 }
 
-module.exports = { discoverAll, upsertMrFromApi, apresMerge, rafraichirMr, prevenirJiraDuMerge, texteJiraMerge };
+module.exports = { discoverAll, upsertMrFromApi, apresMerge, rafraichirMr, prevenirJiraDuMerge, publierLienMr, texteJiraMerge };

@@ -163,6 +163,11 @@ try { db.exec('ALTER TABLE config ADD COLUMN jira_notify_merge INTEGER DEFAULT 0
 try { db.exec("ALTER TABLE config ADD COLUMN jira_merge_template TEXT DEFAULT ''"); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN jira_merge_notified_at TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE mr ADD COLUMN jira_merge_key TEXT'); } catch { /* déjà présente */ }
+/* L'ÉTAT QUE DIT L'ENTRÉE DE LA MR dans le commentaire du ticket (`open` | `merged`) : publiée ouverte
+   depuis sa carte, elle est réécrite « mergée » à la fusion. Celles publiées avant cette colonne
+   l'ont toutes été à leur fusion. */
+try { db.exec('ALTER TABLE mr ADD COLUMN jira_link_state TEXT'); } catch { /* déjà présente */ }
+db.exec("UPDATE mr SET jira_link_state = 'merged' WHERE jira_merge_notified_at IS NOT NULL AND jira_link_state IS NULL");
 /* UN TICKET, UN COMMENTAIRE : cinq merge requests d'un même ticket ne lui écrivent pas cinq fois.
    Le commentaire posté à la première fusion est RÉÉCRIT à chaque suivante avec la liste complète ;
    on retient donc son id par clé de ticket. Une ligne par ticket, de poste (Jira ne se consulte pas

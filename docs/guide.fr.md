@@ -2669,9 +2669,14 @@ d'une merge request**, cochée d'office, avec son propre **gabarit de commentair
 plus `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{key}`, aperçu en direct ; vide reprend le
 texte livré ; et la case **« Prévenir Jira quand une merge request est mergée »**, décochée par défaut,
 avec son gabarit à elle — mêmes variables, même aperçu : quand Mergerie voit la merge request mergée
-(découverte, *Mettre à jour depuis la forge*), le ticket reçoit **un** commentaire — un seul par ticket,
+(merge depuis Mergerie, découverte, *Mettre à jour depuis la forge*), le ticket reçoit **un** commentaire — un seul par ticket,
 réécrit avec la liste complète à chaque merge request suivante —, rien pour une fermeture sans merge
-ni depuis le rattrapage d'une période) ·
+ni depuis le rattrapage d'une période ; **seulement un commentaire, le statut du ticket n'est jamais
+changé**. Sans attendre la fusion, le menu **⋯** d'une carte de merge request (et celui du rapport) propose
+**« Publier le lien de la MR sur PROJ-42 »** : le lien entre dans ce même commentaire — chaque autre merge
+request du ticket s'y ajoute en le réécrivant, une entrée « ouverte » ou « mergée » chacune —, et l'entrée
+disparaît une fois publiée ; mergée ensuite, son entrée passe « mergée », case cochée ou non. La case Jira
+de la fenêtre de merge fait la même chose, sans toucher au statut) ·
 **Plugins** (la liste des plugins installés — version, état, permissions, événements —, activer ou
 désactiver **sans redémarrer** (la page recharge, les données restent), un bouton **Mettre à jour** par
 plugin installé depuis git ou un dossier (reclone, désactive, remplace le dossier, réactive si besoin,

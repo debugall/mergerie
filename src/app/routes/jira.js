@@ -12,6 +12,7 @@ const jira = require('../../integrations/jira');
 const jiraspec = require('../../integrations/jiraspec');
 const specTicket = require('../../session/spec');
 const notes = require('../../notes/notes');
+const discover = require('../../notes/discover');
 const demoMode = require('../../demo/mode');
 const demoJira = require('../../demo/jira');
 const pieces = require('../../agent/pieces');
@@ -322,23 +323,11 @@ app.post('/api/mrs/:id/jira-refresh', wrap(async (req, res) => {
     throw e;   // remonte l'erreur au front pour l'afficher
   }
 }));
-/* B2 — MERGER FERME LA BOUCLE JIRA. « Prévenir Jira » n'existait qu'à la CRÉATION de la merge
-   request : une fois mergée, on ouvrait Jira, on cherchait le ticket, on le passait à l'état
-   suivant, on collait le lien. Trois fois par jour. Le geste est le même que pour une session
-   — même commentaire, même transition lue chez Jira et jamais devinée — mais la source est une
-   merge request, pas un projet de session. */
-app.post('/api/mrs/:id/notify-jira', wrap(async (req, res) => {
-  const mr = mrById(Number(req.params.id));
-  if (!mr) throw new Error(t('err.mr-introuvable'));
-  const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(mr.repo_id) || {};
-  res.json(await prevenirJira({
-    branch: mr.ticket_jira_key || mr.source_branch || '',
-    project: repo.project || '',
-    mr_iid: mr.iid,
-    mr_url: mr.web_url || '',
-    mr_title: mr.title || '',
-    mr_target: mr.target_branch || '',
-  }));
+/* B2 — PUBLIER LE LIEN DE LA MERGE REQUEST SUR SON TICKET : l'entrée du menu ⋯ de la carte, et la case
+   de la modale de merge. Un commentaire PAR TICKET, réécrit à chaque MR publiée (voir `publierLienMr`),
+   et jamais de transition : le statut du ticket se décide dans Jira. */
+app.post('/api/mrs/:id/jira-link', wrap(async (req, res) => {
+  res.json(await discover.publierLienMr(Number(req.params.id), { explicite: true }));
 }));
 app.post('/api/tasks/:id/targets/:tid/notify-jira', wrap(async (req, res) => {
   const cible = targetById(Number(req.params.id), Number(req.params.tid));

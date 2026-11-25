@@ -40,9 +40,9 @@ function openMergeModal(ctx) {
   note.hidden = false;
   note.querySelector('span').textContent = tr('merge.modal.warn', { forge: forgeLabel(ctx.forge) });
   /* B2 — LA CASE JIRA. Elle n'existe que si Jira est connecté ET qu'une clé de ticket a été
-     trouvée : proposer de « prévenir le ticket » sans ticket serait une case morte. Le
-     souvenir est PAR PROJET JIRA (le préfixe de la clé) : une équipe qui veut la transition
-     la veut sur tous ses tickets, une autre n'en veut sur aucun. */
+     trouvée : proposer de « prévenir le ticket » sans ticket serait une case morte. Elle dépose
+     le lien dans LE commentaire du ticket, sans toucher à son statut. Le souvenir est PAR PROJET
+     JIRA (le préfixe de la clé) : une équipe qui veut le lien le veut sur tous ses tickets. */
   const cleJira = ctx.ticketKey || '';
   const ligneJira = $('#mergeJiraRow');
   if (ligneJira) {
@@ -163,8 +163,8 @@ $('#mergeGo') && $('#mergeGo').addEventListener('click', async () => {
        au message qui précède. */
     if (prevenir && ctx.mrId) {
       try {
-        const j = await api(`/mrs/${ctx.mrId}/notify-jira`, { method: 'POST' });
-        toast(j.transitioned ? tr('toast.jira-notified-moved', { key: j.key }) : tr('toast.jira-notified', { key: j.key }));
+        const j = await api(`/mrs/${ctx.mrId}/jira-link`, { method: 'POST' });
+        toast(tr('toast.jira-link-published', { key: (j && j.key) || ctx.ticketKey }));
       } catch (err) { toast(tr('toast.jira-notify-failed', { detail: explainError(err.message) }), true); }
     }
     if (ctx.onDone) await ctx.onDone(r);

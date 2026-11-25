@@ -9,6 +9,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const notify = require('../../core/notify');
 const notes = require('../../notes/notes');
+const discover = require('../../notes/discover');
 const forge = require('../../forge');
 const demoMode = require('../../demo/mode');
 const diffnum = require('../../git/diffnum');   // A7 : sur quelles lignes un commentaire peut s'accrocher
@@ -206,10 +207,13 @@ app.post('/api/mrs/:id/merge', wrap(async (req, res) => {
     // événement frais pour le footer + flag pour que discover ne re-signale pas
     db.prepare('INSERT INTO feed (type, mr_iid, project, author, title, at) VALUES (?,?,?,?,?,?)')
       .run('mr_merged', mr.iid, mr.project, mr.author || '', mr.title || '', now);
-    db.prepare('UPDATE mr SET closed_seen = 1 WHERE id = ?').run(mr.id);
+    db.prepare('UPDATE mr SET closed_seen = 1, merged_at = COALESCE(merged_at, ?) WHERE id = ?').run(merged.merged_at || now, mr.id);
     // si cette MR vient d'une Dev session, la tâche doit aussi passer « mergée »
     db.prepare('UPDATE task_target SET mr_merged = 1, updated_at = ? WHERE repo_id = ? AND mr_iid = ?')
       .run(now, mr.repo_id, mr.iid);
+    /* Le ticket Jira, comme pour un merge vu par la découverte : `closed_seen` vient d'être posé, la
+       découverte ne repassera pas par `apresMerge` pour cette MR. Best-effort, en tâche de fond. */
+    discover.prevenirJiraDuMerge({ id: mr.repo_id, project: mr.project }, mr.id, getConfig(), now).catch(() => {});
     /* TOP 14 — et l'événement, comme pour une MR mergée par quelqu'un d'autre. `closed_seen`
        vient d'être posé, donc la découverte ne le signalera jamais : sans cette ligne, le SEUL
        merge qui ne produit aucun fait est celui qu'on a fait soi-même — et c'est celui qui clôt

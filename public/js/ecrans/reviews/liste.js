@@ -303,7 +303,7 @@ function renderToReview() {
        changement d'un autre champ. */
     m.verification && [m.verification.id, m.verification.verdict, m.verification.stale,
       m.verification.failed_count, m.verification.detail_source].join(','),
-    m.verifiable, mrSelection.has(m.id),
+    m.verifiable, mrSelection.has(m.id), m.jira_merge_notified_at,
     // Les badges de croisement et de tests touchés font partie de ce que la carte affiche.
     sigCroise(m), sigTests(m), sigDeps(m), sigStack(m), sigRetouches(m),
     m.origin_task && [m.origin_task.id, m.origin_task.status].join(',')].join('\u0001')).join('\u0002');
@@ -524,6 +524,11 @@ function mrCard(m) {
         ${jiraConfigured && (m.ticket_key || jiraCleDe(m))
     ? `<button role="menuitem" data-jira-watch="${esc(m.ticket_key || jiraCleDe(m))}">${tr('mr.btn.watch-ticket', { key: m.ticket_key || jiraCleDe(m) })}</button>`
     : ''}
+        ${/* PUBLIER LE LIEN SUR LE TICKET : un commentaire par ticket, que chaque MR du ticket complète.
+              Masqué une fois publié — la fusion le tient à jour d'elle-même. */''}
+        ${jiraConfigured && jiraCleDe(m) && !m.jira_merge_notified_at
+    ? `<button role="menuitem" data-jira-link="${m.id}" data-key="${esc(jiraCleDe(m))}">${tr('mr.btn.jira-link', { key: jiraCleDe(m) })}</button>`
+    : ''}
         <button role="menuitem" data-done="${m.id}" data-iid="${esc(m.iid)}">${tr('mr.btn.dismiss')}</button>
         ${m.closed_seen ? '' : `<button role="menuitem" class="danger" data-merge="${m.id}">${tr('task.btn.merge')}</button>`}
       </div>
@@ -568,6 +573,20 @@ document.addEventListener('click', async (e) => {
   } catch (err) { toast(explainError(err.message), true); return; }
   navTab('jira');
   showJiraSub('watch');
+});
+
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest && e.target.closest('[data-jira-link]');
+  if (!b) return;
+  closeSplitMenus();
+  try {
+    const r = await api(`/mrs/${b.dataset.jiraLink}/jira-link`, { method: 'POST' });
+    toast(tr('toast.jira-link-published', { key: (r && r.key) || b.dataset.key }));
+  } catch (err) { toast(explainError(err.message), true); return; }
+  /* Le menu est sur une carte de la file ou dans l'en-tête du rapport : les deux se redessinent sans
+     l'entrée (le bouton, lui, a pu partir avec un rendu de fond — on ne le relit pas). */
+  loadToReview();
+  if (selectedMr === Number(b.dataset.jiraLink)) openReport(selectedMr, { keep: true });
 });
 
 document.addEventListener('click', (e) => {

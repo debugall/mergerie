@@ -2546,8 +2546,13 @@ template** (`{url}`, `{iid}`, `{project}`, `{title}`, `{branch}`, `{target}`, `{
 preview; empty keeps the shipped message, shared with the team like the review-link template) —, and
 **“Tell Jira when a merge request is merged”**, unticked by default, with its own template — same
 variables, same preview: when Mergerie sees the merge request merged (discovery, *Refresh from the
-forge*), the ticket gets **one** comment — a single one per ticket, rewritten with the full list at
-each following merge request —, nothing for a close without merge nor from a period catch-up —; feeds the *Jira* tab and the enrichment of a session from a ticket) ·
+forge*, or merged from Mergerie), the ticket gets **one** comment — a single one per ticket, rewritten with the full list at
+each following merge request —, nothing for a close without merge nor from a period catch-up; **only a
+comment, the ticket's status is never changed**. Without waiting for the merge, the **⋯** menu of a merge
+request card (and the report's) offers **“Post the MR link on PROJ-42”**: the link goes into that same
+comment — every other merge request of the ticket adds itself by rewriting it, one “opened” or “merged”
+entry each —, and the entry disappears once posted; merged later, its entry turns “merged”, box ticked or
+not. The Jira box of the merge window does the same, leaving the status alone —; feeds the *Jira* tab and the enrichment of a session from a ticket) ·
 **Plugins** (every installed plugin, its version, state and permissions; enable or disable it
 **without restarting**; install a third-party plugin from a local folder or a git address — this
 is where Jenkins, Docker and Links are installed and updated. An **enabled** plugin that declares

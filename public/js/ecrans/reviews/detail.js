@@ -12,7 +12,7 @@ let reportShown = { id: null, sig: null, stamp: null };
 // donnée périmée — c'est le risque exact de cette optimisation.
 function reportSig(d) {
   const m = d.mr; const r = d.review; const t2 = d.ticket || {};
-  return [m.status, m.closed_seen, m.squash, m.remove_source_branch, r && r.updated_at,
+  return [m.status, m.closed_seen, m.squash, m.remove_source_branch, r && r.updated_at, m.jira_merge_notified_at,
     // La publication du rapport change le libellé du bouton (« Publier » → « Republier ») :
     // sans elle ici, une publication automatique laissait l'ancien libellé à l'écran.
     r && r.comment_posted_at,
@@ -141,6 +141,7 @@ async function openReport(id, opts = {}) {
                   sur GitLab, une review APPROVE sur GitHub, sans aucun commentaire inline. Dans le
                   menu, comme Publier : la barre garde ses trois actions. L'état (qui a déjà
                   approuvé, moi compris) arrive à part, après le rendu — c'est un appel à la forge. */''}
+            ${jiraConfigured && d.ticket_key && !m.jira_merge_notified_at ? `<button role="menuitem" data-jira-link="${m.id}" data-key="${esc(d.ticket_key)}">${tr('mr.btn.jira-link', { key: d.ticket_key })}</button>` : ''}
             <button id="aRefresh" role="menuitem" title="${esc(tr('mr.btn.refresh-title', { forge: forgeLabel(m.forge) }))}">${tr('mr.btn.refresh')}</button>
             ${/* MARQUER COMME CORRECTIF — une merge request MERGÉE qu'aucun signal n'a reliée (le cas de
                   l'ajout pur) se rattache à la main à celle qu'elle corrige : un fait enregistré avec

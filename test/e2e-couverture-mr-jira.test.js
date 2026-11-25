@@ -4,7 +4,7 @@
 
    - les commits arrivés DEPUIS la review (`stale-commits`, la bulle du tag « périmé ») ;
    - l'historique des vérifications d'une MR (`verifications/history`, la tendance du rapport) ;
-   - prévenir Jira depuis la modale de merge (`mrs/:id/notify-jira`) ;
+   - publier le lien d'une MR sur son ticket (`mrs/:id/jira-link`, carte et modale de merge) ;
    - le PORTEUR d'un ticket Jira (`jira/issues/:key/carrier`) : le dépôt et la branche que le plugin Liens
      utilise pour poser ses boutons d'environnement (leur résolution est testée dans son dépôt) ;
    - « repartir d'une session d'agent neuve » (`forget-session`).
@@ -144,48 +144,44 @@ describe('Couverture — merge request, projet de session, Jira', () => {
 
   /* ------------------------------------------------ prévenir Jira (merge) ---- */
 
-  test('prévenir Jira depuis une MR : refusé sans Jira, sinon un commentaire et la transition « en cours »', async () => {
-    assert.equal((await app.api('POST', `/api/mrs/${mrId}/notify-jira`)).status, 400, 'Jira non configuré : on le dit');
+  test('publier le lien d’une MR sur son ticket : refusé sans Jira, sinon un commentaire et AUCUNE transition', async () => {
+    assert.equal((await app.api('POST', `/api/mrs/${mrId}/jira-link`)).status, 400, 'Jira non configuré : on le dit');
 
     await app.configure({ jira_url: app.gitlabUrl, jira_email: 'a@b.c', jira_token: 'jt' });
     app.state.calls.length = 0;
-    const r = await app.api('POST', `/api/mrs/${mrId}/notify-jira`);
+    const r = await app.api('POST', `/api/mrs/${mrId}/jira-link`);
     assert.equal(r.status, 200, r.text);
     assert.equal(r.body.key, 'PROJ-42', 'la clé est relue dans la branche, côté serveur');
-    assert.equal(r.body.commented, true);
-    assert.equal(r.body.transitioned, true, 'le faux Jira propose « En cours » : on y passe');
 
     const commentaire = app.state.calls.find((c) => c.method === 'POST' && /\/issue\/PROJ-42\/comment/.test(c.path));
     assert.ok(commentaire, 'un commentaire a été posté sur le ticket');
     assert.match(JSON.stringify(commentaire.body), /merge_requests\/7/, 'le commentaire porte le lien de la MR');
-    const transition = app.state.calls.find((c) => c.method === 'POST' && /\/issue\/PROJ-42\/transitions/.test(c.path));
-    assert.ok(transition, 'la transition a été demandée');
-    assert.equal(String(transition.body.transition.id), '21', 'vers l’état de catégorie « en cours »');
+    assert.equal(app.state.calls.filter((c) => /\/transitions/.test(c.path)).length, 0, 'le statut du ticket n’est ni lu ni changé');
 
     // Une MR sans clé de ticket ne peut prévenir personne : refus, et aucun appel Jira.
     const sansCle = await mrParIid(8);
     app.state.calls.length = 0;
-    assert.equal((await app.api('POST', `/api/mrs/${sansCle.id}/notify-jira`)).status, 400);
+    assert.equal((await app.api('POST', `/api/mrs/${sansCle.id}/jira-link`)).status, 400);
     assert.equal(app.state.calls.filter((c) => c.path.startsWith('/rest/api')).length, 0, 'rien n’est parti chez Jira');
-    assert.ok((await app.api('POST', '/api/mrs/99999/notify-jira')).status >= 400, 'MR inconnue : refusée');
+    assert.ok((await app.api('POST', '/api/mrs/99999/jira-link')).status >= 400, 'MR inconnue : refusée');
   });
 
-  test('prévenir Jira avec le gabarit de l’équipe : variables remplacées, inconnue laissée, et un gabarit sans {url} refusé', async () => {
+  test('le lien publié suit le gabarit « à la création » : variables remplacées, inconnue laissée, et un gabarit sans {url} refusé', async () => {
     assert.equal((await app.api('PUT', '/api/config', { jira_notify_template: 'Pas de lien ici' })).status, 400, 'sans {url}, le ticket ne dirait pas laquelle');
     assert.equal((await app.api('GET', '/api/config')).body.jira_notify_template || '', '', 'et rien n’est enregistré');
     assert.equal((await app.api('PUT', '/api/config', { jira_notify_template: '[{key}] MR !{iid} « {title} » ({project}, {branch} → {target}) : {url} {inconnue}' })).status, 200);
     app.state.calls.length = 0;
-    assert.equal((await app.api('POST', `/api/mrs/${mrId}/notify-jira`)).status, 200);
-    const commentaire = app.state.calls.find((c) => c.method === 'POST' && /\/issue\/PROJ-42\/comment/.test(c.path));
-    assert.ok(commentaire, 'un commentaire a été posté');
-    const texte = JSON.stringify(commentaire.body);
+    assert.equal((await app.api('POST', `/api/mrs/${mrId}/jira-link`)).status, 200);
+    const reecrit = app.state.calls.find((c) => c.method === 'PUT' && /\/issue\/PROJ-42\/comment\//.test(c.path));
+    assert.ok(reecrit, 'republier vise le commentaire déjà posté sur le ticket');
+    const texte = JSON.stringify(reecrit.body);
     assert.match(texte, /\[PROJ-42\] MR !7 « Ajout de b » \(grp\/app, feature\/[^ ]* → main\)/, 'les variables sont remplacées, dont la branche de destination');
     assert.match(texte, /merge_requests\/7/);
     assert.match(texte, /\{inconnue\}/, 'une variable inconnue reste telle quelle');
     await app.api('PUT', '/api/config', { jira_notify_template: '' });
     app.state.calls.length = 0;
-    await app.api('POST', `/api/mrs/${mrId}/notify-jira`);
-    const parDefaut = app.state.calls.find((c) => c.method === 'POST' && /\/issue\/PROJ-42\/comment/.test(c.path));
+    await app.api('POST', `/api/mrs/${mrId}/jira-link`);
+    const parDefaut = app.state.calls.find((c) => /\/issue\/PROJ-42\/comment/.test(c.path) && c.body && c.body.body);
     assert.match(JSON.stringify(parDefaut.body), /!7 sur grp\/app|!7 on grp\/app/, 'vide : le message livré');
   });
 
