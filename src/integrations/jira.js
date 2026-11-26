@@ -292,6 +292,11 @@ async function fetchIssue(cfg, key) {
     descriptionMd: adfToMarkdown(fields.description),
     techMd: commentaireTech(commentaires.map((cm) => adfToMarkdown(cm.body)), marqueur),
     techMarker: marqueur,
+    /* Les commentaires lisibles (les vingt derniers) : « Lancer ma journée » montre le ticket entier pour
+       choisir ses dépôts, sans relire Jira. */
+    comments: commentaires.slice(-20).map((cm) => ({
+      author: (cm.author && cm.author.displayName) || '', created: cm.created || '', bodyMd: adfToMarkdown(cm.body),
+    })),
     /* LE STATUT ÉTAIT DANS LA RÉPONSE ET PARTAIT À LA POUBELLE. On le garde : c'est ce qui
        permet de dire « ticket en revue » sur une merge request SANS surveiller son ticket,
        et sans un seul appel de plus — la découverte lit déjà l'issue en entier. */

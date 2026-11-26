@@ -1463,6 +1463,14 @@ mrsP3x.forEach((mr) => {
         preuve: 'Le scénario échoue sur un délai de connexion au bac à sable de paiement ; la branche ne touche pas ce client.' } } },
   ];
   db.prepare('UPDATE verif_chaine SET steps_json = ? WHERE id = ?').run(JSON.stringify(etapes), chaineId);
+
+  /* « PRÊT À LANCER » : une session de la journée enregistrée sans être lancée — ticket PROJ-1421, dépôt saisi
+     dans la fenêtre, chaîne reprise du modèle. Le cockpit la propose avec Lancer, Éditer, Supprimer. */
+  const pret = db.prepare(`INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, label, jira_key, verify_chain, auto_push, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,1,?,?)`).run(repoIds['groupe/api-core'], 'Contexte du ticket PROJ-1421\n\n---\n\nCorrige la déconnexion après 30 minutes de session.',
+    'feature/PROJ-1421-deconnexion', 'main', 'new', 'code', 'PROJ-1421 Déconnexion après 30 min', 'PROJ-1421', JSON.stringify([verifierId, cmdId]), at(0.1), at(0.1)).lastInsertRowid;
+  db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
+    .run(pret, repoIds['groupe/api-core'], 'feature/PROJ-1421-deconnexion', 'main', 'new', at(0.1));
 }
 
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------

@@ -1006,12 +1006,25 @@ pushed without a chain). Re-read every three seconds while shown; each row shows
 
 **“Start my day”.** Type ticket keys, or tick them in **`My tickets`** (your unfinished tickets — one Jira
 call), choose the session whose **validation chain** is reused (the most recent one that has a chain is
-offered), and **`Start`**: one coding session per ticket, created and started right away. Its repositories,
-branch and starting branch come from the ticket's tokens (`&&repo:branch<base`, description or “#tech”
-comment), its request from its `&&> …` lines (otherwise: carry out the ticket described), its label and
-commit message from the key and summary. A ticket that names no repository is not guessed: it comes back
-with an **`Open by hand`** button, the session window prepared from the ticket. The cost is announced
-before the click: **one Jira call per ticket**.
+offered), and **`Prepare`**: each ticket is read (**one Jira call per ticket**, announced before the click) and
+nothing is created yet. One block per ticket shows its repositories, working branch and starting branch, read
+from its tokens (`&&repo:branch<base`, description or “#tech” comment); a ticket that names none says so, and
+you **type them in the block** (repository and starting branch with search, working branch offered as
+`feature/<key>-<title>`, `+ Repository` to add one). To know where the session belongs, **`Show the ticket`**
+unfolds in the block its status, description, “#tech” comment and comments, with a link to Jira — open by
+default when the ticket names no repository, and with no extra Jira call. Repositories the ticket's text
+**names without a token** (“the payment module”) are offered as chips: one click fills the repository row. Its request comes from its `&&> …` lines (otherwise: carry
+out the ticket described), its label and commit message from the key and summary. Each block has three
+buttons: **`Start`** (created and started), **`Save without starting`** (created, it waits in the cockpit's
+**Ready to start**) and **`Edit`** (created without starting, then opened in the session window — with no
+repository typed, the window prepared from the ticket). So you start tickets **one by one**; **`Start all`**
+and **`Save all without starting`** do the same for the remaining blocks. Creating or starting costs no Jira
+call.
+
+**Ready to start, and delete.** The cockpit lists sessions saved without starting under **Ready to start**,
+with **`Start`** and **`Edit`**. Every row that is not running has a **bin**: it deletes the session **and every
+other session of the same ticket** (the confirmation says how many), validation chain included; a running
+session blocks the deletion.
 
 **Resume an existing agent session.** An **optional “session identifier”** field at creation time (coding,
 local repo, exploration) makes the AI work **inside that session** instead of opening a new one — so it

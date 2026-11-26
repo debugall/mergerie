@@ -13,7 +13,15 @@ function cockpitRaison(r) {
   if (r.quoi === 'scenario') return tr('cockpit.reason.scenario', { detail: r.detail || '' });
   return tr('cockpit.reason.error', { name: r.nom || '', detail: r.detail || '' });
 }
-function cockpitLigne(l, { quoi = null } = {}) {
+function cockpitActions(l, { pret = false } = {}) {
+  const enCours = !!l.job || l.status === 'running';
+  return `<span class="cockpit-actions">
+    ${pret ? `<button type="button" class="btn btn-sm btn-primary" data-cockpit-run="${l.task_id}"><svg class="ico"><use href="#i-play"/></svg>${esc(tr('cockpit.journee.go'))}</button>
+    <button type="button" class="btn btn-sm" data-cockpit-edit="${l.task_id}"><svg class="ico"><use href="#i-edit"/></svg>${esc(tr('cockpit.journee.edit'))}</button>` : ''}
+    ${enCours ? '' : `<button type="button" class="btn btn-sm btn-ghost" data-cockpit-del="${l.task_id}" data-cockpit-n="${l.n_ticket || 1}" data-cockpit-key="${esc(l.jira_key || '')}" title="${esc(tr('cockpit.delete.title'))}" aria-label="${esc(tr('cockpit.delete.title'))}"><svg class="ico"><use href="#i-trash"/></svg></button>`}
+  </span>`;
+}
+function cockpitLigne(l, { quoi = null, pret = false } = {}) {
   const projets = (l.projets || []).map((p) => `${esc(p.project)} · <code>${esc(p.branch || '')}</code>`).join(' — ');
   let pourquoi = '';
   if (quoi === 'question') pourquoi = tr('cockpit.why.question');
@@ -25,6 +33,8 @@ function cockpitLigne(l, { quoi = null } = {}) {
     <div class="cockpit-item-head">
       <button type="button" class="cockpit-titre" data-cockpit-open="${l.task_id}">#${l.task_id} ${esc(l.label || '')}</button>
       ${job}
+      <span class="spacer"></span>
+      ${cockpitActions(l, { pret })}
     </div>
     <div class="meta">${projets}</div>
     ${pourquoi ? `<div class="cockpit-pourquoi">${esc(pourquoi)}</div>` : ''}
@@ -41,6 +51,7 @@ function renderCockpit(d) {
   const box = $('#cockpitBox');
   if (!box) return;
   box.innerHTML = cockpitSection('a_toi', d.a_toi, (l) => cockpitLigne(l, { quoi: l.quoi }))
+    + cockpitSection('pret', d.pret || [], (l) => cockpitLigne(l, { pret: true }))
     + cockpitSection('en_cours', d.en_cours, (l) => cockpitLigne(l))
     + cockpitSection('termine', d.termine, (l) => cockpitLigne(l));
 }
@@ -55,10 +66,39 @@ async function loadCockpit() {
     }, 3000);
   }
 }
-$('#cockpitBox') && $('#cockpitBox').addEventListener('click', (e) => {
-  const o = e.target.closest && e.target.closest('[data-cockpit-open]');
-  if (o) ouvrirSession(Number(o.dataset.cockpitOpen), 'code');
+$('#cockpitBox') && $('#cockpitBox').addEventListener('click', async (e) => {
+  if (!e.target.closest) return;
+  const o = e.target.closest('[data-cockpit-open]');
+  if (o) { ouvrirSession(Number(o.dataset.cockpitOpen), 'code'); return; }
+  const run = e.target.closest('[data-cockpit-run]');
+  if (run) {
+    try { await busy(run, () => api(`/tasks/${run.dataset.cockpitRun}/run`, { method: 'POST', body: {} })); toast(tr('toast.session-lancee')); }
+    catch (err) { toast(explainError(err.message), true); }
+    loadCockpit(); refreshStatus();
+    return;
+  }
+  const ed = e.target.closest('[data-cockpit-edit]');
+  if (ed) { openTaskEdit(Number(ed.dataset.cockpitEdit)); return; }
+  const del = e.target.closest('[data-cockpit-del]');
+  if (del) await supprimerElementCockpit(del);
 });
+/* Supprimer un élément : la session — et, si elle vient d'un ticket, toutes celles du même ticket. Confirmé dans
+   la fenêtre de l'application (jamais `confirm()`), qui dit combien partent. */
+async function supprimerElementCockpit(b) {
+  const n = Number(b.dataset.cockpitN) || 1;
+  const key = b.dataset.cockpitKey;
+  const ok = await confirmDialog({
+    title: tr('cockpit.delete.title'),
+    text: key ? tr('cockpit.delete.text-ticket', { key, n, count: n }) : tr('cockpit.delete.text'),
+    confirmLabel: tr('cockpit.delete.ok'),
+  });
+  if (!ok) return;
+  try {
+    const r = await api('/cockpit/supprimer', { method: 'POST', body: { task_id: Number(b.dataset.cockpitDel) } });
+    toast(tr('cockpit.delete.done', { n: r.supprimees.length, count: r.supprimees.length }));
+  } catch (err) { toast(explainError(err.message), true); }
+  loadCockpit();
+}
 // « Relancer » d'une chaîne (le geste de la carte de session) : le cockpit se relit aussitôt.
 document.addEventListener('click', (e) => {
   if (e.target.closest && e.target.closest('#taskCockpit [data-chaine-relancer]')) setTimeout(() => { if ($('#tab-task.active.vue-cockpit')) loadCockpit(); }, 0);

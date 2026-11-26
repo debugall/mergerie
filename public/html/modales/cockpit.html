@@ -1,9 +1,10 @@
-<!-- « Lancer ma journée » : des tickets Jira (tapés, ou cochés dans « mes tickets »), une session de codage
-     chacun, la chaîne de validation reprise d'une session modèle. Un appel Jira par ticket. -->
+<!-- « Lancer ma journée » : des tickets Jira (tapés, ou cochés dans « mes tickets »), préparés (un appel Jira
+     chacun), puis une session de codage par ticket — lancée ou enregistrée, un par un ou tous —, la chaîne de
+     validation reprise d'une session modèle. -->
 <div id="cockpitJourneeModal" class="modal" hidden>
     <div class="modal-box cockpit-journee-box">
         <h3 data-i18n="cockpit.journee.title">Lancer ma journée</h3>
-        <p class="muted" data-i18n="cockpit.journee.intro">Une session de codage par ticket, lancée tout de suite : ses dépôts et sa demande viennent du ticket (&amp;&amp;dépôt:branche, &amp;&amp;&gt;), sa chaîne de validation de la session modèle.</p>
+        <p class="muted" data-i18n="cockpit.journee.intro">Une session de codage par ticket : ses dépôts et sa demande viennent du ticket (&amp;&amp;dépôt:branche, &amp;&amp;&gt;) ou se saisissent ici, sa chaîne de validation de la session modèle. Lance-les une par une, ou enregistre-les pour plus tard.</p>
         <label><span data-i18n="cockpit.journee.keys">Tickets</span>
             <textarea id="cockpitKeys" rows="2" placeholder="PROJ-1408, PROJ-1410"></textarea></label>
         <div class="cockpit-mes-tickets">
@@ -15,10 +16,16 @@
         <label><span data-i18n="cockpit.journee.model">Chaîne de validation comme la session</span>
             <select id="cockpitModele"></select></label>
         <p class="field-note" id="cockpitCout"></p>
+        <!-- LES TICKETS PRÉPARÉS : un bloc chacun — ses dépôts, sa branche de travail et de départ (lus dans le
+             ticket, ou saisis ici), et ses trois gestes : lancer, enregistrer sans lancer, éditer dans la
+             fenêtre de session. Rien n'est créé avant un de ces clics. -->
+        <div id="cockpitPrepares" class="cockpit-prepares" hidden></div>
         <div id="cockpitResultat" class="cockpit-resultat" hidden></div>
         <div class="modal-actions">
             <button id="cockpitAnnuler" type="button" class="btn" data-i18n="ui.close">Fermer</button>
-            <button id="cockpitLancer" type="button" class="btn btn-primary" data-i18n="cockpit.journee.go">Lancer</button>
+            <button id="cockpitPreparer" type="button" class="btn btn-primary" data-i18n="cockpit.journee.prepare">Préparer</button>
+            <button id="cockpitToutEnregistrer" type="button" class="btn" hidden data-i18n="cockpit.journee.save-all">Tout enregistrer sans lancer</button>
+            <button id="cockpitLancer" type="button" class="btn btn-primary" hidden data-i18n="cockpit.journee.go-all">Tout lancer</button>
         </div>
     </div>
 </div>

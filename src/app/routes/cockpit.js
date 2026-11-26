@@ -18,3 +18,16 @@ app.post('/api/cockpit/journee', wrap(async (req, res) => {
   const b = req.body || {};
   res.json(await journee.lancerJournee({ keys: b.keys, modeleId: b.modele_id }));
 }));
+// Préparer : un appel Jira par ticket, rien n'est créé.
+app.post('/api/cockpit/journee/preparer', wrap(async (req, res) => {
+  res.json(await journee.preparerJournee({ keys: (req.body || {}).keys }));
+}));
+// Créer les sessions préparées (dépôts saisis dans la fenêtre), lancées ou non. Aucun appel Jira.
+app.post('/api/cockpit/journee/creer', wrap((req, res) => {
+  const b = req.body || {};
+  res.json(journee.creerSessions({ sessions: b.sessions, modeleId: b.modele_id, lancer: b.lancer !== false }));
+}));
+// Supprimer un élément : la session et celles du même ticket.
+app.post('/api/cockpit/supprimer', wrap((req, res) => {
+  res.json(journee.supprimerElement(Number((req.body || {}).task_id)));
+}));

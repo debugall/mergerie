@@ -1047,12 +1047,26 @@ clic. Les sessions sans mouvement depuis trois jours n'y sont pas.
 
 **« Lancer ma journée ».** Tape des clés de tickets, ou coche-les dans **`Mes tickets`** (tes tickets non
 terminés — un appel Jira), choisis la session dont la **chaîne de validation** sera reprise (la plus
-récente qui en a une est proposée), et **`Lancer`** : une session de codage par ticket, créée et lancée
-tout de suite. Ses dépôts, sa branche et sa branche de départ viennent des jetons du ticket
-(`&&dépôt:branche<départ`, description ou commentaire « #tech »), sa demande de ses lignes `&&> …` (à
-défaut : réaliser le ticket décrit), son libellé et son message de commit de la clé et du titre. Un ticket
-qui ne nomme aucun dépôt n'est pas deviné : il revient avec un bouton **`Ouvrir à la main`**, la fenêtre de
-session préparée depuis le ticket. Le coût est annoncé avant le clic : **un appel Jira par ticket**.
+récente qui en a une est proposée), et **`Préparer`** : chaque ticket est lu (**un appel Jira par ticket**,
+annoncé avant le clic) et rien n'est encore créé. Un bloc par ticket montre ses dépôts, sa branche de travail
+et sa branche de départ, lus dans ses jetons (`&&dépôt:branche<départ`, description ou commentaire « #tech ») ;
+un ticket qui n'en nomme aucun le dit, et tu les **saisis dans le bloc** (dépôt et branche de départ avec
+recherche, branche de travail proposée `feature/<clé>-<titre>`, `+ Dépôt` pour en ajouter). Pour savoir où
+ranger la session, **`Voir le ticket`** déplie dans le bloc son statut, sa description, son commentaire
+« #tech » et ses commentaires, avec un lien vers Jira — ouvert d'office quand le ticket ne nomme aucun dépôt,
+et sans appel Jira de plus. Les dépôts que le texte du ticket **cite sans jeton** (« le module paiement »)
+sont proposés en pastilles : un clic remplit la ligne de dépôt. Sa demande vient
+de ses lignes `&&> …` (à défaut : réaliser le ticket décrit), son libellé et son message de commit de la clé
+et du titre. Chaque bloc a trois boutons : **`Lancer`** (créée et lancée), **`Enregistrer sans lancer`**
+(créée, elle attend dans **Prêt à lancer** du cockpit) et **`Éditer`** (créée sans être lancée, puis ouverte
+dans la fenêtre de session — sans dépôt saisi, la fenêtre préparée depuis le ticket). Tu lances donc les
+tickets **un par un** ; **`Tout lancer`** et **`Tout enregistrer sans lancer`** font de même pour les blocs
+restants. Créer ou lancer ne coûte aucun appel Jira.
+
+**Prêt à lancer, et supprimer.** Le cockpit range les sessions enregistrées sans être lancées dans **Prêt à
+lancer**, avec **`Lancer`** et **`Éditer`**. Chaque ligne qui ne tourne pas a une **corbeille** : elle supprime
+la session **et toutes celles du même ticket** (la confirmation dit combien), chaîne de validation comprise ;
+une session en cours bloque la suppression.
 
 **Reprendre une session d'agent existante.** Un champ **facultatif « identifiant de session »** à la
 création (codage, sur dépôt local, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en

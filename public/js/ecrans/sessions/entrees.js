@@ -1,6 +1,6 @@
 'use strict';
 /* Les portes d'entrée de la modale : faire coder à partir de cette réponse (B9), d'une question (B18), d'un ticket, d'une page de notes ; dupliquer. */
-// @expose openLocalTaskForJira, openTaskForJira, openTaskForNote, openTaskForSpec
+// @expose openLocalTaskForJira, openTaskEdit, openTaskForJira, openTaskForNote, openTaskForSpec
 /* ---------- B9 : « Faire coder à partir de cette réponse » ----------
    L'exploration a lu trois dépôts et répondu. Le codage qui suit part des MÊMES dépôts, avec
    la question et la réponse en contexte, et surtout DANS LA SESSION D'AGENT de l'exploration :

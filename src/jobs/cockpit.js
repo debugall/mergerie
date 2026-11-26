@@ -5,7 +5,8 @@
 
    « À toi » : une session qui pose une question ou attend l'approbation de son plan, une chaîne arrêtée
    (base ou branche cassée, diagnostic qui n'accuse pas la branche, scénario en échec), une session en
-   erreur. « En cours » : une session qui tourne ou attend son tour, une chaîne qui avance. « Terminé » :
+   erreur. « Prêt à lancer » : une session enregistrée sans être lancée (« Lancer ma journée », bouton
+   « Enregistrer sans lancer »), lancée d'ici une à une. « En cours » : une session qui tourne ou attend son tour, une chaîne qui avance. « Terminé » :
    ce qui a abouti depuis vingt-quatre heures — chaîne validée ou toute verte, ou session poussée sans
    chaîne. Les sessions plus vieilles que FENETRE_JOURS sans mouvement n'y sont pas. */
 const db = require('../db');
@@ -33,24 +34,27 @@ function construire({ maintenant = new Date() } = {}) {
   const hier = new Date(maintenant.getTime() - 86400000).toISOString();
   const taches = db.prepare(`SELECT t.* FROM task t WHERE t.kind = 'code' AND t.updated_at >= ?
     ORDER BY t.updated_at DESC LIMIT 200`).all(depuis);
-  const aToi = []; const enCours = []; const termine = [];
+  const aToi = []; const pret = []; const enCours = []; const termine = [];
   for (const t of taches) {
     const projets = db.prepare(`SELECT r.project, tt.branch, tt.status FROM task_target tt JOIN repo r ON r.id = tt.repo_id
       WHERE tt.task_id = ? ORDER BY tt.id`).all(t.id);
     const chaine = t.verify_chain ? chaineVerif.resume(t.id) : null;
     const job = jobEnCoursPour(t.id);
     const ligne = {
-      task_id: t.id, label: t.label || String(t.prompt || '').split('\n')[0].slice(0, 120), status: t.status,
+      task_id: t.id, label: t.label || String(t.prompt || '').split('\n')[0].slice(0, 120), status: t.status, jira_key: t.jira_key || null,
+      // « Supprimer » emporte les sessions du même ticket : la confirmation dit combien.
+      n_ticket: t.jira_key ? db.prepare("SELECT COUNT(*) c FROM task WHERE jira_key = ? AND kind = 'code'").get(t.jira_key).c : 1,
       projets: projets.map((p) => ({ project: p.project, branch: p.branch })), chaine, updated_at: t.updated_at,
       job: job ? { en_file: job.enFile, message: (db.prepare('SELECT message FROM job WHERE id = ?').get(job.jobId) || {}).message || '' } : null,
     };
     if (t.status === 'needs_input' || t.status === 'planned') aToi.push({ ...ligne, quoi: t.status === 'planned' ? 'plan' : 'question' });
     else if (t.status === 'error' && !job) aToi.push({ ...ligne, quoi: 'erreur', detail: String(t.last_error || '').split('\n')[0].slice(0, 300) });
     else if (chaine && chaine.status === 'attention' && !job) aToi.push({ ...ligne, quoi: 'chaine', raisons: raisonsChaine(chaine) });
+    else if (t.status === 'new' && !job) pret.push(ligne);
     else if (job || t.status === 'running' || (chaine && chaine.status === 'running')) enCours.push(ligne);
     else if (t.updated_at >= hier && (chaine ? ['validated', 'passed'].includes(chaine.status) : ['pushed', 'committed'].includes(t.status))) termine.push(ligne);
   }
-  return { a_toi: aToi, en_cours: enCours, termine, fenetre_jours: FENETRE_JOURS };
+  return { a_toi: aToi, pret, en_cours: enCours, termine, fenetre_jours: FENETRE_JOURS };
 }
 
 /* Les sessions dont la chaîne peut servir de modèle à « Lancer ma journée » : celles qui en ont une. */

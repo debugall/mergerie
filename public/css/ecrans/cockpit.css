@@ -16,10 +16,29 @@
 .cockpit-job { font-size: 12px; overflow-wrap: anywhere; }
 .cockpit-pourquoi { margin-top: 4px; color: var(--amber-text, var(--amber)); }
 .cockpit-vide { margin: 4px 0; }
-.cockpit-journee-box { max-width: 640px; }
 .cockpit-journee-box textarea { width: 100%; }
 .cockpit-mes-tickets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
 .cockpit-tickets { flex-basis: 100%; max-height: 220px; overflow-y: auto; }
 .cockpit-ticket { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }
 .cockpit-resultat { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 6px; }
 .cockpit-ignore { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 4px 0; }
+.cockpit-actions { display: inline-flex; gap: 4px; align-items: center; }
+.cockpit-item-head .spacer { flex: 1; }
+.cockpit-prepares { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; max-height: 50vh; overflow-y: auto; }
+.cockpit-prep { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.cockpit-prep.is-fait { opacity: .75; }
+.cockpit-prep-head { margin-bottom: 4px; }
+.cockpit-prep-manque { color: var(--amber-text, var(--amber)); margin: 2px 0 6px; }
+.cockpit-cibles { display: flex; flex-direction: column; gap: 4px; }
+.cockpit-cible { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr auto; gap: 6px; align-items: center; }
+.cockpit-prep-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.cockpit-prep-actions .spacer { flex: 1; }
+.cockpit-journee-box { max-width: 820px; width: 100%; }
+@media (max-width: 640px) { .cockpit-cible { grid-template-columns: 1fr; } }
+.cockpit-ticket-voir { margin: 4px 0 6px; }
+.cockpit-ticket-voir > summary { cursor: pointer; color: var(--accent); }
+.cockpit-ticket-lien { display: inline-block; margin: 4px 0; font-size: 12px; }
+.cockpit-ticket-corps { max-height: 260px; overflow-y: auto; border-left: 2px solid var(--line); padding: 2px 10px; margin-top: 4px; }
+.cockpit-ticket-corps h4 { margin: 10px 0 4px; font-size: 13px; }
+.cockpit-ticket-com { border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 4px; }
+.cockpit-suggestions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 6px; }

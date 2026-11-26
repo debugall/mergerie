@@ -54,6 +54,8 @@ try { db.exec('ALTER TABLE task ADD COLUMN verify_chain_skill TEXT'); } catch { 
    vérificateur qui lance le scénario écrit, et le skill que la session suit pour l'écrire (vide = consigne
    intégrée) ; `verification.scenario` = les chemins passés à ses commandes dans `MERGERIE_SCENARIO`. */
 try { db.exec('ALTER TABLE task ADD COLUMN verify_chain_scenario TEXT'); } catch { /* déjà présente */ }
+/* LE TICKET D'UNE SESSION DE LA JOURNÉE (cockpit) : « Supprimer » emporte les sessions du même ticket. */
+try { db.exec('ALTER TABLE task ADD COLUMN jira_key TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE verification ADD COLUMN scenario TEXT'); } catch { /* déjà présente */ }
 // L'avancement du scénario de couverture d'une chaîne (écrit, couvert, ses lancements) : à part des étapes.
 try { db.exec('ALTER TABLE verif_chaine ADD COLUMN scenario_json TEXT'); } catch { /* déjà présente */ }

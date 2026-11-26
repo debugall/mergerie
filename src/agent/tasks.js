@@ -146,6 +146,7 @@ function supprimerTask(id) {
   db.prepare('DELETE FROM task_target WHERE task_id = ?').run(n);
   require('./pass').removeTask('task', n);
   require('./pieces').removeOwner('task', n);
+  db.prepare('DELETE FROM verif_chaine WHERE task_id = ?').run(n);
   db.prepare('DELETE FROM task WHERE id = ?').run(n);
   try { fs.rmSync(path.join(TASKS_DIR, String(n)), { recursive: true, force: true }); } catch { /* rien */ }
 }
