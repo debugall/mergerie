@@ -16,6 +16,7 @@ const jobs = require('../../jobs');
 const agentsession = require('../../agent/session');
 const agentpass = require('../../agent/pass');
 const localsnapshot = require('../../session/localsnapshot');
+const git = require('../../git/git');
 const localcoder = require('../../session/localcoder');
 const localgit = require('../../session/localgit');
 const localscript = require('../../session/localscript');
@@ -308,6 +309,26 @@ app.get('/api/local-tasks/:id/dirs/:did/passes/:n/filediff', wrap(async (req, re
   const d = dossierLocalOu404(req.params.id, req.params.did);
   const p = passeLocaleDe(req.params.id, d, req.params.n);
   res.json(await viewerFileDiff(ctxPasseLocale(req.params.id, d, p), String(req.query.path || '')));
+}));
+/* « VOIR LE DIFF » D'UN DOSSIER : toute la session, de la première passe à la dernière — le même
+   viewer, les mêmes trois routes que le diff d'un projet de codage (`/tasks/:id/targets/:tid`). */
+async function ctxSessionLocale(taskId, dirId) {
+  const d = dossierLocalOu404(taskId, dirId);
+  const b = await localsnapshot.bornesSession(Number(taskId), d.id);
+  if (!b) throw new Error(t('err.local.dir-no-diff'));
+  return { d, b, ctx: { cwd: b.gitdir, ref: b.head, target: b.base, shaRange: true } };
+}
+app.get('/api/local-tasks/:id/dirs/:did/diffview', wrap(async (req, res) => {
+  const { d, b, ctx } = await ctxSessionLocale(req.params.id, req.params.did);
+  const diff = b.base === b.head ? '' : await git.diffRange(b.gitdir, b.base, b.head);
+  if (!diff.trim()) throw new Error(t('err.local.dir-no-change'));
+  res.json({ ...(await viewerPayload(ctx, { diff, source: d.path })), project: d.path || d.dir_label || '', branch: d.branch || '' });
+}));
+app.get('/api/local-tasks/:id/dirs/:did/file', wrap(async (req, res) => {
+  res.json(await viewerFile((await ctxSessionLocale(req.params.id, req.params.did)).ctx, String(req.query.path || '')));
+}));
+app.get('/api/local-tasks/:id/dirs/:did/filediff', wrap(async (req, res) => {
+  res.json(await viewerFileDiff((await ctxSessionLocale(req.params.id, req.params.did)).ctx, String(req.query.path || '')));
 }));
 // Retour de l'agent pour UN dossier (ce qu'il dit avoir fait).
 app.get('/api/local-tasks/:id/dirs/:did/output', wrap((req, res) => {

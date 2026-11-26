@@ -74,6 +74,8 @@ function localDirLine(d, t) {
       ? `<button class="btn btn-sm" data-ldrun="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.run-dir'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}`
     // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
     + `${d.has_output ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
+    // Tout ce que la session a changé dans ce dossier, comme « Voir le diff » d'un projet de codage.
+    + `${d.has_diff && t && d.status !== 'running' ? `<button class="btn btn-sm" data-lddiff="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}`
     + `${suiviDossier ? `<button class="btn btn-sm" data-ldfollow="${d.id}" title="${esc(tr('local.title.request-fix-dir', { dir: d.dir_label || d.path || '' }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}`
     + `${resumeCmdBtn(d.resume_cmd)}</div>`
     + `${suiviDossier ? `<div class="mr-create followup followup-target" data-lfollowform="d${d.id}" hidden>
@@ -202,6 +204,8 @@ function renderLocalTasks() {
       .then(() => { toast(tr('local.started')); loadTasks(); refreshStatus(); })
       .catch((e) => toast(explainError(e.message), true));
   }));
+  $$('#localList [data-lddiff]').forEach((b) => b.addEventListener('click',
+    () => openLocalDirDiff(b.dataset.ltask, b.dataset.lddiff)));
   $$('#localList [data-ldout]').forEach((b) => b.addEventListener('click',
     () => openLocalDirOutput(b.dataset.ltask, b.dataset.ldout)));
   // Depuis la carte : on ouvre le premier dossier ayant un retour, les autres sont au sélecteur.

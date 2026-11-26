@@ -173,4 +173,22 @@ async function menage(onLog = () => {}) {
   return { supprimes, compactes };
 }
 
-module.exports = { avant, apres, dossierSuivi, menage, LIMITES };
+/* TOUT CE QUE LA SESSION A CHANGÉ DANS CE DOSSIER, comme « Voir le diff » d'un projet de codage
+   compare la branche à sa base : du tout premier instantané (l'« avant » de la première passe) au
+   dernier. Ce qu'on a modifié soi-même entre deux passes y figure, comme un commit fait à la main
+   figure dans le diff d'une branche. `null` : jamais mesuré, ou mesure abandonnée. */
+function aUnSuivi(taskId, dirId) {
+  const gitdir = dossierSuivi(taskId, dirId);
+  return fs.existsSync(path.join(gitdir, 'HEAD')) && !fs.existsSync(temoinRenonce(gitdir));
+}
+async function bornesSession(taskId, dirId) {
+  if (!aUnSuivi(taskId, dirId)) return null;
+  const gitdir = dossierSuivi(taskId, dirId);
+  try {
+    const head = (await git.run('git', ['--git-dir', gitdir, 'rev-parse', 'HEAD'], {})).stdout.trim();
+    const racines = (await git.run('git', ['--git-dir', gitdir, 'rev-list', '--max-parents=0', 'HEAD'], {})).stdout.split('\n').filter(Boolean);
+    return racines.length ? { gitdir, base: racines[racines.length - 1], head } : null;
+  } catch { return null; }
+}
+
+module.exports = { aUnSuivi, avant, apres, bornesSession, dossierSuivi, menage, LIMITES };

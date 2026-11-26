@@ -6,8 +6,10 @@
    fichier entier avec les changements en place + navigation), comme le fait déjà
    l'aperçu avant review. Seuls changent la base d'URL et le panneau de gauche, qui
    affiche ici le RETOUR DE L'IA au lieu du rapport de revue. */
-async function openTargetDiff(taskId, targetId) {
-  const base = `/tasks/${taskId}/targets/${targetId}`;
+const openTargetDiff = (taskId, targetId) => openSessionDiff(`/tasks/${taskId}/targets/${targetId}`);
+// Un dossier hors dépôt : mêmes routes sous sa propre racine, diff de toute la session.
+const openLocalDirDiff = (taskId, dirId) => openSessionDiff(`/local-tasks/${taskId}/dirs/${dirId}`);
+async function openSessionDiff(base) {
   let dv;
   try { dv = await api(`${base}/diffview`); }
   catch (e) { toast(explainError(e.message), true); return; }
@@ -24,7 +26,7 @@ async function openTargetDiff(taskId, targetId) {
     path: null, fullCache: {}, diffFullCache: {},
   };
   $('#splitView').classList.add('session-mode');
-  $('#splitTitle').textContent = `${dv.project} — ${dv.branch}`;
+  $('#splitTitle').textContent = dv.branch ? `${dv.project} — ${dv.branch}` : dv.project;
   $('#splitMd').innerHTML = output
     ? mdToHtml(output, IA)
     : `<p class="muted">${esc(tr('task.no-output'))}</p>`;

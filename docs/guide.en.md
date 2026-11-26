@@ -1264,7 +1264,10 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   — a failing folder does not stop the others, and the status is shown per folder. From two folders on, each
   processed folder has its own **`Send a follow-up`**: the follow-up goes back to that folder only, the others do not
   work again — like a project of a coding session; the card's follow-up still goes to all of them, and one sent from
-  **`AI output`** opened on a folder goes to that folder only. As with repository
+  **`AI output`** opened on a folder goes to that folder only. Each processed folder also has its **`View diff`**:
+  everything the session changed there, from the first pass to the last (including what you changed yourself between
+  two passes, like a manual commit on a branch), in the same view as a coding project's diff — read from Mergerie's
+  tracking repository, nothing is written to your folder. As with repository
   **Git, optionally.** A **`Branch to create`** field (optional) gives the folder the path of a coding
   session: the branch is created **in the folder**, the AI works on it, its work is **committed** (your commit
   message, otherwise the first line of the prompt), then, depending on the boxes, **pushed**, the **merge request**

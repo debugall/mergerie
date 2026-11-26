@@ -54,6 +54,31 @@ describe('Hors dépôt — suivi d’un seul dossier', () => {
     assert.equal(passes(lt.id, dirs[1].id).length, 3);
   });
 
+  /* « VOIR LE DIFF » D'UN DOSSIER : toute la session, pas la dernière itération — les deux passes
+     écrivent ici chacune une ligne `## …` dans le même fichier, le diff doit porter les deux. */
+  test('« Voir le diff » d’un dossier : tout ce que la session y a changé, de la première passe à la dernière', async () => {
+    const { lt, dirs } = await sessionDeux('Range les imports');
+    fs.writeFileSync(path.join(dirs[0].path, 'intact.js'), 'x\n');
+    await app.api('POST', `/api/local-tasks/${lt.id}/followup`, { instruction: 'Encore', dirs: [dirs[0].id] });
+    await waitForJobs(app.api);
+    const d0 = (await app.api('GET', `/api/local-tasks/${lt.id}`)).body.task.dirs[0];
+    assert.equal(d0.has_diff, 1);
+
+    const dv = (await app.api('GET', `/api/local-tasks/${lt.id}/dirs/${d0.id}/diffview`)).body;
+    assert.equal(dv.project, d0.path);
+    const ajouts = dv.diff.split('\n').filter((l) => l.startsWith('+## '));
+    assert.equal(ajouts.length, 2, 'les deux passes, pas seulement la dernière');
+    assert.ok(dv.files.some((f) => f.path === 'PROJ_LOCAL_DRYRUN.md' && f.changed));
+    const f = await app.api('GET', `/api/local-tasks/${lt.id}/dirs/${d0.id}/filediff?path=PROJ_LOCAL_DRYRUN.md`);
+    assert.equal(f.status, 200);
+
+    // Jamais lancé : rien à montrer, et la route le dit au lieu d'ouvrir une vue vide.
+    const { body: neuf } = await app.api('POST', '/api/local-tasks', { prompt: 'plus tard', dirs: [mkdir()] });
+    assert.equal(neuf.dirs[0].has_diff, 0);
+    const r = await app.api('GET', `/api/local-tasks/${neuf.id}/dirs/${neuf.dirs[0].id}/diffview`);
+    assert.equal(r.status, 400);
+  });
+
   describe('à l’écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
     const erreurs = [];
     async function ouvrirListe() {
@@ -93,6 +118,19 @@ describe('Hors dépôt — suivi d’un seul dossier', () => {
       assert.deepEqual(passes(lt.id, dirs[0].id).map((p) => p.kind), ['run', 'followup']);
       assert.match(passes(lt.id, dirs[0].id)[1].prompt, /l’année/);
       assert.deepEqual(passes(lt.id, dirs[1].id).map((p) => p.kind), ['run'], 'l’autre dossier n’a pas bougé');
+    });
+
+    test('« Voir le diff » sur la ligne d’un dossier ouvre la vue de diff de ce dossier', async () => {
+      const { lt, dirs } = await sessionDeux('Ajoute un pied de page');
+      await ouvrirListe();
+      const carte = page.locator(`#localList .card[data-local="${lt.id}"]`);
+      await deplier(carte);
+      assert.equal(await carte.locator('[data-lddiff]').count(), 2);
+      await carte.locator(`[data-lddiff="${dirs[1].id}"]`).click();
+      await page.waitForSelector('#splitView:not([hidden])');
+      assert.equal(await page.locator('#splitTitle').innerText(), dirs[1].path, 'pas de « — » sans branche');
+      await page.locator('#splitView').getByText('PROJ_LOCAL_DRYRUN.md').first().waitFor();
+      await page.locator('#splitClose').click();
     });
 
     test('un seul dossier : pas de bouton par dossier, le suivi de la carte suffit', async () => {

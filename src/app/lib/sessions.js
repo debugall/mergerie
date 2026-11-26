@@ -14,6 +14,7 @@ const tasks = require('../../agent/tasks');
 const agentprofile = require('../../agent/profile');
 const cli = require('../../agent/cli');
 const skillscan = require('../../agent/skillscan');
+const localsnapshot = require('../../session/localsnapshot');
 const path = require('path');
 const { readFileSafe } = require('../http');
 const { avecRangement, unitesAvecRetour } = require('./partage');
@@ -380,6 +381,7 @@ function localDirsFor(taskId) {
     .map((d) => ({
       ...d,
       has_output: (avecRetour.has(d.id) || !!d.output_path) ? 1 : 0,
+      has_diff: localsnapshot.aUnSuivi(taskId, d.id) ? 1 : 0,
       path: carteDirs.get(d.dir_hash) || null,
       // Sur la ligne RECOLLÉE à `local_session` : la ligne brute n'a plus la poignée.
       resume_cmd: cli.avec(profilCli, () => agentsession.resumeCommand(d.session_backend, d.session_key, d.session_cwd)),

@@ -1324,7 +1324,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   son statut est indiqué par dossier. À partir de deux dossiers, chaque dossier traité porte son propre
   **`Envoyer un suivi`** : le suivi ne repart que dans ce dossier, les autres ne retravaillent pas — comme
   un projet d'une session de codage ; le suivi de la carte, lui, vaut toujours pour tous, et celui envoyé depuis
-  **`Retour de l'IA`** ouvert sur un dossier ne vaut que pour lui. Comme pour le codage sur dépôt, chaque dossier expose
+  **`Retour de l'IA`** ouvert sur un dossier ne vaut que pour lui. Chaque dossier traité a aussi son **`Voir le diff`** :
+  tout ce que la session y a changé, de la première passe à la dernière (ce que tu y as modifié toi-même entre deux
+  passes compris, comme un commit à la main dans une branche), dans la même vue que le diff d'un projet de codage —
+  lu dans le dépôt de suivi de Mergerie, rien n'est posé dans ton dossier. Comme pour le codage sur dépôt, chaque dossier expose
   **Git, en option.** Un champ **`Branche à créer`** (facultatif) donne au dossier le parcours d'une session de
   codage : la branche est créée **dans le dossier**, l'IA y travaille, son travail est **commité** (message de
   commit au choix, sinon la première ligne du prompt), puis, selon les cases, **poussé**, la **merge request**
