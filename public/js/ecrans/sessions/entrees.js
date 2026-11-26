@@ -314,7 +314,7 @@ async function openTaskEdit(id) {
   if (f.plan_first) f.plan_first.checked = !!t.plan_first;
   cliPreselection = t.cli_id || '';    // le binaire choisi, relu par showTaskModal
     poserDateProgrammee(f, t.scheduled_at);
-    await majVerificateursSession(t.verifier_id || '', { autoPick: false });
+    await majVerificateursSession(t.verifier_id || '', { autoPick: false, chaine: t.verify_chain, chaineSkill: t.verify_chain_skill, chaineScenario: t.verify_chain_scenario });
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     deplierAvanceSiRempli(f);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');
@@ -387,7 +387,7 @@ async function dupliquerTask(id) {
   /* « AUCUN » SE COPIE AUSSI. La duplication reprend le vérificateur de l'original — son
      commentaire le dit — donc un « aucun » délibéré ne doit pas se faire remplacer par le
      vérificateur unique qui couvre les dépôts : même raison qu'à l'édition. */
-  await majVerificateursSession(t.verifier_id || '', { autoPick: false });
+  await majVerificateursSession(t.verifier_id || '', { autoPick: false, chaine: t.verify_chain, chaineSkill: t.verify_chain_skill, chaineScenario: t.verify_chain_scenario });
   /* L'AGENT FAIT PARTIE DE CE QU'ON COPIE. La duplication reprenait tout — prompt, dépôts,
      cases, vérificateur — sauf le profil d'agent : la copie d'un run de l'enquêteur repartait
      en session ordinaire, sans son rôle, ses outils ni ses skills, et rien ne le disait. */

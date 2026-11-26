@@ -1,11 +1,24 @@
     <!-- Dev IA -->
     <section id="tab-task" class="tab">
         <div class="segmented subnav" role="tablist">
+            <button data-vue="cockpit" role="tab" title="Cockpit : tes sessions du jour, ce qui attend ta réponse, ce qui tourne" data-i18n-title="cockpit.tab-title"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="cockpit.title">Cockpit</span></button>
             <button data-kind="code" class="active" role="tab" title="L'IA modifie le code, commite et ouvre les MR" data-i18n-title="ui.title.l-ia-modifie-le-code"><span data-i18n="task.kind.code">Codage</span><span class="seg-count" id="kindCountCode">0</span></button>
             <button data-kind="local" role="tab" title="L'IA code dans des dossiers locaux, en place, sans git (ni commit ni push)" data-i18n-title="local.tab-title"><span data-i18n="task.kind.local">Codage sur dépôt local</span><span class="seg-count" id="kindCountLocal">0</span></button>
             <button data-kind="explore" role="tab" title="L'IA répond à une question sur le code, sans rien modifier" data-i18n-title="ui.title.l-ia-repond-a-une"><span data-i18n="task.kind.explore">Exploration</span><span class="seg-count" id="kindCountExplore">0</span></button>
             <button data-kind="ask" role="tab" title="Poser une question à l'IA sans lien avec un dépôt, et garder la réponse" data-i18n-title="ask.tab-title"><span data-i18n="task.kind.ask">Question libre</span><span class="seg-count" id="kindCountAsk">0</span></button>
             <button data-kind="recur" role="tab" title="Des sessions de codage ou d'exploration qui reviennent seules, à l'horaire choisi" data-i18n-title="recur.tab-title"><svg class="ico"><use href="#i-repeat"/></svg><span data-i18n="recur.tab">Récurrentes</span><span class="seg-count" id="kindCountRecur">0</span></button>
+        </div>
+        <!-- COCKPIT : les sessions de codage du jour et leur chaîne de validation, la vue qu'on laisse ouverte.
+             « À toi » d'abord (une question, un plan, une chaîne arrêtée, une erreur), puis ce qui tourne, puis ce
+             qui a abouti. « Lancer ma journée » crée une session par ticket Jira coché. Affiché à la place de tout
+             le reste de l'écran (classe `vue-cockpit` sur #tab-task), c'est un sous-onglet sans « kind ». -->
+        <div id="taskCockpit" class="cockpit-vue">
+            <div class="toolbar cockpit-toolbar">
+                <span class="muted cockpit-sous-titre" data-i18n="cockpit.subtitle">tes sessions du jour</span>
+                <span class="spacer"></span>
+                <button id="cockpitJournee" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="cockpit.journee.btn">Lancer ma journée</span></button>
+            </div>
+            <div id="cockpitBox"></div>
         </div>
         <div id="taskToolbar" class="toolbar">
             <button id="btnNewTask" class="btn btn-primary"><svg class="ico"><use href="#i-plus"/></svg><span id="btnNewTaskLabel" data-i18n="ui.span.nouvelle-session-de-codage">Nouvelle session de codage</span></button>

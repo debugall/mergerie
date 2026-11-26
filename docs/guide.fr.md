@@ -985,6 +985,75 @@ vérificateur ne couvre plus tous les dépôts, ou une autre vérification tourn
 Et un échec au lancement de la vérification **ne fait pas échouer la session** : le code est écrit et
 poussé, annoncer une erreur mentirait sur ce qui s'est passé.
 
+**La chaîne de validation : plusieurs vérificateurs, la base puis la branche.** Sous `Vérifier après`,
+**`Chaîne de validation`** coche des vérificateurs dans l'ordre où ils tourneront (le rang s'affiche,
+un filtre cache sans décocher). Choisie, elle **remplace** `Vérifier après` et coche l'auto-push. À la
+fin de la session (ou de la convergence), chaque vérificateur tourne **l'un après l'autre**, d'abord
+sur la **base** de la session, puis — vert — sur sa **branche** :
+
+- **Deux essais par côté.** Un rouge (ou une erreur) relance le même vérificateur, du même côté, une
+  fois. Rouge deux fois sur la base : la base est cassée, ce vérificateur s'arrête et **attend** — les
+  suivants continuent, ils ne dépendent pas de lui. Rouge deux fois sur la branche : même arrêt.
+- **« À toi »** : une notification (comme une question de l'IA) et une todo. Corrige, puis
+  **`Relancer`** sur la carte : seuls les côtés cassés repartent, un vert reste vert.
+- **Un correctif poussé** (un suivi, un push) rejoue la **branche** de chaque vérificateur — un vert ne
+  vaut que pour les commits qu'il a vus —, pas la base.
+- **Tous les vérificateurs sont proposés**, qu'ils couvrent les dépôts de la session ou non : celui du
+  dépôt de tests tourne sur son dépôt (sa branche par défaut), et les dépôts de la session qu'il ne
+  couvre pas sont mis sur la base ou la branche, selon le côté, dans ton **clone local** (Réglages →
+  Dépôts → répertoires locaux) le temps du run, puis remis.
+- **Un même vérificateur ne tourne jamais deux fois en même temps** : lancé ailleurs (autre session,
+  préparation, merge request), il attend son tour dans la file.
+
+La carte de session montre la chaîne vérificateur par vérificateur — `base ✓ · branche ✗`, l'essai en
+cours —, chaque côté ouvrant son rapport.
+
+**Le diagnostic par la session qui a écrit le code.** Rouge deux fois sur la **branche**, un vérificateur
+ne s'arrête plus tout de suite sur « À toi » : la **session de codage est reprise** — elle sait ce
+qu'elle a changé et pourquoi —, avec le **dépôt de tests** du vérificateur monté en lecture seule à côté
+(il devient un projet lié de la session), l'échec et la fin du journal. Elle suit le **skill de
+diagnostic** choisi sous la chaîne (un `SKILL.md` du dépôt de tests, recopié dans la consigne) ; sans
+skill, une consigne intégrée lui fait lire directement le dépôt de tests. Elle conclut par une cause :
+
+- **`branche`** — le code de la branche casse le scénario : elle le corrige dans son projet (jamais dans
+  le dépôt de tests), commite, pousse, et la chaîne **rejoue la branche** de chaque vérificateur ;
+- **`base`**, **`environnement`**, **`instable`** — elle ne touche à rien : la chaîne s'arrête sur
+  « À toi », la carte affiche la cause et sa preuve.
+
+**Deux tours au plus** par vérificateur ; au-delà, c'est à toi. `Relancer` après une correction à la
+main redonne ses tours au diagnostic. La chaîne attend la fin d'un diagnostic avant de lancer quoi que
+ce soit d'autre.
+
+**Le scénario de couverture, puis « validée ».** Sous la chaîne, **`Couvrir le code par un scénario,
+lancé seul`** ajoute une dernière étape quand tout est vert : la session qui a écrit le code est reprise,
+le dépôt de tests monté en lecture seule, et suit le **skill de scénarios** choisi (ou, sans skill, lit
+directement le dépôt de tests). Soit son code est **déjà couvert** — elle dit par quel scénario et pourquoi,
+et la tâche est **validée** —, soit elle **écrit un scénario** dans les conventions du dépôt de tests et le
+rend fichier par fichier ; c'est **Mergerie** qui l'écrit sur une branche du même nom que la sienne dans le
+dépôt de tests, commite et pousse (un chemin qui sortirait du dépôt ou viserait `.git` est refusé). Le
+**vérificateur des scénarios** tourne alors, le dépôt de tests sur cette branche, avec
+**`MERGERIE_SCENARIO`** = les chemins écrits : ses commandes lancent ce scénario seul
+(`npx playwright test $MERGERIE_SCENARIO`, par exemple ; vide, elles lancent tout). Deux essais. Vert : la
+carte dit **« Chaîne de validation : validée »**. Rouge deux fois : la session corrige — le scénario, ou son
+code (la chaîne rejoue alors la branche de chacun avant le scénario) —, deux fois au plus, puis « À toi ».
+
+**Le cockpit.** Le sous-onglet **Cockpit**, le premier de **Dev IA**, est la vue qu'on laisse ouverte (la pastille orange du menu Dev IA compte, depuis n'importe quel écran, ce qui t'y attend, et y mène d'un clic) pendant que les agents travaillent :
+**À toi** (une session qui pose une question ou attend l'approbation de son plan, une chaîne arrêtée avec
+la raison — base cassée, branche cassée et le diagnostic, scénario en échec —, une session en erreur),
+**En cours** (ce qui tourne ou attend son tour, avec la dernière ligne du job), **Terminé (24 h)** (chaîne
+validée ou toute verte, ou session poussée sans chaîne). Relu toutes les trois secondes tant qu'il est
+affiché ; chaque ligne montre la chaîne comme sur la carte (`Relancer` compris) et ouvre sa session d'un
+clic. Les sessions sans mouvement depuis trois jours n'y sont pas.
+
+**« Lancer ma journée ».** Tape des clés de tickets, ou coche-les dans **`Mes tickets`** (tes tickets non
+terminés — un appel Jira), choisis la session dont la **chaîne de validation** sera reprise (la plus
+récente qui en a une est proposée), et **`Lancer`** : une session de codage par ticket, créée et lancée
+tout de suite. Ses dépôts, sa branche et sa branche de départ viennent des jetons du ticket
+(`&&dépôt:branche<départ`, description ou commentaire « #tech »), sa demande de ses lignes `&&> …` (à
+défaut : réaliser le ticket décrit), son libellé et son message de commit de la clé et du titre. Un ticket
+qui ne nomme aucun dépôt n'est pas deviné : il revient avec un bouton **`Ouvrir à la main`**, la fenêtre de
+session préparée depuis le ticket. Le coût est annoncé avant le clic : **un appel Jira par ticket**.
+
 **Reprendre une session d'agent existante.** Un champ **facultatif « identifiant de session »** à la
 création (codage, sur dépôt local, exploration) fait travailler l'IA **dans cette session-là** au lieu d'en
 ouvrir une nouvelle — elle garde donc tout le contexte déjà acquis. Renseigné, il rend aussi disponible

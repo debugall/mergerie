@@ -1432,6 +1432,37 @@ mrsP3x.forEach((mr) => {
       echecs: [{ test: 'panier › total avec remise', message: 'attendu 90, reçu 100' }] },
     { vid: p3xVerifId, nom: 'intégration paiement (démo)' },
   ]);
+
+  /* LA CHAÎNE DE VALIDATION de la session « Endpoint /metrics » : le premier vérificateur vert sur la base
+     puis sur la branche ; le second rouge deux fois sur la BASE — la carte dit « base cassée — à toi » et
+     propose « Relancer ». */
+  const tache = t1.lastInsertRowid;
+  // Récente : le cockpit (les trois derniers jours) la montre « à toi », chaîne arrêtée.
+  db.prepare('UPDATE task SET verify_chain = ?, auto_push = 1, updated_at = ? WHERE id = ?').run(JSON.stringify([verifierId, cmdId, p3xVerifId]), at(0.05), tache);
+  const chaineId = db.prepare('INSERT INTO verif_chaine (task_id, steps_json, status, created_at, updated_at) VALUES (?,?,?,?,?)')
+    .run(tache, '[]', 'attention', at(3.9), at(3.9)).lastInsertRowid;
+  const enChaine = (vid, nom, verdict, ref, quand) => {
+    const id = verif(null, vid, nom, verdict, [{ ...api, branch: ref }], quand, verdict === 'verified_pass' ? [] : [{ test: 'migration › colonne metrics', message: 'table absente sur main' }]);
+    db.prepare('UPDATE verification SET chaine_id = ? WHERE id = ?').run(chaineId, id);
+    return { verification_id: id, sig: '', at: quand };
+  };
+  const etapes = [
+    { verifier_id: verifierId, verifier_name: 'integ (démo)', erreur: null,
+      base: { depuis: 0, runs: [enChaine(verifierId, 'integ (démo)', 'verified_pass', 'main', at(3.95))] },
+      head: { depuis: 0, runs: [enChaine(verifierId, 'integ (démo)', 'verified_pass', 'ai/metrics-endpoint', at(3.94))] } },
+    { verifier_id: cmdId, verifier_name: 'tests front (démo)', erreur: null,
+      base: { depuis: 0, runs: [enChaine(cmdId, 'tests front (démo)', 'verified_fail', 'main', at(3.93)), enChaine(cmdId, 'tests front (démo)', 'verified_fail', 'main', at(3.92))] },
+      head: { depuis: 0, runs: [] } },
+    /* Le troisième : rouge deux fois sur la BRANCHE ; la session qui a écrit le code a diagnostiqué —
+       l'environnement, pas la branche —, la carte montre sa conclusion et sa preuve. */
+    { verifier_id: p3xVerifId, verifier_name: 'intégration paiement (démo)', erreur: null,
+      base: { depuis: 0, runs: [enChaine(p3xVerifId, 'intégration paiement (démo)', 'verified_pass', 'main', at(3.91))] },
+      head: { depuis: 0, runs: [enChaine(p3xVerifId, 'intégration paiement (démo)', 'verified_fail', 'ai/metrics-endpoint', at(3.9)),
+        enChaine(p3xVerifId, 'intégration paiement (démo)', 'verified_fail', 'ai/metrics-endpoint', at(3.89))] },
+      diag: { rounds: 1, en_cours: null, dernier: { cause: 'environnement', sig: '', at: at(3.85),
+        preuve: 'Le scénario échoue sur un délai de connexion au bac à sable de paiement ; la branche ne touche pas ce client.' } } },
+  ];
+  db.prepare('UPDATE verif_chaine SET steps_json = ? WHERE id = ?').run(JSON.stringify(etapes), chaineId);
 }
 
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------

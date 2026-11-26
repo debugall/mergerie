@@ -401,6 +401,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
     // Le binaire de cette session : vide = le défaut. Création et édition, la route PUT l'accepte.
     cli_id: f.cli_id ? f.cli_id.value : '',
     verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
+    // La chaîne de validation, dans l'ordre : création et édition (la route PUT l'accepte).
+    verify_chain: chaineVerifValeur(),
+    verify_chain_skill: chaineSkillValeur(),
+    verify_chain_scenario: chaineScenarioValeur(),
     // Session existante à reprendre. Vide = nouvelle session, le cas courant. Le champ
     // n'est lu qu'à la CRÉATION : la modale d'édition ne réaffecte pas une session déjà
     // en cours, qui a son propre handle par projet.

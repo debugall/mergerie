@@ -12,6 +12,7 @@ const notify = require('../../core/notify');
 const events = require('../../core/events');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestion, verifierApresSession } = require('../apres-session');
+const chaineVerif = require('../chaine-verif');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
 const cli = require('../../agent/cli');
 
@@ -89,9 +90,16 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
         notify.push('session_done', { task_id: task.id });
         /* Le vérificateur choisi part maintenant, une fois. Pas sur un `followup` demandé à la
            main ni sur `push` — on vérifie ce qu'une session a produit, pas chaque geste qu'on
-           pose ensuite. */
-        await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(task.id), onLog);
+           pose ensuite. Une chaîne de validation choisie le remplace. */
+        const fraiche = db.prepare('SELECT * FROM task WHERE id = ?').get(task.id);
+        if (chaineVerif.idsChaine(fraiche).length) await chaineVerif.apresSession(task.id, onLog);
+        else await verifierApresSession(fraiche, onLog);
       }
+    } else if ((action === 'followup' || action === 'push' || action === 'push-all' || action === 'update-base') && task.kind !== 'explore') {
+      /* LA CHAÎNE, ELLE, SUIT AUSSI LES CORRECTIFS : un suivi ou un push qui apporte un commit rend
+         la branche à revérifier (la base, déjà verte, ne bouge pas). Sans chaîne, ou sans commit
+         nouveau : rien ne repart. */
+      await chaineVerif.apresSession(task.id, onLog);
     }
     logLine(jobId, null, t('log.job.task-end', { id: jobId }));
   } catch (e) {

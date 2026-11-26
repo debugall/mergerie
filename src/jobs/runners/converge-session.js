@@ -7,6 +7,7 @@ const notify = require('../../core/notify');
 const converge = require('../../review/converge');
 const { t } = require('../../core/i18n');
 const { suiviAutomatique, todoQuestion, verifierApresSession } = require('../apres-session');
+const chaineVerif = require('../chaine-verif');
 const { enregistrer, logLine, marquerFinExecution, setJob } = require('../file');
 const cli = require('../../agent/cli');
 
@@ -36,7 +37,9 @@ async function runConvergeSessionJob(jobId, taskId, opts = {}) {
     if (!after || after.status !== 'needs_input') {
       // Même ordre qu'après une session simple : le suivi armé d'abord, le verdict ensuite.
       if (!suiviAutomatique('task', taskId, onLog)) {
-        await verifierApresSession(db.prepare('SELECT * FROM task WHERE id = ?').get(taskId), onLog);
+        const fraiche = db.prepare('SELECT * FROM task WHERE id = ?').get(taskId);
+        if (chaineVerif.idsChaine(fraiche).length) await chaineVerif.apresSession(taskId, onLog);
+        else await verifierApresSession(fraiche, onLog);
       }
     }
     logLine(jobId, null, t('log.job.converge-session-end', { id: jobId, ok: converged, total: results.length }));

@@ -74,7 +74,9 @@ function extraireTous(text, nom, nonce) {
    si un bloc fait foi (nonce du run), seulement qu'un canal de service ne s'affiche jamais et ne
    se réinjecte jamais tel quel dans un prompt (le résultat part de toute façon sous `nonFiable`,
    quand il est réutilisé : `taskrunner.redigerTranscription`, `partage.js`). */
-const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE', 'SPEC'];
+// DIAGNOSTIC : la cause d'une branche qui casse un vérificateur de la chaîne de validation (`jobs/chaine-verif.js`).
+// SCENARIO · COUVERT : le scénario de couverture écrit par la session, ou celui qui couvre déjà son code.
+const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE', 'SPEC', 'DIAGNOSTIC', 'SCENARIO', 'COUVERT'];
 function nettoyer(text) {
   let s = String(text || '');
   for (const n of NOMS) {

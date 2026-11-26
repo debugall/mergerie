@@ -105,6 +105,27 @@
                 <!-- UNE LISTE VIDE DIT POURQUOI : quel vérificateur couvre quoi, et ce qui lui
                      manque pour couvrir la sélection. Avec la porte pour aller le compléter. -->
                 <p id="taskVerifierMissing" class="field-note" hidden></p>
+                <!-- LA CHAÎNE DE VALIDATION : des vérificateurs dans l'ordre où ils tournent, chacun sur la base
+                     puis sur la branche, deux essais par côté. Tous sont proposés, qu'ils couvrent les dépôts de la
+                     session ou non (les dépôts non couverts sont mis sur la bonne ref dans le clone local). Choisie,
+                     elle remplace « Vérifier après » et coche l'auto-push. -->
+                <div id="taskChaineBox" class="task-chaine-box">
+                    <span class="task-chaine-lbl"><span data-i18n="task.lbl.chaine">Chaîne de validation (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.tip.chaine" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></span>
+                    <input id="taskChaineFiltre" class="repo-multi-search" type="search" data-i18n-placeholder="task.chaine.search" placeholder="Filtrer les vérificateurs" />
+                    <div id="taskChaineList" class="task-chaine-list"></div>
+                    <!-- Le skill que la session suit pour diagnostiquer une branche qui casse un vérificateur : ceux du
+                         dépôt de tests (les dépôts des vérificateurs cochés). Aucun = analyse directe du dépôt de tests. -->
+                    <label id="taskChaineSkillRow" hidden><span data-i18n="task.chaine.skill.label">Skill de diagnostic (dépôt de tests)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.chaine.skill.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <select id="taskChaineSkill"></select>
+                    </label>
+                    <!-- ÉTAPE 3 : tout vert, la session dit si son code est déjà couvert par un scénario du dépôt de tests,
+                         sinon en écrit un, que le vérificateur choisi lance seul (MERGERIE_SCENARIO). -->
+                    <label id="taskChaineScenRow" class="inline-check" hidden><input type="checkbox" id="taskChaineScen" /> <span data-i18n="task.chaine.scen.opt">Couvrir le code par un scénario, lancé seul</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.chaine.scen.opt-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                    <div id="taskChaineScenBox" class="task-chaine-scen" hidden>
+                        <label><span data-i18n="task.chaine.scen.verifier">Vérificateur des scénarios</span> <select id="taskChaineScenVerif"></select></label>
+                        <label><span data-i18n="task.chaine.scen.skill">Skill de scénarios (dépôt de tests)</span> <select id="taskChaineScenSkill"></select></label>
+                    </div>
+                </div>
                 <!-- « CONVERGER » N'EST PLUS UN SECOND BOUTON PRIMAIRE au pied de la modale,
                      sans un mot sur ce qu'il ferait de plus. C'est la suite du vérificateur :
                      une case qui dit son seuil et son plafond de passes. -->

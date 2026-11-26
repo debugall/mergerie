@@ -1,0 +1,24 @@
+<!-- « Lancer ma journée » : des tickets Jira (tapés, ou cochés dans « mes tickets »), une session de codage
+     chacun, la chaîne de validation reprise d'une session modèle. Un appel Jira par ticket. -->
+<div id="cockpitJourneeModal" class="modal" hidden>
+    <div class="modal-box cockpit-journee-box">
+        <h3 data-i18n="cockpit.journee.title">Lancer ma journée</h3>
+        <p class="muted" data-i18n="cockpit.journee.intro">Une session de codage par ticket, lancée tout de suite : ses dépôts et sa demande viennent du ticket (&amp;&amp;dépôt:branche, &amp;&amp;&gt;), sa chaîne de validation de la session modèle.</p>
+        <label><span data-i18n="cockpit.journee.keys">Tickets</span>
+            <textarea id="cockpitKeys" rows="2" placeholder="PROJ-1408, PROJ-1410"></textarea></label>
+        <div class="cockpit-mes-tickets">
+            <button id="cockpitMesTickets" class="btn btn-sm" type="button" data-i18n="cockpit.journee.mine">Mes tickets</button>
+            <span class="muted" data-i18n="cockpit.journee.mine-cost">un appel Jira</span>
+            <input id="cockpitTicketsFiltre" class="repo-multi-search" type="search" hidden data-i18n-placeholder="cockpit.journee.filter" placeholder="Filtrer les tickets" />
+            <div id="cockpitTickets" class="cockpit-tickets"></div>
+        </div>
+        <label><span data-i18n="cockpit.journee.model">Chaîne de validation comme la session</span>
+            <select id="cockpitModele"></select></label>
+        <p class="field-note" id="cockpitCout"></p>
+        <div id="cockpitResultat" class="cockpit-resultat" hidden></div>
+        <div class="modal-actions">
+            <button id="cockpitAnnuler" type="button" class="btn" data-i18n="ui.close">Fermer</button>
+            <button id="cockpitLancer" type="button" class="btn btn-primary" data-i18n="cockpit.journee.go">Lancer</button>
+        </div>
+    </div>
+</div>

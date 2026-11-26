@@ -221,6 +221,18 @@ async function refreshStatus() {
     jiraConfigured = !!s.jiraConfigured;
     setupAutoRefreshPolling(s.autoRefreshMinutes); // (re)configure le polling front si besoin
     $('#dryBadge').hidden = !s.dryRun;
+    /* La pastille ORANGE de Dev IA : ce que le cockpit range « à toi ». Le badge bleu, lui, compte les
+       sessions jamais lancées — l'un dit ce qui reste à faire, l'autre ce qui t'attend maintenant. */
+    const aToi = $('#navATOiTask');
+    if (aToi) {
+      const n = s.tasksAToi || 0;
+      aToi.textContent = n;
+      aToi.hidden = !n;
+      const bulle = tr('nav.tasks.a-toi', { n, count: n });
+      aToi.dataset.tip = bulle;
+      aToi.title = '';
+      aToi.setAttribute('aria-label', bulle);
+    }
     const job = s.job;
     const running = s.running;
     const queued = s.queued || 0;

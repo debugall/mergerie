@@ -527,6 +527,24 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     } else if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
       agentText = questions.dryrunQuestions(nonceQuestionsTache(task)); // simule le bloc <<<QUESTIONS>>> au 1er passage
+    } else if (/<<<SCENARIO \S+/.test(promptText)) {
+      /* DRY-RUN + SCÉNARIO DE COUVERTURE : un bloc SCENARIO au nonce demandé — ou COUVERT si la demande
+         contient `DRYRUN_COUVERT`, ce qu'un test obtient par le nom d'un vérificateur. Rien n'est modifié
+         dans le projet : c'est Mergerie qui écrit le scénario dans le dépôt de tests. */
+      const nonce = (promptText.match(/<<<SCENARIO (\S+)/) || [])[1];
+      onLog('$ (DRY-RUN — scénario de couverture simulé)');
+      agentText = /DRYRUN_COUVERT/.test(promptText)
+        ? `# Couverture (dry-run)\n\n<<<COUVERT ${nonce}\npar: scenarios/existant.sh\nraison: déjà couvert (dry-run)\nCOUVERT ${nonce}>>>`
+        : `# Scénario (dry-run)\n\n<<<SCENARIO ${nonce}\nchemin: scenarios/nouveau-${task.id}.sh\n---\n#!/bin/sh\n# scénario dry-run de la session ${task.id}\nexit 0\nSCENARIO ${nonce}>>>`;
+    } else if (/<<<DIAGNOSTIC \S+/.test(promptText)) {
+      /* DRY-RUN + DIAGNOSTIC DE LA CHAÎNE DE VALIDATION : le bloc au nonce demandé. La cause est
+         `branche` (l'agent corrige : un fichier change), sauf si l'échec rapporté dit `DRYRUN_CAUSE=…`
+         — c'est ainsi qu'un test fait répondre « environnement » sans IA. */
+      const nonce = (promptText.match(/<<<DIAGNOSTIC (\S+)/) || [])[1];
+      const cause = (promptText.match(/DRYRUN_CAUSE=(\w+)/) || [])[1] || 'branche';
+      onLog('$ (DRY-RUN — diagnostic simulé)');
+      if (cause === 'branche') fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), `\n## ${message}\n`, 'utf8');
+      agentText = `# Diagnostic (dry-run)\n\n<<<DIAGNOSTIC ${nonce}\ncause: ${cause}\npreuve: diagnostic simulé (dry-run)\nDIAGNOSTIC ${nonce}>>>`;
     } else {
       onLog('$ (DRY-RUN — aucune vraie modification)');
       fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), `\n## ${message}\n${promptText.slice(0, 200)}\n`, 'utf8');

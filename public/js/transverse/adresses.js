@@ -126,7 +126,7 @@ function handleNotifEvent(e, p) {
       break;
     case 'session_done':
       if (p.session_done) {
-        showNotif(tr('notif.session-done.title'), tr('notif.session-done.body'),
+        showNotif(tr(e.chaine ? 'notif.chaine.passed.title' : 'notif.session-done.title'), tr(e.chaine ? 'notif.chaine.passed.body' : 'notif.session-done.body'),
           () => (e.task_id ? ouvrirSession(e.task_id, 'code')
             : (e.local_task_id ? ouvrirSession(e.local_task_id, 'local') : navTab('task'))));
       }
@@ -134,7 +134,9 @@ function handleNotifEvent(e, p) {
     case 'needs_input':
       if (p.needs_input) {
         // Un plan rendu est la même attente qu'une question : même réglage, autres mots.
-        showNotif(tr(e.plan ? 'notif.plan-ready.title' : 'notif.needs-input.title'), tr(e.plan ? 'notif.plan-ready.body' : 'notif.needs-input.body'),
+        // La chaîne de validation arrêtée sur « À toi » : la même attente, ses propres mots.
+        const quoi = e.chaine ? 'notif.chaine.attention' : (e.plan ? 'notif.plan-ready' : 'notif.needs-input');
+        showNotif(tr(`${quoi}.title`), tr(`${quoi}.body`),
           () => (e.task_id ? ouvrirSession(e.task_id, 'code')
             : (e.local_task_id ? ouvrirSession(e.local_task_id, 'local') : navTab('task'))));
       }
@@ -260,7 +262,7 @@ async function ouvrirSession(id, kind = 'code', { vivant = () => true, depuis = 
   const saveur = ['explore', 'local', 'ask'].includes(kind) ? kind : 'code';
   navTab('task');
   const sous = $(`#tab-task .subnav [data-kind="${saveur}"]`);
-  if (sous && saveur !== taskKind) sous.click();
+  if (sous && !sous.classList.contains('active')) sous.click();   // autre saveur, ou le cockpit
   await loadTasks();
   if (!vivant()) return;                 // l'utilisateur a repris la main pendant le chargement
   const sel = (SESSION_SELECTEUR[saveur] || ((x) => `#taskList .task-row[data-task="${x}"]`))(Number(id) || 0);

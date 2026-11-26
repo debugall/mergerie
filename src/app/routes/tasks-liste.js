@@ -11,6 +11,7 @@ const { auteurs, avecRangement, programmations, rangement } = require('../lib/pa
 const { piecesExposees } = require('../lib/pieces');
 const { chapeauReponse, coutParSession, dureeParSession, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 const reprise = require('../../session/reprise');
+const chaineVerif = require('../../jobs/chaine-verif');
 const identite = require('../../core/identite');
 
 /* LA REPRISE D'UNE SESSION DE COLLÈGUE, sur la liste : d'où vient une reprise (`resumed_from`), qui a
@@ -111,6 +112,8 @@ app.get('/api/tasks', wrap((req, res) => {
       WHERE auto_kind = 'session_question' AND auto_ref = ? AND status = 'open' AND archived_at IS NULL`)
       .get(String(tache.id)),
     ...lignee(tache, taskTargets(tache.id)),
+    // La chaîne de validation, vérificateur par vérificateur : base, branche, essai.
+    chaine: tache.verify_chain ? chaineVerif.resume(tache.id) : null,
   })));
 }));
 app.get('/api/tasks/:id', wrap((req, res) => {

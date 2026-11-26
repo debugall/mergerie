@@ -25,8 +25,30 @@ const KIND_LABEL = {
   recur: { title: tr('recur.title.new-code'), btn: tr('recur.new-code'), hint: tr('recur.hint') },
 };
 
+/* ---- Sous-onglet Cockpit : une VUE, pas un kind — `taskKind` garde la saveur que la modale ouvre. ---- */
+let taskVue = (() => { try { return localStorage.getItem('aidevtools_task_vue') === 'cockpit' ? 'cockpit' : 'liste'; } catch { return 'liste'; } })();
+function poserVueTask() {
+  const cockpit = taskVue === 'cockpit';
+  $('#tab-task').classList.toggle('vue-cockpit', cockpit);
+  $$('#tab-task .subnav [data-vue]').forEach((b) => b.classList.toggle('active', cockpit));
+  $$('#tab-task .subnav [data-kind]').forEach((b) => b.classList.toggle('active', !cockpit && b.dataset.kind === taskKind));
+}
+function changerVueTask(vue) {
+  taskVue = vue;
+  try { localStorage.setItem('aidevtools_task_vue', vue); } catch { /* ignore */ }
+  poserVueTask();
+}
+poserVueTask();
+$$('#tab-task .subnav [data-vue="cockpit"]').forEach((b) => b.addEventListener('click', () => { changerVueTask('cockpit'); loadCockpit(); }));
+// La pastille orange du menu (« à toi ») mène au cockpit : son clic remonte ensuite au bouton de Dev IA.
+const pastilleAToi = $('#navATOiTask');
+if (pastilleAToi) pastilleAToi.addEventListener('click', () => changerVueTask('cockpit'));
+// Rouvrir Dev IA sur le cockpit le relit (et relance sa relecture périodique).
+$$('nav button[data-tab="task"]').forEach((b) => b.addEventListener('click', () => { if (taskVue === 'cockpit') loadCockpit(); }));
+
 /* ---- Sous-onglets Codage / Exploration ---- */
 $$('#tab-task .subnav [data-kind]').forEach((b) => b.addEventListener('click', () => {
+  changerVueTask('liste');
   taskKind = b.dataset.kind;
   try { localStorage.setItem('aidevtools_task_kind', taskKind); } catch { /* ignore */ }
   // La recherche est remise à zéro en changeant de sous-onglet : les compteurs des onglets
@@ -258,7 +280,7 @@ function renderTasks() {
   const isRecur = taskKind === 'recur';
   const el = $('#taskList');
   const openForms = (isLocal || isAsk || isRecur) ? {} : captureTaskForms();
-  $$('#tab-task .subnav [data-kind]').forEach((b) => b.classList.toggle('active', b.dataset.kind === taskKind));
+  poserVueTask();
   // La barre d'outils (bouton « Nouvelle session ») reste visible pour tous les kinds —
   // en local elle ouvre la MÊME modale que le codage. Seule la liste change.
   el.hidden = isLocal || isAsk || isRecur;

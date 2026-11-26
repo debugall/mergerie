@@ -266,7 +266,7 @@ function ouvrirSessionsAgent(a) {
   navTab('task');
   const saveur = a.kind === 'code' ? 'code' : 'explore';
   const onglet = $(`#tab-task .subnav [data-kind="${saveur}"]`);
-  if (onglet && taskKind !== saveur) onglet.click();
+  if (onglet && !onglet.classList.contains('active')) onglet.click();
   poserFiltreAgent(a.id);
   return loadTasks();
 }

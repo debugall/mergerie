@@ -106,9 +106,15 @@ function jobKeys(entry) {
     case 'ask': return keys;
     case 'verify': {
       // Le run crée des worktrees dans le clone : aucun autre job ne doit y toucher pendant.
-      const ver = db.prepare('SELECT verifier_id, targets_json FROM verification WHERE id = ?').get(entry.verificationId);
+      const ver = db.prepare('SELECT verifier_id, targets_json, positions_json FROM verification WHERE id = ?').get(entry.verificationId);
       const cibles = JSON.parse((ver && ver.targets_json) || '[]');
       for (const c of cibles) repo(c.repo_id);
+      /* UN VÉRIFICATEUR NE TOURNE PAS DEUX FOIS EN MÊME TEMPS : ses commandes montent souvent un
+         environnement à lui (ports, base, conteneurs). Lancé par une chaîne pendant qu'il tourne pour une
+         préparation ou une autre session, il attend son tour. */
+      if (ver && ver.verifier_id) keys.add(`verifier:${ver.verifier_id}`);
+      // Les dépôts mis sur leur ref dans le clone local de l'utilisateur : ce dossier est pris le temps du run.
+      for (const p of JSON.parse((ver && ver.positions_json) || '[]')) if (p && p.workdir) keys.add(`dir:${p.workdir}`);
       /* EN MODE « IN PLACE », LE RUN NE TRAVAILLE PAS DANS LE CLONE mais dans le répertoire de
          l'utilisateur — celui-là même qu'une session hors dépôt réserve sous `dir:<chemin>`.
          Réserver le dépôt ne protégeait donc rien : l'agent d'une session locale pouvait écrire
@@ -283,7 +289,9 @@ function marquerFinExecution(table, id) {
  * de la même façon.
  */
 function reposDUnVerify(entry) {
-  return [...jobKeys(entry)].map((k) => (k === '*' ? '*' : Number(String(k).replace('repo:', ''))));
+  // Les DÉPÔTS seulement : `verifier:<id>` et `dir:<chemin>` réservent autre chose qu'un dépôt visé.
+  return [...jobKeys(entry)].filter((k) => k === '*' || String(k).startsWith('repo:'))
+    .map((k) => (k === '*' ? '*' : Number(String(k).replace('repo:', ''))));
 }
 function verifyBloquePar(repoIds) {
   const vises = (repoIds || []).map(Number);

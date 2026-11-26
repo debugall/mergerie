@@ -9,6 +9,7 @@ const { getConfig, updateConfig } = require('../../data/config');
 const { t } = require('../../core/i18n');
 const { enregistrer, logLine, setJob } = require('../file');
 const planVerif = require('../plan-verif');
+const chaineVerif = require('../chaine-verif');
 
 async function runVerifyJob(jobId, verificationId) {
   /* Comme tout job qui démarre : sans ce passage en `running`, la ligne reste « en file »
@@ -53,6 +54,9 @@ async function runVerifyJob(jobId, verificationId) {
    propre job la porte ; un échec à la lancer s'écrit sur l'étape et se dit ici. */
 function enchainer(jobId, verificationId, verdict) {
   planVerif.apresVerification(verificationId, verdict)
+    .catch((e) => logLine(jobId, null, t('log.plan.next-failed', { message: e.message })));
+  // La chaîne de validation d'une session : le côté suivant, ou le deuxième essai de celui-ci.
+  chaineVerif.apresVerification(verificationId)
     .catch((e) => logLine(jobId, null, t('log.plan.next-failed', { message: e.message })));
 }
 

@@ -1,0 +1,25 @@
+/* Le cockpit : trois sections empilées, une ligne par session. */
+/* Un sous-onglet de Dev IA qui remplace tout le reste de l'écran (barre, filtres, listes). */
+.cockpit-vue { display: none; }
+#tab-task.vue-cockpit .cockpit-vue { display: block; }
+#tab-task.vue-cockpit > :not(.subnav):not(.cockpit-vue) { display: none !important; }
+.cockpit-toolbar { align-items: center; }
+.cockpit-sous-titre { font-size: 14px; font-weight: normal; }
+.cockpit-sec { margin: 14px 0; }
+.cockpit-sec h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.cockpit-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; background: var(--panel, transparent); }
+.cockpit-item.is-question, .cockpit-item.is-plan, .cockpit-item.is-chaine { border-left: 3px solid var(--amber); }
+.cockpit-item.is-erreur { border-left: 3px solid var(--red); }
+.cockpit-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.cockpit-titre { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
+.cockpit-titre:hover { color: var(--accent); }
+.cockpit-job { font-size: 12px; overflow-wrap: anywhere; }
+.cockpit-pourquoi { margin-top: 4px; color: var(--amber-text, var(--amber)); }
+.cockpit-vide { margin: 4px 0; }
+.cockpit-journee-box { max-width: 640px; }
+.cockpit-journee-box textarea { width: 100%; }
+.cockpit-mes-tickets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.cockpit-tickets { flex-basis: 100%; max-height: 220px; overflow-y: auto; }
+.cockpit-ticket { display: flex; gap: 6px; align-items: baseline; padding: 2px 0; }
+.cockpit-resultat { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 6px; }
+.cockpit-ignore { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; margin: 4px 0; }

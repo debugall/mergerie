@@ -119,7 +119,8 @@ function taskHead(t) {
     ${ligneOrigine(t)}
     ${promptBlock(t.prompt)}
     ${chapeauCarte(t)}
-    ${coutCarte(t)}${badgeTodoAttente(t)}`;
+    ${coutCarte(t)}${badgeTodoAttente(t)}
+    ${chaineHtml(t)}`;
 }
 
 /* Repli de la liste de projets, PARTAGÉ par les trois familles de sessions (codage,

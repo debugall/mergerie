@@ -946,6 +946,73 @@ no longer covers every repository, or another verification is already running on
 to start the verification **does not fail the session**: the code is written and pushed, announcing
 an error would misrepresent what happened.
 
+**The validation chain: several verifiers, the base then the branch.** Below `Verify afterwards`,
+**`Validation chain`** ticks verifiers in the order they will run (the rank shows, a filter hides
+without unticking). Chosen, it **replaces** `Verify afterwards` and ticks auto-push. When the session
+(or its convergence) ends, each verifier runs **one after the other**, first on the session's
+**base**, then — green — on its **branch**:
+
+- **Two attempts per side.** A red (or an error) runs the same verifier again, on the same side, once.
+  Red twice on the base: the base is broken, that verifier stops and **waits** — the next ones go on,
+  they do not depend on it. Red twice on the branch: same stop.
+- **“Your turn”**: a notification (like a question from the AI) and a todo. Fix it, then **`Run
+  again`** on the card: only the broken sides run again, a green stays green.
+- **A pushed fix** (a follow-up, a push) replays every verifier's **branch** — a green only holds for
+  the commits it saw —, not the base.
+- **Every verifier is offered**, whether it covers the session's repositories or not: the test
+  repository's verifier runs on its own repository (its default branch), and the session's
+  repositories it does not cover are put on the base or the branch, depending on the side, in your
+  **local clone** (Settings → Repositories → local directories) for the run, then put back.
+- **The same verifier never runs twice at once**: started elsewhere (another session, a preparation,
+  a merge request), it waits for its turn in the queue.
+
+The session card shows the chain verifier by verifier — `base ✓ · branch ✗`, the current attempt —,
+each side opening its report.
+
+**The diagnosis by the session that wrote the code.** Red twice on the **branch**, a verifier no longer
+stops on “your turn” right away: the **coding session is resumed** — it knows what it changed and why
+—, with the verifier's **test repository** mounted read-only next to it (it becomes a linked project of
+the session), the failure and the end of the log. It follows the **diagnosis skill** chosen under the
+chain (a `SKILL.md` from the test repository, copied into the instruction); without a skill, a built-in
+instruction has it read the test repository directly. It ends with a cause:
+
+- **`branche`** — the branch's code breaks the scenario: it fixes it in its own project (never in the
+  test repository), commits, pushes, and the chain **replays the branch** of every verifier;
+- **`base`**, **`environnement`**, **`instable`** — it changes nothing: the chain stops on “your
+  turn”, the card shows the cause and its proof.
+
+**Two rounds at most** per verifier; beyond that, it is your turn. `Run again` after a fix by hand gives
+the diagnosis its rounds back. The chain waits for a diagnosis to finish before starting anything else.
+
+**The coverage scenario, then “validated”.** Below the chain, **`Cover the code with a scenario, run
+alone`** adds a last step once everything is green: the session that wrote the code is resumed, the test
+repository mounted read-only, and follows the chosen **scenario skill** (or, without one, reads the test
+repository directly). Either its code is **already covered** — it says by which scenario and why, and the
+task is **validated** —, or it **writes a scenario** following the test repository's conventions and gives
+it back file by file; **Mergerie** writes it on a branch named like the session's in the test repository,
+commits and pushes (a path leaving the repository or aiming at `.git` is refused). The **scenario
+verifier** then runs, the test repository on that branch, with **`MERGERIE_SCENARIO`** = the written paths:
+its commands run that scenario alone (`npx playwright test $MERGERIE_SCENARIO`, for instance; empty, they
+run everything). Two attempts. Green: the card says **“Validation chain: validated”**. Red twice: the
+session fixes the scenario, or its code (the chain then replays every verifier's branch before the
+scenario), twice at most, then *your turn*.
+
+**The cockpit.** The **Cockpit** sub-tab, first in **Dev AI**, is the view you leave open (the orange badge on the Dev AI menu counts, from any screen, what waits for you there, and leads there in one click) while the agents work: **Your turn** (a
+session asking a question or waiting for its plan's approval, a stopped chain with the reason — broken
+base, broken branch and its diagnosis, failing scenario —, a session in error), **Running** (what runs or
+waits for its turn, with the job's last line), **Done (24 h)** (chain validated or all green, or a session
+pushed without a chain). Re-read every three seconds while shown; each row shows the chain as on the card
+(`Run again` included) and opens its session in one click. Sessions idle for three days are left out.
+
+**“Start my day”.** Type ticket keys, or tick them in **`My tickets`** (your unfinished tickets — one Jira
+call), choose the session whose **validation chain** is reused (the most recent one that has a chain is
+offered), and **`Start`**: one coding session per ticket, created and started right away. Its repositories,
+branch and starting branch come from the ticket's tokens (`&&repo:branch<base`, description or “#tech”
+comment), its request from its `&&> …` lines (otherwise: carry out the ticket described), its label and
+commit message from the key and summary. A ticket that names no repository is not guessed: it comes back
+with an **`Open by hand`** button, the session window prepared from the ticket. The cost is announced
+before the click: **one Jira call per ticket**.
+
 **Resume an existing agent session.** An **optional “session identifier”** field at creation time (coding,
 local repo, exploration) makes the AI work **inside that session** instead of opening a new one — so it
 keeps all the context it has already built. Filled in, it also enables the **“Resume in terminal”** button.

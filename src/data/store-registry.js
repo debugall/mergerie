@@ -1868,6 +1868,7 @@ const REGISTRE = [
   { table: 'periode_item', famille: 'L', note: 'les lignes d’une période, et ce que CE poste a marqué vu' },
   { table: 'verif_plan', famille: 'L', note: 'les préparations de vérification (Git → Vérificateur) : personnelles, elles restent sur CE poste' },
   { table: 'verif_plan_run', famille: 'L', note: 'les lancements d’une préparation de CE poste ; les rapports de vérification, eux, voyagent' },
+  { table: 'verif_chaine', famille: 'L', note: 'l’avancement de la chaîne de validation d’une session sur CE poste — c’est lui qui lance ses vérifications' },
 
   /* ── Réglages ────────────────────────────────────────────────────────────────────────── */
   /* `config` est la seule table dont CHAQUE colonne est classée nommément, et dont les deux

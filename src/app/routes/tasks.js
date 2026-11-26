@@ -11,6 +11,9 @@ const { getConfig, updateConfig } = configModule;
 const i18n = require('../../core/i18n');
 const { t } = i18n;
 const jobs = require('../../jobs');
+const chaineVerif = require('../../jobs/chaine-verif');
+const chaineDiag = require('../../jobs/chaine-diagnostic');
+const chaineScen = require('../../jobs/chaine-scenario');
 const git = require('../../git/git');
 const demoDiff = require('../../demo/diff');
 const tasks = require('../../agent/tasks');
@@ -21,7 +24,16 @@ const { applySessionId, champsDeSession, demoMrDe, insertTargets, insertContextR
 const { targetCloneCtx, viewerFile, viewerFileDiff, viewerPayload } = require('../lib/visionneuse');
 
 app.post('/api/tasks', wrap((req, res) => {
-  const taskId = tasks.creerTask(champsDeSession(req.body || {}));
+  const champs = champsDeSession(req.body || {});
+  const taskId = tasks.creerTask(champs);
+  // La chaîne de validation : codage, et code poussé — comme le vérificateur unique, qu'elle remplace.
+  if (champs.kind === 'code' && champs.autoPush) {
+    const chaine = chaineVerif.normaliserChaine((req.body || {}).verify_chain);
+    // Le skill de diagnostic du dépôt de tests : n'a de sens qu'avec une chaîne.
+    db.prepare('UPDATE task SET verify_chain = ?, verify_chain_skill = ?, verify_chain_scenario = ? WHERE id = ?')
+      .run(chaine, chaine ? chaineDiag.normaliserSkill((req.body || {}).verify_chain_skill) : null,
+        chaine ? chaineScen.normaliserScenario((req.body || {}).verify_chain_scenario) : null, taskId);
+  }
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
 }));
@@ -90,10 +102,30 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     cliEdit.cliId || null, cliEdit.cliName || null,
     new Date().toISOString(), tache.id,
   );
+  /* La chaîne : absente du corps, on garde — mais elle tombe avec l'auto-push, comme le vérificateur. */
+  const chaineEnvoyee = (req.body || {}).verify_chain;
+  const pousse = auto_push == null ? tache.auto_push : (auto_push ? 1 : 0);
+  const chaine = tache.kind === 'code' && pousse ? (chaineEnvoyee === undefined ? tache.verify_chain || null : chaineVerif.normaliserChaine(chaineEnvoyee)) : null;
+  const skillEnvoye = (req.body || {}).verify_chain_skill;
+  const scenEnvoye = (req.body || {}).verify_chain_scenario;
+  db.prepare('UPDATE task SET verify_chain = ?, verify_chain_skill = ?, verify_chain_scenario = ? WHERE id = ?').run(chaine,
+    chaine ? (skillEnvoye === undefined ? tache.verify_chain_skill || null : chaineDiag.normaliserSkill(skillEnvoye)) : null,
+    chaine ? (scenEnvoye === undefined ? tache.verify_chain_scenario || null : chaineScen.normaliserScenario(scenEnvoye)) : null,
+    tache.id);
   savePiecesEtImages('task', tache.id, req.body || {});
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
   applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
   res.json({ ...taskById(tache.id), targets: taskTargets(tache.id), context_repos: taskContextRepos(tache.id) });
+}));
+/* LA CHAÎNE DE VALIDATION : son état (la carte le lit aussi dans la liste), et « Relancer » — les côtés
+   cassés oublient leurs échecs, la chaîne repart de ce qui n'est pas vert. */
+app.get('/api/tasks/:id/chaine', wrap((req, res) => {
+  if (!taskById(Number(req.params.id))) throw new Error(t('err.session-introuvable'));
+  res.json(chaineVerif.resume(Number(req.params.id)));
+}));
+app.post('/api/tasks/:id/chaine/relancer', wrap(async (req, res) => {
+  if (!taskById(Number(req.params.id))) throw new Error(t('err.session-introuvable'));
+  res.json(await chaineVerif.relancer(Number(req.params.id)));
 }));
 app.delete('/api/tasks/:id', wrap((req, res) => {
   /* LA SESSION D'UN COLLÈGUE NE SE SUPPRIME PAS : la supprimer ici retirerait son fichier du

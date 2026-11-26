@@ -60,6 +60,9 @@ app.get('/api/status', wrap((req, res) => {
        n'était jamais rempli — un compteur mort, invisible pour toujours. Une version en
        attente est exactement ce qu'on doit voir sans ouvrir l'onglet : l'agent continue de
        travailler sur l'ANCIENNE carte tant que personne ne relit la nouvelle. */
+    /* CE QUI T'ATTEND DANS DEV IA : les lignes « à toi » du cockpit (question, plan, chaîne arrêtée,
+       erreur) — la pastille orange du menu, visible depuis n'importe quel écran. */
+    tasksAToi: require('../../jobs/cockpit').compterAToi(),
     agentsPending: (db.prepare("SELECT COUNT(*) c FROM agent_knowledge WHERE status = 'pending'").get() || {}).c || 0,
     /* LE NUMÉRO DES DONNÉES REÇUES D'UNE SYNCHRO : quand il change, la page recharge l'écran
        affiché — un collègue a reviewé, coché, écrit. Voir `store.versionDonnees`. */

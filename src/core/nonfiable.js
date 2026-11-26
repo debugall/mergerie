@@ -36,7 +36,7 @@ const MARQUE = '<<<DONNEE';
    plus aucune raison de le perdre : `<<<findings`/`<<<fin donnee` doivent rester neutralisés
    autant que leur forme en majuscules. */
 // ORDRE · FONCTIONNEL · COMPLEMENT · NOUVEAU · SYNTHESE : les blocs du plan d'un lot de tickets (`integrations/jiraplan.js`).
-const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE|SPEC|ORDRE|FONCTIONNEL|COMPLEMENT|NOUVEAU|SYNTHESE)\b/gi;
+const IMITATION = /<<<(\s*)(DONNEE|FIN DONNEE|FINDINGS|QUESTIONS|REPO|AGENT|STALE|PAGE|SPEC|ORDRE|FONCTIONNEL|COMPLEMENT|NOUVEAU|SYNTHESE|DIAGNOSTIC|SCENARIO|COUVERT)\b/gi;
 
 const neutraliser = (texte) => String(texte == null ? '' : texte).replace(IMITATION, '‹‹‹$1$2');
 

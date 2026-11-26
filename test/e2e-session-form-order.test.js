@@ -107,6 +107,8 @@ describe('Formulaire de session : l’ordre des champs', { skip: dispo ? false :
       /* La liste des vérificateurs est vide ici (aucun ne couvre le dépôt) : elle DIT pourquoi,
          juste dessous, au lieu de laisser un menu muet. */
       'taskVerifierMissing',
+      // La chaîne de validation : elle remplace « Vérifier après » quand on la choisit, juste dessous.
+      'taskChaineBox',
       /* « Prévenir Jira » vit avec les décisions qui portent sur la merge request : il
          n'apparaît qu'en codage, et seulement si Jira est connecté. */
       'taskNotifyJiraRow',
