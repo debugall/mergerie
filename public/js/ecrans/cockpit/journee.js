@@ -117,7 +117,9 @@ function cablerCiblesJournee(root) {
     const id = Number((row.querySelector('.cockpit-c-repo') || {}).value) || 0;
     if (!id) return [];
     const b = await branchesFor(id);
-    return b.branches.map((n) => ({ value: n, label: n, hint: n === b.def ? tr('cockpit.journee.default-branch') : '' }));
+    // Une valeur vide rend la main au dépôt : sans elle, un choix ne pourrait plus être défait.
+    return [{ value: '', label: tr('cockpit.journee.base-default'), hint: b.def || '' }]
+      .concat(b.branches.map((n) => ({ value: n, label: n, hint: n === b.def ? tr('cockpit.journee.default-branch') : '' })));
   });
 }
 // Ce qui est saisi dans les blocs pas encore créés survit au rendu qui suit la création d'un autre.

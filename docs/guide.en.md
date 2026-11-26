@@ -1009,8 +1009,9 @@ call), choose the session whose **validation chain** is reused (the most recent 
 offered), and **`Prepare`**: each ticket is read (**one Jira call per ticket**, announced before the click) and
 nothing is created yet. One block per ticket shows its repositories, working branch and starting branch, read
 from its tokens (`&&repo:branch<base`, description or “#tech” comment); a ticket that names none says so, and
-you **type them in the block** (repository and starting branch with search, working branch offered as
-`feature/<key>-<title>`, `+ Repository` to add one). To know where the session belongs, **`Show the ticket`**
+you **type them in the block** (repository and starting branch with search — “(repository default)” at the top
+of the list hands it back to the repository —, working branch offered as `feature/<key>-<title>`, `+ Repository`
+to add one). To know where the session belongs, **`Show the ticket`**
 unfolds in the block its status, description, “#tech” comment and comments, with a link to Jira — open by
 default when the ticket names no repository, and with no extra Jira call. Repositories the ticket's text
 **names without a token** (“the payment module”) are offered as chips: one click fills the repository row. Its request comes from its `&&> …` lines (otherwise: carry

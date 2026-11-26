@@ -254,6 +254,14 @@ describe('Cockpit et « Lancer ma journée »', () => {
       await b71.locator(`.combo-opt[data-v="${repoId}"]`).click();
       assert.equal(await b71.locator('.cockpit-c-repo').inputValue(), String(repoId));
       await b71.locator('.cockpit-c-branch').fill('ai/proj-71-ecran');
+      // Une branche de départ choisie se rend au défaut du dépôt (la forge de test ne liste aucune
+      // branche : le choix précédent est posé tel que le combo le laisse).
+      await b71.locator('.cockpit-c-base').evaluate((h) => { h.value = 'release/1.0'; h.dataset.label = 'release/1.0'; });
+      await b71.locator('[data-combo="cockpit-c-base"]').click();
+      const defaut = b71.locator('.combo:has([data-combo="cockpit-c-base"]) .combo-opt[data-v=""]');
+      assert.match(await defaut.textContent(), /défaut du dépôt/);
+      await defaut.click();
+      assert.equal(await b71.locator('.cockpit-c-base').inputValue(), '', 'retour au défaut du dépôt');
 
       // Enregistrer PROJ-71 sans lancer : PROJ-70 garde ce qu'il montrait, rien d'autre ne part.
       await b71.locator('[data-cockpit-prep="enregistrer"]').click();
@@ -264,6 +272,7 @@ describe('Cockpit et « Lancer ma journée »', () => {
         return !!t71;
       }, 'PROJ-71 enregistrée');
       assert.equal((await app.api('GET', `/api/tasks/${t71.id}`)).body.task.targets[0].branch, 'ai/proj-71-ecran');
+      assert.ok(!(await app.api('GET', `/api/tasks/${t71.id}`)).body.task.targets[0].base_branch, 'aucune branche de départ imposée');
       assert.equal((await app.api('GET', '/api/tasks')).body.length, avant + 1, 'une seule session créée');
       assert.equal(await b70.locator('.cockpit-c-branch').inputValue(), 'ai/proj-70-remise', 'l’autre bloc n’a rien perdu');
 

@@ -1051,7 +1051,8 @@ récente qui en a une est proposée), et **`Préparer`** : chaque ticket est lu 
 annoncé avant le clic) et rien n'est encore créé. Un bloc par ticket montre ses dépôts, sa branche de travail
 et sa branche de départ, lus dans ses jetons (`&&dépôt:branche<départ`, description ou commentaire « #tech ») ;
 un ticket qui n'en nomme aucun le dit, et tu les **saisis dans le bloc** (dépôt et branche de départ avec
-recherche, branche de travail proposée `feature/<clé>-<titre>`, `+ Dépôt` pour en ajouter). Pour savoir où
+recherche — « (défaut du dépôt) » en tête de liste rend la main au dépôt —, branche de travail proposée
+`feature/<clé>-<titre>`, `+ Dépôt` pour en ajouter). Pour savoir où
 ranger la session, **`Voir le ticket`** déplie dans le bloc son statut, sa description, son commentaire
 « #tech » et ses commentaires, avec un lien vers Jira — ouvert d'office quand le ticket ne nomme aucun dépôt,
 et sans appel Jira de plus. Les dépôts que le texte du ticket **cite sans jeton** (« le module paiement »)
