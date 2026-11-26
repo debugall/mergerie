@@ -246,10 +246,13 @@ app.post('/api/local-tasks/:id/followup', wrap((req, res) => {
   if (!lt) throw new Error(t('err.session-introuvable'));
   const instruction = (req.body && req.body.instruction || '').trim() || lt.followup_draft || '';
   if (!instruction) throw new Error(t('err.demande-de-suivi-requise'));
+  /* `dirs` : le suivi d'UN dossier, comme `targets` côté dépôt — la remarque vaut presque toujours
+     pour un seul, et les autres n'ont pas à repasser sur du travail qu'on ne veut plus voir toucher. */
+  const dirIds = normalizeDirIds(lt.id, req.body && req.body.dirs);
   // Même geste que sur une session de dépôt : une capture peut accompagner la demande.
   const imageIds = savePiecesEtImages('local', lt.id, req.body || {}, { followup: 1 });
   res.json(envoyerSuivi('local_task', lt, () => jobs.startLocalJob(lt.id,
-    { instruction, ...(imageIds.length ? { imageIds } : {}) })));
+    { instruction, ...(dirIds ? { dirIds } : {}), ...(imageIds.length ? { imageIds } : {}) })));
 }));
 // Suivi en attente d'une session hors dépôt — même contrat que POST /tasks/:id/followup-draft.
 app.put('/api/local-tasks/:id/followup-draft', wrap((req, res) => {

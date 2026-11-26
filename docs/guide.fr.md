@@ -1321,7 +1321,10 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   qu'au milieu du traitement. Le formulaire (projets + prompt) vit dans **la même modale que le codage** — tu peux donc
   aussi **joindre des fichiers** — captures, PDF, tableurs, texte (bouton ou Ctrl+V) — pour enrichir le prompt. Le même prompt est
   appliqué à **chaque dossier**, l'un après l'autre — un dossier en échec n'interrompt pas les autres, et
-  son statut est indiqué par dossier. Comme pour le codage sur dépôt, chaque dossier expose
+  son statut est indiqué par dossier. À partir de deux dossiers, chaque dossier traité porte son propre
+  **`Envoyer un suivi`** : le suivi ne repart que dans ce dossier, les autres ne retravaillent pas — comme
+  un projet d'une session de codage ; le suivi de la carte, lui, vaut toujours pour tous, et celui envoyé depuis
+  **`Retour de l'IA`** ouvert sur un dossier ne vaut que pour lui. Comme pour le codage sur dépôt, chaque dossier expose
   **Git, en option.** Un champ **`Branche à créer`** (facultatif) donne au dossier le parcours d'une session de
   codage : la branche est créée **dans le dossier**, l'IA y travaille, son travail est **commité** (message de
   commit au choix, sinon la première ligne du prompt), puis, selon les cases, **poussé**, la **merge request**

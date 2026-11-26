@@ -59,6 +59,9 @@ function localGitTags(d) {
 
 function localDirLine(d, t) {
   const st = TASK_STATUS[d.status] || { label: d.status, cls: '' };
+  /* SUIVI DE CE DOSSIER SEUL, comme « Demander une correction » sur un projet de codage : à partir
+     de deux dossiers (sur un seul, le suivi de la carte fait la même chose), sur un dossier traité. */
+  const suiviDossier = t && (t.dirs || []).length > 1 && d.status === 'done' && t.status !== 'running';
   return `<div class="target-line"><span class="tag ${st.cls}">${st.label}</span>`
     + `<code class="local-dir-path">${esc(d.path)}</code>`
     + localGitTags(d)
@@ -71,7 +74,14 @@ function localDirLine(d, t) {
       ? `<button class="btn btn-sm" data-ldrun="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.run-dir'))}"><svg class="ico ico-sm"><use href="#i-play"/></svg>${tr('task.btn.run-target')}</button>` : ''}`
     // Retour de l'agent : la seule fenêtre sur son travail quand le dossier n'a pas bougé.
     + `${d.has_output ? `<button class="btn btn-sm" data-ldout="${d.id}" data-ltask="${d.task_id}" title="${esc(tr('task.title.view-output'))}"><svg class="ico ico-sm"><use href="#i-doc"/></svg>${tr('task.btn.view-output')}</button>` : ''}`
+    + `${suiviDossier ? `<button class="btn btn-sm" data-ldfollow="${d.id}" title="${esc(tr('local.title.request-fix-dir', { dir: d.dir_label || d.path || '' }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}`
     + `${resumeCmdBtn(d.resume_cmd)}</div>`
+    + `${suiviDossier ? `<div class="mr-create followup followup-target" data-lfollowform="d${d.id}" hidden>
+        <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph-dir', { dir: d.dir_label || d.path || '' }))}"></textarea>
+        ${suiviCapturesHtml()}
+        <button class="btn" data-lfollowcancel="d${d.id}">${tr('ui.cancel')}</button>
+        <button class="btn btn-primary" data-lfollowsubmit="${t.id}" data-lfollowdir="${d.id}">${tr('task.btn.run-iteration')}</button>
+      </div>` : ''}`
     /* Hors dépôt, CHAQUE DOSSIER a sa session d'agent : ses questions sont les siennes, et
        la réponse ne repart que dans celui-là. Un formulaire par dossier, donc. */
     + `${d.status === 'needs_input' && d.questions && d.questions.length && t
@@ -205,6 +215,10 @@ function renderLocalTasks() {
     const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollow}"]`);
     if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
   }));
+  $$('#localList [data-ldfollow]').forEach((b) => b.addEventListener('click', () => {
+    const form = $(`#localList .followup[data-lfollowform="d${b.dataset.ldfollow}"]`);
+    if (form) { form.hidden = false; form.querySelector('.followup-text').focus(); }
+  }));
   $$('#localList [data-lfollowcancel]').forEach((b) => b.addEventListener('click', () => {
     const form = $(`#localList .followup[data-lfollowform="${b.dataset.lfollowcancel}"]`);
     if (form) form.hidden = true;
@@ -214,11 +228,13 @@ function renderLocalTasks() {
     const field = form.querySelector('.followup-text');
     const instruction = field.value.trim();
     if (!instruction) return;
+    const dossier = b.dataset.lfollowdir;
     const cle = cleFormSuivi(form);
     const images = suiviImages.get(cle) || [];
     try {
       await busy(b, () => api(`/local-tasks/${b.dataset.lfollowsubmit}/followup`, {
-        method: 'POST', body: { instruction, ...(images.length ? { files: images } : {}) },
+        method: 'POST',
+        body: { instruction, ...(dossier ? { dirs: [Number(dossier)] } : {}), ...(images.length ? { files: images } : {}) },
       }));
       suiviImages.delete(cle);
       field.value = '';

@@ -304,8 +304,8 @@ $('#taskMdCopy').addEventListener('click', () => copyText(currentMd, $('#taskMdC
 function followupRouteFor(base) {
   let m = /^(\/tasks\/\d+)\/targets\/(\d+)$/.exec(base || '');
   if (m) return { route: `${m[1]}/followup`, body: { targets: [Number(m[2])] } };
-  m = /^(\/local-tasks\/\d+)\/dirs\/\d+$/.exec(base || '');
-  if (m) return { route: `${m[1]}/followup`, body: {} };
+  m = /^(\/local-tasks\/\d+)\/dirs\/(\d+)$/.exec(base || '');
+  if (m) return { route: `${m[1]}/followup`, body: { dirs: [Number(m[2])] } };
   if (/^\/(tasks|questions)\/\d+$/.test(base || '')) return { route: `${base}/followup`, body: {} };
   return null;
 }
