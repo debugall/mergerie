@@ -169,6 +169,7 @@ function renderLocalTasks() {
       actions: [{ act: 'new-task', label: tr('task.kind.local.btn'), primary: true }] });
     return;
   }
+  friseHorloge();
   el.innerHTML = shown.map(localCard).join('');
   restoreTaskForms(ouverts, '#localList');
   stagger('#localList .card');

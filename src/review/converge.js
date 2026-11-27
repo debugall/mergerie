@@ -148,10 +148,13 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
   if (!repo) throw new Error(t('err.converge.repo-missing'));
 
   const { threshold, maxPasses } = { ...convergeDefaults(), ...opts };
-  const runId = db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, started_at)
-    VALUES (?, 'running', ?, ?, 0, ?)`).run(mrId, threshold, maxPasses, new Date().toISOString()).lastInsertRowid;
+  const debut = new Date().toISOString();
+  const runId = db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, started_at, phase_at)
+    VALUES (?, 'running', ?, ?, 0, ?, ?)`).run(mrId, threshold, maxPasses, debut, debut).lastInsertRowid;
 
   const setRun = (patch) => {
+    // Chaque changement d'étape date le début de la nouvelle : la frise dit « depuis 12 min ».
+    if ('phase' in patch) patch = { ...patch, phase_at: new Date().toISOString() };
     const cols = Object.keys(patch);
     db.prepare(`UPDATE convergence_run SET ${cols.map((c) => `${c} = @${c}`).join(', ')} WHERE id = @id`)
       .run({ ...patch, id: runId });

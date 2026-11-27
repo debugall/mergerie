@@ -1471,22 +1471,27 @@ mrsP3x.forEach((mr) => {
   const pret = db.prepare(`INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, label, jira_key, verify_chain, auto_push, created_at, updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,1,?,?)`).run(repoIds['groupe/api-core'], 'Contexte du ticket PROJ-1421\n\n---\n\nCorrige la déconnexion après 30 minutes de session.',
     'feature/PROJ-1421-deconnexion', 'main', 'new', 'code', 'PROJ-1421 Déconnexion après 30 min', 'PROJ-1421', JSON.stringify([verifierId, cmdId]), at(0.1), at(0.1)).lastInsertRowid;
-  db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
-    .run(pret, repoIds['groupe/api-core'], 'feature/PROJ-1421-deconnexion', 'main', 'new', at(0.1));
+  /* Sur deux dépôts — l'API et le front : chacun a sa frise, et sa validation y est rangée — « integ » couvre
+     les deux (groupe backend), « tests front » le seul front. */
+  for (const projet of ['groupe/api-core', 'groupe/webapp-front']) {
+    db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
+      .run(pret, repoIds[projet], 'feature/PROJ-1421-deconnexion', 'main', 'new', at(0.1));
+  }
 
   /* EN PLEINE CONVERGENCE : une session de la journée codée, poussée, sa MR ouverte, deux passes faites (5,1 →
      6,4 → 7,2) et l'IA qui pose une question pendant la TROISIÈME correction — la frise du cockpit la montre « à
      toi » à cette étape, avec la chaîne et le scénario de couverture qui suivront. Une boucle « en cours »
      ne survivrait pas au démarrage : le serveur arrête ce qui tournait. */
-  const mrHotfix = db.prepare("SELECT id, iid FROM mr WHERE repo_id = ? AND source_branch = 'hotfix/export-timeout'").get(repoIds['groupe/batch-jobs']);
+  const mrHotfix = db.prepare("SELECT id, iid, web_url FROM mr WHERE repo_id = ? AND source_branch = 'hotfix/export-timeout'").get(repoIds['groupe/batch-jobs']);
   if (mrHotfix) {
     const conv = db.prepare(`INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, label, jira_key, verify_chain, verify_chain_scenario, auto_push, created_at, updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)`).run(repoIds['groupe/batch-jobs'], 'Corrige le timeout de l’export nocturne.', 'hotfix/export-timeout', 'main', 'needs_input', 'code',
       'PROJ-1430 Timeout export nocturne', 'PROJ-1430', JSON.stringify([verifierId, cmdId]), JSON.stringify({ verifier_id: verifierId, skill: null }), at(0.08), at(0.01)).lastInsertRowid;
-    db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, mr_iid, updated_at) VALUES (?,?,?,?,?,?,?,?)')
-      .run(conv, repoIds['groupe/batch-jobs'], 'hotfix/export-timeout', 'main', 'needs_input', 'b7e1c0d', mrHotfix.iid, at(0.05));
-    db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, start_note, best_note, phase, notes_json, message, started_at)
-      VALUES (?, 'needs_input', 8, 3, 2, 5.1, 7.2, 'fix', '[5.1,6.4,7.2]', ?, ?)`).run(mrHotfix.id, 'En attente de tes réponses.', at(0.04));
+    db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, mr_iid, mr_url, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+      .run(conv, repoIds['groupe/batch-jobs'], 'hotfix/export-timeout', 'main', 'needs_input', 'b7e1c0d', mrHotfix.iid, mrHotfix.web_url, at(0.05));
+    // La question est posée depuis un quart d'heure : la frise dit « à toi · depuis 14 min ».
+    db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, start_note, best_note, phase, phase_at, notes_json, message, started_at, finished_at)
+      VALUES (?, 'needs_input', 8, 3, 2, 5.1, 7.2, 'fix', ?, '[5.1,6.4,7.2]', ?, ?, ?)`).run(mrHotfix.id, at(0.01), 'En attente de tes réponses.', at(0.04), at(0.01));
   }
 }
 

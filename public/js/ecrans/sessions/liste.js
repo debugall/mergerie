@@ -350,6 +350,7 @@ function renderTasks() {
     return;
   }
 
+  friseHorloge();
   el.innerHTML = rows.map((t) => (t.kind === 'explore' ? exploreCard(t) : codeCard(t))).join('');
   stagger('#taskList .card');
   wirePromptToggles('#taskList');

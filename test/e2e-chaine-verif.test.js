@@ -493,6 +493,15 @@ exit 0
       }, `la carte montre ${sel}`);
       await voir(`.task-chaine[data-chaine-task="${id}"] .task-chaine-cote.is-broken`);
       assert.match(await carte.textContent(), /unitaires/);
+      // La frise dit déjà où en est chaque vérificateur : le détail de la chaîne est replié, « Détails » l'ouvre,
+      // et il le reste au rafraîchissement suivant.
+      assert.equal(await carte.locator('.task-chaine-corps').isHidden(), true);
+      await carte.locator('[data-chaine-bascule]').click();
+      await carte.locator('.task-chaine-corps').waitFor();
+      await page.evaluate(() => loadTasks());
+      await page.waitForFunction((i) => { const c = document.querySelector(`.task-chaine[data-chaine-task="${i}"] .task-chaine-corps`); return c && !c.hidden; }, id);
+      await carte.locator('[data-chaine-bascule]').click();
+      await carte.locator('.task-chaine-corps').waitFor({ state: 'hidden' });
       vider();
       // La liste se redessine pendant les jobs (l'animation d'entrée rend le bouton « instable ») : clic direct.
       await carte.locator(`[data-chaine-relancer="${id}"]`).dispatchEvent('click');

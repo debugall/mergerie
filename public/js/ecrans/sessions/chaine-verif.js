@@ -163,10 +163,25 @@ function chaineHtml(t) {
     </li>`).join('');
   const relancer = c.status === 'attention'
     ? `<button type="button" class="btn btn-sm" data-chaine-relancer="${t.id}">${esc(tr('task.chaine.relaunch'))}</button>` : '';
+  /* La frise de la carte dit déjà où en est chaque vérificateur : le détail (côtés, essais, preuves du
+     diagnostic, scénario) reste replié, ouvert au clic, et le reste malgré le rafraîchissement. */
+  const ouvert = chaineDepliees.has(t.id);
   return `<div class="task-chaine is-${esc(c.status)}" data-chaine-task="${t.id}">
     <span class="task-chaine-titre">${esc(tr(`task.chaine.status.${c.status}`))}</span> ${relancer}
-    <ol class="task-chaine-etapes">${etapes}</ol>${scenarioChaineHtml(c.scenario)}</div>`;
+    <button type="button" class="btn btn-sm btn-ghost task-chaine-bascule" data-chaine-bascule="${t.id}" aria-expanded="${ouvert}">${esc(tr(ouvert ? 'task.chaine.fold' : 'task.chaine.unfold'))}</button>
+    <div class="task-chaine-corps"${ouvert ? '' : ' hidden'}><ol class="task-chaine-etapes">${etapes}</ol>${scenarioChaineHtml(c.scenario)}</div></div>`;
 }
+const chaineDepliees = new Set();
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-chaine-bascule]');
+  if (!b) return;
+  const id = Number(b.dataset.chaineBascule);
+  const ouvrir = !chaineDepliees.has(id);
+  if (ouvrir) chaineDepliees.add(id); else chaineDepliees.delete(id);
+  b.setAttribute('aria-expanded', String(ouvrir));
+  b.textContent = tr(ouvrir ? 'task.chaine.fold' : 'task.chaine.unfold');
+  b.closest('.task-chaine').querySelector('.task-chaine-corps').hidden = !ouvrir;
+});
 document.addEventListener('click', async (e) => {
   const v = e.target.closest && e.target.closest('[data-chaine-verif]');
   if (v) { openVerifyReport(Number(v.dataset.chaineVerif)); return; }

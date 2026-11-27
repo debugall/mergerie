@@ -47,16 +47,23 @@ function cockpitSection(cle, lignes, rendu) {
     ${lignes.length ? lignes.map(rendu).join('') : `<p class="muted cockpit-vide">${esc(tr(`cockpit.empty.${cle}`))}</p>`}
   </section>`;
 }
+/* Relu toutes les 3 s : rien ne change, rien ne se réécrit — le focus, une phase dépliée et les animations de
+   la frise restent où ils sont. */
+let cockpitHtml = '';
 function renderCockpit(d) {
   const box = $('#cockpitBox');
   if (!box) return;
-  box.innerHTML = cockpitSection('a_toi', d.a_toi, (l) => cockpitLigne(l, { quoi: l.quoi }))
+  const html = cockpitSection('a_toi', d.a_toi, (l) => cockpitLigne(l, { quoi: l.quoi }))
     + cockpitSection('pret', d.pret || [], (l) => cockpitLigne(l, { pret: true }))
     + cockpitSection('en_cours', d.en_cours, (l) => cockpitLigne(l))
     + cockpitSection('termine', d.termine, (l) => cockpitLigne(l));
+  if (html === cockpitHtml && box.firstElementChild) return;
+  cockpitHtml = html;
+  friseHorloge();
+  box.innerHTML = html;
 }
 async function loadCockpit() {
-  try { cockpitDonnees = await api('/cockpit'); } catch (e) { const b = $('#cockpitBox'); if (b) b.innerHTML = errorBox(explainError(e.message)); return; }
+  try { cockpitDonnees = await api('/cockpit'); } catch (e) { const b = $('#cockpitBox'); if (b) b.innerHTML = errorBox(explainError(e.message)); cockpitHtml = ''; return; }
   renderCockpit(cockpitDonnees);
   // Relu tant que le sous-onglet est à l'écran ; arrêté dès qu'on en sort.
   if (!cockpitTimer) {

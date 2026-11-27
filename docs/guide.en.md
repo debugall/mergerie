@@ -1014,15 +1014,30 @@ Sessions idle for three days are left out.
 **every step** of the session, in order, and what is going to happen: **Coding** → **Push** → the convergence loop (**Review** with its score, then **Fix n** and
 **Review n** per pass, and the end — threshold reached, cap, score dropping) → each verifier of the chain
 (**base**, then **branch**, and its **diagnosis** if any) → the coverage scenario (**Test written**,
-**Test pushed**, **Test run**, “in” the test repository, and its **fix**) → **Validated**. One pill per
-step: ✓ done, ⟳ running, clock queued, inbox “your turn”, ✗ failed, empty circle to come; convergence
-passes that only happen if the score stays below the threshold are dashed. The **current step** stands
-out and is named above the strip (“Current step: Review 2 (running)”); a verification opens from its pill.
-A session over **several repositories** has **one strip per repository** — its coding, its push, its
-convergence —, the repository named at the start of the row, then a common **“Validation (all
-repositories)”** strip for the chain and its scenario, which cover them all. On a session **card** (Coding,
-Local repo coding), each repository's or folder's strip sits **in its own line**, under “Collapse projects” (“Collapse folders” for local sessions);
-the card keeps the current step, `Continue` and the common strip above.
+**Test pushed**, **Test run**, “in” the test repository, and its **fix**) → **Validated**. It reads like a
+**pipeline**: a **rail**, **one node per phase** — **Code & push** (“Code, push & MR” for local sessions),
+**Convergence**, **Validation**, **Coverage test**, **Validated** —, solid up to where the session is, dashed for
+what comes. The node tells the state: green check done, **spinning arc** running (a glint travels along the rail
+leading to it), amber node **breathing** when it's your turn, red cross failed, a number for what comes, a double
+ring for the finish line. Under each node, what the phase produced: the **MR** link on Code; on Convergence, the
+**latest score, large**, the **target** and the **curve** of the scores with the target dashed, then the pass
+(`pass 3/3 · fix`); on Validation, the green count (`1/3`) and the verifiers **grid** — named even before they
+run —, a **base**, a **branch** and a **diag.** column, each cell an icon (✓ ✗ ⟳) that opens its report in one
+click. The active phase carries its **status** and for how long (`your turn · for 14 min`), with **Continue**
+right below. **Clicking a phase expands its steps** — one phase at a time — as a timeline (“Initial review”,
+“Pass 1 · fix”, “Pass 1 · review”…): ✓ done, ⟳ running, clock queued, inbox “your turn”, ✗ failed, empty circle
+to come; convergence passes that only happen if the score stays below the threshold are dashed; the choice
+survives the refresh, and the slow animations do not restart at every refresh (they stop with “reduce motion”).
+When narrow, the strip turns vertical. A question asked during a fix keeps what follows: that pass's review,
+then the possible passes. On the Coding card, the chain details (sides, attempts, diagnosis evidence, scenario)
+are folded under **Details**, since the strip already tells where each verifier stands.
+A session over **several repositories** has **one whole strip per repository**, the repository named on top:
+its coding, its push, its convergence **and its validation** — each verifier of the chain goes to the
+repositories it covers (one that covers none, say a test repository's, goes to all of them), the scenario and
+“Validated” to all of them. On a session **card** (Coding, Local repo coding), each repository's or folder's
+strip sits **in its own line**, under “Collapse projects” (“Collapse folders” for local sessions); with the
+lines folded, the card shows an **overview**, one line per repository — its phases as dots on a rail, the one
+it is at and its status —, and `Continue`.
 A convergence loop cut by a server stop is stopped at restart, the step it was at marked failed.
 
 **`Continue`.** When the workflow stops on a step, a **`Continue`** button next to the current step starts it

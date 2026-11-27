@@ -206,6 +206,8 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_convergence_run_mr ON convergence_run(mr
    chaque review, dans l'ordre — celle de départ, puis une par passe. */
 try { db.exec('ALTER TABLE convergence_run ADD COLUMN phase TEXT'); } catch { /* déjà présente */ }
 try { db.exec('ALTER TABLE convergence_run ADD COLUMN notes_json TEXT'); } catch { /* déjà présente */ }
+// Quand l'étape en cours a commencé : la frise dit depuis combien de temps elle tourne.
+try { db.exec('ALTER TABLE convergence_run ADD COLUMN phase_at TEXT'); } catch { /* déjà présente */ }
 
 /* La couverture d'un vérificateur PAR GROUPE (ameliorations_proposal.md, §4.5) : « ce
    vérificateur teste tous les dépôts du groupe backend », en mode worktree — le mode in place et

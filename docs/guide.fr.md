@@ -1055,15 +1055,32 @@ session — montre **toutes les étapes** de la session, dans l'ordre, et ce qui
 **Correction n** et **Review n** par passe, et la fin — seuil atteint, plafond, note en baisse) → chaque
 vérificateur de la chaîne (**base**, puis **branche**, et son **diagnostic** s'il y en a un) → le
 scénario de couverture (**Écriture du test**, **Push du test**, **Exécution du test**, « dans » le dépôt
-de tests, et sa **correction**) → **Validée**. Une pastille par étape : ✓ faite, ⟳ en cours, horloge en
-file, boîte « à toi », ✗ en échec, cercle vide à venir ; les passes de convergence qui n'auront lieu que si
-la note reste sous le seuil sont en pointillé. L'**étape en cours** est mise en avant et dite au-dessus de
-la frise (« Étape en cours : Review 2 (en cours) ») ; une vérification s'ouvre d'un clic sur sa pastille.
-Une session sur **plusieurs dépôts** a **une frise par dépôt** — son codage, son push, sa convergence —, le nom
-du dépôt en tête de ligne, puis une frise commune **« Validation (tous les dépôts) »** pour la chaîne et son
-scénario, qui portent sur l'ensemble. Sur la **carte** d'une session (Codage, Codage sur dépôt local), la frise de
-chaque dépôt ou dossier est **dans sa ligne**, sous « Replier les projets » (« Replier les dossiers » hors dépôt) ; la carte garde au-dessus
-l'étape en cours, `Continuer` et la frise commune.
+de tests, et sa **correction**) → **Validée**. Elle se lit comme un **pipeline** : un **rail**, un **nœud par
+phase** — **Code & push** (« Code, push & MR » hors dépôt), **Convergence**, **Validation**, **Test de
+couverture**, **Validée** —, plein jusqu'où l'on en est, en pointillé pour ce qui vient. Le nœud dit l'état :
+coche verte faite, **arc qui tourne** en cours (un reflet avance sur le rail qui y mène), nœud orange **qui
+respire** quand c'est à toi, croix rouge en échec, numéro pour ce qui vient, double anneau pour l'arrivée. Sous
+chaque nœud, ce que la phase a produit : le lien de la **MR** sur Code ; sur Convergence, la **dernière note en
+grand**, l'**objectif** et la **courbe** des notes avec la note visée en pointillé, puis la passe
+(`passe 3/3 · correction`) ; sur Validation, le compte des verts (`1/3`) et la **grille** des vérificateurs —
+nommés dès avant leur lancement —, une colonne **base**, une **branche**, une **diag.**, chaque case une icône
+(✓ ✗ ⟳) qui ouvre son rapport d'un clic. La phase active porte son **statut** et depuis quand (`à toi · depuis
+14 min`), et **Continuer** juste dessous. **Un clic sur une phase déplie ses étapes** — une phase à la fois —
+en une chronologie (« Review initiale », « Passe 1 · correction », « Passe 1 · review »…) : ✓ faite, ⟳ en
+cours, horloge en file, boîte « à toi », ✗ en échec, cercle vide à venir ; les passes de convergence qui
+n'auront lieu que si la note reste sous le seuil sont en pointillé ; le choix tient au rafraîchissement, et
+les animations, lentes, ne repartent pas de zéro à chaque relecture (elles s'arrêtent avec « réduire les
+animations »). Étroite, la frise se redresse à la verticale. Une question posée pendant une correction garde la
+suite : la review de la passe, puis les passes possibles. Sur la carte Codage, le détail de la chaîne (côtés,
+essais, preuves du diagnostic, scénario) est replié sous **Détails**, puisque la frise dit déjà où en est chaque
+vérificateur.
+Une session sur **plusieurs dépôts** a **une frise entière par dépôt**, le nom du dépôt en tête : son codage,
+son push, sa convergence, **et sa validation** — chaque vérificateur de la chaîne est rangé dans les dépôts
+qu'il couvre (un vérificateur qui n'en couvre aucun, celui d'un dépôt de tests par exemple, va dans toutes), le
+scénario et « Validée » dans toutes. Sur la **carte** d'une session (Codage, Codage sur dépôt local), la frise
+de chaque dépôt ou dossier est **dans sa ligne**, sous « Replier les projets » (« Replier les dossiers » hors
+dépôt) ; lignes repliées, la carte montre un **aperçu** d'une ligne par dépôt — ses phases en points sur un
+rail, celle où il en est et son statut —, et `Continuer`.
 Une boucle de convergence coupée par un arrêt du serveur est arrêtée au redémarrage, l'étape où elle en
 était marquée en échec.
 

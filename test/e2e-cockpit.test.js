@@ -230,9 +230,15 @@ describe('Cockpit et « Lancer ma journée »', () => {
     const fini = etapesConvergence({ status: 'converged', phase: null, passes_done: 2, max_passes: 3, notes_json: '[5.2,6.8,8.4]', best_note: 8.4 }, null, 3);
     assert.deepEqual(resume(fini), ['review0:fait', 'fix1:fait', 'review1:fait', 'fix2:fait', 'review2:fait', 'converge-fin:fait']);
     assert.equal(fini[4].note, 8.4);
-    // Une question pendant la correction : à toi, et la boucle s'arrête là.
-    assert.deepEqual(resume(etapesConvergence({ status: 'needs_input', phase: 'fix', passes_done: 0, max_passes: 3, notes_json: '[4]' }, null, 3)),
-      ['review0:fait', 'fix1:a_toi']);
+    // Une question pendant la correction : à toi depuis qu'elle est posée ; la review de la passe suivra la
+    // réponse, puis les passes restantes si la note reste basse.
+    const question = etapesConvergence({ status: 'needs_input', phase: 'fix', passes_done: 0, max_passes: 3, threshold: 8, notes_json: '[4]', finished_at: '2026-11-27T09:00:00Z' }, null, 3);
+    assert.deepEqual(resume(question), ['review0:fait', 'fix1:a_toi', 'review1:a_venir', 'fix2:a_venir?', 'review2:a_venir?', 'fix3:a_venir?', 'review3:a_venir?']);
+    assert.equal(question[1].depuis, '2026-11-27T09:00:00Z');
+    // Chaque étape porte la note visée et les passes permises ; l'étape qui tourne, l'heure de son début.
+    const enCours = etapesConvergence({ status: 'running', phase: 'fix', passes_done: 1, max_passes: 4, threshold: 7.5, notes_json: '[5,6]', started_at: '2026-11-27T08:00:00Z', phase_at: '2026-11-27T08:40:00Z' }, null, 3);
+    assert.ok(enCours.every((e) => e.seuil === 7.5 && e.max === 4));
+    assert.deepEqual(enCours.filter((e) => e.depuis).map((e) => `${e.cle}${e.n}:${e.depuis}`), ['fix2:2026-11-27T08:40:00Z'], 'seule l’étape qui tourne a une heure');
     // Coupée pendant la review de la première passe (serveur arrêté) : cette étape porte l'échec, rien après.
     assert.deepEqual(resume(etapesConvergence({ status: 'stopped', phase: 'review', passes_done: 1, max_passes: 3, notes_json: '[5]' }, null, 3)),
       ['review0:fait', 'fix1:fait', 'review1:echec']);
@@ -263,12 +269,24 @@ describe('Cockpit et « Lancer ma journée »', () => {
       assert.equal(await page.locator('#taskList').isHidden(), true, 'le cockpit remplace la liste');
       await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-item.is-chaine').first().waitFor();
       assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-pourquoi').first().textContent(), /base cassée/);
-      // La frise : toutes les étapes, l'étape courante mise en avant — la base cassée, à toi.
-      const courante = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .frise-etape.is-courante').first();
+      // La frise par phases : la phase courante — la validation — mise en avant, son résumé dit l'étape qui attend.
+      const ligneATOi = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-item.is-chaine').first();
+      const phase = ligneATOi.locator('.frise-phase.is-courante');
+      await phase.waitFor();
+      assert.match(await phase.getAttribute('class'), /is-a_toi/);
+      assert.match(await phase.textContent(), /Validation[\s\S]*unitaires · base[\s\S]*à toi/);
+      assert.deepEqual(await ligneATOi.locator('.frise-phase .frise-nom').allTextContents(), ['Code & push', 'Validation', 'Validée']);
+      // Ses étapes sont repliées ; un clic sur l'en-tête de la phase les montre, l'étape courante en avant.
+      const courante = ligneATOi.locator('.frise-etape.is-courante');
+      assert.equal(await courante.isVisible(), false, 'repliées : le résumé suffit');
+      await phase.locator('.frise-phase-tete').click();
       await courante.waitFor();
-      assert.match(await courante.getAttribute('class'), /is-a_toi/);
       assert.match(await courante.textContent(), /unitaires · base/);
-      assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .frise-ou').first().textContent(), /Étape en cours : unitaires · base/);
+      await phase.locator('.frise-phase-tete').click();
+      await courante.waitFor({ state: 'hidden' });
+      // « Continuer » au bout de la rangée des phases ; plus de ligne « Étape en cours » qui redirait la phase.
+      assert.equal(await ligneATOi.locator('.frise-phases [data-frise-continuer]').count(), 1);
+      assert.doesNotMatch(await ligneATOi.locator('.frise').textContent(), /Étape en cours/);
       assert.ok(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .frise').first().locator('.frise-etape').count() >= 5, 'codage, push, base, branche, validée');
       await page.locator('#cockpitBox [data-cockpit-sec="termine"] .cockpit-item').first().waitFor();
       const id = await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] [data-cockpit-open]').first().getAttribute('data-cockpit-open');
@@ -291,30 +309,140 @@ describe('Cockpit et « Lancer ma journée »', () => {
       assert.deepEqual(erreurs, []);
     });
 
-    test('une session sur deux dépôts : une frise par dépôt, puis la validation commune', async () => {
+    test('le rendu en pipeline : un nœud par phase, la note et sa courbe vers l’objectif, passe et durée, grille base / branche / diagnostic, MR, arrivée, une phase ouverte à la fois', async () => {
+      const html = await page.evaluate(() => {
+        const ilYa = (min) => new Date(Date.now() - min * 60000).toISOString();
+        const v = (nom, cote, etat, id) => ({ cle: 'verif', cote, nom, etat, verification_id: id });
+        const etapes = [
+          { cle: 'code', etat: 'fait' }, { cle: 'push', etat: 'fait', mr_iid: 42, mr_url: 'https://gitlab.test/g/p/-/merge_requests/42' },
+          { cle: 'review', n: 0, etat: 'fait', note: 5.1, seuil: 8, max: 3 }, { cle: 'fix', n: 1, etat: 'fait', seuil: 8, max: 3 },
+          { cle: 'review', n: 1, etat: 'fait', note: 6.4, seuil: 8, max: 3 }, { cle: 'fix', n: 2, etat: 'fait', seuil: 8, max: 3 },
+          { cle: 'review', n: 2, etat: 'fait', note: 7.2, seuil: 8, max: 3 }, { cle: 'fix', n: 3, etat: 'a_toi', seuil: 8, max: 3, depuis: ilYa(14) },
+          { cle: 'review', n: 3, etat: 'a_venir', seuil: 8, max: 3 },
+          v('unitaires', 'base', 'a_venir'), v('unitaires', 'head', 'a_venir'), v('front', 'base', 'a_venir'), v('front', 'head', 'a_venir'),
+          { cle: 'validee', etat: 'a_venir' },
+        ];
+        const enAttente = friseHtml({ id: 9001, kind: 'code', workflow: { etapes, courante: 7, continuer: { action: 'repondre' } } });
+        const valid = [
+          { cle: 'code', etat: 'fait' }, { cle: 'push', etat: 'fait' },
+          v('integ', 'base', 'fait', 11), v('integ', 'head', 'fait', 12),
+          v('tests front', 'base', 'a_toi', 13), v('tests front', 'head', 'a_venir'),
+          v('paiement', 'base', 'fait', 15), v('paiement', 'head', 'echec', 16), { cle: 'diag', nom: 'paiement', etat: 'a_toi', detail: 'environnement' },
+          { cle: 'validee', etat: 'a_venir' },
+        ];
+        const enValidation = friseHtml({ id: 9002, kind: 'code', workflow: { etapes: valid, courante: 4, continuer: { action: 'chaine' } } });
+        const box = document.createElement('div');
+        box.id = 'friseEssai';
+        box.innerHTML = enAttente + enValidation;
+        document.body.appendChild(box);
+        return true;
+      });
+      assert.ok(html);
+      const a = page.locator('#friseEssai [data-frise="code-9001"]');
+      // Un nœud par phase sur le rail : fait, à toi, puis les suivantes numérotées, et l'arrivée.
+      assert.equal(await a.locator('.frise-phase .frise-noeud').count(), 4);
+      assert.deepEqual(await a.locator('.frise-noeud-n').allTextContents(), ['3', '4']);
+      const conv = a.locator('.frise-phase.ph-convergence');
+      // La dernière note en grand, l'objectif, la courbe des notes ; la passe, le statut et depuis quand.
+      assert.equal(await conv.locator('.frise-score').textContent(), '7,2');
+      assert.match(await conv.textContent(), /objectif 8[\s\S]*passe 3\/3 · correction[\s\S]*à toi · depuis 1[45] min/);
+      assert.equal(await conv.locator('svg.frise-courbe').getAttribute('aria-label'), '5,1 → 6,4 → 7,2 · objectif 8');
+      assert.equal(await conv.locator('svg.frise-courbe polyline').count(), 1);
+      // « Répondre » sous la phase arrêtée.
+      assert.equal(await conv.locator('[data-frise-continuer][data-action="repondre"]').count(), 1);
+      // Pas encore commencée, la validation nomme déjà ses vérificateurs, et le compte des verts.
+      const val = a.locator('.frise-phase.ph-validation');
+      assert.deepEqual(await val.locator('.frise-grille-l:not(.frise-grille-tete) .frise-grille-nom').allTextContents(), ['unitaires', 'front']);
+      assert.equal(await val.locator('.frise-compte').textContent(), '0/2');
+      // La MR en lien sur la phase Code ; « Validée » n'est qu'une arrivée ; plus de compteur d'étapes.
+      assert.equal(await a.locator('.frise-mr').getAttribute('href'), 'https://gitlab.test/g/p/-/merge_requests/42');
+      assert.equal(await a.locator('.frise-phase.is-terminus').count(), 1);
+      assert.equal(await a.locator('.frise-avance').count(), 0);
+      // Les étapes dépliées nomment la passe.
+      await conv.locator('.frise-phase-tete').click();
+      assert.deepEqual((await a.locator('.frise-etapes:not([hidden]) .frise-nom').allTextContents()).slice(0, 3), ['Review initiale', 'Passe 1 · correction', 'Passe 1 · review']);
+      // Une seule phase ouverte par bande : ouvrir le code referme la convergence.
+      await a.locator('.frise-phase', { hasText: 'Code & push' }).locator('.frise-phase-tete').click();
+      assert.equal(await a.locator('.frise-etapes:not([hidden])').count(), 1);
+      assert.equal(await a.locator('.frise-phase.is-ouverte .frise-nom').textContent(), 'Code & push');
+      assert.equal(await conv.locator('.frise-phase-tete').getAttribute('aria-expanded'), 'false');
+
+      // La grille : un en-tête base / branche / diag., une icône par case — l'état ne tient pas qu'à la couleur —,
+      // un libellé lisible, et une case qui ouvre son rapport.
+      const b = page.locator('#friseEssai [data-frise="code-9002"] .frise-grille');
+      assert.match(await b.locator('.frise-grille-tete').textContent(), /base[\s\S]*branche[\s\S]*diag/);
+      assert.equal(await b.locator('.frise-grille-l:not(.frise-grille-tete)').count(), 3);
+      assert.equal(await b.locator('.frise-case:not(.is-vide) svg, .frise-case:not(.is-vide) .frise-point').count(), 7);
+      assert.equal(await b.locator('.frise-case.is-echec').getAttribute('aria-label'), 'paiement — branche — en échec');
+      assert.equal(await b.locator('.frise-case[data-chaine-verif="16"]').getAttribute('role'), 'button');
+      const enCours = page.locator('#friseEssai [data-frise="code-9002"] .frise-phase.is-courante');
+      assert.match(await enCours.textContent(), /tests front · base[\s\S]*à toi/);
+      assert.equal(await enCours.locator('.frise-compte').getAttribute('aria-label'), '1/3 vérificateur vert');
+      // Les animations partent de l'horloge commune : un rendu ne les fait pas repartir de zéro.
+      await page.evaluate(() => friseHorloge());
+      assert.match(await page.evaluate(() => document.documentElement.style.getPropertyValue('--frise-t')), /^-\d+(\.\d+)?s$/);
+      await page.evaluate(() => document.getElementById('friseEssai').remove());
+      assert.deepEqual(erreurs, []);
+    });
+
+    test('relu toutes les 3 s, le cockpit ne se réécrit pas quand rien ne change : une phase dépliée et le focus restent', async () => {
+      await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
+      const item = page.locator('#cockpitBox .cockpit-item').first();
+      await item.waitFor();
+      // Les mêmes données rendues une seconde fois, d'un trait (la minute de « depuis » ne peut pas tourner entre les deux).
+      const garde = await page.evaluate(() => {
+        document.querySelector('#cockpitBox .cockpit-item').dataset.marque = 'là';
+        renderCockpit(cockpitDonnees);
+        const memes = document.querySelector('#cockpitBox .cockpit-item').dataset.marque;
+        renderCockpit({ ...cockpitDonnees, a_toi: [] });   // des données qui changent, elles, réécrivent
+        return [memes, document.querySelector('#cockpitBox .cockpit-item').dataset.marque || null];
+      });
+      assert.deepEqual(garde, ['là', null]);
+      await page.evaluate(() => renderCockpit(cockpitDonnees));
+    });
+
+    test('une session sur deux dépôts : une frise entière par dépôt, la validation rangée dans les dépôts que chaque vérificateur couvre', async () => {
       const autre = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'autre-')));
       const autreId = (await app.api('POST', '/api/repos', { url: autre.url, project: 'grp/catalogue' })).body.id;
       const t = (await app.api('POST', '/api/tasks', {
         kind: 'code', prompt: 'deux dépôts', label: 'Deux dépôts', auto_push: true, verify_chain: [vId],
         targets: [{ repo_id: repoId, branch: 'ai/deux' }, { repo_id: autreId, branch: 'ai/deux' }],
       })).body;
+      // Le serveur range chaque étape de la chaîne : « unitaires » ne couvre que grp/paiement ; « validée », partout.
+      const wf = (await app.api('GET', '/api/tasks')).body.find((x) => x.id === t.id).workflow;
+      const lignes = [...new Set(wf.etapes.filter((e) => e.cible != null).map((e) => e.cible))];
+      assert.equal(lignes.length, 2);
+      assert.deepEqual(wf.etapes.filter((e) => e.cle === 'verif').map((e) => e.cibles), [[lignes[0]], [lignes[0]]]);
+      assert.deepEqual(wf.etapes.find((e) => e.cle === 'validee').cibles, lignes);
       await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
       const ligne = page.locator(`#cockpitBox .cockpit-item[data-cockpit-task="${t.id}"]`);
       await ligne.locator('.frise-groupe').first().waitFor();
-      assert.deepEqual(await ligne.locator('.frise-groupe-nom').allTextContents(), ['grp/paiement', 'grp/catalogue', 'Validation (tous les dépôts)']);
-      assert.deepEqual(await ligne.locator('.frise-groupe').nth(0).locator('.frise-nom').allTextContents(), ['Codage', 'Push'], 'sans répéter le dépôt');
-      assert.match(await ligne.locator('.frise-groupe').nth(2).textContent(), /unitaires · base/);
+      // Plus de groupe « tous les dépôts » : chaque frise est entière.
+      assert.deepEqual(await ligne.locator('.frise-groupe-nom').allTextContents(), ['grp/paiement', 'grp/catalogue']);
+      assert.deepEqual((await ligne.locator('.frise-groupe').nth(0).locator('.frise-etape .frise-nom').allTextContents()).slice(0, 2), ['Codage', 'Push'], 'sans répéter le dépôt');
+      assert.deepEqual(await ligne.locator('.frise-groupe').nth(0).locator('.frise-phase .frise-nom').allTextContents(), ['Code & push', 'Validation', 'Validée']);
+      assert.match(await ligne.locator('.frise-groupe').nth(0).locator('.frise-grille').textContent(), /unitaires/);
+      assert.deepEqual(await ligne.locator('.frise-groupe').nth(1).locator('.frise-phase .frise-nom').allTextContents(), ['Code & push', 'Validée'], 'aucun vérificateur ne couvre grp/catalogue');
       // Les cartes de Codage dessinent la même chose (la liste relue : la session vient d'être créée).
       await page.goto(app.base);
       await page.locator('nav button[data-tab="task"]').click();
       await page.locator('#tab-task .subnav [data-kind="code"]').click();
-      // Sur la carte, chaque dépôt porte sa frise sur sa ligne (« Replier les projets ») ; la validation reste commune.
+      // Sur la carte, chaque dépôt porte sa frise entière sur sa ligne (« Replier les projets ») ; repliée, la carte
+      // montre un aperçu d'une ligne par dépôt, qui s'efface quand les lignes se déplient.
       const carte = page.locator(`#taskList .task-row[data-task="${t.id}"]`);
       await carte.locator('.frise').first().waitFor({ state: 'attached' });
       assert.equal(await carte.locator('.targets .frise-cible').count(), 2, 'une frise par ligne de dépôt');
-      assert.deepEqual(await carte.locator('.targets .frise-cible').nth(1).locator('.frise-nom').allTextContents(), ['Codage', 'Push']);
+      assert.deepEqual(await carte.locator('.targets .frise-cible').nth(0).locator('.frise-phase .frise-nom').allTextContents(), ['Code & push', 'Validation', 'Validée']);
+      assert.deepEqual(await carte.locator('.targets .frise-cible').nth(1).locator('.frise-etape .frise-nom').allTextContents(), ['Codage', 'Push', 'Validée']);
       assert.equal(await carte.locator('.targets .frise-groupe').count(), 0);
-      assert.deepEqual(await carte.locator(':scope > div > .frise .frise-groupe-nom').allTextContents(), ['Validation (tous les dépôts)'], 'la chaîne, hors des lignes');
+      assert.equal(await carte.locator(':scope > div > .frise .frise-groupe').count(), 0, 'plus de validation à part');
+      const apercu = carte.locator(':scope > div > .frise .frise-apercu');
+      await apercu.waitFor();
+      assert.deepEqual(await apercu.locator('.frise-apercu-nom').allTextContents(), ['grp/paiement', 'grp/catalogue']);
+      assert.equal(await apercu.locator('.frise-apercu-l').nth(0).locator('.frise-mini-p').count(), 3);
+      await carte.locator('.targets-toggle').click();
+      await apercu.waitFor({ state: 'hidden' });
+      await carte.locator('.targets .frise-cible').first().waitFor();
       await app.api('DELETE', `/api/tasks/${t.id}`);
       assert.deepEqual(erreurs, []);
     });

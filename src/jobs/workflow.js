@@ -8,13 +8,15 @@
 
    Une étape porte `cle` (l'écran la nomme), `etat` (fait · en_cours · en_file · a_toi · echec · a_venir ·
    saute) et ce qui la précise : `n` (la passe), `nom` (le vérificateur), `projet`, `note`, `essai`, `detail`,
-   `verification_id`. `si` marque une étape qui n'aura lieu que si la précédente ne suffit pas (une passe de
+   `verification_id`, `seuil` et `max` (la note visée et les passes permises, sur une étape de convergence),
+   `depuis` (l'heure où l'étape active a commencé — ou s'est mise à attendre). `si` marque une étape qui n'aura lieu que si la précédente ne suffit pas (une passe de
    convergence de plus, tant que la note reste sous le seuil). `courante` : l'index de la première étape qui
    tourne, attend ou a échoué. */
 const db = require('../db');
 const { getConfig } = require('../data/config');
 const groupes = require('../data/groupes');
 const scenarioMod = require('./chaine-scenario');
+const { convergeDefaults } = require('../review/converge');
 
 const lire = (j, defaut) => { try { return JSON.parse(j); } catch { return defaut; } };
 const ACTIVES = new Set(['en_cours', 'en_file', 'a_toi', 'echec']);
@@ -33,13 +35,19 @@ function etatCote(c, attention) {
    Sans boucle encore (le job vient de partir), ce qui va se passer : la review, puis des passes possibles. */
 function etapesConvergence(run, projet, maxDefaut) {
   const out = [];
+  // La note visée et les passes permises : celles de la boucle, ou les réglages tant qu'elle n'est pas partie.
+  const seuil = run ? run.threshold : convergeDefaults().threshold;
+  const max = run ? run.max_passes : maxDefaut;
+  const poser = () => { for (const e of out) { e.seuil = seuil; e.max = max; } return out; };
   if (!run) {
     out.push({ cle: 'review', n: 0, etat: 'a_venir', projet });
     for (let k = 1; k <= maxDefaut; k += 1) {
       out.push({ cle: 'fix', n: k, etat: 'a_venir', projet, si: true }, { cle: 'review', n: k, etat: 'a_venir', projet, si: true });
     }
-    return out;
+    return poser();
   }
+  // L'étape qui tourne a commencé au dernier changement d'étape (avant la colonne, au départ de la boucle).
+  const depuis = run.phase_at || run.started_at || null;
   const notesLues = lire(run.notes_json, null);
   const notes = notesLues || [run.start_note];
   const p = run.passes_done || 0;
@@ -48,27 +56,53 @@ function etapesConvergence(run, projet, maxDefaut) {
   const coupe = run.status === 'error' || run.status === 'stopped';
   // Pas encore de note de départ : la première review tourne (la MR n'en avait pas, ou une périmée).
   const initialeEnCours = tourne && run.phase === 'review' && p === 0 && !notesLues;
-  out.push({ cle: 'review', n: 0, etat: initialeEnCours ? 'en_cours' : (coupe && p === 0 && run.phase === 'review' && !notesLues ? 'echec' : 'fait'), projet, note: notes[0] == null ? null : notes[0] });
+  out.push({ cle: 'review', n: 0, etat: initialeEnCours ? 'en_cours' : (coupe && p === 0 && run.phase === 'review' && !notesLues ? 'echec' : 'fait'), projet, note: notes[0] == null ? null : notes[0], depuis: initialeEnCours ? depuis : null });
   for (let k = 1; k <= run.max_passes; k += 1) {
     if (k <= p) {
       out.push({ cle: 'fix', n: k, etat: 'fait', projet });
       let etat = 'fait';
       if (k === p && tourne && run.phase === 'review') etat = 'en_cours';
       else if (k === p && coupe && run.phase === 'review') etat = 'echec';
-      out.push({ cle: 'review', n: k, etat, projet, note: notes[k] == null ? null : notes[k] });
+      out.push({ cle: 'review', n: k, etat, projet, note: notes[k] == null ? null : notes[k], depuis: etat === 'en_cours' ? depuis : null });
       continue;
     }
-    if (k === p + 1 && run.status === 'needs_input') { out.push({ cle: 'fix', n: k, etat: 'a_toi', projet }); break; }
+    /* Une question pendant la correction : la passe reprendra à la réponse — sa review suivra, puis les
+       passes restantes si la note reste sous le seuil. */
+    if (k === p + 1 && run.status === 'needs_input') {
+      out.push({ cle: 'fix', n: k, etat: 'a_toi', projet, depuis: run.finished_at || depuis }, { cle: 'review', n: k, etat: 'a_venir', projet });
+      for (let j = k + 1; j <= run.max_passes; j += 1) {
+        out.push({ cle: 'fix', n: j, etat: 'a_venir', projet, si: true }, { cle: 'review', n: j, etat: 'a_venir', projet, si: true });
+      }
+      break;
+    }
     if (k === p + 1 && coupe && run.phase === 'fix') { out.push({ cle: 'fix', n: k, etat: 'echec', projet, detail: run.message || '' }); break; }
     if (!tourne) break;   // finie : les passes qui n'ont pas eu lieu n'auront pas lieu
     const enCours = k === p + 1 && run.phase === 'fix';
-    out.push({ cle: 'fix', n: k, etat: enCours ? 'en_cours' : 'a_venir', projet, si: !enCours },
+    out.push({ cle: 'fix', n: k, etat: enCours ? 'en_cours' : 'a_venir', projet, si: !enCours, depuis: enCours ? depuis : null },
       { cle: 'review', n: k, etat: 'a_venir', projet, si: !enCours });
   }
   if (!tourne && run.status !== 'needs_input' && !(coupe && run.phase)) {
     out.push({ cle: 'converge-fin', etat: coupe ? 'echec' : 'fait', projet, detail: run.status, note: run.best_note == null ? null : run.best_note });
   }
-  return out;
+  return poser();
+}
+
+/* DEPUIS QUAND : une étape qui tourne depuis 40 min ne se lit pas comme une qui vient de partir. L'heure vient
+   de ce qui la porte — le job du codage, la vérification lancée ; une question, du dernier changement de la
+   session. Sans source sûre, rien : mieux vaut ne rien dire qu'une durée fausse. */
+function poserDepuis(etapes, { job, attente }) {
+  const debutJob = job && !job.enFile ? (db.prepare('SELECT started_at FROM job WHERE id = ?').get(job.jobId) || {}).started_at : null;
+  for (const e of etapes) {
+    if (ACTIVES.has(e.etat) && e.etat !== 'echec' && !e.depuis) {
+      if (e.verification_id) {
+        const v = db.prepare('SELECT started_at, created_at FROM verification WHERE id = ?').get(e.verification_id);
+        if (v) e.depuis = e.etat === 'en_file' ? v.created_at : (v.started_at || v.created_at);
+      } else if (['code', 'commit', 'push', 'mr'].includes(e.cle)) {
+        e.depuis = e.etat === 'a_toi' ? attente(e) : (e.etat === 'en_cours' ? debutJob : null);
+      }
+    }
+    if (!e.depuis) delete e.depuis;
+  }
 }
 
 /* Le vérificateur unique « Vérifier après » (sans chaîne) : sa dernière vérification depuis la session. */
@@ -81,7 +115,7 @@ function etapeVerificateur(task) {
   if (run && run.status === 'queued') etat = 'en_file';
   else if (run && run.status === 'running') etat = 'en_cours';
   else if (run) etat = run.verdict === 'verified_pass' ? 'fait' : 'echec';
-  return { cle: 'verif', nom: v.name, etat, verification_id: run ? run.id : null };
+  return { cle: 'verif', nom: v.name, verifier_id: v.id, etat, verification_id: run ? run.id : null };
 }
 
 /* La chaîne : chaque vérificateur sur la base puis la branche (et son diagnostic), puis le scénario. */
@@ -90,8 +124,8 @@ function etapesChaine(task, chaine) {
   const attention = !!(chaine && chaine.status === 'attention');
   if (chaine && chaine.steps) {
     for (const s of chaine.steps) {
-      const base = { cle: 'verif', cote: 'base', nom: s.verifier_name, etat: etatCote(s.base, attention), essai: s.base.essai || 0, verification_id: s.base.verification_id || null };
-      const head = { cle: 'verif', cote: 'head', nom: s.verifier_name, etat: base.etat === 'fait' ? etatCote(s.head, attention) : 'a_venir', essai: (s.head && s.head.essai) || 0, verification_id: (s.head && s.head.verification_id) || null };
+      const base = { cle: 'verif', cote: 'base', nom: s.verifier_name, verifier_id: s.verifier_id, etat: etatCote(s.base, attention), essai: s.base.essai || 0, verification_id: s.base.verification_id || null };
+      const head = { cle: 'verif', cote: 'head', nom: s.verifier_name, verifier_id: s.verifier_id, etat: base.etat === 'fait' ? etatCote(s.head, attention) : 'a_venir', essai: (s.head && s.head.essai) || 0, verification_id: (s.head && s.head.verification_id) || null };
       if (s.erreur) (base.etat === 'fait' ? head : base).etat = attention ? 'a_toi' : 'echec';
       if (s.erreur) (base.etat === 'fait' ? head : base).detail = s.erreur;
       out.push(base, head);
@@ -99,14 +133,14 @@ function etapesChaine(task, chaine) {
         let etat = 'fait';
         if (s.diag.en_cours) etat = 'en_cours';
         else if (s.diag.cause && s.diag.cause !== 'branche') etat = 'a_toi';
-        out.push({ cle: 'diag', nom: s.verifier_name, etat, n: s.diag.rounds, detail: s.diag.cause || '' });
+        out.push({ cle: 'diag', nom: s.verifier_name, verifier_id: s.verifier_id, etat, n: s.diag.rounds, detail: s.diag.cause || '' });
       }
     }
   } else {
     for (const id of lire(task.verify_chain, [])) {
       const v = db.prepare('SELECT name FROM verifier WHERE id = ?').get(Number(id));
       if (!v) continue;
-      out.push({ cle: 'verif', cote: 'base', nom: v.name, etat: 'a_venir' }, { cle: 'verif', cote: 'head', nom: v.name, etat: 'a_venir' });
+      out.push({ cle: 'verif', cote: 'base', nom: v.name, verifier_id: Number(id), etat: 'a_venir' }, { cle: 'verif', cote: 'head', nom: v.name, verifier_id: Number(id), etat: 'a_venir' });
     }
   }
   const cfgScen = lire(scenarioMod.normaliserScenario(task.verify_chain_scenario), null);   // rendue en JSON
@@ -142,7 +176,7 @@ function etapesChaine(task, chaine) {
 }
 
 function frise(task, { chaine = null, job = null } = {}) {
-  const cibles = db.prepare(`SELECT tt.id, tt.repo_id, tt.status, tt.commit_sha, tt.mr_iid, tt.last_error, r.project FROM task_target tt
+  const cibles = db.prepare(`SELECT tt.id, tt.repo_id, tt.status, tt.commit_sha, tt.mr_iid, tt.mr_url, tt.last_error, r.project FROM task_target tt
     JOIN repo r ON r.id = tt.repo_id WHERE tt.task_id = ? ORDER BY tt.id`).all(task.id);
   const plusieurs = cibles.length > 1;
   const jobKind = job ? (db.prepare('SELECT kind FROM job WHERE id = ?').get(job.jobId) || {}).kind : null;
@@ -173,7 +207,8 @@ function frise(task, { chaine = null, job = null } = {}) {
     // Le push : poussé (une MR ouverte l'a été) — en cours tant que le job tourne sur du code fait.
     const pousse = c.status === 'pushed' || !!c.mr_iid;
     if (pousser || pousse) {
-      etapes.push({ cle: 'push', etat: pousse ? 'fait' : (codeFait && job ? 'en_cours' : 'a_venir'), projet });
+      // La MR ouverte voyage avec le push : la phase Code la donne en lien.
+      etapes.push({ cle: 'push', etat: pousse ? 'fait' : (codeFait && job ? 'en_cours' : 'a_venir'), projet, mr_iid: c.mr_iid || null, mr_url: c.mr_url || null });
     }
 
     // La convergence de ce projet, lancée pour cette session (après sa création).
@@ -186,8 +221,25 @@ function frise(task, { chaine = null, job = null } = {}) {
     marquer();
   }
 
+  const avantChaine = etapes.length;
   if (task.verify_chain) etapes.push(...etapesChaine(task, chaine));
   else if (task.verifier_id) { const v = etapeVerificateur(task); if (v) etapes.push(v); }
+  /* PLUSIEURS PROJETS : la validation porte sur l'ensemble, mais chaque frise de dépôt doit rester entière.
+     Une étape de vérificateur va donc dans la frise des dépôts qu'il couvre (`cibles`) ; un vérificateur qui
+     n'en couvre aucun (il teste un dépôt de tests, les projets mis en position), le scénario et « validée »
+     vont dans toutes. */
+  if (plusieurs) {
+    const toutes = cibles.map((c) => c.id);
+    const couvertes = new Map();
+    for (const e of etapes.slice(avantChaine)) {
+      if (e.verifier_id && !couvertes.has(e.verifier_id)) {
+        const cov = groupes.couvertureVerifier(e.verifier_id);
+        couvertes.set(e.verifier_id, cibles.filter((c) => cov.has(c.repo_id)).map((c) => c.id));
+      }
+      const siennes = e.verifier_id ? couvertes.get(e.verifier_id) : [];
+      e.cibles = siennes.length ? siennes : toutes;
+    }
+  }
 
   /* Rien d'actif alors que la session attend ou a échoué : une question posée par un suivi après le codage,
      un push refusé. L'attente se pose sur le codage, l'échec sur la dernière étape faite de la session. */
@@ -200,6 +252,7 @@ function frise(task, { chaine = null, job = null } = {}) {
       etapes[i].detail = String(task.last_error || '').split('\n')[0].slice(0, 200);
     }
   }
+  poserDepuis(etapes, { job, attente: () => task.updated_at || null });
   const courante = etapes.findIndex((e) => ACTIVES.has(e.etat));
   return { etapes, courante: courante < 0 ? null : courante, continuer: job ? null : continuer(task, etapes, courante, cibles, chaine) };
 }
@@ -272,7 +325,7 @@ function friseLocale(lt, { job = null } = {}) {
     else if (note === 'no-origin' || note === 'no-repo') mr = 'saute';
     else if (note.startsWith('mr-error')) mr = 'echec';
     else if (gs === 'pushed' && job) mr = 'en_cours';
-    etapes.push({ cle: 'mr', etat: mr, projet, dir_id: d.id, detail: mr === 'saute' ? note : mr === 'echec' ? note.replace(/^mr-error:\s*/, '') : '' });
+    etapes.push({ cle: 'mr', etat: mr, projet, dir_id: d.id, mr_iid: d.mr_iid || null, mr_url: d.mr_url || null, detail: mr === 'saute' ? note : mr === 'echec' ? note.replace(/^mr-error:\s*/, '') : '' });
     if (mr === 'saute') return;
     const mrRow = d.mr_iid && d.repo_id ? db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(d.repo_id, d.mr_iid) : null;
     const run = mrRow ? db.prepare('SELECT * FROM convergence_run WHERE mr_id = ? AND started_at >= ? ORDER BY id DESC LIMIT 1').get(mrRow.id, lt.created_at || '') : null;
@@ -282,6 +335,8 @@ function friseLocale(lt, { job = null } = {}) {
     etapes[0].etat = 'echec';
     etapes[0].detail = String(lt.last_error || '').split('\n')[0].slice(0, 200);
   }
+  const parDossier = new Map(dirs.map((d) => [d.id, d]));
+  poserDepuis(etapes, { job, attente: (e) => ((parDossier.get(e.dir_id) || {}).updated_at || lt.updated_at || null) });
   const courante = etapes.findIndex((e) => ACTIVES.has(e.etat));
   return { etapes, courante: courante < 0 ? null : courante, continuer: job ? null : continuerLocal(lt, etapes, courante) };
 }
