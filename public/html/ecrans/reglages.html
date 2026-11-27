@@ -55,6 +55,23 @@
                 </div>
             </div>
 
+            <!-- LE DÉPÔT DE TESTS, commun à tous les vérificateurs : là où l'étape 3 de la chaîne de validation
+                 écrit son scénario. Une référence `forge/projet` (réglage d'équipe) ; vide = déduit s'il n'y a
+                 qu'un candidat. Le champ caché appartient à #configForm, comme ceux du bloc ci-dessus. -->
+            <div class="form form-plafond" style="max-width:520px">
+                <h3 data-i18n="settings.verifier.group.tests">Dépôt de tests</h3>
+                <label><span data-i18n="settings.lbl.test-repo">Dépôt de tests</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.tip.test-repo" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                    <div class="combo" id="testRepoBox">
+                        <input class="cb-search" data-combo="cfg-test-repo" autocomplete="off" placeholder="(déduit)" data-i18n-placeholder="settings.ph.test-repo" />
+                        <input type="hidden" class="cfg-test-repo" name="test_repo" form="configForm" value="" data-label="" />
+                        <div class="combo-options" hidden></div>
+                    </div>
+                </label>
+                <div class="form-actions">
+                    <button class="btn btn-primary" type="submit" form="configForm" title="Enregistrer les réglages" data-i18n-title="settings.title.enregistrer-les-reglages"><svg class="ico"><use href="#i-save"/></svg><span data-i18n="settings.btn.enregistrer">Enregistrer</span></button>
+                </div>
+            </div>
+
             <div class="toolbar">
                 <button id="btnNewVerifier" class="btn btn-primary" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="verify.verifier.btn.add">Ajouter un vérificateur</span></button>
             </div>

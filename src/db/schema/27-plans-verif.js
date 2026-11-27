@@ -59,3 +59,7 @@ try { db.exec('ALTER TABLE task ADD COLUMN jira_key TEXT'); } catch { /* déjà 
 try { db.exec('ALTER TABLE verification ADD COLUMN scenario TEXT'); } catch { /* déjà présente */ }
 // L'avancement du scénario de couverture d'une chaîne (écrit, couvert, ses lancements) : à part des étapes.
 try { db.exec('ALTER TABLE verif_chaine ADD COLUMN scenario_json TEXT'); } catch { /* déjà présente */ }
+/* LE DÉPÔT DE TESTS, commun à tous les vérificateurs (Réglages → Vérificateurs) : celui où l'étape 3 de la
+   chaîne écrit son scénario. Une référence `forge/projet` et non un id : le réglage est d'équipe, et un id
+   entier ne désigne rien sur le poste d'en face. Vide = déduit, s'il n'y a qu'un candidat. */
+try { db.exec('ALTER TABLE config ADD COLUMN test_repo TEXT'); } catch { /* déjà présente */ }

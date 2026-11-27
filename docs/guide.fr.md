@@ -1031,6 +1031,10 @@ directement le dépôt de tests). Soit son code est **déjà couvert** — elle 
 et la tâche est **validée** —, soit elle **écrit un scénario** dans les conventions du dépôt de tests et le
 rend fichier par fichier ; c'est **Mergerie** qui l'écrit sur une branche du même nom que la sienne dans le
 dépôt de tests, commite et pousse (un chemin qui sortirait du dépôt ou viserait `.git` est refusé). Le
+**dépôt de tests** se règle une fois, pour tous les vérificateurs, dans **Réglages → Vérificateurs →
+`Dépôt de tests`** ; le vérificateur des scénarios doit le couvrir, et il ne peut pas être un des dépôts de
+la session. Laissé vide, il est déduit : le seul dépôt que le vérificateur des scénarios couvre hors de la
+session — s'il en couvre plusieurs, l'étape s'arrête et demande de le choisir plutôt que d'écrire au hasard. Le
 **vérificateur des scénarios** tourne alors, le dépôt de tests sur cette branche, avec
 **`MERGERIE_SCENARIO`** = les chemins écrits : ses commandes lancent ce scénario seul
 (`npx playwright test $MERGERIE_SCENARIO`, par exemple ; vide, elles lancent tout). Deux essais. Vert : la
@@ -1042,8 +1046,29 @@ code (la chaîne rejoue alors la branche de chacun avant le scénario) —, deux
 la raison — base cassée, branche cassée et le diagnostic, scénario en échec —, une session en erreur),
 **En cours** (ce qui tourne ou attend son tour, avec la dernière ligne du job), **Terminé (24 h)** (chaîne
 validée ou toute verte, ou session poussée sans chaîne). Relu toutes les trois secondes tant qu'il est
-affiché ; chaque ligne montre la chaîne comme sur la carte (`Relancer` compris) et ouvre sa session d'un
-clic. Les sessions sans mouvement depuis trois jours n'y sont pas.
+affiché ; chaque ligne ouvre sa session d'un clic. Les sessions sans mouvement depuis trois jours n'y sont pas.
+
+**La frise du déroulé.** Chaque ligne montre **toutes les étapes** de la session, dans l'ordre, et ce qui
+va se passer : **Codage** → **Push** → la boucle de convergence (**Review** avec sa note, puis
+**Correction n** et **Review n** par passe, et la fin — seuil atteint, plafond, note en baisse) → chaque
+vérificateur de la chaîne (**base**, puis **branche**, et son **diagnostic** s'il y en a un) → le
+scénario de couverture (**Écriture du test**, **Push du test**, **Exécution du test**, « dans » le dépôt
+de tests, et sa **correction**) → **Validée**. Une pastille par étape : ✓ faite, ⟳ en cours, horloge en
+file, boîte « à toi », ✗ en échec, cercle vide à venir ; les passes de convergence qui n'auront lieu que si
+la note reste sous le seuil sont en pointillé. L'**étape en cours** est mise en avant et dite au-dessus de
+la frise (« Étape en cours : Review 2 (en cours) ») ; une vérification s'ouvre d'un clic sur sa pastille.
+Une boucle de convergence coupée par un arrêt du serveur est arrêtée au redémarrage, l'étape où elle en
+était marquée en échec.
+
+**`Continuer`.** Quand le déroulé s'arrête sur une étape, un bouton **`Continuer`** à côté de l'étape en
+cours le fait repartir de là : codage en échec → le codage repart sur les projets qui n'ont pas abouti ;
+push refusé → ce qui est commité est poussé ; convergence coupée ou en erreur → la convergence reprend
+(le code déjà fait n'est pas refait, la MR ouverte est reprise), puis la chaîne part d'elle-même ;
+vérificateur, diagnostic ou scénario arrêté → la chaîne repart de ce qui n'est pas vert (comme
+`Relancer`) ; chaîne jamais partie alors que le code est poussé → elle démarre. Une question ou un plan à
+approuver ne se saute pas : le bouton devient **`Répondre pour continuer`** et ouvre la session ; une
+question posée pendant une correction de convergence, une fois répondue, redonne `Continuer`, qui reprend
+la convergence. Rien ne s'affiche tant qu'un job tourne.
 
 **« Lancer ma journée ».** Tape des clés de tickets, ou coche-les dans **`Mes tickets`** (tes tickets non
 terminés — un appel Jira), choisis la session dont la **chaîne de validation** sera reprise (la plus
@@ -2722,7 +2747,8 @@ branche contient un fragment donné **ou quand le diff touche un chemin** — gl
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
 **Vérificateurs** (tes commandes de tests, et les dépôts que chacun sait tester — voir *Vérification
-objective* plus bas ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
+objective* plus bas ; en tête de page, le **dépôt de tests** commun à tous, où le scénario de couverture d'une
+chaîne de validation s'écrit — liste filtrable, vide = déduit ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
 les noms étant uniques) et le champ sélectionné : renommer est le premier geste ; le formulaire

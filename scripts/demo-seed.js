@@ -430,6 +430,8 @@ for (const m of REVIEWED) {
   db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, start_note, best_note, best_version, message, started_at, finished_at)
     VALUES (?, 'converged', 8, 3, 2, 5.8, 8.4, 3, ?, ?, ?)`)
     .run(mr.id, 'convergé : 8.4/10 en 2 passe(s) (seuil 8)', iso(1.5), iso(1));
+  // La note de chaque review, dans l'ordre : la frise du cockpit les montre passe par passe.
+  db.prepare("UPDATE convergence_run SET notes_json = '[5.8,7.1,8.4]' WHERE mr_id = ?").run(mr.id);
 
   // Vitrine « Converger DEPUIS une session » : la session de dev qui a produit CETTE MR
   // (du prompt → code → push → MR → convergée). Dans Dev IA, la carte pointe la MR convergée.
@@ -1471,6 +1473,21 @@ mrsP3x.forEach((mr) => {
     'feature/PROJ-1421-deconnexion', 'main', 'new', 'code', 'PROJ-1421 Déconnexion après 30 min', 'PROJ-1421', JSON.stringify([verifierId, cmdId]), at(0.1), at(0.1)).lastInsertRowid;
   db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, updated_at) VALUES (?,?,?,?,?,?)')
     .run(pret, repoIds['groupe/api-core'], 'feature/PROJ-1421-deconnexion', 'main', 'new', at(0.1));
+
+  /* EN PLEINE CONVERGENCE : une session de la journée codée, poussée, sa MR ouverte, deux passes faites (5,1 →
+     6,4 → 7,2) et l'IA qui pose une question pendant la TROISIÈME correction — la frise du cockpit la montre « à
+     toi » à cette étape, avec la chaîne et le scénario de couverture qui suivront. Une boucle « en cours »
+     ne survivrait pas au démarrage : le serveur arrête ce qui tournait. */
+  const mrHotfix = db.prepare("SELECT id, iid FROM mr WHERE repo_id = ? AND source_branch = 'hotfix/export-timeout'").get(repoIds['groupe/batch-jobs']);
+  if (mrHotfix) {
+    const conv = db.prepare(`INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, label, jira_key, verify_chain, verify_chain_scenario, auto_push, created_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)`).run(repoIds['groupe/batch-jobs'], 'Corrige le timeout de l’export nocturne.', 'hotfix/export-timeout', 'main', 'needs_input', 'code',
+      'PROJ-1430 Timeout export nocturne', 'PROJ-1430', JSON.stringify([verifierId, cmdId]), JSON.stringify({ verifier_id: verifierId, skill: null }), at(0.08), at(0.01)).lastInsertRowid;
+    db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, mr_iid, updated_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(conv, repoIds['groupe/batch-jobs'], 'hotfix/export-timeout', 'main', 'needs_input', 'b7e1c0d', mrHotfix.iid, at(0.05));
+    db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, start_note, best_note, phase, notes_json, message, started_at)
+      VALUES (?, 'needs_input', 8, 3, 2, 5.1, 7.2, 'fix', '[5.1,6.4,7.2]', ?, ?)`).run(mrHotfix.id, 'En attente de tes réponses.', at(0.04));
+  }
 }
 
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------
@@ -2152,6 +2169,8 @@ async function semerPlugins() {
      dirait de `left-pad` (inconnu — le nom n'existe pas sur ce registre de démo) et de `date-fns`
      (publié depuis 2014). « +2 dépendances · 1 inconnue » sur la carte de !260, le détail dans le panneau. */
   db.prepare("UPDATE config SET registry_enabled = '1' WHERE id = 1").run();
+  // Le dépôt de tests de la chaîne de validation (Réglages → Vérificateurs) : celui du vérificateur e2e.
+  db.prepare("UPDATE config SET test_repo = 'gitlab/groupe/webapp-front' WHERE id = 1").run();
   registreDeps.poser('npm', 'left-pad', { status: 'unknown', reason: '404', now: at(0.01) });
   registreDeps.poser('npm', 'date-fns', { status: 'known', first_published: '2014-11-18T13:52:20.000Z', latest_published: at(40), now: at(0.01) });
   counts.registry_lookup = 2;

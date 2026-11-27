@@ -613,6 +613,9 @@ const REGISTRE = [
       /* La meilleure version par son UID, pas par son numéro : les numéros se renumérotent. */
       best_version: r.best_version ? ctx.uid('review_version', r.best_version) : null,
       message: r.message || null,
+      // L'étape en cours et les notes de chaque review : la frise du cockpit, chez un collègue aussi.
+      phase: r.phase || null,
+      notes: (() => { try { return r.notes_json ? JSON.parse(r.notes_json) : null; } catch { return null; } })(),
       started_at: r.started_at,
       finished_at: r.finished_at || null,
     }),
@@ -627,6 +630,8 @@ const REGISTRE = [
       best_note: doc.best_note == null ? null : doc.best_note,
       best_version: doc.best_version ? ctx.id('review_version', doc.best_version) : null,
       message: doc.message || null,
+      phase: doc.phase || null,
+      notes_json: Array.isArray(doc.notes) ? JSON.stringify(doc.notes) : null,
       started_at: doc.started_at,
       finished_at: doc.finished_at || null,
     }),
@@ -1929,6 +1934,8 @@ const REGISTRE = [
          tourner les reviews automatiques »), pas une préférence de poste. */
       'auto_runner',
       'review_auto_max', 'verif_auto_max', 'verif_auto_authors', 'agent_auto_max',
+      // Le dépôt de tests de la chaîne de validation : une référence `forge/projet`, la même partout.
+      'test_repo',
       /* `retention_days` RESTE D'ÉQUIPE, et c'est délibéré : une purge passe par le store, donc
          elle retire les fichiers du dépôt POUR TOUT LE MONDE. Une seule valeur évite qu'un poste
          réglé à sept jours efface l'historique des autres. */

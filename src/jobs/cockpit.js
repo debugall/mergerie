@@ -11,6 +11,7 @@
    chaîne. Les sessions plus vieilles que FENETRE_JOURS sans mouvement n'y sont pas. */
 const db = require('../db');
 const chaineVerif = require('./chaine-verif');
+const workflow = require('./workflow');
 const { jobEnCoursPour } = require('./ordonnanceur');
 
 const FENETRE_JOURS = 3;
@@ -45,6 +46,8 @@ function construire({ maintenant = new Date() } = {}) {
       // « Supprimer » emporte les sessions du même ticket : la confirmation dit combien.
       n_ticket: t.jira_key ? db.prepare("SELECT COUNT(*) c FROM task WHERE jira_key = ? AND kind = 'code'").get(t.jira_key).c : 1,
       projets: projets.map((p) => ({ project: p.project, branch: p.branch })), chaine, updated_at: t.updated_at,
+      // Toutes les étapes de son déroulé, et celle où elle en est.
+      workflow: workflow.frise(t, { chaine, job }),
       job: job ? { en_file: job.enFile, message: (db.prepare('SELECT message FROM job WHERE id = ?').get(job.jobId) || {}).message || '' } : null,
     };
     if (t.status === 'needs_input' || t.status === 'planned') aToi.push({ ...ligne, quoi: t.status === 'planned' ? 'plan' : 'question' });

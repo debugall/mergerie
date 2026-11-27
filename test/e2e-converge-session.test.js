@@ -64,6 +64,34 @@ describe('Converger depuis une session de dev IA', () => {
     assert.equal(detail.convergence.best_note, 8);
   });
 
+  /* « CONTINUER » DEPUIS LE COCKPIT : une convergence coupée (serveur arrêté pendant la review) arrête la frise sur
+     cette étape ; l'action proposée reprend la convergence, sans recoder, et la frise va au bout. */
+  test('une convergence coupée : le cockpit propose de la reprendre, et la reprise va au bout', async () => {
+    const { repoId } = await addRepo('reprise', 'grp/reprise');
+    const task = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un endpoint /live', auto_push: 1,
+      targets: [{ repo_id: repoId, branch: 'ai/live', base_branch: 'main' }],
+    })).body;
+    await app.api('POST', `/api/tasks/${task.id}/converge`, { threshold: 8 });
+    await waitForJobs(app.api);
+    // La coupure : la boucle était dans sa review, le serveur s'arrête.
+    app.db.prepare("UPDATE convergence_run SET status = 'running', phase = 'review', notes_json = NULL WHERE id = (SELECT MAX(id) FROM convergence_run)").run();
+    app.db.reconcilierTravauxCoupes('serveur arrêté');
+    const ligne = async () => Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === task.id);
+    let l = await ligne();
+    assert.equal(l.workflow.etapes[l.workflow.courante].cle, 'review');
+    assert.equal(l.workflow.etapes[l.workflow.courante].etat, 'echec');
+    assert.deepEqual(l.workflow.continuer, { action: 'converge' });
+    const passes = app.db.prepare("SELECT COUNT(*) n FROM agent_pass WHERE task_id = ? AND kind = 'run'").get(task.id).n;
+    // « Continuer » : la route qu'appelle l'écran.
+    assert.equal((await app.api('POST', `/api/tasks/${task.id}/converge`, {})).status, 200);
+    await waitForJobs(app.api);
+    l = await ligne();
+    assert.ok(l.workflow.etapes.some((e) => e.cle === 'converge-fin' && e.etat === 'fait' && e.detail === 'converged'), JSON.stringify(l.workflow.etapes));
+    assert.equal(l.workflow.continuer, null, 'plus rien à reprendre');
+    assert.equal(app.db.prepare("SELECT COUNT(*) n FROM agent_pass WHERE task_id = ? AND kind = 'run'").get(task.id).n, passes, 'le code n’est pas refait');
+  });
+
   /* LE VERDICT À CÔTÉ DE LA BOUCLE. La session porte un vérificateur : après chaque passe de
      correction, il tourne dans le job (HOME jetable) et son verdict se lit sur la merge request —
      sans jamais décider de la sortie : ici le seuil est inatteignable, et c'est la note qui arrête. */
@@ -93,6 +121,16 @@ describe('Converger depuis une session de dev IA', () => {
     assert.ok(detail.verification && detail.verification.verdict, 'le panneau lit le dernier verdict');
     const log = app.db.prepare('SELECT GROUP_CONCAT(text, char(10)) AS t FROM job_log WHERE job_id = ?').get(job.body.id).t || '';
     assert.match(log, /verdict-passe/, 'le journal nomme le vérificateur et son verdict');
+    // La boucle note chaque review et dit où elle en est : la frise du cockpit les relit.
+    const run = app.db.prepare('SELECT * FROM convergence_run WHERE mr_id = ? ORDER BY id DESC').get(mrRow.id);
+    assert.equal(JSON.parse(run.notes_json).length, run.passes_done + 1, 'la note de départ, puis une par passe');
+    assert.equal(run.phase, null, 'finie : plus d’étape en cours');
+    const ligne = Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === task.id);
+    const cles = ligne.workflow.etapes.map((e) => `${e.cle}${e.n == null ? '' : e.n}:${e.etat}`);
+    assert.deepEqual(cles.slice(0, 5), ['code:fait', 'push:fait', 'review0:fait', 'fix1:fait', 'review1:fait']);
+    assert.ok(cles.includes('converge-fin:fait'), cles.join(' '));
+    assert.equal(ligne.workflow.etapes.find((e) => e.cle === 'review').note, 8, 'la note de la première review');
+    assert.equal(ligne.workflow.etapes.at(-1).cle, 'verif', 'puis le vérificateur de la session');
     mrVerdict = mrRow;
   });
 

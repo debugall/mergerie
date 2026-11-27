@@ -25,7 +25,7 @@ const {
 const { dispo } = navigateurDispo();
 
 describe('Chaîne de validation d’une session', () => {
-  let app; let repo; let tests; let repoId; let testsId; let bin; let cloneApp; let vTests; let vApp;
+  let app; let repo; let tests; let autre; let autreId; let repoId; let testsId; let bin; let cloneApp; let vTests; let vApp;
 
   before(async () => {
     app = await startApp();
@@ -45,6 +45,9 @@ describe('Chaîne de validation d’une session', () => {
     await app.configure();
     repoId = (await app.api('POST', '/api/repos', { url: repo.url, project: 'grp/app' })).body.id;
     testsId = (await app.api('POST', '/api/repos', { url: tests.url, project: 'grp/tests' })).body.id;
+    // Un autre dépôt hors de la session : avec lui, le dépôt de tests ne se déduit plus.
+    autre = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'autre-')));
+    autreId = (await app.api('POST', '/api/repos', { url: autre.url, project: 'grp/autre' })).body.id;
     // Le clone LOCAL du dépôt de l'application : c'est là que le vérificateur du dépôt de tests le lit.
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'chaine-racine-'));
     cloneApp = path.join(racine, 'app');
@@ -231,6 +234,21 @@ exit 0
     assert.equal(sans.body.verify_chain_skill, null, 'un nom de skill qui sortirait du dossier est refusé');
   });
 
+  test('une chaîne jamais partie (code poussé, puis arrêt) : « Continuer » la démarre et elle va au bout', async () => {
+    vider();
+    const id = await session('ai/chaine-demarrer', [vApp]);
+    await finie(id);
+    // Comme si la session s'était arrêtée avant de lancer sa chaîne.
+    app.db.prepare('DELETE FROM verif_chaine WHERE task_id = ?').run(id);
+    const ligne = async () => Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === id);
+    const avant = await ligne();
+    assert.deepEqual(avant.workflow.continuer, { action: 'chaine' });
+    assert.equal((await app.api('POST', `/api/tasks/${id}/chaine/relancer`)).status, 200);
+    const c = await finie(id);
+    assert.equal(c.status, 'passed', JSON.stringify(c));
+    assert.equal((await ligne()).workflow.continuer, null);
+  });
+
   /* ---------------- étape 3 : le scénario de couverture ---------------- */
 
   const scenTrace = () => { try { return fs.readFileSync(path.join(bin, 'trace-scenarios-scen'), 'utf8').trim().split('\n').filter(Boolean); } catch { return []; } };
@@ -256,6 +274,12 @@ exit 0
     const pousse = execFileSync('git', ['show', `ai/chaine-scen:${fichier}`], { cwd: tests.bare }).toString();
     assert.match(pousse, /scénario dry-run de la session/, 'écrit sur une branche du même nom, dans le dépôt de tests');
     assert.deepEqual(cotes('scenarios'), ['base', 'head'], 'le lancement du scénario ne se confond pas avec la chaîne');
+    // La frise du cockpit : la chaîne verte, puis le test écrit, poussé et lancé dans le dépôt de tests — validée.
+    const ligne = Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === id);
+    const fin = ligne.workflow.etapes.slice(-4);
+    assert.deepEqual(fin.map((e) => `${e.cle}:${e.etat}`), ['scen-ecrire:fait', 'scen-pousser:fait', 'scen-lancer:fait', 'validee:fait']);
+    assert.equal(fin[0].projet, 'grp/tests');
+    assert.equal(ligne.workflow.courante, null, 'plus rien ne tourne');
   });
 
   test('déjà couvert (skill de scénarios) : rien n’est écrit, la tâche est validée avec la raison', async () => {
@@ -289,6 +313,61 @@ exit 0
     for (const mauvais of ['../x.sh', '/etc/passwd', 'a/../../x', '.git/hooks/pre-commit', 'a/.git/config', '']) {
       assert.equal(cheminSur(mauvais), null, mauvais);
     }
+  });
+
+  /* LE DÉPÔT DE TESTS : réglé une fois pour tous les vérificateurs (Réglages → Vérificateurs). Sans réglage,
+     il est déduit — et un vérificateur qui couvre plusieurs dépôts hors de la session n'en choisit aucun. */
+  test('le dépôt de tests se règle, se relit, et un dépôt inconnu est refusé', async () => {
+    const pose = await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
+    assert.equal(pose.status, 200, JSON.stringify(pose.body));
+    assert.equal((await app.api('GET', '/api/config')).body.test_repo, 'gitlab/grp/tests');
+    const inconnu = await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/nulle-part' });
+    assert.equal(inconnu.status, 400);
+    assert.match(inconnu.body.error, /nulle-part/);
+    assert.equal((await app.api('GET', '/api/config')).body.test_repo, 'gitlab/grp/tests', 'le refus ne touche à rien');
+    await app.api('PUT', '/api/config', { test_repo: '' });
+    assert.equal((await app.api('GET', '/api/config')).body.test_repo, '');
+  });
+
+  test('sans réglage, plusieurs candidats : aucun choix au hasard ; réglé, c’est lui — couvert et hors de la session', async () => {
+    // eslint-disable-next-line global-require
+    const { depotTests } = require('../src/jobs/chaine-scenario');
+    const couverture = (ids) => () => new Map(ids.map((id) => [id, {}]));
+    const session = [{ repo_id: repoId }];
+    assert.equal(depotTests(vTests, session, couverture([repoId, testsId])).repo.id, testsId, 'un seul candidat : déduit');
+    const ambigu = depotTests(vTests, session, couverture([repoId, testsId, autreId]));
+    assert.match(ambigu.erreur, /plusieurs dépôts/);
+    assert.match(ambigu.erreur, /grp\/autre/);
+    await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
+    try {
+      assert.equal(depotTests(vTests, session, couverture([repoId, autreId, testsId])).repo.id, testsId, 'le réglage tranche');
+      assert.match(depotTests(vTests, session, couverture([repoId, autreId])).erreur, /ne couvre pas le dépôt de tests/);
+      assert.match(depotTests(vTests, [{ repo_id: testsId }], couverture([testsId])).erreur, /un des dépôts de la session/);
+    } finally { await app.api('PUT', '/api/config', { test_repo: '' }); }
+  });
+
+  test('un vérificateur des scénarios qui couvre deux dépôts hors de la session écrit dans le dépôt de tests réglé', async () => {
+    vider();
+    const vMulti = (await app.api('POST', '/api/verifiers', {
+      name: 'scenarios-multi', kind: 'commands', commands: [path.join(bin, 'scenarios.sh')], timeout_s: 60, run_base: 0,
+      repos: [{ repo_id: autreId, mode: 'worktree' }, { repo_id: testsId, mode: 'worktree' }],
+    })).body.id;
+    const t = await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'scénario multi', auto_push: true, verify_chain: [vApp], verify_chain_scenario: { verifier_id: vMulti },
+      targets: [{ repo_id: repoId, branch: 'ai/chaine-multi' }],
+    });
+    assert.equal(t.status, 200, JSON.stringify(t.body));
+    await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
+    try {
+      await app.api('POST', `/api/tasks/${t.body.id}/run`);
+      const c = await finie(t.body.id);
+      assert.equal(c.status, 'validated', JSON.stringify(c));
+      const fichier = `scenarios/nouveau-${t.body.id}.sh`;
+      assert.match(execFileSync('git', ['show', `ai/chaine-multi:${fichier}`], { cwd: tests.bare }).toString(), /scénario dry-run/,
+        'écrit dans le dépôt de tests réglé');
+      assert.throws(() => execFileSync('git', ['rev-parse', '--verify', 'ai/chaine-multi'], { cwd: autre.bare, stdio: 'pipe' }),
+        'rien dans l’autre dépôt couvert');
+    } finally { await app.api('PUT', '/api/config', { test_repo: '' }); }
   });
 
   test('un même vérificateur ne tourne jamais deux fois en même temps', async () => {
@@ -425,6 +504,27 @@ exit 0
         return (await page.locator(`.task-chaine[data-chaine-task="${id}"] .task-chaine-diag.is-instable`).count()) > 0;
       }, 'la carte montre le diagnostic');
       assert.match(await page.locator(`.task-chaine[data-chaine-task="${id}"] .task-chaine-preuve`).textContent(), /simulé/);
+      assert.deepEqual(erreurs, []);
+    });
+
+    test('Réglages → Vérificateurs : le dépôt de tests se choisit dans une liste filtrable, s’enregistre et se relit', async () => {
+      const ouvrir = async () => {
+        await page.reload();
+        await page.locator('nav button[data-tab="admin"]').click();
+        await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+        await page.waitForSelector('#sub-verifiers.active');
+      };
+      await ouvrir();
+      const champ = page.locator('#testRepoBox .cb-search');
+      await champ.click();
+      await champ.fill('tests');
+      await page.locator('#testRepoBox .combo-opt[data-v="gitlab/grp/tests"]').click();
+      await page.locator('#sub-verifiers button[type="submit"][form="configForm"]').last().click();
+      try {
+        await attendreServeur(async () => (await app.api('GET', '/api/config')).body.test_repo === 'gitlab/grp/tests', 'le dépôt de tests est enregistré');
+        await ouvrir();
+        await page.waitForFunction(() => document.querySelector('#testRepoBox .cb-search').value === 'grp/tests');
+      } finally { await app.api('PUT', '/api/config', { test_repo: '' }); }
       assert.deepEqual(erreurs, []);
     });
   });

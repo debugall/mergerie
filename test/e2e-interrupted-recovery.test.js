@@ -72,6 +72,20 @@ describe('Reprise après un arrêt du serveur', () => {
     assert.equal(task(id).last_error, null, 'une session aboutie ne doit pas hériter d’un message d’erreur');
   });
 
+  test('une boucle de convergence coupée s’arrête, en gardant l’étape où elle en était', () => {
+    const now = new Date().toISOString();
+    const mr = app.db.prepare(`INSERT INTO mr (repo_id, iid, title, source_branch, target_branch, status, updated_at)
+      VALUES (?, 9101, 'coupée', 'feat/conv', 'main', 'to_review', ?)`).run(repoId, now).lastInsertRowid;
+    const run = app.db.prepare(`INSERT INTO convergence_run (mr_id, status, threshold, max_passes, passes_done, phase, notes_json, started_at)
+      VALUES (?, 'running', 8, 3, 1, 'review', '[5]', ?)`).run(mr, now).lastInsertRowid;
+    app.db.reconcilierTravauxCoupes('serveur arrêté');
+    const ligne = app.db.prepare('SELECT * FROM convergence_run WHERE id = ?').get(run);
+    assert.equal(ligne.status, 'stopped', 'plus « en cours » : rien ne la fait tourner');
+    assert.equal(ligne.phase, 'review', 'la frise dit où elle s’est arrêtée');
+    assert.equal(ligne.message, 'serveur arrêté');
+    assert.ok(ligne.finished_at);
+  });
+
   test('une vérification coupée repart avec un verdict, pas dans le vide', () => {
     const now = new Date().toISOString();
     const v = app.db.prepare(`INSERT INTO verification (verifier_name, status, targets_json, created_at, started_at)

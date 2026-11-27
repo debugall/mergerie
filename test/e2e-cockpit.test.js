@@ -169,9 +169,56 @@ describe('Cockpit et « Lancer ma journée »', () => {
     assert.ok(ligne, 'elle est « à toi »');
     assert.equal(ligne.quoi, 'chaine');
     assert.deepEqual(ligne.raisons, [{ quoi: 'base', nom: 'unitaires' }]);
+    // La frise : codage et push faits, le vérificateur arrêté sur la base — l'étape courante —, le reste à venir.
+    const wf = ligne.workflow;
+    assert.deepEqual(wf.etapes.map((e) => [e.cle, e.cote || '', e.etat]), [
+      ['code', '', 'fait'], ['push', '', 'fait'], ['verif', 'base', 'a_toi'], ['verif', 'head', 'a_venir'], ['validee', '', 'a_venir'],
+    ]);
+    assert.equal(wf.courante, 2, 'l’étape courante est la base cassée');
+    assert.ok(wf.etapes[2].verification_id, 'elle mène à sa vérification');
+    assert.deepEqual(wf.continuer, { action: 'chaine' }, 'arrêtée : « Continuer » relance la chaîne');
     const st = (await app.api('GET', '/api/status')).body;
     assert.equal(st.tasksAToi, d.a_toi.length, 'la pastille du menu compte les lignes « à toi »');
     fs.writeFileSync(path.join(bin, 'v.sh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  });
+
+  test('la frise d’une session prête à lancer montre tout ce qui va se passer : codage, push, chaîne, scénario, validée', async () => {
+    const t = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'frise', auto_push: true, verify_chain: [vId], verify_chain_scenario: { verifier_id: vId },
+      targets: [{ repo_id: repoId, branch: 'ai/frise' }],
+    })).body;
+    const d = (await app.api('GET', '/api/cockpit')).body;
+    const l = d.pret.find((x) => x.task_id === t.id);
+    assert.ok(l, 'prête à lancer');
+    assert.deepEqual(l.workflow.etapes.map((e) => e.cle),
+      ['code', 'push', 'verif', 'verif', 'scen-ecrire', 'scen-pousser', 'scen-lancer', 'validee']);
+    assert.ok(l.workflow.etapes.every((e) => e.etat === 'a_venir'), 'rien n’a commencé');
+    assert.equal(l.workflow.courante, null);
+    await app.api('DELETE', `/api/tasks/${t.id}`);
+  });
+
+  test('la boucle de convergence dans la frise : review, puis correction et review par passe, la passe courante, les passes possibles', async () => {
+    // eslint-disable-next-line global-require
+    const { etapesConvergence } = require('../src/jobs/workflow');
+    const resume = (etapes) => etapes.map((e) => `${e.cle}${e.n == null ? '' : e.n}:${e.etat}${e.si ? '?' : ''}`);
+    // Deuxième passe : la correction 2 tourne ; la review 2 et la passe 3 n'auront lieu que si la note reste basse.
+    assert.deepEqual(resume(etapesConvergence({ status: 'running', phase: 'fix', passes_done: 1, max_passes: 3, notes_json: '[5.2,6.8]' }, null, 3)),
+      ['review0:fait', 'fix1:fait', 'review1:fait', 'fix2:en_cours', 'review2:a_venir', 'fix3:a_venir?', 'review3:a_venir?']);
+    // La review de la deuxième passe tourne.
+    assert.deepEqual(resume(etapesConvergence({ status: 'running', phase: 'review', passes_done: 2, max_passes: 3, notes_json: '[5.2,6.8]' }, null, 3)).slice(3, 5),
+      ['fix2:fait', 'review2:en_cours']);
+    // Finie au seuil après deux passes : rien d'autre, et la fin le dit.
+    const fini = etapesConvergence({ status: 'converged', phase: null, passes_done: 2, max_passes: 3, notes_json: '[5.2,6.8,8.4]', best_note: 8.4 }, null, 3);
+    assert.deepEqual(resume(fini), ['review0:fait', 'fix1:fait', 'review1:fait', 'fix2:fait', 'review2:fait', 'converge-fin:fait']);
+    assert.equal(fini[4].note, 8.4);
+    // Une question pendant la correction : à toi, et la boucle s'arrête là.
+    assert.deepEqual(resume(etapesConvergence({ status: 'needs_input', phase: 'fix', passes_done: 0, max_passes: 3, notes_json: '[4]' }, null, 3)),
+      ['review0:fait', 'fix1:a_toi']);
+    // Coupée pendant la review de la première passe (serveur arrêté) : cette étape porte l'échec, rien après.
+    assert.deepEqual(resume(etapesConvergence({ status: 'stopped', phase: 'review', passes_done: 1, max_passes: 3, notes_json: '[5]' }, null, 3)),
+      ['review0:fait', 'fix1:fait', 'review1:echec']);
+    // Pas encore de boucle (le job vient de partir) : la review, puis les passes possibles.
+    assert.deepEqual(resume(etapesConvergence(null, null, 2)), ['review0:a_venir', 'fix1:a_venir?', 'review1:a_venir?', 'fix2:a_venir?', 'review2:a_venir?']);
   });
 
   describe('à l’écran', { skip: dispo ? false : MSG_NAVIGATEUR }, () => {
@@ -191,7 +238,13 @@ describe('Cockpit et « Lancer ma journée »', () => {
       assert.equal(await page.locator('#taskList').isHidden(), true, 'le cockpit remplace la liste');
       await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-item.is-chaine').first().waitFor();
       assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-pourquoi').first().textContent(), /base cassée/);
-      assert.equal(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .task-chaine').count() > 0, true, 'la chaîne, comme sur la carte');
+      // La frise : toutes les étapes, l'étape courante mise en avant — la base cassée, à toi.
+      const courante = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-wf-etape.is-courante').first();
+      await courante.waitFor();
+      assert.match(await courante.getAttribute('class'), /is-a_toi/);
+      assert.match(await courante.textContent(), /unitaires · base/);
+      assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-wf-ou').first().textContent(), /Étape en cours : unitaires · base/);
+      assert.ok(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-wf').first().locator('.cockpit-wf-etape').count() >= 5, 'codage, push, base, branche, validée');
       await page.locator('#cockpitBox [data-cockpit-sec="termine"] .cockpit-item').first().waitFor();
       const id = await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] [data-cockpit-open]').first().getAttribute('data-cockpit-open');
       await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] [data-cockpit-open]').first().click();
@@ -210,6 +263,22 @@ describe('Cockpit et « Lancer ma journée »', () => {
       await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
       await page.goto(app.base);
       await page.locator('#tab-task.active.vue-cockpit #cockpitBox [data-cockpit-sec="a_toi"]').waitFor();
+      assert.deepEqual(erreurs, []);
+    });
+
+    test('« Continuer » sur une chaîne arrêtée : la base réparée, le déroulé va au bout — validée', async () => {
+      await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
+      const ligne = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-item.is-chaine').first();
+      await ligne.waitFor();
+      const id = Number(await ligne.getAttribute('data-cockpit-task'));
+      // La base est réparée (le script repasse au vert) : « Continuer » fait repartir le déroulé.
+      await page.locator(`#cockpitBox [data-cockpit-continuer="${id}"][data-action="chaine"]`).click();
+      await attendreServeur(async () => {
+        const l = Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((x) => x && x.task_id === id);
+        return l && l.workflow.etapes.at(-1).etat === 'fait';
+      }, 'la chaîne va au bout', 60000);
+      await page.locator(`#cockpitBox [data-cockpit-sec="termine"] .cockpit-item[data-cockpit-task="${id}"]`).waitFor();
+      assert.equal(await page.locator(`#cockpitBox [data-cockpit-continuer="${id}"]`).count(), 0, 'plus rien à continuer');
       assert.deepEqual(erreurs, []);
     });
 

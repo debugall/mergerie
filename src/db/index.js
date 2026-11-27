@@ -84,6 +84,9 @@ function reconcilierTravauxCoupes(raison) {
      quand son exécution échoue, et c'est lui qui rend la relance possible. */
   compte.verifications = maj(`UPDATE verification SET status = 'error', verdict = 'verify_error',
                               finished_at = ? WHERE status = 'running'`, maintenant);
+  /* Une boucle de convergence coupée resterait « en cours » pour toujours (le cockpit montrerait une review
+     qui ne tourne plus) : arrêtée, sa phase gardée — on voit à quelle étape elle s'est arrêtée. */
+  maj(`UPDATE convergence_run SET status = 'stopped', message = ?, finished_at = ? WHERE status = 'running'`, raison, maintenant);
   return compte;
 }
 

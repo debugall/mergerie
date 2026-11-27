@@ -54,6 +54,7 @@ async function loadConfig() {
   if (configSale) return;
   const f = $('#configForm');
   for (const k of CONFIG_FIELDS) { if (f[k]) f[k].value = c[k] || ''; }
+  poserDepotTests(c.test_repo);   // le combo : son libellé suit la valeur cachée
   f.auto_refresh_minutes.value = Number(c.auto_refresh_minutes) || 0; // 0 affiché explicitement
   // Idem : 0 signifie « sans limite », il doit s'écrire plutôt que rester vide.
   if (f.retention_days) f.retention_days.value = Number(c.retention_days) || 0;

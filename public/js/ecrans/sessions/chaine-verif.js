@@ -2,7 +2,6 @@
 /* LA CHAÎNE DE VALIDATION D'UNE SESSION DE CODAGE : le choix dans la fenêtre de session (des
    vérificateurs dans l'ordre où ils tourneront) et son état sur la carte — vérificateur par vérificateur,
    la base puis la branche, l'essai en cours, et « Relancer » quand elle attend l'utilisateur. */
-// @expose chaineHtml
 
 let chaineOrdre = [];          // les vérificateurs cochés, dans l'ordre de passage
 let chaineVerifiers = [];

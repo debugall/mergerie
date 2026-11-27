@@ -47,14 +47,26 @@ function normaliserScenario(valeur) {
   return JSON.stringify({ verifier_id: verifierId, skill });
 }
 
-/* Le dépôt de tests : celui que couvre le vérificateur des scénarios hors des dépôts de la session. */
+/* Le dépôt de tests : celui des réglages (Réglages → Vérificateurs, commun à tous les vérificateurs), que le
+   vérificateur des scénarios doit couvrir hors des dépôts de la session. Sans réglage, déduit — le seul dépôt
+   qu'il couvre hors de la session ; plusieurs, on ne choisit pas au hasard. Rend `{ repo }` ou `{ erreur }`. */
 function depotTests(verifierId, projets, couvertureVerifier) {
-  for (const id of couvertureVerifier(verifierId).keys()) {
-    if (projets.some((p) => p.repo_id === id)) continue;
-    const r = db.prepare('SELECT * FROM repo WHERE id = ?').get(id);
-    if (r) return r;
+  const couverts = couvertureVerifier(verifierId);
+  const nomVerif = (db.prepare('SELECT name FROM verifier WHERE id = ?').get(verifierId) || {}).name || `#${verifierId}`;
+  const ref = String(getConfig().test_repo || '').trim();
+  if (ref) {
+    const i = ref.indexOf('/');
+    const repo = i > 0 ? db.prepare("SELECT * FROM repo WHERE COALESCE(forge, 'gitlab') = ? AND project = ?").get(ref.slice(0, i), ref.slice(i + 1)) : null;
+    if (!repo) return { erreur: t('task.chaine.scen.test-repo-unknown', { repo: ref }) };
+    if (projets.some((p) => p.repo_id === repo.id)) return { erreur: t('task.chaine.scen.test-repo-in-session', { repo: repo.project }) };
+    if (!couverts.has(repo.id)) return { erreur: t('task.chaine.scen.test-repo-not-covered', { name: nomVerif, repo: repo.project }) };
+    return { repo };
   }
-  return null;
+  const candidats = [...couverts.keys()].filter((id) => !projets.some((p) => p.repo_id === id))
+    .map((id) => db.prepare('SELECT * FROM repo WHERE id = ?').get(id)).filter(Boolean);
+  if (!candidats.length) return { erreur: t('task.chaine.scen.no-test-repo') };
+  if (candidats.length > 1) return { erreur: t('task.chaine.scen.test-repo-ambiguous', { name: nomVerif, repos: candidats.map((r) => r.project).join(', ') }) };
+  return { repo: candidats[0] };
 }
 
 /* Un chemin rendu par l'agent : relatif, dans le dépôt de tests, hors de `.git`. Tout le reste est refusé —

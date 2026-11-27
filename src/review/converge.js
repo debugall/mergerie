@@ -163,6 +163,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
     let v = latestVersion(mrId);
     const stale = mr.reviewed_sha && mr.current_sha && mr.reviewed_sha !== mr.current_sha;
     if (!v || stale) {
+      setRun({ phase: 'review' });
       onLog(t(v ? 'log.converge.stale' : 'log.converge.no-review'));
       await reviewMr(repo, mr, onLog, { incremental: !!v });
       mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
@@ -171,7 +172,8 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
 
     let note = note10Of(v);
     let best = { note, version: v ? v.version : null };
-    setRun({ start_note: note, best_note: note, best_version: best.version });
+    const notes = [note];
+    setRun({ start_note: note, best_note: note, best_version: best.version, notes_json: JSON.stringify(notes) });
     onLog(t('log.converge.start', { note: note == null ? '—' : `${note}/10`, threshold, max: maxPasses }));
 
     let passes = 0;
@@ -185,6 +187,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
       // 1) Correction IA à partir du rapport courant → commit + push.
       const cur = latestVersion(mrId);
       const reviewMd = cur && cur.md_path && fs.existsSync(cur.md_path) ? fs.readFileSync(cur.md_path, 'utf8') : '';
+      setRun({ phase: 'fix' });
       onLog(`──── passe ${passes + 1}/${maxPasses} : correction ────`);
       /* Même règle qu'ailleurs : le message de commit choisi pour la session vaut pour TOUS
          ses commits, passes de convergence comprises. Sans session (convergence lancée depuis
@@ -206,7 +209,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
       passes += 1;
       db.prepare('UPDATE mr SET current_sha = ?, updated_at = ? WHERE id = ?')
         .run(newSha, new Date().toISOString(), mrId);
-      setRun({ passes_done: passes });
+      setRun({ passes_done: passes, phase: 'review' });
 
       // 2) Re-review INCRÉMENTALE du delta (reviewed_sha..newSha).
       mr = db.prepare('SELECT * FROM mr WHERE id = ?').get(mrId);
@@ -216,6 +219,8 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
 
       const nv = latestVersion(mrId);
       const newNote = note10Of(nv);
+      notes.push(newNote);
+      setRun({ notes_json: JSON.stringify(notes) });
       onLog(t('log.converge.pass-note', { n: passes, note: newNote == null ? '—' : `${newNote}/10` }));
       // Le verdict objectif de cette passe, à côté de la note — il informe, il ne décide pas.
       if (!proc.isCancelled()) dernierVerdict = (await verdictDePasse(ctx, repo, mr, newSha, onLog, dernierVerdict)) || dernierVerdict;
@@ -229,7 +234,7 @@ async function convergeRun(mrId, opts, onLog = () => {}, ctx = {}) {
     }
 
     const message = summaryFor(status, { best, passes, threshold });
-    setRun({ status, passes_done: passes, message, finished_at: new Date().toISOString() });
+    setRun({ status, passes_done: passes, message, phase: null, finished_at: new Date().toISOString() });
     onLog(`✅ convergence : ${status} — ${message}`);
     notify.push('converge_done', { mr_id: mrId, iid: mr.iid, status, note10: best.note, passes });
     require('../core/events').emit('converge.finished', { mr_id: mrId, iid: mr.iid, status, note10: best.note == null ? null : best.note, passes }).catch(() => {});

@@ -990,7 +990,11 @@ repository mounted read-only, and follows the chosen **scenario skill** (or, wit
 repository directly). Either its code is **already covered** — it says by which scenario and why, and the
 task is **validated** —, or it **writes a scenario** following the test repository's conventions and gives
 it back file by file; **Mergerie** writes it on a branch named like the session's in the test repository,
-commits and pushes (a path leaving the repository or aiming at `.git` is refused). The **scenario
+commits and pushes (a path leaving the repository or aiming at `.git` is refused). The **test
+repository** is set once, for every verifier, in **Settings → Verifiers → `Test repository`**; the scenario
+verifier must cover it, and it cannot be one of the session's repositories. Left empty, it is inferred: the
+only repository the scenario verifier covers outside the session — when it covers several, the step stops
+and asks you to pick one rather than write in a random one. The **scenario
 verifier** then runs, the test repository on that branch, with **`MERGERIE_SCENARIO`** = the written paths:
 its commands run that scenario alone (`npx playwright test $MERGERIE_SCENARIO`, for instance; empty, they
 run everything). Two attempts. Green: the card says **“Validation chain: validated”**. Red twice: the
@@ -1001,8 +1005,27 @@ scenario), twice at most, then *your turn*.
 session asking a question or waiting for its plan's approval, a stopped chain with the reason — broken
 base, broken branch and its diagnosis, failing scenario —, a session in error), **Running** (what runs or
 waits for its turn, with the job's last line), **Done (24 h)** (chain validated or all green, or a session
-pushed without a chain). Re-read every three seconds while shown; each row shows the chain as on the card
-(`Run again` included) and opens its session in one click. Sessions idle for three days are left out.
+pushed without a chain). Re-read every three seconds while shown; each row opens its session in one click.
+Sessions idle for three days are left out.
+
+**The workflow strip.** Each row shows **every step** of the session, in order, and what is going to
+happen: **Coding** → **Push** → the convergence loop (**Review** with its score, then **Fix n** and
+**Review n** per pass, and the end — threshold reached, cap, score dropping) → each verifier of the chain
+(**base**, then **branch**, and its **diagnosis** if any) → the coverage scenario (**Test written**,
+**Test pushed**, **Test run**, “in” the test repository, and its **fix**) → **Validated**. One pill per
+step: ✓ done, ⟳ running, clock queued, inbox “your turn”, ✗ failed, empty circle to come; convergence
+passes that only happen if the score stays below the threshold are dashed. The **current step** stands
+out and is named above the strip (“Current step: Review 2 (running)”); a verification opens from its pill.
+A convergence loop cut by a server stop is stopped at restart, the step it was at marked failed.
+
+**`Continue`.** When the workflow stops on a step, a **`Continue`** button next to the current step starts it
+again from there: failed coding → coding runs again on the projects that did not finish; refused push →
+what is committed is pushed; convergence cut or failed → convergence resumes (code already done is not
+redone, the open MR is reused), then the chain starts by itself; stopped verifier, diagnosis or scenario →
+the chain runs again from what is not green (like `Run again`); a chain that never started although the
+code is pushed → it starts. A question or a plan to approve cannot be skipped: the button becomes
+**`Answer to continue`** and opens the session; a question asked during a convergence fix, once answered,
+brings `Continue` back, which resumes convergence. Nothing shows while a job runs.
 
 **“Start my day”.** Type ticket keys, or tick them in **`My tickets`** (your unfinished tickets — one Jira
 call), choose the session whose **validation chain** is reused (the most recent one that has a chain is
@@ -2595,7 +2618,7 @@ fragment **or when the diff touches a path** — a glob such as `**/migrations/*
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
 **Verifiers** (your test commands, and the repositories each of them can test — see *Objective verification*
-below; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
+below; at the top, the **test repository** shared by all of them, where a validation chain's coverage scenario is written — a searchable list, empty = inferred; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
 field selected: renaming is the first gesture; the form **suggests the commands the covered repositories

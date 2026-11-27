@@ -202,6 +202,10 @@ db.exec(`CREATE TABLE IF NOT EXISTS convergence_run (
   finished_at TEXT
 )`);
 db.exec('CREATE INDEX IF NOT EXISTS idx_convergence_run_mr ON convergence_run(mr_id)');
+/* OÙ EN EST LA BOUCLE, pour la frise du cockpit : l'étape qui tourne (`review` ou `fix`) et la note de
+   chaque review, dans l'ordre — celle de départ, puis une par passe. */
+try { db.exec('ALTER TABLE convergence_run ADD COLUMN phase TEXT'); } catch { /* déjà présente */ }
+try { db.exec('ALTER TABLE convergence_run ADD COLUMN notes_json TEXT'); } catch { /* déjà présente */ }
 
 /* La couverture d'un vérificateur PAR GROUPE (ameliorations_proposal.md, §4.5) : « ce
    vérificateur teste tous les dépôts du groupe backend », en mode worktree — le mode in place et

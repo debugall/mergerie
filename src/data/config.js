@@ -43,7 +43,7 @@ const ALLOWED = [
   'review_link_template', 'jira_notify_template', 'jira_notify_merge', 'jira_merge_template',
   'auto_review_new', 'review_auto_max', 'auto_rereview_stale',
   'auto_runner',
-  'verif_auto_max', 'verif_auto_authors', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'verif_auto_max', 'verif_auto_authors', 'test_repo', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains', 'agent_read_unrestricted',
   'agent_bin', 'agent_args', 'agent_timeout_ms', 'agent_backend', 'agent_mode', 'agent_env', 'agent_name', 'clone_blobless',
@@ -243,6 +243,15 @@ function updateConfig(patch) {
   /* QUI PEUT FAIRE EXÉCUTER SON CODE ICI SANS UN CLIC : moi seul (défaut), ou tout le monde —
      un choix explicite, plus un défaut. Toute autre valeur retombe sur le prudent. */
   next.verif_auto_authors = next.verif_auto_authors === 'all' ? 'all' : 'mine';
+  /* Le dépôt de tests : `forge/projet` d'un dépôt suivi ICI quand on le choisit ; une valeur venue d'un
+     collègue pour un dépôt que ce poste ne suit pas reste telle quelle tant qu'on n'y touche pas. */
+  next.test_repo = String(next.test_repo || '').trim();
+  if ('test_repo' in patch && next.test_repo && next.test_repo !== current.test_repo) {
+    const i = next.test_repo.indexOf('/');
+    if (i <= 0 || !db.prepare("SELECT 1 FROM repo WHERE COALESCE(forge, 'gitlab') = ? AND project = ?").get(next.test_repo.slice(0, i), next.test_repo.slice(i + 1))) {
+      throw new Error(t('err.config.test-repo-unknown', { repo: next.test_repo }));
+    }
+  }
   if ('verif_auto_max' in patch) {
     const vm = parseInt(patch.verif_auto_max, 10);
     next.verif_auto_max = Number.isFinite(vm) && vm >= 0 ? Math.min(50, vm) : 5;
@@ -367,6 +376,7 @@ function updateConfig(patch) {
       stale_mr_days = @stale_mr_days,
       verif_auto_max = @verif_auto_max,
       verif_auto_authors = @verif_auto_authors,
+      test_repo = @test_repo,
       agent_auto_max = @agent_auto_max,
       periode_watch_protected = @periode_watch_protected,
       jira_stats_bug_types = @jira_stats_bug_types,

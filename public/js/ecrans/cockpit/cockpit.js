@@ -38,7 +38,55 @@ function cockpitLigne(l, { quoi = null, pret = false } = {}) {
     </div>
     <div class="meta">${projets}</div>
     ${pourquoi ? `<div class="cockpit-pourquoi">${esc(pourquoi)}</div>` : ''}
-    ${chaineHtml({ id: l.task_id, chaine: l.chaine })}
+    ${cockpitWorkflowHtml(l)}
+  </div>`;
+}
+/* LA FRISE : toutes les étapes du déroulé, dans l'ordre — ce qui est fait, ce qui tourne (mise en avant), ce
+   qui attend, ce qui viendra ; en pointillé, une passe qui n'aura lieu que si la note reste sous le seuil.
+   Une étape de vérification ouvre son rapport. */
+const WF_ICONE = { fait: 'check', en_cours: 'refresh', en_file: 'clock', a_toi: 'inbox', echec: 'close' };
+function cockpitEtapeLibelle(e) {
+  const v = { n: e.n || 0, nom: e.nom || '', projet: e.projet || '' };
+  let libelle;
+  if (e.cle === 'verif') libelle = tr(e.cote ? `cockpit.wf.verif-${e.cote}` : 'cockpit.wf.verif', v);
+  else if (e.cle === 'review' && !e.n) libelle = tr('cockpit.wf.review-0', v);
+  else libelle = tr(`cockpit.wf.${e.cle}`, v);
+  // Plusieurs projets : chacun a sa boucle de convergence, la frise dit laquelle.
+  return e.projet && !e.cle.startsWith('scen-') ? `${e.projet} · ${libelle}` : libelle;
+}
+function cockpitEtapeDetail(e) {
+  const out = [];
+  if (e.note != null) out.push(tr('cockpit.wf.note', { note: String(e.note).replace('.', ',') }));
+  if (e.essai > 1) out.push(tr('task.chaine.attempt', { n: e.essai }));
+  if (e.cle === 'converge-fin' && e.detail) out.push(tr(`cockpit.wf.fin.${e.detail}`));
+  else if (e.cle === 'diag' && e.detail) out.push(tr(`task.chaine.diag.cause.${e.detail}`));
+  else if ((e.cle === 'scen-ecrire' || e.cle === 'scen-pousser') && e.etat === 'fait' && e.detail) out.push(e.detail);   // les fichiers, le scénario qui couvre, la branche
+  else if (e.detail && (e.etat === 'echec' || e.etat === 'a_toi')) out.push(e.detail);
+  if (e.projet && e.cle.startsWith('scen-')) out.push(tr('cockpit.wf.in', { projet: e.projet }));
+  return out.join(' · ');
+}
+function cockpitWorkflowHtml(l) {
+  const wf = l.workflow;
+  if (!wf || !wf.etapes || !wf.etapes.length) return '';
+  const etapes = wf.etapes.map((e, i) => {
+    const detail = cockpitEtapeDetail(e);
+    const titre = `${tr(`cockpit.wf.etat.${e.etat}`)}${e.si ? ` — ${tr('cockpit.wf.si')}` : ''}${detail ? ` — ${detail}` : ''}`;
+    const lien = e.verification_id ? ` data-chaine-verif="${e.verification_id}" role="button" tabindex="0"` : '';
+    return `<li class="cockpit-wf-etape is-${esc(e.etat)}${e.si ? ' is-si' : ''}${i === wf.courante ? ' is-courante' : ''}" title="${esc(titre)}"${lien}>
+      <span class="cockpit-wf-ico">${WF_ICONE[e.etat] ? svgIco(WF_ICONE[e.etat]) : '<span class="cockpit-wf-point"></span>'}</span>
+      <span class="cockpit-wf-txt"><span class="cockpit-wf-nom">${esc(cockpitEtapeLibelle(e))}</span>${detail ? `<span class="cockpit-wf-detail">${esc(detail)}</span>` : ''}</span>
+    </li>`;
+  }).join('');
+  const c = wf.courante == null ? null : wf.etapes[wf.courante];
+  const ou = c ? tr('cockpit.wf.now', { etape: cockpitEtapeLibelle(c), etat: tr(`cockpit.wf.etat.${c.etat}`) }) : '';
+  // Arrêtée sur une étape : « Continuer » fait repartir le déroulé (une question, elle, ouvre la session).
+  const k = wf.continuer;
+  const continuer = k ? `<button type="button" class="btn btn-sm btn-primary" data-cockpit-continuer="${l.task_id}" data-action="${esc(k.action)}"
+      data-targets="${esc((k.targets || []).join(','))}" title="${esc(tr(`cockpit.wf.continue.${k.action}`))}">
+      <svg class="ico"><use href="#i-${k.action === 'repondre' ? 'inbox' : 'play'}"/></svg>${esc(tr(k.action === 'repondre' ? 'cockpit.wf.answer' : 'cockpit.wf.continue'))}</button>` : '';
+  return `<div class="cockpit-wf" data-cockpit-wf="${l.task_id}">
+    ${ou || continuer ? `<div class="cockpit-wf-ou">${esc(ou)} ${continuer}</div>` : ''}
+    <ol class="cockpit-wf-etapes">${etapes}</ol>
   </div>`;
 }
 function cockpitSection(cle, lignes, rendu) {
@@ -77,6 +125,8 @@ $('#cockpitBox') && $('#cockpitBox').addEventListener('click', async (e) => {
     loadCockpit(); refreshStatus();
     return;
   }
+  const k = e.target.closest('[data-cockpit-continuer]');
+  if (k) { await continuerCockpit(k); return; }
   const ed = e.target.closest('[data-cockpit-edit]');
   if (ed) { openTaskEdit(Number(ed.dataset.cockpitEdit)); return; }
   const del = e.target.closest('[data-cockpit-del]');
@@ -99,7 +149,23 @@ async function supprimerElementCockpit(b) {
   } catch (err) { toast(explainError(err.message), true); }
   loadCockpit();
 }
-// « Relancer » d'une chaîne (le geste de la carte de session) : le cockpit se relit aussitôt.
-document.addEventListener('click', (e) => {
-  if (e.target.closest && e.target.closest('#taskCockpit [data-chaine-relancer]')) setTimeout(() => { if ($('#tab-task.active.vue-cockpit')) loadCockpit(); }, 0);
-});
+/* « CONTINUER » : l'action que le serveur a choisie pour l'étape arrêtée, par la route qui la porte déjà —
+   relancer le codage des projets sans commit, pousser, reprendre la convergence, relancer (ou démarrer) la
+   chaîne. Une question n'a pas d'action : sa session s'ouvre pour y répondre. */
+const ROUTES_CONTINUER = {
+  code: (id, b) => [`/tasks/${id}/run`, { targets: (b.dataset.targets || '').split(',').filter(Boolean).map(Number) }],
+  push: (id) => [`/tasks/${id}/push-all`, {}],
+  converge: (id) => [`/tasks/${id}/converge`, {}],
+  chaine: (id) => [`/tasks/${id}/chaine/relancer`, {}],
+};
+async function continuerCockpit(b) {
+  const id = Number(b.dataset.cockpitContinuer);
+  const action = b.dataset.action;
+  if (action === 'repondre') { ouvrirSession(id, 'code'); return; }
+  const route = ROUTES_CONTINUER[action];
+  if (!route) return;
+  const [url, body] = route(id, b);
+  try { await busy(b, () => api(url, { method: 'POST', body })); toast(tr('cockpit.wf.continued')); }
+  catch (err) { toast(explainError(err.message), true); }
+  loadCockpit(); refreshStatus();
+}

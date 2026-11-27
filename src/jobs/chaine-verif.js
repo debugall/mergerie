@@ -104,7 +104,7 @@ function etat(chaine) {
 /* Les cibles d'un côté : les dépôts que le vérificateur couvre — ceux de la session sur la base ou la
    branche, les siens (dépôt de tests) sur leur branche par défaut — et les positions : les dépôts de la
    session qu'il ne couvre pas, mis sur la même ref dans le clone local. */
-async function preparerCote(verifier, taskId, quoi, { refTests = null } = {}) {
+async function preparerCote(verifier, taskId, quoi, { refTests = null, testsId = null } = {}) {
   const couverts = groupes.couvertureVerifier(verifier.id);
   const siens = projets(taskId);
   if (!siens.length) throw new Error(t('err.chaine.nothing-pushed'));
@@ -118,8 +118,9 @@ async function preparerCote(verifier, taskId, quoi, { refTests = null } = {}) {
   for (const repoId of couverts.keys()) {
     if (siens.some((p) => p.repo_id === repoId)) continue;
     if (!db.prepare('SELECT 1 FROM repo WHERE id = ?').get(repoId)) continue;
-    // Le dépôt de tests : sa branche par défaut, ou celle du scénario écrit pour cette session.
-    cibles.push({ repo_id: repoId, mr_id: null, head_sha: `origin/${refTests || 'HEAD'}`, base_sha: null, branch: refTests || 'HEAD', tag: null, mode: 'worktree' });
+    // Un dépôt hors session : sa branche par défaut ; le dépôt de tests, celle du scénario écrit pour cette session.
+    const ref = refTests && repoId === testsId ? refTests : 'HEAD';
+    cibles.push({ repo_id: repoId, mr_id: null, head_sha: `origin/${ref}`, base_sha: null, branch: ref, tag: null, mode: 'worktree' });
   }
   if (!cibles.length) throw new Error(t('err.plan.verifier-covers-none', { name: verifier.name }));
   const positions = [];
@@ -257,8 +258,8 @@ async function phaseScenario(chaine, task, cfg, sig) {
   const scen = chaine.scenario || {};
   if (scen.couvert) return 'validated';
   if (scen.erreur) return 'attention';
-  const tests = scenarioMod.depotTests(cfg.verifier_id, projets(task.id), groupes.couvertureVerifier);
-  if (!tests) { ecrireScenario(chaine.id, { ...scen, erreur: t('task.chaine.scen.no-test-repo') }); return 'attention'; }
+  const { repo: tests, erreur } = scenarioMod.depotTests(cfg.verifier_id, projets(task.id), groupes.couvertureVerifier);
+  if (!tests) { ecrireScenario(chaine.id, { ...scen, erreur }); return 'attention'; }
   if (!scen.sha) {
     if (scen.ecrit) return 'attention';   // la session n'a rien rendu d'utilisable : `erreur` le dit déjà
     ecrireScenario(chaine.id, { ...scenarioMod.lancerAgent(task, scen, { cfg, tests, quoi: 'ecrire', sig }), ecrit: true });
@@ -279,7 +280,9 @@ async function lancerScenario(chaine, cfg, scen, sig) {
   try {
     const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(cfg.verifier_id);
     if (!verifier) throw new Error(t('err.verify.verifier-gone'));
-    const { cibles, positions } = await preparerCote(verifier, chaine.task_id, 'head', { refTests: scen.branche });
+    const { repo: tests, erreur } = scenarioMod.depotTests(cfg.verifier_id, projets(chaine.task_id), groupes.couvertureVerifier);
+    if (!tests) throw new Error(erreur);
+    const { cibles, positions } = await preparerCote(verifier, chaine.task_id, 'head', { refTests: scen.branche, testsId: tests.id });
     const { verification } = creerVerification({ verifier, cibles, enFile: true, automatique: true, positions });
     db.prepare('UPDATE verification SET chaine_id = ?, scenario = ? WHERE id = ?').run(chaine.id, (scen.fichiers || []).join(' '), verification.id);
     ecrireScenario(chaine.id, { ...scen, runs: [...(scen.runs || []), { verification_id: verification.id, sig: `${sig}|${scen.sha}`, at: maintenant() }] });
@@ -293,7 +296,7 @@ async function lancerScenario(chaine, cfg, scen, sig) {
 async function conclureScenario(chaine, { ecrire: ecrireFichiers, onLog } = {}) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(chaine.task_id);
   const cfg = configScenario(task) || {};
-  const tests = cfg.verifier_id ? scenarioMod.depotTests(cfg.verifier_id, projets(task.id), groupes.couvertureVerifier) : null;
+  const tests = cfg.verifier_id ? scenarioMod.depotTests(cfg.verifier_id, projets(task.id), groupes.couvertureVerifier).repo || null : null;
   ecrireScenario(chaine.id, await scenarioMod.conclure(task, chaine.scenario, { tests, ecrire: ecrireFichiers, onLog }));
 }
 
@@ -354,7 +357,13 @@ async function apresSession(taskId, onLog = () => {}) {
    réparé), les erreurs de lancement s'effacent, et la chaîne repart de ce qui n'est pas vert. */
 async function relancer(taskId) {
   const chaine = chaineDe(taskId);
-  if (!chaine) throw new Error(t('err.chaine.not-found'));
+  /* Jamais partie (la session ou sa convergence s'est arrêtée avant) : « Continuer » la démarre. */
+  if (!chaine) {
+    await apresSession(taskId);
+    const r = resume(taskId);
+    if (!r) throw new Error(t('err.chaine.not-found'));
+    return r;
+  }
   const etats = etat(chaine);
   const scenActif = chaine.scenario && (chaine.scenario.en_cours
     || ACTIVE.has((etatScenario(chaine.scenario, signature(chaine.task_id)) || {}).etat));

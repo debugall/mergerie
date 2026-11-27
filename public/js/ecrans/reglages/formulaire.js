@@ -8,7 +8,7 @@ const CONFIG_FIELDS = ['gitlab_url', 'jira_url', 'jira_email', 'jira_token', 'ac
   'github_url', 'github_token',
   'clone_path', 'prompt_review', 'prompt_explain', 'prompt_modify', 'prompt_fix', 'ai_extra_instructions',
   'converge_threshold', 'converge_max_passes', 'jira_watch_minutes', 'retention_days', 'mr_retention_days', 'clone_blobless',
-  'verif_auto_max', 'verif_auto_authors', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
+  'verif_auto_max', 'verif_auto_authors', 'test_repo', 'review_auto_max', 'todo_close_on_merge', 'jira_test_key', 'agent_auto_max',
   'agent_max_turns', 'agent_daily_budget_usd',
   'agent_write_mode', 'agent_write_allow', 'agent_sandbox_network_domains',
   'agent_mode',
@@ -289,3 +289,25 @@ document.addEventListener('click', async (e) => {
   } catch (err) { toast(explainError(err.message), true); }
 });
 
+
+/* LE DÉPÔT DE TESTS (Réglages → Vérificateurs) : un combo, car les dépôts peuvent être nombreux. La valeur
+   est la référence `forge/projet` — réglage d'équipe, un id ne voyagerait pas ; le libellé, le projet. */
+const refDepot = (r) => `${r.forge || 'gitlab'}/${r.project}`;
+function poserDepotTests(ref) {
+  const box = $('#testRepoBox');
+  if (!box) return;
+  const v = String(ref || '');
+  const label = v ? v.slice(v.indexOf('/') + 1) : '';
+  const cache = box.querySelector('.cfg-test-repo');
+  cache.value = v;
+  cache.dataset.label = label;
+  const champ = box.querySelector('.cb-search');
+  champ.value = label;
+  champ.title = label;
+}
+if ($('#testRepoBox')) {
+  wireCombo($('#testRepoBox').parentNode, 'cfg-test-repo', async () => [
+    { value: '', label: tr('settings.opt.test-repo.none') },
+    ...(await loadRepoOptions()).map((r) => ({ value: refDepot(r), label: r.project })),
+  ]);
+}
