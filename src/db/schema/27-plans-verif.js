@@ -67,3 +67,6 @@ try { db.exec('ALTER TABLE config ADD COLUMN test_repo TEXT'); } catch { /* déj
    lancée, et son premier « Lancer » — de la carte, du cockpit, de « Lancer ma journée » — converge au lieu de
    seulement coder. Avant, la case ne valait qu'au clic de création. */
 try { db.exec('ALTER TABLE task ADD COLUMN converge_after INTEGER DEFAULT 0'); } catch { /* déjà présente */ }
+/* LE DÉPÔT DE TESTS D'UN VÉRIFICATEUR, qui surcharge celui des réglages (`config.test_repo`) quand ce vérificateur
+   est celui des scénarios d'une chaîne : `forge/projet`, partagé avec le vérificateur. Vide = le réglage général. */
+try { db.exec('ALTER TABLE verifier ADD COLUMN test_repo TEXT'); } catch { /* déjà présente */ }

@@ -57,7 +57,8 @@ function localGitTags(d) {
     + `${noteTxt ? `<span class="muted" title="${esc(noteTxt)}">${svgIco('alert')} ${esc(noteTxt)}</span>` : ''}`;
 }
 
-function localDirLine(d, t) {
+/* `frise` : la frise de ce dossier (session à plusieurs dossiers), rangée dans sa ligne. */
+function localDirLine(d, t, frise = '') {
   const st = TASK_STATUS[d.status] || { label: d.status, cls: '' };
   /* SUIVI DE CE DOSSIER SEUL, comme « Demander une correction » sur un projet de codage : à partir
      de deux dossiers (sur un seul, le suivi de la carte fait la même chose), sur un dossier traité. */
@@ -77,7 +78,7 @@ function localDirLine(d, t) {
     // Tout ce que la session a changé dans ce dossier, comme « Voir le diff » d'un projet de codage.
     + `${d.has_diff && t && d.status !== 'running' ? `<button class="btn btn-sm" data-lddiff="${d.id}" data-ltask="${t.id}" title="${esc(tr('local.title.view-diff'))}"><svg class="ico ico-sm"><use href="#i-eye"/></svg>${tr('mr.btn.diff')}</button>` : ''}`
     + `${suiviDossier ? `<button class="btn btn-sm" data-ldfollow="${d.id}" title="${esc(tr('local.title.request-fix-dir', { dir: d.dir_label || d.path || '' }))}"><svg class="ico ico-sm"><use href="#i-repeat"/></svg>${tr('task.btn.request-fix')}</button>` : ''}`
-    + `${resumeCmdBtn(d.resume_cmd)}</div>`
+    + `${resumeCmdBtn(d.resume_cmd)}${frise}</div>`
     + `${suiviDossier ? `<div class="mr-create followup followup-target" data-lfollowform="d${d.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph-dir', { dir: d.dir_label || d.path || '' }))}"></textarea>
         ${suiviCapturesHtml()}
@@ -110,9 +111,10 @@ function localCard(t) {
       ${promptBlock(t.prompt)}
       ${chapeauCarte(t)}
       ${coutCarte(t)}${badgeTodoAttente(t)}
-      ${friseHtml({ id: t.id, kind: 'local', workflow: t.workflow })}
+      ${/* Plusieurs dossiers : chacun porte sa frise sur sa ligne ; ici, l'étape en cours et « Continuer ». */''}
+      ${friseHtml({ id: t.id, kind: 'local', workflow: t.workflow }, { commun: n > 1 })}
       ${toggleProjetsHtml('local', t.id, n)}
-      <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map((d) => localDirLine(d, t)).join('')}</div>
+      <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map((d) => localDirLine(d, t, n > 1 ? friseHtml({ id: t.id, kind: 'local', workflow: t.workflow }, { cible: d.id }) : '')).join('')}</div>
       ${suiviBlock(t, 'l')}
       <div class="mr-create followup" data-lfollowform="${t.id}" hidden>
         <textarea class="followup-text" placeholder="${esc(tr('local.followup.ph'))}">${esc(t.followup_draft || '')}</textarea>

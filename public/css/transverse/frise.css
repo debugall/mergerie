@@ -24,3 +24,9 @@
 .frise-etape[data-chaine-verif] { cursor: pointer; }
 @keyframes frise-tourne { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .frise-etape.is-en_cours .frise-ico .ico { animation: none; } }
+.frise-groupe { display: grid; grid-template-columns: minmax(90px, 180px) 1fr; gap: 8px; align-items: start; margin: 4px 0; }
+.frise-groupe-nom { font-size: 12px; font-weight: 600; color: var(--text); padding-top: 4px; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .frise-groupe { grid-template-columns: 1fr; gap: 2px; } }
+.frise-cible { margin: 2px 0 0; }
+/* Dans la ligne d'un projet (carte de session), la frise passe sous ses boutons, sur toute la largeur. */
+.target-line > .frise-cible { flex-basis: 100%; }

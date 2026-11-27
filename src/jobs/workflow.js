@@ -142,35 +142,48 @@ function etapesChaine(task, chaine) {
 }
 
 function frise(task, { chaine = null, job = null } = {}) {
-  const cibles = db.prepare(`SELECT tt.id, tt.repo_id, tt.status, tt.commit_sha, tt.mr_iid, r.project FROM task_target tt
+  const cibles = db.prepare(`SELECT tt.id, tt.repo_id, tt.status, tt.commit_sha, tt.mr_iid, tt.last_error, r.project FROM task_target tt
     JOIN repo r ON r.id = tt.repo_id WHERE tt.task_id = ? ORDER BY tt.id`).all(task.id);
   const plusieurs = cibles.length > 1;
   const jobKind = job ? (db.prepare('SELECT kind FROM job WHERE id = ?').get(job.jobId) || {}).kind : null;
   const etapes = [];
 
-  const codeFait = cibles.length > 0 && cibles.every((c) => c.commit_sha || ['committed', 'pushed', 'done'].includes(c.status));
-  let codage = 'a_venir';
-  if (codeFait) codage = 'fait';
-  else if (task.status === 'needs_input' || task.status === 'planned') codage = 'a_toi';
-  else if (job) codage = job.enFile ? 'en_file' : 'en_cours';
-  else if (task.status === 'running') codage = 'en_cours';
-  else if (task.status === 'error') codage = 'echec';
-  etapes.push({ cle: 'code', etat: codage, detail: codage === 'echec' ? String(task.last_error || '').split('\n')[0].slice(0, 200) : '' });
-
-  // Le push : tout projet poussé (une MR ouverte l'a été) — en cours tant que le job tourne sur du code fait.
-  if (task.auto_push || task.verify_chain || task.converge_after || jobKind === 'converge-session') {
-    const pousse = cibles.length > 0 && cibles.every((c) => c.status === 'pushed' || c.mr_iid);
-    etapes.push({ cle: 'push', etat: pousse ? 'fait' : (codeFait && job ? 'en_cours' : 'a_venir') });
-  }
-
-  // La convergence : une boucle par projet, lancée pour cette session (après sa création).
+  /* PAR PROJET : son codage, son push, sa boucle de convergence — chaque étape porte son projet quand la session
+     en a plusieurs, et l'écran dessine une frise par projet. La chaîne, qui porte sur l'ensemble, vient après. */
+  const pousser = task.auto_push || task.verify_chain || task.converge_after || jobKind === 'converge-session';
   const maxDefaut = Number(getConfig().converge_max_passes) || 3;
+  const unTourne = cibles.some((c) => c.status === 'running');
   for (const c of cibles) {
+    const projet = plusieurs ? c.project : null;
+    const debut = etapes.length;
+    // Chaque étape de ce projet porte sa cible : la carte la range sous la ligne du dépôt.
+    const marquer = () => { for (let k = debut; k < etapes.length; k += 1) etapes[k].cible = c.id; };
+    const codeFait = !!c.commit_sha || ['committed', 'pushed', 'done'].includes(c.status);
+    let codage = 'a_venir';
+    if (codeFait) codage = 'fait';
+    else if (c.status === 'needs_input' || task.status === 'planned') codage = 'a_toi';
+    else if (c.status === 'running') codage = 'en_cours';
+    else if (c.status === 'error') codage = 'echec';
+    else if (job) codage = job.enFile || unTourne ? 'en_file' : 'en_cours';
+    else if (task.status === 'needs_input' && !plusieurs) codage = 'a_toi';
+    else if (task.status === 'error' && !plusieurs) codage = 'echec';
+    const erreur = codage === 'echec' ? String(c.last_error || task.last_error || '').split('\n')[0].slice(0, 200) : '';
+    etapes.push({ cle: 'code', etat: codage, projet, detail: erreur });
+
+    // Le push : poussé (une MR ouverte l'a été) — en cours tant que le job tourne sur du code fait.
+    const pousse = c.status === 'pushed' || !!c.mr_iid;
+    if (pousser || pousse) {
+      etapes.push({ cle: 'push', etat: pousse ? 'fait' : (codeFait && job ? 'en_cours' : 'a_venir'), projet });
+    }
+
+    // La convergence de ce projet, lancée pour cette session (après sa création).
     const mr = c.mr_iid ? db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(c.repo_id, c.mr_iid) : null;
     const run = mr ? db.prepare('SELECT * FROM convergence_run WHERE mr_id = ? AND started_at >= ? ORDER BY id DESC LIMIT 1').get(mr.id, task.created_at || '') : null;
     // Pas encore de boucle : elle viendra si le job converge, ou si la session pas encore lancée doit converger.
-    if (!run && jobKind !== 'converge-session' && !(task.converge_after && ['new', 'running'].includes(task.status))) continue;
-    etapes.push(...etapesConvergence(run, plusieurs ? c.project : null, maxDefaut));
+    if (run || jobKind === 'converge-session' || (task.converge_after && ['new', 'running'].includes(task.status))) {
+      etapes.push(...etapesConvergence(run, projet, maxDefaut));
+    }
+    marquer();
   }
 
   if (task.verify_chain) etapes.push(...etapesChaine(task, chaine));
@@ -178,7 +191,8 @@ function frise(task, { chaine = null, job = null } = {}) {
 
   /* Rien d'actif alors que la session attend ou a échoué : une question posée par un suivi après le codage,
      un push refusé. L'attente se pose sur le codage, l'échec sur la dernière étape faite de la session. */
-  if (!etapes.some((e) => ACTIVES.has(e.etat)) && !job) {
+  // (Une session sans projet — importée, ou dont les dépôts ont disparu — n'a pas d'étape où le poser.)
+  if (etapes.length && !etapes.some((e) => ACTIVES.has(e.etat)) && !job) {
     if (task.status === 'needs_input' || task.status === 'planned') etapes[0].etat = 'a_toi';
     else if (task.status === 'error') {
       const i = etapes[1] && etapes[1].cle === 'push' && etapes[0].etat === 'fait' ? 1 : 0;
@@ -229,6 +243,12 @@ function friseLocale(lt, { job = null } = {}) {
   const etapes = [];
   for (const d of dirs) {
     const projet = plusieurs ? (d.dir_label || '?') : null;
+    const debut = etapes.length;
+    etapesDossier(d, projet);
+    // Chaque étape de ce dossier porte sa cible : la carte la range sous la ligne du dossier.
+    for (let k = debut; k < etapes.length; k += 1) etapes[k].cible = d.id;
+  }
+  function etapesDossier(d, projet) {
     let code = 'a_venir';
     if (d.status === 'done') code = 'fait';
     else if (d.status === 'running') code = 'en_cours';
@@ -236,24 +256,24 @@ function friseLocale(lt, { job = null } = {}) {
     else if (d.status === 'error') code = 'echec';
     else if (job) code = 'en_file';
     etapes.push({ cle: 'code', etat: code, projet, dir_id: d.id, detail: code === 'echec' ? String(d.last_error || '').split('\n')[0].slice(0, 200) : '' });
-    if (!lt.branch) continue;
+    if (!lt.branch) return;
     const gs = d.git_status || '';
     const note = String(d.git_note || '');
     const enRoute = code === 'fait' && !!job;
     etapes.push({ cle: 'commit', etat: ['committed', 'pushed'].includes(gs) ? 'fait' : gs === 'unchanged' ? 'saute' : enRoute ? 'en_cours' : 'a_venir', projet, dir_id: d.id });
-    if (gs === 'unchanged') continue;   // rien de modifié : ni push, ni MR, ni convergence
+    if (gs === 'unchanged') return;   // rien de modifié : ni push, ni MR, ni convergence
     // Une MR déjà ouverte (« Converger » depuis la carte, sans les cases) garde ses étapes.
     if (lt.auto_push || lt.create_mr || converger || gs === 'pushed') {
       etapes.push({ cle: 'push', etat: gs === 'pushed' ? 'fait' : (gs === 'committed' && enRoute ? 'en_cours' : 'a_venir'), projet, dir_id: d.id });
     }
-    if (!(lt.create_mr || converger || d.mr_iid)) continue;
+    if (!(lt.create_mr || converger || d.mr_iid)) return;
     let mr = 'a_venir';
     if (d.mr_iid) mr = 'fait';
     else if (note === 'no-origin' || note === 'no-repo') mr = 'saute';
     else if (note.startsWith('mr-error')) mr = 'echec';
     else if (gs === 'pushed' && job) mr = 'en_cours';
     etapes.push({ cle: 'mr', etat: mr, projet, dir_id: d.id, detail: mr === 'saute' ? note : mr === 'echec' ? note.replace(/^mr-error:\s*/, '') : '' });
-    if (mr === 'saute') continue;
+    if (mr === 'saute') return;
     const mrRow = d.mr_iid && d.repo_id ? db.prepare('SELECT id FROM mr WHERE repo_id = ? AND iid = ?').get(d.repo_id, d.mr_iid) : null;
     const run = mrRow ? db.prepare('SELECT * FROM convergence_run WHERE mr_id = ? AND started_at >= ? ORDER BY id DESC LIMIT 1').get(mrRow.id, lt.created_at || '') : null;
     if (run || converger) etapes.push(...etapesConvergence(run, projet, maxDefaut));

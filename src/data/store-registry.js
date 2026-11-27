@@ -774,6 +774,8 @@ const REGISTRE = [
       /* LES NOMS SEULS : le collègue sait quoi renseigner, et aucune valeur ne voyage. */
       env_keys: (() => { try { return JSON.parse(r.env_keys || '[]'); } catch { return []; } })(),
       report_path: r.report_path || null,
+      // Le dépôt de tests de ce vérificateur : une référence `forge/projet`, la même partout.
+      test_repo: r.test_repo || null,
       parse_tap: r.parse_tap ? 1 : 0,
       isolated_home: r.isolated_home ? 1 : 0,
       created_at: r.created_at,
@@ -826,6 +828,7 @@ const REGISTRE = [
       mentions: doc.mentions || null,
       env_keys: JSON.stringify(Array.isArray(doc.env_keys) ? doc.env_keys : []),
       report_path: doc.report_path || null,
+      test_repo: doc.test_repo || null,
       parse_tap: doc.parse_tap ? 1 : 0,
       isolated_home: doc.isolated_home ? 1 : 0,
       created_at: doc.created_at,

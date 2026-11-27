@@ -236,6 +236,12 @@ describe('Cockpit et « Lancer ma journée »', () => {
     // Coupée pendant la review de la première passe (serveur arrêté) : cette étape porte l'échec, rien après.
     assert.deepEqual(resume(etapesConvergence({ status: 'stopped', phase: 'review', passes_done: 1, max_passes: 3, notes_json: '[5]' }, null, 3)),
       ['review0:fait', 'fix1:fait', 'review1:echec']);
+    // Une session sans projet (ses dépôts ont disparu) : une frise vide, jamais une erreur qui viderait la liste.
+    // eslint-disable-next-line global-require
+    const { frise } = require('../src/jobs/workflow');
+    for (const status of ['needs_input', 'error', 'pushed']) {
+      assert.deepEqual(frise({ id: 999999, kind: 'code', status, created_at: '' }, {}).etapes, [], status);
+    }
     // Pas encore de boucle (le job vient de partir) : la review, puis les passes possibles.
     assert.deepEqual(resume(etapesConvergence(null, null, 2)), ['review0:a_venir', 'fix1:a_venir?', 'review1:a_venir?', 'fix2:a_venir?', 'review2:a_venir?']);
   });
@@ -282,6 +288,34 @@ describe('Cockpit et « Lancer ma journée »', () => {
       await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
       await page.goto(app.base);
       await page.locator('#tab-task.active.vue-cockpit #cockpitBox [data-cockpit-sec="a_toi"]').waitFor();
+      assert.deepEqual(erreurs, []);
+    });
+
+    test('une session sur deux dépôts : une frise par dépôt, puis la validation commune', async () => {
+      const autre = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'autre-')));
+      const autreId = (await app.api('POST', '/api/repos', { url: autre.url, project: 'grp/catalogue' })).body.id;
+      const t = (await app.api('POST', '/api/tasks', {
+        kind: 'code', prompt: 'deux dépôts', label: 'Deux dépôts', auto_push: true, verify_chain: [vId],
+        targets: [{ repo_id: repoId, branch: 'ai/deux' }, { repo_id: autreId, branch: 'ai/deux' }],
+      })).body;
+      await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
+      const ligne = page.locator(`#cockpitBox .cockpit-item[data-cockpit-task="${t.id}"]`);
+      await ligne.locator('.frise-groupe').first().waitFor();
+      assert.deepEqual(await ligne.locator('.frise-groupe-nom').allTextContents(), ['grp/paiement', 'grp/catalogue', 'Validation (tous les dépôts)']);
+      assert.deepEqual(await ligne.locator('.frise-groupe').nth(0).locator('.frise-nom').allTextContents(), ['Codage', 'Push'], 'sans répéter le dépôt');
+      assert.match(await ligne.locator('.frise-groupe').nth(2).textContent(), /unitaires · base/);
+      // Les cartes de Codage dessinent la même chose (la liste relue : la session vient d'être créée).
+      await page.goto(app.base);
+      await page.locator('nav button[data-tab="task"]').click();
+      await page.locator('#tab-task .subnav [data-kind="code"]').click();
+      // Sur la carte, chaque dépôt porte sa frise sur sa ligne (« Replier les projets ») ; la validation reste commune.
+      const carte = page.locator(`#taskList .task-row[data-task="${t.id}"]`);
+      await carte.locator('.frise').first().waitFor({ state: 'attached' });
+      assert.equal(await carte.locator('.targets .frise-cible').count(), 2, 'une frise par ligne de dépôt');
+      assert.deepEqual(await carte.locator('.targets .frise-cible').nth(1).locator('.frise-nom').allTextContents(), ['Codage', 'Push']);
+      assert.equal(await carte.locator('.targets .frise-groupe').count(), 0);
+      assert.deepEqual(await carte.locator(':scope > div > .frise .frise-groupe-nom').allTextContents(), ['Validation (tous les dépôts)'], 'la chaîne, hors des lignes');
+      await app.api('DELETE', `/api/tasks/${t.id}`);
       assert.deepEqual(erreurs, []);
     });
 

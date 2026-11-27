@@ -991,8 +991,10 @@ repository directly). Either its code is **already covered** — it says by whic
 task is **validated** —, or it **writes a scenario** following the test repository's conventions and gives
 it back file by file; **Mergerie** writes it on a branch named like the session's in the test repository,
 commits and pushes (a path leaving the repository or aiming at `.git` is refused). The **test
-repository** is set once, for every verifier, in **Settings → Verifiers → `Test repository`**; the scenario
-verifier must cover it, and it cannot be one of the session's repositories. Left empty, it is inferred: the
+repository** is set once, for every verifier, in **Settings → Verifiers → `Test repository`**; a verifier
+can **override** it for itself (its form, **Advanced → `Test repository`** — empty = the general setting),
+and its own then applies when it is the scenario verifier. The scenario verifier must cover that repository,
+and it cannot be one of the session's repositories. Left empty, it is inferred: the
 only repository the scenario verifier covers outside the session — when it covers several, the step stops
 and asks you to pick one rather than write in a random one. The **scenario
 verifier** then runs, the test repository on that branch, with **`MERGERIE_SCENARIO`** = the written paths:
@@ -1016,6 +1018,11 @@ Sessions idle for three days are left out.
 step: ✓ done, ⟳ running, clock queued, inbox “your turn”, ✗ failed, empty circle to come; convergence
 passes that only happen if the score stays below the threshold are dashed. The **current step** stands
 out and is named above the strip (“Current step: Review 2 (running)”); a verification opens from its pill.
+A session over **several repositories** has **one strip per repository** — its coding, its push, its
+convergence —, the repository named at the start of the row, then a common **“Validation (all
+repositories)”** strip for the chain and its scenario, which cover them all. On a session **card** (Coding,
+Local repo coding), each repository's or folder's strip sits **in its own line**, under “Collapse projects” (“Collapse folders” for local sessions);
+the card keeps the current step, `Continue` and the common strip above.
 A convergence loop cut by a server stop is stopped at restart, the step it was at marked failed.
 
 **`Continue`.** When the workflow stops on a step, a **`Continue`** button next to the current step starts it
@@ -1029,7 +1036,7 @@ brings `Continue` back, which resumes convergence. Nothing shows while a job run
 
 On a **local repo** session, the strip follows each folder: **Coding**, then — with a branch — **Commit**,
 **Push**, **Merge request** (skipped, with the reason, when the folder's remote is not a known repository)
-and the convergence loop; with several folders, each step names its own. `Continue` there codes again only
+and the convergence loop; with several folders, one strip per folder. `Continue` there codes again only
 the failed folders, and resumes a stopped commit, push, MR or convergence through “Converge” when the
 session was meant to converge.
 
@@ -2626,7 +2633,7 @@ fragment **or when the diff touches a path** — a glob such as `**/migrations/*
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
 **Verifiers** (your test commands, and the repositories each of them can test — see *Objective verification*
-below; at the top, the **test repository** shared by all of them, where a validation chain's coverage scenario is written — a searchable list, empty = inferred; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
+below; at the top, the **test repository** shared by all of them, where a validation chain's coverage scenario is written — a searchable list, empty = inferred, which each verifier can override under its **Advanced**; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
 field selected: renaming is the first gesture; the form **suggests the commands the covered repositories

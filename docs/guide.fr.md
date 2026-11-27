@@ -1032,8 +1032,10 @@ et la tâche est **validée** —, soit elle **écrit un scénario** dans les co
 rend fichier par fichier ; c'est **Mergerie** qui l'écrit sur une branche du même nom que la sienne dans le
 dépôt de tests, commite et pousse (un chemin qui sortirait du dépôt ou viserait `.git` est refusé). Le
 **dépôt de tests** se règle une fois, pour tous les vérificateurs, dans **Réglages → Vérificateurs →
-`Dépôt de tests`** ; le vérificateur des scénarios doit le couvrir, et il ne peut pas être un des dépôts de
-la session. Laissé vide, il est déduit : le seul dépôt que le vérificateur des scénarios couvre hors de la
+`Dépôt de tests`** ; un vérificateur peut le **surcharger** pour lui-même (son formulaire, **Avancé →
+`Dépôt de tests`** — vide = le réglage général), et c'est alors le sien qui vaut quand il est le
+vérificateur des scénarios. Le vérificateur des scénarios doit couvrir ce dépôt, et il ne peut pas être un
+des dépôts de la session. Laissé vide, il est déduit : le seul dépôt que le vérificateur des scénarios couvre hors de la
 session — s'il en couvre plusieurs, l'étape s'arrête et demande de le choisir plutôt que d'écrire au hasard. Le
 **vérificateur des scénarios** tourne alors, le dépôt de tests sur cette branche, avec
 **`MERGERIE_SCENARIO`** = les chemins écrits : ses commandes lancent ce scénario seul
@@ -1057,6 +1059,11 @@ de tests, et sa **correction**) → **Validée**. Une pastille par étape : ✓ 
 file, boîte « à toi », ✗ en échec, cercle vide à venir ; les passes de convergence qui n'auront lieu que si
 la note reste sous le seuil sont en pointillé. L'**étape en cours** est mise en avant et dite au-dessus de
 la frise (« Étape en cours : Review 2 (en cours) ») ; une vérification s'ouvre d'un clic sur sa pastille.
+Une session sur **plusieurs dépôts** a **une frise par dépôt** — son codage, son push, sa convergence —, le nom
+du dépôt en tête de ligne, puis une frise commune **« Validation (tous les dépôts) »** pour la chaîne et son
+scénario, qui portent sur l'ensemble. Sur la **carte** d'une session (Codage, Codage sur dépôt local), la frise de
+chaque dépôt ou dossier est **dans sa ligne**, sous « Replier les projets » (« Replier les dossiers » hors dépôt) ; la carte garde au-dessus
+l'étape en cours, `Continuer` et la frise commune.
 Une boucle de convergence coupée par un arrêt du serveur est arrêtée au redémarrage, l'étape où elle en
 était marquée en échec.
 
@@ -1072,7 +1079,7 @@ la convergence. Rien ne s'affiche tant qu'un job tourne.
 
 Sur une session **hors dépôt**, la frise suit chaque dossier : **Codage**, puis — avec une branche —
 **Commit**, **Push**, **Merge request** (sautée, avec la raison, quand le remote du dossier n'est pas un
-dépôt connu) et la boucle de convergence ; plusieurs dossiers, chaque étape dit le sien. `Continuer` y
+dépôt connu) et la boucle de convergence ; plusieurs dossiers, une frise par dossier. `Continuer` y
 recode les seuls dossiers en échec, et reprend par « Converger » un commit, un push, une MR ou une
 convergence arrêtés quand la session devait converger.
 
@@ -2756,7 +2763,7 @@ branche contient un fragment donné **ou quand le diff touche un chemin** — gl
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
 **Vérificateurs** (tes commandes de tests, et les dépôts que chacun sait tester — voir *Vérification
 objective* plus bas ; en tête de page, le **dépôt de tests** commun à tous, où le scénario de couverture d'une
-chaîne de validation s'écrit — liste filtrable, vide = déduit ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
+chaîne de validation s'écrit — liste filtrable, vide = déduit, que chaque vérificateur peut surcharger dans son **Avancé** ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
 les noms étant uniques) et le champ sélectionné : renommer est le premier geste ; le formulaire

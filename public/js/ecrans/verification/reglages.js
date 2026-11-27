@@ -406,6 +406,7 @@ function renderVerifierList() {
        les deux. */
     v.auto_on_stale ? esc(tr('verify.verifier.auto-stale')) : '',
     v.report_path ? esc(tr('verify.verifier.report-path', { path: v.report_path })) : '',
+    v.test_repo ? esc(tr('verify.verifier.test-repo', { repo: v.test_repo.slice(v.test_repo.indexOf('/') + 1) })) : '',
     v.parse_tap ? esc(tr('verify.verifier.parse-tap')) : '',
     v.isolated_home ? esc(tr('verify.verifier.isolated-home')) : '',
     v.mentions ? esc(tr('verify.verifier.mentions', { who: v.mentions })) : '',
@@ -480,6 +481,9 @@ function remplirFormVerifier(v, info) {
   f.id.value = v.id;
   f.name.value = v.name;
   f.report_path.value = v.report_path || '';
+  poserDepotTestsVerifier(v.test_repo);
+  // Une surcharge posée se VOIT : l'avancé se déplie.
+  if (v.test_repo) { const av = f.querySelector('.verifier-avance'); if (av) av.open = true; }
   f.parse_tap.checked = v.parse_tap == null ? true : !!v.parse_tap;
   f.isolated_home.checked = !!v.isolated_home;
   /* Les valeurs viennent du POSTE : le serveur les recompose en « CLE=valeur » à partir des
@@ -538,6 +542,7 @@ function ouvrirFormVerifier(ouvert) {
 function viderFormVerifier() {
   const f = $('#verifierForm');
   f.reset(); f.id.value = ''; f.run_base.checked = true; f.parse_tap.checked = true; f.isolated_home.checked = false;
+  poserDepotTestsVerifier('');
   /* C15 — le délai effectif s'ÉCRIT. Vide, avec « 900 » en gris, on ne sait pas si le
      vérificateur n'a pas de limite ou s'il en a une qu'on ne voit pas. */
   if (f.timeout_s) f.timeout_s.value = 900;
@@ -588,6 +593,8 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
     name: f.name.value.trim(),
     commands: commandes,
     report_path: f.report_path.value.trim(),
+    // Le dépôt de tests de ce vérificateur : vide = le réglage général.
+    test_repo: f.test_repo ? f.test_repo.value : '',
     env: f.env.value,
     parse_tap: f.parse_tap.checked ? 1 : 0,
     isolated_home: f.isolated_home.checked ? 1 : 0,
@@ -611,3 +618,27 @@ $('#verifierForm') && $('#verifierForm').addEventListener('submit', async (e) =>
   } catch (err) { toast(explainError(err.message), true); }
 });
 
+
+/* LE DÉPÔT DE TESTS D'UN VÉRIFICATEUR : un combo (les dépôts peuvent être nombreux), valeur `forge/projet`,
+   libellé le projet. Vide = le réglage général, que l'option vide nomme. */
+function poserDepotTestsVerifier(ref) {
+  const box = $('#verifierTestRepoBox');
+  if (!box) return;
+  const v = String(ref || '');
+  const label = v ? v.slice(v.indexOf('/') + 1) : '';
+  const cache = box.querySelector('.vf-test-repo');
+  cache.value = v;
+  cache.dataset.label = label;
+  const champ = box.querySelector('.cb-search');
+  champ.value = label;
+  champ.title = label;
+}
+if ($('#verifierTestRepoBox')) {
+  wireCombo($('#verifierTestRepoBox').parentNode, 'vf-test-repo', async () => {
+    const general = String(((await api('/config').catch(() => ({}))) || {}).test_repo || '');
+    return [
+      { value: '', label: tr('settings.verifier.opt.test-repo-general'), hint: general ? general.slice(general.indexOf('/') + 1) : tr('settings.ph.test-repo') },
+      ...(await loadRepoOptions()).map((r) => ({ value: `${r.forge || 'gitlab'}/${r.project}`, label: r.project })),
+    ];
+  });
+}

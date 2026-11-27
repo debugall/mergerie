@@ -141,6 +141,15 @@
                     <label><span data-i18n="settings.verifier.lbl.report">Rapport JUnit produit par les commandes (optionnel)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.report" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                         <input name="report_path" placeholder="ex. reports/junit.xml" data-i18n-placeholder="settings.verifier.ph.report" />
                     </label>
+                    <!-- Le dépôt de tests de CE vérificateur, quand il est celui des scénarios d'une chaîne : il surcharge
+                         celui des réglages (en tête de page). Vide = le réglage général. -->
+                    <label><span data-i18n="settings.verifier.lbl.test-repo">Dépôt de tests (surcharge le réglage général)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.test-repo" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
+                        <div class="combo" id="verifierTestRepoBox">
+                            <input class="cb-search" data-combo="vf-test-repo" autocomplete="off" placeholder="(réglage général)" data-i18n-placeholder="settings.verifier.ph.test-repo" />
+                            <input type="hidden" class="vf-test-repo" name="test_repo" value="" data-label="" />
+                            <div class="combo-options" hidden></div>
+                        </div>
+                    </label>
                     <label><span data-i18n="settings.verifier.lbl.env">Variables d'environnement (optionnel, une par ligne)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="settings.verifier.tip.env" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                         <textarea name="env" rows="3" placeholder="PATH=/home/moi/.nvm/versions/node/v20/bin:/usr/bin:/bin" data-i18n-placeholder="settings.verifier.ph.env"></textarea>
                     </label>

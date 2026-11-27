@@ -93,6 +93,9 @@ exit 0
   });
   after(async () => { if (app) await app.stop(); });
 
+  // La couverture réelle d'un vérificateur (ses dépôts déclarés), chargée après `startApp`.
+  // eslint-disable-next-line global-require
+  const groupesCouverture = (id) => require('../src/data/groupes').couvertureVerifier(id);
   const cotes = (nom) => { try { return fs.readFileSync(path.join(bin, `trace-${nom}`), 'utf8').trim().split('\n').filter(Boolean).map((l) => l.split(' ')[0]); } catch { return []; } };
   const echouer = (nom, cote, n) => fs.writeFileSync(path.join(bin, `fail-${nom}-${cote}`), String(n));
   const vider = () => { for (const f of fs.readdirSync(bin)) if (/^(trace|fail)-/.test(f)) fs.unlinkSync(path.join(bin, f)); };
@@ -346,6 +349,30 @@ exit 0
     } finally { await app.api('PUT', '/api/config', { test_repo: '' }); }
   });
 
+  test('un vérificateur peut surcharger le dépôt de tests : sa valeur passe avant le réglage général', async () => {
+    // eslint-disable-next-line global-require
+    const { depotTests } = require('../src/jobs/chaine-scenario');
+    const v = (await app.api('POST', '/api/verifiers', {
+      name: 'scenarios-surcharge', kind: 'commands', commands: ['true'], timeout_s: 60, test_repo: 'gitlab/grp/autre',
+      repos: [{ repo_id: testsId, mode: 'worktree' }, { repo_id: autreId, mode: 'worktree' }],
+    })).body;
+    assert.equal(v.test_repo, 'gitlab/grp/autre', 'enregistré avec le vérificateur');
+    const inconnu = await app.api('PUT', `/api/verifiers/${v.id}`, { test_repo: 'gitlab/grp/nulle-part' });
+    assert.equal(inconnu.status, 400);
+    const session = [{ repo_id: repoId }];
+    await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
+    try {
+      assert.equal(depotTests(v.id, session, groupesCouverture).repo.id, autreId, 'la surcharge du vérificateur gagne');
+      assert.equal(depotTests(vTests, session, groupesCouverture).repo.id, testsId, 'les autres gardent le réglage général');
+      // Vidée : le réglage général reprend.
+      assert.equal((await app.api('PUT', `/api/verifiers/${v.id}`, { test_repo: '' })).body.test_repo, null);
+      assert.equal(depotTests(v.id, session, groupesCouverture).repo.id, testsId);
+    } finally {
+      await app.api('PUT', '/api/config', { test_repo: '' });
+      await app.api('DELETE', `/api/verifiers/${v.id}`);
+    }
+  });
+
   test('un vérificateur des scénarios qui couvre deux dépôts hors de la session écrit dans le dépôt de tests réglé', async () => {
     vider();
     const vMulti = (await app.api('POST', '/api/verifiers', {
@@ -489,6 +516,28 @@ exit 0
         return (await page.locator(`.task-chaine.is-validated[data-chaine-task="${t.id}"] .task-chaine-scenario`).count()) > 0;
       }, 'la carte montre la tâche validée');
       assert.match(await page.locator(`.task-chaine[data-chaine-task="${t.id}"] .task-chaine-scenario`).textContent(), /scenarios\/existant\.sh/);
+      assert.deepEqual(erreurs, []);
+    });
+
+    test('le formulaire d’un vérificateur surcharge le dépôt de tests : choisi dans « Avancé », enregistré, relu', async () => {
+      await page.locator('nav button[data-tab="admin"]').click();
+      await page.locator('#tab-admin .subnav [data-sub="verifiers"]').click();
+      await page.locator(`#verifierList [data-vedit="${vTests}"]`).click();
+      await page.waitForSelector('#verifierForm:not([hidden])');
+      await page.locator('#verifierForm .verifier-avance > summary').click();
+      const champ = page.locator('#verifierTestRepoBox .cb-search');
+      await champ.click();
+      await champ.fill('autre');
+      await page.locator('#verifierTestRepoBox .combo-opt[data-v="gitlab/grp/autre"]').click();
+      await page.locator('#verifierForm button[type="submit"]').click();
+      try {
+        await attendreServeur(async () => app.db.prepare('SELECT test_repo FROM verifier WHERE id = ?').get(vTests).test_repo === 'gitlab/grp/autre', 'la surcharge est enregistrée');
+        await page.waitForFunction(() => /dépôt de tests : grp\/autre/.test(document.querySelector('#verifierList').textContent));
+        await page.locator(`#verifierList [data-vedit="${vTests}"]`).click();
+        await page.waitForFunction(() => document.querySelector('#verifierTestRepoBox .cb-search').value === 'grp/autre');
+        assert.equal(await page.locator('#verifierForm .verifier-avance').evaluate((d) => d.open), true, 'l’avancé se déplie sur une surcharge');
+      } finally { app.db.prepare('UPDATE verifier SET test_repo = NULL WHERE id = ?').run(vTests); }
+      await page.locator('nav button[data-tab="task"]').click();
       assert.deepEqual(erreurs, []);
     });
 

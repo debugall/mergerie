@@ -115,6 +115,20 @@ function lireVerifier(body, courant) {
     report_path = rp || null;
   }
 
+  /* Le dépôt de tests de CE vérificateur (surcharge du réglage général) : `forge/projet` d'un dépôt suivi ici
+     quand on le choisit ; vide = le réglage général. Une valeur reçue d'un collègue reste telle quelle. */
+  let test_repo = courant ? courant.test_repo || null : null;
+  if (b.test_repo != null) {
+    const ref = String(b.test_repo).trim();
+    if (ref && ref !== test_repo) {
+      const i = ref.indexOf('/');
+      if (i <= 0 || !db.prepare("SELECT 1 FROM repo WHERE COALESCE(forge, 'gitlab') = ? AND project = ?").get(ref.slice(0, i), ref.slice(i + 1))) {
+        throw new Error(t('err.config.test-repo-unknown', { repo: ref }));
+      }
+    }
+    test_repo = ref || null;
+  }
+
   const brutTimeout = b.timeout_s != null ? parseInt(b.timeout_s, 10) : (courant ? courant.timeout_s : 900);
   const timeout_s = Number.isFinite(brutTimeout) ? Math.min(7200, Math.max(10, brutTimeout)) : 900;
 
@@ -144,7 +158,7 @@ function lireVerifier(body, courant) {
   const groupIds = b.groups == null ? null : [...new Set((Array.isArray(b.groups) ? b.groups : []).map(Number).filter(Boolean))];
   for (const gid of (groupIds || [])) if (!groupes.parId(gid)) throw new Error(t('err.group.not-found'));
   return {
-    name, kind, command, commands, timeout_s, envPaires, report_path, groups: groupIds,
+    name, kind, command, commands, timeout_s, envPaires, report_path, test_repo, groups: groupIds,
     parse_tap: bool(b.parse_tap, courant ? courant.parse_tap : 1),
     run_base: bool(b.run_base, courant ? courant.run_base : 1),
     comment_on_forge: bool(b.comment_on_forge, courant ? courant.comment_on_forge : 0),
@@ -254,10 +268,10 @@ app.post('/api/verifiers', wrap((req, res) => {
   const cree = store.ecrire('verifier', () => {
     const id = db.prepare(`INSERT INTO verifier
       (name, kind, command, timeout_s, run_base, comment_on_forge, auto_on_mr, auto_on_stale,
-       comment_template, mentions, env_keys, report_path, parse_tap, isolated_home, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
+       comment_template, mentions, env_keys, report_path, test_repo, parse_tap, isolated_home, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(v.name, v.kind, v.command, v.timeout_s, v.run_base,
       v.comment_on_forge, v.auto_on_mr, v.auto_on_stale, v.comment_template, v.mentions,
-      '[]', v.report_path, v.parse_tap, v.isolated_home, new Date().toISOString()).lastInsertRowid;
+      '[]', v.report_path, v.test_repo, v.parse_tap, v.isolated_home, new Date().toISOString()).lastInsertRowid;
     /* Les VALEURS restent ici ; seuls les noms partent avec le vérificateur. L'uid est posé par
        le déclencheur à l'insertion : on le relit. */
     if (v.envPaires) {
@@ -282,9 +296,9 @@ app.put('/api/verifiers/:id', wrap((req, res) => {
     const cles = v.envPaires ? verifierenv.poser(cur.uid, v.envPaires) : (cur.env_keys || '[]');
     db.prepare(`UPDATE verifier SET name = ?, kind = ?, command = ?, timeout_s = ?, run_base = ?,
       comment_on_forge = ?, auto_on_mr = ?, auto_on_stale = ?, comment_template = ?, mentions = ?,
-      env_keys = ?, report_path = ?, parse_tap = ?, isolated_home = ? WHERE id = ?`)
+      env_keys = ?, report_path = ?, test_repo = ?, parse_tap = ?, isolated_home = ? WHERE id = ?`)
       .run(v.name, v.kind, v.command, v.timeout_s, v.run_base, v.comment_on_forge, v.auto_on_mr,
-        v.auto_on_stale, v.comment_template, v.mentions, cles, v.report_path, v.parse_tap, v.isolated_home, cur.id);
+        v.auto_on_stale, v.comment_template, v.mentions, cles, v.report_path, v.test_repo, v.parse_tap, v.isolated_home, cur.id);
     ecrireRepos(cur.id, v.repos);
     ecrireGroupes(cur.id, v.groups);
     ecrireCommandes(cur.id, v.commands);

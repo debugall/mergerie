@@ -241,6 +241,14 @@ describe('Converger depuis une session de dev IA', () => {
     const targets = (await app.api('GET', `/api/tasks/${task.id}`)).body.task.targets;
     assert.equal(targets.length, 2);
     assert.ok(targets.every((tg) => tg.mr_iid), 'chaque projet a sa MR');
+
+    // La frise : chaque projet a ses étapes — son codage, son push, sa convergence —, l'écran en fait une frise chacun.
+    const wf = (await app.api('GET', '/api/tasks')).body.find((x) => x.id === task.id).workflow;
+    for (const p of [a, b]) {
+      const siennes = wf.etapes.filter((e) => e.projet === p.project).map((e) => `${e.cle}${e.n == null ? '' : e.n}:${e.etat}`);
+      assert.deepEqual(siennes, ['code:fait', 'push:fait', 'review0:fait', 'converge-fin:fait'], `${p.project} : ${siennes.join(' ')}`);
+    }
+    assert.ok(wf.etapes.every((e) => e.projet), 'aucune étape commune sans chaîne');
   });
 
   test('une session déjà exécutée n’est PAS recodée : la MR existante est convergée directement', async () => {

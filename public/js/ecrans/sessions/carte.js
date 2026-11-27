@@ -120,7 +120,9 @@ function taskHead(t) {
     ${promptBlock(t.prompt)}
     ${chapeauCarte(t)}
     ${coutCarte(t)}${badgeTodoAttente(t)}
-    ${friseHtml({ id: t.id, kind: 'code', workflow: t.workflow })}
+    ${/* Plusieurs projets : chacun porte sa frise sur sa ligne (« Replier les projets ») ; ici, l'étape en cours,
+          « Continuer » et ce qui porte sur l'ensemble. */''}
+    ${friseHtml({ id: t.id, kind: 'code', workflow: t.workflow }, { commun: (t.targets || []).length > 1 })}
     ${chaineHtml(t)}`;
 }
 
@@ -215,7 +217,7 @@ function codeCard(t) {
       ${taskHead(t)}
       ${toggleProjetsHtml('code', t.id, cibles.length)}
       <div class="targets"${ouvert ? '' : ' hidden'}>
-        ${cibles.map((tg) => targetLine(t, tg)).join('')}
+        ${cibles.map((tg) => targetLine(t, tg, cibles.length > 1 ? friseHtml({ id: t.id, kind: 'code', workflow: t.workflow }, { cible: tg.id }) : '')).join('')}
       </div>
       ${suiviBlock(t, '')}
       <div class="mr-create followup" data-followform="${t.id}" hidden>

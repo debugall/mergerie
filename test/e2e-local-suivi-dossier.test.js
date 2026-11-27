@@ -127,10 +127,16 @@ describe('Hors dépôt — suivi d’un seul dossier', () => {
       app.db.prepare("UPDATE local_task SET status = 'error' WHERE id = ?").run(lt.id);
       await ouvrirListe();
       const carte = page.locator(`#localList .card[data-local="${lt.id}"]`);
+      // Repliée, la carte dit déjà l'étape en cours et propose « Continuer » ; les frises sont sur les lignes.
+      await carte.locator('.frise-ou').waitFor();
+      await deplier(carte);
       const courante = carte.locator('.frise-etape.is-courante');
       await courante.waitFor();
       assert.match(await courante.getAttribute('class'), /is-echec/);
-      assert.match(await courante.textContent(), /· Codage/, 'l’étape dit son dossier');
+      // Une frise par dossier, sur sa ligne (« Replier les projets ») : l'étape en échec est dans celle du second.
+      assert.equal(await carte.locator('.targets .frise-cible').count(), 2, 'une frise par dossier');
+      assert.equal(await carte.locator('.targets .frise-cible').nth(1).locator('.frise-etape.is-courante').count(), 1);
+      assert.match(await carte.locator('.frise-ou').textContent(), /· Codage/, 'l’étape en cours dit son dossier');
       assert.equal(await carte.locator('.frise-etape').count(), 2, 'un codage par dossier');
       await carte.locator(`[data-frise-continuer="${lt.id}"][data-kind="local"][data-action="code"]`).click();
       for (let i = 0; i < 300 && passes(lt.id, dirs[1].id).length < 2; i += 1) {
