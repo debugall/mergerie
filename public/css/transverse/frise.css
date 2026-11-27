@@ -5,7 +5,9 @@
    mouvements lents qui s'arrêtent avec « réduire les animations ». Étroite (ligne d'un dépôt, téléphone),
    la frise se redresse à la verticale. Les animations partent de `--frise-t` (`friseHorloge`) : elles
    reprennent où elles en étaient quand la liste se redessine. */
-.frise { margin-top: 10px; --frise-dir: 90deg; }
+/* Toute la largeur de son parent, même dans une rangée flex : la bande mesure son conteneur (`@container`),
+   réduite à son contenu, elle se croirait étroite et passerait à la verticale. */
+.frise { margin-top: 10px; --frise-dir: 90deg; width: 100%; min-width: 0; }
 .frise-ou { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 2px; }
 
 /* ---------- La bande : le rail et ses nœuds ---------- */

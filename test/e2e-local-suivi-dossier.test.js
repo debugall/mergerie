@@ -129,7 +129,12 @@ describe('Hors dépôt — suivi d’un seul dossier', () => {
       const carte = page.locator(`#localList .card[data-local="${lt.id}"]`);
       // Repliée, la carte propose déjà « Continuer » ; les frises sont sur les lignes.
       await carte.locator('.frise-ou [data-frise-continuer]').waitFor();
+      // Repliée : un aperçu, une ligne par dossier, la phase où il en est ; il s'efface quand les lignes se déplient.
+      assert.equal(await carte.locator('.frise-apercu-l').count(), 2);
+      assert.match(await carte.locator('.frise-apercu-l').nth(1).textContent(), /Codage[\s\S]*en échec/);
       await deplier(carte);
+      await carte.locator('.frise-apercu').waitFor({ state: 'hidden' });
+      assert.equal(await carte.locator('.targets .frise-cible .frise-phases').first().evaluate((e) => getComputedStyle(e).flexDirection), 'row', 'sur la ligne d’un dossier, le rail est horizontal');
       const phase = carte.locator('.frise-phase.is-courante');
       await phase.waitFor();
       assert.match(await phase.getAttribute('class'), /is-echec/);

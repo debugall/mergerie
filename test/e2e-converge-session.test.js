@@ -152,6 +152,7 @@ describe('Converger depuis une session de dev IA', () => {
     const run = app.db.prepare('SELECT * FROM convergence_run WHERE mr_id = ? ORDER BY id DESC').get(mrRow.id);
     assert.equal(JSON.parse(run.notes_json).length, run.passes_done + 1, 'la note de départ, puis une par passe');
     assert.equal(run.phase, null, 'finie : plus d’étape en cours');
+    assert.ok(run.phase_at && run.phase_at >= run.started_at && run.phase_at <= run.finished_at, `l’heure du dernier changement d’étape (${run.phase_at})`);
     const ligne = Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === task.id);
     const cles = ligne.workflow.etapes.map((e) => `${e.cle}${e.n == null ? '' : e.n}:${e.etat}`);
     assert.deepEqual(cles.slice(0, 5), ['code:fait', 'push:fait', 'review0:fait', 'fix1:fait', 'review1:fait']);
