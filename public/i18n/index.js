@@ -54,10 +54,9 @@ const FAMILLES = {
   log: 'jobs.js',
   footer: 'jobs.js',
   plugins: 'plugins.js',
-  team: 'equipe.js',
   cockpit: 'cockpit.js',
 };
-const FICHIERS = ['transverse.js', 'erreurs.js', 'sessions.js', 'reviews.js', 'reglages.js', 'verification.js', 'agents.js', 'git.js', 'notes.js', 'jira.js', 'stats.js', 'jobs.js', 'plugins.js', 'equipe.js', 'cockpit.js'];
+const FICHIERS = ['transverse.js', 'erreurs.js', 'sessions.js', 'reviews.js', 'reglages.js', 'verification.js', 'agents.js', 'git.js', 'notes.js', 'jira.js', 'stats.js', 'jobs.js', 'plugins.js', 'cockpit.js'];
 const I18N = { fr: {}, en: {} };
 for (const f of FICHIERS) {
   const d = require(`./${f}`);

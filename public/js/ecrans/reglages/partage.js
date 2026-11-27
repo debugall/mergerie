@@ -36,15 +36,15 @@ async function chargerDataSync() {
   rendrePostes();
 }
 
-/* LES POSTES DE L'ÉQUIPE : qui a commité quoi en dernier dans le dépôt de données, lu par la même route
-   que la page Équipe (`/api/equipe`, `workstations`). « Silencieux » = rien depuis N jours ouvrés : ses
-   données sont peut-être périmées, c'est tout ce que la ligne dit. Une personne n'est pas un lien. */
+/* LES POSTES DE L'ÉQUIPE : qui a commité en dernier dans le dépôt de données (`/api/data-sync/postes`).
+   « Silencieux » = rien depuis N jours ouvrés : ses données sont peut-être périmées, c'est tout ce que la
+   ligne dit. Une personne n'est pas un lien. */
 async function rendrePostes() {
   const zone = $('#dataSyncPostes');
   if (!zone) return;
   let d;
-  try { d = await api('/equipe'); } catch { zone.innerHTML = ''; return; }
-  const postes = d && d.attached && d.workstations ? d.workstations.items : [];
+  try { d = await api('/data-sync/postes'); } catch { zone.innerHTML = ''; return; }
+  const postes = d && d.attached ? d.items || [] : [];
   if (!postes.length) { zone.innerHTML = `<p class="muted">${esc(tr('datasync.postes.none'))}</p>`; return; }
   zone.innerHTML = postes.map((w) => `<div class="datasync-poste${w.quiet ? ' quiet' : ''}">
       <span class="datasync-poste-nom">${esc(w.name)}</span>

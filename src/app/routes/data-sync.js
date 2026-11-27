@@ -5,6 +5,7 @@ const { app } = require('../app');
 const db = require('../../db');
 const store = require('../../data/store');
 const datasync = require('../../data/datasync');
+const postes = require('../../data/postes');
 const registre = require('../../data/store-registry');
 const configModule = require('../../data/config');
 const { getConfig, updateConfig } = configModule;
@@ -20,6 +21,10 @@ const { wrap } = require('../http');
 
 app.get('/api/data-sync', wrap((req, res) => {
   res.json({ ...datasync.statut(), conflits: datasync.conflitsGardes() });
+}));
+// Les postes de l'équipe : leur dernière synchro, et lesquels sont silencieux.
+app.get('/api/data-sync/postes', wrap((req, res) => {
+  res.json(postes.postes({ silencieuxJours: getConfig().team_quiet_days }));
 }));
 /* Cloner, ou INITIALISER depuis ce qu'on a déjà : c'est le même geste côté utilisateur, et
    c'est voulu — la bascule d'une équipe consiste, pour le poste qui a l'historique, à le

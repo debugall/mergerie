@@ -49,7 +49,7 @@ le rapport ne commence pas par « (mock) ».
 
 Neuf onglets au cœur, dans une **barre latérale** à gauche, rangés par familles — le cœur, ce que
 j'ai à faire, l'équipe, ma machine, le méta :
-**Reviews** · **Dev IA** · **Agents** — **Notes** · **Équipe** · **Jira** — **Git** — **Stats** · **Réglages**.
+**Reviews** · **Dev IA** · **Agents** — **Notes** · **Jira** — **Git** — **Stats** · **Réglages**.
 **Git démarre replié** : une commodité, on y va le jour où on en a besoin, et une barre de huit
 entrées se lit mieux qu'une barre de neuf. Rien n'est désactivé : une case dans
 *Réglages → Général → Menus* le ramène, définitivement — et une **porte contextuelle** aussi :
@@ -1936,43 +1936,6 @@ minute : un passage furtif au bureau ne le décale plus, et la fenêtre proposé
 plus de la branche par défaut (une décision d'équipe : c'est la définition de « entré sans relecture »).
 *Dépôts* : une liste de branches surveillées propre à un dépôt, dans sa ligne d'édition.
 
-### Équipe
-
-**« Notre matin »** : une page qui répond, en un écran, à la question du daily — *où en est-on, qui attend
-quoi, depuis quand* — calculée en SQL sur ce que l'équipe **partage déjà** par le dépôt de données, sans rien
-partager de plus et sans aucun appel d'IA ni de forge. Le brief reste « moi, ce matin » ; cette page est
-« nous, maintenant ». Elle n'existe que si un dépôt de données est attaché (sans lui, une phrase y mène) ;
-avec une seule personne dans le dépôt, elle fonctionne et le dit.
-
-**Trois listes de faits**, chacune masquée si vide, plafonnée à douze lignes avec `et N autres` — et seulement
-ce qui *attend quelqu'un* : les **décisions en attente** (`!214 · tarification · 8,6/10 · Claire · reviewée par
-Ali · attend depuis 5 j` — les merge requests ouvertes dont le dernier rapport atteint le seuil d'équipe et
-que personne n'a encore classées ni mergées, triées par attente), les **questions sans réponse** (les
-sessions *partagées* dont l'agent attend une réponse, la question en une ligne ; une question qu'une reprise
-a prise en charge n'attend plus personne et sort), les **vérifications en échec** (tête rouge, base verte).
-En tête, deux chiffres, la ligne de synchro et, s'il y en a, le nombre de **postes silencieux** — un nombre,
-pas un nom — qui mène à Réglages → Données partagées : c'est là que vit la liste des **postes de l'équipe**,
-une ligne par auteur du dépôt de données avec sa dernière synchro et `silencieux` au-delà de N jours ouvrés
-(le week-end ne compte pas), sans autre mot : il est peut-être en congé. Un diagnostic de synchro — les
-données de qui sont périmées —, pas un tableau de présence. Deux filtres, groupe de dépôts et personne —
-choisir une personne montre ce qui *l'attend*, pas ce qu'elle a fait.
-
-Les *sessions en cours*, les *reprises* et les *croisements et empilements* ont eu leur section et l'ont
-perdue : ils disaient ce qui s'était passé, pas ce que quelqu'un avait à faire, et les cartes Reviews et
-Dev IA le disent déjà.
-
-**Règle non négociable** : la page n'affiche que des faits déjà partagés, et **rien sur une personne qui ne
-soit l'état d'un travail**. Combien de tokens quelqu'un consomme, combien de merge requests il a mergées, qui
-est « le plus rapide » — jamais, même si la base le sait. Les sessions non partagées n'y existent pas, ni
-dans une ligne ni dans un compteur. Aucune action depuis la page : chaque ligne mène à la carte (Reviews,
-Dev IA) où les gestes existent déjà ; une personne n'est jamais un lien. Rien n'est stocké : fermer l'onglet
-ne laisse rien. Chaque ligne dit où elle mène (*Reviews ›*, *Dev IA ›*, *Rapport ›*). Une personne porte un seul
-nom : l'identifiant de forge d'une merge request (`amady`) et le nom git du dépôt de données (`Amady`) sont
-rapprochés sans casse ni accents — le filtre *Personne* retrouve ses merge requests, la page affiche le nom git.
-Une question qu'une reprise a prise en charge reste listée, en retrait, mais sort du compteur. Deux réglages
-d'équipe, dans *Réglages → Données partagées → Page Équipe* : le nombre de jours ouvrés avant « silencieux »
-(2) et la fenêtre des reprises terminées (7 jours) ; le seuil de décision est celui du brief.
-
 ### Jira
 Cinq sous-onglets : **Mes tickets**, **Surveillés**, **Analysés**, **Stats** et **Plans**. Le menu porte une **pastille** = le nombre de
 tickets **en cours qui te sont affectés** (catégorie de statut *In Progress*, la seule définition qui
@@ -3551,10 +3514,10 @@ dont la branche a été poussée (`branche non poussée par Claire` sinon) et n'
 `N commits plus loin que la dernière passe connue`. Hors dépôt, exploration, question libre : rien à
 reprendre en v1.
 
-**Et l'équipe, ce matin ?** L'onglet *Équipe* (« Notre matin ») lit ce même dépôt pour dire qui attend
-quoi, depuis quand — décisions en attente, questions sans réponse, vérifications en échec — sans rien
-partager de plus ; les postes de l'équipe et leur dernière synchro se lisent ici même, sous *Postes de
-l'équipe*. Voir la section *Équipe*.
+**Les postes de l'équipe.** Sous *Postes de l'équipe*, une ligne par auteur du dépôt de données : sa dernière
+synchro, et `silencieux` quand il n'a rien commité depuis plus de N jours ouvrés (le week-end ne compte pas ;
+réglage d'équipe juste en dessous, 2 par défaut) — sans autre mot : il est peut-être en congé. Un diagnostic de
+synchro (les données de qui sont périmées), pas un tableau de présence ; une personne n'y est jamais un lien.
 
 **Ce qui ne part JAMAIS dans le dépôt.** Les six jetons d'API, le dossier de clonage, la langue,
 les chemins absolus de cette machine, les sessions rangées, les journaux de

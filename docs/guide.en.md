@@ -47,7 +47,7 @@ start with “(mock)”.
 
 Twelve tabs, in a **left sidebar**, grouped by family — the core, what I have to do, the team, my machine and its
 links, the meta:
-**Reviews** · **AI Dev** · **Agents** — **Notes** · **Team** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
+**Reviews** · **AI Dev** · **Agents** — **Notes** · **Jira** — **Git** · **Docker** · **Jenkins** · **Links** — **Stats** · **Settings**.
 **Four of them — Git, Docker, Jenkins and Links — start folded away**: they are conveniences, you go
 there the day you need them, and a bar of eight entries reads better than a bar of twelve. Nothing is
 disabled: one tick in *Settings → General → Menus* brings them back, for good.
@@ -1861,41 +1861,6 @@ offered on your return is exact; *Cancel* forgets it.
 branch (a team decision: it is the definition of “entered without review”). *Repositories*: a list of
 watched branches specific to a repository, in its edit row.
 
-### Team
-
-**"Our morning"**: a page that answers, on one screen, the daily's question — *where are we, who is waiting
-for what, since when* — computed in SQL on what the team **already shares** through the data repository,
-sharing nothing more and with no AI or forge call. The brief stays "me, this morning"; this page is "us,
-now". It only exists when a data repository is attached (without it, one sentence leads there); with a
-single person in the repository it works and says so.
-
-**Three lists of facts**, each hidden when empty, capped at twelve lines with `and N more` — and only what
-is *waiting on someone*: the **pending decisions** (`!214 · tarification · 8.6/10 · Claire · reviewed by Ali
-· awaiting for 5 d` — open merge requests whose latest report reaches the team threshold and that nobody has
-filed or merged yet, sorted by wait), the **unanswered questions** (*shared* sessions whose agent is waiting
-for an answer, the question in one line; a question a takeover took on waits on nobody and leaves), the
-**failing verifications** (red head, green base). At the top, two numbers, the sync line and, when there are
-any, the number of **quiet workstations** — a number, not a name — leading to Settings → Shared data: that is
-where the **team workstations** list lives, one line per author of the data repository with their last sync
-and `quiet` past N working days (weekends do not count), and nothing more: they may be on leave. A sync
-diagnostic — whose data is stale — not a presence board. Two filters, repository group and person — picking
-a person shows what is *waiting on them*, not what they did.
-
-*Running sessions*, *takeovers* and *overlaps and stacks* had their section and lost it: they told what had
-happened, not what anyone had to do, and the Reviews and AI Dev cards already say it.
-
-**Non-negotiable rule**: the page shows only facts already shared, and **nothing about a person that is not
-the state of a piece of work**. How many tokens someone burns, how many merge requests they merged, who is
-"the fastest" — never, even though the database knows. Unshared sessions do not exist there, neither as a
-line nor in a counter. No action from the page: every line leads to the card (Reviews, AI Dev) where the
-gestures already live; a person is never a link. Nothing is stored: closing the tab leaves nothing. Every line
-says where it leads (*Reviews ›*, *AI Dev ›*, *Report ›*). A person has one name: the forge handle of a merge
-request author (`amady`) and the git name of the data repository (`Amady`) are matched without case or accents —
-the *Person* filter finds their merge requests, the page shows the git name. A question a takeover has already
-picked up stays listed, dimmed, but leaves the counter. Two team settings, in *Settings → Shared data → Team
-page*: the working days before "quiet" (2) and the window of finished takeovers (7 days); the decision
-threshold is the brief's.
-
 ### Jira
 Five sub-tabs: **My tickets**, **Watched**, **Analysed**, **Stats** and **Plans**. The menu carries a **badge** = the number of tickets
 **in progress that are assigned to you** (status category *In Progress*, the only definition that survives
@@ -3403,10 +3368,10 @@ otherwise) and is not merged (`branch merged (!214)`); the forge is re-read when
 missing from the forge`), and the header says when it is `N commits past the last known pass`. Out of a
 repository, explorations, free questions: nothing to take over in v1.
 
-**And the team, this morning?** The *Team* tab ("Our morning") reads that same repository to say who is
-waiting for what, since when — pending decisions, unanswered questions, failing verifications — sharing
-nothing more; the team's workstations and their last sync are read right here, under *Team workstations*.
-See the *Team* section.
+**The team's workstations.** Under *Team workstations*, one line per author of the data repository: their
+last sync, and `quiet` when they have committed nothing for more than N working days (weekends not counted;
+team setting right below, 2 by default) — nothing more: they may be on leave. A sync diagnostic (whose data
+is stale), not a presence board; a person is never a link there.
 
 **What NEVER goes into the repository.** The six API tokens, the clone folder, the language,
 this machine's absolute paths, tidied-away sessions, job logs. Every column of

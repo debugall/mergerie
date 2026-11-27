@@ -181,7 +181,7 @@ describe('Merge requests empilées', () => {
       assert.ok(ordre.findIndex((c) => /\bstack\b/.test(c)) < ordre.findIndex((c) => /\bcroise\b/.test(c)), ordre.join(' | '));
     });
 
-    test('la recherche retrouve une merge request par son numéro — « !3 », tel que le badge et la page Équipe la nomment', async () => {
+    test('la recherche retrouve une merge request par son numéro — « !3 », tel que le badge la nomme', async () => {
       await page.fill('#searchReview', '!3');
       await page.waitForFunction((id) => { const c = document.querySelectorAll('#toReviewList .card[data-id]'); return c.length === 1 && Number(c[0].dataset.id) === id; }, ids[3]);
       await page.fill('#searchReview', '');

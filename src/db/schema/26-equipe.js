@@ -1,8 +1,8 @@
 'use strict';
-/* LA PAGE D'ÉQUIPE « NOTRE MATIN » — aucune table nouvelle : tout ce qu'elle montre est déjà dans la base,
-   hydraté par le dépôt de données partagé (`src/notes/equipe.js`). Un réglage d'équipe (Réglages →
-   Données partagées) : au-delà de combien de jours OUVRÉS sans commit dans le dépôt un poste est dit
-   « silencieux » (2). Le seuil de décision est celui du brief (`converge_threshold`).
+/* LES POSTES DE L'ÉQUIPE — un réglage d'équipe (Réglages → Données partagées) : au-delà de combien de jours
+   OUVRÉS sans commit dans le dépôt de données un poste est dit « silencieux » (2), lu par `src/data/postes.js`.
+   Il a servi d'abord à la page d'équipe « Notre matin », retirée depuis (elle n'avait ni table ni colonne à
+   elle) ; la liste des postes, elle, est restée dans les réglages.
    `team_takeover_days` a réglé la section « Reprises », retirée de la page avec son réglage : la colonne
    est RETIRÉE ci-dessous (comme `health_check` dans la tranche 12) — une base neuve ne l'a jamais, une
    base qui l'avait la perd, et le registre des réglages partagés n'a plus à la classer. */

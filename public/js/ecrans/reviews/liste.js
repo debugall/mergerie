@@ -69,8 +69,8 @@ function loadSegment(seg = currentSeg) {
 $$('.segmented [data-seg]').forEach((b) => b.addEventListener('click', () => loadSegment(b.dataset.seg)));
 
 /* ---------- Recherche (filtre client sur titre / auteur / projet / ticket / numéro) ----------
-   « 260 » ou « !260 » retrouve la merge request : c'est sous ce numéro que la page Équipe, les
-   croisements et les empilements la nomment. */
+   « 260 » ou « !260 » retrouve la merge request : c'est sous ce numéro que les croisements et
+   les empilements la nomment. */
 function matchMr(m, q) {
   return [m.title, m.author, m.project, m.ticket_key, m.source_branch, m.iid != null ? `!${m.iid}` : '']
     .some((v) => String(v || '').toLowerCase().includes(q));
