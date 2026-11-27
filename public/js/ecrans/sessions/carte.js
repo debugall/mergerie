@@ -120,6 +120,7 @@ function taskHead(t) {
     ${promptBlock(t.prompt)}
     ${chapeauCarte(t)}
     ${coutCarte(t)}${badgeTodoAttente(t)}
+    ${friseHtml({ id: t.id, kind: 'code', workflow: t.workflow })}
     ${chaineHtml(t)}`;
 }
 

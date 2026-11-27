@@ -105,7 +105,8 @@ async function preparerJournee({ keys }) {
 }
 
 /* Une session par ticket préparé — sans appel Jira : le prompt et les dépôts viennent de la fenêtre. La
-   chaîne de validation est celle de la session modèle ; `lancer` faux = enregistrée, prête à lancer. */
+   chaîne de validation et « …puis converger » sont ceux de la session modèle ; `lancer` faux = enregistrée,
+   prête à lancer (son « Lancer » convergera alors aussi). */
 function creerSessions({ sessions, modeleId, lancer }) {
   const modele = modeleId ? db.prepare("SELECT * FROM task WHERE id = ? AND kind = 'code'").get(Number(modeleId)) : null;
   const avecChaine = !!(modele && modele.verify_chain);
@@ -125,7 +126,10 @@ function creerSessions({ sessions, modeleId, lancer }) {
       const id = tasks.creerTask(champs);
       db.prepare('UPDATE task SET jira_key = ?, verify_chain = ?, verify_chain_skill = ?, verify_chain_scenario = ? WHERE id = ?')
         .run(key, avecChaine ? modele.verify_chain : null, avecChaine ? modele.verify_chain_skill || null : null, avecChaine ? modele.verify_chain_scenario || null : null, id);
-      if (lancer) jobs.startTaskJob(id, 'run');
+      const converger = !!(modele && modele.converge_after);
+      db.prepare('UPDATE task SET converge_after = ? WHERE id = ?').run(converger ? 1 : 0, id);
+      if (lancer && converger) jobs.startConvergeSessionJob(id, {});
+      else if (lancer) jobs.startTaskJob(id, 'run');
       creees.push({ key, task_id: Number(id), lancee: !!lancer });
     } catch (e) {
       ignores.push({ key, raison: String(e.message).split('\n')[0] });

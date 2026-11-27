@@ -182,6 +182,25 @@ describe('Cockpit et « Lancer ma journée »', () => {
     fs.writeFileSync(path.join(bin, 'v.sh'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   });
 
+  test('« Lancer ma journée » reprend « …puis converger » du modèle : la session créée converge', async () => {
+    const modele = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'modèle convergent', label: 'Modèle qui converge', converge_after: true, targets: [{ repo_id: repoId, branch: 'ai/modele-conv' }],
+    })).body;
+    const d0 = (await app.api('GET', '/api/cockpit')).body;
+    assert.ok(d0.modeles.find((m) => m.id === modele.id).converge, 'proposé comme modèle, avec sa convergence');
+    const r = await app.api('POST', '/api/cockpit/journee/creer', {
+      sessions: [{ key: 'PROJ-75', summary: 'Convergente', prompt: 'Code puis converge', targets: [{ repo_id: repoId, branch: 'ai/proj-75' }] }],
+      modele_id: modele.id, lancer: false,
+    });
+    const id = r.body.creees[0].task_id;
+    assert.equal(app.db.prepare('SELECT converge_after FROM task WHERE id = ?').get(id).converge_after, 1);
+    const job = await app.api('POST', `/api/tasks/${id}/run`, {});
+    assert.equal(job.body.kind, 'converge-session', '« Lancer » du cockpit converge');
+    await waitForJobs(app.api);
+    await app.api('DELETE', `/api/tasks/${id}`);
+    await app.api('DELETE', `/api/tasks/${modele.id}`);
+  });
+
   test('la frise d’une session prête à lancer montre tout ce qui va se passer : codage, push, chaîne, scénario, validée', async () => {
     const t = (await app.api('POST', '/api/tasks', {
       kind: 'code', prompt: 'frise', auto_push: true, verify_chain: [vId], verify_chain_scenario: { verifier_id: vId },
@@ -239,12 +258,12 @@ describe('Cockpit et « Lancer ma journée »', () => {
       await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-item.is-chaine').first().waitFor();
       assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-pourquoi').first().textContent(), /base cassée/);
       // La frise : toutes les étapes, l'étape courante mise en avant — la base cassée, à toi.
-      const courante = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-wf-etape.is-courante').first();
+      const courante = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .frise-etape.is-courante').first();
       await courante.waitFor();
       assert.match(await courante.getAttribute('class'), /is-a_toi/);
       assert.match(await courante.textContent(), /unitaires · base/);
-      assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-wf-ou').first().textContent(), /Étape en cours : unitaires · base/);
-      assert.ok(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-wf').first().locator('.cockpit-wf-etape').count() >= 5, 'codage, push, base, branche, validée');
+      assert.match(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .frise-ou').first().textContent(), /Étape en cours : unitaires · base/);
+      assert.ok(await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .frise').first().locator('.frise-etape').count() >= 5, 'codage, push, base, branche, validée');
       await page.locator('#cockpitBox [data-cockpit-sec="termine"] .cockpit-item').first().waitFor();
       const id = await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] [data-cockpit-open]').first().getAttribute('data-cockpit-open');
       await page.locator('#cockpitBox [data-cockpit-sec="a_toi"] [data-cockpit-open]').first().click();
@@ -266,19 +285,37 @@ describe('Cockpit et « Lancer ma journée »', () => {
       assert.deepEqual(erreurs, []);
     });
 
+    test('« Éditer » une session prête : la case « …puis converger » est là, se relit et s’enregistre', async () => {
+      const t = (await app.api('POST', '/api/tasks', {
+        kind: 'code', prompt: 'à éditer', label: 'Édition convergence', converge_after: true, targets: [{ repo_id: repoId, branch: 'ai/edit-conv' }],
+      })).body;
+      await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
+      await page.locator(`#cockpitBox [data-cockpit-edit="${t.id}"]`).click();
+      await page.waitForSelector('#taskModal:not([hidden])');
+      const caseConv = page.locator('#taskConvergeRow [name="converge_after"]');
+      await page.locator('#taskConvergeRow').waitFor();
+      assert.equal(await caseConv.isChecked(), true, 'relue cochée');
+      await page.locator('#taskConvergeRow').click();
+      await page.locator('#taskSubmit').click();
+      await attendreServeur(async () => app.db.prepare('SELECT converge_after FROM task WHERE id = ?').get(t.id).converge_after === 0, 'décochée, enregistrée');
+      await page.waitForSelector('#taskModal', { state: 'hidden' });
+      await app.api('DELETE', `/api/tasks/${t.id}`);
+      assert.deepEqual(erreurs, []);
+    });
+
     test('« Continuer » sur une chaîne arrêtée : la base réparée, le déroulé va au bout — validée', async () => {
       await page.locator('#tab-task .subnav [data-vue="cockpit"]').click();
       const ligne = page.locator('#cockpitBox [data-cockpit-sec="a_toi"] .cockpit-item.is-chaine').first();
       await ligne.waitFor();
       const id = Number(await ligne.getAttribute('data-cockpit-task'));
       // La base est réparée (le script repasse au vert) : « Continuer » fait repartir le déroulé.
-      await page.locator(`#cockpitBox [data-cockpit-continuer="${id}"][data-action="chaine"]`).click();
+      await page.locator(`#cockpitBox [data-frise-continuer="${id}"][data-action="chaine"]`).click();
       await attendreServeur(async () => {
         const l = Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((x) => x && x.task_id === id);
         return l && l.workflow.etapes.at(-1).etat === 'fait';
       }, 'la chaîne va au bout', 60000);
       await page.locator(`#cockpitBox [data-cockpit-sec="termine"] .cockpit-item[data-cockpit-task="${id}"]`).waitFor();
-      assert.equal(await page.locator(`#cockpitBox [data-cockpit-continuer="${id}"]`).count(), 0, 'plus rien à continuer');
+      assert.equal(await page.locator(`#cockpitBox [data-frise-continuer="${id}"]`).count(), 0, 'plus rien à continuer');
       assert.deepEqual(erreurs, []);
     });
 

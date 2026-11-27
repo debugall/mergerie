@@ -13,6 +13,7 @@ const i18n = require('../../core/i18n');
 const { t } = i18n;
 const notes = require('../../notes/notes');
 const jobs = require('../../jobs');
+const workflow = require('../../jobs/workflow');
 const agentsession = require('../../agent/session');
 const agentpass = require('../../agent/pass');
 const localsnapshot = require('../../session/localsnapshot');
@@ -78,6 +79,8 @@ app.get('/api/local-tasks', wrap((req, res) => {
     lt.todo_waiting = !!db.prepare(`SELECT 1 FROM todo
       WHERE auto_kind = 'local_question' AND auto_ref = ? AND status = 'open' AND archived_at IS NULL`)
       .get(String(lt.id));
+    // Les étapes de son déroulé, dossier par dossier, et celle où elle en est.
+    lt.workflow = workflow.friseLocale(lt, { job: jobs.jobLocalEnCoursPour(lt.id) });
   }
   res.json(list);
 }));

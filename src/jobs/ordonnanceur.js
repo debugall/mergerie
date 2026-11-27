@@ -128,6 +128,14 @@ function jobEnCoursPour(taskId) {
   const q = queue.find(porte);
   return q ? { jobId: q.jobId, entry: q, enFile: true } : null;
 }
+// Le job (actif ou en file) qui porte cette session hors dépôt, s'il y en a un.
+function jobLocalEnCoursPour(taskId) {
+  const id = Number(taskId);
+  const porte = (e) => e && e.kind === 'local' && Number(e.taskId) === id;
+  for (const [jobId, a] of active.entries()) if (porte(a.entry)) return { jobId, entry: a.entry, enFile: false };
+  const q = queue.find(porte);
+  return q ? { jobId: q.jobId, entry: q, enFile: true } : null;
+}
 /* Sort un job PRÉCIS de la file et le lance à côté de celui qui tourne. Refuse plutôt que
    d'avertir quand les deux touchent le même dépôt : un clone abîmé en cours de review ne
    se rattrape pas d'un clic, alors qu'attendre son tour, si. */
@@ -346,5 +354,5 @@ function isRunning() {
 }
 
 module.exports = {
-  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, startNow, startJob, startGitJob, clearTaskError, startVerifyJob, startReconcileJob, startPeriodeJob, startPeriodeResumeJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
+  mainRunning, retryJob, runEntry, launch, pump, prochainLancable, attendreFin, jobEnCoursPour, jobLocalEnCoursPour, startNow, startJob, startGitJob, clearTaskError, startVerifyJob, startReconcileJob, startPeriodeJob, startPeriodeResumeJob, setJobTarget, startTaskJob, startLocalJob, startAskJob, startConvergeJob, startConvergeSessionJob, startMergeAiJob, stopJob, isRunning,
 };

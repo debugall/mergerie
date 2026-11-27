@@ -1048,8 +1048,8 @@ la raison — base cassée, branche cassée et le diagnostic, scénario en éche
 validée ou toute verte, ou session poussée sans chaîne). Relu toutes les trois secondes tant qu'il est
 affiché ; chaque ligne ouvre sa session d'un clic. Les sessions sans mouvement depuis trois jours n'y sont pas.
 
-**La frise du déroulé.** Chaque ligne montre **toutes les étapes** de la session, dans l'ordre, et ce qui
-va se passer : **Codage** → **Push** → la boucle de convergence (**Review** avec sa note, puis
+**La frise du déroulé.** Chaque ligne — et, dans **Codage** et **Codage sur dépôt local**, chaque carte de
+session — montre **toutes les étapes** de la session, dans l'ordre, et ce qui va se passer : **Codage** → **Push** → la boucle de convergence (**Review** avec sa note, puis
 **Correction n** et **Review n** par passe, et la fin — seuil atteint, plafond, note en baisse) → chaque
 vérificateur de la chaîne (**base**, puis **branche**, et son **diagnostic** s'il y en a un) → le
 scénario de couverture (**Écriture du test**, **Push du test**, **Exécution du test**, « dans » le dépôt
@@ -1070,9 +1070,15 @@ approuver ne se saute pas : le bouton devient **`Répondre pour continuer`** et 
 question posée pendant une correction de convergence, une fois répondue, redonne `Continuer`, qui reprend
 la convergence. Rien ne s'affiche tant qu'un job tourne.
 
+Sur une session **hors dépôt**, la frise suit chaque dossier : **Codage**, puis — avec une branche —
+**Commit**, **Push**, **Merge request** (sautée, avec la raison, quand le remote du dossier n'est pas un
+dépôt connu) et la boucle de convergence ; plusieurs dossiers, chaque étape dit le sien. `Continuer` y
+recode les seuls dossiers en échec, et reprend par « Converger » un commit, un push, une MR ou une
+convergence arrêtés quand la session devait converger.
+
 **« Lancer ma journée ».** Tape des clés de tickets, ou coche-les dans **`Mes tickets`** (tes tickets non
-terminés — un appel Jira), choisis la session dont la **chaîne de validation** sera reprise (la plus
-récente qui en a une est proposée), et **`Préparer`** : chaque ticket est lu (**un appel Jira par ticket**,
+terminés — un appel Jira), choisis la session dont la **chaîne de validation** et la case **`…puis converger`** seront reprises (la
+plus récente qui en a une est proposée ; la liste dit « puis converger » quand le modèle converge), et **`Préparer`** : chaque ticket est lu (**un appel Jira par ticket**,
 annoncé avant le clic) et rien n'est encore créé. Un bloc par ticket montre ses dépôts, sa branche de travail
 et sa branche de départ, lus dans ses jetons (`&&dépôt:branche<départ`, description ou commentaire « #tech ») ;
 un ticket qui n'en nomme aucun le dit, et tu les **saisis dans le bloc** (dépôt et branche de départ avec
@@ -1329,7 +1335,9 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   L'option se **mémorise** quand tu modifies une session existante. La reprise a d'abord été validée par
   un banc d'essai dans *Réglages → AI sessions*.
 - **⚡ Converger depuis une session — *du prompt à la MR convergée*.** La case
-  `…puis converger jusqu’à 8/10 (3 passes max)` de la **modale de nouvelle session** — et le bouton
+  `…puis converger jusqu’à 8/10 (3 passes max)` de la **modale de nouvelle session** — **retenue sur la
+  session** : elle se relit et se modifie à l'édition tant que la session n'a pas été lancée, et son premier
+  **`Lancer`** (la carte, le cockpit, « Lancer ma journée ») converge ; une relance ensuite reste une relance — et le bouton
   `Converger` d’une **session existante** — enchaînent **tout le chemin** sans
   intervention : l'IA **code** la tâche → **commit** → **push** → **crée la MR** (cible = la branche de
   départ) → puis lance la **boucle de convergence** (review → correction → re-review) jusqu'au seuil.

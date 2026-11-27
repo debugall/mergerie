@@ -64,6 +64,33 @@ describe('Converger depuis une session de dev IA', () => {
     assert.equal(detail.convergence.best_note, 8);
   });
 
+  /* « …PUIS CONVERGER » RETENU : la case vit sur la session ; son premier « Lancer » converge, une relance non. */
+  test('« …puis converger » retenu : modifiable avant le lancement, le premier « Lancer » converge, la frise l’annonce', async () => {
+    const { repoId } = await addRepo('retenue', 'grp/retenue');
+    const task = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'Ajoute un endpoint /version', converge_after: true,
+      targets: [{ repo_id: repoId, branch: 'ai/version', base_branch: 'main' }],
+    })).body;
+    assert.equal(task.converge_after, 1);
+    const ligne = async () => Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === task.id);
+    assert.deepEqual((await ligne()).workflow.etapes.slice(0, 3).map((e) => `${e.cle}${e.n == null ? '' : e.n}:${e.etat}`),
+      ['code:a_venir', 'push:a_venir', 'review0:a_venir'], 'la convergence fait partie de ce qui va se passer');
+    // Décochée puis recochée avant le lancement : la route d'édition la prend.
+    assert.equal((await app.api('PUT', `/api/tasks/${task.id}`, { converge_after: false })).body.converge_after, 0);
+    assert.equal((await app.api('PUT', `/api/tasks/${task.id}`, { converge_after: true })).body.converge_after, 1);
+    const job = await app.api('POST', `/api/tasks/${task.id}/run`, {});
+    assert.equal(job.body.kind, 'converge-session', 'le premier lancement converge');
+    await waitForJobs(app.api);
+    const tg = (await app.api('GET', `/api/tasks/${task.id}`)).body.task.targets[0];
+    assert.ok(tg.mr_iid, 'la MR est ouverte');
+    assert.ok((await ligne()).workflow.etapes.some((e) => e.cle === 'converge-fin' && e.etat === 'fait'));
+    // Lancée : la case ne bouge plus, et « Relancer » reste une relance.
+    assert.equal((await app.api('PUT', `/api/tasks/${task.id}`, { converge_after: false })).body.converge_after, 1);
+    const relance = await app.api('POST', `/api/tasks/${task.id}/run`, {});
+    assert.equal(relance.body.kind, 'task');
+    await waitForJobs(app.api);
+  });
+
   /* « CONTINUER » DEPUIS LE COCKPIT : une convergence coupée (serveur arrêté pendant la review) arrête la frise sur
      cette étape ; l'action proposée reprend la convergence, sans recoder, et la frise va au bout. */
   test('une convergence coupée : le cockpit propose de la reprendre, et la reprise va au bout', async () => {

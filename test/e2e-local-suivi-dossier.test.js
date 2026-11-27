@@ -120,6 +120,32 @@ describe('Hors dépôt — suivi d’un seul dossier', () => {
       assert.deepEqual(passes(lt.id, dirs[1].id).map((p) => p.kind), ['run'], 'l’autre dossier n’a pas bougé');
     });
 
+    test('la carte montre la frise, dossier par dossier ; un dossier en échec se recode d’un clic sur « Continuer », lui seul', async () => {
+      const { lt, dirs } = await sessionDeux('Ajoute un sommaire');
+      // Comme un agent qui a échoué sur le second dossier.
+      app.db.prepare("UPDATE local_task_dir SET status = 'error', last_error = 'agent en échec' WHERE id = ?").run(dirs[1].id);
+      app.db.prepare("UPDATE local_task SET status = 'error' WHERE id = ?").run(lt.id);
+      await ouvrirListe();
+      const carte = page.locator(`#localList .card[data-local="${lt.id}"]`);
+      const courante = carte.locator('.frise-etape.is-courante');
+      await courante.waitFor();
+      assert.match(await courante.getAttribute('class'), /is-echec/);
+      assert.match(await courante.textContent(), /· Codage/, 'l’étape dit son dossier');
+      assert.equal(await carte.locator('.frise-etape').count(), 2, 'un codage par dossier');
+      await carte.locator(`[data-frise-continuer="${lt.id}"][data-kind="local"][data-action="code"]`).click();
+      for (let i = 0; i < 300 && passes(lt.id, dirs[1].id).length < 2; i += 1) {
+        await new Promise((r) => { setTimeout(r, 100); });
+      }
+      await waitForJobs(app.api);
+      assert.deepEqual(passes(lt.id, dirs[1].id).map((p) => p.kind), ['run', 'run'], 'le dossier en échec est recodé');
+      assert.deepEqual(passes(lt.id, dirs[0].id).map((p) => p.kind), ['run'], 'l’autre n’a pas bougé');
+      await page.waitForFunction((id) => {
+        const c = document.querySelector(`#localList .card[data-local="${id}"]`);
+        return c && c.querySelectorAll('.frise-etape.is-fait').length === 2 && !c.querySelector('[data-frise-continuer]');
+      }, lt.id);
+      assert.deepEqual(erreurs, []);
+    });
+
     test('« Voir le diff » sur la ligne d’un dossier ouvre la vue de diff de ce dossier', async () => {
       const { lt, dirs } = await sessionDeux('Ajoute un pied de page');
       await ouvrirListe();

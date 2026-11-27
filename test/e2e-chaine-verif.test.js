@@ -492,6 +492,18 @@ exit 0
       assert.deepEqual(erreurs, []);
     });
 
+    test('la carte d’une session de codage montre la frise de son déroulé, jusqu’à « Validée »', async () => {
+      const { task_id: id } = app.db.prepare("SELECT task_id FROM verif_chaine WHERE status = 'validated' ORDER BY id LIMIT 1").get();
+      await page.locator('#tab-task .subnav [data-kind="code"]').click();
+      const frise = page.locator(`#taskList .task-row[data-task="${id}"] .frise`);
+      await frise.waitFor();
+      const derniere = frise.locator('.frise-etape').last();
+      assert.match(await derniere.textContent(), /Validée/);
+      assert.match(await derniere.getAttribute('class'), /is-fait/);
+      assert.ok(await frise.locator('.frise-etape', { hasText: 'Exécution du test' }).count() > 0, 'le scénario fait partie du déroulé');
+      assert.equal(await frise.locator('[data-frise-continuer]').count(), 0);
+    });
+
     test('la carte dit ce que le diagnostic a conclu, avec sa preuve', async () => {
       vider();
       echouer('unitaires', 'head', 9);

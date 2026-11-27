@@ -121,6 +121,34 @@ describe('Codage hors dépôt : branche, commit, push, merge request, convergenc
     assert.equal(app.db.prepare("SELECT COUNT(*) c FROM agent_pass WHERE scope = 'local' AND task_id = ?").get(lt.id).c, passes,
       'le dossier déjà codé ne repasse pas par l’agent');
     assert.deepEqual([fin.auto_push, fin.create_mr, fin.converge_after], [0, 0, 0], 'les cases de la session restent ce qu’elles étaient');
+    // La frise de la carte : codage, commit, push, MR, puis la boucle — tout fait, rien à continuer.
+    const wf = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id).workflow;
+    const cles = wf.etapes.map((e) => `${e.cle}${e.n == null ? '' : e.n}:${e.etat}`);
+    assert.deepEqual(cles.slice(0, 5), ['code:fait', 'commit:fait', 'push:fait', 'mr:fait', 'review0:fait'], cles.join(' '));
+    assert.ok(cles.includes('converge-fin:fait'), cles.join(' '));
+    assert.equal(wf.courante, null);
+    assert.equal(wf.continuer, null);
+    retourSurMain(connu);
+  });
+
+  test('un dossier en échec : la frise s’arrête sur son codage, et « Continuer » le recode, lui seul', async () => {
+    const lt = await creer({ dirs: [connu.work], branch: 'feature/frise-echec', auto_push: true });
+    await lancer(lt.id);
+    const dir = app.db.prepare('SELECT id FROM local_task_dir WHERE task_id = ?').get(lt.id).id;
+    // Comme un agent qui a échoué sur ce dossier.
+    app.db.prepare("UPDATE local_task_dir SET status = 'error', last_error = 'agent en échec', git_status = NULL, commit_sha = NULL WHERE id = ?").run(dir);
+    app.db.prepare("UPDATE local_task SET status = 'error' WHERE id = ?").run(lt.id);
+    const wf = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id).workflow;
+    assert.equal(wf.etapes[wf.courante].cle, 'code');
+    assert.equal(wf.etapes[wf.courante].etat, 'echec');
+    assert.match(wf.etapes[wf.courante].detail, /agent en échec/);
+    assert.deepEqual(wf.continuer, { action: 'code', targets: [dir] });
+    // « Continuer » : la route qu'appelle l'écran.
+    assert.equal((await app.api('POST', `/api/local-tasks/${lt.id}/run`, { dirs: wf.continuer.targets })).status, 200);
+    await waitForJobs(app.api);
+    const apres = (await app.api('GET', '/api/local-tasks')).body.find((x) => x.id === lt.id).workflow;
+    assert.deepEqual(apres.etapes.map((e) => `${e.cle}:${e.etat}`), ['code:fait', 'commit:fait', 'push:fait']);
+    assert.equal(apres.continuer, null);
     retourSurMain(connu);
   });
 

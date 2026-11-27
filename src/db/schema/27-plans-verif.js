@@ -63,3 +63,7 @@ try { db.exec('ALTER TABLE verif_chaine ADD COLUMN scenario_json TEXT'); } catch
    chaîne écrit son scénario. Une référence `forge/projet` et non un id : le réglage est d'équipe, et un id
    entier ne désigne rien sur le poste d'en face. Vide = déduit, s'il n'y a qu'un candidat. */
 try { db.exec('ALTER TABLE config ADD COLUMN test_repo TEXT'); } catch { /* déjà présente */ }
+/* « …PUIS CONVERGER » SUR UNE SESSION DE CODAGE, retenu : la case se relit à l'édition d'une session pas encore
+   lancée, et son premier « Lancer » — de la carte, du cockpit, de « Lancer ma journée » — converge au lieu de
+   seulement coder. Avant, la case ne valait qu'au clic de création. */
+try { db.exec('ALTER TABLE task ADD COLUMN converge_after INTEGER DEFAULT 0'); } catch { /* déjà présente */ }

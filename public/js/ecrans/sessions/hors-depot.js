@@ -110,6 +110,7 @@ function localCard(t) {
       ${promptBlock(t.prompt)}
       ${chapeauCarte(t)}
       ${coutCarte(t)}${badgeTodoAttente(t)}
+      ${friseHtml({ id: t.id, kind: 'local', workflow: t.workflow })}
       ${toggleProjetsHtml('local', t.id, n)}
       <div class="targets"${projetsVisibles('local', t.id, n) ? '' : ' hidden'}>${(t.dirs || []).map((d) => localDirLine(d, t)).join('')}</div>
       ${suiviBlock(t, 'l')}

@@ -12,6 +12,8 @@ const { piecesExposees } = require('../lib/pieces');
 const { chapeauReponse, coutParSession, dureeParSession, taskById, taskContextRepos, taskTargets } = require('../lib/sessions');
 const reprise = require('../../session/reprise');
 const chaineVerif = require('../../jobs/chaine-verif');
+const workflow = require('../../jobs/workflow');
+const { jobEnCoursPour } = require('../../jobs');
 const identite = require('../../core/identite');
 
 /* LA REPRISE D'UNE SESSION DE COLLÈGUE, sur la liste : d'où vient une reprise (`resumed_from`), qui a
@@ -113,7 +115,11 @@ app.get('/api/tasks', wrap((req, res) => {
       .get(String(tache.id)),
     ...lignee(tache, taskTargets(tache.id)),
     // La chaîne de validation, vérificateur par vérificateur : base, branche, essai.
-    chaine: tache.verify_chain ? chaineVerif.resume(tache.id) : null,
+    ...(() => {
+      const chaine = tache.verify_chain ? chaineVerif.resume(tache.id) : null;
+      // Une session de codage : les étapes de son déroulé et celle où elle en est (comme au cockpit).
+      return { chaine, workflow: tache.kind === 'code' ? workflow.frise(tache, { chaine, job: jobEnCoursPour(tache.id) }) : null };
+    })(),
   })));
 }));
 app.get('/api/tasks/:id', wrap((req, res) => {

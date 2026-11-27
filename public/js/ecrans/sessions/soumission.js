@@ -398,6 +398,8 @@ $('#taskForm').addEventListener('submit', async (e) => {
     review_after: f.review_after ? f.review_after.checked : false,
     // « Planifier d'abord » : lu à la création ET à l'édition — la même route PUT accepte le champ.
     plan_first: f.plan_first ? f.plan_first.checked : false,
+    // « …puis converger » : retenu sur la session — son premier « Lancer » converge (la carte, le cockpit).
+    ...(taskKind === 'code' && f.converge_after && !$('#taskConvergeRow').hidden ? { converge_after: f.converge_after.checked } : {}),
     // Le binaire de cette session : vide = le défaut. Création et édition, la route PUT l'accepte.
     cli_id: f.cli_id ? f.cli_id.value : '',
     verifier_id: f.verifier_id ? Number(f.verifier_id.value) || null : null,
@@ -449,7 +451,6 @@ $('#taskForm').addEventListener('submit', async (e) => {
   const veutConverger = !editingTaskId && taskKind === 'code' && !!(f.converge_after && f.converge_after.checked);
   // Une convergence ne se programme pas : on le dit sous la date plutôt que d'en ignorer une des deux.
   if (veutConverger && programmeA) { signalerChamp(f.scheduled_at_date, tr('err.programmation.converge')); return; }
-  let convergeId = null;
   try {
     await busy(btn, async () => {
       if (editingTaskId) {
@@ -462,11 +463,10 @@ $('#taskForm').addEventListener('submit', async (e) => {
       if (programmeA) {
         await api(`/tasks/${created.id}/schedule`, { method: 'PUT', body: { at: programmeA } });
         toast(tr('toast.session-programmee', { when: fmtDateTime(programmeA) }));
-      } else if (veutConverger) {
-        convergeId = created.id; // on ne lance PAS le run : la convergence pilote tout
       } else if (launchAfterCreate) {
+        // Retenue sur la session, la case fait converger ce premier lancement (le serveur en décide).
         await api(`/tasks/${created.id}/run`, { method: 'POST' });
-        toast(tr('toast.session-lancee')); refreshStatus();
+        toast(tr(veutConverger ? 'toast.converge-lancee' : 'toast.session-lancee')); refreshStatus();
       } else {
         toast(taskKind === 'code'
           ? tr('toast.code-session-created')
@@ -476,11 +476,6 @@ $('#taskForm').addEventListener('submit', async (e) => {
     resetTaskFiles();
     closeTaskModal();
     loadTasks();
-    if (convergeId) {
-      const d = await defautsConvergence();
-      await api(`/tasks/${convergeId}/converge`, { method: 'POST', body: { threshold: d.seuil, maxPasses: d.passes } });
-      toast(tr('toast.converge-lancee')); refreshStatus();
-    }
   } catch (err) { toast(explainError(err.message), true); }
 });
 

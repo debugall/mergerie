@@ -1008,8 +1008,8 @@ waits for its turn, with the job's last line), **Done (24 h)** (chain validated 
 pushed without a chain). Re-read every three seconds while shown; each row opens its session in one click.
 Sessions idle for three days are left out.
 
-**The workflow strip.** Each row shows **every step** of the session, in order, and what is going to
-happen: **Coding** → **Push** → the convergence loop (**Review** with its score, then **Fix n** and
+**The workflow strip.** Each row — and, in **Coding** and **Local repo coding**, each session card — shows
+**every step** of the session, in order, and what is going to happen: **Coding** → **Push** → the convergence loop (**Review** with its score, then **Fix n** and
 **Review n** per pass, and the end — threshold reached, cap, score dropping) → each verifier of the chain
 (**base**, then **branch**, and its **diagnosis** if any) → the coverage scenario (**Test written**,
 **Test pushed**, **Test run**, “in” the test repository, and its **fix**) → **Validated**. One pill per
@@ -1027,9 +1027,15 @@ code is pushed → it starts. A question or a plan to approve cannot be skipped:
 **`Answer to continue`** and opens the session; a question asked during a convergence fix, once answered,
 brings `Continue` back, which resumes convergence. Nothing shows while a job runs.
 
+On a **local repo** session, the strip follows each folder: **Coding**, then — with a branch — **Commit**,
+**Push**, **Merge request** (skipped, with the reason, when the folder's remote is not a known repository)
+and the convergence loop; with several folders, each step names its own. `Continue` there codes again only
+the failed folders, and resumes a stopped commit, push, MR or convergence through “Converge” when the
+session was meant to converge.
+
 **“Start my day”.** Type ticket keys, or tick them in **`My tickets`** (your unfinished tickets — one Jira
-call), choose the session whose **validation chain** is reused (the most recent one that has a chain is
-offered), and **`Prepare`**: each ticket is read (**one Jira call per ticket**, announced before the click) and
+call), choose the session whose **validation chain** and **`…then converge`** box are reused (the most recent
+one that has them is offered; the list says “then converge” when the model converges), and **`Prepare`**: each ticket is read (**one Jira call per ticket**, announced before the click) and
 nothing is created yet. One block per ticket shows its repositories, working branch and starting branch, read
 from its tokens (`&&repo:branch<base`, description or “#tech” comment); a ticket that names none says so, and
 you **type them in the block** (repository and starting branch with search — “(repository default)” at the top
@@ -1269,7 +1275,9 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   **“resuming…”** (no more waiting without visual feedback). The option is **remembered** when you edit an
   existing session. Resuming was first validated by a test bench in *Settings → AI sessions*.
 - **⚡ Converge from a session — *from prompt to converged MR*.** The
-  `…then converge up to 8/10 (3 passes max)` checkbox of the **new session dialog** — and the
+  `…then converge up to 8/10 (3 passes max)` checkbox of the **new session dialog** — **kept on the session**:
+  it is read back and can be changed when editing as long as the session has not been started, and its first
+  **`Start`** (the card, the cockpit, “Start my day”) converges; a later re-run stays a re-run — and the
   `Converge` button of an **existing session** — chain **the whole path** without intervention: the AI **codes**
   the task → **commit** → **push** → **creates the MR** (target = the starting branch) → then starts the
   **convergence loop** (review → fix → re-review) until the threshold. You write an intention, you come

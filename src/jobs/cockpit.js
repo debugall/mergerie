@@ -60,11 +60,13 @@ function construire({ maintenant = new Date() } = {}) {
   return { a_toi: aToi, pret, en_cours: enCours, termine, fenetre_jours: FENETRE_JOURS };
 }
 
-/* Les sessions dont la chaîne peut servir de modèle à « Lancer ma journée » : celles qui en ont une. */
+/* Les sessions qui peuvent servir de modèle à « Lancer ma journée » : celles qui ont une chaîne, ou qui
+   convergent — c'est ce que les sessions de la journée leur reprennent. */
 function modeles() {
-  return db.prepare(`SELECT id, label, prompt, verify_chain FROM task WHERE kind = 'code' AND verify_chain IS NOT NULL
-    ORDER BY updated_at DESC LIMIT 30`).all().map((t) => ({
-    id: t.id, label: t.label || String(t.prompt || '').split('\n')[0].slice(0, 80), n: lire(t.verify_chain, []).length,
+  return db.prepare(`SELECT id, label, prompt, verify_chain, converge_after FROM task WHERE kind = 'code'
+    AND (verify_chain IS NOT NULL OR converge_after = 1) ORDER BY updated_at DESC LIMIT 30`).all().map((t) => ({
+    id: t.id, label: t.label || String(t.prompt || '').split('\n')[0].slice(0, 80), n: (lire(t.verify_chain, []) || []).length,
+    converge: !!t.converge_after,
   }));
 }
 

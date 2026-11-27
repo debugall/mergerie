@@ -34,6 +34,8 @@ app.post('/api/tasks', wrap((req, res) => {
       .run(chaine, chaine ? chaineDiag.normaliserSkill((req.body || {}).verify_chain_skill) : null,
         chaine ? chaineScen.normaliserScenario((req.body || {}).verify_chain_scenario) : null, taskId);
   }
+  // « …puis converger » : codage seulement, retenu pour le premier lancement.
+  if (champs.kind === 'code') db.prepare('UPDATE task SET converge_after = ? WHERE id = ?').run((req.body || {}).converge_after ? 1 : 0, taskId);
   savePiecesEtImages('task', taskId, req.body || {});
   res.json({ ...taskById(taskId), targets: taskTargets(taskId), context_repos: taskContextRepos(taskId) });
 }));
@@ -112,6 +114,10 @@ app.put('/api/tasks/:id', wrap((req, res) => {
     chaine ? (skillEnvoye === undefined ? tache.verify_chain_skill || null : chaineDiag.normaliserSkill(skillEnvoye)) : null,
     chaine ? (scenEnvoye === undefined ? tache.verify_chain_scenario || null : chaineScen.normaliserScenario(scenEnvoye)) : null,
     tache.id);
+  // « …puis converger » : modifiable tant que la session n'a pas été lancée — ensuite, « Converger » sur la carte.
+  if (tache.kind === 'code' && tache.status === 'new' && (req.body || {}).converge_after !== undefined) {
+    db.prepare('UPDATE task SET converge_after = ? WHERE id = ?').run(req.body.converge_after ? 1 : 0, tache.id);
+  }
   savePiecesEtImages('task', tache.id, req.body || {});
   // Après une éventuelle recréation des cibles : celles-ci repartent sans handle.
   applySessionId('task_target', 'task_id', tache.id, sessionId, taskTargets(tache.id));
@@ -266,6 +272,11 @@ app.post('/api/tasks/:id/run', wrap(async (req, res) => {
   }
   // Lancer à la main annule le lancement programmé : la session ne doit pas partir deux fois.
   jobs.programmation.programmer('task', tache.uid, 'run', null);
+  /* Le PREMIER lancement d'une session « …puis converger » converge : coder, pousser, ouvrir la MR, boucler.
+     Une relance ensuite reste une relance — la convergence se redemande depuis la carte. */
+  if (tache.kind === 'code' && tache.converge_after && tache.status === 'new' && !targetIds) {
+    return res.json(jobs.startConvergeSessionJob(tache.id, parseConvergeOpts({})));
+  }
   res.json(jobs.startTaskJob(tache.id, 'run', targetIds ? { targetIds } : {}));
 }));
 // « Converger » une session de dev : du prompt à la/les MR convergée(s). L'IA code,

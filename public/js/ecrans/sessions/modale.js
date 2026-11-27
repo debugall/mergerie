@@ -23,8 +23,8 @@ function applyKindToModal(kind) {
      ne s'en sert pas ferait croire que la réponse portera dessus. */
   const isAsk = kind === 'ask';
   $('#codeOnlyFields').hidden = kind !== 'code';
-  /* « puis converger » : sessions de CODAGE, et seulement à la création — sur une session
-     déjà écrite, la convergence se lance depuis sa carte. */
+  /* « puis converger » : sessions de CODAGE, à la création — et à l'édition tant qu'elle n'a pas été lancée
+     (`openTaskEdit` la remontre) ; sur une session déjà écrite, la convergence se lance depuis sa carte. */
   const cv = $('#taskConvergeRow'); if (cv) cv.hidden = kind !== 'code' || !!editingTaskId;
   /* La review d'une MR n'a de sens que pour une session de CODAGE. Contrairement à la
      convergence, elle reste offerte à l'édition : la merge request n'est souvent pas encore

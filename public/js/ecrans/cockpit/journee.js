@@ -35,7 +35,7 @@ function ouvrirJournee() {
   const sel = $('#cockpitModele');
   const modeles = (cockpitDonnees && cockpitDonnees.modeles) || [];
   sel.innerHTML = `<option value="">${esc(tr('cockpit.journee.no-model'))}</option>`
-    + modeles.map((m) => `<option value="${m.id}">#${m.id} ${esc(m.label)} — ${esc(tr('cockpit.journee.model-n', { n: m.n, count: m.n }))}</option>`).join('');
+    + modeles.map((m) => `<option value="${m.id}">#${m.id} ${esc(m.label)} — ${esc(tr('cockpit.journee.model-n', { n: m.n, count: m.n }))}${m.converge ? ` · ${esc(tr('cockpit.journee.model-converge'))}` : ''}</option>`).join('');
   if (modeles.length) sel.value = String(modeles[0].id);
   majCoutJournee();
   $('#cockpitJourneeModal').hidden = false;

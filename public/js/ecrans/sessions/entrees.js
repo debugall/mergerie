@@ -312,6 +312,11 @@ async function openTaskEdit(id) {
   if (f.notify_jira) f.notify_jira.checked = !!t.notify_jira;
   if (f.review_after) f.review_after.checked = !!t.review_after;
   if (f.plan_first) f.plan_first.checked = !!t.plan_first;
+  // « …puis converger » se relit, et se modifie, tant que la session n'a pas été lancée.
+  if (taskKind === 'code' && t.status === 'new' && $('#taskConvergeRow')) {
+    $('#taskConvergeRow').hidden = false;
+    if (f.converge_after) f.converge_after.checked = !!t.converge_after;
+  }
   cliPreselection = t.cli_id || '';    // le binaire choisi, relu par showTaskModal
     poserDateProgrammee(f, t.scheduled_at);
     await majVerificateursSession(t.verifier_id || '', { autoPick: false, chaine: t.verify_chain, chaineSkill: t.verify_chain_skill, chaineScenario: t.verify_chain_scenario });

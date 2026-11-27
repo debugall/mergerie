@@ -1149,7 +1149,7 @@ const REGISTRE = [
        ESSAIE — l'endroit même où l'on tente un prompt sans engager l'équipe. */
     /* `auto_push` NE VOYAGE PAS (plan_secure.md, lot C, S5) : une session reçue du dépôt
        partagé avec `auto_push: 1` poussait, lue brute à l'exécution. */
-    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push', 'cli_id', 'recurrence_uid', 'jira_key'],
+    fusion: 'last-writer', locales: ['md_path', 'diff_path', 'hidden', 'shared', 'followup_draft', 'agent_draft_json', 'auto_push', 'cli_id', 'recurrence_uid', 'jira_key', 'converge_after'],
     /* LE FICHIER EST NOMMÉ PAR SON UID, PAS PAR SON DÉPÔT : comme `fromFile` ci-dessous, le
        balayage lit le dépôt de la PREMIÈRE cible — c'est elle qui décide si cette session
        s'hydrate ici. Une session sans cible connue n'a rien à juger. */

@@ -818,7 +818,9 @@ describe('Menu Dev IA — la modale de session', { skip: dispo ? false : MSG_NAV
 
     assert.equal((await page.locator('#taskModalTitle').textContent()).trim(), await tr('task.edit.code-title'));
     assert.equal(await page.locator('#taskSubmitOnly').isVisible(), false, 'on modifie : rien à créer');
-    assert.equal(await page.locator('#taskConvergeRow').isVisible(), false, 'converger se lance depuis la carte d’une session écrite');
+    // Jamais lancée : « …puis converger » se relit et se modifie encore (une session lancée converge depuis sa carte).
+    assert.equal((await app.api('GET', `/api/tasks/${creee.id}`)).body.task.status, 'new');
+    assert.equal(await page.locator('#taskConvergeRow').isVisible(), true, 'pas encore lancée : la case est là');
     assert.equal(await page.locator('#taskForm [name="label"]').inputValue(), 'Ajout du cache');
     assert.equal(await page.locator('#taskForm [name="commit_message"]').inputValue(), 'feat: cache du panier');
     // Un message de commit relu se VOIT : l'avancé s'est déplié tout seul à l'édition.

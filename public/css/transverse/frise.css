@@ -1,0 +1,26 @@
+/* La frise du déroulé d'une session (cockpit, cartes de codage et de codage sur dépôt local) : une pastille par
+   étape, reliées ; l'étape courante ressort, les passes conditionnelles sont en pointillé. Elle passe à la ligne
+   sur un écran étroit. */
+.frise { margin-top: 6px; }
+.frise-ou { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.frise-etapes { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 0; margin: 0; padding: 0; }
+.frise-etape { display: flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 12px; background: var(--bg); color: var(--muted); max-width: 260px; }
+.frise-etape + .frise-etape { margin-left: 14px; position: relative; }
+.frise-etape + .frise-etape::before { content: ''; position: absolute; left: -15px; top: 50%; width: 14px; border-top: 1px solid var(--line); }
+.frise-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.frise-nom { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frise-detail { font-size: 11px; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frise-ico { display: inline-flex; flex: none; }
+.frise-point { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-block; }
+.frise-etape.is-fait { color: var(--green-text, var(--green)); border-color: color-mix(in srgb, var(--green) 45%, var(--line)); }
+.frise-etape.is-en_cours, .frise-etape.is-en_file { color: var(--accent); border-color: var(--accent); }
+.frise-etape.is-a_toi { color: var(--amber-text, var(--amber)); border-color: var(--amber); }
+.frise-etape.is-echec { color: var(--red-text, var(--red)); border-color: var(--red); }
+.frise-etape.is-saute { opacity: .5; text-decoration: line-through; }
+.frise-etape.is-si { border-style: dashed; opacity: .75; }
+.frise-etape.is-courante { font-weight: 600; box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 25%, transparent); }
+.frise-etape.is-en_cours .frise-ico .ico { animation: frise-tourne 1.2s linear infinite; }
+.frise-etape[data-chaine-verif] { cursor: pointer; }
+@keyframes frise-tourne { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .frise-etape.is-en_cours .frise-ico .ico { animation: none; } }
