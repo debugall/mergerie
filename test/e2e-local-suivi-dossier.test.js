@@ -13,7 +13,7 @@ const {
   startApp, waitForJobs, navigateurDispo, lancerNavigateur, MSG_NAVIGATEUR,
 } = require('./helpers/app');
 
-const dispo = navigateurDispo();
+const { dispo } = navigateurDispo();
 
 describe('Hors dépôt — suivi d’un seul dossier', () => {
   let app; let navigateur; let page;

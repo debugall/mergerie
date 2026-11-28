@@ -170,6 +170,14 @@ function jobKeys(entry) {
          une autre session qui code dans l'un de ces dépôts tournerait en parallèle pendant que
          celui-ci se fait remettre à zéro sous elle. */
       for (const c of db.prepare('SELECT repo_id FROM task_context_repo WHERE task_id = ?').all(entry.taskId)) repo(c.repo_id);
+      /* L'ÉTAPE TESTS ÉCRIT EN PLACE (`chaine-scenario.js`) : le clone de l'utilisateur de chaque dépôt de tests, et
+         ceux des dépôts de la session qu'elle met sur leur branche le temps de la passe. Les mêmes clés qu'une
+         vérification « in place » : une passe et un rejeu sur le même dossier passent l'un après l'autre. */
+      for (const p of o.testsPasses || []) {
+        repo(p.repo_id);
+        if (p.chemin) keys.add(`dir:${p.chemin}`);
+        for (const x of p.positions || []) if (x.workdir) keys.add(`dir:${x.workdir}`);
+      }
       return keys;
     }
     case 'converge': {

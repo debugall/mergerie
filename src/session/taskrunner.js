@@ -29,6 +29,7 @@ const reprise = require('./reprise');
 const apres = require('../agent/profile/apres');
 const demoAgents = require('../demo/agents');
 const pieces = require('../agent/pieces');
+const verifyrun = require('../verify/verifyrun');
 const { t, deNom } = require('../core/i18n');
 
 const WORK_REL = 'ai-dev-tools-internal';
@@ -421,7 +422,11 @@ function dryrunTests(prompt, cwd, taskId, { zone = 'session', avecTests = false 
     else ecrire(nom, `#!/bin/sh\n# test dry-run de la session ${taskId}\nexit 0\n`);
   }
   if (zone === 'session' && quoi === 'code') fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), '\n## code touché à l’étape tests (dry-run)\n', 'utf8');
-  return ecritIci ? `# Tests écrits (dry-run)\n\n- ${ici.project}` : '# Rien à écrire ici (dry-run)';
+  // Les dépôts de la fonctionnalité que la consigne cite : le commit où la passe les trouve (les tests le contrôlent).
+  const vus = zone === 'tests' ? [...prompt.matchAll(/(?:positionné dans|checked out in) (\/.+)$/gm)].map((m) => {
+    try { return `\nvu : ${m[1]} @ ${String(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: m[1], encoding: 'utf8' })).trim()}`; } catch { return `\nvu : ${m[1]} @ ?`; }
+  }).join('') : '';
+  return (ecritIci ? `# Tests écrits (dry-run)\n\n- ${ici.project}` : '# Rien à écrire ici (dry-run)') + vus;
 }
 
 async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds, planOnly, scenAvecTests = false }) {
@@ -1121,58 +1126,55 @@ async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds,
     + `Demande de suivi : ${instr}`, consignesPermanentes(depotPrincipal(task)));
   const r = await runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind, targetIds, imageIds, scenAvecTests: testsPasses.length > 0 });
   if (passKind === 'scenario' && testsPasses.length) {
-    const changement = changementDeLaSession(task.id);
-    for (const p of testsPasses) await passeDepotTests(task, p, { onLog, message, changement });
+    for (const p of testsPasses) await passeDepotTests(task, p, { onLog, message });
   }
   return r;
 }
 
-/* LE CHANGEMENT DE LA SESSION, pour la passe d'un dépôt de tests qui ne l'a pas écrit : la liste des fichiers
-   et le diff de chaque projet depuis sa base, tronqué — sous `nonFiable`, c'est une donnée. */
-const MAX_CHANGEMENT = 40000;
-function changementDeLaSession(taskId) {
+/* LA PASSE D'UN DÉPÔT DE TESTS, EN PLACE : l'agent tourne dans le CLONE de l'utilisateur, mis sur la branche de la
+   session — les vérificateurs « in place » rejouent ce dossier même. Avant lui, les clones locaux des dépôts de la
+   session sont mis sur leur branche de fonctionnalité (au commit que la passe de la session vient de pousser) : la
+   consigne ne cite que ces branches et ces chemins, l'agent lit le code lui-même (`--add-dir` quand le CLI le
+   prend). Puis commit, push de la branche et merge request en BROUILLON, ouverte une fois. Chaque clone revient
+   ensuite où on l'a trouvé ; l'état à remettre est noté sur disque le temps de la passe, pour qu'un redémarrage le
+   remette aussi (`chaine-verif.reprendreApresRedemarrage`). Le résultat va dans `p.sortie`, que la chaîne relit :
+   aucune erreur n'est levée ici. */
+async function passeDepotTests(task, p, { onLog, message }) {
   const cfg = getConfig();
-  const blocs = [];
-  for (const tg of targetsOf(taskId).filter((x) => x.commit_sha)) {
-    const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
-    if (!repo) continue;
-    const cwd = git.cloneDirFor(cfg, repo);
-    const plage = `origin/${tg.base_branch || 'HEAD'}...${tg.commit_sha}`;
-    try {
-      const stat = String(execFileSync('git', ['diff', '--stat', plage], { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
-      const diff = String(execFileSync('git', ['diff', plage], { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }));
-      blocs.push(`### ${repo.project} · ${tg.branch}\n\n${stat.trim()}\n\n${diff}`);
-    } catch { blocs.push(`### ${repo.project} · ${tg.branch}`); }
-  }
-  if (!blocs.length) return '';
-  let texte = blocs.join('\n\n');
-  if (texte.length > MAX_CHANGEMENT) texte = `${texte.slice(0, MAX_CHANGEMENT)}\n${t('task.chaine.scen.change-truncated')}`;
-  return nonFiable(t('task.chaine.scen.change-title'), texte);
-}
-
-/* LA PASSE D'UN DÉPÔT DE TESTS : l'agent tourne DANS le worktree du dépôt de tests — son dossier à lui, ce qui
-   marche avec tous les agents —, avec la consigne préparée par la chaîne et le changement de la session. Puis
-   commit, push de la branche et merge request en BROUILLON, ouverte une fois (les passes suivantes la mettent à
-   jour par le push). Le résultat va dans `p.sortie`, que la chaîne relit : aucune erreur n'est levée ici. */
-async function passeDepotTests(task, p, { onLog, message, changement }) {
-  const cfg = getConfig();
-  const out = { texte: '', prompt: '', sha: null, pousse: false, mr_iid: p.mr_iid || null, mr_url: p.mr_url || null, erreur: null };
+  const out = { texte: '', prompt: '', depart: null, sha: null, pousse: false, mr_iid: p.mr_iid || null, mr_url: p.mr_url || null, erreur: null, cause: null };
   const cwd = p.chemin;
+  const aRestaurer = [];
+  const journal = journalRestauration(p.sortie);
+  let phase = 'clone';   // la cause d'un échec : préparer les clones, puis écrire et pousser
+  const garder = () => { fs.mkdirSync(path.dirname(journal), { recursive: true }); fs.writeFileSync(journal, JSON.stringify(aRestaurer), 'utf8'); };
   onLog(`──────── ${p.project} · ${p.branche} (${t('log.task.tests-pass')}) ────────`);
   try {
     const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(p.repo_id);
     if (!repo) throw new Error(t('err.depot-introuvable'));
-    const prompt = [p.prompt, changement].filter(Boolean).join('\n\n');
+    const etat = await verifyrun.preparerBrancheEnPlace(repo, { workdir: cwd, checkout_allowed: p.checkout_allowed },
+      { branche: p.branche, base: p.base, reprendre: p.reprendre }, onLog);
+    aRestaurer.push(etat); garder();
+    out.depart = etat.depart;
+    for (const pos of p.positions || []) {
+      const r = db.prepare('SELECT * FROM repo WHERE id = ?').get(pos.repo_id);
+      const cible = db.prepare('SELECT commit_sha FROM task_target WHERE task_id = ? AND repo_id = ? AND commit_sha IS NOT NULL').get(task.id, pos.repo_id);
+      if (!r || !cible) continue;
+      aRestaurer.push(await verifyrun.preparerInPlace(r, { workdir: pos.workdir, checkout_allowed: pos.checkout_allowed }, cible.commit_sha, onLog));
+      garder();
+    }
+    phase = 'push';
+    const prompt = p.prompt;
     out.prompt = prompt;
+    const addDirs = (p.positions || []).map((x) => x.workdir);
     if (copilot.isDryRun()) {
       onLog('$ (DRY-RUN — tests du dépôt de tests simulés)');
       out.texte = dryrunTests(prompt, cwd, task.id, { zone: 'tests' });
     } else if (agentsession.reprenable()) {
-      const r = await agentsession.runInSession({ key: `task-${task.id}-tests-${repo.id}`, prompt, cwd, resume: false, onLog, options: optionsFor(task), saveur: 'code' });
+      const r = await agentsession.runInSession({ key: `task-${task.id}-tests-${repo.id}`, prompt, cwd, resume: false, onLog, options: optionsFor(task), saveur: 'code', addDirs });
       out.texte = r.text || '';
       copilot.recordUsage('task', prompt, out.texte, null, { kind: 'task', id: task.id }, r.costUsd);
     } else {
-      out.texte = (await copilot.runPrompt(prompt, cwd, { kind: 'task' }, onLog)) || '';
+      out.texte = (await copilot.runPrompt(prompt, cwd, { kind: 'task', addDirs }, onLog)) || '';
     }
     onLog(`commit : ${message}`);
     await git.commitAll(cwd, message, onLog);
@@ -1190,10 +1192,35 @@ async function passeDepotTests(task, p, { onLog, message, changement }) {
     }
   } catch (e) {
     out.erreur = String(e.message || e).split('\n')[0];
+    out.cause = e.cause === 'branche' ? 'branche' : phase;
     onLog(t('log.task.project-error', { project: p.project, message: out.erreur }));
   }
+  // Les clones reviennent où on les a trouvés, dans l'ordre inverse ; un échec n'est jamais masqué.
+  for (const etat of aRestaurer.reverse()) {
+    const err = await verifyrun.restaurerInPlace(etat, onLog);
+    if (!err) continue;
+    onLog(`⚠ ${err}`);
+    if (!out.erreur) Object.assign(out, { erreur: err, cause: 'restauration' });
+  }
+  try { fs.rmSync(journal, { force: true }); } catch { /* rien à effacer */ }
   try { fs.mkdirSync(path.dirname(p.sortie), { recursive: true }); fs.writeFileSync(p.sortie, JSON.stringify(out), 'utf8'); }
   catch (e) { onLog(t('log.task.project-error', { project: p.project, message: e.message })); }
+}
+// L'état des clones à remettre, à côté de la sortie de la passe, le temps qu'elle tourne.
+function journalRestauration(sortie) { return `${sortie}.restaurer`; }
+/* Après un redémarrage en pleine passe : les clones qu'elle avait déplacés reviennent où on les a trouvés. Rend
+   les échecs (texte), vide si tout est revenu. */
+async function restaurerClonesLaisses(sortie, onLog = () => {}) {
+  const journal = journalRestauration(sortie);
+  let etats = [];
+  try { etats = JSON.parse(fs.readFileSync(journal, 'utf8')); } catch { return []; }
+  const erreurs = [];
+  for (const etat of (Array.isArray(etats) ? etats : []).reverse()) {
+    const err = await verifyrun.restaurerInPlace(etat, onLog);
+    if (err) erreurs.push(err);
+  }
+  try { fs.rmSync(journal, { force: true }); } catch { /* rien à effacer */ }
+  return erreurs;
 }
 
 /* « APPROUVER ET CODER » : les cibles planifiées reprennent LEUR session d'agent avec l'ordre de
@@ -1467,5 +1494,5 @@ async function pushTargets(task, targetIds, onLog = () => {}) {
 module.exports = {
   reconcileTargets, pushTargets,
   runTask, runTaskFollowup, mettreAJourDepuisBase, runTaskAnswer, runTaskApprovePlan, runTaskRevisePlan, buildPlanPrompt, pushTarget, targetsOf, setTarget, syncTaskStatus,
-  execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage,
+  execOnTarget, buildCodePrompt, commitMessageFor, saveAgentOutput, reappliquerMessage, restaurerClonesLaisses,
 };

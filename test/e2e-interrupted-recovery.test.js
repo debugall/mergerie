@@ -136,7 +136,7 @@ describe('Reprise après un arrêt du serveur', () => {
         .run(t, '[]', JSON.stringify(scenario), 'running', now, now);
       return t;
     };
-    const coupee = etape({ prepare: true, ecrit: true, depots: [], en_cours: { quoi: 'ecrire', at: now, avant: {}, tests_avant: {}, sorties: {} } });
+    const coupee = etape({ prepare: true, ecrit: true, depots: [], en_cours: { quoi: 'ecrire', at: now, avant: {}, sorties: {} } });
     const repos = etape({ prepare: true, ecrit: true, depots: [], a_rejouer: true });
     chaineVerif.reprendreApresRedemarrage();
     const c = app.db.prepare('SELECT status, scenario_json FROM verif_chaine WHERE task_id = ?').get(coupee);

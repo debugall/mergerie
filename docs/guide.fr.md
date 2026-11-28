@@ -1029,26 +1029,33 @@ dernière étape quand tout est vert. Cochée, la case ouvre une zone **`Scénar
 ajouter comme tests — le parcours, les données, le résultat attendu. Facultative (sans elle, l'agent décide
 seul quels tests ajouter), elle n'est **lue par l'agent qu'à cette étape**, jamais au codage, à la review,
 à la convergence ni au diagnostic ; elle se modifie tant que l'étape n'a pas démarré. Sous la case, une ligne
-dit **où iront les tests** : chaque dépôt de tests retenu (« une branche et une merge request en brouillon »,
+dit **où iront les tests** : chaque dépôt de tests retenu (« écrit dans ton clone local, sur une branche, avec une
+merge request en brouillon »,
 ou « forge non configurée » s'il ne peut pas l'être), ou « aucun dépôt de tests séparé : les tests iront dans
 les dépôts de la session ».
 
-1. **Deux passes, chacune dans son dossier** — ce qui marche avec tous les agents (Claude, Copilot…), aucun
-   n'a besoin d'écrire hors du sien. La session qui a écrit le code est reprise pour les tests de **ses
-   propres dépôts**. Puis, pour chaque **dépôt de tests séparé**, une passe dédiée tourne **dans un worktree
-   de Mergerie** de ce dépôt, sur une **branche au nom de la session** partie de sa branche par défaut : elle
-   reçoit le scénario attendu, **le changement de la session** (son diff, en donnée) et les **skills** du dépôt
-   (nom, description, chemin du `SKILL.md` : l'agent lit lui-même ceux qui servent). Chaque passe **écrit**
-   les tests dans les dossiers que les commandes jouent déjà ; elle ne lance rien, ne commite pas, ne pousse
-   pas. Ton clone local n'est jamais mis sur cette branche ; deux sessions menées en parallèle écrivent
-   chacune sur la sienne.
+1. **Deux passes, chacune dans son dossier.** La session qui a écrit le code est reprise pour les tests de
+   **ses propres dépôts**. Puis, pour chaque **dépôt de tests séparé**, une passe d'agent **neuve** tourne
+   **en place, dans ton clone local** de ce dépôt — celui que tes vérificateurs « en place » jouent : le
+   dossier qu'un vérificateur de la chaîne déclare « in place » pour ce dépôt, sinon le clone trouvé sous tes
+   répertoires locaux (aucun : « À toi »). Ce clone est mis sur une **branche au nom de la session** partie de
+   sa branche par défaut, et les **clones locaux des dépôts de la session sont mis sur leur branche de
+   fonctionnalité** (au commit poussé). La passe ne reçoit **aucun diff** : seulement ces branches et ces
+   chemins, le scénario attendu et les **skills** du dépôt (nom, description, chemin du `SKILL.md`) — elle lit
+   elle-même le code de la fonctionnalité (Claude se voit ouvrir ces dossiers ; un autre agent reçoit leurs
+   chemins, ce qui suffit en yolo). Chaque passe **écrit** les tests dans les dossiers que les commandes jouent
+   déjà ; elle ne lance rien, ne commite pas, ne pousse pas. Un clone avec du travail non commité est refusé
+   (« À toi »), et **chaque clone revient où il était** à la fin de la passe — même après un redémarrage de
+   Mergerie en pleine passe ; un retour impossible est dit sur la carte. Deux sessions menées en parallèle
+   écrivent chacune sur sa branche, l'une après l'autre : la passe réserve ces dossiers dans la file, comme une
+   vérification « en place ».
 2. Mergerie **constate** ce qui a changé et applique la règle de chaque zone. **Dépôt de la session** :
    commit et push sur sa branche, **la MR existante se met à jour** (un commit distinct, que la review ne
    relance pas : la carte dit « commit de tests non relu » tant qu'aucune review ne couvre son SHA).
    **Dépôt de tests séparé** : commit, **push de la branche**, et une **merge request en brouillon** vers sa
    branche par défaut — ouverte une fois, mise à jour ensuite par les push. Une branche du même nom que la
-   session n'a pas créée (sur la forge ou dans le clone de Mergerie), ou une forge non configurée pour ce
-   dépôt : « À toi », rien n'est poussé.
+   session n'a pas créée (sur la forge ou dans ton clone), ou une forge non configurée pour ce dépôt : « À
+   toi », rien n'est poussé.
 3. **Tous les vérificateurs de la chaîne sont rejoués**, côté branche seulement, avec leurs commandes
    inchangées — sur la branche poussée du dépôt de tests (un vérificateur « en place » met ton clone sur ce
    commit le temps du run, puis le remet, comme toujours). Deux essais chacun ; un rouge n'arrête pas les

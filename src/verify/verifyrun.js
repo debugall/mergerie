@@ -488,6 +488,41 @@ async function preparerInPlace(repo, ligne, sha, noter) {
   return { workdir: ligne.workdir, refOrigine, sousModules, ignores };
 }
 
+/* LE CLONE DE L'UTILISATEUR SUR UNE BRANCHE À ÉCRIRE — l'étape tests de la chaîne (`jobs/chaine-scenario.js`) : un
+   agent y écrit les tests, Mergerie y commite et pousse, et les vérificateurs « in place » rejouent ce dossier
+   même. Les garde-fous de `preparerInPlace` (refus si du travail non commité, sous-modules et fichiers
+   suivis-ignorés mis de côté), mais une BRANCHE locale : reprise si `reprendre` (cette session l'a créée), sinon
+   créée depuis `origin/<base>` ; une branche du même nom qui n'est pas la sienne est refusée. Les fichiers
+   suivis-ignorés ne sont PAS reposés pendant la passe : le commit emporterait la version locale. Rend l'état de
+   `restaurerInPlace`, plus `depart` : le commit d'où part l'agent. */
+async function preparerBrancheEnPlace(repo, ligne, { branche, base, reprendre }, noter) {
+  if (!ligne.checkout_allowed) throw new Error(t('err.verify.no-checkout', { workdir: ligne.workdir }));
+  const etat = await inspecterWorkdir(repo, ligne.workdir);
+  if (!etat.ok) throw new Error(etat.raison);
+  if (etat.dirty) throw new Error(t('err.verify.dirty', { workdir: ligne.workdir }));
+  const cwd = ligne.workdir;
+  await git.run('git', ['fetch', 'origin'], { cwd });
+  const existe = async (ref) => { try { await git.run('git', ['rev-parse', '--verify', '--quiet', ref], { cwd }); return true; } catch { return false; } };
+  const locale = await existe(`refs/heads/${branche}`);
+  const distante = await existe(`refs/remotes/origin/${branche}`);
+  if ((locale || distante) && !reprendre) {
+    throw Object.assign(new Error(t('task.chaine.scen.branch-foreign', { branch: branche, repo: repo.project })), { cause: 'branche' });
+  }
+  const sousModules = await repointerSousModules(cwd, etat.sousModules, noter);
+  const ignores = await mettreDeCoteIgnores(cwd, etat.ignores, noter);
+  const refOrigine = etat.branche && etat.branche !== 'HEAD' ? etat.branche : etat.sha;
+  noter(`in place ${cwd} : ${refOrigine} → ${branche}`);
+  try {
+    if (locale) await git.run('git', ['checkout', branche], { cwd });
+    else await git.run('git', ['checkout', '-b', branche, distante ? `origin/${branche}` : `origin/${base}`], { cwd });
+  } catch (e) {
+    const err = await restaurerInPlace({ workdir: cwd, refOrigine, sousModules, ignores }, noter);
+    if (err) noter(`⚠ ${err}`);
+    throw e;
+  }
+  return { workdir: cwd, refOrigine, sousModules, ignores, depart: await gitTexte(cwd, ['rev-parse', 'HEAD']) };
+}
+
 /* Branche par défaut TELLE QUE LE DÉPÔT LA DÉCLARE (`origin/HEAD`), pas une liste devinée de
    noms usuels : `main` chez les uns, `develop` chez les autres, `trunk` chez d'autres encore.
    Indéterminable → on ne signale rien plutôt que d'alerter à tort. */
@@ -1061,6 +1096,6 @@ module.exports = {
   WORKTREES_DIR, cheminWorktree, executerVerification, commenterSurForge, commenterSurJira, todosDuVerdict, noterTestsDuRun, testsInstables,
   corpsCommentaire, publierCommentaire, blocsCommentaire,
   lancerCommandes, detailDesTests, envVerifier, ajouterWorktree, retirerWorktree, gcWorktrees,
-  inspecterWorkdir, preparerInPlace, restaurerInPlace, lireContexte,
+  inspecterWorkdir, preparerInPlace, preparerBrancheEnPlace, restaurerInPlace, lireContexte,
   envMinimal,
 };

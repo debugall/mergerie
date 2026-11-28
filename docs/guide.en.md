@@ -989,23 +989,30 @@ step once everything is green. Ticked, it opens an **`Expected scenario`** box: 
 journey, the data, the expected result. Optional (without it, the agent decides which tests to add), it is
 **read by the agent at this step only**, never while coding, reviewing, converging or diagnosing; it can be
 changed until the step starts. Under the box, a line says **where the tests will go**: each test repository kept
-(“a branch and a draft merge request”, or “forge not configured” when it cannot be), or “no separate test
+(“written in your local clone, on a branch, with a draft merge request”, or “forge not configured” when it
+cannot be), or “no separate test
 repository: the tests will go into the session's repositories”.
 
-1. **Two passes, each in its own folder** — which works with every agent (Claude, Copilot…), none needs to write
-   outside its own. The session that wrote the code is resumed for the tests of **its own repositories**. Then, for
-   each **separate test repository**, a dedicated pass runs **in a Mergerie worktree** of that repository, on a
-   **branch named after the session** started from its default branch: it gets the expected scenario, **the
-   session's change** (its diff, as data) and the repository's **skills** (name, description, path of the
-   `SKILL.md`: the agent reads those that help). Each pass **writes** the tests in the folders the commands
-   already run; it runs nothing, commits nothing, pushes nothing. Your local clone is never put on that branch;
-   two sessions run in parallel each write on their own.
+1. **Two passes, each in its own folder.** The session that wrote the code is resumed for the tests of **its own
+   repositories**. Then, for each **separate test repository**, a **fresh** agent pass runs **in place, in your
+   local clone** of that repository — the one your in-place verifiers run: the folder a verifier of the chain
+   declares in place for that repository, otherwise the clone found under your local directories (none: *your
+   turn*). That clone is put on a **branch named after the session** started from its default branch, and **the
+   local clones of the session's repositories are put on their feature branch** (at the pushed commit). The pass
+   gets **no diff**: only those branches and paths, the expected scenario and the repository's **skills** (name,
+   description, path of the `SKILL.md`) — it reads the feature's code itself (Claude gets those folders opened;
+   another agent gets their paths, which is enough in yolo). Each pass **writes** the tests in the folders the
+   commands already run; it runs nothing, commits nothing, pushes nothing. A clone with uncommitted work is
+   refused (*your turn*), and **every clone goes back where it was** at the end of the pass — even after Mergerie
+   restarts mid-pass; a clone that cannot go back is shown on the card. Two sessions run in parallel each write on
+   their own branch, one after the other: the pass reserves those folders in the queue, like an in-place
+   verification.
 2. Mergerie **records** what changed and applies each zone's rule. **Session repository**: commit and push on
    its branch, **the existing MR updates** (a separate commit, which does not rerun the review: the card says
    “test commit not reviewed” until a review covers its SHA). **Separate test repository**: commit, **push of the
    branch**, and a **draft merge request** to its default branch — opened once, then updated by the pushes. A
-   branch of the same name the session did not create (on the forge or in Mergerie's clone), or a forge not
-   configured for that repository: *your turn*, nothing is pushed.
+   branch of the same name the session did not create (on the forge or in your clone), or a forge not configured
+   for that repository: *your turn*, nothing is pushed.
 3. **Every verifier of the chain runs again**, branch side only, with its unchanged commands — on the test
    repository's pushed branch (an “in place” verifier puts your clone on that commit for the run, then puts it
    back, as always). Two attempts each; a red one does not stop the next. **The tests of one repository run one at

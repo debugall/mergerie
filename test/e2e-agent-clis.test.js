@@ -115,7 +115,8 @@ describe('Binaires d’agent : plusieurs, un par défaut, choisi par session', (
       const env = policy.envAgent('claude');
       assert.equal(env.ANTHROPIC_BASE_URL, 'http://localhost:11434');
       assert.equal(env.ANTHROPIC_AUTH_TOKEN, 'ollama');
-      assert.equal(env.HTTPS_PROXY, undefined, 'les variables du défaut ne fuient pas dans le profil');
+      // Celles du défaut ne fuient pas dans le profil ; celle du shell de la machine, si elle existe, passe comme partout.
+      assert.equal(env.HTTPS_PROXY, process.env.HTTPS_PROXY, 'les variables du défaut ne fuient pas dans le profil');
       assert.equal(env.MERGERIE_ACCESS_TOKEN, undefined);
       assert.equal(backends.detecter('/opt/agents/claude-ollama'), 'claude', 'le backend explicite du profil');
     });

@@ -5,20 +5,22 @@
    vivent, et ce sont les vérificateurs de la chaîne, rejoués, qui donnent le verdict.
 
    1. La chaîne est verte sur la branche de la session. Chaque dépôt de tests SÉPARÉ (le réglage du
-      vérificateur, sinon le réglage commun ; un dépôt de la session n'en est pas un) reçoit un worktree de
-      Mergerie, sur une branche au nom de la session partie de sa branche par défaut. Une branche par session :
-      deux tickets menés en parallèle écrivent chacun sur la sienne, et le clone de l'utilisateur n'est jamais
-      touché.
-   2. Deux passes, chacune dans SON dossier — ce qui marche avec tous les agents, aucun n'écrit hors du sien :
-      la session qui a écrit le code est reprise pour les tests de ses propres dépôts ; puis une passe par dépôt
-      de tests, lancée dans son worktree, avec le scénario attendu, le changement de la session et les skills
-      du dépôt. Aucune ne lance de test.
+      vérificateur, sinon le réglage commun ; un dépôt de la session n'en est pas un) est écrit EN PLACE, dans
+      le clone local de l'utilisateur — celui que les vérificateurs « in place » rejouent —, sur une branche au
+      nom de la session partie de sa branche par défaut. Une branche par session : deux tickets menés en
+      parallèle écrivent chacun sur la sienne, l'un après l'autre (la passe réserve le dossier dans la file).
+   2. Deux passes, chacune dans SON dossier : la session qui a écrit le code est reprise pour les tests de ses
+      propres dépôts ; puis une passe d'agent NEUVE par dépôt de tests, lancée dans son clone. Avant elle, les
+      clones locaux des dépôts de la session sont mis sur leur branche de fonctionnalité : sa consigne ne cite
+      que ces branches et ces chemins (avec le scénario attendu et les skills du dépôt), l'agent lit le code
+      lui-même. Aucune passe ne lance de test ; chaque clone revient ensuite où on l'a trouvé.
    3. Dépôt de la session : commit et push par la mécanique du suivi (la MR existante se met à jour). Dépôt de
       tests : commit, push de la branche, merge request en BROUILLON — ouverte une fois, mise à jour ensuite.
    4. `chaine-verif.js` rejoue alors TOUS les vérificateurs de la chaîne, côté branche, avec leurs commandes
-      inchangées. Leurs exécutions sur un même dépôt passent l'une après l'autre (`repo:<id>` dans la file),
-      quel que soit le ticket qui les lance. Rouge : les deux passes corrigent (MAX_CORRECTIONS fois au plus,
-      tout compris), puis « À toi ». Vert : les merge requests de tests passent de brouillon à prêtes.
+      inchangées. Leurs exécutions sur un même dépôt passent l'une après l'autre (`repo:<id>` et `dir:<clone>`
+      dans la file), quel que soit le ticket qui les lance. Rouge : les deux passes corrigent (MAX_CORRECTIONS
+      fois au plus, tout compris), puis « À toi ». Vert : les merge requests de tests passent de brouillon à
+      prêtes.
 
    Un agent peut aussi ne rien écrire et citer des tests existants (bloc COUVERT) : chaque chemin est contrôlé
    sur disque. Ce contrôle prouve que le test cité existe, rien de plus — juger qu'il exerce le changement
@@ -35,17 +37,18 @@ const { nonFiable } = require('../core/nonfiable');
 const { DATA_DIR } = require('../core/paths');
 const { getConfig } = require('../data/config');
 const forge = require('../forge');
+const groupes = require('../data/groupes');
 const { TASKS_DIR } = require('../core/paths');
 const testsTouches = require('../review/tests-touches');
 const { t } = require('../core/i18n');
 const { startTaskJob, jobEnCoursPour } = require('./ordonnanceur');
+const { cloneLocalDe } = require('./plan-verif');
 
 const MAX_CORRECTIONS = 2;
 const MAX_ATTENDU = 4000;
 const MAX_JSON = 2 * 1024 * 1024;
 const lire = (j, defaut) => { try { return JSON.parse(j); } catch { return defaut; } };
 const nonceScen = (taskId) => protocolesecret.hmac(`chaine-scen-${taskId}`, 12);
-const slug = (s) => String(s || '').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'depot';
 
 /* ---------- La configuration ---------- */
 
@@ -92,10 +95,8 @@ function depotsTestsDe(verifierIds, session) {
   return { depots: [...parRepo.values()] };
 }
 const depotsTests = (task) => depotsTestsDe(idsChaine(task), db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(task.id).map((x) => x.repo_id));
+// Les worktrees de tests d'une session, d'avant l'écriture en place : `nettoyerSession` les retire encore.
 function dossierWorktrees(taskId) { return path.join(DATA_DIR, 'scenario-tests', `task-${Number(taskId)}`); }
-/* Le worktree d'un dépôt de tests pour une session : dans le clone de Mergerie, gardé jusqu'à la suppression de
-   la session — jamais le clone de l'utilisateur. */
-const worktreeDe = (taskId, repo) => path.join(dossierWorktrees(taskId), slug(repo.project));
 // Ce que la passe d'un dépôt de tests rend au constat (`taskrunner.passeDepotTests`), un fichier par passe.
 const sortieDe = (taskId, repoId, at) => path.join(TASKS_DIR, String(Number(taskId)), 'tests-pass', `${String(at).replace(/[^\w-]/g, '')}-${Number(repoId)}.json`);
 
@@ -115,15 +116,27 @@ const brancheSession = (taskId) => (db.prepare('SELECT branch FROM task_target W
 function gitL(cwd, args) {
   return String(execFileSync('git', git.argsDurcis(args), { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: git.envGit() })).trim();
 }
-const brancheCourante = (cwd) => gitL(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
 const refExiste = (cwd, ref) => { try { gitL(cwd, ['rev-parse', '--verify', '--quiet', ref]); return true; } catch { return false; } };
 
 /* ---------- Préparer ---------- */
 
+/* LE CLONE LOCAL D'UN DÉPÔT, là où la vérification tourne « en place » : le dossier qu'un vérificateur de la
+   chaîne déclare en mode in place pour ce dépôt, sinon le clone trouvé sous les racines locales. */
+async function cloneLocal(task, repo) {
+  for (const vid of idsChaine(task)) {
+    const l = groupes.couvertureVerifier(vid).get(repo.id);
+    if (l && l.mode === 'in_place' && l.workdir) return { workdir: l.workdir, checkout_allowed: l.checkout_allowed ? 1 : 0 };
+  }
+  const workdir = await cloneLocalDe(repo);
+  return workdir ? { workdir, checkout_allowed: 1 } : null;
+}
+
 /* Avant les passes : pour chaque dépôt de tests, sa forge configurée (le push et la merge request en
-   dépendent), son clone de Mergerie à jour et le worktree de la session sur sa branche — créée depuis la
-   branche par défaut, ou reprise si c'est cette session qui l'a créée. Une branche du même nom qui n'est pas
-   la sienne (sur la forge ou dans le clone) : « À toi », rien n'est écrasé. Rend `{ depots }` ou `{ erreur }`. */
+   dépendent), son clone local et sa branche — à créer, ou à reprendre si c'est cette session qui l'a créée. Une
+   branche du même nom qui n'est pas la sienne : « À toi », rien n'est écrasé (vu ici sur les refs connues, revu
+   par la passe après un fetch). Puis les clones locaux des dépôts de la session, que la passe mettra sur leur
+   branche de fonctionnalité. Rien n'est déplacé ici : la passe le fait, dossiers réservés dans la file. Rend
+   `{ depots, positions }` ou `{ erreur, cause }`. */
 async function preparer(task, scen) {
   const { depots, erreur } = depotsTests(task);
   if (erreur) return { erreur };
@@ -131,34 +144,38 @@ async function preparer(task, scen) {
   const branche = brancheSession(task.id);
   const connus = new Map((scen.depots || []).filter((d) => d.zone === 'tests').map((d) => [d.repo_id, d]));
   const out = [];
+  const positions = [];
+  const sansClone = (repo) => Object.assign(new Error(t('task.chaine.scen.no-local-clone', { repo: repo.project })), { cause: 'clone' });
   try {
     for (const { repo } of depots) {
       const avant = connus.get(repo.id) || null;
       if (!forge.isConfigured(cfg, repo)) throw Object.assign(new Error(t('task.chaine.scen.forge-missing', { repo: repo.project, forge: forge.label(repo) })), { cause: 'forge' });
-      // Hors de la file : une vérification peut être en train de rapatrier ce clone — un second essai suffit.
-      const clone = await git.ensureRepo(cfg, repo, () => {}).catch(() => git.ensureRepo(cfg, repo, () => {}));
-      const base = (avant && avant.base) || await git.defaultBranch(clone);
-      const chemin = worktreeDe(task.id, repo);
-      if (!fs.existsSync(chemin)) {
-        const local = refExiste(clone, `refs/heads/${branche}`);
-        const distante = refExiste(clone, `refs/remotes/origin/${branche}`);
-        if ((local || distante) && !(avant && avant.cree)) throw Object.assign(new Error(t('task.chaine.scen.branch-foreign', { branch: branche, repo: repo.project })), { cause: 'branche' });
-        fs.mkdirSync(path.dirname(chemin), { recursive: true });
-        try { gitL(clone, ['worktree', 'prune']); } catch { /* rien à élaguer */ }
-        if (local) gitL(clone, ['worktree', 'add', chemin, branche]);
-        else gitL(clone, ['worktree', 'add', '-b', branche, chemin, distante ? `origin/${branche}` : `origin/${base}`]);
+      const clone = await cloneLocal(task, repo);
+      if (!clone) throw sansClone(repo);
+      const reprendre = !!(avant && avant.cree && avant.chemin === clone.workdir);
+      if (!reprendre && (refExiste(clone.workdir, `refs/heads/${branche}`) || refExiste(clone.workdir, `refs/remotes/origin/${branche}`))) {
+        throw Object.assign(new Error(t('task.chaine.scen.branch-foreign', { branch: branche, repo: repo.project })), { cause: 'branche' });
       }
-      const depart = avant ? avant.sha_depart : gitL(chemin, ['rev-parse', 'HEAD']);
-      out.push({ ...(avant || {}), zone: 'tests', repo_id: repo.id, project: repo.project, chemin, branche, base, sha_depart: depart, cree: true });
+      const base = (avant && avant.base) || await git.defaultBranch(clone.workdir);
+      out.push({ ...(avant || {}), zone: 'tests', repo_id: repo.id, project: repo.project, chemin: clone.workdir, checkout_allowed: clone.checkout_allowed, branche, base, cree: true });
+    }
+    if (out.length) {
+      for (const tg of db.prepare('SELECT repo_id, branch FROM task_target WHERE task_id = ? AND commit_sha IS NOT NULL ORDER BY id').all(task.id)) {
+        const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+        if (!repo) continue;
+        const clone = await cloneLocal(task, repo);
+        if (!clone) throw sansClone(repo);
+        positions.push({ repo_id: repo.id, project: repo.project, branche: tg.branch, ...clone });
+      }
     }
   } catch (e) {
     return { erreur: String(e.message).split('\n')[0], cause: e.cause || 'preparer' };
   }
-  return { depots: out };
+  return { depots: out, positions };
 }
 
-/* La session supprimée : ses worktrees de tests (ceux de Mergerie). Les branches poussées et leurs merge
-   requests restent sur la forge : elles appartiennent désormais à qui les relit. */
+/* La session supprimée : ses worktrees de tests d'avant l'écriture en place, s'il en reste. Les branches poussées
+   et leurs merge requests restent sur la forge : elles appartiennent désormais à qui les relit. */
 function nettoyerSession(taskId) {
   const racine = dossierWorktrees(taskId);
   if (!fs.existsSync(racine)) return;
@@ -273,18 +290,22 @@ function consigneSession(task, scen, opts = {}) {
   ].filter(Boolean).join('\n\n');
   return consigne(task, scen, { ...opts, intro, depots: depotsDeLaPasse(task, scen).filter((d) => d.zone === 'session'), regles: t('task.chaine.scen.rules') });
 }
-/* La passe d'un dépôt de tests : son worktree seulement ; le changement de la session lui est ajouté par la
-   passe elle-même, une fois celle de la session finie (`taskrunner.passeDepotTests`). */
+/* La passe d'un dépôt de tests : son clone seulement, et les branches de la fonctionnalité — où chaque dépôt de la
+   session sera positionné quand elle tournera. Ni diff ni code : l'agent les lit lui-même. */
 function consigneTests(task, scen, d, opts = {}) {
-  return consigne(task, scen, { ...opts, intro: t('task.chaine.scen.tests-intro', { repo: d.project, branch: d.branche }), depots: [d], regles: t('task.chaine.scen.rules-tests') });
+  const fonctionnalite = (scen.positions || []).map((x) => `- ${t('task.chaine.scen.feature-line', { repo: x.project, branch: x.branche, path: x.workdir })}`).join('\n');
+  const intro = [
+    t('task.chaine.scen.tests-intro', { repo: d.project, branch: d.branche }),
+    fonctionnalite ? `## ${t('task.chaine.scen.feature-title')}\n\n${fonctionnalite}` : null,
+  ].filter(Boolean).join('\n\n');
+  return consigne(task, scen, { ...opts, intro, depots: [d], regles: t('task.chaine.scen.rules-tests') });
 }
 const consigneEcrire = (task, scen) => consigneSession(task, scen, { quoi: 'ecrire' });
 
 /* ---------- Les passes ---------- */
 
 /* Un seul job : la passe de la session (suivi, sur ses cibles), puis celle de chaque dépôt de tests dans son
-   worktree. On note d'où partent les dépôts de la session et les worktrees : le constat se fera par rapport à
-   ces points. */
+   clone. On note d'où partent les dépôts de la session ; ceux de tests, la passe le rend (`depart`). */
 function lancerAgent(task, scen, { quoi, rouges = [], raison = null }) {
   const cibles = db.prepare('SELECT id, commit_sha FROM task_target WHERE task_id = ? AND commit_sha IS NOT NULL').all(task.id);
   const at = new Date().toISOString();
@@ -297,7 +318,8 @@ function lancerAgent(task, scen, { quoi, rouges = [], raison = null }) {
     instruction: consigneSession(task, scen, opts), targetIds: cibles.map((c) => c.id),
     passKind: 'scenario', message: t('task.chaine.scen.commit', { id: task.id }),
     testsPasses: tests.map((d) => ({
-      repo_id: d.repo_id, project: d.project, chemin: d.chemin, branche: d.branche, base: d.base,
+      repo_id: d.repo_id, project: d.project, chemin: d.chemin, checkout_allowed: d.checkout_allowed, branche: d.branche, base: d.base,
+      reprendre: !!d.sha_depart, positions: scen.positions || [],
       mr_iid: d.mr_iid || null, mr_url: d.mr_url || null, mr_titre: titreMr, prompt: consigneTests(task, scen, d, opts), sortie: sorties[d.repo_id],
     })),
   });
@@ -307,7 +329,6 @@ function lancerAgent(task, scen, { quoi, rouges = [], raison = null }) {
     en_cours: {
       quoi, at, sorties,
       avant: Object.fromEntries(cibles.map((c) => [c.id, c.commit_sha])),
-      tests_avant: Object.fromEntries(tests.map((d) => [d.repo_id, (() => { try { return gitL(d.chemin, ['rev-parse', 'HEAD']); } catch { return null; } })()])),
     },
     reprise: null, erreur: null,
   };
@@ -373,6 +394,12 @@ function cheminSur(brut) {
   if (n.startsWith('..') || n.split('/').some((x) => x === '..' || x === '.git')) return null;
   return n;
 }
+/* Un chemin cité est-il là ? Un dépôt de tests est relu dans le commit de sa branche — son clone est revenu
+   ailleurs ; un dépôt de la session, dans sa copie de travail. */
+function present(d, chemin) {
+  if (d.zone !== 'tests' || !d.sha_final) return fs.existsSync(path.join(d.chemin, chemin));
+  try { gitL(d.chemin, ['cat-file', '-e', `${d.sha_final}:${chemin}`]); return true; } catch { return false; }
+}
 /* « par: <dépôt>:<chemin> » (une ou plusieurs lignes), « raison: … » ; chaque chemin contrôlé — sûr, et
    présent dans la copie de travail du dépôt nommé. Rend `{ par, raison }` ou `{ refus }`. */
 function controlerCouvert(bloc, depots) {
@@ -387,7 +414,7 @@ function controlerCouvert(bloc, depots) {
     const d = depots.find((x) => x.project === nom || x.project.split('/').pop() === nom);
     if (!chemin) return { refus: t('task.chaine.scen.covered-unsafe', { path: p }) };
     if (!d) return { refus: t('task.chaine.scen.covered-unknown-repo', { repo: nom || p }) };
-    if (!fs.existsSync(path.join(d.chemin, chemin))) return { refus: t('task.chaine.scen.covered-missing', { repo: d.project, path: chemin }) };
+    if (!present(d, chemin)) return { refus: t('task.chaine.scen.covered-missing', { repo: d.project, path: chemin }) };
     cites.push({ project: d.project, chemin });
   }
   return { par: cites, raison };
@@ -397,7 +424,7 @@ function controlerCouvert(bloc, depots) {
    suivant : `a_rejouer` (des fichiers ont changé), `final: 'couvert'`, `reprise` (à reprendre avec une
    raison), ou `erreur`. */
 function conclure(task, scen, { fini = true } = {}) {
-  const passe = scen.en_cours || { avant: {}, tests_avant: {} };
+  const passe = scen.en_cours || { avant: {} };
   const base = { ...scen, en_cours: null };
   if (!fini) return { ...base, erreur: t('task.chaine.scen.interrupted'), cause: 'interrompu' };
   const cfg = getConfig();
@@ -441,12 +468,13 @@ function conclure(task, scen, { fini = true } = {}) {
     if (r.texte) textes.push(r.texte);
     d.sortie = passe.sorties[d.repo_id];   // le retour de l'agent, relu par la vue de diff
     if (r.mr_iid) Object.assign(d, { mr_iid: r.mr_iid, mr_url: r.mr_url });
-    if (r.erreur) return { ...base, depots, code_modifie: codeModifie, erreur: `${d.project} : ${r.erreur}`, cause: 'push' };
-    let courante;
-    try { courante = brancheCourante(d.chemin); } catch (e) { return { ...base, depots, code_modifie: codeModifie, erreur: String(e.message).split('\n')[0], cause: 'clone' }; }
-    if (courante !== d.branche) return { ...base, depots, code_modifie: codeModifie, erreur: t('task.chaine.scen.branch-moved', { path: d.chemin, branch: d.branche, current: courante }), cause: 'branche' };
-    const avant = passe.tests_avant[d.repo_id] || d.sha_final || d.sha_depart;
-    d.sha_final = r.sha || gitL(d.chemin, ['rev-parse', 'HEAD']);
+    // Le point de départ de la branche : la première passe qui l'a mise en place le rend.
+    if (!d.sha_depart && r.depart) d.sha_depart = r.depart;
+    if (r.erreur) return { ...base, depots, code_modifie: codeModifie, erreur: `${d.project} : ${r.erreur}`, cause: r.cause || 'push' };
+    // Le clone est revenu où on l'a trouvé : la branche se lit par sa ref, plus par le dossier.
+    if (!r.sha || !refExiste(d.chemin, `refs/heads/${d.branche}`)) return { ...base, depots, code_modifie: codeModifie, erreur: t('task.chaine.scen.branch-gone', { path: d.chemin, branch: d.branche }), cause: 'branche' };
+    const avant = r.depart || d.sha_final || d.sha_depart;
+    d.sha_final = r.sha;
     const passeCh = changements(d.chemin, avant, d.sha_final);
     /* Un commit qui arrive sur la forge à cette passe compte comme un changement, même écrit avant : c'est
        la reprise d'un push refusé — la branche n'a encore jamais été rejouée sous ce commit. */

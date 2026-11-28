@@ -7,15 +7,19 @@
  * attendu demande (`DRYRUN_TESTS=…`, `DRYRUN_ROUGE=…`, `DRYRUN_COUVERT…`).
  *
  *   1. la consigne : son format, ses sources, ses fuites — elle n'est lue qu'à l'étape tests ;
- *   2. l'écriture : zone Tests (une passe dans un worktree de Mergerie, branche poussée, merge request en
- *      brouillon, prête une fois vert ; le clone de l'utilisateur jamais touché), zone Session (commit poussé
- *      dans la MR), les deux, deux dépôts de tests, aucun dépôt de tests réglé, forge non configurée ou branche
- *      étrangère (« À toi », rien poussé), push ou MR refusés (« À toi », « Relancer » repart), JSON invalide, « déjà couvert » contrôlé, test existant modifié, skills listés sans être
+ *   2. l'écriture : zone Tests (une passe neuve EN PLACE dans le clone local du dépôt de tests, le clone de
+ *      l'application mis sur la branche de la session le temps de la passe, une consigne sans diff qui ne cite
+ *      que ces branches et ces chemins, branche poussée, merge request en brouillon, prête une fois vert, chaque
+ *      clone remis où il était), zone Session (commit poussé dans la MR), les deux, deux dépôts de tests, aucun
+ *      dépôt de tests réglé, forge non configurée, pas de clone local, clone avec du travail non commité ou
+ *      branche étrangère (« À toi », rien poussé, les clones remis), push ou MR refusés (« À toi », « Relancer »
+ *      repart), JSON invalide, « déjà couvert » contrôlé, test existant modifié, skills listés sans être
  *      recopiés ;
  *   3. le rejeu : tous les vérificateurs, côté branche, jamais la base ; rouge → correction → rejeu ; rouge
  *      après deux corrections → « À toi », la MR reste en brouillon ; du code touché à cette étape, dit ; deux
  *      sessions en parallèle — chacune sa branche et sa MR, leurs tests sur le dépôt de tests l'un après l'autre,
- *      une vérification lancée à la main refusée pendant ce temps, ou qui fait attendre la chaîne ; arrêt et redémarrage en cours d'étape ;
+ *      une vérification lancée à la main refusée pendant ce temps, ou qui fait attendre la chaîne ; la passe réserve
+ *      les clones qu'elle touche ; arrêt et redémarrage en cours d'étape (les clones remis) ;
  *   4. l'écran : la fenêtre, la carte, la frise. */
 const { test, before, after, describe } = require('node:test');
 const assert = require('node:assert/strict');
@@ -31,7 +35,7 @@ const { dispo } = navigateurDispo();
 const g = (cwd, ...a) => execFileSync('git', a, { cwd, stdio: 'pipe' }).toString().trim();
 
 describe('Les tests écrits à la fin de la chaîne', () => {
-  let app; let appR; let testsR; let repoId; let testsId; let cloneTests; let cloneApp; let bin; let vTests; let vApp; let vLint; let vTestsBis; let tests2R; let vTests2;
+  let app; let appR; let testsR; let repoId; let testsId; let cloneTests; let cloneApp; let racine; let bin; let vTests; let vApp; let vLint; let vTestsBis; let tests2R; let vTests2;
 
   before(async () => {
     app = await startApp();
@@ -48,7 +52,7 @@ describe('Les tests écrits à la fin de la chaîne', () => {
     repoId = (await app.api('POST', '/api/repos', { url: appR.url, project: 'grp/app' })).body.id;
     testsId = (await app.api('POST', '/api/repos', { url: testsR.url, project: 'grp/tests' })).body.id;
     // Les clones LOCAUX de l'utilisateur : l'application (lue en position) et le dépôt de tests (couvert en place).
-    const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-racine-'));
+    racine = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-racine-'));
     cloneApp = path.join(racine, 'app');
     cloneTests = path.join(racine, 'tests');
     execFileSync('git', ['clone', '-q', appR.url, cloneApp], { stdio: 'pipe' });
@@ -90,6 +94,9 @@ exit 0
     // Un second dépôt de tests, surcharge d'un vérificateur qui n'est que dans les chaînes qui le demandent.
     tests2R = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'tests2-')));
     const tests2Id = (await app.api('POST', '/api/repos', { url: tests2R.url, project: 'grp/tests2' })).body.id;
+    // Son clone local, sous la même racine : la passe y écrit.
+    execFileSync('git', ['clone', '-q', tests2R.url, path.join(racine, 'tests2')], { stdio: 'pipe' });
+    poserIdentiteGit(path.join(racine, 'tests2'));
     vTests2 = await creerV('tests-deux', [{ repo_id: tests2Id, mode: 'worktree' }]);
     assert.equal((await app.api('PUT', `/api/verifiers/${vTests2}`, { test_repo: 'gitlab/grp/tests2' })).status, 200);
     await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
@@ -121,7 +128,8 @@ exit 0
     const dir = path.join(app.dataDir, 'tasks', String(id), 'tests-pass');
     return fs.existsSync(dir) ? fs.readdirSync(dir).sort().map((f) => JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))) : [];
   };
-  const worktree = (id) => path.join(app.dataDir, 'scenario-tests', `task-${id}`, 'grp-tests');
+  // Un clone revenu où on l'a trouvé : sur main, propre.
+  const surMain = (clone) => [g(clone, 'rev-parse', '--abbrev-ref', 'HEAD'), g(clone, 'status', '--porcelain')];
   const distante = (branche) => g(testsR.bare, 'branch', '--list', branche);
   const mrsTests = () => (app.state.mrs['grp/tests'] || []);
   const mrDe = (branche) => mrsTests().find((m) => m.source_branch === branche);
@@ -182,22 +190,22 @@ exit 0
 
   /* ---------------- lot 2 et 3 : écrire, rejouer, corriger ---------------- */
 
-  test('zone Tests : une passe dans un worktree de Mergerie, branche poussée, MR en brouillon ; trois vérificateurs rejoués côté branche ; vert → MR prête ; le clone de l’utilisateur jamais sur la branche', async () => {
+  test('zone Tests : une passe neuve dans le clone local, l’application sur sa branche le temps de la passe, une consigne sans diff ; branche poussée, MR en brouillon ; trois vérificateurs rejoués côté branche ; vert → MR prête ; chaque clone remis', async () => {
     vider();
     const origine = g(testsR.bare, 'rev-parse', 'main');
     const id = await session('ai/ct-tests', 'DRYRUN_TESTS=tests SENTINELLE-ATTENDU-1');
     const c = await finie(id);
     assert.equal(c.status, 'validated', JSON.stringify(c.scenario));
     assert.equal(c.scenario.final, 'vert');
-    // La branche est sur la forge, au-dessus de la branche par défaut, avec le test ; le worktree est celui de Mergerie.
+    // La branche est sur la forge, au-dessus de la branche par défaut, avec le test — écrite dans le clone de l'utilisateur.
     assert.equal(distante('ai/ct-tests').trim(), 'ai/ct-tests');
     assert.equal(g(testsR.bare, 'rev-parse', 'ai/ct-tests~1'), origine, 'la branche part de la branche par défaut');
     assert.match(g(testsR.bare, 'show', '--name-only', '--format=', 'ai/ct-tests'), new RegExp(`tests/scenario-${id}\\.test\\.sh`));
-    assert.equal(g(worktree(id), 'rev-parse', '--abbrev-ref', 'HEAD'), 'ai/ct-tests');
-    // Le clone de l'utilisateur : revenu sur main, propre, sans branche de la session.
-    assert.equal(g(cloneTests, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
-    assert.equal(g(cloneTests, 'status', '--porcelain'), '');
-    assert.doesNotMatch(g(cloneTests, 'for-each-ref', '--format=%(refname:short)', 'refs/heads'), /ai\/ct-tests/);
+    assert.equal(g(cloneTests, 'rev-parse', 'ai/ct-tests'), g(testsR.bare, 'rev-parse', 'ai/ct-tests'), 'le commit vient du clone local');
+    assert.equal(fs.existsSync(path.join(app.dataDir, 'scenario-tests')), false, 'aucun worktree de Mergerie');
+    // Les deux clones de l'utilisateur : revenus sur main, propres.
+    assert.deepEqual(surMain(cloneTests), ['main', '']);
+    assert.deepEqual(surMain(cloneApp), ['main', '']);
     // La MR : ouverte en brouillon vers main, prête une fois le rejeu vert.
     const mr = mrDe('ai/ct-tests');
     assert.ok(mr, 'une MR dans le dépôt de tests');
@@ -221,16 +229,20 @@ exit 0
     assert.ok(consigne, 'une passe d’écriture de la session');
     assert.match(consigne, /SENTINELLE-ATTENDU-1/);
     assert.match(consigne, /dépôts de tests séparés \(grp\/tests\)/);
-    assert.ok(!consigne.includes(worktree(id)), 'la session n’écrit pas dans le dépôt de tests');
-    // La passe du dépôt de tests : son worktree, le scénario, les skills nommés — jamais leur corps —, le changement de la session.
+    assert.ok(!consigne.includes(cloneTests), 'la session n’écrit pas dans le dépôt de tests');
+    // La passe du dépôt de tests : son clone, le scénario, les skills nommés — jamais leur corps —, et les branches de la
+    // fonctionnalité avec leur chemin : aucun diff, aucun code.
     const [s1] = sorties(id);
     assert.ok(s1 && s1.prompt, 'une passe du dépôt de tests');
-    assert.ok(s1.prompt.includes(`- grp/tests : ${worktree(id)} (tests)`));
+    assert.ok(s1.prompt.includes(`- grp/tests : ${cloneTests} (tests)`));
     assert.match(s1.prompt, /SENTINELLE-ATTENDU-1/);
     assert.match(s1.prompt, /ecrire-tests \(grp\/tests\) : Écrire un test e2e — .*\.claude\/skills\/ecrire-tests\/SKILL\.md/);
     assert.doesNotMatch(s1.prompt, /CORPS-DU-SKILL-JAMAIS-RECOPIE/);
-    assert.match(s1.prompt, /<<<DONNEE [0-9a-f]+ Le changement de la session \(diff depuis sa base\)>>>[\s\S]*grp\/app · ai\/ct-tests[\s\S]*PROJ_TASK_DRYRUN\.md/);
-    assert.deepEqual([s1.pousse, s1.erreur], [true, null]);
+    assert.ok(s1.prompt.includes(`## Les branches de la fonctionnalité\n\n- grp/app : branche ai/ct-tests, positionné dans ${cloneApp}`), s1.prompt.slice(0, 3000));
+    assert.doesNotMatch(s1.prompt, /changement de la session|diff --git|PROJ_TASK_DRYRUN/);
+    // Pendant la passe, le clone de l'application était au commit poussé de la branche de la session.
+    assert.ok(s1.texte.includes(`vu : ${cloneApp} @ ${g(appR.bare, 'rev-parse', 'ai/ct-tests')}`), s1.texte);
+    assert.deepEqual([s1.pousse, s1.erreur, s1.depart], [true, null, origine]);
     // Aucune autre passe ne l'a vue : ni le codage, ni rien d'autre.
     assert.deepEqual(passes(id).filter((p) => !ESCRIRE.test(p) && /SENTINELLE-ATTENDU-1/.test(p)), []);
     // La frise : écrire (la zone Tests, avec sa MR), un rejeu par vérificateur, et « MR de tests prête » sur l'arrivée.
@@ -298,7 +310,51 @@ exit 0
     const r = await scen.preparer(app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id), {});
     assert.equal(r.cause, 'forge');
     assert.match(r.erreur, /gh\/tests[\s\S]*GitHub/);
-    assert.equal(fs.existsSync(path.join(app.dataDir, 'scenario-tests', `task-${t.id}`)), false, 'aucun worktree');
+    assert.deepEqual(surMain(cloneTests), ['main', ''], 'rien n’a bougé');
+  });
+
+  test('un dépôt de tests sans clone local : l’étape s’arrête avant d’écrire, et dit où le déclarer', async () => {
+    const seul = makeRemoteRepo(fs.mkdtempSync(path.join(app.dataDir, 'seul-')));
+    const seulId = (await app.api('POST', '/api/repos', { url: seul.url, project: 'grp/sans-clone' })).body.id;
+    const v = (await app.api('POST', '/api/verifiers', { name: 'sans-clone', kind: 'commands', commands: ['true'], run_base: 0,
+      repos: [{ repo_id: seulId, mode: 'worktree' }], test_repo: 'gitlab/grp/sans-clone' })).body.id;
+    // eslint-disable-next-line global-require
+    const scen = require('../src/jobs/chaine-scenario');
+    const t = (await app.api('POST', '/api/tasks', { kind: 'code', prompt: 'sans clone', auto_push: true, verify_chain: [v],
+      verify_chain_scenario: { actif: true }, targets: [{ repo_id: repoId, branch: 'ai/ct-sans-clone' }] })).body;
+    const r = await scen.preparer(app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id), {});
+    assert.equal(r.cause, 'clone');
+    assert.match(r.erreur, /grp\/sans-clone n’a pas de clone local[\s\S]*Réglages → Dépôts[\s\S]*in place/);
+  });
+
+  test('un clone de la session avec du travail non commité : « À toi », rien d’écrasé, le clone de tests remis ; une fois propre, « Relancer » valide', async () => {
+    vider();
+    const readme = path.join(cloneApp, 'README.md');
+    const avant = fs.readFileSync(readme, 'utf8');
+    fs.appendFileSync(readme, '\nmon travail en cours\n');
+    let id;
+    try {
+      // Une chaîne qui ne met pas le clone de l'application en position : seule l'étape tests le touche.
+      id = await session('ai/ct-sale', 'DRYRUN_TESTS=tests', { chain: [vApp] });
+      const c = await finie(id);
+      assert.deepEqual([c.status, c.scenario.cause], ['attention', 'clone'], JSON.stringify(c.scenario));
+      assert.ok(c.scenario.erreur.includes(cloneApp), c.scenario.erreur);
+      // Le travail de l'utilisateur est là, sur main ; le clone de tests, déjà mis sur sa branche, est revenu.
+      assert.equal(g(cloneApp, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
+      assert.match(fs.readFileSync(readme, 'utf8'), /mon travail en cours/);
+      assert.deepEqual(surMain(cloneTests), ['main', '']);
+      assert.equal(distante('ai/ct-sale'), '', 'rien poussé');
+    } finally { fs.writeFileSync(readme, avant); }
+    assert.equal((await app.api('POST', `/api/tasks/${id}/chaine/relancer`)).status, 200);
+    assert.equal((await finie(id)).status, 'validated');
+    assert.deepEqual(surMain(cloneApp), ['main', '']);
+  });
+
+  test('la passe du dépôt de tests réserve les clones qu’elle touche, comme une vérification en place', () => {
+    // eslint-disable-next-line global-require
+    const { jobKeys } = require('../src/jobs/file');
+    const k = jobKeys({ kind: 'task', taskId: 0, opts: { testsPasses: [{ repo_id: testsId, chemin: cloneTests, positions: [{ repo_id: repoId, workdir: cloneApp }] }] } });
+    assert.ok(k.has(`repo:${testsId}`) && k.has(`dir:${cloneTests}`) && k.has(`dir:${cloneApp}`), [...k].join(', '));
   });
 
   test('un JSON invalide : pas de rejeu, la session est reprise avec l’erreur — une correction, puis vert', async () => {
@@ -372,7 +428,7 @@ exit 0
     assert.deepEqual(c.scenario.code_modifie, [], 'que des tests');
   });
 
-  test('rouge après deux corrections : « À toi », la MR reste en brouillon, les commits sont sur la branche poussée ; « Relancer » reprend le worktree', async () => {
+  test('rouge après deux corrections : « À toi », la MR reste en brouillon, les commits sont sur la branche poussée ; « Relancer » reprend la branche', async () => {
     vider();
     const id = await session('ai/ct-toujours', 'DRYRUN_TESTS=tests DRYRUN_ROUGE=toujours');
     const c = await finie(id);
@@ -388,7 +444,7 @@ exit 0
     // La correction de la passe du dépôt de tests reçoit les échecs, sous nonFiable.
     assert.match(sorties(id)[1].prompt, /^fix: tests rouges[\s\S]*Vérificateur rouge : tests-e2e[\s\S]*<<<DONNEE [0-9a-f]+ fin du journal du vérificateur>>>[\s\S]*test rouge/);
     assert.equal(g(cloneTests, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main');
-    // « Relancer » reprend le worktree et la branche (que la session a créée) : toujours rouge, sans erreur de branche.
+    // « Relancer » reprend la branche (que la session a créée) dans le clone : toujours rouge, sans erreur de branche.
     assert.equal((await app.api('POST', `/api/tasks/${id}/chaine/relancer`)).status, 200);
     const apres = await finie(id);
     assert.equal(apres.scenario.erreur ? apres.scenario.cause : 'ok', 'rouge', 'toujours rouge, mais repris sans erreur de branche');
@@ -470,7 +526,7 @@ exit 0
     app.db.prepare('DELETE FROM mr WHERE id = ?').run(mrId);
   });
 
-  test('arrêt de la passe par l’utilisateur : l’étape est conclue sans rien constater, le worktree reste pour la reprise', async () => {
+  test('arrêt de la passe par l’utilisateur : l’étape est conclue sans rien constater ; préparer ne déplace aucun clone', async () => {
     // eslint-disable-next-line global-require
     const scen = require('../src/jobs/chaine-scenario');
     // eslint-disable-next-line global-require
@@ -480,20 +536,18 @@ exit 0
     const tache = app.db.prepare('SELECT * FROM task WHERE id = ?').get(t.id);
     const p = await scen.preparer(tache, {});
     assert.ok(p.depots, JSON.stringify(p));
-    assert.equal(g(worktree(t.id), 'rev-parse', '--abbrev-ref', 'HEAD'), 'ai/ct-arret');
-    assert.equal(g(cloneTests, 'rev-parse', '--abbrev-ref', 'HEAD'), 'main', 'le clone de l’utilisateur n’a pas bougé');
+    // Le clone de tests et ceux de la session sont trouvés — rien n'est déplacé avant la passe, qui les réserve.
+    assert.deepEqual(p.depots.map((d) => [d.project, d.chemin, d.branche, d.base]), [['grp/tests', cloneTests, 'ai/ct-arret', 'main']]);
+    assert.deepEqual(surMain(cloneTests), ['main', '']);
     app.db.prepare('INSERT INTO verif_chaine (task_id, steps_json, scenario_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(t.id, '[]', JSON.stringify({ prepare: true, ecrit: true, depots: p.depots, en_cours: { quoi: 'ecrire', at: new Date().toISOString(), avant: {}, tests_avant: {}, sorties: {} } }), 'running', new Date().toISOString(), new Date().toISOString());
+      .run(t.id, '[]', JSON.stringify({ prepare: true, ecrit: true, depots: p.depots, en_cours: { quoi: 'ecrire', at: new Date().toISOString(), avant: {}, sorties: {} } }), 'running', new Date().toISOString(), new Date().toISOString());
     await cv.apresArret(t.id);
     const c = await chaine(t.id);
     assert.equal(c.scenario.cause, 'interrompu');
-    assert.ok(fs.existsSync(worktree(t.id)));
-    // La session supprimée emporte ses worktrees ; la branche dans le clone de Mergerie n'est plus prise.
     assert.equal((await app.api('DELETE', `/api/tasks/${t.id}`)).status, 200);
-    assert.equal(fs.existsSync(path.join(app.dataDir, 'scenario-tests', `task-${t.id}`)), false);
   });
 
-  test('redémarrage en cours de passe : « À toi », cause redémarrage ; une étape sans passe en cours n’est pas touchée', async () => {
+  test('redémarrage en cours de passe : « À toi », cause redémarrage, les clones déplacés remis ; une étape sans passe en cours n’est pas touchée', async () => {
     // eslint-disable-next-line global-require
     const cv = require('../src/jobs/chaine-verif');
     const now = new Date().toISOString();
@@ -503,12 +557,20 @@ exit 0
         .run(t, '[]', JSON.stringify(scenario), 'running', now, now);
       return t;
     };
-    const coupee = etape({ prepare: true, ecrit: true, depots: [], en_cours: { quoi: 'ecrire', at: now, avant: {}, tests_avant: {}, sorties: {} } });
+    // La passe coupée avait mis le clone de l'application sur un commit détaché : son journal dit où le remettre.
+    const sortie = path.join(app.dataDir, 'tasks', 'redem', 'tests-pass', 'x-1.json');
+    fs.mkdirSync(path.dirname(sortie), { recursive: true });
+    g(cloneApp, 'checkout', '-q', '--detach', 'HEAD');
+    fs.writeFileSync(`${sortie}.restaurer`, JSON.stringify([{ workdir: cloneApp, refOrigine: 'main', sousModules: [], ignores: null }]));
+    const coupee = etape({ prepare: true, ecrit: true, depots: [], en_cours: { quoi: 'ecrire', at: now, avant: {}, sorties: { 1: sortie } } });
     const calme = etape({ prepare: true, ecrit: true, depots: [], a_rejouer: true });
     cv.reprendreApresRedemarrage();
     const c = await chaine(coupee);
     assert.deepEqual([c.status, c.scenario.cause, c.scenario.en_cours], ['attention', 'redemarrage', null]);
     assert.equal((await chaine(calme)).status, 'running');
+    await attendreServeur(async () => !fs.existsSync(`${sortie}.restaurer`), 'le journal est rejoué');
+    assert.deepEqual(surMain(cloneApp), ['main', '']);
+    assert.equal((await chaine(coupee)).scenario.cause, 'redemarrage', 'tout est revenu : l’interruption reste la cause');
   });
 
   test('un push refusé par le dépôt de tests : « À toi » avec la raison, rien d’ouvert ; « Relancer » repousse, rejoue et valide', async () => {
@@ -618,7 +680,7 @@ exit 0
       assert.equal(await page.locator('#taskChaineScenVerif').count(), 0, 'plus de choix de vérificateur des scénarios');
       await page.locator('#taskChaineScen').click();
       await page.locator('#taskChaineScenBox:not([hidden])').waitFor();
-      await page.waitForFunction(() => /grp\/tests → une branche et une merge request en brouillon/.test(document.querySelector('#taskChaineScenInfo').textContent));
+      await page.waitForFunction(() => /grp\/tests → écrit dans ton clone local, sur une branche, avec une merge request en brouillon/.test(document.querySelector('#taskChaineScenInfo').textContent));
       // Un vérificateur dont le dépôt de tests est sur une forge non configurée : la ligne le dit avant même de créer la session.
       const gh = app.db.prepare("SELECT id FROM verifier WHERE name = 'gh-e2e'").get();
       if (gh) {

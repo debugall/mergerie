@@ -29,6 +29,7 @@ const { appliquerModes, creerVerification } = require('./verifications');
 const { cloneLocalDe } = require('./plan-verif');
 const diagnostic = require('./chaine-diagnostic');
 const scenarioMod = require('./chaine-scenario');
+const taskrunner = require('../session/taskrunner');
 
 const ESSAIS = 2;
 const COTES = ['base', 'head'];
@@ -293,7 +294,7 @@ async function phaseScenario(chaine, task) {
     const r = await scenarioMod.preparer(task, scen);
     if (r.erreur) return sortirScenario(chaine, task, { ...scen, erreur: r.erreur, cause: r.cause || 'preparer' }, 'attention');
     const sig = signature(task.id);
-    scen = { ...scen, prepare: true, depots: [...(scen.depots || []).filter((d) => d.zone !== 'tests'), ...r.depots],
+    scen = { ...scen, prepare: true, depots: [...(scen.depots || []).filter((d) => d.zone !== 'tests'), ...r.depots], positions: r.positions,
       sig_chaine: scen.sig_chaine || sig, sigs_etape: [...new Set([...(scen.sigs_etape || []), sig])] };
     ecrireScenario(chaine.id, scen);
   }
@@ -370,15 +371,24 @@ function conclureScenario(chaine, { fini }) {
   ecrireScenario(chaine.id, s);
 }
 
-/* Après un redémarrage : une étape tests dont la passe tournait — son job est perdu. « À toi », avec la cause ;
-   les worktrees restent, « Relancer » repart de là. */
+/* Après un redémarrage : une étape tests dont la passe tournait — son job est perdu. Les clones qu'elle avait
+   déplacés reviennent où on les a trouvés (un échec est dit à la place de l'interruption) ; « À toi », avec la
+   cause ; les branches restent, « Relancer » repart de là. */
 function reprendreApresRedemarrage() {
   for (const c of db.prepare("SELECT task_id FROM verif_chaine WHERE scenario_json LIKE '%\"en_cours\":{%'").all()) {
     const chaine = chaineDe(c.task_id);
     if (!chaine || !chaine.scenario || !chaine.scenario.en_cours || scenarioMod.enRoute(c.task_id)) continue;
+    const sorties = Object.values(chaine.scenario.en_cours.sorties || {});
     ecrireScenario(chaine.id, { ...chaine.scenario, en_cours: null, prepare: false, erreur: t('task.chaine.scen.interrupted'), cause: 'redemarrage' });
     ecrire(chaine.id, chaine.steps, 'attention');
     signalerAttention(chaine);
+    (async () => {
+      const erreurs = [];
+      for (const sortie of sorties) erreurs.push(...await taskrunner.restaurerClonesLaisses(sortie));
+      if (!erreurs.length) return;
+      const frais = chaineDe(c.task_id);
+      if (frais && frais.scenario) ecrireScenario(frais.id, { ...frais.scenario, erreur: erreurs.join('\n'), cause: 'restauration' });
+    })().catch(() => { /* la carte dit déjà l'interruption */ });
   }
 }
 
@@ -460,14 +470,14 @@ async function relancer(taskId) {
     return n;
   });
   ecrire(chaine.id, steps, 'running');
-  /* L'étape tests : l'erreur s'efface et la préparation est refaite (les worktrees existants sont repris).
+  /* L'étape tests : l'erreur s'efface et la préparation est refaite (les branches existantes sont reprises).
      Rouge après ses corrections : le rejeu oublie ses échecs et les corrections repartent de zéro. Rien
      d'écrit (la session n'avait rien rendu, ou un push a échoué) : les passes repartent. */
   if (chaine.scenario) {
     const sc = chaine.scenario;
     const rejeu = Object.fromEntries(Object.entries(sc.rejeu || {}).map(([k, r]) => [k, { ...r, depuis: (r.runs || []).length }]));
     ecrireScenario(chaine.id, { ...sc, erreur: null, cause: null, prepare: false, rouge: null,
-      ecrit: ['rien', 'interrompu', 'redemarrage', 'push'].includes(sc.cause) ? !!sc.a_rejouer : sc.ecrit,
+      ecrit: ['rien', 'interrompu', 'redemarrage', 'push', 'clone', 'restauration'].includes(sc.cause) ? !!sc.a_rejouer : sc.ecrit,
       reprise: null, ...(sc.cause === 'rouge' ? { rejeu, corrections: 0 } : {}) });
   }
   notes.fermerTodoAuto('chaine_verif', chaine.task_id);
@@ -531,7 +541,7 @@ function commitsDeTestsParMr() {
 }
 
 /* La vue de diff d'un dépôt touché à l'étape tests : du SHA de départ au dernier commit de l'étape, dans le
-   worktree de la session (zone Tests) ou le clone de Mergerie (zone Session). */
+   clone local de l'utilisateur (zone Tests, lu par ses commits) ou le clone de Mergerie (zone Session). */
 function contexteDiffTests(taskId, repoId) {
   const chaine = chaineDe(taskId);
   const d = chaine && chaine.scenario && (chaine.scenario.depots || []).find((x) => x.repo_id === Number(repoId) && x.sha_final);
