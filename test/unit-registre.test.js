@@ -104,12 +104,12 @@ describe('Contrôle au registre des dépendances ajoutées', () => {
     assert.equal(rg.etatDe('pypi', 'PY.yaml').status, 'known');
   });
 
-  test('privés : un motif `@docaposte/*` → skipped · private-pattern ; un `.npmrc` du clone avec `@docaposte:registry=` → private-config — aucun appel', async () => {
+  test('privés : un motif `@acme/*` → skipped · private-pattern ; un `.npmrc` du clone avec `@corp:registry=` → private-config — aucun appel', async () => {
     faux.reset();
-    const prive = { ...cfg, private_patterns: '@docaposte/*\nvendor-interne/*' };
-    await rg.controlerTour(prive, [aj('package.json', '@docaposte/ui'), aj('composer.json', 'vendor-interne/outil')], { requete });
+    const prive = { ...cfg, private_patterns: '@acme/*\nvendor-interne/*' };
+    await rg.controlerTour(prive, [aj('package.json', '@acme/ui'), aj('composer.json', 'vendor-interne/outil')], { requete });
     assert.equal(faux.state.hits.length, 0, 'un nom privé ne part jamais');
-    const e = rg.pourDependances(prive, repoId, [{ parser: 'package.json', name: '@docaposte/ui' }]);
+    const e = rg.pourDependances(prive, repoId, [{ parser: 'package.json', name: '@acme/ui' }]);
     assert.deepEqual([e[0].status, e[0].reason, e[0].source], ['skipped', 'private-pattern', { kind: 'config' }]);
     // Le clone : un .npmrc qui route le scope @corp vers un registre privé.
     const git = require('../src/git/git');

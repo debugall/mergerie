@@ -172,7 +172,7 @@ prod · inconnu du registre public npm`, `fastjson2 … première publication il
 publié depuis 2012 (npm)`. La règle est non négociable : **le registre a répondu, ou il n'a pas répondu,
 et l'outil dit lequel** — un délai, une erreur, un 503, le plafond du tour atteint, un écosystème sans
 registre renseigné donnent `registre injoignable (pypi.org, délai dépassé)` ou `non contrôlé · plafond du
-tour atteint`, jamais « inconnu ». Un paquet d'entreprise (`@docaposte/*`, un `vendor/*` Composer interne,
+tour atteint`, jamais « inconnu ». Un paquet d'entreprise (`@acme/*`, un `vendor/*` Composer interne,
 un module Go sur un hôte privé) n'est pas une alerte : les **motifs de paquets privés** (globaux, par
 groupe, par dépôt) et la lecture du clone (`.npmrc` avec `registry=` ou `@scope:registry=`,
 `composer.json` avec `repositories`, `GOPRIVATE` dans `go.env`, `pip.conf` avec `index-url`) le marquent

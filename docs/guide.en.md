@@ -155,7 +155,7 @@ long **known** (nothing on the card). In the panel, each added line says it in w
 ago (npm)`, `lodash … published since 2012 (npm)`. The rule is non-negotiable: **the registry answered, or
 it did not, and the tool says which** — a timeout, an error, a 503, the round cap, an ecosystem with no
 registry set give `registry unreachable (pypi.org, timed out)` or `not checked · round cap reached`, never
-"unknown". A company package (`@docaposte/*`, an internal Composer `vendor/*`, a Go module on a private host)
+"unknown". A company package (`@acme/*`, an internal Composer `vendor/*`, a Go module on a private host)
 is no alert: the **private package patterns** (global, per group, per repository) and the clone's own
 configuration (`.npmrc` with `registry=` or `@scope:registry=`, `composer.json` with `repositories`,
 `GOPRIVATE` in `go.env`, `pip.conf` with `index-url`) mark it `not checked · probably private package
