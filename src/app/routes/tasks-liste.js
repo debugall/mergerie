@@ -126,7 +126,9 @@ app.get('/api/tasks/:id', wrap((req, res) => {
   const tache = taskById(Number(req.params.id));
   if (!tache) throw new Error(t('err.session-introuvable'));
   res.json({
-    task: { ...tache, targets: taskTargets(tache.id), context_repos: taskContextRepos(tache.id) },
+    // `tests_demarres` : l'étape tests de la chaîne a démarré — la fenêtre montre son scénario attendu figé.
+    task: { ...tache, targets: taskTargets(tache.id), context_repos: taskContextRepos(tache.id),
+      tests_demarres: !!(((chaineVerif.resume(tache.id) || {}).scenario || {}).demarre) },
     images: piecesExposees('task', tache.id),
   });
 }));

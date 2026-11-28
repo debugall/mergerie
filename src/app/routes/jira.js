@@ -166,15 +166,15 @@ app.post('/api/jira/fetch', wrap(async (req, res) => {
     const d = demoJira.issue(key);
     const marqueur = jira.marqueurTech(getConfig());
     const tech = jira.commentaireTech((d.comments || []).map((c) => c.bodyMd), marqueur);
-    const { demande, context } = jira.demandeTicket({ summary: d.summary, descriptionMd: d.descriptionMd || '', techMd: tech, techMarker: marqueur });
-    return res.json({ key: d.key, summary: d.summary, context, demande, attachments: pieces(d.attachments) });
+    const { demande, attendu, context } = jira.demandeTicket({ summary: d.summary, descriptionMd: d.descriptionMd || '', techMd: tech, techMarker: marqueur });
+    return res.json({ key: d.key, summary: d.summary, context, demande, attendu, attachments: pieces(d.attachments) });
   }
   const cfg = getConfig();
   if (!jira.isConfigured(cfg)) throw new Error(t('err.jira.not-configured'));
   const issue = await jira.fetchIssue(cfg, key);
-  const { demande, context } = jira.demandeTicket(issue);
+  const { demande, attendu, context } = jira.demandeTicket(issue);
   res.json({
-    key: issue.key, summary: issue.summary, context, demande,
+    key: issue.key, summary: issue.summary, context, demande, attendu,
     attachments: pieces(issue.attachments),
   });
 }));

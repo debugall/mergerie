@@ -453,7 +453,7 @@ function mrCard(m) {
         ${badgeDeps(m)}
         ${(m.risk || []).map((r) => `<span class="tag risk" title="${esc(tr('mr.risk-title', { pattern: r.path_match }))}">${svgIco('alert')} ${esc(r.label)}</span>`).join('')}
         <span class="tag ${mrStatus(m.status).cls}">${mrStatus(m.status).label}</span>
-        ${badgeDraft(m)}
+        ${badgeDraft(m)}${badgeTestsNonRelus(m)}
         ${badgeGens(m)}
         ${badgeUpvotes(m)}
         ${fenteBrouillons(m)}

@@ -1,11 +1,13 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('node:child_process');
 const db = require('../db');
 const localsession = require('../data/localsession');
 const { getConfig } = require('../data/config');
 const { TASKS_DIR, ensureDir, slugify } = require('../core/paths');
 const git = require('../git/git');
+const forge = require('../forge');
 const integrite = require('../git/integrite');
 const configagent = require('../data/configagent');
 const copilot = require('../agent/copilot');
@@ -373,7 +375,56 @@ function commitMessageFor(task, defaut) {
    cette correction ») ne se comprend pas sans la tâche d'origine, que la session perdue
    portait. Le défaut réinjecte donc ce contexte — mais un premier run le contient déjà, et le
    lui ajouter enverrait deux fois la même consigne, prompt de la tâche compris. */
-async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds, planOnly }) {
+/* DRY-RUN DE L'ÉTAPE TESTS : l'agent simulé écrit dans la zone que la consigne demande — un mot-clé du
+   scénario attendu, comme `DRYRUN_COUVERT` : `DRYRUN_TESTS=session|tests|deux|json-invalide|modifie-existant|code`.
+   `DRYRUN_ROUGE=1` nomme le test écrit `ROUGE-…` (la fixture le juge rouge), la correction le retire ;
+   `DRYRUN_ROUGE=toujours`, jamais. `DRYRUN_COUVERT` cite un test qui existe ; `DRYRUN_COUVERT_ABSENT`, un
+   test absent ; `DRYRUN_COUVERT_CHEMIN=<chemin>`, ce chemin. Chaque passe ne touche que son dossier (`cwd`) :
+   `zone` dit laquelle c'est — la session (`avecTests` : une passe de dépôt de tests suit, c'est elle qui
+   écrit `tests`, `modifie-existant` et répond « déjà couvert ») ou un dépôt de tests. */
+function dryrunTests(prompt, cwd, taskId, { zone = 'session', avecTests = false } = {}) {
+  const nonce = (prompt.match(/<<<COUVERT (\S+)/) || [])[1] || '';
+  const correction = /(^|: )fix: /m.test(prompt);   // la consigne de correction ouvre sur « fix: » (dans « Demande de suivi : … »)
+  const ligne = [...prompt.matchAll(/^- (\S+) : (\/.+) \((session|tests)\)$/gm)].find((m) => path.resolve(m[2]) === path.resolve(cwd));
+  const ici = { project: ligne ? ligne[1] : '', chemin: cwd };
+  const quoi = (prompt.match(/DRYRUN_TESTS=([\w-]+)/) || [])[1] || 'session';
+  const rouge = (prompt.match(/DRYRUN_ROUGE=(\w+)/) || [])[1] || '';
+  const nom = rouge ? `ROUGE-${taskId}.test.sh` : `scenario-${taskId}.test.sh`;
+  const ecrire = (fichier, contenu) => { fs.mkdirSync(path.join(cwd, 'tests'), { recursive: true }); fs.writeFileSync(path.join(cwd, 'tests', fichier), contenu, 'utf8'); };
+  const existant = () => {
+    try { return String(execFileSync('git', ['ls-files', 'tests'], { cwd, encoding: 'utf8' })).split('\n').filter(Boolean)[0] || null; } catch { return null; }
+  };
+  const bloc = (par) => `# Tests (dry-run)\n\n<<<COUVERT ${nonce}\npar: ${par}\nraison: déjà couvert (dry-run)\nCOUVERT ${nonce}>>>`;
+  const repond = zone === 'tests' || !avecTests;   // « déjà couvert » : la passe du dépôt de tests s'il y en a une
+  if (repond && !correction && /DRYRUN_COUVERT_CHEMIN=(\S+)/.test(prompt)) return bloc(`${ici.project}:${prompt.match(/DRYRUN_COUVERT_CHEMIN=(\S+)/)[1]}`);
+  if (repond && /DRYRUN_COUVERT_ABSENT/.test(prompt) && !correction) return bloc(`${ici.project}:tests/absent-${taskId}.test.sh`);
+  if (/DRYRUN_COUVERT(?!_)/.test(prompt)) return repond ? bloc(`${ici.project}:${existant() || 'README.md'}`) : '# Rien à écrire ici (dry-run)';
+  if (!repond && !correction && /DRYRUN_COUVERT/.test(prompt)) return '# Rien à écrire ici (dry-run)';
+  if (correction) {
+    // La correction : les tests rouges retirés (sauf `toujours`), le JSON réparé ; `DRYRUN_FIX=code` touche aussi le code.
+    const dir = path.join(cwd, 'tests');
+    for (const f of (fs.existsSync(dir) ? fs.readdirSync(dir) : [])) {
+      if (/^ROUGE-/.test(f)) {
+        if (rouge === 'toujours') fs.appendFileSync(path.join(dir, f), `# encore rouge (${new Date().toISOString()})\n`);
+        else fs.renameSync(path.join(dir, f), path.join(dir, f.replace(/^ROUGE-/, 'scenario-')));
+      }
+      if (/^data-.*\.json$/.test(f)) fs.writeFileSync(path.join(dir, f), '{ "ok": true }\n', 'utf8');
+    }
+    if (zone === 'session' && /DRYRUN_FIX=code/.test(prompt)) fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), '\n## correction du code (dry-run)\n', 'utf8');
+    return '# Tests corrigés (dry-run)';
+  }
+  const pourTests = ['tests', 'deux', 'modifie-existant'].includes(quoi);
+  const ecritIci = zone === 'tests' ? pourTests : (quoi !== 'tests' && quoi !== 'modifie-existant') || !avecTests;
+  if (ecritIci) {
+    if (quoi === 'json-invalide') ecrire(`data-${taskId}.json`, '{ invalide');
+    else if (quoi === 'modifie-existant' && existant()) fs.appendFileSync(path.join(cwd, existant()), `\n# modifié par la session ${taskId} (dry-run)\n`, 'utf8');
+    else ecrire(nom, `#!/bin/sh\n# test dry-run de la session ${taskId}\nexit 0\n`);
+  }
+  if (zone === 'session' && quoi === 'code') fs.appendFileSync(path.join(cwd, 'PROJ_TASK_DRYRUN.md'), '\n## code touché à l’étape tests (dry-run)\n', 'utf8');
+  return ecritIci ? `# Tests écrits (dry-run)\n\n- ${ici.project}` : '# Rien à écrire ici (dry-run)';
+}
+
+async function execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, forcePush, resume, passKind, imageIds, planOnly, scenAvecTests = false }) {
   // On REPREND la session dès qu'un handle existe pour cette cible : la continuité vaut pour
   // le run initial, « Demander une correction » (followup), une relance, la reprise après
   // questions et les passes de convergence. Le 1er passage la crée.
@@ -527,15 +578,9 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
     } else if (task.ask_questions && !doResume) {
       onLog('$ (DRY-RUN — l’agent pose des questions)');
       agentText = questions.dryrunQuestions(nonceQuestionsTache(task)); // simule le bloc <<<QUESTIONS>>> au 1er passage
-    } else if (/<<<SCENARIO \S+/.test(promptText)) {
-      /* DRY-RUN + SCÉNARIO DE COUVERTURE : un bloc SCENARIO au nonce demandé — ou COUVERT si la demande
-         contient `DRYRUN_COUVERT`, ce qu'un test obtient par le nom d'un vérificateur. Rien n'est modifié
-         dans le projet : c'est Mergerie qui écrit le scénario dans le dépôt de tests. */
-      const nonce = (promptText.match(/<<<SCENARIO (\S+)/) || [])[1];
-      onLog('$ (DRY-RUN — scénario de couverture simulé)');
-      agentText = /DRYRUN_COUVERT/.test(promptText)
-        ? `# Couverture (dry-run)\n\n<<<COUVERT ${nonce}\npar: scenarios/existant.sh\nraison: déjà couvert (dry-run)\nCOUVERT ${nonce}>>>`
-        : `# Scénario (dry-run)\n\n<<<SCENARIO ${nonce}\nchemin: scenarios/nouveau-${task.id}.sh\n---\n#!/bin/sh\n# scénario dry-run de la session ${task.id}\nexit 0\nSCENARIO ${nonce}>>>`;
+    } else if (passKind === 'scenario') {
+      onLog('$ (DRY-RUN — tests de la chaîne de validation simulés)');
+      agentText = dryrunTests(promptText, cwd, task.id, { zone: 'session', avecTests: scenAvecTests });
     } else if (/<<<DIAGNOSTIC \S+/.test(promptText)) {
       /* DRY-RUN + DIAGNOSTIC DE LA CHAÎNE DE VALIDATION : le bloc au nonce demandé. La cause est
          `branche` (l'agent corrige : un fichier change), sauf si l'échec rapporté dit `DRYRUN_CAUSE=…`
@@ -617,7 +662,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
   // Retour de l'agent (ce qu'il dit avoir fait), consultable en fin de session — comme la
   // réponse d'une exploration. Vide en dry-run (pas de vrai retour).
   const passeN = saveAgentOutput(task.id, tg.id, agentText, {
-    kind: passKind || 'run', prompt: promptText + imgBlock, costUsd: coutUsd, unitUid: tg.uid,
+    kind: passKind === 'scenario' ? 'followup' : (passKind || 'run'), prompt: promptText + imgBlock, costUsd: coutUsd, unitUid: tg.uid,
   });
 
   /* LE PLAN EST RENDU : la cible attend son approbation, rien n'est commité. Un agent qui aurait
@@ -660,7 +705,8 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
         : t('err.aucun-changement-produit-rien-a'));
     }
     onLog(t('log.task.already-done', { n: dejaFait, count: dejaFait, base }));
-    await reappliquerMessage(cwd, tg.branch, message, onLog);
+    // L'étape tests sans rien dans ce projet : le commit d'avant garde son message, il n'est pas celui des tests.
+    if (passKind !== 'scenario') await reappliquerMessage(cwd, tg.branch, message, onLog);
   }
   const sha = await git.headSha(cwd);
 
@@ -707,7 +753,7 @@ async function execOnTarget(task, tg, { promptText, promptRepli, message, allowC
 
 // Session de codage : chaque projet est traité l'un après l'autre. Un projet en échec
 // n'interrompt pas les suivants — son erreur est consignée sur SA ligne.
-async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds, imageIds, planOnly }) {
+async function runCodeTask(task, { promptText, promptRepli, message, allowCreate, onLog, passKind, targetIds, imageIds, planOnly, scenAvecTests }) {
   /* `targetIds` restreint la passe à certains projets. Une session multi-dépôts se relançait
      forcément EN ENTIER : sur dix dépôts dont six ont réussi, cela coûtait six appels IA pour
      refaire un travail bon, et faisait repasser l'agent sur du code qu'on ne voulait plus voir
@@ -722,7 +768,7 @@ async function runCodeTask(task, { promptText, promptRepli, message, allowCreate
     onLog(`──────── ${tg.project} · ${tg.branch} ────────`);
     setTarget(tg.id, { status: 'running', last_error: null });
     try {
-      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind, imageIds, planOnly });
+      const r = await execOnTarget(task, tg, { promptText, promptRepli, message, allowCreate, onLog, passKind, imageIds, planOnly, scenAvecTests });
       if (r && r.needsInput) waiting += 1; else if (r && r.planned) planned += 1; else ok += 1;
     } catch (e) {
       setTarget(tg.id, { status: 'error', last_error: e.message });
@@ -1058,7 +1104,9 @@ async function runTask(task, onLog = () => {}, opts = {}) {
 
 // `targetIds` : correction limitée à certains projets d'une session multi-dépôts. Une
 // remarque porte presque toujours sur UN dépôt ; la passer à tous refait du travail bon.
-async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds, imageIds } = {}) {
+/* `passKind: 'scenario'` : l'étape tests de la chaîne de validation — `message`, celui de ses commits ;
+   `testsPasses`, une passe par dépôt de tests séparé, lancée après celle de la session (`passeDepotTests`). */
+async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds, imageIds, passKind = 'followup', message: msg = null, testsPasses = [] } = {}) {
   const instr = String(instruction || '').trim();
   if (!instr) throw new Error(t('err.demande-de-suivi-vide'));
 
@@ -1066,12 +1114,86 @@ async function runTaskFollowup(task, instruction, onLog = () => {}, { targetIds,
     const previous = task.md_path && fs.existsSync(task.md_path) ? fs.readFileSync(task.md_path, 'utf8') : '';
     return runExploration(task, { question: instr, previous, onLog, imageIds });
   }
-  const message = commitMessageFor(task, instr.split('\n')[0].slice(0, 72));
+  const message = commitMessageFor(task, msg || instr.split('\n')[0].slice(0, 72));
   const promptText = avecConsignes(
     'Tu travailles sur une branche existante de ce projet ; le travail précédent est déjà '
     + `committé. Applique la demande de suivi ci-dessous en modifiant directement les fichiers.\n\n`
     + `Demande de suivi : ${instr}`, consignesPermanentes(depotPrincipal(task)));
-  return runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind: 'followup', targetIds, imageIds });
+  const r = await runCodeTask(task, { promptText, message, allowCreate: false, onLog, passKind, targetIds, imageIds, scenAvecTests: testsPasses.length > 0 });
+  if (passKind === 'scenario' && testsPasses.length) {
+    const changement = changementDeLaSession(task.id);
+    for (const p of testsPasses) await passeDepotTests(task, p, { onLog, message, changement });
+  }
+  return r;
+}
+
+/* LE CHANGEMENT DE LA SESSION, pour la passe d'un dépôt de tests qui ne l'a pas écrit : la liste des fichiers
+   et le diff de chaque projet depuis sa base, tronqué — sous `nonFiable`, c'est une donnée. */
+const MAX_CHANGEMENT = 40000;
+function changementDeLaSession(taskId) {
+  const cfg = getConfig();
+  const blocs = [];
+  for (const tg of targetsOf(taskId).filter((x) => x.commit_sha)) {
+    const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(tg.repo_id);
+    if (!repo) continue;
+    const cwd = git.cloneDirFor(cfg, repo);
+    const plage = `origin/${tg.base_branch || 'HEAD'}...${tg.commit_sha}`;
+    try {
+      const stat = String(execFileSync('git', ['diff', '--stat', plage], { cwd, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }));
+      const diff = String(execFileSync('git', ['diff', plage], { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }));
+      blocs.push(`### ${repo.project} · ${tg.branch}\n\n${stat.trim()}\n\n${diff}`);
+    } catch { blocs.push(`### ${repo.project} · ${tg.branch}`); }
+  }
+  if (!blocs.length) return '';
+  let texte = blocs.join('\n\n');
+  if (texte.length > MAX_CHANGEMENT) texte = `${texte.slice(0, MAX_CHANGEMENT)}\n${t('task.chaine.scen.change-truncated')}`;
+  return nonFiable(t('task.chaine.scen.change-title'), texte);
+}
+
+/* LA PASSE D'UN DÉPÔT DE TESTS : l'agent tourne DANS le worktree du dépôt de tests — son dossier à lui, ce qui
+   marche avec tous les agents —, avec la consigne préparée par la chaîne et le changement de la session. Puis
+   commit, push de la branche et merge request en BROUILLON, ouverte une fois (les passes suivantes la mettent à
+   jour par le push). Le résultat va dans `p.sortie`, que la chaîne relit : aucune erreur n'est levée ici. */
+async function passeDepotTests(task, p, { onLog, message, changement }) {
+  const cfg = getConfig();
+  const out = { texte: '', prompt: '', sha: null, pousse: false, mr_iid: p.mr_iid || null, mr_url: p.mr_url || null, erreur: null };
+  const cwd = p.chemin;
+  onLog(`──────── ${p.project} · ${p.branche} (${t('log.task.tests-pass')}) ────────`);
+  try {
+    const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(p.repo_id);
+    if (!repo) throw new Error(t('err.depot-introuvable'));
+    const prompt = [p.prompt, changement].filter(Boolean).join('\n\n');
+    out.prompt = prompt;
+    if (copilot.isDryRun()) {
+      onLog('$ (DRY-RUN — tests du dépôt de tests simulés)');
+      out.texte = dryrunTests(prompt, cwd, task.id, { zone: 'tests' });
+    } else if (agentsession.reprenable()) {
+      const r = await agentsession.runInSession({ key: `task-${task.id}-tests-${repo.id}`, prompt, cwd, resume: false, onLog, options: optionsFor(task), saveur: 'code' });
+      out.texte = r.text || '';
+      copilot.recordUsage('task', prompt, out.texte, null, { kind: 'task', id: task.id }, r.costUsd);
+    } else {
+      out.texte = (await copilot.runPrompt(prompt, cwd, { kind: 'task' }, onLog)) || '';
+    }
+    onLog(`commit : ${message}`);
+    await git.commitAll(cwd, message, onLog);
+    out.sha = await git.headSha(cwd);
+    if (await git.aheadOf(cwd, p.base)) {
+      onLog(`push : git push -u origin ${p.branche}`);
+      await git.pushBranch(cwd, p.branche, onLog, git.secretsOf(cfg));
+      out.pousse = true;
+      if (!out.mr_iid) {
+        const mr = await forge.clientFor(repo).createMergeRequest(cfg, repo.project, { source_branch: p.branche, target_branch: p.base, title: p.mr_titre, draft: true });
+        out.mr_iid = mr && mr.iid ? mr.iid : null;
+        out.mr_url = (mr && mr.web_url) || null;
+        onLog(t('log.task.tests-mr', { project: repo.project, iid: out.mr_iid || '?' }));
+      }
+    }
+  } catch (e) {
+    out.erreur = String(e.message || e).split('\n')[0];
+    onLog(t('log.task.project-error', { project: p.project, message: out.erreur }));
+  }
+  try { fs.mkdirSync(path.dirname(p.sortie), { recursive: true }); fs.writeFileSync(p.sortie, JSON.stringify(out), 'utf8'); }
+  catch (e) { onLog(t('log.task.project-error', { project: p.project, message: e.message })); }
 }
 
 /* « APPROUVER ET CODER » : les cibles planifiées reprennent LEUR session d'agent avec l'ordre de

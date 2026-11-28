@@ -102,6 +102,10 @@ function blocJourneeHtml(x, i) {
     ${x.manque ? `<p class="field-note cockpit-prep-manque">${esc(tr('cockpit.journee.fill-repo'))}</p>` : ''}
     ${suggestionsJourneeHtml(x)}
     <div class="cockpit-cibles">${cibles.map(cibleJourneeHtml).join('')}</div>
+    ${/* Le scénario attendu lu dans le ticket (`&&? …`), modifiable — vide, sans avertissement, quand il n'en a
+          pas. Il part avec la session si le modèle écrit les tests ; l'agent ne le lit qu'à cette étape. */''}
+    <label class="cockpit-attendu"><span>${esc(tr('task.chaine.scen.expected'))}</span>
+      <textarea class="cockpit-attendu-texte" rows="2" maxlength="4000"${x.attendu_source === 'saisi' ? ' data-saisi="1"' : ''}>${esc(x.attendu || '')}</textarea></label>
     <div class="cockpit-prep-actions">
       <button type="button" class="btn btn-sm btn-ghost" data-cockpit-cible-plus><svg class="ico"><use href="#i-plus"/></svg>${esc(tr('cockpit.journee.repo-add'))}</button>
       <span class="spacer"></span>
@@ -127,6 +131,8 @@ function memoriserBlocs() {
   $$('#cockpitPrepares .cockpit-prep:not(.is-fait)').forEach((bloc) => {
     const x = journeePrepares[Number(bloc.dataset.prep)];
     if (!x) return;
+    const zone = bloc.querySelector('.cockpit-attendu-texte');
+    if (zone) { x.attendu = zone.value; x.attendu_source = zone.dataset.saisi ? 'saisi' : 'jira'; }
     x.targets = $$('.cockpit-cible', bloc).map((r) => ({
       repo_id: Number(r.querySelector('.cockpit-c-repo').value) || 0,
       project: r.querySelector('.cockpit-c-repo').dataset.label || '',
@@ -155,7 +161,9 @@ function lireBloc(bloc) {
     branch: r.querySelector('.cockpit-c-branch').value.trim(),
     base_branch: r.querySelector('.cockpit-c-base').value || '',
   })).filter((g) => g.repo_id);
-  return { x, session: { key: x.key, summary: x.summary, prompt: x.prompt, targets } };
+  const zone = bloc.querySelector('.cockpit-attendu-texte');
+  const attendu = zone ? zone.value.trim() : String(x.attendu || '').trim();
+  return { x, session: { key: x.key, summary: x.summary, prompt: x.prompt, targets, attendu, attendu_source: zone && zone.dataset.saisi ? 'saisi' : 'jira' } };
 }
 $('#cockpitPreparer') && $('#cockpitPreparer').addEventListener('click', async (e) => {
   const keys = clesJournee();
@@ -262,3 +270,7 @@ async function toutJournee(lancer, bouton) {
 }
 $('#cockpitLancer') && $('#cockpitLancer').addEventListener('click', (e) => toutJournee(true, e.currentTarget));
 $('#cockpitToutEnregistrer') && $('#cockpitToutEnregistrer').addEventListener('click', (e) => toutJournee(false, e.currentTarget));
+// Le scénario attendu retouché ici n'est plus celui du ticket : sa source devient « saisi ».
+$('#cockpitPrepares') && $('#cockpitPrepares').addEventListener('input', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('cockpit-attendu-texte')) e.target.dataset.saisi = '1';
+});

@@ -118,12 +118,16 @@
                     <label id="taskChaineSkillRow" hidden><span data-i18n="task.chaine.skill.label">Skill de diagnostic (dépôt de tests)</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.chaine.skill.tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button>
                         <select id="taskChaineSkill"></select>
                     </label>
-                    <!-- ÉTAPE 3 : tout vert, la session dit si son code est déjà couvert par un scénario du dépôt de tests,
-                         sinon en écrit un, que le vérificateur choisi lance seul (MERGERIE_SCENARIO). -->
-                    <label id="taskChaineScenRow" class="inline-check" hidden><input type="checkbox" id="taskChaineScen" /> <span data-i18n="task.chaine.scen.opt">Couvrir le code par un scénario, lancé seul</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.chaine.scen.opt-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
+                    <!-- ÉTAPE 3 : tout vert, la session écrit les tests (dans les dépôts de la session ou un dépôt de
+                         tests séparé), puis tous les vérificateurs de la chaîne sont rejoués. Le scénario attendu n'est
+                         lu par l'agent qu'à cette étape, jamais au codage. -->
+                    <label id="taskChaineScenRow" class="inline-check" hidden><input type="checkbox" id="taskChaineScen" /> <span data-i18n="task.chaine.scen.opt">Écrire les tests à la fin de la chaîne</span> <button type="button" class="hint" tabindex="-1" data-i18n-tip="task.chaine.scen.opt-tip" aria-label="" data-tip=""><svg class="ico"><use href="#i-info"/></svg></button></label>
                     <div id="taskChaineScenBox" class="task-chaine-scen" hidden>
-                        <label><span data-i18n="task.chaine.scen.verifier">Vérificateur des scénarios</span> <select id="taskChaineScenVerif"></select></label>
-                        <label><span data-i18n="task.chaine.scen.skill">Skill de scénarios (dépôt de tests)</span> <select id="taskChaineScenSkill"></select></label>
+                        <label for="taskChaineScenAttendu" data-i18n="task.chaine.scen.expected">Scénario attendu</label>
+                        <textarea id="taskChaineScenAttendu" rows="3" maxlength="4000"></textarea>
+                        <p class="muted task-chaine-scen-aide" data-i18n="task.chaine.scen.expected-help">Ce qu’il faut ajouter comme tests : le parcours, les données, le résultat attendu. Lu par l’agent après le codage, pas avant.</p>
+                        <p id="taskChaineScenVerrou" class="muted" data-i18n="task.chaine.scen.expected-locked" hidden>L’étape tests a démarré : le scénario attendu ne se modifie plus.</p>
+                        <p id="taskChaineScenInfo" class="muted task-chaine-scen-info"></p>
                     </div>
                 </div>
                 <!-- « CONVERGER » N'EST PLUS UN SECOND BOUTON PRIMAIRE au pied de la modale,

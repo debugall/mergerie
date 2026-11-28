@@ -252,6 +252,7 @@ async function openTaskForJira(key) {
   await proposerPiecesJira(issue);
   await majVerificateursSession('');   // §0 — idem depuis un ticket
   await appliquerDefautsSession(f);    // A20 — et les cases par défaut, comme partout ailleurs
+  if (issue) poserAttenduJira(issue.attendu);   // `&&? …` du ticket : le scénario attendu, jamais la demande
   $('#taskModalTitle').textContent = tr('jira.code-modal-title', { key });
   $('#taskExistingImgs').textContent = issue ? tr('jira.code-from', { key: issue.key, summary: issue.summary || '' }) : '';
   boutonsCreation();
@@ -319,7 +320,9 @@ async function openTaskEdit(id) {
   }
   cliPreselection = t.cli_id || '';    // le binaire choisi, relu par showTaskModal
     poserDateProgrammee(f, t.scheduled_at);
-    await majVerificateursSession(t.verifier_id || '', { autoPick: false, chaine: t.verify_chain, chaineSkill: t.verify_chain_skill, chaineScenario: t.verify_chain_scenario });
+    // L'étape tests démarrée : le scénario attendu se lit, il ne se modifie plus.
+    await majVerificateursSession(t.verifier_id || '', { autoPick: false, chaine: t.verify_chain, chaineSkill: t.verify_chain_skill, chaineScenario: t.verify_chain_scenario,
+      chaineVerrouille: !!t.tests_demarres });
     if (f.session_id) f.session_id.value = sharedSessionKey(t.targets);
     deplierAvanceSiRempli(f);
     $('#taskModalTitle').textContent = tr(taskKind === 'code' ? 'task.edit.code-title' : 'task.edit.explore-title');

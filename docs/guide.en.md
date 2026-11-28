@@ -984,24 +984,51 @@ instruction has it read the test repository directly. It ends with a cause:
 **Two rounds at most** per verifier; beyond that, it is your turn. `Run again` after a fix by hand gives
 the diagnosis its rounds back. The chain waits for a diagnosis to finish before starting anything else.
 
-**The coverage scenario, then “validated”.** Below the chain, **`Cover the code with a scenario, run
-alone`** adds a last step once everything is green: the session that wrote the code is resumed, the test
-repository mounted read-only, and follows the chosen **scenario skill** (or, without one, reads the test
-repository directly). Either its code is **already covered** — it says by which scenario and why, and the
-task is **validated** —, or it **writes a scenario** following the test repository's conventions and gives
-it back file by file; **Mergerie** writes it on a branch named like the session's in the test repository,
-commits and pushes (a path leaving the repository or aiming at `.git` is refused). The **test
-repository** is set once, for every verifier, in **Settings → Verifiers → `Test repository`**; a verifier
-can **override** it for itself (its form, **Advanced → `Test repository`** — empty = the general setting),
-and its own then applies when it is the scenario verifier. The scenario verifier must cover that repository,
-and it cannot be one of the session's repositories. Left empty, it is inferred: the
-only repository the scenario verifier covers outside the session — when it covers several, the step stops
-and asks you to pick one rather than write in a random one. The **scenario
-verifier** then runs, the test repository on that branch, with **`MERGERIE_SCENARIO`** = the written paths:
-its commands run that scenario alone (`npx playwright test $MERGERIE_SCENARIO`, for instance; empty, they
-run everything). Two attempts. Green: the card says **“Validation chain: validated”**. Red twice: the
-session fixes the scenario, or its code (the chain then replays every verifier's branch before the
-scenario), twice at most, then *your turn*.
+**The tests, then “validated”.** Below the chain, **`Write the tests at the end of the chain`** adds a last
+step once everything is green. Ticked, it opens an **`Expected scenario`** box: what to add as tests — the
+journey, the data, the expected result. Optional (without it, the agent decides which tests to add), it is
+**read by the agent at this step only**, never while coding, reviewing, converging or diagnosing; it can be
+changed until the step starts. Under the box, a line says **where the tests will go**: each test repository kept
+(“a branch and a draft merge request”, or “forge not configured” when it cannot be), or “no separate test
+repository: the tests will go into the session's repositories”.
+
+1. **Two passes, each in its own folder** — which works with every agent (Claude, Copilot…), none needs to write
+   outside its own. The session that wrote the code is resumed for the tests of **its own repositories**. Then, for
+   each **separate test repository**, a dedicated pass runs **in a Mergerie worktree** of that repository, on a
+   **branch named after the session** started from its default branch: it gets the expected scenario, **the
+   session's change** (its diff, as data) and the repository's **skills** (name, description, path of the
+   `SKILL.md`: the agent reads those that help). Each pass **writes** the tests in the folders the commands
+   already run; it runs nothing, commits nothing, pushes nothing. Your local clone is never put on that branch;
+   two sessions run in parallel each write on their own.
+2. Mergerie **records** what changed and applies each zone's rule. **Session repository**: commit and push on
+   its branch, **the existing MR updates** (a separate commit, which does not rerun the review: the card says
+   “test commit not reviewed” until a review covers its SHA). **Separate test repository**: commit, **push of the
+   branch**, and a **draft merge request** to its default branch — opened once, then updated by the pushes. A
+   branch of the same name the session did not create (on the forge or in Mergerie's clone), or a forge not
+   configured for that repository: *your turn*, nothing is pushed.
+3. **Every verifier of the chain runs again**, branch side only, with its unchanged commands — on the test
+   repository's pushed branch (an “in place” verifier puts your clone on that commit for the run, then puts it
+   back, as always). Two attempts each; a red one does not stop the next. **The tests of one repository run one at
+   a time**: a verification reserves every repository it covers, so two sessions running their tests again on the
+   same test repository go one after the other, the second queued with “waiting: the tests of … are already
+   running (verifier, session #…)”; a verification started by hand on that repository meanwhile is refused right
+   away. Red: both passes get the failing tests and the log, and fix — the session its tests or its code, the test
+   repository its tests —, **twice at most** (a written JSON that does not parse, or a refused “already covered”,
+   count in those two), then *your turn*; the test merge request stays a draft. **Green: the test merge request
+   goes from draft to ready.**
+4. The agent can also **write nothing and cite existing tests** (`par: <repository>:<path>`, and the reason):
+   each path is checked on disk — it proves the cited test exists, nothing more; judging it is yours, when you
+   review. Nothing moved: no rerun, no merge request, the task is **“covered by an existing test”**.
+
+The session card shows a **Tests** block per touched repository — its zone, “2 added, 1 modified”, `View diff` (with
+the test repository agent's answer), the branch and the link of the test MR with its state (**draft** / **ready**; “MR
+left as draft” when the forge refused to make it ready) or the session's MR link —, a **“with the tests”** column in the
+verifiers grid, the folded **Asked / Written** block, and in amber **“existing test changed”** (which opens that file's
+diff) or **“code changed at the tests step”**. The **test repository** is set in **Settings → Verifiers → `Test
+repository`** (for all) and overridden per verifier (**Advanced → `Test repository`**); empty, the tests go into the
+session's repositories. The test worktrees are removed with the session; its branches and merge requests stay on the
+forge. A chain set up before this version keeps its box ticked: its scenario verifier and skill are ignored, and the
+step now writes its tests itself then runs the whole chain again (`MERGERIE_SCENARIO` stays set, empty).
 
 **The cockpit.** The **Cockpit** sub-tab, first in **Dev AI**, is the view you leave open (the orange badge on the Dev AI menu counts, from any screen, what waits for you there, and leads there in one click) while the agents work: **Your turn** (a
 session asking a question or waiting for its plan's approval, a stopped chain with the reason — broken
@@ -1013,10 +1040,12 @@ Sessions idle for three days are left out.
 **The workflow strip.** Each row — and, in **Coding** and **Local repo coding**, each session card — shows
 **every step** of the session, in order, and what is going to happen: **Coding** → **Push** → the convergence loop (**Review** with its score, then **Fix n** and
 **Review n** per pass, and the end — threshold reached, cap, score dropping) → each verifier of the chain
-(**base**, then **branch**, and its **diagnosis** if any) → the coverage scenario (**Test written**,
-**Test pushed**, **Test run**, “in” the test repository, and its **fix**) → **Validated**. It reads like a
+(**base**, then **branch**, and its **diagnosis** if any) → the tests (**Tests written**,
+one step per touched repository with its zone, then **“with the tests”** for each verifier run again, and their
+**fix**) → **Validated**, with a **“test MR in draft”** badge, green **“test MR ready”** once the rerun is green,
+when tests live in a test repository. It reads like a
 **pipeline**: a **rail**, **one node per phase** — **Code & push** (“Code, push & MR” for local sessions),
-**Convergence**, **Validation**, **Coverage test**, **Validated** —, solid up to where the session is, dashed for
+**Convergence**, **Validation**, **Tests**, **Validated** —, solid up to where the session is, dashed for
 what comes. The node tells the state: green check done, **spinning arc** running (a glint travels along the rail
 leading to it), amber node **breathing** when it's your turn, red cross failed, a number for what comes, a double
 ring for the finish line. Under each node, what the phase produced: the **MR** link on Code; on Convergence, the
@@ -1117,8 +1146,12 @@ launch. The number is **pre-filled** if the working branch already contains a ke
   starting with `&&>` is one of its lines (a list works: `&&> - …`). Gathered in order, without the prefix,
   they fill the request after the context's `---` separator, and leave that context — the agent does not
   read the instruction twice. The `#tech` comment's lines win, whole, over the description's; with “Fetch”,
-  a request already written in the dialog wins. A typical ticket: `&&api-core:feature/PROJ-12<develop` then
-  `&&> Add the /installments/quote endpoint` — all that is left is to read it over and launch. Local repo
+  a request already written in the dialog wins. Lines starting with **`&&? …`** write the tests' **expected
+  scenario** the same way (same rule: `#tech` wins, consecutive lines joined): they fill the `Expected scenario`
+  box under the chain, never the request, and leave every context sent to an agent — the session's, a review's,
+  a convergence's, the exported script's. A typical ticket: `&&api-core:feature/PROJ-12<develop` then
+  `&&> Add the /installments/quote endpoint` and `&&? A 3-installment quote returns 3 amounts summing to the total`
+  — all that is left is to read it over and launch. Local repo
   coding opened from a ticket gets it too. A repository named twice keeps the last branch
   written: the request reads description, then `#tech`, then what you type — the technical note wins over
   the description, and you over both. A token can be written as code (`` `&&api-core:feature/x<develop` ``) so
@@ -2613,7 +2646,7 @@ fragment **or when the diff touches a path** — a glob such as `**/migrations/*
 precise; a rule on a path can carry a **“risk” badge** shown on the merge requests concerned, computed
 **without AI** just from the diff's paths, to see at a glance which one to review first) ·
 **Verifiers** (your test commands, and the repositories each of them can test — see *Objective verification*
-below; at the top, the **test repository** shared by all of them, where a validation chain's coverage scenario is written — a searchable list, empty = inferred, which each verifier can override under its **Advanced**; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
+below; at the top, the **test repository** shared by all of them — where the agent writes the tests that do not live in the project; empty, the tests go into the session's repositories; a searchable list, which each verifier can override under its **Advanced**; the page shows **the list** first, and the form opens on *Add a verifier*, *Edit* or
 **`Duplicate`** — the latter reopens it **prefilled** with no id, so saving **creates** instead of
 overwriting the original, with a free name proposed ("X (copy)", since names are unique) and the
 field selected: renaming is the first gesture; the form **suggests the commands the covered repositories

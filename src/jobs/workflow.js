@@ -143,35 +143,49 @@ function etapesChaine(task, chaine) {
       out.push({ cle: 'verif', cote: 'base', nom: v.name, verifier_id: Number(id), etat: 'a_venir' }, { cle: 'verif', cote: 'head', nom: v.name, verifier_id: Number(id), etat: 'a_venir' });
     }
   }
-  const cfgScen = lire(scenarioMod.normaliserScenario(task.verify_chain_scenario), null);   // rendue en JSON
+  /* L'ÉTAPE TESTS : écrire (une étape par dépôt touché, avec sa zone), rejouer (une par vérificateur, avec son
+     essai), corriger (le numéro de la correction). « Déjà couvert » : écrire fait, avec les tests cités, le
+     rejeu sans objet. Un dépôt de tests porte sa merge request (brouillon jusqu'au vert, puis prête). */
+  const cfgScen = scenarioMod.lireScenario(task);
+  let mrTests = null;
   if (cfgScen) {
-    const projets = db.prepare('SELECT repo_id FROM task_target WHERE task_id = ?').all(task.id);
-    const tests = scenarioMod.depotTests(cfgScen.verifier_id, projets, groupes.couvertureVerifier).repo;
-    const projet = tests ? tests.project : null;
     const sc = (chaine && chaine.scenario) || null;
-    const fichiers = (sc && sc.fichiers) || [];
-    if (sc && sc.couvert) {
-      out.push({ cle: 'scen-ecrire', etat: 'fait', projet, detail: sc.couvert.par || '' },
-        { cle: 'scen-pousser', etat: 'saute', projet }, { cle: 'scen-lancer', etat: 'saute', projet });
+    const noms = (chaine && chaine.steps ? chaine.steps.map((x) => ({ id: x.verifier_id, nom: x.verifier_name }))
+      : lire(task.verify_chain, []).map((id) => ({ id: Number(id), nom: (db.prepare('SELECT name FROM verifier WHERE id = ?').get(Number(id)) || {}).name })))
+      .filter((x) => x.nom);
+    const touches = sc ? sc.depots.filter((d) => d.ajoutes.length || d.modifies.length || d.supprimes.length) : [];
+    const mrs = sc ? sc.depots.filter((d) => d.zone === 'tests' && d.mr_url) : [];
+    if (mrs.length) mrTests = mrs.every((d) => d.mr_pret) ? 'prete' : 'brouillon';
+    const erreurEcrire = sc && sc.erreur && sc.cause !== 'rouge' ? (attention ? 'a_toi' : 'echec') : null;
+    if (sc && sc.couvert && !touches.length) {
+      out.push({ cle: 'scen-ecrire', etat: 'fait', couvert: sc.couvert.par, detail: sc.couvert.raison || '' });
+      for (const v of noms) out.push({ cle: 'scen-rejouer', nom: v.nom, verifier_id: v.id, etat: 'saute' });
     } else {
-      let ecrire = 'a_venir';
-      if (sc && sc.en_cours === 'ecrire') ecrire = 'en_cours';
-      else if (fichiers.length) ecrire = 'fait';
-      else if (sc && sc.erreur) ecrire = attention ? 'a_toi' : 'echec';
-      out.push({ cle: 'scen-ecrire', etat: ecrire, projet, detail: ecrire === 'a_toi' || ecrire === 'echec' ? sc.erreur : fichiers.join(' ') });
-      out.push({ cle: 'scen-pousser', etat: fichiers.length ? 'fait' : 'a_venir', projet, detail: sc && sc.branche ? sc.branche : '' });
-      let lancer = fichiers.length ? etatCote(sc.run, attention) : 'a_venir';
-      if (sc && sc.en_cours === 'corriger') lancer = 'echec';
-      if (fichiers.length && sc.erreur && lancer !== 'echec') lancer = attention ? 'a_toi' : 'echec';
-      out.push({ cle: 'scen-lancer', etat: lancer, projet, essai: sc && sc.run ? sc.run.essai || 0 : 0, verification_id: sc && sc.run ? sc.run.verification_id || null : null,
-        detail: sc && sc.erreur && fichiers.length ? sc.erreur : '' });
+      if (!touches.length) {
+        let etat = 'a_venir';
+        if (sc && sc.en_cours === 'ecrire') etat = 'en_cours';
+        else if (erreurEcrire) etat = erreurEcrire;
+        out.push({ cle: 'scen-ecrire', etat, detail: etat === 'a_toi' || etat === 'echec' ? sc.erreur : '' });
+      } else {
+        touches.forEach((d, i) => out.push({ cle: 'scen-ecrire', etat: erreurEcrire && i === touches.length - 1 ? erreurEcrire : 'fait', projet: d.project, zone: d.zone,
+          compte: { ajoutes: d.ajoutes.length, modifies: d.modifies.length, supprimes: d.supprimes.length },
+          ...(d.zone === 'tests' && d.mr_url ? { mr: { url: d.mr_url, iid: d.mr_iid, pret: !!d.mr_pret } } : {}),
+          detail: erreurEcrire && i === touches.length - 1 ? sc.erreur : '' }));
+      }
+      const parId = new Map(((sc && sc.rejeu) || []).map((r) => [r.verifier_id, r]));
+      for (const v of noms) {
+        const r = parId.get(v.id);
+        out.push({ cle: 'scen-rejouer', nom: v.nom, verifier_id: v.id, etat: r ? etatCote(r, attention) : 'a_venir',
+          essai: r ? r.essai || 0 : 0, verification_id: r ? r.verification_id || null : null });
+      }
       if (sc && (sc.en_cours === 'corriger' || sc.corrections)) {
-        out.push({ cle: 'scen-corriger', etat: sc.en_cours === 'corriger' ? 'en_cours' : 'fait', n: sc.corrections || 0 });
+        out.push({ cle: 'scen-corriger', etat: sc.en_cours === 'corriger' ? 'en_cours' : 'fait', n: sc.corrections || 0, max: sc.max });
       }
     }
   }
   const valide = chaine && ['validated', 'passed'].includes(chaine.status);
-  out.push({ cle: 'validee', etat: valide ? 'fait' : 'a_venir' });
+  // Les tests d'un dépôt séparé vivent dans leur merge request : la validation dit où elle en est.
+  out.push({ cle: 'validee', etat: valide ? 'fait' : 'a_venir', ...(mrTests ? { mr_tests: mrTests } : {}) });
   return out;
 }
 

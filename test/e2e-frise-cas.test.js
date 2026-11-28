@@ -203,8 +203,8 @@ describe('La frise du déroulé, cas par cas', () => {
     await app.api('DELETE', `/api/tasks/${t.id}`);
   });
 
-  test('la chaîne : chaque état d’un côté, d’un diagnostic et du scénario, l’action de « Continuer », l’heure d’une vérification', async () => {
-    const t = await creer({ auto_push: true, verify_chain: [vA], verify_chain_scenario: { verifier_id: vA }, targets: [{ repo_id: r1, branch: 'ai/ch' }] });
+  test('la chaîne : chaque état d’un côté, d’un diagnostic et de l’étape tests, l’action de « Continuer », l’heure d’une vérification', async () => {
+    const t = await creer({ auto_push: true, verify_chain: [vA], verify_chain_scenario: { actif: true }, targets: [{ repo_id: r1, branch: 'ai/ch' }] });
     const [c1] = cibles(t.id);
     app.db.prepare("UPDATE task_target SET status = 'pushed', commit_sha = 'abc' WHERE id = ?").run(c1);
     app.db.prepare("UPDATE task SET status = 'pushed' WHERE id = ?").run(t.id);
@@ -229,31 +229,44 @@ describe('La frise du déroulé, cas par cas', () => {
     assert.deepEqual(['etat', 'detail'].map((k) => chaine(f).find((e) => e.cle === 'diag')[k]), ['a_toi', 'environnement']);
     f = lire('running', [pas('pass', 'broken', { diag: { en_cours: false, rounds: 2, cause: 'branche' } })]);
     assert.equal(chaine(f).find((e) => e.cle === 'diag').etat, 'fait');
-    // Le scénario : déjà couvert par un existant (pousser et lancer sans objet), validée.
-    f = lire('validated', [pas('pass', 'pass')], { couvert: { par: 'scenarios/existant.sh' }, fichiers: [] });
-    assert.deepEqual(resume(chaine(f)), ['verif-base:fait', 'verif-head:fait', 'scen-ecrire:fait', 'scen-pousser:saute', 'scen-lancer:saute', 'validee:fait']);
-    assert.equal(f.etapes.find((e) => e.cle === 'scen-ecrire').detail, 'scenarios/existant.sh');
+    /* L'étape tests (l'état que rend `chaine-verif.resume`). Déjà couvert : écrire fait avec les tests cités, le
+       rejeu sans objet, validée. */
+    const sc = (extra = {}) => ({ en_cours: null, final: null, erreur: null, cause: null, corrections: 0, max: 2,
+      couvert: null, depots: [], code_modifie: [], rejeu: [], demarre: true, ...extra });
+    const tests = (f) => resume(f.etapes.filter((e) => e.cle.startsWith('scen-')));
+    f = lire('validated', [pas('pass', 'pass')], sc({ final: 'couvert', couvert: { par: [{ project: 'grp/tests', chemin: 'tests/a.sh' }], raison: 'déjà là' } }));
+    assert.deepEqual(resume(chaine(f)), ['verif-base:fait', 'verif-head:fait', 'scen-ecrire:fait', 'scen-rejouer:saute', 'validee:fait']);
+    assert.deepEqual(f.etapes.find((e) => e.cle === 'scen-ecrire').couvert, [{ project: 'grp/tests', chemin: 'tests/a.sh' }]);
     assert.deepEqual([f.courante, f.continuer], [null, null]);
-    // En écriture ; en erreur avant d'avoir écrit (à toi, sa raison, on relance) ; écrit, poussé sur sa branche, lancé et cassé.
-    f = lire('running', [pas('pass', 'pass')], { en_cours: 'ecrire', fichiers: [] });
-    assert.equal(f.etapes.find((e) => e.cle === 'scen-ecrire').etat, 'en_cours');
-    f = lire('attention', [pas('pass', 'pass')], { fichiers: [], erreur: 'pas de dépôt de tests' });
-    assert.deepEqual(['etat', 'detail'].map((k) => f.etapes.find((e) => e.cle === 'scen-ecrire')[k]), ['a_toi', 'pas de dépôt de tests']);
+    // En écriture ; arrêtée avant d'écrire (à toi, sa raison, on relance).
+    f = lire('running', [pas('pass', 'pass')], sc({ en_cours: 'ecrire' }));
+    assert.deepEqual(tests(f), ['scen-ecrire:en_cours', 'scen-rejouer:a_venir']);
+    f = lire('attention', [pas('pass', 'pass')], sc({ erreur: 'forge non configurée', cause: 'forge' }));
+    assert.deepEqual(['etat', 'detail'].map((k) => f.etapes.find((e) => e.cle === 'scen-ecrire')[k]), ['a_toi', 'forge non configurée']);
     assert.deepEqual(f.continuer, { action: 'chaine' });
-    f = lire('attention', [pas('pass', 'pass')], { fichiers: ['tests/panier.spec.js'], branche: 'tests/ai-ch', run: { etat: 'broken', essai: 2, verification_id: null } });
-    assert.deepEqual(resume(f.etapes.filter((e) => e.cle.startsWith('scen-'))), ['scen-ecrire:fait', 'scen-pousser:fait', 'scen-lancer:a_toi']);
-    assert.equal(f.etapes.find((e) => e.cle === 'scen-pousser').detail, 'tests/ai-ch');
-    assert.equal(f.etapes.find((e) => e.cle === 'scen-lancer').essai, 2);
-    // Écrit, mais une erreur ensuite (le push du test refusé) : le lancement porte l'erreur — à toi ou en échec.
-    f = lire('attention', [pas('pass', 'pass')], { fichiers: ['tests/panier.spec.js'], erreur: 'push du test refusé', run: { etat: 'pass' } });
-    assert.deepEqual(['etat', 'detail'].map((k) => f.etapes.find((e) => e.cle === 'scen-lancer')[k]), ['a_toi', 'push du test refusé']);
-    f = lire('running', [pas('pass', 'pass')], { fichiers: ['tests/panier.spec.js'], erreur: 'push du test refusé', run: { etat: 'pass' } });
-    assert.equal(f.etapes.find((e) => e.cle === 'scen-lancer').etat, 'echec');
-    // La session corrige le test : le lancement est en échec, la correction tourne ; puis elle a corrigé.
-    f = lire('running', [pas('pass', 'pass')], { fichiers: ['tests/panier.spec.js'], en_cours: 'corriger', corrections: 0, run: { etat: 'broken' } });
-    assert.deepEqual(resume(f.etapes.filter((e) => e.cle.startsWith('scen-'))).slice(2), ['scen-lancer:echec', 'scen-corriger:en_cours']);
-    f = lire('running', [pas('pass', 'pass')], { fichiers: ['tests/panier.spec.js'], corrections: 1, run: { etat: 'running' } });
-    assert.deepEqual(resume(f.etapes.filter((e) => e.cle.startsWith('scen-'))).slice(2), ['scen-lancer:en_cours', 'scen-corriger1:fait']);
+    // Écrit dans les deux zones (une étape par dépôt touché, avec sa zone et ses comptes), puis rejoué : rouge deux fois, à toi.
+    const ecrits = [{ zone: 'tests', project: 'grp/tests', ajoutes: ['tests/a.sh', 'tests/b.sh'], modifies: ['tests/c.sh'], supprimes: [],
+      mr_iid: 5, mr_url: 'https://gitlab.test/grp/tests/-/merge_requests/5', mr_pret: false },
+    { zone: 'session', project: 'grp/app', ajoutes: ['tests/d.test.js'], modifies: [], supprimes: [] }];
+    f = lire('attention', [pas('pass', 'pass')], sc({ depots: ecrits, erreur: 'rouge', cause: 'rouge', corrections: 2,
+      rejeu: [{ verifier_id: vA, verifier_name: 'unitaires', etat: 'broken', essai: 2, verification_id: null }] }));
+    assert.deepEqual(tests(f), ['scen-ecrire:fait', 'scen-ecrire:fait', 'scen-rejouer:a_toi', 'scen-corriger2:fait']);
+    assert.deepEqual(f.etapes.filter((e) => e.cle === 'scen-ecrire').map((e) => [e.zone, e.projet, e.compte.ajoutes, e.compte.modifies]),
+      [['tests', 'grp/tests', 2, 1], ['session', 'grp/app', 1, 0]]);
+    assert.deepEqual(f.etapes.find((e) => e.cle === 'scen-ecrire').mr, { url: 'https://gitlab.test/grp/tests/-/merge_requests/5', iid: 5, pret: false });
+    assert.equal(f.etapes.filter((e) => e.cle === 'scen-ecrire')[1].mr, undefined, 'la zone Session n’a pas de MR de tests');
+    assert.deepEqual(['nom', 'essai'].map((k) => f.etapes.find((e) => e.cle === 'scen-rejouer')[k]), ['unitaires', 2]);
+    assert.deepEqual(f.continuer, { action: 'chaine' });
+    // Une correction en route ; puis vert : la validation dit où en est la MR de tests — brouillon, puis prête.
+    f = lire('running', [pas('pass', 'pass')], sc({ depots: ecrits, en_cours: 'corriger', corrections: 1 }));
+    assert.equal(tests(f).at(-1), 'scen-corriger1:en_cours');
+    f = lire('validated', [pas('pass', 'pass')], sc({ depots: ecrits, final: 'vert', rejeu: [{ verifier_id: vA, verifier_name: 'unitaires', etat: 'pass', essai: 1 }] }));
+    assert.deepEqual(resume(f.etapes).slice(-2), ['scen-rejouer:fait', 'validee:fait']);
+    assert.equal(f.etapes.at(-1).mr_tests, 'brouillon');
+    f = lire('validated', [pas('pass', 'pass')], sc({ depots: [{ ...ecrits[0], mr_pret: true }, ecrits[1]], final: 'vert' }));
+    assert.equal(f.etapes.at(-1).mr_tests, 'prete');
+    f = lire('validated', [pas('pass', 'pass')], sc({ depots: [ecrits[1]], final: 'vert' }));
+    assert.equal(f.etapes.at(-1).mr_tests, undefined, 'que la zone Session : pas de MR de tests');
     // L'heure d'une vérification : en cours depuis son départ, en file depuis sa création.
     const verif = (status, debut) => app.db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, targets_json, started_at, created_at)
       VALUES (?, 'unitaires', ?, '[]', ?, '2026-11-27T06:00:00.000Z')`).run(vA, status, debut).lastInsertRowid;
@@ -438,15 +451,24 @@ describe('La frise du déroulé, cas par cas', () => {
       assert.equal(await boite().locator('.ph-convergence svg.frise-courbe').getAttribute('aria-label'), '6 → 6');
       assert.equal(await boite().locator('.ph-convergence .frise-courbe-cible').count(), 0);
       assert.match(await boite().locator('.ph-convergence').textContent(), /passe 2\/2 · correction/);
-      // Le scénario : dans le dépôt de tests ; déjà couvert ; son lancement qui attend.
-      const scen = (etapes) => poser({ id: 9104, kind: 'code', workflow: { etapes: [...etapes, { cle: 'validee', etat: etapes.every((e) => ['fait', 'saute'].includes(e.etat)) ? 'fait' : 'a_venir' }], courante: etapes.findIndex((e) => e.etat === 'a_toi') < 0 ? null : etapes.findIndex((e) => e.etat === 'a_toi'), continuer: null } });
-      await scen([{ cle: 'scen-ecrire', etat: 'a_venir', projet: 'grp/tests' }, { cle: 'scen-pousser', etat: 'a_venir', projet: 'grp/tests' }, { cle: 'scen-lancer', etat: 'a_venir', projet: 'grp/tests' }]);
-      assert.equal(await boite().locator('.ph-scenario .frise-meta').textContent(), 'dans grp/tests');
-      await scen([{ cle: 'scen-ecrire', etat: 'fait', projet: 'grp/tests', detail: 'existant.sh' }, { cle: 'scen-pousser', etat: 'saute' }, { cle: 'scen-lancer', etat: 'saute' }]);
-      assert.equal(await boite().locator('.ph-scenario .frise-meta').textContent(), 'déjà couvert');
+      // Les tests : écrits (dépôt, comptes, MR) ; déjà couverts ; vert, la MR de tests en brouillon puis prête.
+      const scen = (etapes, fin = { cle: 'validee', etat: 'a_venir' }) => poser({ id: 9104, kind: 'code', workflow: { etapes: [...etapes, fin],
+        courante: etapes.findIndex((e) => ['a_toi', 'en_file'].includes(e.etat)) < 0 ? null : etapes.findIndex((e) => ['a_toi', 'en_file'].includes(e.etat)), continuer: null } });
+      await scen([{ cle: 'scen-ecrire', etat: 'fait', projet: 'grp/tests', zone: 'tests', compte: { ajoutes: 2, modifies: 1, supprimes: 0 } },
+        { cle: 'scen-rejouer', nom: 'unitaires', etat: 'a_toi' }]);
+      assert.equal(await boite().locator('.ph-scenario .frise-nom').textContent(), 'Tests');
+      assert.match(await boite().locator('.ph-scenario').textContent(), /grp\/tests · 2 ajoutés, 1 modifié[\s\S]*unitaires · avec les tests[\s\S]*à toi/);
+      await scen([{ cle: 'scen-ecrire', etat: 'fait', couvert: [{ project: 'grp/tests', chemin: 'tests/a.sh' }] }, { cle: 'scen-rejouer', nom: 'unitaires', etat: 'saute' }],
+        { cle: 'validee', etat: 'fait' });
+      assert.equal(await boite().locator('.ph-scenario .frise-meta').textContent(), 'couvert par un test existant');
       assert.match(await boite().locator('.frise-phase.is-terminus').getAttribute('class'), /is-fait/, 'l’arrivée s’allume');
-      await scen([{ cle: 'scen-ecrire', etat: 'fait', projet: 'grp/tests' }, { cle: 'scen-pousser', etat: 'fait', projet: 'grp/tests' }, { cle: 'scen-lancer', etat: 'a_toi', projet: 'grp/tests' }]);
-      assert.match(await boite().locator('.ph-scenario').textContent(), /Exécution du test[\s\S]*à toi/);
+      const ecrit = { cle: 'scen-ecrire', etat: 'fait', projet: 'grp/tests', zone: 'tests', compte: { ajoutes: 1, modifies: 0, supprimes: 0 }, mr: { iid: 5, url: 'https://gitlab.test/x', pret: false } };
+      await scen([ecrit, { cle: 'scen-rejouer', nom: 'unitaires', etat: 'fait' }], { cle: 'validee', etat: 'fait', mr_tests: 'brouillon' });
+      assert.equal(await boite().locator('.ph-scenario .frise-meta').textContent(), 'grp/tests · 1 ajouté · MR !5 en brouillon');
+      assert.equal(await boite().locator('.frise-phase.is-terminus .frise-statut').textContent(), 'MR de tests en brouillon');
+      await scen([{ ...ecrit, mr: { ...ecrit.mr, pret: true } }, { cle: 'scen-rejouer', nom: 'unitaires', etat: 'fait' }], { cle: 'validee', etat: 'fait', mr_tests: 'prete' });
+      assert.equal(await boite().locator('.ph-scenario .frise-meta').textContent(), 'grp/tests · 1 ajouté · MR !5 prête');
+      assert.match(await boite().locator('.frise-phase.is-terminus .frise-statut.is-mr-prete').textContent(), /MR de tests prête/);
     });
 
     test('une phase dépliée le reste quand la frise est redessinée ; l’en-tête se déplie au clavier', async () => {

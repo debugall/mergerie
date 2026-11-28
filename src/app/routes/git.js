@@ -293,6 +293,8 @@ i18n.setLang(getConfig().language);
    après `setLang`, pour que la raison inscrite sur la carte sorte dans la bonne langue. */
 {
   const repris = db.reconcilierTravauxCoupes(t('err.interrompu-par-arret'));
+  // L'étape tests d'une chaîne coupée en route : le clone de l'utilisateur revient sur son origine s'il est propre.
+  try { require('../../jobs/chaine-verif').reprendreApresRedemarrage(); } catch (e) { console.warn(`[chaine] ${e.message}`); }
   const total = repris.sessions + repris.horsDepot + repris.verifications;
   if (total) {
     console.log(t('log.start.reconciled', {

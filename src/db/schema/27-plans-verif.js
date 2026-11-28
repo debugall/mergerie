@@ -50,9 +50,10 @@ try { db.exec('ALTER TABLE verification ADD COLUMN chaine_id INTEGER'); } catch 
    (`{ name, repo_id }` en JSON, un skill du dépôt de tests) ; vide = une consigne intégrée qui analyse
    directement le dépôt de tests. */
 try { db.exec('ALTER TABLE task ADD COLUMN verify_chain_skill TEXT'); } catch { /* déjà présente */ }
-/* LE SCÉNARIO DE COUVERTURE (étape 3) : `task.verify_chain_scenario` = `{ verifier_id, skill }` en JSON — le
-   vérificateur qui lance le scénario écrit, et le skill que la session suit pour l'écrire (vide = consigne
-   intégrée) ; `verification.scenario` = les chemins passés à ses commandes dans `MERGERIE_SCENARIO`. */
+/* LES TESTS ÉCRITS À LA FIN DE LA CHAÎNE (étape 3) : `task.verify_chain_scenario` =
+   `{ actif: true, attendu, attendu_source }` en JSON — le scénario attendu par l'utilisateur (4 000
+   caractères au plus, `saisi` ou `jira`), lu par l'agent à cette étape seulement. L'ancien
+   `{ verifier_id, skill }` se lit comme `{ actif: true, attendu: null }`, sans migration. */
 try { db.exec('ALTER TABLE task ADD COLUMN verify_chain_scenario TEXT'); } catch { /* déjà présente */ }
 /* LE TICKET D'UNE SESSION DE LA JOURNÉE (cockpit) : « Supprimer » emporte les sessions du même ticket. */
 try { db.exec('ALTER TABLE task ADD COLUMN jira_key TEXT'); } catch { /* déjà présente */ }

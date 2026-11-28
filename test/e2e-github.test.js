@@ -280,6 +280,23 @@ describe('GitHub de bout en bout', () => {
     assert.equal(mr.state, 'merged');
   });
 
+  test('une PR ouverte en brouillon passe prête par GraphQL ; un GitLab, par le titre (tests de la chaîne de validation)', async () => {
+    const github = require('../src/forge/github');
+    const cfg = { github_url: app.githubUrl, github_token: app.ghState.token };
+    const pr = await github.createMergeRequest(cfg, PROJECT, { source_branch: 'ai/brouillon', target_branch: 'main', title: 'Tests de la session', draft: true });
+    assert.equal(pr.draft, true);
+    assert.equal(app.ghState.pulls[PROJECT].find((p) => p.number === pr.iid).draft, true);
+    await github.markMergeRequestReady(cfg, PROJECT, pr.iid);
+    assert.equal(app.ghState.pulls[PROJECT].find((p) => p.number === pr.iid).draft, false);
+    await github.markMergeRequestReady(cfg, PROJECT, pr.iid);   // déjà prête : rien ne part, rien ne casse
+    const gitlab = require('../src/forge/gitlab');
+    const gcfg = { gitlab_url: app.gitlabUrl, access_token: app.state.token };
+    const mr = await gitlab.createMergeRequest(gcfg, 'grp/brouillon', { source_branch: 'ai/brouillon', target_branch: 'main', title: 'Tests de la session', draft: true });
+    assert.equal(mr.title, 'Draft: Tests de la session');
+    await gitlab.markMergeRequestReady(gcfg, 'grp/brouillon', mr.iid);
+    assert.equal(app.state.mrs['grp/brouillon'].find((m) => m.iid === mr.iid).title, 'Tests de la session');
+  });
+
   /* ---------- Onglet Git ---------- */
 
   test('GET /api/git/refs liste branches et tags, protection incluse', async () => {

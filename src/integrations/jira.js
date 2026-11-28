@@ -335,27 +335,28 @@ function commentaireTech(corps, marqueur = MARQUEUR_TECH_DEFAUT) {
 }
 
 // Bloc de contexte prêt à stocker : titre + description + le commentaire « #tech » s'il existe.
+/* Le contexte d'un ticket, tel que le lit un agent — session, review, convergence. Les lignes `&&>`
+   (la demande, tirée à part) et `&&?` (le scénario attendu, réservé à l'étape scénario de la chaîne)
+   n'y figurent jamais, quel que soit l'appelant. */
+const sansMarqueurs = (texte) => JETONSRT.retirerAttendu(JETONSRT.retirerDemande(texte));
 function issueToContext(issue) {
   const parts = [];
+  const description = sansMarqueurs(issue.descriptionMd);
+  const tech = sansMarqueurs(issue.techMd);
   if (issue.summary) parts.push(`# ${issue.summary}`);
-  if (issue.descriptionMd) parts.push(issue.descriptionMd);
-  if (issue.techMd) parts.push(`## ${t('jira.tech-comment.title', { marker: issue.techMarker || MARQUEUR_TECH_DEFAUT })}\n\n${issue.techMd}`);
+  if (description) parts.push(description);
+  if (tech) parts.push(`## ${t('jira.tech-comment.title', { marker: issue.techMarker || MARQUEUR_TECH_DEFAUT })}\n\n${tech}`);
   return parts.join('\n\n').trim();
 }
 
-/* LA DEMANDE ÉCRITE DANS LE TICKET (`&&> …`, cf. runtime/jetons-runtime.js) et le contexte qui reste
-   sans elle — ce que « Faire coder l'IA » et « Récupérer » mettent dans la modale. Celle du
-   commentaire « #tech » l'emporte, entière, sur celle de la description : on ne coud pas deux
-   consignes ensemble. Les lignes `&&>` quittent le contexte des deux côtés : l'agent ne lit pas la
-   consigne deux fois, ni une consigne écartée. */
+/* LA DEMANDE ÉCRITE DANS LE TICKET (`&&> …`, cf. runtime/jetons-runtime.js), LE SCÉNARIO ATTENDU (`&&? …`)
+   et le contexte qui reste sans eux — ce que « Faire coder l'IA » et « Récupérer » mettent dans la modale.
+   Le commentaire « #tech » l'emporte, entier, sur la description, pour l'un comme pour l'autre : on ne
+   coud pas deux consignes ensemble. Les deux marqueurs quittent le contexte des deux côtés. */
 function demandeTicket(issue) {
   const demande = JETONSRT.demandeDe(issue.techMd) || JETONSRT.demandeDe(issue.descriptionMd);
-  const context = issueToContext({
-    ...issue,
-    descriptionMd: JETONSRT.retirerDemande(issue.descriptionMd),
-    techMd: JETONSRT.retirerDemande(issue.techMd),
-  });
-  return { demande, context };
+  const attendu = JETONSRT.attenduDe(issue.techMd) || JETONSRT.attenduDe(issue.descriptionMd);
+  return { demande, attendu, context: issueToContext(issue) };
 }
 
 /* ---------- Onglet Jira : tickets qui me sont affectés ---------- */

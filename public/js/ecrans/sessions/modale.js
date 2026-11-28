@@ -79,11 +79,11 @@ function applyKindToModal(kind) {
    un vérificateur qui n'en couvre que la moitié rendrait un vert qui ne dit rien de l'autre,
    et le proposer serait promettre un verdict qu'on ne peut pas tenir. La liste se refait donc
    à chaque changement de projets. */
-async function majVerificateursSession(choisi = null, { autoPick = true, chaine = [], chaineSkill = null, chaineScenario = null } = {}) {
+async function majVerificateursSession(choisi = null, { autoPick = true, chaine = [], chaineSkill = null, chaineScenario = null, chaineVerrouille = false } = {}) {
   const sel = $('#taskVerifier');
   if (!sel) return;
   // À l'ouverture (pas sur un changement de projets) : la chaîne de la session, ou aucune.
-  if (choisi !== null) await initChaineVerif(chaine, chaineSkill, chaineScenario);
+  if (choisi !== null) await initChaineVerif(chaine, chaineSkill, chaineScenario, { verrouille: chaineVerrouille });
   const garde = choisi === null ? sel.value : String(choisi || '');
   const repos = readTargetRows().map((t) => t.repo_id).filter(Boolean);
   let liste = [];

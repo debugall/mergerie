@@ -113,6 +113,7 @@ function handleGitlab(req, res, pathname, query, body) {
     const mr = {
       iid,
       title: body.title,
+      draft: /^\s*(draft|wip)\s*:/i.test(String(body.title || '')),
       state: 'opened',
       source_branch: body.source_branch,
       target_branch: body.target_branch,
@@ -133,6 +134,10 @@ function handleGitlab(req, res, pathname, query, body) {
     if (!mr) return json(res, 404, { message: '404 Merge Request Not Found' });
     const key = `${project}!${iid}`;
     if (sub === '' && req.method === 'GET') return json(res, 200, mr);
+    if (sub === '' && req.method === 'PUT') {
+      if (body.title != null) { mr.title = body.title; mr.draft = /^\s*(draft|wip)\s*:/i.test(mr.title); }
+      return json(res, 200, mr);
+    }
     if (sub === '/merge' && req.method === 'PUT') {
       mr.state = state.mergeRefuses ? 'opened' : 'merged';
       return json(res, 200, mr);

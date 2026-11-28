@@ -7,7 +7,9 @@
  * `&&tarification<develop` pose le départ seul. `&&*` vaut pour tous les dépôts : `&&*:feature/x<develop`.
  * Un seul préfixe, un signe par rôle — « : » la branche, « < » « depuis » : compter des esperluettes
  * (`&&&`, `&&&&`) pour dire « tous » ou « départ » ne se retenait pas. Une ligne qui commence par
- * `&&>` est la DEMANDE — ce que l'agent doit faire —, écrite dans le ticket à côté des dépôts.
+ * `&&>` est la DEMANDE — ce que l'agent doit faire —, écrite dans le ticket à côté des dépôts ; une
+ * ligne `&&?` est le SCÉNARIO ATTENDU — les tests à ajouter —, que l'agent ne lit qu'à l'étape
+ * scénario de la chaîne de validation, jamais au codage.
  *
  * Le texte vient de la demande tapée, mais aussi du ticket Jira repris en contexte — sa description
  * et son commentaire « #tech » : l'équipe y nomme les dépôts touchés, et la session se prépare sans
@@ -76,11 +78,24 @@
     return String(texte || '').replace(DEMANDE_RE, '').replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  /* LE SCÉNARIO ATTENDU ÉCRIT DANS LE TICKET : les lignes `&&? …`, mêmes règles que la demande — un
+     préfixe par ligne, réunies dans l'ordre. Il ne va JAMAIS dans la demande de codage : retiré du
+     contexte comme du texte envoyé, il n'est lu qu'à l'étape scénario. */
+  const ATTENDU_RE = /^[ \t]*&&\?[ \t]?(.*)$/gm;
+  function attenduDe(texte) {
+    return [...String(texte || '').matchAll(ATTENDU_RE)].map((m) => m[1].replace(/[ \t]+$/, '')).join('\n').trim();
+  }
+  function retirerAttendu(texte) {
+    return String(texte || '').replace(ATTENDU_RE, '').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   /* Le texte envoyé à l'agent : sans les jetons, sans les doubles espaces qu'ils laissent, ni le
      code en ligne vidé (``) d'un jeton écrit entre backticks — trois backticks restent un bloc. Une
-     ligne `&&>` restée dans la demande perd son préfixe et garde son texte. */
+     ligne `&&>` restée dans la demande perd son préfixe et garde son texte ; une ligne `&&?` part
+     entière : le scénario attendu n'est pas une consigne de codage. */
   function retirerJetonsDepots(texte) {
     return String(texte || '')
+      .replace(ATTENDU_RE, '')
       .replace(DEMANDE_RE, (m, l) => m.slice(0, m.indexOf('&&>')) + l)
       .replace(JETON_BRANCHE_RE, '$1')
       .replace(JETON_DEPOT_RE, '$1')
@@ -121,6 +136,6 @@
   return {
     JETON_DEPOT_MIN, JETON_DEPOT_RE, JETON_BRANCHE_RE,
     jetonsDepots, depotsPourJeton, brancheGlobaleJeton, departGlobalJeton, retirerJetonsDepots, resoudreJetonsDepots,
-    demandeDe, retirerDemande,
+    demandeDe, retirerDemande, attenduDe, retirerAttendu,
   };
 }));

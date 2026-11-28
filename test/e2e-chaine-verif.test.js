@@ -35,10 +35,6 @@ describe('Chaîne de validation d’une session', () => {
     fs.mkdirSync(path.join(tests.work, '.claude/skills/diag-verif'), { recursive: true });
     fs.writeFileSync(path.join(tests.work, '.claude/skills/diag-verif/SKILL.md'),
       '---\nname: diag-verif\ndescription: Diagnostiquer un scénario rouge\n---\nMÉTHODE MAISON : relancer le scénario seul, puis lire ses captures.\n');
-    // Un skill de scénarios dont la méthode fait répondre « déjà couvert » à l'agent de test.
-    fs.mkdirSync(path.join(tests.work, '.claude/skills/scen-couvert'), { recursive: true });
-    fs.writeFileSync(path.join(tests.work, '.claude/skills/scen-couvert/SKILL.md'),
-      '---\nname: scen-couvert\ndescription: Scénarios\n---\nCherche d’abord un scénario existant. DRYRUN_COUVERT\n');
     execFileSync('git', ['add', '-A'], { cwd: tests.work });
     execFileSync('git', ['commit', '-qm', 'skill'], { cwd: tests.work });
     execFileSync('git', ['push', '-q', 'origin', 'main'], { cwd: tests.work });
@@ -60,14 +56,6 @@ describe('Chaîne de validation d’une session', () => {
     const script = (nom, lireSha) => {
       const p = path.join(bin, `${nom}.sh`);
       fs.writeFileSync(p, `#!/bin/sh
-if [ -n "$MERGERIE_SCENARIO" ]; then
-  if [ -f "$MERGERIE_SCENARIO" ]; then etat=present; else etat=absent; fi
-  echo "$MERGERIE_SCENARIO $etat" >> '${bin}/trace-${nom}-scen'
-  f='${bin}/fail-${nom}-scen'
-  n=$(cat "$f" 2>/dev/null || echo 0)
-  if [ "$n" -gt 0 ]; then echo $((n-1)) > "$f"; exit 1; fi
-  exit 0
-fi
 cur=$(${lireSha})
 if [ "$cur" = "${repo.mainSha}" ]; then cote=base; else cote=head; fi
 echo "$cote $cur" >> '${bin}/trace-${nom}'
@@ -252,74 +240,8 @@ exit 0
     assert.equal((await ligne()).workflow.continuer, null);
   });
 
-  /* ---------------- étape 3 : le scénario de couverture ---------------- */
-
-  const scenTrace = () => { try { return fs.readFileSync(path.join(bin, 'trace-scenarios-scen'), 'utf8').trim().split('\n').filter(Boolean); } catch { return []; } };
-  async function sessionScen(branche, scenario) {
-    const t = await app.api('POST', '/api/tasks', {
-      kind: 'code', prompt: `scénario ${branche}`, auto_push: true, verify_chain: [vTests, vApp], verify_chain_scenario: scenario,
-      targets: [{ repo_id: repoId, branch: branche }],
-    });
-    assert.equal(t.status, 200, JSON.stringify(t.body));
-    await app.api('POST', `/api/tasks/${t.body.id}/run`);
-    return t.body.id;
-  }
-
-  test('tout vert : la session écrit un scénario, Mergerie le pousse dans le dépôt de tests et le lance seul — validée', async () => {
-    vider();
-    const id = await sessionScen('ai/chaine-scen', { verifier_id: vTests });
-    const c = await finie(id);
-    assert.equal(c.status, 'validated', JSON.stringify(c));
-    const fichier = `scenarios/nouveau-${id}.sh`;
-    assert.deepEqual(c.scenario.fichiers, [fichier]);
-    assert.equal(c.scenario.branche, 'ai/chaine-scen');
-    assert.deepEqual(scenTrace(), [`${fichier} present`], 'le vérificateur reçoit le chemin, et le fichier est dans son dépôt de tests');
-    const pousse = execFileSync('git', ['show', `ai/chaine-scen:${fichier}`], { cwd: tests.bare }).toString();
-    assert.match(pousse, /scénario dry-run de la session/, 'écrit sur une branche du même nom, dans le dépôt de tests');
-    assert.deepEqual(cotes('scenarios'), ['base', 'head'], 'le lancement du scénario ne se confond pas avec la chaîne');
-    // La frise du cockpit : la chaîne verte, puis le test écrit, poussé et lancé dans le dépôt de tests — validée.
-    const ligne = Object.values((await app.api('GET', '/api/cockpit')).body).flat().find((l) => l && l.task_id === id);
-    const fin = ligne.workflow.etapes.slice(-4);
-    assert.deepEqual(fin.map((e) => `${e.cle}:${e.etat}`), ['scen-ecrire:fait', 'scen-pousser:fait', 'scen-lancer:fait', 'validee:fait']);
-    assert.equal(fin[0].projet, 'grp/tests');
-    assert.equal(ligne.workflow.courante, null, 'plus rien ne tourne');
-  });
-
-  test('déjà couvert (skill de scénarios) : rien n’est écrit, la tâche est validée avec la raison', async () => {
-    vider();
-    const id = await sessionScen('ai/chaine-couvert', { verifier_id: vTests, skill: { name: 'scen-couvert', repo_id: testsId } });
-    const c = await finie(id);
-    assert.equal(c.status, 'validated', JSON.stringify(c));
-    assert.equal(c.scenario.couvert.par, 'scenarios/existant.sh');
-    assert.match(c.scenario.couvert.raison, /déjà couvert/);
-    assert.deepEqual(scenTrace(), [], 'aucun scénario lancé');
-    const p = app.db.prepare("SELECT prompt FROM agent_pass WHERE task_id = ? AND prompt LIKE '%<<<SCENARIO %' ORDER BY id DESC").get(id);
-    assert.match(p.prompt, /Cherche d’abord un scénario existant/, 'le texte du skill est dans la consigne');
-  });
-
-  test('scénario rouge deux fois : la session le corrige, il repasse vert — validée après une correction', async () => {
-    vider();
-    echouer('scenarios', 'scen', 2);
-    const id = await sessionScen('ai/chaine-scen-rouge', { verifier_id: vTests });
-    const c = await finie(id);
-    assert.equal(c.status, 'validated', JSON.stringify(c));
-    assert.equal(c.scenario.corrections, 1);
-    assert.equal(scenTrace().length, 3, 'rouge, rouge, puis vert après la correction');
-    assert.equal(app.db.prepare("SELECT COUNT(*) n FROM agent_pass WHERE task_id = ? AND prompt LIKE '%<<<SCENARIO %'").get(id).n, 2, 'écrire, puis corriger');
-  });
-
-  test('un chemin rendu par l’agent ne sort jamais du dépôt de tests', async () => {
-    // eslint-disable-next-line global-require
-    const { cheminSur } = require('../src/jobs/chaine-scenario');
-    assert.equal(cheminSur('scenarios/a.sh'), 'scenarios/a.sh');
-    assert.equal(cheminSur('./scenarios/a.sh'), 'scenarios/a.sh');
-    for (const mauvais of ['../x.sh', '/etc/passwd', 'a/../../x', '.git/hooks/pre-commit', 'a/.git/config', '']) {
-      assert.equal(cheminSur(mauvais), null, mauvais);
-    }
-  });
-
-  /* LE DÉPÔT DE TESTS : réglé une fois pour tous les vérificateurs (Réglages → Vérificateurs). Sans réglage,
-     il est déduit — et un vérificateur qui couvre plusieurs dépôts hors de la session n'en choisit aucun. */
+  /* LE DÉPÔT DE TESTS : réglé une fois pour tous les vérificateurs (Réglages → Vérificateurs), surchargé par
+     vérificateur. L'étape tests elle-même : `test/e2e-chaine-tests.test.js`. */
   test('le dépôt de tests se règle, se relit, et un dépôt inconnu est refusé', async () => {
     const pose = await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
     assert.equal(pose.status, 200, JSON.stringify(pose.body));
@@ -332,26 +254,9 @@ exit 0
     assert.equal((await app.api('GET', '/api/config')).body.test_repo, '');
   });
 
-  test('sans réglage, plusieurs candidats : aucun choix au hasard ; réglé, c’est lui — couvert et hors de la session', async () => {
+  test('un vérificateur peut surcharger le dépôt de tests : sa valeur passe avant le réglage général ; un dépôt de la session n’en est pas un', async () => {
     // eslint-disable-next-line global-require
-    const { depotTests } = require('../src/jobs/chaine-scenario');
-    const couverture = (ids) => () => new Map(ids.map((id) => [id, {}]));
-    const session = [{ repo_id: repoId }];
-    assert.equal(depotTests(vTests, session, couverture([repoId, testsId])).repo.id, testsId, 'un seul candidat : déduit');
-    const ambigu = depotTests(vTests, session, couverture([repoId, testsId, autreId]));
-    assert.match(ambigu.erreur, /plusieurs dépôts/);
-    assert.match(ambigu.erreur, /grp\/autre/);
-    await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
-    try {
-      assert.equal(depotTests(vTests, session, couverture([repoId, autreId, testsId])).repo.id, testsId, 'le réglage tranche');
-      assert.match(depotTests(vTests, session, couverture([repoId, autreId])).erreur, /ne couvre pas le dépôt de tests/);
-      assert.match(depotTests(vTests, [{ repo_id: testsId }], couverture([testsId])).erreur, /un des dépôts de la session/);
-    } finally { await app.api('PUT', '/api/config', { test_repo: '' }); }
-  });
-
-  test('un vérificateur peut surcharger le dépôt de tests : sa valeur passe avant le réglage général', async () => {
-    // eslint-disable-next-line global-require
-    const { depotTests } = require('../src/jobs/chaine-scenario');
+    const { apercuDepots } = require('../src/jobs/chaine-scenario');
     const v = (await app.api('POST', '/api/verifiers', {
       name: 'scenarios-surcharge', kind: 'commands', commands: ['true'], timeout_s: 60, test_repo: 'gitlab/grp/autre',
       repos: [{ repo_id: testsId, mode: 'worktree' }, { repo_id: autreId, mode: 'worktree' }],
@@ -359,42 +264,22 @@ exit 0
     assert.equal(v.test_repo, 'gitlab/grp/autre', 'enregistré avec le vérificateur');
     const inconnu = await app.api('PUT', `/api/verifiers/${v.id}`, { test_repo: 'gitlab/grp/nulle-part' });
     assert.equal(inconnu.status, 400);
-    const session = [{ repo_id: repoId }];
+    const projets = (ids, session = [repoId]) => apercuDepots(ids, session).depots.map((d) => d.project);
     await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
     try {
-      assert.equal(depotTests(v.id, session, groupesCouverture).repo.id, autreId, 'la surcharge du vérificateur gagne');
-      assert.equal(depotTests(vTests, session, groupesCouverture).repo.id, testsId, 'les autres gardent le réglage général');
-      // Vidée : le réglage général reprend.
+      assert.deepEqual(projets([v.id]), ['grp/autre'], 'la surcharge du vérificateur gagne');
+      assert.deepEqual(projets([vTests]), ['grp/tests'], 'les autres gardent le réglage général');
+      assert.deepEqual(projets([v.id, vTests]).sort(), ['grp/autre', 'grp/tests'], 'dédoublonnés, un par dépôt');
+      assert.deepEqual(projets([vTests], [repoId, testsId]), [], 'un dépôt de la session est en zone Session, pas un dépôt de tests');
+      // Vidée : le réglage général reprend ; sans réglage du tout, aucun dépôt de tests séparé (cas normal).
       assert.equal((await app.api('PUT', `/api/verifiers/${v.id}`, { test_repo: '' })).body.test_repo, null);
-      assert.equal(depotTests(v.id, session, groupesCouverture).repo.id, testsId);
+      assert.deepEqual(projets([v.id]), ['grp/tests']);
+      await app.api('PUT', '/api/config', { test_repo: '' });
+      assert.deepEqual(projets([v.id, vTests]), []);
     } finally {
       await app.api('PUT', '/api/config', { test_repo: '' });
       await app.api('DELETE', `/api/verifiers/${v.id}`);
     }
-  });
-
-  test('un vérificateur des scénarios qui couvre deux dépôts hors de la session écrit dans le dépôt de tests réglé', async () => {
-    vider();
-    const vMulti = (await app.api('POST', '/api/verifiers', {
-      name: 'scenarios-multi', kind: 'commands', commands: [path.join(bin, 'scenarios.sh')], timeout_s: 60, run_base: 0,
-      repos: [{ repo_id: autreId, mode: 'worktree' }, { repo_id: testsId, mode: 'worktree' }],
-    })).body.id;
-    const t = await app.api('POST', '/api/tasks', {
-      kind: 'code', prompt: 'scénario multi', auto_push: true, verify_chain: [vApp], verify_chain_scenario: { verifier_id: vMulti },
-      targets: [{ repo_id: repoId, branch: 'ai/chaine-multi' }],
-    });
-    assert.equal(t.status, 200, JSON.stringify(t.body));
-    await app.api('PUT', '/api/config', { test_repo: 'gitlab/grp/tests' });
-    try {
-      await app.api('POST', `/api/tasks/${t.body.id}/run`);
-      const c = await finie(t.body.id);
-      assert.equal(c.status, 'validated', JSON.stringify(c));
-      const fichier = `scenarios/nouveau-${t.body.id}.sh`;
-      assert.match(execFileSync('git', ['show', `ai/chaine-multi:${fichier}`], { cwd: tests.bare }).toString(), /scénario dry-run/,
-        'écrit dans le dépôt de tests réglé');
-      assert.throws(() => execFileSync('git', ['rev-parse', '--verify', 'ai/chaine-multi'], { cwd: autre.bare, stdio: 'pipe' }),
-        'rien dans l’autre dépôt couvert');
-    } finally { await app.api('PUT', '/api/config', { test_repo: '' }); }
   });
 
   test('un même vérificateur ne tourne jamais deux fois en même temps', async () => {
@@ -446,12 +331,10 @@ exit 0
       await page.locator('#taskChaineSkillRow:not([hidden])').waitFor();
       await page.locator(`#taskChaineSkill option[value="${testsId}:diag-verif"]`).waitFor({ state: 'attached' });
       await page.selectOption('#taskChaineSkill', `${testsId}:diag-verif`);
-      // Étape 3 : le scénario de couverture, son vérificateur (parmi les cochés) et son skill.
+      // Étape 3 : les tests, et le scénario attendu (lu par l'agent à cette étape seulement).
       await page.locator('#taskChaineScen').check();
       await page.locator('#taskChaineScenBox:not([hidden])').waitFor();
-      await page.locator(`#taskChaineScenVerif option[value="${vTests}"]`).waitFor({ state: 'attached' });
-      await page.selectOption('#taskChaineScenVerif', String(vTests));
-      await page.selectOption('#taskChaineScenSkill', `${testsId}:scen-couvert`);
+      await page.fill('#taskChaineScenAttendu', 'Un devis renvoie trois échéances');
       await page.fill('#taskForm [name="prompt"]', 'session chaîne écran');
       const avant = (await app.api('GET', '/api/tasks')).body.length;
       await page.evaluate((id) => { renderTargetRows([{ repo_id: id, branch: 'ai/ecran' }]); }, repoId);
@@ -460,7 +343,7 @@ exit 0
       const cree = (await app.api('GET', '/api/tasks')).body.find((x) => x.prompt === 'session chaîne écran');
       assert.equal(cree.verify_chain, JSON.stringify([vApp, vTests]));
       assert.deepEqual(JSON.parse(cree.verify_chain_skill), { name: 'diag-verif', repo_id: testsId });
-      assert.deepEqual(JSON.parse(cree.verify_chain_scenario), { verifier_id: vTests, skill: { name: 'scen-couvert', repo_id: testsId } });
+      assert.deepEqual(JSON.parse(cree.verify_chain_scenario), { actif: true, attendu: 'Un devis renvoie trois échéances', attendu_source: 'saisi' });
       // L'édition relit la chaîne, dans son ordre.
       await page.waitForSelector('#taskModal', { state: 'hidden' });
       await page.evaluate((id) => openTaskEdit(id), cree.id);
@@ -469,8 +352,8 @@ exit 0
       assert.match(await page.locator(`#taskChaineList .task-chaine-row:has([value="${vApp}"]) .task-chaine-rang`).textContent(), /1\./);
       assert.match(await page.locator(`#taskChaineList .task-chaine-row:has([value="${vTests}"]) .task-chaine-rang`).textContent(), /2\./);
       await page.waitForFunction((v) => document.querySelector('#taskChaineSkill').value === v, `${testsId}:diag-verif`);
-      assert.equal(await page.locator('#taskChaineScen').isChecked(), true, 'l’édition relit le scénario');
-      await page.waitForFunction((v) => document.querySelector('#taskChaineScenSkill').value === v, `${testsId}:scen-couvert`);
+      assert.equal(await page.locator('#taskChaineScen').isChecked(), true, 'l’édition relit la case');
+      await page.waitForFunction(() => document.querySelector('#taskChaineScenAttendu').value === 'Un devis renvoie trois échéances');
       await page.locator('#taskCancel').click();
       await page.waitForSelector('#taskModal', { state: 'hidden' });
       assert.deepEqual(erreurs, []);
@@ -511,11 +394,11 @@ exit 0
       assert.deepEqual(erreurs, []);
     });
 
-    test('la carte d’une tâche validée dit par quel scénario existant son code est couvert', async () => {
+    test('la carte d’une tâche validée « déjà couverte » cite le test existant et la raison', async () => {
       vider();
       const t = (await app.api('POST', '/api/tasks', {
         kind: 'code', prompt: 'carte validée', auto_push: true, verify_chain: [vApp],
-        verify_chain_scenario: { verifier_id: vTests, skill: { name: 'scen-couvert', repo_id: testsId } },
+        verify_chain_scenario: { actif: true, attendu: 'DRYRUN_COUVERT' },
         targets: [{ repo_id: repoId, branch: 'ai/carte-validee' }],
       })).body;
       await app.api('POST', `/api/tasks/${t.id}/run`);
@@ -524,7 +407,11 @@ exit 0
         await page.evaluate(() => loadTasks());
         return (await page.locator(`.task-chaine.is-validated[data-chaine-task="${t.id}"] .task-chaine-scenario`).count()) > 0;
       }, 'la carte montre la tâche validée');
-      assert.match(await page.locator(`.task-chaine[data-chaine-task="${t.id}"] .task-chaine-scenario`).textContent(), /scenarios\/existant\.sh/);
+      const bloc = await page.locator(`.task-chaine[data-chaine-task="${t.id}"] .task-chaine-scenario`).textContent();
+      assert.match(bloc, /couvert par un test existant/);
+      assert.match(bloc, /couvert par grp\/app:[^\s]+/);
+      assert.match(bloc, /déjà couvert \(dry-run\)/);
+      assert.doesNotMatch(bloc, /prouvé/);
       assert.deepEqual(erreurs, []);
     });
 
@@ -558,7 +445,7 @@ exit 0
       const derniere = frise.locator('.frise-etape').last();
       assert.match(await derniere.textContent(), /Validée/);
       assert.match(await derniere.getAttribute('class'), /is-fait/);
-      assert.ok(await frise.locator('.frise-etape', { hasText: 'Exécution du test' }).count() > 0, 'le scénario fait partie du déroulé');
+      assert.ok(await frise.locator('.frise-etape', { hasText: 'Écriture des tests' }).count() > 0, 'l’étape tests fait partie du déroulé');
       assert.equal(await frise.locator('[data-frise-continuer]').count(), 0);
     });
 

@@ -220,6 +220,7 @@ $('#taskJiraFetch') && $('#taskJiraFetch').addEventListener('click', async () =>
     if (f.label && !f.label.value.trim()) f.label.value = resume.slice(0, 120);
     if (f.commit_message && !f.commit_message.value.trim()) f.commit_message.value = resume;
     cleJiraDeLaSession = d.key;
+    poserAttenduJira(d.attendu);   // `&&? …` : le scénario attendu de l'étape tests, à part de la demande
     await proposerPiecesJira(d);   // ses captures, à cocher, comme depuis « Faire coder l'IA »
     $('#taskJiraStatus').textContent = tr('task.jira.added', { key: d.key });
     synchroniserJetonsDepots();   // les dépôts que le ticket nomme (`&&dépôt:branche`) rejoignent les lignes

@@ -44,7 +44,7 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
     /* LE BINAIRE CHOISI PAR LA SESSION (`task.cli_id`) est posé sur le contexte du job : toutes
        les passes — première, suivi, réponses, plan approuvé, rebase — partent avec lui. */
     else await cli.avecSession(task, onLog, async () => {
-      if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds });
+      if (action === 'followup') await taskrunner.runTaskFollowup(task, opts.instruction, onLog, { targetIds: opts.targetIds, imageIds: opts.imageIds, passKind: opts.passKind, testsPasses: opts.testsPasses, message: opts.message });
       else if (action === 'answer') await taskrunner.runTaskAnswer(task, opts.targetId, onLog);
       else if (action === 'approve-plan') await taskrunner.runTaskApprovePlan(task, opts.targetIds, opts.instruction, onLog);
       else if (action === 'revise-plan') await taskrunner.runTaskRevisePlan(task, opts.targetIds, opts.instruction, onLog);
@@ -121,6 +121,9 @@ async function runTaskJob(jobId, taskId, action, opts = {}) {
   } finally {
     // `push`/`push-all` déplacent du code déjà produit : la session n'a pas tourné.
     if (action !== 'push' && action !== 'push-all') marquerFinExecution('task', task.id);
+    /* Arrêtée ou en erreur pendant l'étape tests de la chaîne : la chaîne la conclut une fois ce job sorti
+       de la file. */
+    if (fin === 'stopped' || fin === 'error') setTimeout(() => { chaineVerif.apresArret(task.id).catch(() => {}); }, 50).unref();
     if (estSession) events.emit('session.finished', { kind: 'task', id: task.id, action, status: fin }).catch(() => {});
   }
 }

@@ -123,4 +123,25 @@ describe('Reprise après un arrêt du serveur', () => {
         `job.status.interrupted manque en ${langue} — le panneau afficherait le mot brut`);
     }
   });
+  /* L'ÉTAPE TESTS DE LA CHAÎNE COUPÉE EN ROUTE : sa passe tournait, son job est perdu. Au redémarrage, « À toi », la
+     cause dite ; les worktrees restent, « Relancer » repart de là. Une étape sans passe en cours n'est pas touchée. */
+  test('l’étape tests coupée pendant sa passe : « À toi », cause redémarrage ; une étape au repos n’est pas touchée', () => {
+    // eslint-disable-next-line global-require
+    const chaineVerif = require('../src/jobs/chaine-verif');
+    const now = new Date().toISOString();
+    const etape = (scenario) => {
+      const t = app.db.prepare(`INSERT INTO task (repo_id, kind, prompt, branch, status, verify_chain_scenario, created_at, updated_at)
+        VALUES (?, 'code', 'tests', 'ai/coupee', 'pushed', '{"actif":true}', ?, ?)`).run(repoId, now, now).lastInsertRowid;
+      app.db.prepare('INSERT INTO verif_chaine (task_id, steps_json, scenario_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(t, '[]', JSON.stringify(scenario), 'running', now, now);
+      return t;
+    };
+    const coupee = etape({ prepare: true, ecrit: true, depots: [], en_cours: { quoi: 'ecrire', at: now, avant: {}, tests_avant: {}, sorties: {} } });
+    const repos = etape({ prepare: true, ecrit: true, depots: [], a_rejouer: true });
+    chaineVerif.reprendreApresRedemarrage();
+    const c = app.db.prepare('SELECT status, scenario_json FROM verif_chaine WHERE task_id = ?').get(coupee);
+    assert.equal(c.status, 'attention');
+    assert.deepEqual([JSON.parse(c.scenario_json).cause, JSON.parse(c.scenario_json).en_cours], ['redemarrage', null]);
+    assert.equal(app.db.prepare('SELECT status FROM verif_chaine WHERE task_id = ?').get(repos).status, 'running');
+  });
 });

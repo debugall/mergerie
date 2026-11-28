@@ -167,4 +167,13 @@ function ligneSkills(choisis, { repos, cfg }) {
   return morceaux.join(' ');
 }
 
-module.exports = { scan, invalidate, lireFrontmatter, ligneSkills };
+/* Les skills d'UN dossier (un clone, une copie de travail) : nom, description, chemin du SKILL.md. L'étape
+   tests de la chaîne de validation les liste à l'agent, qui lit lui-même ceux qui servent — jamais leur
+   corps recopié. */
+function skillsDuDossier(dir, project) {
+  if (!dir) return [];
+  return skillsDe(path.join(dir, '.claude'), { source: 'repo', repoId: null, project, prefixe: dir })
+    .map((x) => ({ name: x.name, description: x.description, path: x.path, project }));
+}
+
+module.exports = { scan, invalidate, lireFrontmatter, ligneSkills, skillsDuDossier };

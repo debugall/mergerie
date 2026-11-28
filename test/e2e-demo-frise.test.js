@@ -38,6 +38,15 @@ describe('La démo montre la frise', () => {
       assert.equal(lignes.length, 2);
       assert.deepEqual(range('integ (démo)'), [2, 2], '« integ » couvre les deux (groupe backend)');
       assert.deepEqual(range('tests front (démo)'), [1, 1], '« tests front » ne couvre que le front');
+      // L'étape tests : un scénario attendu, des tests dans les deux zones, tous rejoués, la MR de tests prête.
+      const tests = d.termine.find((l) => /PROJ-1433/.test(l.label));
+      assert.ok(tests, 'la session aux tests écrits est dans « Terminé »');
+      const et = tests.workflow.etapes;
+      assert.deepEqual(et.filter((x) => x.cle === 'scen-ecrire').map((x) => x.zone), ['session', 'tests']);
+      assert.ok(et.filter((x) => x.cle === 'scen-rejouer').every((x) => x.etat === 'fait'));
+      assert.equal(et.at(-1).mr_tests, 'prete');
+      assert.deepEqual(et.find((x) => x.cle === 'scen-ecrire' && x.zone === 'tests').mr, { url: 'https://gitlab.demo/groupe/webapp-front/-/merge_requests/88', iid: 88, pret: true });
+      assert.match(tests.chaine.scenario.attendu, /3 factures/);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

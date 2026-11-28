@@ -22,6 +22,7 @@ const JETONSRT = require('../../../public/runtime/jetons-runtime.js');
 const { champsDeSession } = require('./sessions');
 const { exigerProprietaire } = require('./partage');
 const { jobEnCoursPour } = require('../../jobs/ordonnanceur');
+const chaineScen = require('../../jobs/chaine-scenario');
 
 const MAX_TICKETS = 20;
 const CLE = /^[A-Z][A-Z0-9_]+-\d+$/;
@@ -77,7 +78,8 @@ function preparerTicket(ticket) {
   const pris = new Set(targets.map((g) => g.repo_id));
   const texteTicket = [ticket.summary, ticket.descriptionMd, ticket.techMd, ...(ticket.comments || []).map((c) => c.bodyMd)].join('\n');
   return {
-    key: ticket.key, summary: ticket.summary || '', prompt, branche_defaut: defaut, targets,
+    // Le scénario attendu (`&&? …`) : montré et modifiable dans la fenêtre, jamais dans la demande.
+    key: ticket.key, summary: ticket.summary || '', prompt, attendu: ticket.attendu || '', branche_defaut: defaut, targets,
     manque: targets.length ? null : t('cockpit.journee.no-repo'),
     suggestions: depotsCites(texteTicket, depots).filter((d) => !pris.has(d.id)).slice(0, 8).map((d) => ({ repo_id: d.id, project: d.project })),
     ticket: {
@@ -106,7 +108,8 @@ async function preparerJournee({ keys }) {
 
 /* Une session par ticket préparé — sans appel Jira : le prompt et les dépôts viennent de la fenêtre. La
    chaîne de validation et « …puis converger » sont ceux de la session modèle ; `lancer` faux = enregistrée,
-   prête à lancer (son « Lancer » convergera alors aussi). */
+   prête à lancer (son « Lancer » convergera alors aussi). Des tests du modèle, seule la CASE est reprise : son
+   scénario attendu parle d'un autre ticket. Celui du ticket (`&&?`, relu dans la fenêtre), ou rien. */
 function creerSessions({ sessions, modeleId, lancer }) {
   const modele = modeleId ? db.prepare("SELECT * FROM task WHERE id = ? AND kind = 'code'").get(Number(modeleId)) : null;
   const avecChaine = !!(modele && modele.verify_chain);
@@ -124,8 +127,10 @@ function creerSessions({ sessions, modeleId, lancer }) {
         auto_push: avecChaine || !!(modele && modele.auto_push), ask_questions: !!(modele && modele.ask_questions),
       });
       const id = tasks.creerTask(champs);
+      const tests = avecChaine && chaineScen.lireScenario(modele)
+        ? chaineScen.normaliserScenario({ actif: true, attendu: x.attendu || null, attendu_source: x.attendu_source === 'saisi' ? 'saisi' : 'jira' }) : null;
       db.prepare('UPDATE task SET jira_key = ?, verify_chain = ?, verify_chain_skill = ?, verify_chain_scenario = ? WHERE id = ?')
-        .run(key, avecChaine ? modele.verify_chain : null, avecChaine ? modele.verify_chain_skill || null : null, avecChaine ? modele.verify_chain_scenario || null : null, id);
+        .run(key, avecChaine ? modele.verify_chain : null, avecChaine ? modele.verify_chain_skill || null : null, tests, id);
       const converger = !!(modele && modele.converge_after);
       db.prepare('UPDATE task SET converge_after = ? WHERE id = ?').run(converger ? 1 : 0, id);
       if (lancer && converger) jobs.startConvergeSessionJob(id, {});
@@ -160,7 +165,7 @@ function supprimerElement(taskId) {
     exigerProprietaire('task', l);
     if (jobEnCoursPour(l.id)) throw new Error(t('cockpit.delete.running', { id: l.id }));
   }
-  for (const l of lignes) tasks.supprimerTask(l.id);
+  for (const l of lignes) { tasks.supprimerTask(l.id); chaineScen.nettoyerSession(l.id); }
   return { supprimees: lignes.map((l) => l.id) };
 }
 

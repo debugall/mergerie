@@ -1495,6 +1495,58 @@ mrsP3x.forEach((mr) => {
   }
 }
 
+/* ---------- L'étape tests de la chaîne : écrits dans les deux zones, verts, MR de tests prête ----------
+   Une session du jour, validée : son scénario attendu (venu du ticket), un test écrit dans l'API (poussé, dans la
+   MR, « commit de tests non relu »), un scénario et une fixture écrits par la passe du dépôt de tests
+   (webapp-front, le réglage de la démo) dans un worktree de Mergerie, sur une branche poussée avec sa merge
+   request — passée de brouillon à prête au vert. Tous les vérificateurs ont été rejoués, verts. */
+{
+  const api = repoIds['groupe/api-core']; const front = repoIds['groupe/webapp-front'];
+  const BR = 'feature/PROJ-1433-export-csv';
+  const h = () => require('crypto').randomBytes(20).toString('hex');
+  const shaCode = h(); const shaTests = h(); const departFront = h(); const finFront = h();
+  const tId = db.prepare(`INSERT INTO task (repo_id, prompt, branch, base_branch, status, kind, label, jira_key, verify_chain, verify_chain_scenario, auto_push, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)`).run(api, 'Contexte du ticket PROJ-1433\n\n---\n\nAjoute l’export CSV des factures du mois.', BR, 'main', 'pushed', 'code',
+    'PROJ-1433 Export CSV des factures', 'PROJ-1433', JSON.stringify([verifierId, cmdId]),
+    JSON.stringify({ actif: true, attendu: 'Un export de 3 factures produit un CSV de 4 lignes (en-tête compris),\nmontants au format 1 234,56 et dates au format JJ/MM/AAAA.', attendu_source: 'jira' }),
+    at(0.06), at(0.02)).lastInsertRowid;
+  db.prepare('INSERT INTO task_target (task_id, repo_id, branch, base_branch, status, commit_sha, mr_iid, mr_url, updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(tId, api, BR, 'main', 'pushed', shaTests, 271, 'https://gitlab.demo/groupe/api-core/-/merge_requests/271', at(0.03));
+  const chaineId = db.prepare('INSERT INTO verif_chaine (task_id, steps_json, status, created_at, updated_at) VALUES (?,?,?,?,?)')
+    .run(tId, '[]', 'validated', at(0.05), at(0.02)).lastInsertRowid;
+  const lancement = (vid, nom, quand, head) => {
+    const id = db.prepare(`INSERT INTO verification (verifier_id, verifier_name, status, verdict, targets_json, started_at, finished_at, created_at, chaine_id)
+      VALUES (?,?, 'done', 'verified_pass', ?, ?, ?, ?, ?)`).run(vid, nom, JSON.stringify([{ repo_id: api, mr_id: null, head_sha: head, base_sha: null, branch: BR, mode: 'worktree' }]),
+      quand, quand, quand, chaineId).lastInsertRowid;
+    return id;
+  };
+  const sigChaine = `${api}:${shaCode}`;
+  const sigRejeu = `${api}:${shaTests}|${front}:${finFront}`;
+  const cote = (vid, nom, quand, head, sig) => ({ runs: [{ verification_id: lancement(vid, nom, quand, head), sig, at: quand }], depuis: 0 });
+  const etapes = [
+    { verifier_id: verifierId, verifier_name: 'integ (démo)', erreur: null, base: cote(verifierId, 'integ (démo)', at(0.05), 'main', ''), head: cote(verifierId, 'integ (démo)', at(0.045), shaCode, sigChaine) },
+    { verifier_id: cmdId, verifier_name: 'tests front (démo)', erreur: null, base: cote(cmdId, 'tests front (démo)', at(0.044), 'main', ''), head: cote(cmdId, 'tests front (démo)', at(0.04), shaCode, sigChaine) },
+  ];
+  const scenario = {
+    prepare: false, ecrit: true, a_rejouer: true, final: 'vert', corrections: 0, code_modifie: [],
+    sig_chaine: sigChaine, sigs_etape: [sigChaine, `${api}:${shaTests}`],
+    depots: [
+      { zone: 'session', repo_id: api, project: 'groupe/api-core', chemin: '', branche: BR, sha_depart: shaCode, sha_final: shaTests,
+        ajoutes: ['tests/export/factures-csv.test.js'], modifies: [], supprimes: [], tests: ['tests/export/factures-csv.test.js'], autres: [], mr_iid: 271,
+        mr_url: 'https://gitlab.demo/groupe/api-core/-/merge_requests/271' },
+      { zone: 'tests', repo_id: front, project: 'groupe/webapp-front', chemin: '', branche: BR, base: 'main', cree: true,
+        sha_depart: departFront, sha_final: finFront, ajoutes: ['e2e/export-factures.spec.ts'], modifies: ['e2e/fixtures/factures.json'], supprimes: [],
+        tests: ['e2e/export-factures.spec.ts', 'e2e/fixtures/factures.json'], autres: [], pousse: true,
+        mr_iid: 88, mr_url: 'https://gitlab.demo/groupe/webapp-front/-/merge_requests/88', mr_pret: true },
+    ],
+    rejeu: {
+      [verifierId]: { runs: [{ verification_id: lancement(verifierId, 'integ (démo)', at(0.025), shaTests), sig: sigRejeu, at: at(0.025) }], depuis: 0 },
+      [cmdId]: { runs: [{ verification_id: lancement(cmdId, 'tests front (démo)', at(0.022), shaTests), sig: sigRejeu, at: at(0.022) }], depuis: 0 },
+    },
+  };
+  db.prepare('UPDATE verif_chaine SET steps_json = ?, scenario_json = ? WHERE id = ?').run(JSON.stringify(etapes), JSON.stringify(scenario), chaineId);
+}
+
 /* ---------- Notes, todos et rappels (plan_add_notes.md §10) ----------
    La démo doit montrer l'onglet VIVANT, brief compris : une page avec des références
    autolinkées vers de vraies MR et un vrai ticket, des todos de toutes les formes (haute

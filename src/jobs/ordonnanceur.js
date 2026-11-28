@@ -80,11 +80,34 @@ function launch(entry, lane) {
      découverte, sessions programmées) — c'est l'humain qui attend, pas la machine ;
    — `MAX_RUNNING` borne le tout : au-delà de quelques agents, ils rament ensemble. */
 const estAuto = (e) => !!(e && e.opts && e.opts.auto);
+/* LES TESTS D'UN DÉPÔT NE TOURNENT QU'UN À LA FOIS : une vérification réserve chaque dépôt qu'elle couvre
+   (`repo:<id>`, `jobKeys`), si bien que deux sessions qui rejouent leurs tests sur le même dépôt de tests
+   passent l'une après l'autre — y compris une vérification lancée à la main. Le job qui attend le dit : le
+   dépôt, le vérificateur qui tourne et la session qui l'a lancé. */
+const attentesDites = new Map();   // jobId → le job qui le fait attendre, déjà écrit
+function direAttenteVerif(e, bloquants) {
+  if (e.kind !== 'verify') return;
+  const mienne = jobKeys(e);
+  for (const id of bloquants) {
+    const a = active.get(id);
+    if (!a || a.entry.kind !== 'verify') continue;
+    const commun = [...jobKeys(a.entry)].find((k) => k.startsWith('repo:') && mienne.has(k));
+    if (!commun) continue;
+    if (attentesDites.get(e.jobId) === id) return;
+    attentesDites.set(e.jobId, id);
+    const v = db.prepare(`SELECT v.id, f.name, c.task_id FROM verification v LEFT JOIN verifier f ON f.id = v.verifier_id
+      LEFT JOIN verif_chaine c ON c.id = v.chaine_id WHERE v.id = ?`).get(a.entry.verificationId) || {};
+    const repo = db.prepare('SELECT project FROM repo WHERE id = ?').get(Number(commun.slice(5))) || {};
+    setJob(e.jobId, { message: t(v.task_id ? 'job.msg.waiting-test-repo' : 'job.msg.waiting-test-repo-hand', { project: repo.project || commun, verifier: v.name || `#${v.id}`, id: v.task_id }) });
+    return;
+  }
+}
 function prochainLancable() {
   const ordre = [...queue.keys()].sort((a, b) => (Number(estAuto(queue[a])) - Number(estAuto(queue[b]))) || (a - b));
   for (const i of ordre) {
     const e = queue[i];
-    if (conflictsWithRunning(e).length) continue;
+    const bloquants = conflictsWithRunning(e);
+    if (bloquants.length) { direAttenteVerif(e, bloquants); continue; }
     const mienne = jobKeys(e);
     /* On ne double pas un job plus ancien qui touche la même chose — sauf un automatique,
        qu'un job à la main a le droit de devancer. */
@@ -99,6 +122,7 @@ async function pump() {
     const i = prochainLancable();
     if (i === -1) return;
     const [entry] = queue.splice(i, 1);
+    attentesDites.delete(entry.jobId);
     // La voie « principale » n'est plus qu'un nom d'onglet : le premier lancé quand rien ne tourne.
     const lane = mainRunning ? 'extra' : 'main';
     if (lane === 'main') mainRunning = true;

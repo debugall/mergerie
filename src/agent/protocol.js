@@ -75,8 +75,8 @@ function extraireTous(text, nom, nonce) {
    se réinjecte jamais tel quel dans un prompt (le résultat part de toute façon sous `nonFiable`,
    quand il est réutilisé : `taskrunner.redigerTranscription`, `partage.js`). */
 // DIAGNOSTIC : la cause d'une branche qui casse un vérificateur de la chaîne de validation (`jobs/chaine-verif.js`).
-// SCENARIO · COUVERT : le scénario de couverture écrit par la session, ou celui qui couvre déjà son code.
-const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE', 'SPEC', 'DIAGNOSTIC', 'SCENARIO', 'COUVERT'];
+// COUVERT : à l'étape tests de la chaîne, les tests existants que la session cite au lieu d'en écrire.
+const NOMS = ['REPO', 'AGENT', 'STALE', 'PAGE', 'SPEC', 'DIAGNOSTIC', 'COUVERT'];
 function nettoyer(text) {
   let s = String(text || '');
   for (const n of NOMS) {

@@ -191,17 +191,16 @@ function detailDesTests(verifier, dir, resultats, onLog, prefixe = null, depuis 
  * avec son nom — pas un dossier deviné.
  */
 /** @param {any} verifier @param {(string|{command:string,scope?:string,repo_id?:number|null})[]} commandes
- * @param {any[]} repos @param {(ligne: string) => void} [onLog] @param {{ home?: string|null, scenario?: string }} [options] */
-async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home, scenario } = {}) {
+ * @param {any[]} repos @param {(ligne: string) => void} [onLog] @param {{ home?: string|null }} [options] */
+async function lancerCommandes(verifier, commandes, repos, onLog = () => {}, { home } = {}) {
   if (!repos.length) return { erreur: 'aucun dépôt préparé' };
   const lignes = (commandes || []).map((c) => verify.normaliserCommande(c)).filter((c) => c && c.command);
   if (!lignes.length) return { erreur: 'aucune commande déclarée' };
 
   const env = envVerifier(verifier, { home });
-  /* LE SCÉNARIO À LANCER SEUL (chaîne de validation, étape 3) : ses chemins, relatifs au dépôt de tests.
-     Les commandes du vérificateur, écrites et approuvées ici, en font ce qu'elles veulent — vide, elles
-     lancent tout. Jamais une commande venue de l'agent : seulement des chemins, déjà validés. */
-  env.MERGERIE_SCENARIO = scenario || '';
+  /* Posée vide, pour les commandes qui la lisaient : la chaîne de validation ne lance plus un scénario seul,
+     elle rejoue les vérificateurs entiers (les tests écrits vivent dans les dossiers qu'ils jouent déjà). */
+  env.MERGERIE_SCENARIO = '';
   const fin = Date.now() + Math.max(1, verifier.timeout_s) * 1000;   // budget GLOBAL
   const multi = repos.length > 1;
   const tous = [];
@@ -735,7 +734,7 @@ async function executerVerification(verificationId, cfg, onLog = () => {}) {
       // Un run à la main voit le vrai HOME — dit ici, pour qu'un verdict surprenant se relise avec ça.
       noter(t('log.verify.home-real'));
     }
-    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole, scenario: v.scenario || '' });
+    const lancer = (role, reposPrets) => lancerCommandes(verifier, commandes, reposPrets, noter, { home: homeIsole });
 
     /* Run BASE : il répond à « était-ce déjà rouge avant ? ». Sans lui, un test cassé par
        quelqu'un d'autre serait imputé à cette branche.

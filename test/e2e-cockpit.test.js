@@ -130,6 +130,29 @@ describe('Cockpit et « Lancer ma journée »', () => {
     assert.ok(!(await app.api('GET', '/api/cockpit')).body.pret.some((l) => l.task_id === id));
   });
 
+  test('« Lancer ma journée » ne recopie jamais le scénario attendu du modèle : le ticket donne le sien (`&&?`), ou rien', async () => {
+    const modele = (await app.api('POST', '/api/tasks', {
+      kind: 'code', prompt: 'modèle tests', label: 'Modèle avec tests', auto_push: true, verify_chain: [vId],
+      verify_chain_scenario: { actif: true, attendu: 'SENTINELLE-DU-MODELE' }, targets: [{ repo_id: repoId, branch: 'ai/modele-tests' }],
+    })).body;
+    ticket('PROJ-81', 'Avec attendu', ['&&paiement:ai/proj-81', '&&? Un devis à 3 échéances', '&&? dont la somme vaut le total']);
+    ticket('PROJ-82', 'Sans attendu', ['&&paiement:ai/proj-82']);
+    const p = (await app.api('POST', '/api/cockpit/journee/preparer', { keys: ['PROJ-81', 'PROJ-82'] })).body;
+    const [t81, t82] = ['PROJ-81', 'PROJ-82'].map((k) => p.tickets.find((x) => x.key === k));
+    assert.equal(t81.attendu, 'Un devis à 3 échéances\ndont la somme vaut le total');
+    assert.equal(t82.attendu, '', 'vide, sans avertissement');
+    assert.doesNotMatch(t81.prompt, /devis à 3|&&\?/, 'jamais dans la demande');
+    const r = (await app.api('POST', '/api/cockpit/journee/creer', { sessions: [t81, t82], modele_id: modele.id, lancer: false })).body;
+    const scen = (key) => JSON.parse(app.db.prepare('SELECT verify_chain_scenario FROM task WHERE id = ?').get(r.creees.find((c) => c.key === key).task_id).verify_chain_scenario);
+    assert.deepEqual(scen('PROJ-81'), { actif: true, attendu: 'Un devis à 3 échéances\ndont la somme vaut le total', attendu_source: 'jira' });
+    assert.deepEqual(scen('PROJ-82'), { actif: true, attendu: null, attendu_source: null }, 'la case du modèle, pas sa consigne');
+    // Retouché dans la fenêtre, il devient « saisi ».
+    const r2 = (await app.api('POST', '/api/cockpit/journee/creer', { sessions: [{ ...t81, attendu: 'retouché', attendu_source: 'saisi' }], modele_id: modele.id, lancer: false })).body;
+    assert.deepEqual(JSON.parse(app.db.prepare('SELECT verify_chain_scenario FROM task WHERE id = ?').get(r2.creees[0].task_id).verify_chain_scenario).attendu_source, 'saisi');
+    for (const c of [...r.creees, ...r2.creees]) await app.api('DELETE', `/api/tasks/${c.task_id}`);
+    await app.api('DELETE', `/api/tasks/${modele.id}`);
+  });
+
   test('supprimer un élément : la session et celles du même ticket, chaîne comprise ; jamais une session d’un autre ticket', async () => {
     const t = (await app.api('POST', '/api/cockpit/journee/preparer', { keys: ['PROJ-74'] })).body.tickets[0];
     const a = (await app.api('POST', '/api/cockpit/journee/creer', { sessions: [t], modele_id: modeleId, lancer: false })).body.creees[0].task_id;
@@ -201,7 +224,7 @@ describe('Cockpit et « Lancer ma journée »', () => {
     await app.api('DELETE', `/api/tasks/${modele.id}`);
   });
 
-  test('la frise d’une session prête à lancer montre tout ce qui va se passer : codage, push, chaîne, scénario, validée', async () => {
+  test('la frise d’une session prête à lancer montre tout ce qui va se passer : codage, push, chaîne, tests écrits puis vérificateurs rejoués, validée', async () => {
     const t = (await app.api('POST', '/api/tasks', {
       kind: 'code', prompt: 'frise', auto_push: true, verify_chain: [vId], verify_chain_scenario: { verifier_id: vId },
       targets: [{ repo_id: repoId, branch: 'ai/frise' }],
@@ -210,7 +233,7 @@ describe('Cockpit et « Lancer ma journée »', () => {
     const l = d.pret.find((x) => x.task_id === t.id);
     assert.ok(l, 'prête à lancer');
     assert.deepEqual(l.workflow.etapes.map((e) => e.cle),
-      ['code', 'push', 'verif', 'verif', 'scen-ecrire', 'scen-pousser', 'scen-lancer', 'validee']);
+      ['code', 'push', 'verif', 'verif', 'scen-ecrire', 'scen-rejouer', 'validee']);
     assert.ok(l.workflow.etapes.every((e) => e.etat === 'a_venir'), 'rien n’a commencé');
     assert.equal(l.workflow.courante, null);
     await app.api('DELETE', `/api/tasks/${t.id}`);

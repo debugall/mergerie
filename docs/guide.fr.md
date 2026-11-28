@@ -1024,24 +1024,58 @@ skill, une consigne intégrée lui fait lire directement le dépôt de tests. El
 main redonne ses tours au diagnostic. La chaîne attend la fin d'un diagnostic avant de lancer quoi que
 ce soit d'autre.
 
-**Le scénario de couverture, puis « validée ».** Sous la chaîne, **`Couvrir le code par un scénario,
-lancé seul`** ajoute une dernière étape quand tout est vert : la session qui a écrit le code est reprise,
-le dépôt de tests monté en lecture seule, et suit le **skill de scénarios** choisi (ou, sans skill, lit
-directement le dépôt de tests). Soit son code est **déjà couvert** — elle dit par quel scénario et pourquoi,
-et la tâche est **validée** —, soit elle **écrit un scénario** dans les conventions du dépôt de tests et le
-rend fichier par fichier ; c'est **Mergerie** qui l'écrit sur une branche du même nom que la sienne dans le
-dépôt de tests, commite et pousse (un chemin qui sortirait du dépôt ou viserait `.git` est refusé). Le
-**dépôt de tests** se règle une fois, pour tous les vérificateurs, dans **Réglages → Vérificateurs →
-`Dépôt de tests`** ; un vérificateur peut le **surcharger** pour lui-même (son formulaire, **Avancé →
-`Dépôt de tests`** — vide = le réglage général), et c'est alors le sien qui vaut quand il est le
-vérificateur des scénarios. Le vérificateur des scénarios doit couvrir ce dépôt, et il ne peut pas être un
-des dépôts de la session. Laissé vide, il est déduit : le seul dépôt que le vérificateur des scénarios couvre hors de la
-session — s'il en couvre plusieurs, l'étape s'arrête et demande de le choisir plutôt que d'écrire au hasard. Le
-**vérificateur des scénarios** tourne alors, le dépôt de tests sur cette branche, avec
-**`MERGERIE_SCENARIO`** = les chemins écrits : ses commandes lancent ce scénario seul
-(`npx playwright test $MERGERIE_SCENARIO`, par exemple ; vide, elles lancent tout). Deux essais. Vert : la
-carte dit **« Chaîne de validation : validée »**. Rouge deux fois : la session corrige — le scénario, ou son
-code (la chaîne rejoue alors la branche de chacun avant le scénario) —, deux fois au plus, puis « À toi ».
+**Les tests, puis « validée ».** Sous la chaîne, **`Écrire les tests à la fin de la chaîne`** ajoute une
+dernière étape quand tout est vert. Cochée, la case ouvre une zone **`Scénario attendu`** : ce qu'il faut
+ajouter comme tests — le parcours, les données, le résultat attendu. Facultative (sans elle, l'agent décide
+seul quels tests ajouter), elle n'est **lue par l'agent qu'à cette étape**, jamais au codage, à la review,
+à la convergence ni au diagnostic ; elle se modifie tant que l'étape n'a pas démarré. Sous la case, une ligne
+dit **où iront les tests** : chaque dépôt de tests retenu (« une branche et une merge request en brouillon »,
+ou « forge non configurée » s'il ne peut pas l'être), ou « aucun dépôt de tests séparé : les tests iront dans
+les dépôts de la session ».
+
+1. **Deux passes, chacune dans son dossier** — ce qui marche avec tous les agents (Claude, Copilot…), aucun
+   n'a besoin d'écrire hors du sien. La session qui a écrit le code est reprise pour les tests de **ses
+   propres dépôts**. Puis, pour chaque **dépôt de tests séparé**, une passe dédiée tourne **dans un worktree
+   de Mergerie** de ce dépôt, sur une **branche au nom de la session** partie de sa branche par défaut : elle
+   reçoit le scénario attendu, **le changement de la session** (son diff, en donnée) et les **skills** du dépôt
+   (nom, description, chemin du `SKILL.md` : l'agent lit lui-même ceux qui servent). Chaque passe **écrit**
+   les tests dans les dossiers que les commandes jouent déjà ; elle ne lance rien, ne commite pas, ne pousse
+   pas. Ton clone local n'est jamais mis sur cette branche ; deux sessions menées en parallèle écrivent
+   chacune sur la sienne.
+2. Mergerie **constate** ce qui a changé et applique la règle de chaque zone. **Dépôt de la session** :
+   commit et push sur sa branche, **la MR existante se met à jour** (un commit distinct, que la review ne
+   relance pas : la carte dit « commit de tests non relu » tant qu'aucune review ne couvre son SHA).
+   **Dépôt de tests séparé** : commit, **push de la branche**, et une **merge request en brouillon** vers sa
+   branche par défaut — ouverte une fois, mise à jour ensuite par les push. Une branche du même nom que la
+   session n'a pas créée (sur la forge ou dans le clone de Mergerie), ou une forge non configurée pour ce
+   dépôt : « À toi », rien n'est poussé.
+3. **Tous les vérificateurs de la chaîne sont rejoués**, côté branche seulement, avec leurs commandes
+   inchangées — sur la branche poussée du dépôt de tests (un vérificateur « en place » met ton clone sur ce
+   commit le temps du run, puis le remet, comme toujours). Deux essais chacun ; un rouge n'arrête pas les
+   suivants. **Les tests d'un même dépôt ne tournent qu'un à la fois** : une vérification réserve chaque dépôt
+   qu'elle couvre, si bien que deux sessions qui rejouent leurs tests sur le même dépôt de tests passent l'une
+   après l'autre, la seconde en file avec « en attente : les tests de … tournent déjà (vérificateur, session
+   #…) » ; une vérification lancée à la main sur ce dépôt pendant ce temps est refusée tout de suite. Rouge :
+   les deux passes reçoivent les tests en échec et le journal, et corrigent — la session ses tests ou son code,
+   le dépôt de tests ses tests —, **deux fois au plus** (un JSON écrit qui ne se lit pas, ou un « déjà couvert »
+   refusé, comptent dans ces deux), puis « À toi » ; la MR de tests reste en brouillon. **Vert : la merge
+   request de tests passe de brouillon à prête.**
+4. L'agent peut aussi **ne rien écrire et citer des tests existants** (`par: <dépôt>:<chemin>`, et la
+   raison) : chaque chemin est contrôlé sur disque — il prouve que le test cité existe, rien de plus ; le
+   juger revient à toi, en relisant. Rien n'a bougé : pas de rejeu, pas de merge request, la tâche est
+   **« couverte par un test existant »**.
+
+La carte de la session montre un bloc **Tests** par dépôt touché — sa zone, « 2 ajoutés, 1 modifié », `Voir le
+diff` (avec le retour de l'agent du dépôt de tests), la branche et le lien de la MR de tests avec son état
+(**brouillon** / **prête** ; « MR restée en brouillon » si la forge a refusé de la passer prête) ou le lien de la
+MR de la session —, une colonne **« avec les tests »** dans la grille des vérificateurs, le bloc replié **Demandé
+/ Écrit**, et en ambre **« test existant modifié »** (qui ouvre le diff de ce fichier) ou **« code modifié à
+l'étape tests »**. Le **dépôt de tests** se règle dans **Réglages → Vérificateurs → `Dépôt de tests`** (pour tous)
+et se surcharge par vérificateur (**Avancé → `Dépôt de tests`**) ; vide, les tests vont dans les dépôts de la
+session. Les worktrees de tests sont retirés avec la session ; ses branches et merge requests restent sur la
+forge. Une chaîne configurée avant cette version garde sa case cochée : son vérificateur et son skill de
+scénarios sont ignorés, et l'étape écrit désormais ses tests elle-même puis rejoue toute la chaîne
+(`MERGERIE_SCENARIO` reste posée, vide).
 
 **Le cockpit.** Le sous-onglet **Cockpit**, le premier de **Dev IA**, est la vue qu'on laisse ouverte (la pastille orange du menu Dev IA compte, depuis n'importe quel écran, ce qui t'y attend, et y mène d'un clic) pendant que les agents travaillent :
 **À toi** (une session qui pose une question ou attend l'approbation de son plan, une chaîne arrêtée avec
@@ -1054,10 +1088,10 @@ affiché ; chaque ligne ouvre sa session d'un clic. Les sessions sans mouvement 
 session — montre **toutes les étapes** de la session, dans l'ordre, et ce qui va se passer : **Codage** → **Push** → la boucle de convergence (**Review** avec sa note, puis
 **Correction n** et **Review n** par passe, et la fin — seuil atteint, plafond, note en baisse) → chaque
 vérificateur de la chaîne (**base**, puis **branche**, et son **diagnostic** s'il y en a un) → le
-scénario de couverture (**Écriture du test**, **Push du test**, **Exécution du test**, « dans » le dépôt
-de tests, et sa **correction**) → **Validée**. Elle se lit comme un **pipeline** : un **rail**, un **nœud par
-phase** — **Code & push** (« Code, push & MR » hors dépôt), **Convergence**, **Validation**, **Test de
-couverture**, **Validée** —, plein jusqu'où l'on en est, en pointillé pour ce qui vient. Le nœud dit l'état :
+les tests (**Écriture des tests**, une étape par dépôt touché avec sa zone, puis **« avec les tests »** pour
+chaque vérificateur rejoué, et leur **correction**) → **Validée**, avec un badge **« MR de tests en brouillon »**,
+vert **« MR de tests prête »** une fois le rejeu vert, quand des tests vivent dans un dépôt de tests. Elle se lit comme un **pipeline** : un **rail**, un **nœud par
+phase** — **Code & push** (« Code, push & MR » hors dépôt), **Convergence**, **Validation**, **Tests**, **Validée** —, plein jusqu'où l'on en est, en pointillé pour ce qui vient. Le nœud dit l'état :
 coche verte faite, **arc qui tourne** en cours (un reflet avance sur le rail qui y mène), nœud orange **qui
 respire** quand c'est à toi, croix rouge en échec, numéro pour ce qui vient, double anneau pour l'arrivée. Sous
 chaque nœud, ce que la phase a produit : le lien de la **MR** sur Code ; sur Convergence, la **dernière note en
@@ -1164,9 +1198,12 @@ clé (ex. `feature/PROJ-1234-…`). Disponible pour le codage **et** l'explorati
   liste passe : `&&> - …`). Réunies dans l'ordre, sans le préfixe, elles remplissent la demande après le
   séparateur `---` du contexte, et quittent ce contexte — l'agent ne lit pas la consigne deux fois. Celles
   du `#tech` l'emportent, entières, sur celles de la description ; avec « Récupérer », une demande déjà
-  écrite dans la modale passe devant. Ticket typique :
-  `&&api-core:feature/PROJ-12<develop` puis `&&> Ajouter l'endpoint /installments/quote` — il ne reste
-  qu'à relire et lancer. Vaut aussi pour le codage hors dépôt ouvert depuis un ticket.
+  écrite dans la modale passe devant. Les lignes **`&&? …`** écrivent de même le **scénario attendu** des
+  tests (même règle : le `#tech` l'emporte, lignes consécutives jointes) : elles remplissent la zone
+  `Scénario attendu` sous la chaîne, jamais la demande, et quittent tout contexte envoyé à un agent — celui
+  de la session, d'une review, d'une convergence, du script exporté. Ticket typique :
+  `&&api-core:feature/PROJ-12<develop` puis `&&> Ajouter l'endpoint /installments/quote` et
+  `&&? Un devis à 3 échéances renvoie 3 montants dont la somme vaut le total` — il ne reste qu'à relire et lancer. Vaut aussi pour le codage hors dépôt ouvert depuis un ticket.
   Un même dépôt cité deux fois garde la dernière branche écrite : la demande se lit description, puis
   `#tech`, puis ce qu'on tape — la précision technique passe devant la description, et soi-même devant les
   deux. Un jeton peut s'écrire en code (`` `&&api-core:feature/x<develop` ``), pour que l'éditeur de Jira n'y touche
@@ -2742,8 +2779,8 @@ branche contient un fragment donné **ou quand le diff touche un chemin** — gl
 `*.sql` —, plus précis ; une règle par chemin peut porter un **badge « risque »** affiché sur les MR
 concernées, calculé **sans IA** juste sur les chemins du diff, pour voir d'un coup d'œil laquelle reviewer en premier) ·
 **Vérificateurs** (tes commandes de tests, et les dépôts que chacun sait tester — voir *Vérification
-objective* plus bas ; en tête de page, le **dépôt de tests** commun à tous, où le scénario de couverture d'une
-chaîne de validation s'écrit — liste filtrable, vide = déduit, que chaque vérificateur peut surcharger dans son **Avancé** ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
+objective* plus bas ; en tête de page, le **dépôt de tests** commun à tous — là où l'agent écrit les tests qui ne
+vivent pas dans le projet ; vide, les tests vont dans les dépôts de la session ; liste filtrable, que chaque vérificateur peut surcharger dans son **Avancé** ; la page montre d'abord **la liste**, et le formulaire s'ouvre sur *Ajouter un
 vérificateur*, *Modifier* ou **`Dupliquer`** — celui-ci le rouvre **pré-rempli** sans identifiant,
 donc enregistrer **crée** au lieu d'écraser l'original, avec un nom libre proposé (« X (copie) »,
 les noms étant uniques) et le champ sélectionné : renommer est le premier geste ; le formulaire

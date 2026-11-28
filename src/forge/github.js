@@ -150,6 +150,8 @@ function toMr(pr) {
     created_at: pr.created_at,
     merged_at: pr.merged_at || null,
     author: pr.user ? (pr.user.login || '') : '',
+    // Brouillon : le champ GitHub, ou le titre à la façon GitLab (« Draft: », « WIP: »).
+    draft: pr.draft === true || /^\s*(draft|wip)\s*:/i.test(String(pr.title || '')),
     // Reviewers demandés et assignés : le détail les porte comme la liste, le rafraîchissement d'une seule MR les relit.
     reviewers: Array.isArray(pr.requested_reviewers) ? pr.requested_reviewers.map((r) => (r && r.login) || '').filter(Boolean) : undefined,
     assignees: Array.isArray(pr.assignees) ? pr.assignees.map((r) => (r && r.login) || '').filter(Boolean) : undefined,
@@ -289,10 +291,10 @@ async function mergeRequestsOfCommit(cfg, project, sha) {
    la suppression de la branche à la création : ce sont des décisions de merge. Les deux
    options éventuellement choisies ici sont donc mémorisées côté application (table `mr`)
    et appliquées au moment du merge. */
-async function createMergeRequest(cfg, project, { source_branch, target_branch, title }) {
+async function createMergeRequest(cfg, project, { source_branch, target_branch, title, draft }) {
   const pr = await githubFetch(cfg, `/repos/${encodeProject(project)}/pulls`, {
     method: 'POST',
-    body: JSON.stringify({ head: source_branch, base: target_branch, title }),
+    body: JSON.stringify({ head: source_branch, base: target_branch, title, ...(draft ? { draft: true } : {}) }),
   });
   return toMr(pr);
 }
@@ -422,6 +424,15 @@ async function resolveDiscussion(cfg, project, iid, discussionId, resolved) {
   const mutation = resolved ? 'resolveReviewThread' : 'unresolveReviewThread';
   await graphql(cfg, `mutation($id:ID!){ ${mutation}(input:{threadId:$id}){ thread { isResolved } } }`, { id: fil.threadId });
   return { ok: true, resolved: !!resolved };
+}
+
+/* Un brouillon devient prêt : REST ne sait pas le faire, c'est la mutation GraphQL
+   `markPullRequestReadyForReview`, sur l'identifiant de nœud de la PR. Déjà prête, rien ne part. */
+async function markMergeRequestReady(cfg, project, iid) {
+  const pr = await githubFetch(cfg, `/repos/${encodeProject(project)}/pulls/${iid}`);
+  if (!pr || !pr.draft) return toMr(pr);
+  await graphql(cfg, 'mutation($id:ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pullRequest { isDraft } } }', { id: pr.node_id });
+  return toMr({ ...pr, draft: false });
 }
 
 /* Approuver : UNE review `APPROVE`, sans commentaire — jamais N commentaires inline. */
@@ -859,7 +870,7 @@ module.exports = {
   // mêmes noms que gitlab.js (contrat commun consommé via src/forge.js)
   listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches,
   updateNote, currentUser,
-  latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion,
+  latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, markMergeRequestReady, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion,
   listMrDiscussions, replyToDiscussion, listBranchesFull, listTags, listProtectedBranches,
   approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus,
   listProtectedTags, listMrChangedPaths, listMrChanges, listMrCommits, createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents,

@@ -420,6 +420,12 @@ document.addEventListener('click', async (e) => {
   await openSplit(id);
 });
 
+/* Un commit de tests poussé par l'étape tests d'une chaîne de validation, qu'aucune review ne couvre encore : la
+   re-review incrémentale le relit. */
+function badgeTestsNonRelus(m) {
+  if (!m || !m.tests_non_relus) return '';
+  return `<span class="tag stale" title="${esc(tr('mr.tag.tests-unreviewed-title', { sha: String(m.tests_non_relus).slice(0, 8) }))}">${esc(tr('mr.tag.tests-unreviewed'))}</span>`;
+}
 function badgeDraft(m) {
   if (!m || !m.is_draft) return '';
   return `<span class="tag draft" title="${esc(tr('mr.tag.draft-title'))}">${svgIco('edit')} ${esc(tr('mr.tag.draft'))}</span>`;

@@ -89,6 +89,7 @@
 .frise-statut.is-a_toi { color: var(--amber-text, var(--amber)); background: color-mix(in srgb, var(--amber) 15%, transparent); }
 .frise-statut.is-echec { color: var(--red-text, var(--red)); background: color-mix(in srgb, var(--red) 13%, transparent); }
 .frise-statut.is-en_cours, .frise-statut.is-en_file { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.frise-statut.is-mr-prete { color: var(--green); background: color-mix(in srgb, var(--green) 13%, transparent); }
 .frise-score-l { display: inline-flex; align-items: center; gap: 8px; }
 .frise-score { font-size: 21px; line-height: 1.1; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 .frise-score-cible { font-size: 11px; line-height: 1.2; max-width: 5.5em; }
@@ -110,6 +111,8 @@
 .frise-grille { display: grid; gap: 3px; margin-top: 2px; }
 .frise-grille-l { display: grid; grid-template-columns: minmax(0, 150px) 40px 56px; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); }
 .frise-grille.avec-diag .frise-grille-l { grid-template-columns: minmax(0, 150px) 40px 56px 40px; }
+.frise-grille.avec-tests .frise-grille-l { grid-template-columns: minmax(0, 150px) 40px 56px 44px; }
+.frise-grille.avec-tests.avec-diag .frise-grille-l { grid-template-columns: minmax(0, 150px) 40px 56px 44px 40px; }
 .frise-grille-tete { font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; opacity: .75; }
 .frise-grille-col { text-align: center; }
 .frise-grille-nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }

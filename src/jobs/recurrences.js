@@ -182,6 +182,7 @@ function retention(r, onLog = () => {}) {
     const mrOuverte = db.prepare('SELECT 1 FROM task_target WHERE task_id = ? AND mr_iid IS NOT NULL AND COALESCE(mr_merged, 0) = 0').get(task.id);
     if (mrOuverte) continue;
     tasks.supprimerTask(task.id);
+    require('./chaine-scenario').nettoyerSession(task.id);
     n += 1;
   }
   if (n) onLog(t('log.recur.retention', { label: r.label, n, count: n }));

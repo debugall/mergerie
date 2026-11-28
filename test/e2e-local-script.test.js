@@ -231,6 +231,24 @@ describe('Codage hors dépôt : export en script bash', () => {
     git(depot.work, ['checkout', '-q', 'main']);
   });
 
+  test('le script exporté ne donne au ticket ni sa demande `&&>` ni son scénario attendu `&&?`', async () => {
+    app.state.jiraIssues['PROJ-79'] = { key: 'PROJ-79', fields: {
+      summary: 'Avec marqueurs', description: 'Contexte.\n&&? SENTINELLE-SCRIPT-DESCRIPTION\n&&> demande cachée',
+      comment: { comments: [{ id: '1', body: '#tech note\n  &&? SENTINELLE-SCRIPT-TECH' }] },
+    } };
+    const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Fais-le', label: 'Avec marqueurs', dirs: [depot.work] })).body;
+    const texte = (await exporter(lt.id)).texte;
+    const fichier = path.join(app.dataDir, 'ticket-marqueurs.sh');
+    fs.writeFileSync(fichier, texte.replace(/^JIRA_TICKET=.*$/m, "JIRA_TICKET='PROJ-79'").replace(/^JIRA_URL=.*$/m, `JIRA_URL='${app.gitlabUrl}'`)
+      .replace(/^JIRA_EMAIL=.*$/m, "JIRA_EMAIL='moi@exemple.fr'").replace(/^PUSH=1$/m, 'PUSH=0').replace(/^CREATE_MR=1$/m, 'CREATE_MR=0'));
+    const r = await lancer(fichier, { JIRA_TOKEN: 'jeton-jira' });
+    assert.equal(r.status, 0, r.stderr);
+    const recu = fs.readFileSync(journal, 'utf8');
+    assert.match(recu, /Contexte\.[\s\S]*note/, 'le ticket est bien là');
+    assert.doesNotMatch(recu, /SENTINELLE-SCRIPT|demande cachée|&&\?|&&>/);
+    git(depot.work, ['checkout', '-q', 'main']);
+  });
+
   test('sans commit, les modifications restent en place ; sans retour, le dossier reste sur la branche de travail', async () => {
     const lt = (await app.api('POST', '/api/local-tasks', { prompt: 'Sans commit', label: 'Brouillon', dirs: [depot.work] })).body;
     const texte = (await exporter(lt.id)).texte;

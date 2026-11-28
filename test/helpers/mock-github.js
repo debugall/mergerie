@@ -103,6 +103,12 @@ function handle(req, res, pathname, query, body) {
       }
       return json(res, 200, { errors: [{ message: 'Could not resolve to a node' }] });
     }
+    if (/markPullRequestReadyForReview/.test(q)) {
+      const pr = Object.values(state.pulls).flat().find((p) => p.node_id === v.id);
+      if (!pr) return json(res, 200, { errors: [{ message: 'Could not resolve to a node' }] });
+      pr.draft = false;
+      return json(res, 200, { data: { markPullRequestReadyForReview: { pullRequest: { isDraft: false } } } });
+    }
     return json(res, 200, { errors: [{ message: 'unsupported query (mock)' }] });
   }
   if (pathname === '/user/repos') return paged(res, req, query, state.repos);
@@ -141,7 +147,7 @@ function handle(req, res, pathname, query, body) {
     const number = state.nextNumber++;
     const src = branchesOf().find((b) => b.name === body.head);
     const pr = {
-      number, title: body.title, state: 'open', merged: false, merged_at: null,
+      number, node_id: `PR_${project}#${number}`, title: body.title, draft: !!body.draft, state: 'open', merged: false, merged_at: null,
       head: { ref: body.head, sha: (src && src.commit.sha) || `sha-${number}` },
       base: { ref: body.base, sha: 'base-sha' },
       html_url: `https://github.test/${project}/pull/${number}`,

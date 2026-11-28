@@ -109,7 +109,9 @@ app.put('/api/tasks/:id', wrap((req, res) => {
   const pousse = auto_push == null ? tache.auto_push : (auto_push ? 1 : 0);
   const chaine = tache.kind === 'code' && pousse ? (chaineEnvoyee === undefined ? tache.verify_chain || null : chaineVerif.normaliserChaine(chaineEnvoyee)) : null;
   const skillEnvoye = (req.body || {}).verify_chain_skill;
-  const scenEnvoye = (req.body || {}).verify_chain_scenario;
+  // Les tests et leur scénario attendu : modifiables tant que l'étape tests n'a pas démarré, figés ensuite.
+  const etapeTests = ((chaineVerif.resume(tache.id) || {}).scenario) || null;
+  const scenEnvoye = etapeTests && etapeTests.demarre ? undefined : (req.body || {}).verify_chain_scenario;
   db.prepare('UPDATE task SET verify_chain = ?, verify_chain_skill = ?, verify_chain_scenario = ? WHERE id = ?').run(chaine,
     chaine ? (skillEnvoye === undefined ? tache.verify_chain_skill || null : chaineDiag.normaliserSkill(skillEnvoye)) : null,
     chaine ? (scenEnvoye === undefined ? tache.verify_chain_scenario || null : chaineScen.normaliserScenario(scenEnvoye)) : null,
@@ -139,6 +141,7 @@ app.delete('/api/tasks/:id', wrap((req, res) => {
   const aSupprimer = taskById(Number(req.params.id));
   if (aSupprimer) exigerProprietaire('task', aSupprimer);
   tasks.supprimerTask(req.params.id);
+  chaineScen.nettoyerSession(Number(req.params.id));   // ses worktrees de tests
   res.json({ ok: true });
 }));
 /* Ranger / ressortir une session. Volontairement séparé de PUT /tasks/:id : c'est un geste

@@ -59,6 +59,12 @@ jira_context() {
     sub(/[ \t\r\n]+$/, "", b)
     return b == "" ? "\001" : b
   }
+  # Without the request lines (&&> …) nor the expected scenario (&&? …): neither belongs in the context.
+  function sansmarq(t,   n, i, L, o) {
+    n = split(t, L, "\n"); o = ""
+    for (i = 1; i <= n; i++) { if (L[i] ~ /^[ \t]*&&[?>]/) continue; o = o (o == "" ? "" : "\n") L[i] }
+    return o
+  }
   function path(   i, p) { p = ""; for (i = 1; i <= d; i++) p = p (i > 1 ? "." : "") (type[i] == "o" ? key[i] : idx[i]); return p }
   { s = s $0 "\n" }
   END {
@@ -81,6 +87,7 @@ jira_context() {
       }
     }
     if (techtxt == "\001") techtxt = ""
+    desc = sansmarq(desc); techtxt = sansmarq(techtxt)
     out = ""
     if (summary != "") out = "# " summary
     if (desc != "") out = out (out == "" ? "" : "\n\n") desc

@@ -54,8 +54,8 @@ function chaineDe(taskId) {
 }
 const ecrireScenario = (id, scen) => db.prepare('UPDATE verif_chaine SET scenario_json = ?, updated_at = ? WHERE id = ?')
   .run(scen ? JSON.stringify(scen) : null, maintenant(), id);
-// Le scénario de couverture choisi pour la session (étape 3), ou rien.
-const configScenario = (task) => lire(task && task.verify_chain_scenario, null);
+// L'étape tests demandée pour la session (étape 3) : `{ actif, attendu, attendu_source }`, ou rien.
+const configScenario = (task) => scenarioMod.lireScenario(task);
 const ecrire = (id, steps, status) => db.prepare('UPDATE verif_chaine SET steps_json = ?, status = COALESCE(?, status), updated_at = ? WHERE id = ?')
   .run(JSON.stringify(steps), status || null, maintenant(), id);
 
@@ -89,8 +89,16 @@ function etatCote(cote, quoi, sig, parId) {
   if (echecs >= ESSAIS) return { etat: 'broken', essai: echecs, verification_id: v ? v.id : null };
   return { etat: 'todo', essai: echecs + 1, verification_id: v ? v.id : null, verdict: v ? v.verdict : null };
 }
-function etat(chaine) {
+/* LA SIGNATURE DE L'ÉTAPE 1. Les commits de l'étape tests changent la branche, mais ce sont les vérificateurs
+   rejoués de cette étape qui la jugent : la chaîne elle-même garde le vert qu'elle a donné, tant que la
+   branche n'a reçu que ces commits-là. Un autre commit (un suivi, un push) la rend à revérifier. */
+function sigEtape1(chaine) {
   const sig = signature(chaine.task_id);
+  const sc = chaine.scenario;
+  return sc && sc.sig_chaine && (sc.sigs_etape || []).includes(sig) ? sc.sig_chaine : sig;
+}
+function etat(chaine) {
+  const sig = sigEtape1(chaine);
   const parId = verifs(chaine.steps.flatMap((s) => COTES.flatMap((c) => ((s[c] || {}).runs || []).map((r) => r.verification_id))));
   return chaine.steps.map((s) => {
     const base = etatCote(s.base || {}, 'base', sig, parId);
@@ -104,7 +112,7 @@ function etat(chaine) {
 /* Les cibles d'un côté : les dépôts que le vérificateur couvre — ceux de la session sur la base ou la
    branche, les siens (dépôt de tests) sur leur branche par défaut — et les positions : les dépôts de la
    session qu'il ne couvre pas, mis sur la même ref dans le clone local. */
-async function preparerCote(verifier, taskId, quoi, { refTests = null, testsId = null } = {}) {
+async function preparerCote(verifier, taskId, quoi, { tests = [] } = {}) {
   const couverts = groupes.couvertureVerifier(verifier.id);
   const siens = projets(taskId);
   if (!siens.length) throw new Error(t('err.chaine.nothing-pushed'));
@@ -118,9 +126,11 @@ async function preparerCote(verifier, taskId, quoi, { refTests = null, testsId =
   for (const repoId of couverts.keys()) {
     if (siens.some((p) => p.repo_id === repoId)) continue;
     if (!db.prepare('SELECT 1 FROM repo WHERE id = ?').get(repoId)) continue;
-    // Un dépôt hors session : sa branche par défaut ; le dépôt de tests, celle du scénario écrit pour cette session.
-    const ref = refTests && repoId === testsId ? refTests : 'HEAD';
-    cibles.push({ repo_id: repoId, mr_id: null, head_sha: `origin/${ref}`, base_sha: null, branch: ref, tag: null, mode: 'worktree' });
+    // Un dépôt de tests où l'étape tests a écrit : la branche de la session, poussée, à son commit.
+    const d = tests.find((x) => x.repo_id === repoId);
+    if (d) { cibles.push({ repo_id: repoId, mr_id: null, head_sha: d.sha_final || d.sha_depart, base_sha: null, branch: d.branche, tag: null, mode: 'worktree' }); continue; }
+    // Un dépôt hors session : sa branche par défaut.
+    cibles.push({ repo_id: repoId, mr_id: null, head_sha: 'origin/HEAD', base_sha: null, branch: 'HEAD', tag: null, mode: 'worktree' });
   }
   if (!cibles.length) throw new Error(t('err.plan.verifier-covers-none', { name: verifier.name }));
   const positions = [];
@@ -133,6 +143,7 @@ async function preparerCote(verifier, taskId, quoi, { refTests = null, testsId =
 }
 
 const enCours = new Set();   // chaînes en train de lancer leur côté suivant (les attentes ci-dessus)
+const etapeEnCours = new Set();   // chaînes dont l'étape tests est en train d'avancer
 
 async function lancerCote(chaine, index, quoi) {
   const step = chaine.steps[index];
@@ -176,16 +187,17 @@ async function avancer(taskId) {
     conclureDiagnostics(chaine);
     chaine = chaineDe(taskId);
   }
-  // Même règle pour le scénario : la session l'écrit (ou le corrige), on attend — sinon, conclu sans écrire.
+  /* Même règle pour l'étape tests : la session écrit (ou corrige), on attend — sinon (arrêtée, en erreur),
+     conclue sans rien constater. */
   if (chaine.scenario && chaine.scenario.en_cours) {
     if (scenarioMod.enRoute(chaine.task_id)) return null;
-    await conclureScenario(chaine, { ecrire: false });
+    conclureScenario(chaine, { fini: false });
     chaine = chaineDe(taskId);
   }
   const etats = etat(chaine);
   if (etats.some((s) => ACTIVE.has(s.base.etat) || ACTIVE.has(s.head.etat))) return null;
-  const sig = signature(chaine.task_id);
-  if (chaine.scenario && ACTIVE.has((etatScenario(chaine.scenario, sig) || {}).etat)) return null;
+  const sig = sigEtape1(chaine);
+  if (chaine.scenario && rejeuActif(chaine)) return null;
   for (let i = 0; i < etats.length; i += 1) {
     if (chaine.steps[i].erreur) continue;
     for (const quoi of COTES) {
@@ -199,15 +211,21 @@ async function avancer(taskId) {
     }
   }
   let finale = etats.every((s) => s.head.etat === 'pass') && !chaine.steps.some((s) => s.erreur) ? 'passed' : 'attention';
-  /* TOUT EST VERT : le scénario de couverture, s'il est demandé (étape 3). Il écrit, lance, corrige ; il ne
-     rend la main qu'arrêté — validé, ou « À toi ». */
+  /* TOUT EST VERT : les tests, s'ils sont demandés (étape 3). L'agent écrit, les vérificateurs rejouent,
+     l'agent corrige ; l'étape ne rend la main qu'arrêtée — validée, ou « À toi ». */
   if (finale === 'passed') {
     const task = db.prepare('SELECT * FROM task WHERE id = ?').get(chaine.task_id);
     const cfg = configScenario(task);
     if (cfg) {
-      const r = await phaseScenario(chaine, task, cfg, sig);
+      /* Une seule fois à la fois par chaîne : deux vérifications qui finissent ensemble appellent `avancer`
+         deux fois, et l'étape (asynchrone : préparer un clone prend du temps) partirait deux fois. */
+      if (etapeEnCours.has(chaine.id)) return null;
+      etapeEnCours.add(chaine.id);
+      let r;
+      try { r = await phaseScenario(chaineDe(taskId), task); } finally { etapeEnCours.delete(chaine.id); }
       if (r === 'lance') return null;
       finale = r;
+      chaine = chaineDe(taskId);
     }
   }
   if (finale !== chaine.status) {
@@ -246,58 +264,122 @@ function conclureDiagnostics(chaine) {
   ecrire(chaine.id, steps, null);
 }
 
-/* ---------- Le scénario de couverture ---------- */
+/* ---------- L'étape tests ---------- */
 
-function etatScenario(scen, sig) {
-  if (!scen || !scen.sha) return null;
-  return etatCote({ runs: scen.runs || [], depuis: scen.depuis || 0 }, 'head', `${sig}|${scen.sha}`,
-    verifs((scen.runs || []).map((r) => r.verification_id)));
+/* Les dépôts de tests touchés, leurs SHA : avec ceux de la session, ce que les lancements du rejeu ont vu. */
+const sigRejeu = (chaine) => `${signature(chaine.task_id)}|${((chaine.scenario || {}).depots || []).filter((d) => d.zone === 'tests')
+  .map((d) => `${d.repo_id}:${d.sha_final || d.sha_depart}`).join(',')}`;
+/* L'état du rejeu, vérificateur par vérificateur, dans l'ordre de la chaîne : deux essais chacun, comme un
+   côté (`etatCote`). */
+function etatsRejeu(chaine) {
+  const sc = chaine.scenario || {};
+  const par = sc.rejeu || {};
+  const sig = sigRejeu(chaine);
+  const parId = verifs(Object.values(par).flatMap((r) => (r.runs || []).map((x) => x.verification_id)));
+  return chaine.steps.map((s) => ({ verifier_id: s.verifier_id, verifier_name: s.verifier_name,
+    ...etatCote(par[s.verifier_id] || {}, 'head', sig, parId) }));
 }
-/* Rend 'lance' (quelque chose part : la session ou le scénario), 'validated' ou 'attention'. */
-async function phaseScenario(chaine, task, cfg, sig) {
-  const scen = chaine.scenario || {};
-  if (scen.couvert) return 'validated';
-  if (scen.erreur) return 'attention';
-  const { repo: tests, erreur } = scenarioMod.depotTests(cfg.verifier_id, projets(task.id), groupes.couvertureVerifier);
-  if (!tests) { ecrireScenario(chaine.id, { ...scen, erreur }); return 'attention'; }
-  if (!scen.sha) {
-    if (scen.ecrit) return 'attention';   // la session n'a rien rendu d'utilisable : `erreur` le dit déjà
-    ecrireScenario(chaine.id, { ...scenarioMod.lancerAgent(task, scen, { cfg, tests, quoi: 'ecrire', sig }), ecrit: true });
-    ecrire(chaine.id, chaine.steps, 'running');
-    return 'lance';
+const rejeuActif = (chaine) => !!(chaine.scenario && chaine.scenario.a_rejouer && etatsRejeu(chaine).some((r) => ACTIVE.has(r.etat)));
+
+/* Rend 'lance' (quelque chose part ou attend : l'agent, un vérificateur), 'validated' ou 'attention'. Toute
+   sortie arrêtée passe par `sortirScenario`. */
+async function phaseScenario(chaine, task) {
+  let scen = chaine.scenario || {};
+  // Conclue par le constat (couvert, ou une erreur) : on sort par la porte.
+  if (scen.final) return scen.prepare ? sortirScenario(chaine, task, scen, 'validated') : 'validated';
+  if (scen.erreur) return scen.prepare ? sortirScenario(chaine, task, scen, 'attention') : 'attention';
+  if (scen.en_cours) return 'lance';   // la passe de l'agent tourne : sa fin relancera
+  if (!scen.prepare) {
+    const r = await scenarioMod.preparer(task, scen);
+    if (r.erreur) return sortirScenario(chaine, task, { ...scen, erreur: r.erreur, cause: r.cause || 'preparer' }, 'attention');
+    const sig = signature(task.id);
+    scen = { ...scen, prepare: true, depots: [...(scen.depots || []).filter((d) => d.zone !== 'tests'), ...r.depots],
+      sig_chaine: scen.sig_chaine || sig, sigs_etape: [...new Set([...(scen.sigs_etape || []), sig])] };
+    ecrireScenario(chaine.id, scen);
   }
-  const e = etatScenario(scen, sig);
-  if (e.etat === 'pass') return 'validated';
-  if (e.etat === 'todo') { await lancerScenario(chaine, cfg, scen, sig); return 'lance'; }
-  if (e.etat === 'broken' && (scen.corrections || 0) < scenarioMod.MAX_CORRECTIONS) {
-    ecrireScenario(chaine.id, scenarioMod.lancerAgent(task, scen, { cfg, tests, quoi: 'corriger', verificationId: e.verification_id, sig }));
-    ecrire(chaine.id, chaine.steps, 'running');
-    return 'lance';
+  if (!scen.ecrit) return lancerPasse(chaine, task, scen, { quoi: 'ecrire' });
+  if (scen.reprise) {
+    if ((scen.corrections || 0) >= scenarioMod.MAX_CORRECTIONS) {
+      return sortirScenario(chaine, task, { ...scen, erreur: scen.reprise.raison, cause: scen.reprise.couvert ? 'couvert' : 'json' }, 'attention');
+    }
+    return lancerPasse(chaine, task, scen, { quoi: 'corriger', raison: scen.reprise.raison });
   }
-  return 'attention';
+  if (scen.final === 'couvert' || (scen.couvert && !scen.a_rejouer)) return sortirScenario(chaine, task, { ...scen, final: 'couvert' }, 'validated');
+  if (!scen.a_rejouer) return 'attention';
+  /* LE REJEU : tous les vérificateurs de la chaîne, dans l'ordre, côté branche seulement, commandes
+     inchangées. Un vérificateur rouge deux fois n'arrête pas les suivants : ils tournent tous, puis on conclut. */
+  const etats = etatsRejeu(chaine);
+  if (etats.some((r) => ACTIVE.has(r.etat))) return 'lance';
+  const suivant = etats.findIndex((r) => r.etat === 'todo');
+  if (suivant >= 0) { await lancerRejeu(chaine, task, suivant); return 'lance'; }
+  const rouges = etats.filter((r) => r.etat !== 'pass');
+  if (!rouges.length) return sortirScenario(chaine, task, { ...scen, final: 'vert' }, 'validated');
+  if ((scen.corrections || 0) < scenarioMod.MAX_CORRECTIONS) {
+    return lancerPasse(chaine, task, scen, { quoi: 'corriger', rouges: rouges.map((r) => ({ nom: r.verifier_name, verification_id: r.verification_id })) });
+  }
+  return sortirScenario(chaine, task, { ...scen, erreur: t('task.chaine.scen.still-red', { names: rouges.map((r) => r.verifier_name).join(', ') }), cause: 'rouge',
+    rouge: rouges.map((r) => ({ verifier_id: r.verifier_id, nom: r.verifier_name, verification_id: r.verification_id })) }, 'attention');
 }
-async function lancerScenario(chaine, cfg, scen, sig) {
+function lancerPasse(chaine, task, scen, opts) {
   try {
-    const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(cfg.verifier_id);
+    ecrireScenario(chaine.id, scenarioMod.lancerAgent(task, scen, opts));
+    ecrire(chaine.id, chaine.steps, 'running');
+    return 'lance';
+  } catch (e) {
+    return sortirScenario(chaine, task, { ...scen, erreur: e.message, cause: 'agent' }, 'attention');
+  }
+}
+async function lancerRejeu(chaine, task, index) {
+  const step = chaine.steps[index];
+  const scen = chaine.scenario;
+  try {
+    const verifier = db.prepare('SELECT * FROM verifier WHERE id = ?').get(step.verifier_id);
     if (!verifier) throw new Error(t('err.verify.verifier-gone'));
-    const { repo: tests, erreur } = scenarioMod.depotTests(cfg.verifier_id, projets(chaine.task_id), groupes.couvertureVerifier);
-    if (!tests) throw new Error(erreur);
-    const { cibles, positions } = await preparerCote(verifier, chaine.task_id, 'head', { refTests: scen.branche, testsId: tests.id });
+    const { cibles, positions } = await preparerCote(verifier, task.id, 'head', { tests: (scen.depots || []).filter((d) => d.zone === 'tests') });
     const { verification } = creerVerification({ verifier, cibles, enFile: true, automatique: true, positions });
-    db.prepare('UPDATE verification SET chaine_id = ?, scenario = ? WHERE id = ?').run(chaine.id, (scen.fichiers || []).join(' '), verification.id);
-    ecrireScenario(chaine.id, { ...scen, runs: [...(scen.runs || []), { verification_id: verification.id, sig: `${sig}|${scen.sha}`, at: maintenant() }] });
+    db.prepare('UPDATE verification SET chaine_id = ? WHERE id = ?').run(chaine.id, verification.id);
+    const frais = chaineDe(task.id).scenario;
+    const r = (frais.rejeu || {})[step.verifier_id] || { runs: [], depuis: 0 };
+    const rejeu = { ...(frais.rejeu || {}), [step.verifier_id]: { ...r, runs: [...(r.runs || []), { verification_id: verification.id, sig: sigRejeu(chaineDe(task.id)), at: maintenant() }] } };
+    ecrireScenario(chaine.id, { ...frais, rejeu });
     ecrire(chaine.id, chaine.steps, 'running');
   } catch (e) {
-    ecrireScenario(chaine.id, { ...scen, erreur: e.message });
+    sortirScenario(chaine, task, { ...chaineDe(task.id).scenario, erreur: `${step.verifier_name} : ${e.message}`, cause: 'rejeu' }, 'attention');
     ecrire(chaine.id, chaine.steps, 'attention');
     signalerAttention(chaine);
   }
 }
-async function conclureScenario(chaine, { ecrire: ecrireFichiers, onLog } = {}) {
+/* LA SORTIE DE L'ÉTAPE, quelle qu'elle soit. Validée : les merge requests de tests passent de brouillon à
+   prêtes — en arrière-plan, la forge ne retient pas la chaîne ; un refus reste dit sur la carte. */
+function sortirScenario(chaine, task, scen, finale) {
+  const s = { ...scen, prepare: false };
+  ecrireScenario(chaine.id, s);
+  if (finale === 'validated' && (s.depots || []).some((d) => d.zone === 'tests' && d.mr_iid && !d.mr_pret)) {
+    scenarioMod.marquerPretes(s).then((depots) => {
+      const frais = chaineDe(task.id);
+      if (frais && frais.scenario) ecrireScenario(chaine.id, { ...frais.scenario, depots });
+    }).catch(() => { /* la MR reste en brouillon : rien d'autre ne dépend d'elle */ });
+  }
+  return finale;
+}
+function conclureScenario(chaine, { fini }) {
   const task = db.prepare('SELECT * FROM task WHERE id = ?').get(chaine.task_id);
-  const cfg = configScenario(task) || {};
-  const tests = cfg.verifier_id ? scenarioMod.depotTests(cfg.verifier_id, projets(task.id), groupes.couvertureVerifier).repo || null : null;
-  ecrireScenario(chaine.id, await scenarioMod.conclure(task, chaine.scenario, { tests, ecrire: ecrireFichiers, onLog }));
+  const s = scenarioMod.conclure(task, chaine.scenario, { fini });
+  // Les commits de cette passe dans la session : la chaîne ne les rejoue pas elle-même (voir `sigEtape1`).
+  s.sigs_etape = [...new Set([...(s.sigs_etape || []), signature(task.id)])];
+  ecrireScenario(chaine.id, s);
+}
+
+/* Après un redémarrage : une étape tests dont la passe tournait — son job est perdu. « À toi », avec la cause ;
+   les worktrees restent, « Relancer » repart de là. */
+function reprendreApresRedemarrage() {
+  for (const c of db.prepare("SELECT task_id FROM verif_chaine WHERE scenario_json LIKE '%\"en_cours\":{%'").all()) {
+    const chaine = chaineDe(c.task_id);
+    if (!chaine || !chaine.scenario || !chaine.scenario.en_cours || scenarioMod.enRoute(c.task_id)) continue;
+    ecrireScenario(chaine.id, { ...chaine.scenario, en_cours: null, prepare: false, erreur: t('task.chaine.scen.interrupted'), cause: 'redemarrage' });
+    ecrire(chaine.id, chaine.steps, 'attention');
+    signalerAttention(chaine);
+  }
 }
 
 /* « À toi » : la notification d'une question, et une todo qui reste sous les yeux. */
@@ -349,7 +431,7 @@ async function apresSession(taskId, onLog = () => {}) {
     }
   }
   const avecScenario = chaineDe(task.id);
-  if (avecScenario.scenario && avecScenario.scenario.en_cours) await conclureScenario(avecScenario, { ecrire: true, onLog });
+  if (avecScenario.scenario && avecScenario.scenario.en_cours) conclureScenario(avecScenario, { fini: true });
   return avancer(task.id);
 }
 
@@ -365,8 +447,7 @@ async function relancer(taskId) {
     return r;
   }
   const etats = etat(chaine);
-  const scenActif = chaine.scenario && (chaine.scenario.en_cours
-    || ACTIVE.has((etatScenario(chaine.scenario, signature(chaine.task_id)) || {}).etat));
+  const scenActif = chaine.scenario && (chaine.scenario.en_cours || rejeuActif(chaine));
   if (etats.some((s) => ACTIVE.has(s.base.etat) || ACTIVE.has(s.head.etat))
     || chaine.steps.some((s) => s.diag && s.diag.en_cours) || scenActif) throw new Error(t('err.chaine.running'));
   const steps = chaine.steps.map((s, i) => {
@@ -379,17 +460,26 @@ async function relancer(taskId) {
     return n;
   });
   ecrire(chaine.id, steps, 'running');
-  /* Le scénario : une erreur s'efface ; rouge deux fois après ses corrections, il repart de zéro. Rien
-     d'écrit encore (la session n'avait rien rendu) : elle réécrit. */
+  /* L'étape tests : l'erreur s'efface et la préparation est refaite (les worktrees existants sont repris).
+     Rouge après ses corrections : le rejeu oublie ses échecs et les corrections repartent de zéro. Rien
+     d'écrit (la session n'avait rien rendu, ou un push a échoué) : les passes repartent. */
   if (chaine.scenario) {
     const sc = chaine.scenario;
-    const e = etatScenario(sc, signature(chaine.task_id));
-    ecrireScenario(chaine.id, { ...sc, erreur: null, ecrit: sc.sha ? sc.ecrit : false,
-      ...(e && e.etat === 'broken' ? { depuis: (sc.runs || []).length, corrections: 0 } : {}) });
+    const rejeu = Object.fromEntries(Object.entries(sc.rejeu || {}).map(([k, r]) => [k, { ...r, depuis: (r.runs || []).length }]));
+    ecrireScenario(chaine.id, { ...sc, erreur: null, cause: null, prepare: false, rouge: null,
+      ecrit: ['rien', 'interrompu', 'redemarrage', 'push'].includes(sc.cause) ? !!sc.a_rejouer : sc.ecrit,
+      reprise: null, ...(sc.cause === 'rouge' ? { rejeu, corrections: 0 } : {}) });
   }
   notes.fermerTodoAuto('chaine_verif', chaine.task_id);
   await avancer(taskId);
   return resume(taskId);
+}
+
+/* Une passe de la session arrêtée ou en erreur : si c'était l'étape tests, la chaîne la conclut. Rien d'autre
+   ne repart sur un arrêt. */
+async function apresArret(taskId) {
+  const c = chaineDe(taskId);
+  return c && c.scenario && c.scenario.en_cours ? avancer(taskId) : null;
 }
 
 /* Appelé par l'exécutant d'une vérification qui finit : la chaîne passe au côté suivant (ou relance le
@@ -401,6 +491,56 @@ async function apresVerification(verificationId) {
   return c ? avancer(c.task_id) : null;
 }
 
+/* L'étape tests, pour la carte et la frise. */
+function resumeScenario(chaine) {
+  const sc = chaine.scenario;
+  const task = db.prepare('SELECT verify_chain_scenario FROM task WHERE id = ?').get(chaine.task_id) || {};
+  const cfg = scenarioMod.lireScenario(task) || {};
+  const relu = (d) => {
+    if (d.zone !== 'session' || !d.mr_iid || !d.sha_final || d.sha_final === d.sha_depart) return null;
+    const mr = db.prepare('SELECT reviewed_sha FROM mr WHERE repo_id = ? AND iid = ?').get(d.repo_id, d.mr_iid);
+    return !!(mr && mr.reviewed_sha === d.sha_final);
+  };
+  const depots = (sc.depots || []).filter((d) => d.zone === 'tests' || (d.sha_final && d.sha_final !== d.sha_depart)).map((d) => ({
+    zone: d.zone, repo_id: d.repo_id, project: d.project, branche: d.branche, sha_depart: d.sha_depart, sha_final: d.sha_final || null,
+    ajoutes: d.ajoutes || [], modifies: d.modifies || [], supprimes: d.supprimes || [], tests: d.tests || [],
+    mr_iid: d.mr_iid || null, mr_url: d.mr_url || null, relu: relu(d),
+    // Zone Tests : la merge request du dépôt de tests, en brouillon jusqu'au vert (`mr_pret`), ou le refus de la forge.
+    ...(d.zone === 'tests' ? { mr_pret: !!d.mr_pret, mr_erreur: d.mr_erreur || null } : {}),
+  }));
+  return {
+    en_cours: sc.en_cours ? sc.en_cours.quoi : null, final: sc.final || null,
+    erreur: sc.erreur || null, cause: sc.cause || null, corrections: sc.corrections || 0, max: scenarioMod.MAX_CORRECTIONS,
+    couvert: sc.couvert || null, depots, code_modifie: sc.code_modifie || [],
+    attendu: cfg.attendu || null, attendu_source: cfg.attendu_source || null, demarre: !!(sc.prepare || sc.ecrit || sc.en_cours),
+    rejeu: sc.a_rejouer ? etatsRejeu(chaine) : [],
+  };
+}
+
+/* LE COMMIT DE TESTS NON RELU, PAR MERGE REQUEST : l'étape tests a poussé un commit dans la MR d'une session, et
+   aucune review ne couvre encore son SHA. `repo_id:iid` → le SHA. L'étape ne relance ni review ni convergence :
+   la carte de la MR le dit, la re-review incrémentale existante suffit. */
+function commitsDeTestsParMr() {
+  const out = new Map();
+  for (const c of db.prepare('SELECT scenario_json FROM verif_chaine WHERE scenario_json IS NOT NULL').all()) {
+    for (const d of (lire(c.scenario_json, {}) || {}).depots || []) {
+      if (d.zone === 'session' && d.mr_iid && d.sha_final && d.sha_final !== d.sha_depart) out.set(`${d.repo_id}:${d.mr_iid}`, d.sha_final);
+    }
+  }
+  return out;
+}
+
+/* La vue de diff d'un dépôt touché à l'étape tests : du SHA de départ au dernier commit de l'étape, dans le
+   worktree de la session (zone Tests) ou le clone de Mergerie (zone Session). */
+function contexteDiffTests(taskId, repoId) {
+  const chaine = chaineDe(taskId);
+  const d = chaine && chaine.scenario && (chaine.scenario.depots || []).find((x) => x.repo_id === Number(repoId) && x.sha_final);
+  if (!d) return null;
+  const repo = db.prepare('SELECT * FROM repo WHERE id = ?').get(d.repo_id);
+  const cwd = d.zone === 'tests' ? d.chemin : (repo ? require('../git/git').cloneDirFor(require('../data/config').getConfig(), repo) : null);
+  return cwd ? { cwd, ref: d.sha_final, target: d.sha_depart, shaRange: true, project: d.project, branch: d.branche, sortie: d.sortie || null } : null;
+}
+
 /* Ce que la carte de session affiche. */
 function resume(taskId) {
   const chaine = chaineDe(taskId);
@@ -408,12 +548,8 @@ function resume(taskId) {
   const sc = chaine.scenario;
   return {
     status: chaine.status,
-    // Le scénario de couverture : en écriture, couvert par un existant, ses fichiers et leur lancement.
-    scenario: sc ? {
-      en_cours: sc.en_cours ? sc.en_cours.quoi : null, couvert: sc.couvert || null, fichiers: sc.fichiers || [],
-      branche: sc.branche || null, erreur: sc.erreur || null, corrections: sc.corrections || 0, max: scenarioMod.MAX_CORRECTIONS,
-      run: etatScenario(sc, signature(chaine.task_id)),
-    } : null,
+    // L'étape tests : ce qui a été écrit, où, prouvé par quels vérificateurs, et la merge request des tests.
+    scenario: sc ? resumeScenario(chaine) : null,
     steps: etat(chaine).map((s, i) => {
       const d = chaine.steps[i].diag || null;
       return {
@@ -426,4 +562,4 @@ function resume(taskId) {
   };
 }
 
-module.exports = { ESSAIS, idsChaine, normaliserChaine, apresSession, avancer, relancer, apresVerification, resume };
+module.exports = { ESSAIS, idsChaine, normaliserChaine, apresSession, avancer, relancer, apresVerification, apresArret, resume, reprendreApresRedemarrage, contexteDiffTests, commitsDeTestsParMr };

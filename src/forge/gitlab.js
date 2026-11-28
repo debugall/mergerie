@@ -258,15 +258,25 @@ async function postMrNote(cfg, project, iid, body) {
   );
 }
 
-// Crée une merge request et renvoie l'objet MR (iid, web_url…).
-async function createMergeRequest(cfg, project, { source_branch, target_branch, title, squash, removeSourceBranch }) {
+const PREFIXE_BROUILLON = /^\s*(\[draft\]|\(draft\)|draft:|wip:)\s*/i;
+// Crée une merge request et renvoie l'objet MR (iid, web_url…). `draft` : le préfixe « Draft: » du titre, que GitLab lit comme brouillon.
+async function createMergeRequest(cfg, project, { source_branch, target_branch, title, squash, removeSourceBranch, draft }) {
   const enc = encodeProject(project);
-  const payload = { source_branch, target_branch, title };
+  const payload = { source_branch, target_branch, title: draft ? `Draft: ${String(title).replace(PREFIXE_BROUILLON, '')}` : title };
   // GitLab retient ces deux choix DÈS la création : ils s'appliqueront au merge, y
   // compris si celui-ci est fait depuis l'interface GitLab.
   if (squash != null) payload.squash = !!squash;
   if (removeSourceBranch != null) payload.remove_source_branch = !!removeSourceBranch;
   return gitlabFetch(cfg, `/projects/${enc}/merge_requests`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+/* Un brouillon devient prêt : le titre perd son préfixe (« Draft: », « WIP: »). Déjà prêt, rien ne part. */
+async function markMergeRequestReady(cfg, project, iid) {
+  const enc = encodeProject(project);
+  const m = await gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`);
+  const titre = String((m && m.title) || '');
+  if (!PREFIXE_BROUILLON.test(titre) && !(m && (m.draft || m.work_in_progress))) return m;
+  return gitlabFetch(cfg, `/projects/${enc}/merge_requests/${iid}`, { method: 'PUT', body: JSON.stringify({ title: titre.replace(PREFIXE_BROUILLON, '') }) });
 }
 
 /* Merge une merge request. `opts.squash` écrase l'historique de la branche en un seul
@@ -666,6 +676,6 @@ async function listAllMRs(cfg, project, { updatedAfter = null } = {}) {
     }));
 }
 
-module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
+module.exports = { approveMergeRequest, unapproveMergeRequest, approvalState, resolveDiscussion, pipelineStatus, listOpenMRs, postMrNote, encodeProject, normalizeProject, listAccessibleProjects, listBranches, latestCommit, commitsBetween, commitsSince, getRef, createMergeRequest, markMergeRequestReady, mergeMergeRequest, getMergeRequest, divergence, postMrDiscussion, listMrDiscussions, replyToDiscussion, updateNote, currentUser,
   listBranchesFull, listTags, listProtectedBranches, listProtectedTags, listMrChangedPaths, listMrChanges, listMrCommits,
   createBranch, deleteBranch, createTag, deleteTag, listAllMRs, mrHeadRef, mergeRequestsOfCommit, refPipeline, pushEvents };

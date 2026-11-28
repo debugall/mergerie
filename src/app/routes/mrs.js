@@ -173,6 +173,7 @@ app.get('/api/mrs', wrap((req, res) => {
     // …et les dépôts couverts PAR UN GROUPE (`verifier_group`), résolus par leurs membres.
     ...db.prepare('SELECT DISTINCT m.repo_id FROM verifier_group vg JOIN repo_group_member m ON m.group_id = vg.group_id').all().map((r) => r.repo_id),
   ]);
+  const testsPousses = require('../../jobs/chaine-verif').commitsDeTestsParMr();
   res.json(rows.map((r) => {
     /* LA CLÉ NE COMPTE QUE SI ELLE N'A PAS DÉJÀ ÉCHOUÉ. `ticket_jira_key` est posé au discover
        aussi bien sur succès QUE sur échec (404, accès refusé…) — c'est `ticket_jira_error` qui
@@ -187,6 +188,8 @@ app.get('/api/mrs', wrap((req, res) => {
       ...r,
       verification: verifs.has(r.id) ? resumeVerification(detailVerification(verifs.get(r.id))) : null,
       verifiable: couverts.has(r.repo_id),
+      // Un commit de tests poussé par l'étape tests de la chaîne, qu'aucune review ne couvre encore.
+      tests_non_relus: (() => { const sha = testsPousses.get(`${r.repo_id}:${r.iid}`); return sha && sha !== r.reviewed_sha ? sha : null; })(),
       has_review: hasReview.has(r.id),
       note: noteByMr[r.id] || null,
       note_detail: derniereVersion[r.id] || null,

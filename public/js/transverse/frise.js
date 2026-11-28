@@ -22,10 +22,16 @@ function friseDetail(e) {
   if (e.cle === 'converge-fin' && e.detail) out.push(tr(`cockpit.wf.fin.${e.detail}`));
   else if (e.cle === 'diag' && e.detail) out.push(tr(`task.chaine.diag.cause.${e.detail}`));
   else if (e.cle === 'mr' && e.etat === 'saute' && e.detail) out.push(tr(`cockpit.wf.mr.${e.detail}`));
-  else if ((e.cle === 'scen-ecrire' || e.cle === 'scen-pousser') && e.etat === 'fait' && e.detail) out.push(e.detail);   // les fichiers, le scénario qui couvre, la branche
+  else if (e.cle === 'scen-ecrire' && e.couvert) out.push(e.couvert.map((p) => `${p.project}:${p.chemin}`).join(', '));
+  else if (e.cle === 'scen-ecrire' && e.compte) out.push(texteEcrits(e), ...(e.mr ? [tr(e.mr.pret ? 'cockpit.wf.scen.mr-ready' : 'cockpit.wf.scen.mr-draft', { iid: e.mr.iid })] : []));
   else if (e.detail && (e.etat === 'echec' || e.etat === 'a_toi')) out.push(e.detail);
-  if (e.projet && e.cle.startsWith('scen-')) out.push(tr('cockpit.wf.in', { projet: e.projet }));
   return out.join(' · ');
+}
+/* Un dépôt touché à l'étape tests : « grp/tests · 2 ajoutés, 1 modifié ». */
+function texteEcrits(e) {
+  const n = [['ajoutes', 'added'], ['modifies', 'modified'], ['supprimes', 'deleted']].filter(([k]) => e.compte[k])
+    .map(([k, cle]) => tr(`task.chaine.tests.${cle}`, { n: e.compte[k], count: e.compte[k] })).join(', ');
+  return [e.projet, n].filter(Boolean).join(' · ');
 }
 /* ---------- LES PHASES ----------
    Une pastille par étape fait vite dix-sept pastilles au même poids : le passé crie autant que le présent. La
@@ -36,7 +42,7 @@ function friseDetail(e) {
    phase à la fois, et le reste malgré le rafraîchissement. */
 const PHASE_DE = { code: 'code', commit: 'code', push: 'code', mr: 'code', review: 'convergence', fix: 'convergence',
   'converge-fin': 'convergence', verif: 'validation', diag: 'validation', 'scen-ecrire': 'scenario',
-  'scen-pousser': 'scenario', 'scen-lancer': 'scenario', 'scen-corriger': 'scenario', validee: 'fin' };
+  'scen-rejouer': 'scenario', 'scen-corriger': 'scenario', validee: 'fin' };
 const GRAVITE = ['echec', 'a_toi', 'en_cours', 'en_file'];
 const friseDepliees = new Map();   // `${frise}|${bande}` → la phase ouverte, choisie au clic
 const friseNote = (n) => String(n).replace('.', ',');
@@ -117,9 +123,12 @@ function friseCourbe(notes, seuil) {
 /* La validation se lit en grille : un vérificateur par ligne, une case par côté (base, branche) et son
    diagnostic, sous un en-tête qui les nomme. Chaque case dit son état par une icône — pas par la seule
    couleur — et ouvre son rapport d'un clic. Pas encore partie, elle nomme déjà les vérificateurs. */
-function grilleVerifs(items) {
+function grilleVerifs(items, tous = []) {
   const noms = [...new Set(items.filter(([e]) => e.cle === 'verif').map(([e]) => e.nom))];
   const diags = items.some(([e]) => e.cle === 'diag');
+  // La colonne « avec les tests » : le rejeu de chaque vérificateur après l'écriture des tests (étape tests).
+  const rejeux = tous.filter(([e]) => e.cle === 'scen-rejouer');
+  const avecTests = rejeux.length > 0;
   if (!noms.length) return '';
   const caseHtml = (e, quoi) => {
     const label = `${e.nom} — ${quoi} — ${tr(`cockpit.wf.etat.${e.etat}`)}`;
@@ -128,12 +137,14 @@ function grilleVerifs(items) {
   };
   const vide = '<span class="frise-case is-vide" aria-hidden="true"></span>';
   const tete = `<span class="frise-grille-l frise-grille-tete" aria-hidden="true"><span class="frise-grille-nom"></span>
-    <span class="frise-grille-col">${esc(tr('task.chaine.base'))}</span><span class="frise-grille-col">${esc(tr('task.chaine.head'))}</span>${diags ? `<span class="frise-grille-col">${esc(tr('cockpit.wf.grid.diag'))}</span>` : ''}</span>`;
-  return `<span class="frise-grille${diags ? ' avec-diag' : ''}">${tete}${noms.map((n) => {
+    <span class="frise-grille-col">${esc(tr('task.chaine.base'))}</span><span class="frise-grille-col">${esc(tr('task.chaine.head'))}</span>${avecTests ? `<span class="frise-grille-col">${esc(tr('cockpit.wf.grid.tests'))}</span>` : ''}${diags ? `<span class="frise-grille-col">${esc(tr('cockpit.wf.grid.diag'))}</span>` : ''}</span>`;
+  return `<span class="frise-grille${diags ? ' avec-diag' : ''}${avecTests ? ' avec-tests' : ''}">${tete}${noms.map((n) => {
     const cote = (c) => items.find(([e]) => e.cle === 'verif' && e.nom === n && (e.cote || 'head') === c);
     const diag = items.find(([e]) => e.cle === 'diag' && e.nom === n);
     const cases = ['base', 'head'].map((c) => { const it = cote(c); return it ? caseHtml(it[0], tr(`task.chaine.${c}`)) : vide; }).join('');
-    return `<span class="frise-grille-l"><span class="frise-grille-nom" title="${esc(n)}">${esc(n)}</span>${cases}${diags ? (diag ? caseHtml(diag[0], tr('cockpit.wf.grid.diag')) : vide) : ''}</span>`;
+    const rejeu = rejeux.find(([e]) => e.nom === n);
+    const tests = avecTests ? (rejeu ? caseHtml(rejeu[0], tr('cockpit.wf.grid.tests')) : vide) : '';
+    return `<span class="frise-grille-l"><span class="frise-grille-nom" title="${esc(n)}">${esc(n)}</span>${cases}${tests}${diags ? (diag ? caseHtml(diag[0], tr('cockpit.wf.grid.diag')) : vide) : ''}</span>`;
   }).join('')}</span>`;
 }
 /* La MR ouverte, en lien sur la phase Code : c'est l'objet qu'on vient chercher. */
@@ -149,7 +160,7 @@ function statutHtml(e) {
 const friseMeta = (texte, cls = '') => (texte ? `<span class="frise-meta${cls}" title="${esc(texte)}">${esc(texte)}</span>` : '');
 
 /* Sous le nom d'une phase : ce qu'elle a produit, puis — active — son étape, son statut et sa raison. */
-function corpsPhase(ph) {
+function corpsPhase(ph, tous = []) {
   const { cle, items, etat } = ph;
   const actif = items.find(([e]) => GRAVITE.includes(e.etat));
   const a = actif ? actif[0] : null;
@@ -178,12 +189,17 @@ function corpsPhase(ph) {
     else if (fin && fin[0].detail) out.push(friseMeta(tr(`cockpit.wf.fin.${fin[0].detail}`)));
   } else if (cle === 'validation') {
     if (a) etapeActive(friseLibelle(a, { sansProjet: true }));
-    out.push(grilleVerifs(items));
+    out.push(grilleVerifs(items, tous));
   } else if (cle === 'scenario') {
-    const couvert = items.find(([e]) => e.cle === 'scen-ecrire' && e.etat === 'fait' && items.some(([x]) => x.etat === 'saute'));
-    const ou = items.find(([e]) => e.projet);
-    out.push(friseMeta(couvert ? tr('cockpit.wf.phase.covered') : (ou ? tr('cockpit.wf.in', { projet: ou[0].projet }) : '')));
-    etapeActive(a ? friseLibelle(a, { sansProjet: true }) : '');
+    /* Les tests : ce qui a été écrit, où ; ou les tests existants cités. */
+    const ecrire = items.filter(([e]) => e.cle === 'scen-ecrire').map(([e]) => e);
+    if (ecrire.some((e) => e.couvert)) out.push(friseMeta(tr('cockpit.wf.phase.covered')));
+    else for (const e of ecrire.filter((x) => x.compte)) out.push(friseMeta(friseDetail(e)));
+    if (a) etapeActive(friseLibelle(a, { sansProjet: true }));
+  } else if (cle === 'fin') {
+    // Les tests d'un dépôt séparé vivent dans leur merge request : brouillon tant que le rejeu n'est pas vert.
+    const mr = (items.find(([e]) => e.mr_tests) || [])[0];
+    if (mr) out.push(`<span class="frise-statut is-mr-${mr.mr_tests}">${esc(tr(mr.mr_tests === 'prete' ? 'cockpit.wf.mr-tests-ready' : 'cockpit.wf.mr-tests-draft'))}</span>`);
   }
   return out.filter(Boolean).join('');
 }
@@ -258,7 +274,7 @@ function friseHtml(s, { cible = null, commun = false } = {}) {
       const suivante = phases[n + 1];
       let bout = '';
       if (avecContinuer && courante && continuer && !continuerPose) { bout = continuer; continuerPose = true; }
-      const corps = corpsPhase(ph) + bout;
+      const corps = corpsPhase(ph, items) + bout;
       const cls = [`is-${ph.etat}`, `ph-${ph.cle}`, ph.cle === 'fin' ? 'is-terminus' : '', ph.ouverte ? 'is-ouverte' : '',
         courante ? 'is-courante' : '', suivante ? `suivi-${suivante.etat}` : ''].filter(Boolean).map(esc).join(' ');
       return `<div class="frise-phase ${cls}" data-frise-phase="${esc(ph.cleP)}">
